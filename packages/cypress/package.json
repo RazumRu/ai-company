@@ -1,0 +1,36 @@
+{
+  "name": "@packages/cypress",
+  "version": "1.7.14",
+  "author": "Sergey Razumovskiy <s.razumru@gmail.com>",
+  "bin": {
+    "cy-generate-api": "dist/bin/generate-api.js"
+  },
+  "dependencies": {
+    "@hey-api/client-axios": "^0.9.1",
+    "@hey-api/client-fetch": "^0.13.1",
+    "@hey-api/openapi-ts": "^0.80.14",
+    "@nestjs/common": "^11.1.6",
+    "axios": "^1.11.0",
+    "cypress": "^14.5.4",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "eslint": "^9.33.0",
+    "typescript": "^5.9.2"
+  },
+  "license": "ISC",
+  "main": "dist/index.js",
+  "peerDependencies": {
+    "@nestjs/common": "^11.1.6",
+    "cypress": "^14.5.4",
+    "@hey-api/client-axios": "^0.9.1"
+  },
+  "scripts": {
+    "lint:fix": "pnpm run lint --fix",
+    "lint": "pnpm eslint ./src/**",
+    "build": "tsc -p tsconfig.build.json",
+    "prebuild": "rm -rf ./dist || true"
+  },
+  "types": "dist/index.d.ts"
+}

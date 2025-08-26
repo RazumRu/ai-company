@@ -1,0 +1,7 @@
+#!/bin/sh
+
+commit_msg=$(cat "${1:?Missing commit message file}")
+
+if [[ ! $commit_msg =~ [A-Za-z]+-[0-9]+ ]]; then
+  npx jira-prepare-commit-msg $1
+fi

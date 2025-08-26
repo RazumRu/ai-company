@@ -1,0 +1,58 @@
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    entrypoint: ["litellm"]
+    command: ["--host","0.0.0.0","--config=/app/config.yaml","--detailed_debug"]
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      PORT: 4000
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/litellm"
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: salt
+    ports:
+      - "4000:4000"
+    networks:
+      - ai
+    volumes:
+      - ./litellm.yaml:/app/config.yaml
+
+  postgres:
+    image: postgres:17
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - DATABASES=ai_company,keycloak,litellm
+    networks:
+      - ai
+    ports:
+      - '5437:5432'
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./.docker/postgres:/docker-entrypoint-initdb.d/
+
+  keycloak:
+    image: keycloak/keycloak:24.0.5
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=password
+      - KC_HOSTNAME=localhost
+      - KC_DB=postgres
+      - KC_DB_PASSWORD=postgres
+      - KC_DB_USERNAME=postgres
+      - KC_HEALTH_ENABLED=true
+      - KC_DB_URL=jdbc:postgresql://postgres/keycloak
+      - KC_FEATURES=account-api,account3,admin-api,admin-fine-grained-authz,admin2,authorization,client-policies,client-secret-rotation,dynamic-scopes,step-up-authentication,token-exchange,transient-users,update-email,web-authn
+    networks:
+      - ai
+    ports:
+      - '8082:8080'
+    command: 'start-dev --import-realm'
+    volumes:
+      - ./.docker/keycloak:/opt/keycloak/data/import
+
+networks:
+  ai:
+    driver: bridge
+
+volumes:
+  postgres:

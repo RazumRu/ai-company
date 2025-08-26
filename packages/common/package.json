@@ -1,0 +1,41 @@
+{
+  "name": "@packages/common",
+  "version": "1.2.8",
+  "author": "Sergey Razumovskiy <s.razumru@gmail.com>",
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.6",
+    "@sentry/core": "^10.5.0",
+    "@sentry/integrations": "^7.114.0",
+    "@sentry/node": "^10.5.0",
+    "lodash": "^4.17.21",
+    "pino": "^9.9.0",
+    "pino-pretty": "^13.1.1",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.1.6",
+    "@sentry/types": "^10.5.0",
+    "@types/lodash": "^4.17.20",
+    "@types/node": "^24.3.0",
+    "eslint": "^9.33.0",
+    "vitest": "^3.2.4",
+    "typescript": "^5.9.2"
+  },
+  "license": "ISC",
+  "main": "dist/index.js",
+  "peerDependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6"
+  },
+  "scripts": {
+    "lint:fix": "pnpm run lint --fix",
+    "lint": "pnpm eslint ./src/**",
+    "build": "tsc -p tsconfig.build.json",
+    "prebuild": "rm -rf ./dist || true",
+    "test": "vitest run --passWithNoTests",
+    "test:cov": "vitest run --coverage --passWithNoTests"
+  },
+  "types": "dist/index.d.ts"
+}

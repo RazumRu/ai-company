@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["src/**/*"],
+  "compilerOptions": {
+    "plugins": [
+      { "transform": "@packages/http-server/dist/swagger-plugin.js" }
+    ],
+  }
+}

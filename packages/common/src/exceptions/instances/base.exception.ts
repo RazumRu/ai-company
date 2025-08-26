@@ -1,0 +1,81 @@
+import { get } from 'lodash';
+
+import { EXCEPTION_CODES } from '../exceptions.codes';
+import { IExceptionData, IExceptionFieldError } from '../exceptions.types';
+
+interface BaseExceptionData {
+  description?: string;
+  fields?: IExceptionFieldError[];
+  customData?: Record<string, any>;
+}
+
+export class BaseException extends Error {
+  public readonly errorCode: string;
+  public readonly statusCode: number;
+  public readonly data: BaseExceptionData;
+
+  constructor(
+    errorCode: string,
+    statusCode: number,
+    data: BaseExceptionData = {},
+  ) {
+    const description =
+      data.description ||
+      get(EXCEPTION_CODES, errorCode, 'An exception has occurred');
+    super(description);
+
+    this.errorCode = errorCode;
+    this.statusCode = statusCode;
+    this.data = data;
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, BaseException);
+    }
+    this.name = this.constructor.name;
+  }
+
+  get code(): string {
+    return this.errorCode;
+  }
+
+  public getMessage(): string {
+    return (
+      this.data.description ||
+      get(EXCEPTION_CODES, this.code, 'An exception has occurred')
+    );
+  }
+
+  public getFullMessage(): string {
+    let msg = this.getMessage();
+
+    if (this.data.fields && this.data.fields.length > 0) {
+      const fieldsMsg = this.data.fields
+        .map((f) => `${f.name} - ${f.message}`)
+        .join(', ');
+      msg = `${msg}: ${fieldsMsg}`;
+    }
+
+    return `[${this.code}] ${msg}`;
+  }
+
+  public static getExceptionData(
+    exception: (BaseException | Error) & Partial<{ status: number }>,
+  ): IExceptionData {
+    const ex = exception as Partial<BaseException>;
+    return {
+      name: exception.name,
+      statusCode: ex.statusCode ?? exception.status ?? 500,
+      code: 'code' in ex && ex.code ? ex.code : 'INTERNAL_SERVER_ERROR',
+      message:
+        typeof (ex as any).getMessage === 'function'
+          ? (ex as any).getMessage()
+          : exception.message,
+      fullMessage:
+        typeof (ex as any).getFullMessage === 'function'
+          ? (ex as any).getFullMessage()
+          : exception.message,
+      fields: ex.data?.fields ?? [],
+      customData: ex.data?.customData,
+    };
+  }
+}

@@ -1,0 +1,7 @@
+import { applyDecorators, UseGuards } from '@nestjs/common';
+
+import { AuthGuard } from '../guards/auth.guard';
+
+export const OnlyForAuthorized = () => {
+  return applyDecorators(UseGuards(AuthGuard));
+};
