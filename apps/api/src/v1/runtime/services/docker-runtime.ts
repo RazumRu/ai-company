@@ -193,10 +193,13 @@ export class DockerRuntime extends BaseRuntime {
 
     const exitCode = timedOut ? 124 : info.ExitCode || 0;
 
+    const stdout = Buffer.concat(stdoutChunks).toString('utf8');
+    const stderr = Buffer.concat(stderrChunks).toString('utf8');
+
     return {
       exitCode,
-      stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-      stderr: Buffer.concat(stderrChunks).toString('utf8'),
+      stdout,
+      stderr,
     };
   }
 }

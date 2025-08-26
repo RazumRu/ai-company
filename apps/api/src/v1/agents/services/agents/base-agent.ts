@@ -12,7 +12,10 @@ import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { getShellTool } from '../../tools/shell.tool';
 import { getWebSearchTool } from '../../tools/web-search.tool';
 
-type AgentOutput = { messages: BaseMessage[] };
+type AgentOutput<S extends Record<PropertyKey, any>> = {
+  messages: BaseMessage[];
+  structuredResponse?: S;
+};
 
 export abstract class BaseAgent {
   private agent?: ReturnType<typeof createReactAgent>;
@@ -24,6 +27,7 @@ export abstract class BaseAgent {
     public runtime: BaseRuntime,
     protected readonly modelName: string,
     public readonly agentName: string,
+    protected schema?: z.ZodObject<any>,
   ) {}
 
   public abstract instructions(): string;
@@ -31,6 +35,10 @@ export abstract class BaseAgent {
 
   public setRuntime(runtime: BaseRuntime) {
     this.runtime = runtime;
+  }
+
+  public setSchema(schema: z.ZodObject<any>) {
+    this.schema = schema;
   }
 
   public getLLM(): ChatOpenAI {
@@ -51,16 +59,17 @@ export abstract class BaseAgent {
         tools: this.tools,
         llm: this.getLLM(),
         checkpointSaver: this.memorySaver,
+        responseFormat: this.schema,
       });
     }
 
     return this.agent;
   }
 
-  public async run(
+  public async run<S extends Record<PropertyKey, any>>(
     messages: BaseMessage[],
     config?: RunnableConfig,
-  ): Promise<AgentOutput> {
+  ): Promise<AgentOutput<S>> {
     const agent = this.getAgent();
 
     const mergedConfig: RunnableConfig = {
@@ -87,7 +96,7 @@ export abstract class BaseAgent {
         messages,
       },
       mergedConfig,
-    )) as AgentOutput;
+    )) as AgentOutput<S>;
   }
 
   async completeStructured<T extends z.ZodObject<any>>(

@@ -12,11 +12,18 @@ import {
   StateGraph,
 } from '@langchain/langgraph';
 import { Injectable } from '@nestjs/common';
+import EventEmitter from 'events';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
-import { PrepareRuntimeParams, RuntimeType } from '../../runtime/runtime.types';
+import { RuntimeType } from '../../runtime/runtime.types';
 import { RuntimeOrchestrator } from '../../runtime/services/runtime-orchestrator';
+import {
+  AgentEvent,
+  AgentWorkflowEvent,
+  AgentWorkflowOutput,
+  PrepareRuntimeParams,
+} from '../agents.types';
 import { DeveloperAgent } from './agents/developer-agent';
 import { ResearchAgent } from './agents/research-agent';
 
@@ -71,8 +78,9 @@ export class AgentOrchestrator {
           },
         });
       }
-    } finally {
+    } catch (e) {
       await runtime.stop();
+      throw e;
     }
 
     return runtime;
@@ -80,7 +88,7 @@ export class AgentOrchestrator {
 
   public async buildAndRunDeveloperGraph(
     task: HumanMessage,
-    params?: PrepareRuntimeParams,
+    runtimeParams?: PrepareRuntimeParams,
   ) {
     const graphState = Annotation.Root({
       messages: Annotation<BaseMessage[], Messages>({
@@ -96,8 +104,23 @@ export class AgentOrchestrator {
         reducer: (_, y) => y,
       }),
     });
+    type S = typeof graphState.State;
 
-    const runtime = await this.prepareRuntime(params);
+    const eventName = '__event__';
+    const emitter = new EventEmitter();
+    const emit = (data: AgentWorkflowEvent) => {
+      emitter.emit(eventName, data);
+    };
+
+    emit({
+      eventType: AgentEvent.PrepareRuntimeStart,
+      eventName: 'Preparing runtime',
+    });
+    const runtime = await this.prepareRuntime(runtimeParams);
+    emit({
+      eventType: AgentEvent.PrepareRuntimeEnd,
+      eventName: 'Finished preparing runtime',
+    });
 
     try {
       const researcher = new ResearchAgent(runtime);
@@ -106,18 +129,15 @@ export class AgentOrchestrator {
         'Research Finalizer',
         'gpt-5-mini',
       );
+
       const developer = new DeveloperAgent(runtime);
-      const developerFinalizer = new ResearchAgent(
-        runtime,
-        'Developer Finalizer',
-        'gpt-5-mini',
-      );
+      const developerSchema = z.object({
+        workSummary: z.string(),
+      });
+      developer.setSchema(developerSchema);
 
-      const researchNode = async (
-        state: typeof graphState.State,
-      ): Promise<Partial<typeof graphState.State>> => {
+      const researchNode = async (state: S): Promise<Partial<S>> => {
         const res = await researcher.run(state.messages);
-
         const last = res.messages[res.messages.length - 1];
 
         return {
@@ -130,25 +150,21 @@ export class AgentOrchestrator {
         };
       };
 
-      const researchFinalizeNode = async (
-        state: typeof graphState.State,
-      ): Promise<Partial<typeof graphState.State>> => {
+      const researchFinalizeNode = async (state: S): Promise<Partial<S>> => {
         const schema = z.object({
           title: z.string(),
           description: z.string(),
-          instructions: z.string(),
         });
 
         const res = await researchFinalizer.completeStructured(
           [
             new SystemMessage({
               content: `
-            You are the Finalizer. Based on the prior Research Agent discussion, produce a valid JSON object that matches the provided schema.
+              You are the Finalizer. Based on the prior Research Agent discussion, produce a valid JSON object that matches the provided schema.
 
-            Guidelines:
-            - \`title\`: a short, imperative task name (e.g. "Update login form validation").
-            - \`description\`: 1–3 sentences that summarize the task for issue tracking (what and why, not how).
-            - If information is missing, add explicit TODOs in \`instructions\`.`,
+              Guidelines:
+              - \`title\`: a short, imperative task name (e.g. "Update login form validation").
+              - \`description\`: 1–3 sentences that summarize the task for issue tracking (what and why, not how).`,
             }),
             ...state.messages,
           ],
@@ -161,41 +177,17 @@ export class AgentOrchestrator {
         };
       };
 
-      const developerNode = async (
-        state: typeof graphState.State,
-      ): Promise<Partial<typeof graphState.State>> => {
-        const res = await developer.run([
+      const developerNode = async (state: S): Promise<Partial<S>> => {
+        const res = await developer.run<z.TypeOf<typeof developerSchema>>([
           state.messages[state.messages.length - 1]!,
+          new SystemMessage({
+            content: 'When you done - add your work summary',
+          }),
         ]);
 
-        return { messages: res.messages };
-      };
-
-      const developerSummarizerNode = async (
-        state: typeof graphState.State,
-      ): Promise<Partial<typeof graphState.State>> => {
-        const schema = z.object({
-          workSummary: z.string(),
-        });
-
-        const res = await developerFinalizer.completeStructured(
-          [
-            new SystemMessage({
-              content: `
-            You are the Developer Work Summarizer. Based on the developer agent's work and messages, produce a valid JSON object that matches the provided schema.
-
-            Guidelines:
-            - \`workSummary\`: A concise summary of what the developer agent accomplished, including key actions taken, files modified, solutions implemented, or issues resolved.
-            - Focus on concrete outcomes and deliverables rather than process details.
-            - Keep the summary informative but brief (2-4 sentences).`,
-            }),
-            ...state.messages,
-          ],
-          schema,
-        );
-
         return {
-          developerWorkSummary: res.workSummary,
+          messages: res.messages,
+          developerWorkSummary: res.structuredResponse?.workSummary,
         };
       };
 
@@ -203,15 +195,45 @@ export class AgentOrchestrator {
         .addNode(researcher.agentName, researchNode)
         .addNode(researchFinalizer.agentName, researchFinalizeNode)
         .addNode(developer.agentName, developerNode)
-        .addNode(developerFinalizer.agentName, developerSummarizerNode)
         .addEdge(START, researcher.agentName)
         .addEdge(researcher.agentName, researchFinalizer.agentName)
         .addEdge(researchFinalizer.agentName, developer.agentName)
-        .addEdge(developer.agentName, developerFinalizer.agentName)
-        .addEdge(developerFinalizer.agentName, END)
+        .addEdge(developer.agentName, END)
         .compile();
 
-      return await graph.invoke({ messages: [task] });
+      emit({
+        eventType: AgentEvent.WorkflowStart,
+        eventName: 'Workflow started',
+      });
+
+      const finalState = { messages: [task] };
+
+      const stream = await graph.stream(finalState, {
+        streamMode: ['updates'],
+      });
+
+      for await (const [mode, chunk] of stream) {
+        if (mode === 'updates') {
+          const state = Object.entries(chunk)[0]?.[1];
+
+          if (state) {
+            Object.assign(finalState, state);
+          }
+        }
+      }
+
+      emit({
+        eventType: AgentEvent.WorkflowEnd,
+        eventName: 'Workflow finished',
+      });
+
+      return {
+        state: finalState as S,
+        runtime,
+        listener: (cb) => {
+          emitter.on(eventName, cb);
+        },
+      } satisfies AgentWorkflowOutput<S>;
     } finally {
       await runtime.stop();
     }

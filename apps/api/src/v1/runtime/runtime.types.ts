@@ -20,11 +20,3 @@ export interface RuntimeExecResult {
 export enum RuntimeType {
   Docker = 'Docker',
 }
-
-export interface PrepareRuntimeParams {
-  runtimeType?: RuntimeType;
-  runtimeImage?: string;
-  gitRepo?: string;
-  gitToken?: string;
-  workdir?: string;
-}

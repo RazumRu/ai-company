@@ -17,6 +17,7 @@ export const getWebSearchTool: AgentTool = (runtime?: BaseRuntime) =>
       const data = WebSearchParamsSchema.parse(args);
 
       const tvly = tavily({ apiKey: environment.tavilyApiKey });
+
       const response = await tvly.search(data.query, data);
 
       return {
