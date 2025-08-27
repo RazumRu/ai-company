@@ -21,7 +21,6 @@ import { RuntimeOrchestrator } from '../../runtime/services/runtime-orchestrator
 import {
   AgentEvent,
   AgentWorkflowEvent,
-  AgentWorkflowOutput,
   PrepareRuntimeParams,
 } from '../agents.types';
 import { DeveloperAgent } from './agents/developer-agent';
@@ -47,6 +46,17 @@ export class AgentOrchestrator {
 
     try {
       if (params?.gitRepo) {
+        await runtime.exec({
+          cmd: `
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            chmod 644 ~/.ssh/known_hosts`,
+          env: {
+            REPO_NAME: params?.gitRepo,
+          },
+        });
+
         if (params?.gitToken) {
           await runtime.exec({
             cmd: `
@@ -71,12 +81,16 @@ export class AgentOrchestrator {
           });
         }
 
-        await runtime.exec({
+        const repo = await runtime.exec({
           cmd: `git clone $REPO_NAME`,
           env: {
             REPO_NAME: params?.gitRepo,
           },
         });
+
+        if (repo.fail) {
+          throw new Error(`Failed to clone repo: ${repo.stderr}`);
+        }
       }
     } catch (e) {
       await runtime.stop();
@@ -89,6 +103,7 @@ export class AgentOrchestrator {
   public async buildAndRunDeveloperGraph(
     task: HumanMessage,
     runtimeParams?: PrepareRuntimeParams,
+    listener?: (data: AgentWorkflowEvent) => Promise<void>,
   ) {
     const graphState = Annotation.Root({
       messages: Annotation<BaseMessage[], Messages>({
@@ -105,21 +120,22 @@ export class AgentOrchestrator {
       }),
     });
     type S = typeof graphState.State;
+    const finalState = { messages: [task] };
 
-    const eventName = '__event__';
-    const emitter = new EventEmitter();
+    const updateState = (newState: Partial<S>) => {
+      return Object.assign(finalState, newState);
+    };
+
     const emit = (data: AgentWorkflowEvent) => {
-      emitter.emit(eventName, data);
+      listener?.(data);
     };
 
     emit({
       eventType: AgentEvent.PrepareRuntimeStart,
-      eventName: 'Preparing runtime',
     });
     const runtime = await this.prepareRuntime(runtimeParams);
     emit({
       eventType: AgentEvent.PrepareRuntimeEnd,
-      eventName: 'Finished preparing runtime',
     });
 
     try {
@@ -140,14 +156,14 @@ export class AgentOrchestrator {
         const res = await researcher.run(state.messages);
         const last = res.messages[res.messages.length - 1];
 
-        return {
+        return updateState({
           messages: [
             new HumanMessage({
               content: last!.content,
               name: researcher.agentName,
             }),
           ],
-        };
+        });
       };
 
       const researchFinalizeNode = async (state: S): Promise<Partial<S>> => {
@@ -171,10 +187,10 @@ export class AgentOrchestrator {
           schema,
         );
 
-        return {
+        return updateState({
           title: res.title,
           description: res.description,
-        };
+        });
       };
 
       const developerNode = async (state: S): Promise<Partial<S>> => {
@@ -185,10 +201,12 @@ export class AgentOrchestrator {
           }),
         ]);
 
-        return {
-          messages: res.messages,
+        const last = res.messages[res.messages.length - 1]!;
+
+        return updateState({
+          messages: [last],
           developerWorkSummary: res.structuredResponse?.workSummary,
-        };
+        });
       };
 
       const graph = new StateGraph(graphState)
@@ -203,37 +221,61 @@ export class AgentOrchestrator {
 
       emit({
         eventType: AgentEvent.WorkflowStart,
-        eventName: 'Workflow started',
       });
 
-      const finalState = { messages: [task] };
+      // Message buffer to accumulate chunks by run_id
+      const messageBuffer = new Map<string, string>();
 
-      const stream = await graph.stream(finalState, {
-        streamMode: ['updates'],
+      const eventStream = graph.streamEvents(finalState, {
+        version: 'v2',
+        recursionLimit: 150,
       });
 
-      for await (const [mode, chunk] of stream) {
-        if (mode === 'updates') {
-          const state = Object.entries(chunk)[0]?.[1];
+      // Process single event stream for both state updates and events
+      for await (const event of eventStream) {
+        const eventType = event.event;
 
-          if (state) {
-            Object.assign(finalState, state);
+        // Handle tool events
+        if (eventType === 'on_tool_start') {
+          emit({
+            eventType: AgentEvent.ToolCallStart,
+            agentName: event.metadata?.checkpoint_ns?.split(':')[0] || '',
+            toolName: event.name,
+            toolInput: JSON.parse(event.data?.input.input),
+          });
+        }
+        // Handle agent messages from chat model streams - accumulate chunks
+        else if (eventType === 'on_chat_model_stream') {
+          const messageContent =
+            event.data?.chunk?.message?.content || event.data?.chunk?.content;
+          if (messageContent && event.run_id) {
+            const currentBuffer = messageBuffer.get(event.run_id) || '';
+            messageBuffer.set(event.run_id, currentBuffer + messageContent);
+          }
+        }
+        // Handle chat model end - emit complete accumulated message
+        else if (eventType === 'on_chat_model_end') {
+          const runId = event.run_id;
+          if (runId && messageBuffer.has(runId)) {
+            const completeMessage = messageBuffer.get(runId);
+            if (completeMessage && completeMessage.trim()) {
+              emit({
+                eventType: AgentEvent.Message,
+                agentName: event.metadata?.checkpoint_ns?.split(':')[0] || '',
+                messageContent: String(completeMessage).trim(),
+              });
+            }
+            // Clean up the buffer
+            messageBuffer.delete(runId);
           }
         }
       }
 
       emit({
         eventType: AgentEvent.WorkflowEnd,
-        eventName: 'Workflow finished',
       });
 
-      return {
-        state: finalState as S,
-        runtime,
-        listener: (cb) => {
-          emitter.on(eventName, cb);
-        },
-      } satisfies AgentWorkflowOutput<S>;
+      return finalState as S;
     } finally {
       await runtime.stop();
     }

@@ -60,7 +60,7 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   private prepareEnv(env?: Record<string, string>) {
-    return env ? Object.entries(env).map(([k, v]) => `${k}="${v}"`) : undefined;
+    return env ? Object.entries(env).map(([k, v]) => `${k}=${v}`) : undefined;
   }
 
   async start(params?: RuntimeStartParams): Promise<void> {
@@ -200,6 +200,7 @@ export class DockerRuntime extends BaseRuntime {
       exitCode,
       stdout,
       stderr,
+      fail: exitCode !== 0,
     };
   }
 }

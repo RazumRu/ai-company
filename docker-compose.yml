@@ -2,7 +2,7 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     entrypoint: ["litellm"]
-    command: ["--host","0.0.0.0","--config=/app/config.yaml","--detailed_debug"]
+    command: ["--config=/app/config.yaml","--detailed_debug"]
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       PORT: 4000

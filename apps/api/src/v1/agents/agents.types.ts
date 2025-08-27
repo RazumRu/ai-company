@@ -1,5 +1,4 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
-import { StateDefinition, StateType } from '@langchain/langgraph';
 
 import { RuntimeType } from '../runtime/runtime.types';
 import { BaseRuntime } from '../runtime/services/base-runtime';
@@ -20,17 +19,14 @@ export enum AgentEvent {
   WorkflowStart = 'workflowStart',
   WorkflowEnd = 'workflowEnd',
   Message = 'message',
+  ToolCallStart = 'toolCall',
 }
 
 export type AgentWorkflowEvent = {
   eventType: AgentEvent;
-  eventName: string;
   agentName?: string;
   message?: string;
+  toolName?: string;
+  toolInput?: Record<string, any>;
+  messageContent?: string;
 };
-
-export interface AgentWorkflowOutput<S> {
-  runtime: BaseRuntime;
-  state: S;
-  listener: (cb: (data: AgentWorkflowEvent) => Promise<void>) => void;
-}

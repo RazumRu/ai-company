@@ -12,6 +12,7 @@ export interface RuntimeExecParams {
 }
 
 export interface RuntimeExecResult {
+  fail: boolean;
   exitCode: number;
   stdout: string;
   stderr: string;
