@@ -26,7 +26,6 @@ export const generateClient = async ({
       {
         name: '@hey-api/typescript',
         enums: 'typescript',
-        exportInlineEnums: true,
       },
       '@hey-api/client-axios',
     ],

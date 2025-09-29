@@ -1,5 +1,5 @@
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
-import { BaseAgent } from './base-agent';
+import { BaseAgent } from '../agents/services/agents/base-agent';
+import { BaseRuntime } from '../runtime/services/base-runtime';
 
 export class ResearchAgent extends BaseAgent {
   constructor(

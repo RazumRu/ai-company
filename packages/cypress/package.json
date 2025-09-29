@@ -8,23 +8,25 @@
   "dependencies": {
     "@hey-api/client-axios": "^0.9.1",
     "@hey-api/client-fetch": "^0.13.1",
-    "@hey-api/openapi-ts": "^0.80.14",
+    "@hey-api/openapi-ts": "^0.84.3",
     "@nestjs/common": "^11.1.6",
-    "axios": "^1.11.0",
-    "cypress": "^14.5.4",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "axios": "^1.12.2",
+    "cypress": "^15.3.0",
     "reflect-metadata": "^0.2.2"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0",
-    "eslint": "^9.33.0",
+    "@types/node": "^24.5.2",
+    "eslint": "^9.36.0",
     "typescript": "^5.9.2"
   },
   "license": "ISC",
   "main": "dist/index.js",
   "peerDependencies": {
+    "@hey-api/client-axios": "^0.9.1",
     "@nestjs/common": "^11.1.6",
-    "cypress": "^14.5.4",
-    "@hey-api/client-axios": "^0.9.1"
+    "cypress": "^15.3.0"
   },
   "scripts": {
     "lint:fix": "pnpm run lint --fix",

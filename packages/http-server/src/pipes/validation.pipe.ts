@@ -31,7 +31,6 @@ export class ValidationPipe extends NestValidationPipe {
           constraints.push(
             ...Object.entries(err.constraints).map((e) => ({
               message: e[1],
-              index: e[0],
               name: err.property,
               path: `${path}.${err.property}`.replace(/^\./, ''),
               value: String(err.value),

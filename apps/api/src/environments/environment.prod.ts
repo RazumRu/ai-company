@@ -22,6 +22,12 @@ export const environment = () =>
 
     // connections
     postgresUrl: getEnv('POSTGRES_URL'),
+    postgresHost: getEnv('POSTGRES_HOST'),
+    postgresPort: getEnv('POSTGRES_PORT'),
+    postgresUsername: getEnv('POSTGRES_USERNAME'),
+    postgresPassword: getEnv('POSTGRES_PASSWORD'),
+    postgresDatabase: getEnv('POSTGRES_DATABASE'),
+    postgresRunMigrations: getEnv('POSTGRES_RUN_MIGRATIONS', true),
     llmBaseUrl: getEnv('LLM_BASE_URL'),
 
     // misc

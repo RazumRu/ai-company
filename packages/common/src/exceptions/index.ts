@@ -1,6 +1,7 @@
 import { EXCEPTION_CODES } from './exceptions.codes';
 import { BadRequestException } from './instances/bad-request.exception';
 import { BaseException } from './instances/base.exception';
+import { ConflictException } from './instances/conflict.exception';
 import { ForbiddenException } from './instances/forbidden.exception';
 import { InternalException } from './instances/internal.exception';
 import { NotFoundException } from './instances/not-found.exception';
@@ -18,6 +19,7 @@ export {
   ValidationException,
   UnauthorizedException,
   NotFoundException,
+  ConflictException,
 };
 
 /**

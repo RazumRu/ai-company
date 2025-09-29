@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { AgentOrchestrator } from './services/agents-orchestrator';
+import { AgentOrchestrator } from '../graphs/agents-orchestrator';
 
 @Module({
   imports: [],

@@ -62,10 +62,24 @@ export class BaseException extends Error {
     exception: (BaseException | Error) & Partial<{ status: number }>,
   ): IExceptionData {
     const ex = exception as Partial<BaseException>;
+    const statusCode = ex.statusCode ?? exception.status ?? 500;
+    let code = 'INTERNAL_SERVER_ERROR';
+    if (statusCode === 404) {
+      code = 'NOT_FOUND';
+    } else if (statusCode === 400) {
+      code = 'BAD_REQUEST';
+    } else if (statusCode === 401) {
+      code = 'UNAUTHORIZED';
+    } else if (statusCode === 403) {
+      code = 'FORBIDDEN';
+    } else if (statusCode === 422) {
+      code = 'VALIDATION_ERROR';
+    }
+
     return {
       name: exception.name,
-      statusCode: ex.statusCode ?? exception.status ?? 500,
-      code: 'code' in ex && ex.code ? ex.code : 'INTERNAL_SERVER_ERROR',
+      statusCode,
+      code: 'code' in ex && ex.code ? ex.code : code,
       message:
         typeof (ex as any).getMessage === 'function'
           ? (ex as any).getMessage()

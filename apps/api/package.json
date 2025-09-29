@@ -22,6 +22,7 @@
     "start": "node dist/main",
     "migration:create": "create-migration ./src/db",
     "migration:generate": "generate-migration ./src/db",
+    "migration:run": "run-all-migrations ./src/db",
     "migration:revert": "revert-migration ./src/db",
     "seed:create": "NODE_ENV=development create-seed ./src/db",
     "seed:run-all": "NODE_ENV=development run-all-seeds ./src/db"
@@ -51,6 +52,7 @@
     "fastify": "^5.5.0",
     "lodash": "^4.17.21",
     "ms": "^2.1.3",
+    "nestjs-zod": "^5.0.1",
     "openai": "^5.15.0",
     "pg": "^8.16.3",
     "pino": "^9.9.0",

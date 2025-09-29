@@ -14,6 +14,7 @@ import {
 } from '@nestjs/platform-fastify';
 import {
   DocumentBuilder,
+  OpenAPIObject,
   SwaggerCustomOptions,
   SwaggerModule,
 } from '@nestjs/swagger';
@@ -28,11 +29,13 @@ import rTracer from 'cls-rtracer';
 import { FastifyInstance } from 'fastify';
 import qs from 'fastify-qs';
 import helmet from 'helmet';
+import { cleanupOpenApiDoc } from 'nestjs-zod';
 
 import { RequestContextLogger } from './context';
 import { ExceptionsFilter } from './exceptions.filter';
 import { HttpServerModule } from './http-server.module';
 import { IHttpServerParams } from './http-server.types';
+import { ZodResponseInterceptor } from './interceptors/zod-response.interceptor';
 import { ValidationPipe } from './pipes/validation.pipe';
 
 export const getVersion = (v?: string) =>
@@ -85,7 +88,7 @@ export const setupSwagger = (
   );
   const swp = [path].join('/').replace(/\/{1,}/g, '/');
 
-  SwaggerModule.setup(swp, app, openapiDocument, options);
+  SwaggerModule.setup(swp, app, cleanupOpenApiDoc(openapiDocument), options);
 
   app.use(
     `${swp}/reference`,
@@ -104,9 +107,11 @@ export const setupMiddlewares = (
   {
     helmetOptions,
     compression,
+    stripResponse = true,
   }: {
     helmetOptions?: Parameters<typeof helmet>[0];
     compression?: FastifyCompressOptions;
+    stripResponse?: boolean;
   },
 ) => {
   const serverApp = <NestFastifyApplication>app;
@@ -122,10 +127,17 @@ export const setupMiddlewares = (
 
   serverApp.useGlobalFilters(new ExceptionsFilter(serverApp));
 
-  serverApp.useGlobalPipes(new ValidationPipe());
+  //serverApp.useGlobalPipes(new ValidationPipe());
   serverApp.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector)),
   );
+
+  if (stripResponse) {
+    serverApp.useGlobalInterceptors(
+      new ZodResponseInterceptor(app.get(Reflector)),
+    );
+  }
+
   serverApp.enableCors({
     methods: '*',
     origin: '*',
@@ -209,6 +221,7 @@ export const buildHttpNestApp = async (
   setupMiddlewares(app, {
     helmetOptions: params.helmetOptions,
     compression: params.compression,
+    stripResponse: params.stripResponse,
   });
 
   setupPrefix(app, {

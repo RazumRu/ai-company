@@ -1,7 +1,7 @@
 {
   "extends": "@packages/cypress/tsconfig.cy.json",
   "compilerOptions": {
-    "types": ["node", "cypress"],
+    "types": ["node", "cypress", "./index.d.ts"],
     "baseUrl": "."
   },
   "include": ["./e2e/**/*.ts"]

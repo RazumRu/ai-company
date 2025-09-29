@@ -33,9 +33,16 @@ export type AdditionalParams<T extends ObjectLiteral = any> = Partial<{
     | ObjectLiteral[];
 }>;
 
-export type EntityAttributes<T extends ObjectLiteral> = Omit<
-  T,
-  'createdAt' | 'updatedAt' | 'id' | 'deletedAt'
+type StripKeys = 'createdAt' | 'updatedAt' | 'id' | 'deletedAt';
+
+type NullifyUndefined<T> = {
+  [K in keyof T]: undefined extends T[K]
+    ? Exclude<T[K], undefined> | null | undefined
+    : T[K];
+};
+
+export type EntityAttributes<T extends ObjectLiteral> = NullifyUndefined<
+  Omit<T, StripKeys>
 >;
 
 export type BaseQueryBuilder<T extends ObjectLiteral> =

@@ -19,6 +19,7 @@ export interface IHttpServerParams {
   helmetOptions?: Parameters<typeof helmet>[0];
   // compression with @fastify/compress
   compression?: FastifyCompressOptions;
+  stripResponse?: boolean;
 }
 
 export interface IRequestData {

@@ -17,7 +17,7 @@ export const environment = () =>
     // connections
     postgresUrl: getEnv(
       'POSTGRES_URL',
-      'postgresql://postgres:postgres@localhost:5437/ai_company',
+      'postgresql://postgres:postgres@localhost:5439/ai_company',
     ),
     llmBaseUrl: getEnv('LLM_BASE_URL', 'http://localhost:4000'),
 

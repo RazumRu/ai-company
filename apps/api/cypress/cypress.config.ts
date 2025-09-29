@@ -10,14 +10,12 @@ export default defineConfig({
   video: false,
   screenshotOnRunFailure: false,
   e2e: {
-    supportFile: false,
+    supportFile: './support/e2e.ts',
     baseUrl: 'http://localhost:5000',
     specPattern: './e2e/**/*.cy.ts',
     setupNodeEvents(on, config) {
       return _setupNodeEvents(on, config);
     },
-    env: {
-      STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
-    },
+    env: {},
   },
 });

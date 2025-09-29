@@ -1,13 +1,12 @@
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
-import { BaseAgent } from './base-agent';
+import { BaseAgent } from '../agents/services/agents/base-agent';
+import { BaseRuntime } from '../runtime/services/base-runtime';
 
 export class DeveloperAgent extends BaseAgent {
   constructor(
-    public runtime: BaseRuntime,
     public agentName: string = 'Developer',
     protected modelName = 'gpt-5-mini',
   ) {
-    super(runtime, agentName, modelName);
+    super(agentName, modelName);
   }
 
   instructions(): string {

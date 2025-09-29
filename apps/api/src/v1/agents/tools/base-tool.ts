@@ -1,0 +1,23 @@
+import { DynamicStructuredTool } from '@langchain/core/tools';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
+import { z } from 'zod';
+
+export abstract class BaseTool {
+  public abstract name: string;
+  public abstract description: string;
+
+  public abstract get schema(): z.ZodType<any>;
+
+  public abstract build(
+    config?: LangGraphRunnableConfig,
+  ): DynamicStructuredTool;
+
+  protected buildToolConfiguration(config?: LangGraphRunnableConfig) {
+    return {
+      name: this.name,
+      description: this.description,
+      schema: this.schema,
+      ...config,
+    };
+  }
+}

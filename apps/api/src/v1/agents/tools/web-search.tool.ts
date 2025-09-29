@@ -1,38 +1,43 @@
-import { tool } from '@langchain/core/tools';
+import { DynamicStructuredTool, tool } from '@langchain/core/tools';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { tavily } from '@tavily/core';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { AgentTool } from '../agents.types';
+import { BaseTool } from './base-tool';
 
-const WebSearchParamsSchema = z.object({
-  query: z.string(),
-  searchDepth: z.enum(['basic', 'advanced']),
-});
+export class WebSearchTool extends BaseTool {
+  public name = 'web-search';
+  public description =
+    'Search the web for up-to-date information and return top results. For deeper results set searchDepth="advanced".';
 
-export const getWebSearchTool: AgentTool = (runtime?: BaseRuntime) =>
-  tool(
-    async (args) => {
-      const data = WebSearchParamsSchema.parse(args);
+  public get schema() {
+    return z.object({
+      query: z.string().min(1),
+      searchDepth: z.enum(['basic', 'advanced']).default('basic'),
+      includeDomains: z.array(z.string()).optional(),
+      excludeDomains: z.array(z.string()).optional(),
+      maxResults: z.number().int().min(1).max(20).optional(),
+    });
+  }
 
-      const tvly = tavily({ apiKey: environment.tavilyApiKey });
+  public build(config?: LangGraphRunnableConfig): DynamicStructuredTool {
+    return tool(async (args) => {
+      const data = this.schema.parse(args);
+      const client = tavily({
+        apiKey: environment.tavilyApiKey,
+      });
 
-      const response = await tvly.search(data.query, data);
-
+      const { query, ...opts } = data;
+      const res = await client.search(query, opts);
       return {
-        answer: response.answer,
-        results: response.results.map((r) => ({
+        answer: res.answer,
+        results: (res.results || []).map((r) => ({
           title: r.title,
           url: r.url,
           content: r.content,
         })),
       };
-    },
-    {
-      name: 'web-search',
-      description:
-        'Search the web for up-to-date information and return top results. For more detailed results, if needed, you can use searchDepth="advanced"',
-      schema: WebSearchParamsSchema,
-    },
-  );
+    }, this.buildToolConfiguration(config));
+  }
+}

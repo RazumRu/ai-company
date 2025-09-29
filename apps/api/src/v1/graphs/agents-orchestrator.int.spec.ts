@@ -2,10 +2,10 @@ import { HumanMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { environment } from '../../../environments';
-import { RuntimeType } from '../../runtime/runtime.types';
-import { RuntimeOrchestrator } from '../../runtime/services/runtime-orchestrator';
-import { AgentWorkflowEvent } from '../agents.types';
+import { environment } from '../../environments';
+import { AgentWorkflowEvent } from '../agents/agents.types';
+import { RuntimeType } from '../runtime/runtime.types';
+import { RuntimeOrchestrator } from '../runtime/services/runtime-orchestrator';
 import { AgentOrchestrator } from './agents-orchestrator';
 
 // Integration test for AgentOrchestrator. Skips if Docker not available.

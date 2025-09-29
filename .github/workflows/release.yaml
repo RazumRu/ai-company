@@ -8,12 +8,14 @@ on:
   push:
     branches:
       - 'main'
+      - 'develop'
   workflow_dispatch:
 
 env:
-  APP_NAME: lusora-api
+  APP_NAME: api
+  TAG_PREFIX: ai-company
   NODE_VERSION: 22
-  ECR_REGISTRY_NAME: 471112772597.dkr.ecr.me-central-1.amazonaws.com/lusora-api
+  ECR_REGISTRY_NAME:
 
 permissions:
   contents: write
@@ -54,22 +56,20 @@ jobs:
 
       - name: Prepare repository
         run: |
-          git config user.email "ci@lusora.store"
-          git config user.name "Lusora Bot"
+          git config user.email "ci@company.ai"
+          git config user.name "AI Company Bot"
 
       - name: up version
         id: semantic
-
         run: |
-          export TAG_PREFIX="@${{ env.APP_NAME }}"
           OUTPUT=$(pnpm run up-versions)
 
           echo $OUTPUT
 
           if echo "$OUTPUT" | grep -q "no new version is released"; then
-            echo "release_created=false" >> $GITHUB_OUTPUT
+           echo "release_created=false" >> $GITHUB_OUTPUT
           else
-            echo "release_created=true" >> $GITHUB_OUTPUT
+           echo "release_created=true" >> $GITHUB_OUTPUT
           fi
         env:
           GH_TOKEN: ${{ steps.generate_token.outputs.token }}
@@ -89,19 +89,22 @@ jobs:
       - name: Get version
         id: version
         run: |
-          git fetch --all --tags
+          git fetch --tags --force --prune
 
-          TAG=$(git tag --list "@${{ env.APP_NAME }}/${{ env.APP_NAME }}@*" | sort -V | tail -n 1 | awk -F'@' '{print $3}')
+          PATTERN="@${{ env.TAG_PREFIX }}/${{ env.APP_NAME }}@*"
+          LAST_TAG="$(git tag --merged HEAD --list "$PATTERN" | sort -V | tail -n 1)"
+          TAG="${LAST_TAG##*@}"
+          if [[ -z "$TAG" ]]; then TAG="0.0.0"; fi
 
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          if [[ "$GITHUB_REF_NAME" == "main" ]]; then
             VERSION_POSTFIX="latest"
           else
             VERSION_POSTFIX="develop"
           fi
 
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "version_postfix=$VERSION_POSTFIX" >> $GITHUB_OUTPUT
-          echo "final_tag=$TAG-$VERSION_POSTFIX" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version_postfix=$VERSION_POSTFIX" >> "$GITHUB_OUTPUT"
+          echo "final_tag=$TAG-$VERSION_POSTFIX" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

@@ -1,5 +1,5 @@
 import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeController, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { MetricsService } from './services/metrics.service';
 
@@ -8,6 +8,7 @@ import { MetricsService } from './services/metrics.service';
   version: VERSION_NEUTRAL,
 })
 @ApiTags('metrics')
+@ApiExcludeController()
 export class MetricsController {
   constructor(private readonly metricsService: MetricsService) {}
 

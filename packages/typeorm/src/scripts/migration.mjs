@@ -4,7 +4,7 @@ const MODULE_PATH = `${process.argv[3]}`;
 const CONFIG_PATH = `${MODULE_PATH}/typeormconfig.ts`;
 const MIGRATION_PATH = `${MODULE_PATH}/migrations/`;
 const ACTION = process.argv[2];
-const MIGRATION_NAME = process.argv[4];
+const MIGRATION_NAME = process.argv[4] || `generated`;
 
 let cmd;
 

@@ -11,6 +11,18 @@ export const generateRandomUUID = () => {
 };
 
 export const mockUserId = generateRandomUUID();
-export const reqHeaders = {
-  ['x-dev-user']: mockUserId,
+export const mockAppId = generateRandomUUID();
+
+export const buildAuthHeaders = (params?: {
+  userId?: string;
+  appId?: string;
+  permissions?: string[];
+}) => {
+  return {
+    ['x-dev-jwt-sub']: params?.userId ?? mockUserId,
+    ['x-dev-jwt-iss']: params?.appId ?? mockAppId,
+    ['x-dev-jwt-permissions']: JSON.stringify(params?.permissions ?? ['*']),
+  };
 };
+
+export const reqHeaders = buildAuthHeaders();

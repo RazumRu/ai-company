@@ -1,5 +1,5 @@
 import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
-import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeController, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { AppBootstrapperConfigService } from '@packages/common';
 
 import { HealthStatus } from '../http-server.types';
@@ -10,6 +10,7 @@ import { HealthCheckResponseDto } from './health-check-response.dto';
   version: VERSION_NEUTRAL,
 })
 @ApiTags('health')
+@ApiExcludeController()
 export class HealthCheckerController {
   constructor(
     private readonly appBootstrapperConfigService: AppBootstrapperConfigService,

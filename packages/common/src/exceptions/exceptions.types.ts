@@ -2,7 +2,6 @@ export interface IExceptionFieldError {
   message: string;
   name: string;
   path: string;
-  index: string;
   value?: any;
 }
 

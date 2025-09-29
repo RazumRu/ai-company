@@ -1,14 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsString } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import z from 'zod';
 
 import { HealthStatus } from '../http-server.types';
 
-export class HealthCheckResponseDto {
-  @IsEnum(HealthStatus)
-  @ApiProperty()
-  status!: HealthStatus;
+export const HealthCheckResponseSchema = z
+  .object({
+    status: z.enum(HealthStatus),
+    version: z.string(),
+  })
+  .strip();
 
-  @IsString()
-  @ApiProperty()
-  version!: string;
-}
+export class HealthCheckResponseDto extends createZodDto(
+  HealthCheckResponseSchema,
+) {}

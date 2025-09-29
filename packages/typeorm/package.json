@@ -19,12 +19,12 @@
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "ts-node": "^10.9.2",
-    "typeorm": "^0.3.26"
+    "typeorm": "^0.3.27"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.20",
-    "@types/node": "^24.3.0",
-    "eslint": "^9.33.0",
+    "@types/node": "^24.5.2",
+    "eslint": "^9.36.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
@@ -34,7 +34,7 @@
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",
     "@packages/common": "workspace:*",
-    "typeorm": "^0.3.26"
+    "typeorm": "^0.3.27"
   },
   "scripts": {
     "lint:fix": "pnpm run lint --fix",

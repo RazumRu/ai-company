@@ -30,15 +30,44 @@ export class AuthContextService {
   }
 
   public getToken(): string | undefined {
+    if (this.authProvider?.getToken) {
+      return this.authProvider?.getToken(this.request);
+    }
+
     const jwtHeader = this.request?.headers?.authorization;
     const token = jwtHeader?.split(' ').pop();
 
     return token;
   }
 
-  public getDevUser(): string | undefined {
-    const devUser = this.request?.headers?.['x-dev-user'];
-    return Array.isArray(devUser) ? devUser[0] : devUser;
+  public getDevUser(): IContextData | undefined {
+    const context = Object.entries(this.request?.headers).reduce(
+      (acc: IContextData, [key, value]) => {
+        if (key.startsWith('x-dev-jwt-')) {
+          const propKey = key.replace('x-dev-jwt-', '');
+          let preparedValue = value;
+
+          if (typeof preparedValue === 'string') {
+            try {
+              preparedValue = JSON.parse(preparedValue);
+            } catch {
+              // ignore
+            }
+          }
+
+          acc[propKey] = preparedValue;
+        }
+
+        return acc;
+      },
+      {},
+    );
+
+    if (Object.keys(context).length === 0) {
+      return undefined;
+    }
+
+    return context;
   }
 
   public async buildContextData(): Promise<IContextData | undefined> {
@@ -46,12 +75,10 @@ export class AuthContextService {
     const isDevMode = this.params?.devMode;
 
     if (isDevMode) {
-      const devUser = this.getDevUser();
+      const ctx = this.getDevUser();
 
-      if (devUser) {
-        return {
-          sub: devUser,
-        };
+      if (ctx) {
+        return ctx;
       }
     }
 
@@ -59,11 +86,7 @@ export class AuthContextService {
       return undefined;
     }
 
-    const tokenData = await this.authProvider.verifyToken(token);
-
-    return {
-      sub: tokenData.sub,
-    };
+    return this.authProvider.verifyToken(token);
   }
 
   public get sub(): string | undefined {
@@ -78,5 +101,13 @@ export class AuthContextService {
     }
 
     return sub;
+  }
+
+  public context<T extends IContextData>(): T {
+    return this.contextData as T;
+  }
+
+  public get isAuthorized() {
+    return !!this.contextData;
   }
 }

@@ -18,20 +18,7 @@ export default mergeConfig(
       globals: true,
       silent: false,
       disableConsoleIntercept: true,
-      projects: [
-        {
-          extends: true,
-          test: {
-            include: ['packages/*'],
-          },
-        },
-        {
-          extends: true,
-          test: {
-            include: ['apps/*'],
-          },
-        },
-      ],
+      projects: ['packages/*', 'apps/*'],
       coverage: {
         enabled: false,
         provider: 'v8',
