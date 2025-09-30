@@ -13,11 +13,16 @@ import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity
 
 import { removeKeysPrefix } from './utils';
 
+// New helpers/types
+type SortDir = 'ASC' | 'DESC';
+type OrderInput = Record<string, SortDir> | [string, SortDir][];
+
 export type AdditionalParams<T extends ObjectLiteral = any> = Partial<{
   offset: number;
   limit: number;
   orderBy: string | null;
-  sortOrder: 'DESC' | 'ASC';
+  sortOrder: SortDir;
+  order: OrderInput;
   projection: string[];
   relations: string[];
   withDeleted: boolean;
@@ -108,13 +113,38 @@ export abstract class BaseDao<
     params?: U,
   ): void;
 
+  private qualify(field: string) {
+    return field.includes('.') ? field : `${this.alias}.${field}`;
+  }
+
+  private normalizeOrder(order: OrderInput): [string, SortDir][] {
+    if (Array.isArray(order)) {
+      return order.map(([f, d]) => [this.qualify(f), d]);
+    }
+
+    return Object.entries(order).map(([f, d]) => [
+      this.qualify(f),
+      d as SortDir,
+    ]);
+  }
+
   protected applyAdditionalParams(
     builder: SelectQueryBuilder<T>,
     params?: AdditionalParams,
   ) {
-    if (params?.orderBy) {
+    if (params?.order && Object.keys(params.order).length) {
+      const entries = this.normalizeOrder(params.order);
+      const [first, ...rest] = entries;
+      if (first) {
+        builder.orderBy(first[0], first[1]);
+      }
+
+      for (const [col, dir] of rest) {
+        builder.addOrderBy(col, dir);
+      }
+    } else if (params?.orderBy) {
       builder.orderBy(
-        `${this.alias}.${params.orderBy}`,
+        this.qualify(params.orderBy),
         params?.sortOrder || 'DESC',
       );
     }
@@ -122,25 +152,18 @@ export abstract class BaseDao<
     if (params?.limit) {
       builder.limit(params.limit);
     }
-
     if (params?.offset) {
       builder.offset(params.offset);
     }
 
     if (params?.projection) {
-      const qualifiedProjection = params.projection.map((item) => {
-        if (item.includes('.')) {
-          return item;
-        }
-        return `${this.alias}.${item}`;
-      });
+      const qualifiedProjection = params.projection.map((p) => this.qualify(p));
       builder.select(qualifiedProjection);
     }
 
     if (params?.relations) {
-      for (const relation of params.relations) {
-        builder.leftJoinAndSelect(`${this.alias}.${relation}`, relation);
-      }
+      for (const r of params.relations)
+        builder.leftJoinAndSelect(`${this.alias}.${r}`, r);
     }
 
     if (params?.updateSelectBuilder) {

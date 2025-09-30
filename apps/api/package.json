@@ -31,6 +31,7 @@
     "@fastify/static": "^8.2.0",
     "@langchain/core": "^0.3.72",
     "@langchain/langgraph": "^0.4.6",
+    "@langchain/langgraph-checkpoint": "^0.1.1",
     "@langchain/openai": "^0.6.9",
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",

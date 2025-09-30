@@ -12,8 +12,6 @@ export type AgentOutput = {
 };
 
 export abstract class BaseAgent<TSchema extends z.ZodTypeAny> {
-  protected memorySaver = new MemorySaver();
-
   public abstract get tools(): DynamicStructuredTool[];
   public abstract get schema(): TSchema;
 

@@ -7,6 +7,7 @@ import {
   START,
   StateGraph,
 } from '@langchain/langgraph';
+import { Injectable, Scope } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
@@ -21,6 +22,7 @@ import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { SummarizeNode } from '../nodes/summarize-node';
 import { ToolExecutorNode } from '../nodes/tool-executor-node';
 import { ToolUsageGuardNode } from '../nodes/tool-usage-guard-node';
+import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { AgentOutput, BaseAgent } from './base-agent';
 
 export const SimpleAgentSchema = z.object({
@@ -37,9 +39,16 @@ export const SimpleAgentSchema = z.object({
 
 export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
 
+@Injectable({ scope: Scope.TRANSIENT })
 export class SimpleAgent extends BaseAgent<typeof SimpleAgentSchema> {
-  constructor(protected runtime: BaseRuntime) {
+  protected runtime?: BaseRuntime;
+
+  constructor(private checkpointer: PgCheckpointSaver) {
     super();
+  }
+
+  public setRuntime(runtime: BaseRuntime) {
+    this.runtime = runtime;
   }
 
   public get schema() {
@@ -47,6 +56,11 @@ export class SimpleAgent extends BaseAgent<typeof SimpleAgentSchema> {
   }
 
   public get tools() {
+    if (!this.runtime) {
+      throw new Error(
+        'Runtime is not set. Call setRuntime() before using SimpleAgent.',
+      );
+    }
     const shell = new ShellTool();
     shell.setRuntime(this.runtime);
 
@@ -149,7 +163,7 @@ export class SimpleAgent extends BaseAgent<typeof SimpleAgentSchema> {
       )
       .addEdge('tools', 'summarize');
 
-    return g.compile({ checkpointer: this.memorySaver });
+    return g.compile({ checkpointer: this.checkpointer });
   }
 
   public async run(
