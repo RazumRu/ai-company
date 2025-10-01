@@ -1,7 +1,6 @@
 import { BaseMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
-import { MemorySaver } from '@langchain/langgraph';
 import { ChatOpenAI, OpenAIChatModelId } from '@langchain/openai';
 import { z } from 'zod';
 
@@ -12,7 +11,12 @@ export type AgentOutput = {
 };
 
 export abstract class BaseAgent<TSchema extends z.ZodTypeAny> {
-  public abstract get tools(): DynamicStructuredTool[];
+  protected tools: DynamicStructuredTool[] = [];
+
+  public addTool(tool: DynamicStructuredTool) {
+    this.tools.push(tool);
+  }
+
   public abstract get schema(): TSchema;
 
   public buildLLM(model: OpenAIChatModelId): ChatOpenAI {

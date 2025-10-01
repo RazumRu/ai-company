@@ -10,14 +10,11 @@ import {
 import { Injectable, Scope } from '@nestjs/common';
 import { z } from 'zod';
 
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { FinishTool } from '../../../agent-tools/tools/finish.tool';
 import {
   BaseAgentState,
   BaseAgentStateMessagesUpdateValue,
 } from '../../agents.types';
-import { FinishTool } from '../../tools/finish.tool';
-import { ShellTool } from '../../tools/shell.tool';
-import { WebSearchTool } from '../../tools/web-search.tool';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { SummarizeNode } from '../nodes/summarize-node';
 import { ToolExecutorNode } from '../nodes/tool-executor-node';
@@ -30,45 +27,40 @@ export const SimpleAgentSchema = z.object({
     .number()
     .optional()
     .default(4096)
-    .describe('Max tokens that available for summarizing'),
-  summarizeKeepTokens: z.number().optional().default(1024).describe(''),
-  instructions: z.string().describe(''),
-  name: z.string().describe(''),
-  invokeModelName: z.string().default('gpt-5').describe(''),
+    .describe(
+      'Total token budget for summary + recent context. If current history exceeds this, older messages are folded into the rolling summary.',
+    ),
+  summarizeKeepTokens: z
+    .number()
+    .optional()
+    .default(1024)
+    .describe(
+      'Token budget reserved for the most recent messages kept verbatim when summarizing (the “tail”).',
+    ),
+  instructions: z
+    .string()
+    .describe(
+      'System prompt injected at the start of each turn: role, goals, constraints, style.',
+    ),
+  name: z.string().describe('Agent name.'),
+  invokeModelName: z
+    .string()
+    .default('gpt-5')
+    .describe('Chat model used for the main reasoning/tool-call step.'),
 });
 
 export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class SimpleAgent extends BaseAgent<typeof SimpleAgentSchema> {
-  protected runtime?: BaseRuntime;
-
   constructor(private checkpointer: PgCheckpointSaver) {
     super();
-  }
 
-  public setRuntime(runtime: BaseRuntime) {
-    this.runtime = runtime;
+    this.addTool(new FinishTool().build());
   }
 
   public get schema() {
     return SimpleAgentSchema;
-  }
-
-  public get tools() {
-    if (!this.runtime) {
-      throw new Error(
-        'Runtime is not set. Call setRuntime() before using SimpleAgent.',
-      );
-    }
-    const shell = new ShellTool();
-    shell.setRuntime(this.runtime);
-
-    return [
-      shell.build(),
-      new WebSearchTool().build(),
-      new FinishTool().build(),
-    ];
   }
 
   protected buildState() {

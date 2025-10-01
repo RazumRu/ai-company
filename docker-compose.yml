@@ -7,8 +7,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       PORT: 4000
       DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/litellm"
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      LITELLM_SALT_KEY: salt
+#      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+#      LITELLM_SALT_KEY: salt
     ports:
       - "4000:4000"
     networks:

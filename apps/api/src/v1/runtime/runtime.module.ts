@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 
-import { RuntimeOrchestrator } from './services/runtime-orchestrator';
+import { RuntimeProvider } from './services/runtime-provider';
 
 @Module({
   imports: [],
   controllers: [],
-  providers: [RuntimeOrchestrator],
-  exports: [RuntimeOrchestrator],
+  providers: [RuntimeProvider],
+  exports: [RuntimeProvider],
 })
 export class RuntimeModule {}

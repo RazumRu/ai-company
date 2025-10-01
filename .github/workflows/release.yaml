@@ -74,59 +74,59 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.generate_token.outputs.token }}
 
-  build-and-push:
-    runs-on: ubuntu-22.04
-    name: Build And Push
-    needs: [version]
-    if: (!contains(needs.version.result, 'failure') && needs.version.outputs.release_created == 'true' && always())
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4.1.6
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: "0"
-
-      - name: Get version
-        id: version
-        run: |
-          git fetch --tags --force --prune
-
-          PATTERN="@${{ env.TAG_PREFIX }}/${{ env.APP_NAME }}@*"
-          LAST_TAG="$(git tag --merged HEAD --list "$PATTERN" | sort -V | tail -n 1)"
-          TAG="${LAST_TAG##*@}"
-          if [[ -z "$TAG" ]]; then TAG="0.0.0"; fi
-
-          if [[ "$GITHUB_REF_NAME" == "main" ]]; then
-            VERSION_POSTFIX="latest"
-          else
-            VERSION_POSTFIX="develop"
-          fi
-
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version_postfix=$VERSION_POSTFIX" >> "$GITHUB_OUTPUT"
-          echo "final_tag=$TAG-$VERSION_POSTFIX" >> "$GITHUB_OUTPUT"
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Docker Build and Push
-        id: push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: "./apps/${{ env.APP_NAME }}/Dockerfile"
-          push: true
-          provenance: false
-          tags: |
-            ${{env.ECR_REGISTRY_NAME}}:${{ steps.version.outputs.version_postfix }}
-            ${{env.ECR_REGISTRY_NAME}}:${{ steps.version.outputs.final_tag }}
-          build-args: |
-            "TF_IMAGE_TAG=${{ steps.version.outputs.final_tag }}"
+#  build-and-push:
+#    runs-on: ubuntu-22.04
+#    name: Build And Push
+#    needs: [version]
+#    if: (!contains(needs.version.result, 'failure') && needs.version.outputs.release_created == 'true' && always())
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4.1.6
+#        with:
+#          ref: ${{ github.event.pull_request.head.sha }}
+#          fetch-depth: "0"
+#
+#      - name: Get version
+#        id: version
+#        run: |
+#          git fetch --tags --force --prune
+#
+#          PATTERN="@${{ env.TAG_PREFIX }}/${{ env.APP_NAME }}@*"
+#          LAST_TAG="$(git tag --merged HEAD --list "$PATTERN" | sort -V | tail -n 1)"
+#          TAG="${LAST_TAG##*@}"
+#          if [[ -z "$TAG" ]]; then TAG="0.0.0"; fi
+#
+#          if [[ "$GITHUB_REF_NAME" == "main" ]]; then
+#            VERSION_POSTFIX="latest"
+#          else
+#            VERSION_POSTFIX="develop"
+#          fi
+#
+#          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+#          echo "version_postfix=$VERSION_POSTFIX" >> "$GITHUB_OUTPUT"
+#          echo "final_tag=$TAG-$VERSION_POSTFIX" >> "$GITHUB_OUTPUT"
+#
+#      - name: Configure AWS credentials
+#        uses: aws-actions/configure-aws-credentials@v4
+#        with:
+#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#          aws-region: ${{ secrets.AWS_REGION }}
+#
+#      - name: Login to Amazon ECR
+#        id: login-ecr
+#        uses: aws-actions/amazon-ecr-login@v2
+#
+#      - name: Docker Build and Push
+#        id: push
+#        uses: docker/build-push-action@v5
+#        with:
+#          context: .
+#          file: "./apps/${{ env.APP_NAME }}/Dockerfile"
+#          push: true
+#          provenance: false
+#          tags: |
+#            ${{env.ECR_REGISTRY_NAME}}:${{ steps.version.outputs.version_postfix }}
+#            ${{env.ECR_REGISTRY_NAME}}:${{ steps.version.outputs.final_tag }}
+#          build-args: |
+#            "TF_IMAGE_TAG=${{ steps.version.outputs.final_tag }}"

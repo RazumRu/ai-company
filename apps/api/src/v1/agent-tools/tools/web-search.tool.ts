@@ -1,12 +1,14 @@
 import { DynamicStructuredTool, tool } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
+import { Injectable } from '@nestjs/common';
 import { tavily } from '@tavily/core';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
 import { BaseTool } from './base-tool';
 
-export class WebSearchTool extends BaseTool {
+@Injectable()
+export class WebSearchTool extends BaseTool<LangGraphRunnableConfig> {
   public name = 'web-search';
   public description =
     'Search the web for up-to-date information and return top results. For deeper results set searchDepth="advanced".';

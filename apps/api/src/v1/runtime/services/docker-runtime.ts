@@ -25,75 +25,130 @@ export class DockerRuntime extends BaseRuntime {
 
   constructor(
     dockerOptions?: Docker.DockerOptions,
-    params?: {
-      image?: string;
-    },
+    params?: { image?: string },
   ) {
     super();
-
     this.docker = new Docker(dockerOptions);
     this.image = params?.image;
   }
 
   private get containerName(): string {
-    return `ai-company-docker-runtime-${randomUUID()}`;
+    return `rt-${randomUUID()}`;
   }
 
-  private async ensureImage(
-    name: string,
-  ): Promise<Docker.Image & { name: string }> {
+  private async ensureImage(name: string) {
     const ref = name.includes(':') ? name : `${name}:latest`;
-
     try {
       await this.docker.getImage(ref).inspect();
-    } catch (e) {
+    } catch {
       const stream = await this.docker.pull(ref);
-
       await new Promise<void>((res, rej) =>
         this.docker.modem.followProgress(stream, (err: any) =>
           err ? rej(err) : res(),
         ),
       );
     }
-
-    return this.docker.getImage(ref) as Docker.Image & { name: string };
+    return this.docker.getImage(ref);
   }
 
   private prepareEnv(env?: Record<string, string>) {
     return env ? Object.entries(env).map(([k, v]) => `${k}=${v}`) : undefined;
   }
 
+  private async getByLabels(labels?: Record<string, string>) {
+    if (!labels || !Object.keys(labels).length) {
+      return null;
+    }
+
+    const labelFilters = Object.entries(labels).map(([k, v]) => `${k}=${v}`);
+    const list = await this.docker.listContainers({
+      all: true,
+      filters: { label: labelFilters } as any,
+    });
+    if (!list[0]) {
+      return null;
+    }
+
+    return this.docker.getContainer(list[0].Id);
+  }
+
+  private async runInitScript(
+    script?: string | string[],
+    workdir?: string,
+    env?: Record<string, string>,
+  ) {
+    if (!script) {
+      return;
+    }
+
+    const cmds = Array.isArray(script) ? script : [script];
+    for (const cmd of cmds) {
+      const res = await this.exec({
+        cmd,
+        workdir,
+        env,
+        timeoutMs: 10 * 60_000,
+      });
+      if (res.fail) {
+        throw new Error(`Init failed: ${res.stderr || res.stdout}`);
+      }
+    }
+  }
+
   async start(params?: RuntimeStartParams): Promise<void> {
     if (this.container) {
-      const status = await this.container.inspect();
+      const st = await this.container.inspect();
 
-      if (status.State.Running || status.State.Restarting) {
-        throw new Error('Runtime already started');
+      if (st.State.Running || st.State.Restarting) {
+        return;
       }
 
-      if (status.State.Paused || status.State.OOMKilled || status.State.Dead) {
+      if (st.State.Paused || st.State.OOMKilled || st.State.Dead) {
         await this.container.start();
+
+        if (params?.initScript) {
+          await this.runInitScript(
+            params.initScript,
+            params.workdir,
+            params.env,
+          );
+        }
+
         return;
       }
     }
 
     const imageName = params?.image || this.image;
-
     if (!imageName) {
       throw new BadRequestException('Image not specified');
     }
 
-    const image = await this.ensureImage(imageName);
+    const reusable = await this.getByLabels(params?.labels);
+    if (reusable) {
+      this.container = reusable;
+      const st = await reusable.inspect();
+      if (!st.State.Running) {
+        await reusable.start();
+      }
 
+      if (params?.initScript) {
+        await this.runInitScript(params.initScript, params.workdir, params.env);
+      }
+
+      return;
+    }
+
+    await this.ensureImage(imageName);
     const env = this.prepareEnv(params?.env);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
 
     const container = await this.docker.createContainer({
-      Image: image.name,
+      Image: imageName,
       name: this.containerName,
       Env: env,
       WorkingDir: params?.workdir,
       Cmd: cmd,
+      Labels: params?.labels,
       Tty: false,
       AttachStdin: false,
       AttachStdout: false,
@@ -102,16 +157,17 @@ export class DockerRuntime extends BaseRuntime {
     });
 
     await container.start();
-
     this.container = container;
+
+    if (params?.initScript) {
+      await this.runInitScript(params.initScript, params.workdir, params.env);
+    }
   }
 
   async stop(): Promise<void> {
     if (!this.container) return;
-
     await this.container.stop({ t: 10 }).catch(() => undefined);
     await this.container.remove({ force: true }).catch(() => undefined);
-
     this.container = null;
   }
 
@@ -122,7 +178,6 @@ export class DockerRuntime extends BaseRuntime {
       ? params.cmd
       : ['sh', '-lc', params.cmd];
     const env = this.prepareEnv(params.env);
-
     const abortController = new AbortController();
 
     const ex = await this.container.exec({
@@ -165,12 +220,8 @@ export class DockerRuntime extends BaseRuntime {
       const fail = (e: Error) => {
         cleanup();
         abortController.abort();
-
-        if (e.message.includes('Process timed out')) {
-          resolve();
-        } else {
-          reject(e);
-        }
+        if (e.message.includes('Process timed out')) resolve();
+        else reject(e);
       };
 
       execStream.on('end', done);
@@ -190,17 +241,10 @@ export class DockerRuntime extends BaseRuntime {
     });
 
     const info = await ex.inspect();
-
     const exitCode = timedOut ? 124 : info.ExitCode || 0;
-
     const stdout = Buffer.concat(stdoutChunks).toString('utf8');
     const stderr = Buffer.concat(stderrChunks).toString('utf8');
 
-    return {
-      exitCode,
-      stdout,
-      stderr,
-      fail: exitCode !== 0,
-    };
+    return { exitCode, stdout, stderr, fail: exitCode !== 0 };
   }
 }

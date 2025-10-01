@@ -1,19 +1,21 @@
 import { DynamicStructuredTool, tool } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
+import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { BaseTool } from './base-tool';
 
-export class ShellTool extends BaseTool {
+export interface ShellToolOptions {
+  lgConfig?: LangGraphRunnableConfig;
+  runtime: BaseRuntime;
+}
+
+@Injectable()
+export class ShellTool extends BaseTool<ShellToolOptions> {
   public name = 'shell';
   public description =
     'Executes arbitrary shell commands inside the prepared Docker runtime. Use it for files, git, tests, builds, installs, inspection. Returns stdout, stderr, exitCode.';
-  private runtime?: BaseRuntime;
-
-  public setRuntime(runtime: BaseRuntime) {
-    this.runtime = runtime;
-  }
 
   public get schema() {
     return z.object({
@@ -31,18 +33,19 @@ export class ShellTool extends BaseTool {
     });
   }
 
-  public build(config?: LangGraphRunnableConfig): DynamicStructuredTool {
+  public build(config?: ShellToolOptions): DynamicStructuredTool {
     return tool(async (args) => {
       const data = this.schema.parse(args);
-
-      if (!this.runtime) throw new Error('Runtime is not set');
+      if (!config?.runtime) {
+        throw new Error('Runtime is required for ShellTool');
+      }
 
       const env =
         data.env && Object.fromEntries(data.env.map((v) => [v.key, v.value]));
 
-      const res = await this.runtime.exec({ ...data, env });
+      const res = await config.runtime.exec({ ...data, env });
 
       return res;
-    }, this.buildToolConfiguration(config));
+    }, this.buildToolConfiguration(config?.lgConfig));
   }
 }

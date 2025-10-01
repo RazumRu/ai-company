@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
+import { AgentToolsModule } from '../agent-tools/agent-tools.module';
+import { RuntimeModule } from '../runtime/runtime.module';
 import { GraphCheckpointsDao } from './dao/graph-checkpoints.dao';
 import { GraphCheckpointsWritesDao } from './dao/graph-checkpoints-writes.dao';
 import { GraphCheckpointEntity } from './entity/graph-chekpoints.entity';
@@ -11,6 +13,8 @@ import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
 @Module({
   imports: [
     registerEntities([GraphCheckpointEntity, GraphCheckpointWritesEntity]),
+    RuntimeModule,
+    AgentToolsModule,
   ],
   controllers: [],
   providers: [

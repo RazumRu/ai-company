@@ -1,5 +1,6 @@
 import { DynamicStructuredTool, tool } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
+import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseRuntime } from '../../runtime/services/base-runtime';
@@ -9,10 +10,12 @@ export class FinishToolResponse {
   constructor(public message?: string) {}
 }
 
-export class FinishTool extends BaseTool {
+@Injectable()
+export class FinishTool extends BaseTool<LangGraphRunnableConfig> {
   public name = 'finish';
   public description =
     'Signal the current task is complete. Call this before ending when output is restricted.';
+  public system = true;
 
   public get schema() {
     return z.object({ message: z.string().optional() });

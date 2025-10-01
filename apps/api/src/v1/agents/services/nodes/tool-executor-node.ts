@@ -3,8 +3,8 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { keyBy } from 'lodash';
 
+import { FinishToolResponse } from '../../../agent-tools/tools/finish.tool';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { FinishToolResponse } from '../../tools/finish.tool';
 import { BaseNode } from './base-node';
 
 export class ToolExecutorNode extends BaseNode<

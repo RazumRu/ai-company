@@ -8,8 +8,8 @@ import {
   type PendingWrite,
   type SerializerProtocol,
 } from '@langchain/langgraph-checkpoint';
-import { ValidationException } from '@packages/common';
 import { Injectable, Scope } from '@nestjs/common';
+import { ValidationException } from '@packages/common';
 import { Brackets } from 'typeorm';
 
 import { GraphCheckpointsDao } from '../dao/graph-checkpoints.dao';

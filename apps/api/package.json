@@ -63,6 +63,7 @@
     "zod": "^4.1.1"
   },
   "devDependencies": {
+    "type-fest": "^5.0.1",
     "@hey-api/client-axios": "^0.9.1",
     "@nestjs/testing": "^11.1.6",
     "@packages/cypress": "workspace:*",

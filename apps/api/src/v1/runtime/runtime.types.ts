@@ -2,6 +2,8 @@ export interface RuntimeStartParams {
   image?: string;
   env?: Record<string, string>;
   workdir?: string;
+  labels?: Record<string, string>;
+  initScript?: string | string[];
 }
 
 export interface RuntimeExecParams {
@@ -20,4 +22,9 @@ export interface RuntimeExecResult {
 
 export enum RuntimeType {
   Docker = 'Docker',
+}
+
+export interface ProvideRuntimeParams extends RuntimeStartParams {
+  autostart?: boolean;
+  type: RuntimeType;
 }
