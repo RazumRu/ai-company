@@ -10,14 +10,14 @@ export type AgentOutput = {
   messages: BaseMessage[];
 };
 
-export abstract class BaseAgent<TSchema extends z.ZodTypeAny> {
+export abstract class BaseAgent<TSchema> {
   protected tools: DynamicStructuredTool[] = [];
 
   public addTool(tool: DynamicStructuredTool) {
     this.tools.push(tool);
   }
 
-  public abstract get schema(): TSchema;
+  public abstract get schema(): z.ZodType<TSchema>;
 
   public buildLLM(model: OpenAIChatModelId): ChatOpenAI {
     const llm = new ChatOpenAI({

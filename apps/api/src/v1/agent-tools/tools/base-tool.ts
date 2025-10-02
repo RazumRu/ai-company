@@ -1,15 +1,19 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
+import {
+  DynamicStructuredTool,
+  tool,
+  ToolRunnableConfig,
+} from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { z } from 'zod';
 
-export abstract class BaseTool<TConfig extends Record<PropertyKey, any>> {
+import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+
+export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
   public abstract name: string;
   public abstract description: string;
   public system = false;
 
-  public abstract get schema(): z.ZodType<any>;
-
-  public abstract build(config?: TConfig): DynamicStructuredTool;
+  public abstract get schema(): z.ZodType<TSchema>;
 
   protected buildToolConfiguration(config?: LangGraphRunnableConfig) {
     return {
@@ -18,5 +22,36 @@ export abstract class BaseTool<TConfig extends Record<PropertyKey, any>> {
       schema: this.schema,
       ...config,
     };
+  }
+
+  public abstract invoke(
+    args: TSchema,
+    config: TConfig,
+    runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<TResult> | TResult;
+
+  public build(
+    config: TConfig,
+    lgConfig?: LangGraphRunnableConfig,
+  ): DynamicStructuredTool {
+    return this.toolWrapper(this.invoke, config, lgConfig);
+  }
+
+  protected toolWrapper(
+    cb: typeof this.invoke,
+    config: TConfig,
+    lgConfig?: LangGraphRunnableConfig,
+  ) {
+    return tool(async (args, runnableConfig) => {
+      {
+        const parsedArgs = this.schema.parse(args);
+
+        return cb(
+          parsedArgs as TSchema,
+          config,
+          runnableConfig as ToolRunnableConfig<BaseAgentConfigurable>,
+        );
+      }
+    }, this.buildToolConfiguration(lgConfig));
   }
 }

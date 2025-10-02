@@ -6,7 +6,7 @@ import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { RuntimeNodeBaseTemplate } from './base-node.template';
 
-export const DockerRuntimeSchema = z.object({
+export const DockerRuntimeTemplateSchema = z.object({
   runtimeType: z.literal(RuntimeType.Docker),
   image: z.string().describe('Docker image to use'),
   workdir: z.string().optional().describe('Working directory inside container'),
@@ -23,18 +23,18 @@ export const DockerRuntimeSchema = z.object({
 
 @Injectable()
 export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
-  typeof DockerRuntimeSchema
+  typeof DockerRuntimeTemplateSchema
 > {
   readonly name = 'docker-runtime';
   readonly description = 'Docker runtime environment for executing code';
-  readonly schema = DockerRuntimeSchema;
+  readonly schema = DockerRuntimeTemplateSchema;
 
   constructor(private readonly runtimeProvider: RuntimeProvider) {
     super();
   }
 
   async create(
-    config: z.infer<typeof DockerRuntimeSchema>,
+    config: z.infer<typeof DockerRuntimeTemplateSchema>,
   ): Promise<BaseRuntime> {
     return await this.runtimeProvider.provide({
       type: config.runtimeType,

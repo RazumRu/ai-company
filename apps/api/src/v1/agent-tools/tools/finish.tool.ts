@@ -1,31 +1,34 @@
-import { DynamicStructuredTool, tool } from '@langchain/core/tools';
+import { ToolRunnableConfig } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
-import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 import { BaseTool } from './base-tool';
 
 export class FinishToolResponse {
   constructor(public message?: string) {}
 }
 
+export const FinishToolSchema = z.object({ message: z.string().optional() });
+export type FinishToolSchemaType = z.infer<typeof FinishToolSchema>;
+
 @Injectable()
-export class FinishTool extends BaseTool<LangGraphRunnableConfig> {
+export class FinishTool extends BaseTool<FinishToolSchemaType> {
   public name = 'finish';
   public description =
     'Signal the current task is complete. Call this before ending when output is restricted.';
   public system = true;
 
   public get schema() {
-    return z.object({ message: z.string().optional() });
+    return FinishToolSchema;
   }
 
-  public build(config?: LangGraphRunnableConfig): DynamicStructuredTool {
-    return tool(async (args) => {
-      const { message } = this.schema.parse(args);
-
-      return new FinishToolResponse(message);
-    }, this.buildToolConfiguration(config));
+  public invoke(
+    args: FinishToolSchemaType,
+    config: Record<PropertyKey, any>,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ) {
+    return new FinishToolResponse(args.message);
   }
 }

@@ -15,6 +15,7 @@ import {
   BaseAgentState,
   BaseAgentStateMessagesUpdateValue,
 } from '../../agents.types';
+import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { SummarizeNode } from '../nodes/summarize-node';
 import { ToolExecutorNode } from '../nodes/tool-executor-node';
@@ -52,11 +53,11 @@ export const SimpleAgentSchema = z.object({
 export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
 
 @Injectable({ scope: Scope.TRANSIENT })
-export class SimpleAgent extends BaseAgent<typeof SimpleAgentSchema> {
+export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   constructor(private checkpointer: PgCheckpointSaver) {
     super();
 
-    this.addTool(new FinishTool().build());
+    this.addTool(new FinishTool().build({}));
   }
 
   public get schema() {
@@ -166,7 +167,7 @@ export class SimpleAgent extends BaseAgent<typeof SimpleAgentSchema> {
   ): Promise<AgentOutput> {
     const g = this.buildGraph(config);
 
-    const merged: RunnableConfig = {
+    const merged: RunnableConfig<BaseAgentConfigurable> = {
       ...(runnableConfig ?? {}),
       configurable: {
         thread_id: threadId,

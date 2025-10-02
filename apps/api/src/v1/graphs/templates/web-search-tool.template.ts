@@ -5,22 +5,22 @@ import { z } from 'zod';
 import { WebSearchTool } from '../../agent-tools/tools/web-search.tool';
 import { ToolNodeBaseTemplate } from './base-node.template';
 
-export const WebSearchToolSchema = z.object({});
+export const WebSearchToolTemplateSchema = z.object({});
 
 @Injectable()
 export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
-  typeof WebSearchToolSchema
+  typeof WebSearchToolTemplateSchema
 > {
   readonly name = 'web-search-tool';
   readonly description = 'Web search tool';
-  readonly schema = WebSearchToolSchema;
+  readonly schema = WebSearchToolTemplateSchema;
 
   constructor(private readonly webSearchTool: WebSearchTool) {
     super();
   }
 
   async create(
-    config: z.infer<typeof WebSearchToolSchema>,
+    config: z.infer<typeof WebSearchToolTemplateSchema>,
   ): Promise<DynamicStructuredTool> {
     return this.webSearchTool.build(config);
   }

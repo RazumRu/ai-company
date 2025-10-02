@@ -7,9 +7,13 @@ import { z } from 'zod';
 import {
   SimpleAgent,
   SimpleAgentSchema,
+  SimpleAgentSchemaType,
 } from '../../agents/services/agents/simple-agent';
 import { CompiledGraphNode } from '../graphs.types';
-import { SimpleAgentNodeBaseTemplate } from './base-node.template';
+import {
+  SimpleAgentNodeBaseTemplate,
+  SimpleAgentTemplateResult,
+} from './base-node.template';
 
 export const SimpleAgentTemplateSchema = SimpleAgentSchema.extend(
   z.object({
@@ -17,9 +21,14 @@ export const SimpleAgentTemplateSchema = SimpleAgentSchema.extend(
   }).shape,
 );
 
+export type SimpleAgentTemplateSchemaType = z.infer<
+  typeof SimpleAgentTemplateSchema
+>;
+
 @Injectable()
 export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
-  typeof SimpleAgentTemplateSchema
+  typeof SimpleAgentTemplateSchema,
+  SimpleAgentTemplateResult<SimpleAgentSchemaType>
 > {
   readonly name = 'simple-agent';
   readonly description = 'Simple agent with configurable tools and runtime';
@@ -30,12 +39,14 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   }
 
   async create(
-    config: z.infer<typeof SimpleAgentTemplateSchema>,
+    config: SimpleAgentTemplateSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
-  ): Promise<SimpleAgent> {
+  ): Promise<SimpleAgentTemplateResult<SimpleAgentSchemaType>> {
     const agent = await this.moduleRef.resolve(SimpleAgent);
+    const { toolNodeIds = [], ...agentConfig } = config;
+
     const tools = compact<CompiledGraphNode<DynamicStructuredTool>>(
-      (config.toolNodeIds || []).map(
+      toolNodeIds.map(
         (id) =>
           compiledNodes.get(id) as CompiledGraphNode<DynamicStructuredTool>,
       ),
@@ -45,6 +56,9 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       agent.addTool(t.instance);
     }
 
-    return agent;
+    return {
+      agent,
+      config: agentConfig,
+    };
   }
 }

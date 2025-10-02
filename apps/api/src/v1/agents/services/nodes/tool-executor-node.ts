@@ -1,11 +1,14 @@
 import { AIMessage, ToolMessage } from '@langchain/core/messages';
-import { DynamicStructuredTool } from '@langchain/core/tools';
+import {
+  DynamicStructuredTool,
+  ToolRunnableConfig,
+} from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { keyBy } from 'lodash';
 
 import { FinishToolResponse } from '../../../agent-tools/tools/finish.tool';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { BaseNode } from './base-node';
+import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 export class ToolExecutorNode extends BaseNode<
   BaseAgentState,
@@ -25,9 +28,7 @@ export class ToolExecutorNode extends BaseNode<
 
   async invoke(
     state: BaseAgentState,
-    cfg?: LangGraphRunnableConfig & {
-      configurable?: { thread_id?: string; caller_agent?: unknown };
-    },
+    cfg: LangGraphRunnableConfig<BaseAgentConfigurable>,
   ): Promise<BaseAgentStateChange> {
     const last = state.messages[state.messages.length - 1];
     const ai = last instanceof AIMessage ? last : undefined;
@@ -55,11 +56,11 @@ export class ToolExecutorNode extends BaseNode<
         }
 
         try {
-          const output = await tool.invoke(tc.args, {
-            configurable: {
-              thread_id: cfg?.configurable?.thread_id,
-              caller_agent: cfg?.configurable?.caller_agent,
-            },
+          const output = await tool.invoke<
+            unknown,
+            ToolRunnableConfig<BaseAgentConfigurable>
+          >(tc.args, {
+            configurable: cfg.configurable,
           });
 
           if (output instanceof FinishToolResponse) {

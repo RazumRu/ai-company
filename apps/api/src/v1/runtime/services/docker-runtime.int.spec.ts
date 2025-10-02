@@ -32,7 +32,7 @@ describe('DockerRuntime (integration)', () => {
       timeoutMs: 20_000,
     });
     expect(res.exitCode).toBe(0);
-    expect(res.stdout.trim()).toBe('"1"');
+    expect(res.stdout.trim()).toBe('1');
     expect(res.stderr).toBe('');
   }, 60_000);
 

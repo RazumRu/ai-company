@@ -5,6 +5,7 @@ import { AgentsModule } from '../agents/agents.module';
 import { RuntimeModule } from '../runtime/runtime.module';
 import { GraphCompiler } from './services/graph-compiler';
 import { TemplateRegistry } from './services/template-registry';
+import { AgentCommunicationToolTemplate } from './templates/agent-communication-tool.template';
 import { DockerRuntimeTemplate } from './templates/docker-runtime.template';
 import { ShellToolTemplate } from './templates/shell-tool.template';
 import { SimpleAgentTemplate } from './templates/simple-agent.template';
@@ -15,6 +16,7 @@ import { WebSearchToolTemplate } from './templates/web-search-tool.template';
   providers: [
     GraphCompiler,
     TemplateRegistry,
+    AgentCommunicationToolTemplate,
     DockerRuntimeTemplate,
     ShellToolTemplate,
     WebSearchToolTemplate,
@@ -25,6 +27,7 @@ import { WebSearchToolTemplate } from './templates/web-search-tool.template';
 export class GraphsModule implements OnModuleInit {
   constructor(
     private readonly templateRegistry: TemplateRegistry,
+    private readonly agentCommunicationToolTemplate: AgentCommunicationToolTemplate,
     private readonly dockerRuntimeTemplate: DockerRuntimeTemplate,
     private readonly shellToolTemplate: ShellToolTemplate,
     private readonly webSearchToolTemplate: WebSearchToolTemplate,
@@ -33,6 +36,7 @@ export class GraphsModule implements OnModuleInit {
 
   onModuleInit() {
     // Register all templates
+    this.templateRegistry.register(this.agentCommunicationToolTemplate);
     this.templateRegistry.register(this.dockerRuntimeTemplate);
     this.templateRegistry.register(this.shellToolTemplate);
     this.templateRegistry.register(this.webSearchToolTemplate);
