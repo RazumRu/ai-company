@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RuntimeType } from '../../runtime/runtime.types';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { RuntimeProvider } from '../../runtime/services/runtime-provider';
-import { NodeKind } from '../graphs.types';
+import { NodeKind } from '../../../graphs/graphs.types';
+import { RuntimeType } from '../../../runtime/runtime.types';
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import {
   DockerRuntimeTemplate,
   DockerRuntimeTemplateSchema,

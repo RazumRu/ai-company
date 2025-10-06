@@ -10,13 +10,14 @@ import { z } from 'zod';
 import {
   AgentCommunicationTool,
   AgentCommunicationToolOptions,
-} from '../../agent-tools/tools/agent-communication.tool';
-import { AgentOutput } from '../../agents/services/agents/base-agent';
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
-import { CompiledGraphNode } from '../graphs.types';
-import { SimpleAgentTemplateResult } from './base-node.template';
-import { ToolNodeBaseTemplate } from './base-node.template';
-import { SimpleAgentTemplateSchemaType } from './simple-agent.template';
+} from '../../../agent-tools/tools/agent-communication.tool';
+import { AgentOutput } from '../../../agents/services/agents/base-agent';
+import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { CompiledGraphNode } from '../../../graphs/graphs.types';
+import { RegisterTemplate } from '../../decorators/register-template.decorator';
+import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
+import { SimpleAgentTemplateResult } from '../base-node.template';
+import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const AgentCommunicationToolTemplateSchema = z.object({
   metadata: z
@@ -26,6 +27,7 @@ export const AgentCommunicationToolTemplateSchema = z.object({
 });
 
 @Injectable()
+@RegisterTemplate()
 export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
   typeof AgentCommunicationToolTemplateSchema
 > {
@@ -42,17 +44,6 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
     config: z.infer<typeof AgentCommunicationToolTemplateSchema>,
     compiledNodes: Map<string, CompiledGraphNode>,
   ): Promise<DynamicStructuredTool> {
-    const targetAgentNode = compiledNodes.get(config.agentId) as
-      | CompiledGraphNode<SimpleAgentTemplateResult<unknown>>
-      | undefined;
-
-    if (!targetAgentNode) {
-      throw new NotFoundException(
-        'NODE_NOT_FOUND',
-        `Agent node ${config.agentId} not found for communication tool`,
-      );
-    }
-
     const invokeAgent: AgentCommunicationToolOptions['invokeAgent'] = async <
       T = AgentOutput,
     >(

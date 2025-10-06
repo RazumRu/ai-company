@@ -33,4 +33,15 @@ export class TypeormModule {
       exports: providers,
     };
   }
+
+  static forRootTesting(dataSource: DataSource): DynamicModule {
+    dataSource.setOptions({
+      ...dataSource.options,
+      entities: undefined,
+      migrations: undefined,
+      migrationsRun: false,
+    });
+
+    return this.forRoot(dataSource);
+  }
 }

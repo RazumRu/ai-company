@@ -2,9 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
-import { TemplateRegistry } from './template-registry';
 
 describe('GraphCompiler', () => {
   let compiler: GraphCompiler;

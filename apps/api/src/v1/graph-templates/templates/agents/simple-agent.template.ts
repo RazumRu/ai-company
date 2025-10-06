@@ -1,31 +1,31 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
 import { compact } from 'lodash';
 import { z } from 'zod';
 
+import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
 import {
   SimpleAgent,
   SimpleAgentSchema,
   SimpleAgentSchemaType,
-} from '../../agents/services/agents/simple-agent';
-import { CompiledGraphNode } from '../graphs.types';
+} from '../../../agents/services/agents/simple-agent';
+import { CompiledGraphNode } from '../../../graphs/graphs.types';
+import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
   SimpleAgentNodeBaseTemplate,
   SimpleAgentTemplateResult,
-} from './base-node.template';
+} from '../base-node.template';
 
-export const SimpleAgentTemplateSchema = SimpleAgentSchema.extend(
-  z.object({
-    toolNodeIds: z.array(z.string()).optional(),
-  }).shape,
-);
+export const SimpleAgentTemplateSchema = SimpleAgentSchema.extend({
+  toolNodeIds: z.array(z.string()).optional(),
+});
 
 export type SimpleAgentTemplateSchemaType = z.infer<
   typeof SimpleAgentTemplateSchema
 >;
 
 @Injectable()
+@RegisterTemplate()
 export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   typeof SimpleAgentTemplateSchema,
   SimpleAgentTemplateResult<SimpleAgentSchemaType>
@@ -34,7 +34,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   readonly description = 'Simple agent with configurable tools and runtime';
   readonly schema = SimpleAgentTemplateSchema;
 
-  constructor(private moduleRef: ModuleRef) {
+  constructor(private readonly agentFactoryService: AgentFactoryService) {
     super();
   }
 
@@ -42,7 +42,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     config: SimpleAgentTemplateSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
   ): Promise<SimpleAgentTemplateResult<SimpleAgentSchemaType>> {
-    const agent = await this.moduleRef.resolve(SimpleAgent);
+    const agent = await this.agentFactoryService.create(SimpleAgent);
     const { toolNodeIds = [], ...agentConfig } = config;
 
     const tools = compact<CompiledGraphNode<DynamicStructuredTool>>(

@@ -3,9 +3,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ShellTool } from '../../agent-tools/tools/shell.tool';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { CompiledGraphNode, NodeKind } from '../graphs.types';
+import { ShellTool } from '../../../agent-tools/tools/shell.tool';
+import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import {
   ShellToolTemplate,
   ShellToolTemplateSchema,

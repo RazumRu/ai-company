@@ -7,16 +7,16 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AgentCommunicationTool } from '../../agent-tools/tools/agent-communication.tool';
-import { AgentOutput } from '../../agents/services/agents/base-agent';
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
-import { CompiledGraphNode, NodeKind } from '../graphs.types';
+import { AgentCommunicationTool } from '../../../agent-tools/tools/agent-communication.tool';
+import { AgentOutput } from '../../../agents/services/agents/base-agent';
+import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
+import { SimpleAgentTemplateResult } from '../base-node.template';
 import {
   AgentCommunicationToolTemplate,
   AgentCommunicationToolTemplateSchema,
 } from './agent-communication-tool.template';
-import { SimpleAgentTemplateResult } from './base-node.template';
-import { SimpleAgentTemplateSchemaType } from './simple-agent.template';
 
 describe('AgentCommunicationToolTemplate', () => {
   let template: AgentCommunicationToolTemplate;
@@ -158,32 +158,50 @@ describe('AgentCommunicationToolTemplate', () => {
       expect(result).toBe(mockTool);
     });
 
-    it('should throw NotFoundException when agent node not found', async () => {
+    it('should throw NotFoundException when agent node not found during invocation', async () => {
       const emptyCompiledNodes = new Map();
+      const mockTool = { name: 'agent-communication', invoke: vi.fn() } as any;
+      mockAgentCommunicationTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = {
         agentId: 'non-existent-agent',
       };
 
-      await expect(template.create(config, emptyCompiledNodes)).rejects.toThrow(
-        NotFoundException,
-      );
+      const tool = await template.create(config, emptyCompiledNodes);
+
+      // Get the invokeAgent function that was passed to build
+      const buildCall = (mockAgentCommunicationTool.build as any).mock
+        .calls[0][0];
+      const invokeAgent = buildCall.invokeAgent;
+
+      // Now invoke it and expect it to throw
+      await expect(
+        invokeAgent(['test message'], 'child-thread-1', {} as any),
+      ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw NotFoundException with correct error message', async () => {
+    it('should throw NotFoundException with correct error message during invocation', async () => {
       const emptyCompiledNodes = new Map();
+      const mockTool = { name: 'agent-communication', invoke: vi.fn() } as any;
+      mockAgentCommunicationTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = {
         agentId: 'missing-agent',
       };
 
-      try {
-        await template.create(config, emptyCompiledNodes);
-        fail('Expected NotFoundException to be thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(NotFoundException);
-        expect(error.message).toContain('Agent node missing-agent not found');
-      }
+      const tool = await template.create(config, emptyCompiledNodes);
+
+      // Get the invokeAgent function that was passed to build
+      const buildCall = (mockAgentCommunicationTool.build as any).mock
+        .calls[0][0];
+      const invokeAgent = buildCall.invokeAgent;
+
+      // Now invoke it and expect it to throw with specific message
+      await expect(
+        invokeAgent(['test message'], 'child-thread-1', {} as any),
+      ).rejects.toThrow(
+        'Agent missing-agent is not available for communication',
+      );
     });
 
     it('should create invokeAgent function that calls target agent correctly', async () => {

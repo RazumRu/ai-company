@@ -2,12 +2,14 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
-import { WebSearchTool } from '../../agent-tools/tools/web-search.tool';
-import { ToolNodeBaseTemplate } from './base-node.template';
+import { WebSearchTool } from '../../../agent-tools/tools/web-search.tool';
+import { RegisterTemplate } from '../../decorators/register-template.decorator';
+import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const WebSearchToolTemplateSchema = z.object({});
 
 @Injectable()
+@RegisterTemplate()
 export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
   typeof WebSearchToolTemplateSchema
 > {

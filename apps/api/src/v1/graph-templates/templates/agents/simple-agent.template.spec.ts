@@ -1,14 +1,14 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
-import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
 import {
   SimpleAgent,
   SimpleAgentSchemaType,
-} from '../../agents/services/agents/simple-agent';
-import { CompiledGraphNode, NodeKind } from '../graphs.types';
-import { SimpleAgentTemplateResult } from './base-node.template';
+} from '../../../agents/services/agents/simple-agent';
+import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { SimpleAgentTemplateResult } from '../base-node.template';
 import {
   SimpleAgentTemplate,
   SimpleAgentTemplateSchema,
@@ -16,8 +16,8 @@ import {
 
 describe('SimpleAgentTemplate', () => {
   let template: SimpleAgentTemplate;
-  let mockModuleRef: ModuleRef;
   let mockSimpleAgent: SimpleAgent;
+  let mockAgentFactoryService: AgentFactoryService;
 
   beforeEach(async () => {
     mockSimpleAgent = {
@@ -27,16 +27,17 @@ describe('SimpleAgentTemplate', () => {
       buildLLM: vi.fn(),
     } as any;
 
-    mockModuleRef = {
-      resolve: vi.fn().mockResolvedValue(mockSimpleAgent),
+    mockAgentFactoryService = {
+      create: vi.fn().mockResolvedValue(mockSimpleAgent),
+      register: vi.fn(),
     } as any;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SimpleAgentTemplate,
         {
-          provide: ModuleRef,
-          useValue: mockModuleRef,
+          provide: AgentFactoryService,
+          useValue: mockAgentFactoryService,
         },
       ],
     }).compile();
@@ -153,7 +154,7 @@ describe('SimpleAgentTemplate', () => {
 
       const result = await template.create(config, compiledNodes);
 
-      expect(mockModuleRef.resolve).toHaveBeenCalledWith(SimpleAgent);
+      expect(mockAgentFactoryService.create).toHaveBeenCalledWith(SimpleAgent);
       expect(mockSimpleAgent.addTool).not.toHaveBeenCalled();
 
       expect(result).toEqual({
@@ -252,9 +253,26 @@ describe('SimpleAgentTemplate', () => {
       expect(mockSimpleAgent.addTool).toHaveBeenCalledWith(mockTool1);
     });
 
-    it('should handle module resolution errors', async () => {
-      const mockError = new Error('Failed to resolve SimpleAgent');
-      mockModuleRef.resolve = vi.fn().mockRejectedValue(mockError);
+    it('should handle factory errors', async () => {
+      const mockError = new Error('Failed to create SimpleAgent');
+      const failingAgentFactoryService = {
+        create: vi.fn().mockRejectedValue(mockError),
+        register: vi.fn(),
+      } as any;
+
+      // Recreate template with failing factory service
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          SimpleAgentTemplate,
+          {
+            provide: AgentFactoryService,
+            useValue: failingAgentFactoryService,
+          },
+        ],
+      }).compile();
+
+      const failingTemplate =
+        module.get<SimpleAgentTemplate>(SimpleAgentTemplate);
 
       const config = {
         summarizeMaxTokens: 1000,
@@ -264,9 +282,9 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-4',
       };
 
-      await expect(template.create(config, compiledNodes)).rejects.toThrow(
-        'Failed to resolve SimpleAgent',
-      );
+      await expect(
+        failingTemplate.create(config, compiledNodes),
+      ).rejects.toThrow('Failed to create SimpleAgent');
     });
 
     it('should handle addTool errors', async () => {

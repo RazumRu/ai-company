@@ -3,16 +3,18 @@ import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
-import { ShellTool } from '../../agent-tools/tools/shell.tool';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { CompiledGraphNode } from '../graphs.types';
-import { ToolNodeBaseTemplate } from './base-node.template';
+import { ShellTool } from '../../../agent-tools/tools/shell.tool';
+import { CompiledGraphNode } from '../../../graphs/graphs.types';
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RegisterTemplate } from '../../decorators/register-template.decorator';
+import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const ShellToolTemplateSchema = z.object({
   runtimeNodeId: z.string().describe('Reference to runtime node'),
 });
 
 @Injectable()
+@RegisterTemplate()
 export class ShellToolTemplate extends ToolNodeBaseTemplate<
   typeof ShellToolTemplateSchema
 > {

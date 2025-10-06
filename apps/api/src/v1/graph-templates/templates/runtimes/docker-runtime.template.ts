@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
-import { RuntimeType } from '../../runtime/runtime.types';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { RuntimeProvider } from '../../runtime/services/runtime-provider';
-import { RuntimeNodeBaseTemplate } from './base-node.template';
+import { RuntimeType } from '../../../runtime/runtime.types';
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
+import { RegisterTemplate } from '../../decorators/register-template.decorator';
+import { RuntimeNodeBaseTemplate } from '../base-node.template';
 
 export const DockerRuntimeTemplateSchema = z.object({
   runtimeType: z.literal(RuntimeType.Docker),
@@ -22,6 +23,7 @@ export const DockerRuntimeTemplateSchema = z.object({
 });
 
 @Injectable()
+@RegisterTemplate()
 export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
   typeof DockerRuntimeTemplateSchema
 > {

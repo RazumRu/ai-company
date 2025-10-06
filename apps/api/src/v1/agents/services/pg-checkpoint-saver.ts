@@ -8,7 +8,7 @@ import {
   type PendingWrite,
   type SerializerProtocol,
 } from '@langchain/langgraph-checkpoint';
-import { Injectable, Scope } from '@nestjs/common';
+import { Injectable, Optional, Scope } from '@nestjs/common';
 import { ValidationException } from '@packages/common';
 import { Brackets } from 'typeorm';
 
@@ -22,7 +22,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
   constructor(
     private graphCheckpointsDao: GraphCheckpointsDao,
     private graphCheckpointsWritesDao: GraphCheckpointsWritesDao,
-    serde?: SerializerProtocol,
+    @Optional() serde?: SerializerProtocol,
   ) {
     super(serde);
   }

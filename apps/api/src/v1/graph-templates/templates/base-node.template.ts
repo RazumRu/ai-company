@@ -2,8 +2,8 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
+import { CompiledGraphNode, NodeKind } from '../../graphs/graphs.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { CompiledGraphNode, NodeKind } from '../graphs.types';
 
 export abstract class NodeBaseTemplate<
   TConfig extends z.ZodTypeAny,

@@ -3,8 +3,9 @@ import { BadRequestException } from '@packages/common';
 import { groupBy } from 'lodash';
 import { z } from 'zod';
 
-import { CompiledGraph, CompiledGraphNode, NodeKind } from '../graphs.types';
-import { TemplateRegistry } from './template-registry';
+import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { CompiledGraphNode } from '../graphs.types';
+import { CompiledGraph, NodeKind } from '../graphs.types';
 
 // Node configuration schema
 export const GraphNodeSchema = z.object({
@@ -98,11 +99,18 @@ export class GraphCompiler {
     this.validateSchema(schema);
 
     const compiledNodes = new Map<string, CompiledGraphNode>();
-    const nodesByKind = groupBy(schema.nodes, 'kind');
+    const nodesByKind = groupBy(schema.nodes, (node) => {
+      const template = this.templateRegistry.getTemplate(node.template);
+      if (!template) {
+        throw new BadRequestException(`Template '${node.template}' not found`);
+      }
+      return template.kind;
+    });
     const buildOrder = [NodeKind.Runtime, NodeKind.Tool, NodeKind.SimpleAgent];
 
     for (const kind of buildOrder) {
-      for (const node of nodesByKind[kind] || []) {
+      const nodes = nodesByKind[kind] || [];
+      for (const node of nodes) {
         const compiledNode = await this.compileNode(node, compiledNodes);
         compiledNodes.set(node.id, compiledNode);
       }

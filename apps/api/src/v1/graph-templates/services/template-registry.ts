@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
 import { z } from 'zod';
 
-import { NodeKind } from '../graphs.types';
+import { NodeKind } from '../../graphs/graphs.types';
 import { NodeBaseTemplate } from '../templates/base-node.template';
 
 /**

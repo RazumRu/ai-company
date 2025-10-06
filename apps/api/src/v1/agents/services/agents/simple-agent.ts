@@ -15,6 +15,7 @@ import {
   BaseAgentState,
   BaseAgentStateMessagesUpdateValue,
 } from '../../agents.types';
+import { RegisterAgent } from '../../decorators/register-agent.decorator';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { SummarizeNode } from '../nodes/summarize-node';
@@ -53,6 +54,7 @@ export const SimpleAgentSchema = z.object({
 export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
 
 @Injectable({ scope: Scope.TRANSIENT })
+@RegisterAgent()
 export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   constructor(private checkpointer: PgCheckpointSaver) {
     super();
