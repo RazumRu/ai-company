@@ -196,7 +196,7 @@ describe('SimpleAgent', () => {
 
       const customRunnableConfig = {
         recursionLimit: 1000,
-        configurable: { custom: 'value' },
+        configurable: { thread_id: 'test-thread', custom: 'value' },
       };
 
       await agent.run('test-thread', [], config, customRunnableConfig);

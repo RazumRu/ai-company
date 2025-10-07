@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export enum NodeKind {
   Runtime = 'runtime',
   Tool = 'tool',
@@ -18,11 +20,6 @@ export interface CompiledGraph {
     to: string;
     label?: string;
   }[];
-  metadata?: {
-    name?: string;
-    description?: string;
-    version?: string;
-  };
   /**
    * Destroys the graph and cleans up all resources
    * - Stops all triggers
@@ -30,3 +27,36 @@ export interface CompiledGraph {
    */
   destroy: () => Promise<void>;
 }
+
+// Node configuration schema
+export const GraphNodeSchema = z.object({
+  id: z.string().describe('Unique identifier for this node'),
+  template: z.string().describe('Template name registered in TemplateRegistry'),
+  config: z
+    .record(z.string(), z.unknown())
+    .describe('Template-specific configuration'),
+});
+
+// Edge configuration schema
+export const GraphEdgeSchema = z.object({
+  from: z.string().describe('Source node ID'),
+  to: z.string().describe('Target node ID'),
+  label: z.string().optional().describe('Optional edge label'),
+});
+
+export const GraphMetadataSchema = z.object({
+  graphId: z.string(),
+  name: z.string().optional(),
+  version: z.string(),
+});
+
+// Complete graph schema
+export const GraphSchema = z.object({
+  nodes: z.array(GraphNodeSchema),
+  edges: z.array(GraphEdgeSchema).optional(),
+  metadata: GraphMetadataSchema,
+});
+
+export type GraphSchemaType = z.infer<typeof GraphSchema>;
+export type GraphNodeSchemaType = z.infer<typeof GraphNodeSchema>;
+export type GraphMetadataSchemaType = z.infer<typeof GraphMetadataSchema>;

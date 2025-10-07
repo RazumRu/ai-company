@@ -47,6 +47,9 @@ describe('ToolExecutorNode', () => {
       mockState = {
         messages: [],
         toolUsageGuardActivated: false,
+        summary: '',
+        done: false,
+        toolUsageGuardActivatedCount: 0,
       };
 
       mockConfig = {
@@ -78,10 +81,10 @@ describe('ToolExecutorNode', () => {
         mockConfig,
       );
 
-      expect(result.messages.items).toHaveLength(1);
-      expect(result.messages.items[0]).toBeInstanceOf(ToolMessage);
-      expect(result.messages.items[0].content).toBe('Tool result 1');
-      expect((result.messages.items[0] as ToolMessage).tool_call_id).toBe(
+      expect(result.messages?.items).toHaveLength(1);
+      expect(result.messages?.items[0]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items[0]?.content).toBe('Tool result 1');
+      expect((result.messages?.items[0] as ToolMessage)?.tool_call_id).toBe(
         'call-1',
       );
     });
@@ -119,9 +122,9 @@ describe('ToolExecutorNode', () => {
         mockConfig,
       );
 
-      expect(result.messages.items).toHaveLength(2);
-      expect(result.messages.items[0].content).toBe('Result 1');
-      expect(result.messages.items[1].content).toBe('Result 2');
+      expect(result.messages?.items).toHaveLength(2);
+      expect(result.messages?.items?.[0]?.content).toBe('Result 1');
+      expect(result.messages?.items?.[1]?.content).toBe('Result 2');
     });
 
     it('should handle tool not found error', async () => {
@@ -140,12 +143,12 @@ describe('ToolExecutorNode', () => {
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.messages.items).toHaveLength(1);
-      expect(result.messages.items[0]).toBeInstanceOf(ToolMessage);
-      expect(result.messages.items[0].content).toContain(
+      expect(result.messages?.items).toHaveLength(1);
+      expect(result.messages?.items[0]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items?.[0]?.content).toContain(
         "Tool 'non-existent-tool' not found",
       );
-      expect((result.messages.items[0] as ToolMessage).tool_call_id).toBe(
+      expect((result.messages?.items[0] as ToolMessage).tool_call_id).toBe(
         'call-1',
       );
     });
@@ -168,12 +171,12 @@ describe('ToolExecutorNode', () => {
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.messages.items).toHaveLength(1);
-      expect(result.messages.items[0]).toBeInstanceOf(ToolMessage);
-      expect(result.messages.items[0].content).toContain(
+      expect(result.messages?.items).toHaveLength(1);
+      expect(result.messages?.items[0]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items?.[0]?.content).toContain(
         "Error executing tool 'test-tool-1'",
       );
-      expect(result.messages.items[0].content).toContain(
+      expect(result.messages?.items?.[0]?.content).toContain(
         'Tool execution failed',
       );
     });
@@ -188,7 +191,7 @@ describe('ToolExecutorNode', () => {
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.messages.items).toHaveLength(0);
+      expect(result.messages?.items).toHaveLength(0);
     });
 
     it('should handle undefined tool calls', async () => {
@@ -201,7 +204,7 @@ describe('ToolExecutorNode', () => {
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.messages.items).toHaveLength(0);
+      expect(result.messages?.items).toHaveLength(0);
     });
 
     it('should handle non-AI messages gracefully', async () => {
@@ -210,7 +213,7 @@ describe('ToolExecutorNode', () => {
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.messages.items).toHaveLength(0);
+      expect(result.messages?.items).toHaveLength(0);
     });
 
     it('should handle mixed message types', async () => {
@@ -231,8 +234,8 @@ describe('ToolExecutorNode', () => {
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.messages.items).toHaveLength(1);
-      expect(result.messages.items[0].content).toBe('Tool result');
+      expect(result.messages?.items).toHaveLength(1);
+      expect(result.messages?.items?.[0]?.content).toBe('Tool result');
     });
 
     it('should serialize tool results correctly', async () => {
@@ -259,8 +262,8 @@ describe('ToolExecutorNode', () => {
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.messages.items).toHaveLength(1);
-      expect(result.messages.items[0].content).toBe(
+      expect(result.messages?.items).toHaveLength(1);
+      expect(result.messages?.items?.[0]?.content).toBe(
         JSON.stringify(complexResult),
       );
     });
@@ -282,8 +285,8 @@ describe('ToolExecutorNode', () => {
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.messages.items).toHaveLength(1);
-      expect(result.messages.items[0].content).toBe('Simple string result');
+      expect(result.messages?.items).toHaveLength(1);
+      expect(result.messages?.items?.[0]?.content).toBe('Simple string result');
     });
 
     it('should pass correct config to tools', async () => {

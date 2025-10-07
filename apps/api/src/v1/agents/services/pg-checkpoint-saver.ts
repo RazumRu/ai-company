@@ -12,6 +12,8 @@ import { Injectable, Optional, Scope } from '@nestjs/common';
 import { ValidationException } from '@packages/common';
 import { Brackets } from 'typeorm';
 
+import { NotificationEvent } from '../../notifications/notifications.types';
+import { NotificationsService } from '../../notifications/services/notifications.service';
 import { GraphCheckpointsDao } from '../dao/graph-checkpoints.dao';
 import { GraphCheckpointsWritesDao } from '../dao/graph-checkpoints-writes.dao';
 
@@ -22,6 +24,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
   constructor(
     private graphCheckpointsDao: GraphCheckpointsDao,
     private graphCheckpointsWritesDao: GraphCheckpointsWritesDao,
+    private notificationsService: NotificationsService,
     @Optional() serde?: SerializerProtocol,
   ) {
     super(serde);
@@ -203,6 +206,22 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       });
     }
 
+    // Emit checkpointer notification
+    const graphId = config.configurable?.graph_id || 'unknown';
+    const nodeId = config.configurable?.node_id;
+
+    this.notificationsService.emit({
+      type: NotificationEvent.Checkpointer,
+      graphId,
+      nodeId,
+      threadId,
+      data: {
+        action: 'put',
+        checkpoint,
+        metadata,
+      },
+    });
+
     return {
       configurable: {
         thread_id: threadId,
@@ -253,6 +272,20 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
         }
       }),
     );
+
+    // Emit checkpointer notification
+    const graphId = config.configurable?.graph_id || 'unknown';
+    const nodeId = config.configurable?.node_id;
+    this.notificationsService.emit({
+      type: NotificationEvent.Checkpointer,
+      graphId,
+      nodeId,
+      threadId,
+      data: {
+        action: 'putWrites',
+        writes: writes.map(([channel, value]) => ({ channel, value })),
+      },
+    });
   }
 
   async deleteThread(threadId: string, ns = ''): Promise<void> {

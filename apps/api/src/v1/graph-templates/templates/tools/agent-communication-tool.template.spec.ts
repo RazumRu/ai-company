@@ -150,7 +150,11 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'target-agent-1',
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockAgentCommunicationTool.build).toHaveBeenCalledWith({
         invokeAgent: expect.any(Function),
@@ -167,7 +171,11 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'non-existent-agent',
       };
 
-      const tool = await template.create(config, emptyCompiledNodes);
+      const tool = await template.create(config, emptyCompiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Get the invokeAgent function that was passed to build
       const buildCall = (mockAgentCommunicationTool.build as any).mock
@@ -189,7 +197,11 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'missing-agent',
       };
 
-      const tool = await template.create(config, emptyCompiledNodes);
+      const tool = await template.create(config, emptyCompiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Get the invokeAgent function that was passed to build
       const buildCall = (mockAgentCommunicationTool.build as any).mock
@@ -217,7 +229,11 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'target-agent-1',
       };
 
-      await template.create(config, compiledNodes);
+      await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Test the captured invokeAgent function
       const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
@@ -237,7 +253,13 @@ describe('AgentCommunicationToolTemplate', () => {
         'parent-thread-123__child-conversation-1',
         [new HumanMessage('Hello'), new HumanMessage('How are you?')],
         mockAgentNode.instance.config,
-        mockRunnableConfig,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: 'parent-thread-123',
+            graph_id: 'test-graph',
+            node_id: 'test-node',
+          }),
+        }),
       );
       expect(result).toEqual({
         messages: [new HumanMessage('Agent response')],
@@ -257,7 +279,11 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'target-agent-1',
       };
 
-      await template.create(config, compiledNodes);
+      await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
         configurable: {},
@@ -273,7 +299,12 @@ describe('AgentCommunicationToolTemplate', () => {
         expect.stringMatching(/^inter-agent-\d+__child-1$/),
         [new HumanMessage('Test message')],
         mockAgentNode.instance.config,
-        mockRunnableConfig,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            graph_id: 'test-graph',
+            node_id: 'test-node',
+          }),
+        }),
       );
     });
 
@@ -290,7 +321,11 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'target-agent-1',
       };
 
-      await template.create(config, compiledNodes);
+      await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Clear the compiled nodes to simulate agent not found during invocation
       compiledNodes.clear();
@@ -320,7 +355,11 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'target-agent-1',
       };
 
-      await template.create(config, compiledNodes);
+      await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
         configurable: { thread_id: 'parent-thread' },
@@ -344,7 +383,11 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'target-agent-1',
       };
 
-      await template.create(config, compiledNodes);
+      await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
         configurable: { thread_id: 'parent-123' },
@@ -359,7 +402,13 @@ describe('AgentCommunicationToolTemplate', () => {
         'parent-123__child-A',
         [new HumanMessage('msg1')],
         mockAgentNode.instance.config,
-        mockRunnableConfig,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: 'parent-123',
+            graph_id: 'test-graph',
+            node_id: 'test-node',
+          }),
+        }),
       );
 
       expect(mockAgent.run).toHaveBeenNthCalledWith(
@@ -367,7 +416,13 @@ describe('AgentCommunicationToolTemplate', () => {
         'parent-123__child-B',
         [new HumanMessage('msg2')],
         mockAgentNode.instance.config,
-        mockRunnableConfig,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: 'parent-123',
+            graph_id: 'test-graph',
+            node_id: 'test-node',
+          }),
+        }),
       );
     });
   });

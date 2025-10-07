@@ -121,7 +121,12 @@ describe('DockerRuntimeTemplate', () => {
 
   describe('create', () => {
     it('should create runtime with minimal configuration', async () => {
-      const mockRuntime = { id: 'runtime-1' } as BaseRuntime;
+      const mockRuntime = {
+        id: 'runtime-1',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
       mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
 
       const config = {
@@ -129,7 +134,11 @@ describe('DockerRuntimeTemplate', () => {
         image: 'python:3.11',
       };
 
-      const result = await template.create(config);
+      const result = await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
         type: RuntimeType.Docker,
@@ -144,7 +153,12 @@ describe('DockerRuntimeTemplate', () => {
     });
 
     it('should create runtime with full configuration', async () => {
-      const mockRuntime = { id: 'runtime-2' } as BaseRuntime;
+      const mockRuntime = {
+        id: 'runtime-2',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
       mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
 
       const config = {
@@ -156,7 +170,11 @@ describe('DockerRuntimeTemplate', () => {
         initScript: ['npm ci', 'npm run build'],
       };
 
-      const result = await template.create(config);
+      const result = await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
         type: RuntimeType.Docker,
@@ -179,13 +197,22 @@ describe('DockerRuntimeTemplate', () => {
         image: 'python:3.11',
       };
 
-      await expect(template.create(config)).rejects.toThrow(
-        'Failed to create runtime',
-      );
+      await expect(
+        template.create(config, new Map(), {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
+      ).rejects.toThrow('Failed to create runtime');
     });
 
     it('should always set autostart to true', async () => {
-      const mockRuntime = { id: 'runtime-3' } as BaseRuntime;
+      const mockRuntime = {
+        id: 'runtime-3',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
       mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
 
       const config = {
@@ -193,7 +220,11 @@ describe('DockerRuntimeTemplate', () => {
         image: 'alpine:latest',
       };
 
-      await template.create(config);
+      await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockRuntimeProvider.provide).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -152,7 +152,11 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-4',
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockAgentFactoryService.create).toHaveBeenCalledWith(SimpleAgent);
       expect(mockSimpleAgent.addTool).not.toHaveBeenCalled();
@@ -179,7 +183,11 @@ describe('SimpleAgentTemplate', () => {
         toolNodeIds: [],
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockSimpleAgent.addTool).not.toHaveBeenCalled();
       expect(result.config).not.toHaveProperty('toolNodeIds');
@@ -195,7 +203,11 @@ describe('SimpleAgentTemplate', () => {
         toolNodeIds: ['tool-1', 'tool-2'],
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockSimpleAgent.addTool).toHaveBeenCalledTimes(2);
       expect(mockSimpleAgent.addTool).toHaveBeenCalledWith(mockTool1);
@@ -223,7 +235,11 @@ describe('SimpleAgentTemplate', () => {
         toolNodeIds: ['tool-1', 'non-existent-tool', 'tool-2'],
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Should only add existing tools (compact removes undefined values)
       expect(mockSimpleAgent.addTool).toHaveBeenCalledTimes(2);
@@ -246,7 +262,11 @@ describe('SimpleAgentTemplate', () => {
         toolNodeIds: ['tool-1', 'tool-2'],
       };
 
-      const result = await template.create(config, partialCompiledNodes);
+      const result = await template.create(config, partialCompiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Should only add available tools
       expect(mockSimpleAgent.addTool).toHaveBeenCalledTimes(1);
@@ -283,7 +303,11 @@ describe('SimpleAgentTemplate', () => {
       };
 
       await expect(
-        failingTemplate.create(config, compiledNodes),
+        failingTemplate.create(config, compiledNodes, {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
       ).rejects.toThrow('Failed to create SimpleAgent');
     });
 
@@ -302,9 +326,13 @@ describe('SimpleAgentTemplate', () => {
         toolNodeIds: ['tool-1'],
       };
 
-      await expect(template.create(config, compiledNodes)).rejects.toThrow(
-        'Failed to add tool',
-      );
+      await expect(
+        template.create(config, compiledNodes, {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
+      ).rejects.toThrow('Failed to add tool');
     });
 
     it('should preserve original config structure', async () => {
@@ -317,7 +345,11 @@ describe('SimpleAgentTemplate', () => {
         toolNodeIds: ['tool-1'],
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(result.config).toEqual({
         summarizeMaxTokens: 2000,
@@ -338,7 +370,11 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-4',
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(result).toHaveProperty('agent');
       expect(result).toHaveProperty('config');

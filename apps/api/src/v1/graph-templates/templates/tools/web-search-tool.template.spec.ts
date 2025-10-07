@@ -79,7 +79,11 @@ describe('WebSearchToolTemplate', () => {
       const config = {};
       const compiledNodes = new Map<string, CompiledGraphNode>();
 
-      const result = await template.create(config);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
       expect(result).toBe(mockTool);
@@ -92,9 +96,13 @@ describe('WebSearchToolTemplate', () => {
       const config = {
         customProperty: 'value',
         timeout: 5000,
-      };
+      } as any;
 
-      const result = await template.create(config);
+      const result = await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
       expect(result).toBe(mockTool);
@@ -108,9 +116,13 @@ describe('WebSearchToolTemplate', () => {
 
       const config = {};
 
-      await expect(template.create(config)).rejects.toThrow(
-        'Failed to build web search tool',
-      );
+      await expect(
+        template.create(config, new Map(), {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
+      ).rejects.toThrow('Failed to build web search tool');
     });
 
     it('should not use compiled nodes parameter', async () => {
@@ -122,7 +134,11 @@ describe('WebSearchToolTemplate', () => {
         ['some-node', { id: 'some-node', type: 'runtime', instance: {} }],
       ]);
 
-      const result = await template.create(config);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Should still work regardless of compiled nodes content
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
@@ -139,9 +155,13 @@ describe('WebSearchToolTemplate', () => {
         timeout: 30000,
         enableCache: true,
         customHeaders: { 'User-Agent': 'test-agent' },
-      };
+      } as any;
 
-      await template.create(config);
+      await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
     });
@@ -152,7 +172,11 @@ describe('WebSearchToolTemplate', () => {
 
       const config = {};
 
-      const result = await template.create(config);
+      const result = await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(result).toBe(mockTool);
     });
@@ -166,11 +190,19 @@ describe('WebSearchToolTemplate', () => {
         .mockReturnValueOnce(mockTool1)
         .mockReturnValueOnce(mockTool2);
 
-      const config1 = { instance: 1 };
-      const config2 = { instance: 2 };
+      const config1 = { instance: 1 } as any;
+      const config2 = { instance: 2 } as any;
 
-      const result1 = await template.create(config1);
-      const result2 = await template.create(config2);
+      const result1 = await template.create(config1, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
+      const result2 = await template.create(config2, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(result1).toBe(mockTool1);
       expect(result2).toBe(mockTool2);

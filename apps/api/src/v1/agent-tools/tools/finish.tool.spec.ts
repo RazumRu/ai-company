@@ -49,7 +49,7 @@ describe('FinishTool', () => {
 
   describe('build', () => {
     it('should create a DynamicStructuredTool', () => {
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
 
       expect(builtTool).toBeDefined();
       expect(typeof builtTool.invoke).toBe('function');
@@ -57,7 +57,7 @@ describe('FinishTool', () => {
     });
 
     it('should return FinishToolResponse with message', async () => {
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
       const message = 'Task completed successfully';
 
       const result = await builtTool.invoke({ message });
@@ -67,7 +67,7 @@ describe('FinishTool', () => {
     });
 
     it('should return FinishToolResponse without message', async () => {
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
 
       const result = await builtTool.invoke({});
 
@@ -76,7 +76,7 @@ describe('FinishTool', () => {
     });
 
     it('should handle undefined message', async () => {
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
 
       const result = await builtTool.invoke({ message: undefined });
 

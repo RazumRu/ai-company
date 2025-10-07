@@ -5,7 +5,10 @@ import { RuntimeType } from '../../../runtime/runtime.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import { RuntimeNodeBaseTemplate } from '../base-node.template';
+import {
+  NodeBaseTemplateMetadata,
+  RuntimeNodeBaseTemplate,
+} from '../base-node.template';
 
 export const DockerRuntimeTemplateSchema = z.object({
   runtimeType: z.literal(RuntimeType.Docker),
@@ -37,6 +40,8 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof DockerRuntimeTemplateSchema>,
+    compiledNodes: Map<string, any>,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<BaseRuntime> {
     return await this.runtimeProvider.provide({
       type: config.runtimeType,

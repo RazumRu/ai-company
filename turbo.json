@@ -7,6 +7,11 @@
       "inputs": ["src/**"],
       "outputs": ["dist/**"]
     },
+    "build:tests": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**"],
+      "outputs": ["dist/**"]
+    },
     "lint": {
       "outputs": [],
       "inputs": ["src/**"]

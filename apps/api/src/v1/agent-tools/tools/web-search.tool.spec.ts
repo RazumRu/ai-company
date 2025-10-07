@@ -116,7 +116,7 @@ describe('WebSearchTool', () => {
 
   describe('build', () => {
     it('should create a DynamicStructuredTool', () => {
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
 
       expect(builtTool).toBeDefined();
       expect(typeof builtTool.invoke).toBe('function');
@@ -136,7 +136,7 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
       const result = await builtTool.invoke({
         query: 'test search',
       });
@@ -170,7 +170,7 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
       const result = await builtTool.invoke({
         query: 'advanced search',
         searchDepth: 'advanced',
@@ -205,7 +205,7 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
       const result = await builtTool.invoke({
         query: 'no results query',
       });
@@ -223,7 +223,7 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
       const result = await builtTool.invoke({
         query: 'undefined results query',
       });
@@ -238,7 +238,7 @@ describe('WebSearchTool', () => {
       const mockError = new Error('Search API error');
       mockTavilyClient.search.mockRejectedValue(mockError);
 
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
 
       await expect(
         builtTool.invoke({
@@ -263,7 +263,7 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build();
+      const builtTool = tool.build({});
       const result = await builtTool.invoke({
         query: 'test search',
       });

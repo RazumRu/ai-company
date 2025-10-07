@@ -7,7 +7,10 @@ import { ShellTool } from '../../../agent-tools/tools/shell.tool';
 import { CompiledGraphNode } from '../../../graphs/graphs.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import { ToolNodeBaseTemplate } from '../base-node.template';
+import {
+  NodeBaseTemplateMetadata,
+  ToolNodeBaseTemplate,
+} from '../base-node.template';
 
 export const ShellToolTemplateSchema = z.object({
   runtimeNodeId: z.string().describe('Reference to runtime node'),
@@ -29,6 +32,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
   async create(
     config: z.infer<typeof ShellToolTemplateSchema>,
     compiledNodes: Map<string, CompiledGraphNode>,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     const runtimeNode: CompiledGraphNode<BaseRuntime> | undefined =
       compiledNodes.get(config.runtimeNodeId) as CompiledGraphNode<BaseRuntime>;

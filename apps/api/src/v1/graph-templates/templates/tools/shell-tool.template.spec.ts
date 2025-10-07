@@ -78,7 +78,12 @@ describe('ShellToolTemplate', () => {
 
   describe('create', () => {
     it('should create shell tool with valid runtime node', async () => {
-      const mockRuntime = { id: 'runtime-1' } as BaseRuntime;
+      const mockRuntime = {
+        id: 'runtime-1',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
       const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
         id: 'runtime-1',
         type: 'runtime',
@@ -93,7 +98,11 @@ describe('ShellToolTemplate', () => {
         runtimeNodeId: 'runtime-1',
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(mockShellTool.build).toHaveBeenCalledWith({
         runtime: mockRuntime,
@@ -108,9 +117,13 @@ describe('ShellToolTemplate', () => {
         runtimeNodeId: 'non-existent-runtime',
       };
 
-      await expect(template.create(config, compiledNodes)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        template.create(config, compiledNodes, {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw NotFoundException with correct error message', async () => {
@@ -121,16 +134,25 @@ describe('ShellToolTemplate', () => {
       };
 
       try {
-        await template.create(config, compiledNodes);
-        fail('Expected NotFoundException to be thrown');
-      } catch (error) {
+        await template.create(config, compiledNodes, {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        });
+        throw new Error('Expected NotFoundException to be thrown');
+      } catch (error: any) {
         expect(error).toBeInstanceOf(NotFoundException);
         expect(error.message).toContain('Node missing-runtime not found');
       }
     });
 
     it('should handle shell tool build errors', async () => {
-      const mockRuntime = { id: 'runtime-1' } as BaseRuntime;
+      const mockRuntime = {
+        id: 'runtime-1',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
       const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
         id: 'runtime-1',
         type: 'runtime',
@@ -147,14 +169,28 @@ describe('ShellToolTemplate', () => {
         runtimeNodeId: 'runtime-1',
       };
 
-      await expect(template.create(config, compiledNodes)).rejects.toThrow(
-        'Failed to build shell tool',
-      );
+      await expect(
+        template.create(config, compiledNodes, {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
+      ).rejects.toThrow('Failed to build shell tool');
     });
 
     it('should work with different runtime node IDs', async () => {
-      const mockRuntime1 = { id: 'runtime-1' } as BaseRuntime;
-      const mockRuntime2 = { id: 'runtime-2' } as BaseRuntime;
+      const mockRuntime1 = {
+        id: 'runtime-1',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
+      const mockRuntime2 = {
+        id: 'runtime-2',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
 
       const mockRuntimeNode1: CompiledGraphNode<BaseRuntime> = {
         id: 'runtime-1',
@@ -178,14 +214,22 @@ describe('ShellToolTemplate', () => {
 
       // Test with first runtime
       const config1 = { runtimeNodeId: 'runtime-1' };
-      await template.create(config1, compiledNodes);
+      await template.create(config1, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
       expect(mockShellTool.build).toHaveBeenCalledWith({
         runtime: mockRuntime1,
       });
 
       // Test with second runtime
       const config2 = { runtimeNodeId: 'runtime-2' };
-      await template.create(config2, compiledNodes);
+      await template.create(config2, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
       expect(mockShellTool.build).toHaveBeenCalledWith({
         runtime: mockRuntime2,
       });
@@ -198,9 +242,13 @@ describe('ShellToolTemplate', () => {
         runtimeNodeId: 'runtime-1',
       };
 
-      await expect(template.create(config, compiledNodes)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        template.create(config, compiledNodes, {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

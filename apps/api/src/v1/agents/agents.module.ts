@@ -4,6 +4,7 @@ import { registerEntities } from '@packages/typeorm';
 import { Class } from 'type-fest';
 
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { RuntimeModule } from '../runtime/runtime.module';
 import { GraphCheckpointsDao } from './dao/graph-checkpoints.dao';
 import { GraphCheckpointsWritesDao } from './dao/graph-checkpoints-writes.dao';
@@ -20,6 +21,7 @@ import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
     registerEntities([GraphCheckpointEntity, GraphCheckpointWritesEntity]),
     RuntimeModule,
     AgentToolsModule,
+    NotificationsModule,
     DiscoveryModule,
   ],
   controllers: [],

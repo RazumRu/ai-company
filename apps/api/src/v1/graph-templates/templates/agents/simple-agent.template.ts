@@ -12,6 +12,7 @@ import {
 import { CompiledGraphNode } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
+  NodeBaseTemplateMetadata,
   SimpleAgentNodeBaseTemplate,
   SimpleAgentTemplateResult,
 } from '../base-node.template';
@@ -41,6 +42,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   async create(
     config: SimpleAgentTemplateSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<SimpleAgentTemplateResult<SimpleAgentSchemaType>> {
     const agent = await this.agentFactoryService.create(SimpleAgent);
     const { toolNodeIds = [], ...agentConfig } = config;

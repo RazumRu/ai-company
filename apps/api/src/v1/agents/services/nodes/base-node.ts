@@ -6,6 +6,8 @@ import { BaseAgent } from '../agents/base-agent';
 export type BaseAgentConfigurable = {
   thread_id?: string;
   caller_agent?: BaseAgent<any>;
+  graph_id?: string;
+  node_id?: string;
 };
 
 export abstract class BaseNode<

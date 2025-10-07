@@ -3,8 +3,16 @@ import { z } from 'zod';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
-import { CompiledGraphNode, NodeKind } from '../../graphs/graphs.types';
+import {
+  CompiledGraphNode,
+  GraphMetadataSchemaType,
+  NodeKind,
+} from '../../graphs/graphs.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
+
+export interface NodeBaseTemplateMetadata extends GraphMetadataSchemaType {
+  nodeId: string;
+}
 
 export abstract class NodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
@@ -18,6 +26,7 @@ export abstract class NodeBaseTemplate<
   abstract create(
     config: z.infer<TConfig>,
     compiledNodes: Map<string, CompiledGraphNode>,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<TOutput>;
 }
 

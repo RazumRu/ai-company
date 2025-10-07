@@ -161,7 +161,7 @@ describe('ShellTool', () => {
     });
 
     it('should throw error when runtime is not provided', async () => {
-      const builtTool = tool.build();
+      const builtTool = tool.build({ runtime: null as any });
 
       await expect(
         builtTool.invoke({

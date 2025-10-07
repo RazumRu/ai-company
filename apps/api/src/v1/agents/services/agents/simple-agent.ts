@@ -184,7 +184,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     threadId: string,
     messages: BaseMessage[],
     config: SimpleAgentSchemaType,
-    runnableConfig?: RunnableConfig,
+    runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
     this.logger.debug('simple-agent.run.start', {
       threadId,

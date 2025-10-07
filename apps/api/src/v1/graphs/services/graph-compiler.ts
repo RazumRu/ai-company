@@ -1,44 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, DefaultLogger } from '@packages/common';
 import { groupBy } from 'lodash';
-import { z } from 'zod';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { NotificationEvent } from '../../notifications/notifications.types';
+import { NotificationsService } from '../../notifications/services/notifications.service';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { CompiledGraph, CompiledGraphNode, NodeKind } from '../graphs.types';
-
-// Node configuration schema
-export const GraphNodeSchema = z.object({
-  id: z.string().describe('Unique identifier for this node'),
-  template: z.string().describe('Template name registered in TemplateRegistry'),
-  config: z
-    .record(z.string(), z.unknown())
-    .describe('Template-specific configuration'),
-});
-
-// Edge configuration schema
-export const GraphEdgeSchema = z.object({
-  from: z.string().describe('Source node ID'),
-  to: z.string().describe('Target node ID'),
-  label: z.string().optional().describe('Optional edge label'),
-});
-
-// Complete graph schema
-export const GraphSchema = z.object({
-  nodes: z.array(GraphNodeSchema),
-  edges: z.array(GraphEdgeSchema).optional(),
-  metadata: z
-    .object({
-      name: z.string().optional(),
-      description: z.string().optional(),
-      version: z.string().optional(),
-    })
-    .optional(),
-});
-
-export type GraphSchemaType = z.infer<typeof GraphSchema>;
-export type GraphNodeSchemaType = z.infer<typeof GraphNodeSchema>;
+import {
+  CompiledGraph,
+  CompiledGraphNode,
+  GraphMetadataSchemaType,
+  GraphNodeSchemaType,
+  GraphSchemaType,
+  NodeKind,
+} from '../graphs.types';
 
 /**
  * GraphCompiler is responsible for taking a graph schema (JSON)
@@ -55,6 +31,7 @@ export class GraphCompiler {
   constructor(
     private readonly templateRegistry: TemplateRegistry,
     private readonly logger: DefaultLogger,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -100,6 +77,17 @@ export class GraphCompiler {
    * Compiles a graph schema into an executable graph structure
    */
   async compile(schema: GraphSchemaType): Promise<CompiledGraph> {
+    const graphId = schema.metadata?.graphId || 'unknown';
+
+    this.notificationsService.emit({
+      type: NotificationEvent.Graph,
+      graphId,
+      data: {
+        state: 'compiling',
+        schema,
+      },
+    });
+
     this.validateSchema(schema);
 
     const compiledNodes = new Map<string, CompiledGraphNode>();
@@ -120,17 +108,38 @@ export class GraphCompiler {
     for (const kind of buildOrder) {
       const nodes = nodesByKind[kind] || [];
       for (const node of nodes) {
-        const compiledNode = await this.compileNode(node, compiledNodes);
+        const compiledNode = await this.compileNode(
+          node,
+          compiledNodes,
+          schema.metadata,
+        );
         compiledNodes.set(node.id, compiledNode);
       }
     }
 
+    this.notificationsService.emit({
+      type: NotificationEvent.Graph,
+      graphId,
+      data: {
+        state: 'compiled',
+        schema,
+      },
+    });
+
     return {
       nodes: compiledNodes,
       edges: schema.edges || [],
-      metadata: schema.metadata,
       destroy: async () => {
         await this.destroyGraph(compiledNodes);
+
+        this.notificationsService.emit({
+          type: NotificationEvent.Graph,
+          graphId,
+          data: {
+            state: 'destroyed',
+            schema,
+          },
+        });
       },
     };
   }
@@ -199,6 +208,7 @@ export class GraphCompiler {
   private async compileNode(
     node: GraphNodeSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
+    metadata: GraphMetadataSchemaType,
   ): Promise<CompiledGraphNode> {
     const config = this.templateRegistry.validateTemplateConfig(
       node.template,
@@ -210,7 +220,10 @@ export class GraphCompiler {
       throw new BadRequestException(`Template '${node.template}' not found`);
     }
 
-    const instance = await template.create(config, compiledNodes);
+    const instance = await template.create(config, compiledNodes, {
+      ...metadata,
+      nodeId: node.id,
+    });
 
     return {
       id: node.id,

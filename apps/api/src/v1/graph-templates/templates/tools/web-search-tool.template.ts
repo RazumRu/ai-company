@@ -4,7 +4,10 @@ import { z } from 'zod';
 
 import { WebSearchTool } from '../../../agent-tools/tools/web-search.tool';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import { ToolNodeBaseTemplate } from '../base-node.template';
+import {
+  NodeBaseTemplateMetadata,
+  ToolNodeBaseTemplate,
+} from '../base-node.template';
 
 export const WebSearchToolTemplateSchema = z.object({});
 
@@ -23,6 +26,8 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof WebSearchToolTemplateSchema>,
+    compiledNodes: Map<string, any>,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     return this.webSearchTool.build(config);
   }

@@ -16,8 +16,11 @@ import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node'
 import { CompiledGraphNode } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
-import { SimpleAgentTemplateResult } from '../base-node.template';
-import { ToolNodeBaseTemplate } from '../base-node.template';
+import {
+  NodeBaseTemplateMetadata,
+  SimpleAgentTemplateResult,
+  ToolNodeBaseTemplate,
+} from '../base-node.template';
 
 export const AgentCommunicationToolTemplateSchema = z.object({
   metadata: z
@@ -43,6 +46,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
   async create(
     config: z.infer<typeof AgentCommunicationToolTemplateSchema>,
     compiledNodes: Map<string, CompiledGraphNode>,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     const invokeAgent: AgentCommunicationToolOptions['invokeAgent'] = async <
       T = AgentOutput,
@@ -77,11 +81,21 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       // This allows for persistent conversations with child agents while maintaining separation
       const effectiveThreadId = `${parentThreadId}__${childThreadId}`;
 
+      // Enrich runnableConfig with graph and node metadata
+      const enrichedConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
+        ...runnableConfig,
+        configurable: {
+          ...runnableConfig.configurable,
+          graph_id: metadata.graphId,
+          node_id: metadata.nodeId,
+        },
+      };
+
       const response = await agent.run(
         effectiveThreadId,
         preparedMessages,
         agentConfig,
-        runnableConfig,
+        enrichedConfig,
       );
 
       return response as T;

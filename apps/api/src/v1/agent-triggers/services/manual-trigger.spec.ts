@@ -9,7 +9,13 @@ describe('ManualTrigger', () => {
   let trigger: ManualTrigger;
 
   beforeEach(() => {
-    trigger = new ManualTrigger();
+    const mockLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } as any;
+    trigger = new ManualTrigger(mockLogger);
   });
 
   describe('initialization', () => {
@@ -70,7 +76,7 @@ describe('ManualTrigger', () => {
       expect(result).toEqual(mockOutput);
       expect(mockInvokeAgent).toHaveBeenCalledTimes(1);
 
-      const [messages, config] = mockInvokeAgent.mock.calls[0];
+      const [messages, config] = mockInvokeAgent.mock.calls[0] || [];
       expect(messages).toHaveLength(2);
       expect(messages[0]).toBeInstanceOf(HumanMessage);
       expect(messages[0].content).toBe('test message 1');

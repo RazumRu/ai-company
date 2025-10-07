@@ -3,7 +3,8 @@ import { BadRequestException, LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
-import { NodeKind } from '../graphs.types';
+import { NotificationsService } from '../../notifications/services/notifications.service';
+import { GraphSchemaType, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 
 describe('GraphCompiler', () => {
@@ -39,6 +40,12 @@ describe('GraphCompiler', () => {
             validateTemplateConfig: vi.fn(),
           },
         },
+        {
+          provide: NotificationsService,
+          useValue: {
+            emit: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -48,17 +55,20 @@ describe('GraphCompiler', () => {
 
   describe('compile', () => {
     it('should compile a valid graph schema with single runtime', async () => {
-      const schema = {
+      const schema: GraphSchemaType = {
         nodes: [
           {
             id: 'runtime-1',
-            kind: NodeKind.Runtime,
             template: 'docker-runtime',
             config: { image: 'python:3.11' },
           },
         ],
         edges: [],
-        metadata: { name: 'Test Graph', version: '1.0.0' },
+        metadata: {
+          graphId: 'test-graph',
+          name: 'Test Graph',
+          version: '1.0.0',
+        },
       };
 
       const mockTemplate = createMockTemplate(NodeKind.Runtime);
@@ -79,13 +89,15 @@ describe('GraphCompiler', () => {
         instance: { container: 'runtime-instance' },
       });
       expect(result.edges).toEqual([]);
-      expect(result.metadata).toEqual({
-        name: 'Test Graph',
-        version: '1.0.0',
-      });
+      // Metadata is no longer returned in CompiledGraph
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map),
+        expect.objectContaining({
+          name: 'Test Graph',
+          version: '1.0.0',
+          nodeId: 'runtime-1',
+        }),
       );
     });
 
@@ -94,18 +106,17 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'python-runtime',
-            kind: NodeKind.Runtime,
             template: 'docker-runtime',
             config: { image: 'python:3.11' },
           },
           {
             id: 'shell-tool',
-            kind: NodeKind.Tool,
             template: 'shell-tool',
             config: { runtimeNodeId: 'python-runtime' },
           },
         ],
         edges: [{ from: 'python-runtime', to: 'shell-tool' }],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
@@ -145,39 +156,33 @@ describe('GraphCompiler', () => {
           // Runtimes
           {
             id: 'python-runtime',
-            kind: NodeKind.Runtime,
             template: 'docker-runtime',
             config: { image: 'python:3.11' },
           },
           {
             id: 'node-runtime',
-            kind: NodeKind.Runtime,
             template: 'docker-runtime',
             config: { image: 'node:20' },
           },
           // Tools
           {
             id: 'python-shell',
-            kind: NodeKind.Tool,
             template: 'shell-tool',
             config: { runtimeNodeId: 'python-runtime' },
           },
           {
             id: 'node-shell',
-            kind: NodeKind.Tool,
             template: 'shell-tool',
             config: { runtimeNodeId: 'node-runtime' },
           },
           {
             id: 'web-search',
-            kind: NodeKind.Tool,
             template: 'web-search-tool',
             config: {},
           },
           // Agents
           {
             id: 'python-agent',
-            kind: NodeKind.SimpleAgent,
             template: 'simple-agent',
             config: {
               name: 'Python Developer',
@@ -187,7 +192,6 @@ describe('GraphCompiler', () => {
           },
           {
             id: 'node-agent',
-            kind: NodeKind.SimpleAgent,
             template: 'simple-agent',
             config: {
               name: 'Node Developer',
@@ -204,8 +208,10 @@ describe('GraphCompiler', () => {
           { from: 'node-shell', to: 'node-agent' },
         ],
         metadata: {
+          graphId: 'test-graph',
           name: 'Multi-Agent Development System',
           description: 'Python and Node.js development agents',
+          version: '1.0.0',
         },
       };
 
@@ -246,7 +252,7 @@ describe('GraphCompiler', () => {
 
       // Verify edges
       expect(result.edges).toHaveLength(5);
-      expect(result.metadata?.name).toBe('Multi-Agent Development System');
+      // Metadata is no longer returned in CompiledGraph
 
       // Verify creation order: runtimes first, then tools, then agents
       expect(runtimeTemplate.create).toHaveBeenCalledTimes(2);
@@ -259,17 +265,16 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'test-template',
             config: {},
           },
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'test-template',
             config: {},
           },
         ],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -285,12 +290,12 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'test-template',
             config: {},
           },
         ],
         edges: [{ from: 'node-1', to: 'non-existent-node' }],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -306,11 +311,11 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'unregistered-template',
             config: {},
           },
         ],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(false);
@@ -326,23 +331,21 @@ describe('GraphCompiler', () => {
           // Defined in reverse order to test sorting
           {
             id: 'agent-1',
-            kind: NodeKind.SimpleAgent,
             template: 'simple-agent',
             config: { name: 'Test Agent', toolNodeIds: ['tool-1'] },
           },
           {
             id: 'tool-1',
-            kind: NodeKind.Tool,
             template: 'shell-tool',
             config: { runtimeNodeId: 'runtime-1' },
           },
           {
             id: 'runtime-1',
-            kind: NodeKind.Runtime,
             template: 'docker-runtime',
             config: { image: 'python:3.11' },
           },
         ],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
@@ -382,7 +385,11 @@ describe('GraphCompiler', () => {
     });
 
     it('should handle empty graph', async () => {
-      const schema = { nodes: [], edges: [] };
+      const schema = {
+        nodes: [],
+        edges: [],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
+      };
 
       const result = await compiler.compile(schema);
 
@@ -395,11 +402,11 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'test-template',
             config: {},
           },
         ],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       const mockTemplate = createMockTemplate(NodeKind.Runtime);
@@ -420,17 +427,16 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'runtime-1',
-            kind: NodeKind.Runtime,
             template: 'docker-runtime',
             config: { image: 'python:3.11' },
           },
           {
             id: 'tool-1',
-            kind: NodeKind.Tool,
             template: 'shell-tool',
             config: { runtimeNodeId: 'runtime-1' },
           },
         ],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
@@ -455,6 +461,9 @@ describe('GraphCompiler', () => {
       expect(toolTemplate.create).toHaveBeenCalledWith(
         { runtimeNodeId: 'runtime-1' },
         expect.any(Map),
+        expect.objectContaining({
+          nodeId: 'tool-1',
+        }),
       );
 
       const compiledNodesArg = toolTemplate.create.mock.calls[0]![1];
@@ -468,17 +477,16 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'duplicate',
-            kind: NodeKind.Runtime,
             template: 'test',
             config: {},
           },
           {
             id: 'duplicate',
-            kind: NodeKind.Runtime,
             template: 'test',
             config: {},
           },
         ],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -494,12 +502,12 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'test',
             config: {},
           },
         ],
         edges: [{ from: 'missing-node', to: 'node-1' }],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -515,12 +523,12 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'test',
             config: {},
           },
         ],
         edges: [{ from: 'node-1', to: 'missing-node' }],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -536,11 +544,11 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'unregistered',
             config: {},
           },
         ],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(false);
@@ -555,11 +563,11 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'node-1',
-            kind: NodeKind.Runtime,
             template: 'test',
             config: { key: 'value' },
           },
         ],
+        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       const validateSpy = vi
@@ -570,6 +578,303 @@ describe('GraphCompiler', () => {
       compiler['validateSchema'](schema);
 
       expect(validateSpy).toHaveBeenCalledWith('test', { key: 'value' });
+    });
+  });
+
+  describe('Metadata Propagation', () => {
+    it('should pass metadata with nodeId to template.create', async () => {
+      const mockTemplate = {
+        name: 'mock-template',
+        description: 'Mock template',
+        schema: {} as any,
+        kind: NodeKind.SimpleAgent,
+        create: vi.fn().mockResolvedValue({ instance: 'mock-instance' }),
+      };
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'getTemplate').mockReturnValue(mockTemplate);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
+        (_, config) => config,
+      );
+
+      const schema = {
+        nodes: [
+          {
+            id: 'test-node-456',
+            template: 'simple-agent',
+            config: {
+              summarizeMaxTokens: 1000,
+              summarizeKeepTokens: 100,
+              instructions: 'You are a helpful assistant',
+              name: 'test-agent',
+              invokeModelName: 'gpt-4',
+              toolNodeIds: [],
+            },
+          },
+        ],
+        edges: [],
+        metadata: { graphId: 'test-graph-123', version: '1.0.0' },
+      };
+
+      await compiler.compile(schema);
+
+      // Verify that template.create was called with the correct metadata
+      expect(mockTemplate.create).toHaveBeenCalledWith(
+        schema.nodes[0]!.config,
+        expect.any(Map),
+        {
+          graphId: 'test-graph-123',
+          version: '1.0.0',
+          nodeId: 'test-node-456',
+        },
+      );
+    });
+
+    it('should pass different nodeId for different nodes', async () => {
+      const mockTemplate1 = {
+        kind: NodeKind.SimpleAgent,
+        name: 'simple-agent',
+        description: 'Mock template 1',
+        schema: {} as any,
+        create: vi.fn().mockResolvedValue({ instance: 'mock-instance-1' }),
+      };
+      const mockTemplate2 = {
+        kind: NodeKind.SimpleAgent,
+        name: 'simple-agent-2',
+        description: 'Mock template 2',
+        schema: {} as any,
+        create: vi.fn().mockResolvedValue({ instance: 'mock-instance-2' }),
+      };
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(
+        (templateName) => {
+          if (templateName === 'simple-agent') {
+            return mockTemplate1;
+          }
+          if (templateName === 'simple-agent-2') {
+            return mockTemplate2;
+          }
+          return mockTemplate1; // fallback
+        },
+      );
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
+        (_, config) => config,
+      );
+
+      const schema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'simple-agent',
+            config: {
+              summarizeMaxTokens: 1000,
+              summarizeKeepTokens: 100,
+              instructions: 'Assistant 1',
+              name: 'agent-1',
+              invokeModelName: 'gpt-4',
+              toolNodeIds: [],
+            },
+          },
+          {
+            id: 'node-2',
+            template: 'simple-agent-2',
+            config: {
+              summarizeMaxTokens: 1000,
+              summarizeKeepTokens: 100,
+              instructions: 'Assistant 2',
+              name: 'agent-2',
+              invokeModelName: 'gpt-4',
+              toolNodeIds: [],
+            },
+          },
+        ],
+        edges: [],
+        metadata: { graphId: 'test-graph-123', version: '1.0.0' },
+      };
+
+      await compiler.compile(schema);
+
+      // Verify that each template received the correct nodeId
+      expect(mockTemplate1.create).toHaveBeenCalledWith(
+        schema.nodes[0]!.config,
+        expect.any(Map),
+        {
+          graphId: 'test-graph-123',
+          version: '1.0.0',
+          nodeId: 'node-1',
+        },
+      );
+
+      expect(mockTemplate2.create).toHaveBeenCalledWith(
+        schema.nodes[1]!.config,
+        expect.any(Map),
+        {
+          graphId: 'test-graph-123',
+          version: '1.0.0',
+          nodeId: 'node-2',
+        },
+      );
+    });
+
+    it('should preserve all metadata properties', async () => {
+      const mockTemplate = {
+        name: 'mock-template',
+        description: 'Mock template',
+        schema: {} as any,
+        kind: NodeKind.SimpleAgent,
+        create: vi.fn().mockResolvedValue({ instance: 'mock-instance' }),
+      };
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'getTemplate').mockReturnValue(mockTemplate);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
+        (_, config) => config,
+      );
+
+      const extendedMetadata = {
+        graphId: 'test-graph-123',
+        version: '1.0.0',
+        customProperty: 'custom-value',
+        anotherProperty: 123,
+      };
+
+      const schema = {
+        nodes: [
+          {
+            id: 'test-node-456',
+            template: 'simple-agent',
+            config: {
+              summarizeMaxTokens: 1000,
+              summarizeKeepTokens: 100,
+              instructions: 'You are a helpful assistant',
+              name: 'test-agent',
+              invokeModelName: 'gpt-4',
+              toolNodeIds: [],
+            },
+          },
+        ],
+        edges: [],
+        metadata: extendedMetadata,
+      };
+
+      await compiler.compile(schema);
+
+      // Verify that all metadata properties are preserved
+      expect(mockTemplate.create).toHaveBeenCalledWith(
+        schema.nodes[0]!.config,
+        expect.any(Map),
+        {
+          ...extendedMetadata,
+          nodeId: 'test-node-456',
+        },
+      );
+    });
+
+    it('should handle different node templates', async () => {
+      const mockAgentTemplate = {
+        kind: NodeKind.SimpleAgent,
+        name: 'simple-agent',
+        description: 'Agent template',
+        schema: {} as any,
+        create: vi.fn().mockResolvedValue({ instance: 'agent-instance' }),
+      };
+      const mockToolTemplate = {
+        kind: NodeKind.Tool,
+        name: 'web-search-tool',
+        description: 'Tool template',
+        schema: {} as any,
+        create: vi.fn().mockResolvedValue({ instance: 'tool-instance' }),
+      };
+      const mockRuntimeTemplate = {
+        kind: NodeKind.Runtime,
+        name: 'docker-runtime',
+        description: 'Runtime template',
+        schema: {} as any,
+        create: vi.fn().mockResolvedValue({ instance: 'runtime-instance' }),
+      };
+      const mockTriggerTemplate = {
+        kind: NodeKind.Trigger,
+        name: 'manual-trigger',
+        description: 'Trigger template',
+        schema: {} as any,
+        create: vi.fn().mockResolvedValue({ instance: 'trigger-instance' }),
+      };
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(
+        (templateName) => {
+          if (templateName === 'simple-agent') return mockAgentTemplate;
+          if (templateName === 'web-search-tool') return mockToolTemplate;
+          if (templateName === 'docker-runtime') return mockRuntimeTemplate;
+          if (templateName === 'manual-trigger') return mockTriggerTemplate;
+          return mockAgentTemplate; // fallback
+        },
+      );
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
+        (_, config) => config,
+      );
+
+      const schema = {
+        nodes: [
+          {
+            id: 'agent-node',
+            template: 'simple-agent',
+            config: {
+              summarizeMaxTokens: 1000,
+              summarizeKeepTokens: 100,
+              instructions: 'Agent',
+              name: 'agent',
+              invokeModelName: 'gpt-4',
+              toolNodeIds: [],
+            },
+          },
+          {
+            id: 'tool-node',
+            template: 'web-search-tool',
+            config: {},
+          },
+          {
+            id: 'runtime-node',
+            template: 'docker-runtime',
+            config: { image: 'python:3.9' },
+          },
+          {
+            id: 'trigger-node',
+            template: 'manual-trigger',
+            config: { agentId: 'agent-node' },
+          },
+        ],
+        edges: [],
+        metadata: { graphId: 'test-graph-123', version: '1.0.0' },
+      };
+
+      await compiler.compile(schema);
+
+      // Verify that each template received the correct metadata
+      expect(mockAgentTemplate.create).toHaveBeenCalledWith(
+        schema.nodes[0]!.config,
+        expect.any(Map),
+        { graphId: 'test-graph-123', version: '1.0.0', nodeId: 'agent-node' },
+      );
+
+      expect(mockToolTemplate.create).toHaveBeenCalledWith(
+        schema.nodes[1]!.config,
+        expect.any(Map),
+        { graphId: 'test-graph-123', version: '1.0.0', nodeId: 'tool-node' },
+      );
+
+      expect(mockRuntimeTemplate.create).toHaveBeenCalledWith(
+        schema.nodes[2]!.config,
+        expect.any(Map),
+        { graphId: 'test-graph-123', version: '1.0.0', nodeId: 'runtime-node' },
+      );
+
+      expect(mockTriggerTemplate.create).toHaveBeenCalledWith(
+        schema.nodes[3]!.config,
+        expect.any(Map),
+        { graphId: 'test-graph-123', version: '1.0.0', nodeId: 'trigger-node' },
+      );
     });
   });
 });

@@ -13,6 +13,7 @@ import { CompiledGraphNode } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
 import {
+  NodeBaseTemplateMetadata,
   SimpleAgentTemplateResult,
   TriggerNodeBaseTemplate,
 } from '../base-node.template';
@@ -49,6 +50,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
   async create(
     config: ManualTriggerTemplateSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<ManualTrigger> {
     // Get the target agent node
     const agentNode = compiledNodes.get(config.agentId) as
@@ -93,7 +95,17 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
           threadId,
           messageCount: messages.length,
         });
-        return await agent.run(threadId, messages, agentConfig, runnableConfig);
+        // Enrich runnableConfig with graph and node metadata
+        const enrichedConfig: RunnableConfig<BaseAgentConfigurable> = {
+          ...runnableConfig,
+          configurable: {
+            ...runnableConfig.configurable,
+            graph_id: metadata.graphId,
+            node_id: metadata.nodeId,
+          },
+        };
+
+        return await agent.run(threadId, messages, agentConfig, enrichedConfig);
       },
     );
 

@@ -121,9 +121,13 @@ describe('ManualTriggerTemplate', () => {
         agentId: 'non-existent-agent',
       };
 
-      await expect(template.create(config, emptyCompiledNodes)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        template.create(config, emptyCompiledNodes, {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw NotFoundException with correct error message', async () => {
@@ -133,9 +137,13 @@ describe('ManualTriggerTemplate', () => {
         agentId: 'missing-agent',
       };
 
-      await expect(template.create(config, emptyCompiledNodes)).rejects.toThrow(
-        'Agent missing-agent not found for trigger',
-      );
+      await expect(
+        template.create(config, emptyCompiledNodes, {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        }),
+      ).rejects.toThrow('Agent missing-agent not found for trigger');
     });
 
     it('should create manual trigger with valid agent node', async () => {
@@ -163,7 +171,11 @@ describe('ManualTriggerTemplate', () => {
         threadId: 'test-thread',
       };
 
-      const result = await template.create(config, compiledNodes);
+      const result = await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       expect(result).toBe(mockManualTrigger);
       expect(mockModuleRef.resolve).toHaveBeenCalledWith(
@@ -204,7 +216,11 @@ describe('ManualTriggerTemplate', () => {
         threadId: 'test-thread',
       };
 
-      await template.create(config, compiledNodes);
+      await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Get the invoke agent function that was passed
       const setInvokeAgentCall = (mockManualTrigger.setInvokeAgent as any).mock
@@ -225,7 +241,13 @@ describe('ManualTriggerTemplate', () => {
         'thread-123',
         messages,
         agentConfig,
-        runnableConfig,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: 'thread-123',
+            graph_id: 'test-graph',
+            node_id: 'test-node',
+          }),
+        }),
       );
     });
 
@@ -253,7 +275,11 @@ describe('ManualTriggerTemplate', () => {
         agentId: 'agent-1',
       };
 
-      await template.create(config, compiledNodes);
+      await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Get the invoke agent function
       const setInvokeAgentCall = (mockManualTrigger.setInvokeAgent as any).mock
@@ -272,7 +298,77 @@ describe('ManualTriggerTemplate', () => {
         expect.stringMatching(/.+/),
         messages,
         agentConfig,
-        runnableConfig,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            graph_id: 'test-graph',
+            node_id: 'test-node',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('Metadata Propagation', () => {
+    it('should preserve existing configurable properties when enriching', async () => {
+      const agentConfig = {
+        name: 'Test Agent',
+        instructions: 'Test',
+        invokeModelName: 'gpt-4',
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+      };
+
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        instance: {
+          agent: mockSimpleAgent,
+          config: agentConfig,
+        },
+      };
+
+      const compiledNodes = new Map([['agent-1', agentNode]]);
+
+      const config = {
+        agentId: 'agent-1',
+      };
+
+      await template.create(config, compiledNodes, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
+
+      const setInvokeAgentCall = (mockManualTrigger.setInvokeAgent as any).mock
+        .calls[0];
+      const invokeAgentFn = setInvokeAgentCall[0];
+
+      const runnableConfig = {
+        configurable: {
+          thread_id: 'test-thread-789',
+          caller_agent: {} as any,
+          graph_id: 'existing-graph',
+          node_id: 'existing-node',
+        },
+      };
+
+      const messages = [new HumanMessage('test')];
+
+      await invokeAgentFn(messages, runnableConfig);
+
+      // Verify that existing properties are preserved and new ones override
+      expect(mockSimpleAgent.run).toHaveBeenCalledWith(
+        'test-thread-789',
+        messages,
+        agentConfig,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: 'test-thread-789',
+            caller_agent: expect.any(Object),
+            graph_id: 'test-graph', // Should be overridden with template metadata
+            node_id: 'test-node', // Should be overridden with template metadata
+          }),
+        }),
       );
     });
   });

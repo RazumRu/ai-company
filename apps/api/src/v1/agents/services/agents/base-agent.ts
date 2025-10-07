@@ -5,6 +5,7 @@ import { ChatOpenAI, OpenAIChatModelId } from '@langchain/openai';
 import { z } from 'zod';
 
 import { environment } from '../../../../environments';
+import { BaseAgentConfigurable } from '../nodes/base-node';
 
 export type AgentOutput = {
   messages: BaseMessage[];
@@ -33,6 +34,6 @@ export abstract class BaseAgent<TSchema> {
     threadId: string,
     messages: BaseMessage[],
     config: z.infer<TSchema>,
-    runnableConfig?: RunnableConfig,
+    runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput>;
 }
