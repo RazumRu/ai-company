@@ -1,6 +1,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 
+import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { CompiledGraphNode, NodeKind } from '../../graphs/graphs.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
@@ -42,4 +43,11 @@ export abstract class SimpleAgentNodeBaseTemplate<
   TResult = SimpleAgentTemplateResult<z.infer<TConfig>>,
 > extends NodeBaseTemplate<TConfig, TResult> {
   readonly kind: NodeKind = NodeKind.SimpleAgent;
+}
+
+export abstract class TriggerNodeBaseTemplate<
+  TConfig extends z.ZodTypeAny,
+  TResult = BaseTrigger<TConfig>,
+> extends NodeBaseTemplate<TConfig, TResult> {
+  readonly kind: NodeKind = NodeKind.Trigger;
 }

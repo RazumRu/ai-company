@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@packages/common';
+import { BadRequestException, LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
@@ -20,6 +20,15 @@ describe('GraphCompiler', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        LoggerModule.forRoot({
+          appName: 'test',
+          appVersion: '1.0.0',
+          environment: 'test',
+          prettyPrint: true,
+          level: 'debug',
+        }),
+      ],
       providers: [
         GraphCompiler,
         {

@@ -2,6 +2,7 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
+import { AgentTriggersModule } from '../agent-triggers/agent-triggers.module';
 import { AgentsModule } from '../agents/agents.module';
 import { RuntimeModule } from '../runtime/runtime.module';
 import { REGISTER_TEMPLATE_KEY } from './decorators/register-template.decorator';
@@ -11,9 +12,16 @@ import { DockerRuntimeTemplate } from './templates/runtimes/docker-runtime.templ
 import { AgentCommunicationToolTemplate } from './templates/tools/agent-communication-tool.template';
 import { ShellToolTemplate } from './templates/tools/shell-tool.template';
 import { WebSearchToolTemplate } from './templates/tools/web-search-tool.template';
+import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.template';
 
 @Module({
-  imports: [RuntimeModule, AgentToolsModule, AgentsModule, DiscoveryModule],
+  imports: [
+    RuntimeModule,
+    AgentToolsModule,
+    AgentsModule,
+    AgentTriggersModule,
+    DiscoveryModule,
+  ],
   providers: [
     TemplateRegistry,
     // --- templates ---
@@ -22,6 +30,7 @@ import { WebSearchToolTemplate } from './templates/tools/web-search-tool.templat
     ShellToolTemplate,
     WebSearchToolTemplate,
     SimpleAgentTemplate,
+    ManualTriggerTemplate,
   ],
   exports: [TemplateRegistry],
 })

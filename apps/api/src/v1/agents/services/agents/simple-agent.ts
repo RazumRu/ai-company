@@ -8,6 +8,7 @@ import {
   StateGraph,
 } from '@langchain/langgraph';
 import { Injectable, Scope } from '@nestjs/common';
+import { DefaultLogger } from '@packages/common';
 import { z } from 'zod';
 
 import { FinishTool } from '../../../agent-tools/tools/finish.tool';
@@ -56,7 +57,10 @@ export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
 @Injectable({ scope: Scope.TRANSIENT })
 @RegisterAgent()
 export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
-  constructor(private checkpointer: PgCheckpointSaver) {
+  constructor(
+    private readonly checkpointer: PgCheckpointSaver,
+    private readonly logger: DefaultLogger,
+  ) {
     super();
 
     this.addTool(new FinishTool().build({}));
@@ -101,10 +105,14 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
   protected buildGraph(config: SimpleAgentSchemaType) {
     // ---- summarize ----
-    const summarizeNode = new SummarizeNode(this.buildLLM('gpt-5-mini'), {
-      maxTokens: config.summarizeMaxTokens,
-      keepTokens: config.summarizeKeepTokens,
-    });
+    const summarizeNode = new SummarizeNode(
+      this.buildLLM('gpt-5-mini'),
+      {
+        maxTokens: config.summarizeMaxTokens,
+        keepTokens: config.summarizeKeepTokens,
+      },
+      this.logger,
+    );
 
     // ---- invoke ----
     const tools = this.tools;
@@ -116,18 +124,26 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         toolChoice: 'auto',
         parallelToolCalls: true,
       },
+      this.logger,
     );
 
     // ---- tool usage guard ----
-    const toolUsageGuardNode = new ToolUsageGuardNode({
-      getRestrictOutput: () => true,
-      getRestrictionMessage: () =>
-        "Do not produce a final answer directly. Before finishing, call a tool. If no tool is needed, call the 'finish' tool.",
-      getRestrictionMaxInjections: () => 2,
-    });
+    const toolUsageGuardNode = new ToolUsageGuardNode(
+      {
+        getRestrictOutput: () => true,
+        getRestrictionMessage: () =>
+          "Do not produce a final answer directly. Before finishing, call a tool. If no tool is needed, call the 'finish' tool.",
+        getRestrictionMaxInjections: () => 2,
+      },
+      this.logger,
+    );
 
     // ---- invoke ----
-    const toolExecutorNode = new ToolExecutorNode(tools);
+    const toolExecutorNode = new ToolExecutorNode(
+      tools,
+      undefined,
+      this.logger,
+    );
 
     // ---- build ----
     const g = new StateGraph({
@@ -156,7 +172,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         (s) => (s.toolUsageGuardActivated ? 'invoke_llm' : END),
         { invoke_llm: 'invoke_llm', [END]: END },
       )
-      .addEdge('tools', 'summarize');
+      .addConditionalEdges('tools', (s) => (s.done ? END : 'summarize'), {
+        summarize: 'summarize',
+        [END]: END,
+      });
 
     return g.compile({ checkpointer: this.checkpointer });
   }
@@ -167,6 +186,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     config: SimpleAgentSchemaType,
     runnableConfig?: RunnableConfig,
   ): Promise<AgentOutput> {
+    this.logger.debug('simple-agent.run.start', {
+      threadId,
+      messageCount: messages.length,
+      model: config.invokeModelName,
+      agentName: config.name,
+    });
+
     const g = this.buildGraph(config);
 
     const merged: RunnableConfig<BaseAgentConfigurable> = {
@@ -188,6 +214,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       },
       merged,
     );
+
+    this.logger.debug('simple-agent.run.complete', {
+      threadId,
+      responseMessageCount: response.messages.length,
+      done: response.done,
+    });
 
     return response;
   }

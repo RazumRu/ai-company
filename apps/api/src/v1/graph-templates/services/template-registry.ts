@@ -79,6 +79,7 @@ export class TemplateRegistry {
       return template.schema.parse(config);
     } catch (error) {
       throw new BadRequestException(
+        'INVALID_TEMPLATE_CONFIG',
         `Invalid configuration for template '${templateName}': ${error}`,
       );
     }

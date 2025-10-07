@@ -2,6 +2,7 @@ export enum NodeKind {
   Runtime = 'runtime',
   Tool = 'tool',
   SimpleAgent = 'simpleAgent',
+  Trigger = 'trigger',
 }
 
 export interface CompiledGraphNode<TInstance = unknown> {
@@ -22,4 +23,10 @@ export interface CompiledGraph {
     description?: string;
     version?: string;
   };
+  /**
+   * Destroys the graph and cleans up all resources
+   * - Stops all triggers
+   * - Destroys all runtimes
+   */
+  destroy: () => Promise<void>;
 }

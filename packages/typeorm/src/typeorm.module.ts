@@ -1,6 +1,8 @@
 import { DynamicModule, Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { MixedList } from 'typeorm/common/MixedList';
+import { EntitySchema } from 'typeorm/entity-schema/EntitySchema';
 
 import { TypeormService } from './typeorm.service';
 
@@ -34,10 +36,13 @@ export class TypeormModule {
     };
   }
 
-  static forRootTesting(dataSource: DataSource): DynamicModule {
+  static forRootTesting(
+    dataSource: DataSource,
+    entities: MixedList<(new (...args: any[]) => any) | string | EntitySchema>,
+  ): DynamicModule {
     dataSource.setOptions({
       ...dataSource.options,
-      entities: undefined,
+      entities,
       migrations: undefined,
       migrationsRun: false,
     });

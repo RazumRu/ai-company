@@ -1,13 +1,19 @@
+import { AIMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
+import { LoggerModule } from '@packages/common';
 import { TypeormModule } from '@packages/typeorm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import typeormconfig from '../../../db/typeormconfig';
 import { AgentToolsModule } from '../../agent-tools/agent-tools.module';
+import { ManualTrigger } from '../../agent-triggers/services/manual-trigger';
 import { AgentsModule } from '../../agents/agents.module';
+import { GraphCheckpointEntity } from '../../agents/entity/graph-chekpoints.entity';
+import { GraphCheckpointWritesEntity } from '../../agents/entity/graph-chekpoints-writes.entity';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { RuntimeModule } from '../../runtime/runtime.module';
+import { RuntimeType } from '../../runtime/runtime.types';
 import { GraphsModule } from '../graphs.module';
 import { NodeKind } from '../graphs.types';
 import { GraphCompiler } from '../services/graph-compiler';
@@ -20,11 +26,19 @@ describe('Simple Graph Integration Tests', () => {
   beforeEach(async () => {
     module = await Test.createTestingModule({
       imports: [
-        TypeormModule.forRootTesting(typeormconfig),
+        TypeormModule.forRootTesting(typeormconfig, [
+          GraphCheckpointEntity,
+          GraphCheckpointWritesEntity,
+        ]),
         RuntimeModule,
         AgentToolsModule,
         AgentsModule,
         GraphsModule,
+        LoggerModule.forRoot({
+          environment: 'test',
+          appName: 'test',
+          appVersion: 'test',
+        }),
       ],
       providers: [SimpleAgent],
     }).compile();
@@ -33,6 +47,10 @@ describe('Simple Graph Integration Tests', () => {
 
     graphCompiler = module.get<GraphCompiler>(GraphCompiler);
     templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
+  });
+
+  afterEach(async () => {
+    await module?.close();
   });
 
   describe('Graph Compilation Basic Functionality', () => {
@@ -366,5 +384,231 @@ describe('Simple Graph Integration Tests', () => {
         compiledGraph.nodes.get('agent-comm-tool-1')?.instance,
       ).toBeDefined();
     });
+  });
+
+  describe('Manual Trigger with Shell Command Execution', () => {
+    it('should compile graph with trigger and verify destroy works', async () => {
+      // First, test just compilation and destroy without invoking
+      const graphSchema = {
+        nodes: [
+          {
+            id: 'runtime-1',
+            template: 'docker-runtime',
+            config: {
+              runtimeType: RuntimeType.Docker,
+              image: 'node:18',
+            },
+          },
+          {
+            id: 'shell-tool-1',
+            template: 'shell-tool',
+            config: {
+              runtimeNodeId: 'runtime-1',
+            },
+          },
+          {
+            id: 'agent-1',
+            template: 'simple-agent',
+            config: {
+              summarizeMaxTokens: 1000,
+              summarizeKeepTokens: 500,
+              instructions:
+                'You are a helpful assistant that can execute shell commands.',
+              name: 'Shell Agent',
+              invokeModelName: 'gpt-4',
+              toolNodeIds: ['shell-tool-1'],
+            },
+          },
+          {
+            id: 'trigger-1',
+            template: 'manual-trigger',
+            config: {
+              agentId: 'agent-1',
+              threadId: 'test-shell-thread',
+            },
+          },
+        ],
+        edges: [],
+      };
+
+      const compiledGraph = await graphCompiler.compile(graphSchema);
+
+      try {
+        expect(compiledGraph.nodes.size).toBe(4);
+        expect(compiledGraph.nodes.has('trigger-1')).toBe(true);
+
+        const triggerNode = compiledGraph.nodes.get('trigger-1');
+        const trigger = triggerNode!.instance as ManualTrigger;
+        expect(trigger.isStarted).toBe(true);
+      } finally {
+        await compiledGraph.destroy();
+      }
+    }, 30000); // 30 second timeout for Docker/Podman operations
+
+    it('should invoke agent via trigger without tools', async () => {
+      // Simple test without Docker/shell tools
+      const graphSchema = {
+        nodes: [
+          {
+            id: 'agent-1',
+            template: 'simple-agent',
+            config: {
+              summarizeMaxTokens: 1000,
+              summarizeKeepTokens: 500,
+              instructions:
+                'You are a helpful assistant. Keep responses brief.',
+              name: 'Simple Agent',
+              invokeModelName: 'gpt-5-mini',
+              toolNodeIds: [],
+            },
+          },
+          {
+            id: 'trigger-1',
+            template: 'manual-trigger',
+            config: {
+              agentId: 'agent-1',
+              threadId: 'test-simple-thread',
+            },
+          },
+        ],
+        edges: [],
+      };
+
+      const compiledGraph = await graphCompiler.compile(graphSchema);
+
+      try {
+        const triggerNode = compiledGraph.nodes.get('trigger-1');
+        const trigger = triggerNode!.instance as ManualTrigger;
+
+        console.log('Triggering simple agent...');
+        const response = await Promise.race([
+          trigger.trigger(['Say hello in 5 words or less']),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Simple agent timeout')), 30000),
+          ),
+        ]);
+
+        console.log('Got response from simple agent');
+        expect(response).toBeDefined();
+        expect(response.messages).toBeDefined();
+        expect(response.messages.length).toBeGreaterThan(0);
+      } finally {
+        await compiledGraph.destroy();
+      }
+    }, 45000);
+
+    it('should invoke agent via trigger, execute shell command, and return result', async () => {
+      // Create a graph with: runtime -> shell tool -> agent -> trigger
+      const graphSchema = {
+        nodes: [
+          // Runtime
+          {
+            id: 'runtime-1',
+            template: 'docker-runtime',
+            config: {
+              runtimeType: RuntimeType.Docker,
+              image: 'node:18',
+            },
+          },
+          // Shell tool
+          {
+            id: 'shell-tool-1',
+            template: 'shell-tool',
+            config: {
+              runtimeNodeId: 'runtime-1',
+            },
+          },
+          // Agent with shell tool
+          {
+            id: 'agent-1',
+            template: 'simple-agent',
+            config: {
+              summarizeMaxTokens: 1000,
+              summarizeKeepTokens: 500,
+              instructions:
+                'You are a helpful assistant that can execute shell commands. When asked to run a command, use the shell tool.',
+              name: 'Shell Agent',
+              invokeModelName: 'gpt-5-mini',
+              toolNodeIds: ['shell-tool-1'],
+            },
+          },
+          // Manual trigger
+          {
+            id: 'trigger-1',
+            template: 'manual-trigger',
+            config: {
+              agentId: 'agent-1',
+              threadId: 'test-shell-thread',
+            },
+          },
+        ],
+        edges: [],
+      };
+
+      // Compile the graph
+      const compiledGraph = await graphCompiler.compile(graphSchema);
+
+      try {
+        // Verify all nodes are compiled
+        expect(compiledGraph.nodes.size).toBe(4);
+        expect(compiledGraph.nodes.has('runtime-1')).toBe(true);
+        expect(compiledGraph.nodes.has('shell-tool-1')).toBe(true);
+        expect(compiledGraph.nodes.has('agent-1')).toBe(true);
+        expect(compiledGraph.nodes.has('trigger-1')).toBe(true);
+
+        // Get the trigger
+        const triggerNode = compiledGraph.nodes.get('trigger-1');
+        expect(triggerNode).toBeDefined();
+        expect(triggerNode!.type).toBe(NodeKind.Trigger);
+
+        const trigger = triggerNode!.instance as ManualTrigger;
+        expect(trigger).toBeDefined();
+        expect(trigger.isStarted).toBe(true);
+
+        // Trigger the agent with a simple command
+        console.log('Triggering agent...');
+        const responsePromise = trigger.trigger([
+          'Use the shell tool to execute: echo "Hello from test"',
+        ]);
+
+        // Add a timeout to prevent hanging forever
+        const response = await Promise.race([
+          responsePromise,
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error('Agent invocation timeout')),
+              60000,
+            ),
+          ),
+        ]);
+
+        console.log('Got response, checking...');
+
+        // Verify we got a response
+        expect(response).toBeDefined();
+        expect(response.messages).toBeDefined();
+        expect(response.messages.length).toBeGreaterThan(0);
+
+        // Find AI messages with actual content (not just tool calls)
+        const aiMessages = response.messages.filter(
+          (msg) =>
+            msg instanceof AIMessage &&
+            msg.content &&
+            msg.content.toString().trim().length > 0,
+        );
+        expect(aiMessages.length).toBeGreaterThan(0);
+
+        const lastAIMessageWithContent = aiMessages[aiMessages.length - 1];
+        expect(lastAIMessageWithContent.content).toBeDefined();
+
+        // The response should contain some content
+        const responseText = lastAIMessageWithContent.content as string;
+        expect(responseText.length).toBeGreaterThan(0);
+
+        console.log('Test passed!');
+      } finally {
+        await compiledGraph.destroy();
+      }
+    }, 90000); // 90 second timeout for real LLM and Docker execution
   });
 });

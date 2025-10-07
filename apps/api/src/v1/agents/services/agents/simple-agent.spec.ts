@@ -1,5 +1,6 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
+import { LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
@@ -20,6 +21,15 @@ describe('SimpleAgent', () => {
     } as any;
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        LoggerModule.forRoot({
+          appName: 'test',
+          appVersion: '1.0.0',
+          environment: 'test',
+          prettyPrint: true,
+          level: 'debug',
+        }),
+      ],
       providers: [
         SimpleAgent,
         {

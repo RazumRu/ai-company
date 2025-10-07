@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { BadRequestException } from '@packages/common';
+import { BadRequestException, DefaultLogger } from '@packages/common';
 import { groupBy } from 'lodash';
 import { z } from 'zod';
 
+import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
-import { CompiledGraphNode } from '../graphs.types';
-import { CompiledGraph, NodeKind } from '../graphs.types';
+import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { CompiledGraph, CompiledGraphNode, NodeKind } from '../graphs.types';
 
 // Node configuration schema
 export const GraphNodeSchema = z.object({
@@ -51,7 +52,10 @@ export type GraphNodeSchemaType = z.infer<typeof GraphNodeSchema>;
  */
 @Injectable()
 export class GraphCompiler {
-  constructor(private readonly templateRegistry: TemplateRegistry) {}
+  constructor(
+    private readonly templateRegistry: TemplateRegistry,
+    private readonly logger: DefaultLogger,
+  ) {}
 
   /**
    * Validates that all node IDs are unique
@@ -106,7 +110,12 @@ export class GraphCompiler {
       }
       return template.kind;
     });
-    const buildOrder = [NodeKind.Runtime, NodeKind.Tool, NodeKind.SimpleAgent];
+    const buildOrder = [
+      NodeKind.Runtime,
+      NodeKind.Tool,
+      NodeKind.SimpleAgent,
+      NodeKind.Trigger,
+    ];
 
     for (const kind of buildOrder) {
       const nodes = nodesByKind[kind] || [];
@@ -120,7 +129,68 @@ export class GraphCompiler {
       nodes: compiledNodes,
       edges: schema.edges || [],
       metadata: schema.metadata,
+      destroy: async () => {
+        await this.destroyGraph(compiledNodes);
+      },
     };
+  }
+
+  /**
+   * Destroys a compiled graph and all its resources
+   */
+  private async destroyGraph(
+    nodes: Map<string, CompiledGraphNode>,
+  ): Promise<void> {
+    const destroyPromises: Promise<void>[] = [];
+
+    // Group nodes by kind for ordered destruction
+    const triggerNodes: CompiledGraphNode<BaseTrigger<any>>[] = [];
+    const runtimeNodes: CompiledGraphNode<BaseRuntime>[] = [];
+
+    for (const node of nodes.values()) {
+      if (node.type === NodeKind.Trigger) {
+        triggerNodes.push(node as CompiledGraphNode<BaseTrigger<any>>);
+      } else if (node.type === NodeKind.Runtime) {
+        runtimeNodes.push(node as CompiledGraphNode<BaseRuntime>);
+      }
+    }
+
+    // First, stop all triggers
+    for (const node of triggerNodes) {
+      const trigger = node.instance;
+      if (trigger && typeof trigger.stop === 'function') {
+        destroyPromises.push(
+          trigger.stop().catch((error: Error) => {
+            this.logger.error(error, `Failed to stop trigger ${node.id}`);
+          }),
+        );
+      }
+    }
+
+    // Wait for all triggers to stop
+    await Promise.all(destroyPromises);
+
+    // Then, destroy all runtimes
+    const runtimePromises: Promise<void>[] = [];
+    for (const node of runtimeNodes) {
+      const runtime = node.instance;
+      if (runtime && typeof runtime.stop === 'function') {
+        // Add timeout to prevent hanging
+        const stopPromise = Promise.race([
+          runtime.stop(),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('Runtime stop timeout')), 15000),
+          ),
+        ]).catch((error: Error) => {
+          this.logger.error(error, `Failed to stop runtime ${node.id}`);
+        });
+
+        runtimePromises.push(stopPromise);
+      }
+    }
+
+    // Wait for all runtimes to be destroyed
+    await Promise.all(runtimePromises);
   }
 
   /**
