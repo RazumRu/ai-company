@@ -7,6 +7,13 @@ export enum NodeKind {
   Trigger = 'trigger',
 }
 
+export enum GraphStatus {
+  Created = 'created',
+  Running = 'running',
+  Stopped = 'stopped',
+  Error = 'error',
+}
+
 export interface CompiledGraphNode<TInstance = unknown> {
   id: string;
   type: string;

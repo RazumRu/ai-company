@@ -5,8 +5,10 @@ import { AgentToolsModule } from '../agent-tools/agent-tools.module';
 import { AgentTriggersModule } from '../agent-triggers/agent-triggers.module';
 import { AgentsModule } from '../agents/agents.module';
 import { RuntimeModule } from '../runtime/runtime.module';
+import { TemplatesController } from './controllers/templates.controller';
 import { REGISTER_TEMPLATE_KEY } from './decorators/register-template.decorator';
 import { TemplateRegistry } from './services/template-registry';
+import { TemplatesService } from './services/templates.service';
 import { SimpleAgentTemplate } from './templates/agents/simple-agent.template';
 import { DockerRuntimeTemplate } from './templates/runtimes/docker-runtime.template';
 import { AgentCommunicationToolTemplate } from './templates/tools/agent-communication-tool.template';
@@ -22,8 +24,10 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     AgentTriggersModule,
     DiscoveryModule,
   ],
+  controllers: [TemplatesController],
   providers: [
     TemplateRegistry,
+    TemplatesService,
     // --- templates ---
     AgentCommunicationToolTemplate,
     DockerRuntimeTemplate,
@@ -32,7 +36,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     SimpleAgentTemplate,
     ManualTriggerTemplate,
   ],
-  exports: [TemplateRegistry],
+  exports: [TemplateRegistry, TemplatesService],
 })
 export class GraphTemplatesModule implements OnModuleInit {
   constructor(
