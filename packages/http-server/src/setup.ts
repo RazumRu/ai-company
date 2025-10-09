@@ -36,7 +36,6 @@ import { ExceptionsFilter } from './exceptions.filter';
 import { HttpServerModule } from './http-server.module';
 import { IHttpServerParams } from './http-server.types';
 import { ZodResponseInterceptor } from './interceptors/zod-response.interceptor';
-import { ValidationPipe } from './pipes/validation.pipe';
 
 export const getVersion = (v?: string) =>
   `${v ? `v${v}` : ``}`

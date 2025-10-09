@@ -54,4 +54,11 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms, string> {
       });
     }
   }
+
+  /**
+   * Get all graphs with running status
+   */
+  async getRunningGraphs(): Promise<GraphEntity[]> {
+    return this.getAll({ status: GraphStatus.Running });
+  }
 }

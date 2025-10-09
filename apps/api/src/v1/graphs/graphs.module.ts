@@ -1,6 +1,6 @@
 import './graphs.exceptions';
 
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
@@ -10,6 +10,7 @@ import { GraphDao } from './dao/graph.dao';
 import { GraphEntity } from './entity/graph.entity';
 import { GraphCompiler } from './services/graph-compiler';
 import { GraphRegistry } from './services/graph-registry';
+import { GraphRestorationService } from './services/graph-restoration.service';
 import { GraphsService } from './services/graphs.service';
 
 @Module({
@@ -19,7 +20,26 @@ import { GraphsService } from './services/graphs.service';
     NotificationsModule,
   ],
   controllers: [GraphsController],
-  providers: [GraphDao, GraphsService, GraphCompiler, GraphRegistry],
-  exports: [GraphCompiler, GraphsService, GraphRegistry],
+  providers: [
+    GraphDao,
+    GraphsService,
+    GraphCompiler,
+    GraphRegistry,
+    GraphRestorationService,
+  ],
+  exports: [
+    GraphCompiler,
+    GraphsService,
+    GraphRegistry,
+    GraphRestorationService,
+  ],
 })
-export class GraphsModule {}
+export class GraphsModule implements OnModuleInit {
+  constructor(
+    private readonly graphRestorationService: GraphRestorationService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.graphRestorationService.restoreRunningGraphs();
+  }
+}

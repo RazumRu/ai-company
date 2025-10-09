@@ -1,4 +1,5 @@
 import { reqHeaders } from '../common.helper';
+import { graphCleanup } from './graph-cleanup.helper';
 import {
   createGraph,
   createMockGraphData,
@@ -14,6 +15,12 @@ import {
 
 describe('Graphs E2E', () => {
   let createdGraphId: string;
+
+  // Cleanup after all tests in this describe block
+  after(() => {
+    cy.log('Running cleanup for Graphs E2E tests...');
+    graphCleanup.cleanupAllGraphs();
+  });
 
   describe('POST /v1/graphs', () => {
     it('should create a new graph', () => {
@@ -326,12 +333,5 @@ describe('Graphs E2E', () => {
         });
       });
     });
-  });
-
-  // Cleanup after all tests
-  after(() => {
-    if (createdGraphId) {
-      deleteGraph(createdGraphId);
-    }
   });
 });

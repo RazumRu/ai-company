@@ -22,8 +22,6 @@ describe('NotificationsService', () => {
     };
 
     mockEmitter = new EventEmitter();
-    const emitSpy = vi.spyOn(mockEmitter, 'emit');
-    const onSpy = vi.spyOn(mockEmitter, 'on');
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -32,14 +30,14 @@ describe('NotificationsService', () => {
           provide: DefaultLogger,
           useValue: mockLogger,
         },
-        {
-          provide: EventEmitter,
-          useValue: mockEmitter,
-        },
       ],
     }).compile();
 
     service = module.get<NotificationsService>(NotificationsService);
+    
+    // Spy on the service's internal emitter
+    const emitSpy = vi.spyOn(service['emitter'], 'emit');
+    const onSpy = vi.spyOn(service['emitter'], 'on');
   });
 
   afterEach(() => {
@@ -66,7 +64,7 @@ describe('NotificationsService', () => {
         },
       };
 
-      const emitSpy = vi.spyOn(mockEmitter, 'emit');
+      const emitSpy = vi.spyOn(service['emitter'], 'emit');
 
       service.emit(graphNotification);
 
@@ -101,7 +99,7 @@ describe('NotificationsService', () => {
         },
       };
 
-      const emitSpy = vi.spyOn(mockEmitter, 'emit');
+      const emitSpy = vi.spyOn(service['emitter'], 'emit');
 
       service.emit(checkpointerNotification);
 
@@ -133,7 +131,7 @@ describe('NotificationsService', () => {
         },
       };
 
-      const emitSpy = vi.spyOn(mockEmitter, 'emit');
+      const emitSpy = vi.spyOn(service['emitter'], 'emit');
 
       service.emit(checkpointerNotification);
 
@@ -148,7 +146,7 @@ describe('NotificationsService', () => {
   describe('subscribe', () => {
     it('should register event listener', () => {
       const mockCallback = vi.fn();
-      const onSpy = vi.spyOn(mockEmitter, 'on');
+      const onSpy = vi.spyOn(service['emitter'], 'on');
 
       service.subscribe(mockCallback);
 

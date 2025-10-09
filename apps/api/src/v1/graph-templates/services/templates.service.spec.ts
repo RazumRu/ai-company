@@ -131,8 +131,8 @@ describe('TemplatesService', () => {
         schema: {
           typeName: 'ZodObject',
           shape: {
-            name: { typeName: 'ZodString' },
-            age: { typeName: 'ZodNumber' },
+            name: { _def: { typeName: 'ZodString' } },
+            age: { _def: { typeName: 'ZodNumber' } },
           },
         },
       });

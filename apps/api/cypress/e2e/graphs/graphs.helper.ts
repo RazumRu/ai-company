@@ -9,15 +9,24 @@ import {
   UpdateGraphDtoSchema,
 } from '../../api-definitions/schemas.gen';
 import { generateRandomUUID, reqHeaders } from '../common.helper';
+import { graphCleanup } from './graph-cleanup.helper';
 
 export const createGraph = (data: CreateGraphDto, headers = reqHeaders) =>
-  cy.request<GraphDto>({
-    url: '/api/v1/graphs',
-    method: 'POST',
-    headers,
-    body: data,
-    failOnStatusCode: false,
-  });
+  cy
+    .request<GraphDto>({
+      url: '/api/v1/graphs',
+      method: 'POST',
+      headers,
+      body: data,
+      failOnStatusCode: false,
+    })
+    .then((response) => {
+      // Register the created graph for cleanup
+      if (response.status === 201 && response.body?.id) {
+        graphCleanup.registerGraph(response.body.id);
+      }
+      return response;
+    });
 
 export const getAllGraphs = (headers = reqHeaders) =>
   cy.request<GraphDto[]>({
@@ -48,28 +57,48 @@ export const updateGraph = (
   });
 
 export const deleteGraph = (id: string, headers = reqHeaders) =>
-  cy.request({
-    url: `/api/v1/graphs/${id}`,
-    method: 'DELETE',
-    headers,
-    failOnStatusCode: false,
-  });
+  cy
+    .request({
+      url: `/api/v1/graphs/${id}`,
+      method: 'DELETE',
+      headers,
+      failOnStatusCode: false,
+    })
+    .then((response) => {
+      // Unregister the graph from cleanup if successfully deleted
+      if (response.status === 200) {
+        graphCleanup.unregisterGraph(id);
+      }
+      return response;
+    });
 
-export const runGraph = (id: string, headers = reqHeaders) =>
-  cy.request<GraphDto>({
+export const runGraph = (id: string, headers = reqHeaders) => {
+  // Ensure the graph is registered for cleanup
+  graphCleanup.registerGraph(id);
+
+  return cy.request<GraphDto>({
     url: `/api/v1/graphs/${id}/run`,
     method: 'POST',
     headers,
     failOnStatusCode: false,
   });
+};
 
 export const destroyGraph = (id: string, headers = reqHeaders) =>
-  cy.request<GraphDto>({
-    url: `/api/v1/graphs/${id}/destroy`,
-    method: 'POST',
-    headers,
-    failOnStatusCode: false,
-  });
+  cy
+    .request<GraphDto>({
+      url: `/api/v1/graphs/${id}/destroy`,
+      method: 'POST',
+      headers,
+      failOnStatusCode: false,
+    })
+    .then((response) => {
+      // Unregister the graph from cleanup if successfully destroyed
+      if (response.status === 201 || response.status === 200) {
+        graphCleanup.unregisterGraph(id);
+      }
+      return response;
+    });
 
 export const validateGraph = (data: GraphDto) => {
   cy.validateSchema(data, GraphDtoSchema);

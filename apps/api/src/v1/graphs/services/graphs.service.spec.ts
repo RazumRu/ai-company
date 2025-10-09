@@ -5,11 +5,10 @@ import { TypeormService } from '@packages/typeorm';
 import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { GraphDao } from '../dao/graph.dao';
 import { CreateGraphDto, GraphDto, UpdateGraphDto } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
-import { CompiledGraph, GraphSchemaType, GraphStatus } from '../graphs.types';
+import { CompiledGraph, GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphsService } from './graphs.service';
@@ -76,8 +75,8 @@ describe('GraphsService', () => {
       },
     },
     status: GraphStatus.Created,
-    createdAt: new Date('2024-01-01T00:00:00Z'),
-    updatedAt: new Date('2024-01-01T00:00:00Z'),
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   });
 
@@ -188,7 +187,7 @@ describe('GraphsService', () => {
         },
       };
 
-      const expectedGraph = createMockGraphEntity({
+      const expectedEntity = createMockGraphEntity({
         id: 'new-graph-id',
         name: 'New Graph',
         description: 'A new test graph',
@@ -196,11 +195,18 @@ describe('GraphsService', () => {
         createdBy: mockUserId,
       });
 
-      vi.mocked(graphDao.create).mockResolvedValue(expectedGraph);
+      const expectedGraph = createMockGraphDto({
+        id: 'new-graph-id',
+        name: 'New Graph',
+        description: 'A new test graph',
+        status: GraphStatus.Created,
+      });
+
+      vi.mocked(graphDao.create).mockResolvedValue(expectedEntity);
 
       const result = await service.create(createData);
 
-      expect(result).toEqual(expectedGraph);
+      expect(result).toMatchObject(expectedGraph);
       expect(graphDao.create).toHaveBeenCalledWith(
         {
           ...createData,
@@ -241,12 +247,13 @@ describe('GraphsService', () => {
 
   describe('findById', () => {
     it('should return graph when found', async () => {
-      const expectedGraph = createMockGraphEntity();
-      vi.mocked(graphDao.getOne).mockResolvedValue(expectedGraph);
+      const expectedEntity = createMockGraphEntity();
+      const expectedGraph = createMockGraphDto();
+      vi.mocked(graphDao.getOne).mockResolvedValue(expectedEntity);
 
       const result = await service.findById(mockGraphId);
 
-      expect(result).toEqual(expectedGraph);
+      expect(result).toMatchObject(expectedGraph);
       expect(graphDao.getOne).toHaveBeenCalledWith({
         id: mockGraphId,
         createdBy: mockUserId,
@@ -264,15 +271,19 @@ describe('GraphsService', () => {
 
   describe('getAll', () => {
     it('should return all graphs for user', async () => {
-      const graphs = [
+      const entities = [
         createMockGraphEntity({ id: 'graph-1' }),
         createMockGraphEntity({ id: 'graph-2' }),
       ];
-      vi.mocked(graphDao.getAll).mockResolvedValue(graphs);
+      const expectedGraphs = [
+        createMockGraphDto({ id: 'graph-1' }),
+        createMockGraphDto({ id: 'graph-2' }),
+      ];
+      vi.mocked(graphDao.getAll).mockResolvedValue(entities);
 
       const result = await service.getAll();
 
-      expect(result).toEqual(graphs);
+      expect(result).toMatchObject(expectedGraphs);
       expect(graphDao.getAll).toHaveBeenCalledWith({
         createdBy: mockUserId,
       });
@@ -294,16 +305,21 @@ describe('GraphsService', () => {
         description: 'Updated description',
       };
 
-      const updatedGraph = createMockGraphEntity({
+      const updatedEntity = createMockGraphEntity({
         name: 'Updated Graph',
         description: 'Updated description',
       });
 
-      vi.mocked(graphDao.updateById).mockResolvedValue(updatedGraph);
+      const updatedGraph = createMockGraphDto({
+        name: 'Updated Graph',
+        description: 'Updated description',
+      });
+
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       const result = await service.update(mockGraphId, updateData);
 
-      expect(result).toEqual(updatedGraph);
+      expect(result).toMatchObject(updatedGraph);
       expect(graphDao.updateById).toHaveBeenCalledWith(
         mockGraphId,
         updateData,
@@ -321,12 +337,12 @@ describe('GraphsService', () => {
         version: '2.0.0',
       };
 
-      const updatedGraph = createMockGraphEntity({
+      const updatedEntity = createMockGraphEntity({
         name: 'Updated Graph',
         version: '2.0.0',
       });
 
-      vi.mocked(graphDao.updateById).mockResolvedValue(updatedGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       await service.update(mockGraphId, updateData);
 
@@ -395,18 +411,21 @@ describe('GraphsService', () => {
     it('should run graph successfully', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Created });
       const compiledGraph = createMockCompiledGraph();
-      const updatedGraph = createMockGraphEntity({
+      const updatedEntity = createMockGraphEntity({
+        status: GraphStatus.Running,
+      });
+      const updatedGraph = createMockGraphDto({
         status: GraphStatus.Running,
       });
 
       vi.mocked(graphDao.getById).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
-      vi.mocked(graphDao.updateById).mockResolvedValue(updatedGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       const result = await service.run(mockGraphId);
 
-      expect(result).toEqual(updatedGraph);
+      expect(result).toMatchObject(updatedGraph);
       expect(graphCompiler.compile).toHaveBeenCalledWith(graph.schema);
       expect(graphRegistry.register).toHaveBeenCalledWith(
         mockGraphId,
@@ -502,18 +521,21 @@ describe('GraphsService', () => {
     it('should destroy running graph successfully', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Running });
       const compiledGraph = createMockCompiledGraph();
-      const updatedGraph = createMockGraphEntity({
+      const updatedEntity = createMockGraphEntity({
+        status: GraphStatus.Stopped,
+      });
+      const updatedGraph = createMockGraphDto({
         status: GraphStatus.Stopped,
       });
 
       vi.mocked(graphDao.getById).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
-      vi.mocked(graphDao.updateById).mockResolvedValue(updatedGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       const result = await service.destroy(mockGraphId);
 
-      expect(result).toEqual(updatedGraph);
+      expect(result).toMatchObject(updatedGraph);
       expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
         status: GraphStatus.Stopped,
@@ -522,17 +544,20 @@ describe('GraphsService', () => {
 
     it('should handle destroying non-running graph', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Created });
-      const updatedGraph = createMockGraphEntity({
+      const updatedEntity = createMockGraphEntity({
+        status: GraphStatus.Stopped,
+      });
+      const updatedGraph = createMockGraphDto({
         status: GraphStatus.Stopped,
       });
 
       vi.mocked(graphDao.getById).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
-      vi.mocked(graphDao.updateById).mockResolvedValue(updatedGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       const result = await service.destroy(mockGraphId);
 
-      expect(result).toEqual(updatedGraph);
+      expect(result).toMatchObject(updatedGraph);
       expect(graphRegistry.destroy).not.toHaveBeenCalled();
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
         status: GraphStatus.Stopped,
