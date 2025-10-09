@@ -8,6 +8,7 @@ import { EntityManager } from 'typeorm';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { GraphDao } from '../dao/graph.dao';
 import { CreateGraphDto, GraphDto, UpdateGraphDto } from '../dto/graphs.dto';
+import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
@@ -22,6 +23,14 @@ export class GraphsService {
     private readonly authContext: AuthContextService,
   ) {}
 
+  private prepareResponse(entity: GraphEntity): GraphDto {
+    return {
+      ...entity,
+      createdAt: entity.createdAt.toISOString(),
+      updatedAt: entity.updatedAt.toISOString(),
+    };
+  }
+
   async create(data: CreateGraphDto): Promise<GraphDto> {
     return this.typeorm.trx(async (entityManager: EntityManager) => {
       const row = await this.graphDao.create(
@@ -33,7 +42,7 @@ export class GraphsService {
         entityManager,
       );
 
-      return row;
+      return this.prepareResponse(row);
     });
   }
 
@@ -46,13 +55,15 @@ export class GraphsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    return graph;
+    return this.prepareResponse(graph);
   }
 
   async getAll(): Promise<GraphDto[]> {
-    return this.graphDao.getAll({
+    const row = await this.graphDao.getAll({
       createdBy: this.authContext.checkSub(),
     });
+
+    return row.map(this.prepareResponse);
   }
 
   async update(id: string, data: UpdateGraphDto): Promise<GraphDto> {
@@ -70,7 +81,7 @@ export class GraphsService {
         throw new NotFoundException('GRAPH_NOT_FOUND');
       }
 
-      return updated;
+      return this.prepareResponse(updated);
     });
   }
 
@@ -117,7 +128,7 @@ export class GraphsService {
         throw new NotFoundException('GRAPH_NOT_FOUND');
       }
 
-      return updated;
+      return this.prepareResponse(updated);
     } catch (error) {
       // Cleanup registry if it was registered
       if (this.graphRegistry.get(id)) {
@@ -152,6 +163,6 @@ export class GraphsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    return updated;
+    return this.prepareResponse(updated);
   }
 }

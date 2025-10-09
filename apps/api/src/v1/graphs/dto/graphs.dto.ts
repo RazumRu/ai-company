@@ -10,14 +10,14 @@ export const GraphEditableSchemaField = RealGraphSchema.omit({
 export const GraphSchema = z.object({
   id: z.uuid(),
   name: z.string(),
-  description: z.string().optional(),
-  error: z.string().optional(),
+  description: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
   version: z.string(),
   schema: RealGraphSchema,
   status: z.enum(GraphStatus),
   metadata: z.record(z.string(), z.unknown()).optional(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 export const GraphEditableSchema = GraphSchema.omit({
