@@ -14,7 +14,6 @@ import {
 } from '@nestjs/platform-fastify';
 import {
   DocumentBuilder,
-  OpenAPIObject,
   SwaggerCustomOptions,
   SwaggerModule,
 } from '@nestjs/swagger';
@@ -215,6 +214,7 @@ export const buildHttpNestApp = async (
   const app = await NestFactory.create(appBootstrapperModule, <any>adapter, {
     rawBody: true,
   });
+
   const cfg = app.get(AppBootstrapperConfigService);
 
   setupMiddlewares(app, {
@@ -254,12 +254,17 @@ export const runHttpApp = async (
 
 export const buildHttpServerExtension = (
   params: IHttpServerParams,
+  appChangeCb?: (app: INestApplication) => INestApplication,
 ): IAppBootstrapperExtension => {
   return {
     modules: [HttpServerModule.forRoot(params)],
     defaultLogger: RequestContextLogger,
     customBootstrapper: async (module) => {
-      const app = await buildHttpNestApp(module, params);
+      let app = await buildHttpNestApp(module, params);
+
+      if (appChangeCb) {
+        app = appChangeCb(app);
+      }
 
       await runHttpApp(app, params);
     },

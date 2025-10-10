@@ -1,7 +1,6 @@
 import type {
   Checkpoint,
   CheckpointMetadata,
-  PendingWrite,
 } from '@langchain/langgraph-checkpoint';
 
 import { GraphSchemaType } from '../graphs/graphs.types';

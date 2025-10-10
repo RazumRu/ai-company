@@ -34,7 +34,7 @@ describe('NotificationsService', () => {
     }).compile();
 
     service = module.get<NotificationsService>(NotificationsService);
-    
+
     // Spy on the service's internal emitter
     const emitSpy = vi.spyOn(service['emitter'], 'emit');
     const onSpy = vi.spyOn(service['emitter'], 'on');

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { IAuthModuleParams, IContextData } from './auth.types';
 import { AuthContextService } from './auth-context.service';
+import { AuthContextDataBuilder } from './auth-context-data-builder';
 import { AuthProvider } from './providers/auth.provider';
 
 class MockAuthProvider extends AuthProvider {
@@ -28,29 +29,52 @@ class MockAuthProvider extends AuthProvider {
   }
 }
 
+class MockAuthContextDataBuilder {
+  constructor(
+    private readonly opts: {
+      devMode?: boolean;
+      devUserResult?: IContextData;
+      buildResult?: IContextData;
+    } = {},
+  ) {}
+
+  public getDevUser(headers: any): IContextData | undefined {
+    return this.opts.devUserResult;
+  }
+
+  public async buildContextData(token: string, headers: any): Promise<IContextData | undefined> {
+    if (this.opts.devMode && this.opts.devUserResult) {
+      return this.opts.devUserResult;
+    }
+    return this.opts.buildResult;
+  }
+}
+
 describe('AuthContextService', () => {
   let req: FastifyRequest;
+  let mockBuilder: MockAuthContextDataBuilder;
 
   beforeEach(() => {
     req = {
       headers: {},
     } as unknown as FastifyRequest;
+    mockBuilder = new MockAuthContextDataBuilder();
   });
 
   describe('getToken', () => {
     it('uses authProvider.getToken when provided', () => {
       const provider = new MockAuthProvider({ token: 'prov-token' });
-      const service = new AuthContextService(req, {}, provider);
+      const service = new AuthContextService(mockBuilder, req, provider);
 
       expect(service.getToken()).toBe('prov-token');
     });
 
     it('falls back to Authorization header when provider.getToken is not used', () => {
       const service = new AuthContextService(
+        mockBuilder,
         {
           headers: { authorization: 'Bearer abc.def' },
         } as unknown as FastifyRequest,
-        {},
         undefined,
       );
 
@@ -58,46 +82,25 @@ describe('AuthContextService', () => {
     });
 
     it('returns undefined when no token present', () => {
-      const service = new AuthContextService(req, {}, undefined);
+      const service = new AuthContextService(mockBuilder, req, undefined);
       expect(service.getToken()).toBeUndefined();
     });
   });
 
-  describe('getDevUser', () => {
-    it('parses x-dev-jwt-* headers and returns context object', () => {
-      req.headers = {
-        'x-dev-jwt-sub': 'user-1',
-        'x-dev-jwt-roles': '["admin","user"]',
-        'x-dev-jwt-meta': JSON.stringify({ a: 1 }),
-        'x-ignore': 'nope',
-      } as any;
 
-      const service = new AuthContextService(req, {}, undefined);
-      const ctx = service.getDevUser();
-
-      expect(ctx).toEqual({
-        sub: 'user-1',
-        roles: ['admin', 'user'],
-        meta: { a: 1 },
-      });
-    });
-
-    it('returns undefined when no x-dev-jwt-* headers present', () => {
-      req.headers = { other: 'header' } as any;
-      const service = new AuthContextService(req, {}, undefined);
-      expect(service.getDevUser()).toBeUndefined();
-    });
-  });
-
-  describe('buildContextData', () => {
+  describe('init', () => {
     it('returns dev user when devMode is true and dev headers present', async () => {
       req.headers = {
         'x-dev-jwt-sub': 'dev-user',
+        'authorization': 'Bearer any-token',
       } as any;
-      const params: IAuthModuleParams = { devMode: true };
-      const service = new AuthContextService(req, params, undefined);
+      const builder = new MockAuthContextDataBuilder({
+        devMode: true,
+        devUserResult: { sub: 'dev-user' },
+      });
+      const service = new AuthContextService(builder, req, undefined);
 
-      await expect(service.buildContextData()).resolves.toEqual({
+      await expect(service.init()).resolves.toEqual({
         sub: 'dev-user',
       });
     });
@@ -107,31 +110,33 @@ describe('AuthContextService', () => {
       const provider = new MockAuthProvider({
         verifyResult: { sub: 'verified' },
       });
-      const params: IAuthModuleParams = { devMode: false };
-      const service = new AuthContextService(req, params, provider);
+      const builder = new MockAuthContextDataBuilder({
+        devMode: false,
+        buildResult: { sub: 'verified' },
+      });
+      const service = new AuthContextService(builder, req, provider);
 
-      await expect(service.buildContextData()).resolves.toEqual({
+      await expect(service.init()).resolves.toEqual({
         sub: 'verified',
       });
     });
 
-    it('returns undefined when no token or provider present', async () => {
-      const service = new AuthContextService(
-        req,
-        { devMode: false },
-        undefined,
-      );
-      await expect(service.buildContextData()).resolves.toBeUndefined();
+    it('returns undefined when no token present', async () => {
+      const service = new AuthContextService(mockBuilder, req, undefined);
+      await expect(service.init()).resolves.toBeUndefined();
     });
   });
 
-  describe('init, sub, checkSub, context', () => {
+  describe('sub, checkSub, context', () => {
     it('init stores context and getters work', async () => {
       const provider = new MockAuthProvider({
         verifyResult: { sub: 'u-1', name: 'John' },
       });
       req.headers = { authorization: 'Bearer anything' } as any;
-      const service = new AuthContextService(req, { devMode: false }, provider);
+      const builder = new MockAuthContextDataBuilder({
+        buildResult: { sub: 'u-1', name: 'John' },
+      });
+      const service = new AuthContextService(builder, req, provider);
 
       const ctx = await service.init();
       expect(ctx).toEqual({ sub: 'u-1', name: 'John' });
@@ -143,7 +148,10 @@ describe('AuthContextService', () => {
     it('checkSub throws UnauthorizedException when no sub', async () => {
       const provider = new MockAuthProvider({ verifyResult: {} });
       req.headers = { authorization: 'Bearer t' } as any;
-      const service = new AuthContextService(req, { devMode: false }, provider);
+      const builder = new MockAuthContextDataBuilder({
+        buildResult: {},
+      });
+      const service = new AuthContextService(builder, req, provider);
       await service.init();
 
       expect(() => service.checkSub()).toThrowError(UnauthorizedException);

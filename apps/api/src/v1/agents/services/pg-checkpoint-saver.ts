@@ -276,6 +276,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
     // Emit checkpointer notification
     const graphId = config.configurable?.graph_id || 'unknown';
     const nodeId = config.configurable?.node_id;
+
     this.notificationsService.emit({
       type: NotificationEvent.Checkpointer,
       graphId,

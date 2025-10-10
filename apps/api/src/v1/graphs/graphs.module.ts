@@ -1,6 +1,6 @@
 import './graphs.exceptions';
 
-import { Module, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
@@ -28,6 +28,7 @@ import { GraphsService } from './services/graphs.service';
     GraphRestorationService,
   ],
   exports: [
+    GraphDao,
     GraphCompiler,
     GraphsService,
     GraphRegistry,

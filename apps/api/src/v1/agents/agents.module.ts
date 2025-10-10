@@ -42,7 +42,6 @@ import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
 export class AgentsModule implements OnModuleInit {
   constructor(
     private readonly agentFactoryService: AgentFactoryService,
-    private readonly moduleRef: ModuleRef,
     private readonly discovery: DiscoveryService,
   ) {}
 

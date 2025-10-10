@@ -76,8 +76,16 @@ export class GraphCompiler {
   /**
    * Compiles a graph schema into an executable graph structure
    */
-  async compile(schema: GraphSchemaType): Promise<CompiledGraph> {
-    const graphId = schema.metadata?.graphId || 'unknown';
+  async compile(
+    schema: GraphSchemaType,
+    additionalMetadata?: Partial<GraphMetadataSchemaType>,
+  ): Promise<CompiledGraph> {
+    const metadata = {
+      ...(schema.metadata || {}),
+      ...(additionalMetadata || {}),
+    };
+
+    const graphId = metadata.graphId || 'unknown';
 
     this.notificationsService.emit({
       type: NotificationEvent.Graph,

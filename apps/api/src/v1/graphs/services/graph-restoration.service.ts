@@ -85,7 +85,11 @@ export class GraphRestorationService {
       }
 
       // Compile the graph
-      const compiledGraph = await this.graphCompiler.compile(schema);
+      const compiledGraph = await this.graphCompiler.compile(schema, {
+        graphId: graph.id,
+        name: graph.name,
+        version: graph.version,
+      });
 
       // Register the compiled graph in the registry
       this.graphRegistry.register(id, compiledGraph);

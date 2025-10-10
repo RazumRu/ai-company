@@ -1,3 +1,5 @@
+import { INestApplication } from '@nestjs/common';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { buildBootstrapper, LogLevel } from '@packages/common';
 import {
   buildAuthExtension,
@@ -18,23 +20,30 @@ const bootstrapper = buildBootstrapper({
 });
 
 bootstrapper.addExtension(
-  buildHttpServerExtension({
-    globalPrefix: environment.globalPrefix,
-    apiDefaultVersion: '1',
-    port: environment.port,
-    swagger: {
-      path: environment.swaggerPath,
-    },
-    helmetOptions: {
-      contentSecurityPolicy: false,
-      crossOriginOpenerPolicy: {
-        policy: 'unsafe-none',
+  buildHttpServerExtension(
+    {
+      globalPrefix: environment.globalPrefix,
+      apiDefaultVersion: '1',
+      port: environment.port,
+      swagger: {
+        path: environment.swaggerPath,
+      },
+      helmetOptions: {
+        contentSecurityPolicy: false,
+        crossOriginOpenerPolicy: {
+          policy: 'unsafe-none',
+        },
+      },
+      fastifyOptions: {
+        trustProxy: 'loopback',
       },
     },
-    fastifyOptions: {
-      trustProxy: 'loopback',
+    (app: INestApplication) => {
+      app.useWebSocketAdapter(new IoAdapter(app));
+
+      return app;
     },
-  }),
+  ),
 );
 
 bootstrapper.addExtension(

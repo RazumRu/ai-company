@@ -112,7 +112,11 @@ export class GraphsService {
 
     try {
       // Compile the graph
-      const compiledGraph = await this.graphCompiler.compile(graph.schema);
+      const compiledGraph = await this.graphCompiler.compile(graph.schema, {
+        graphId: graph.id,
+        name: graph.name,
+        version: graph.version,
+      });
 
       // Register the compiled graph in the registry
       this.graphRegistry.register(id, compiledGraph);
