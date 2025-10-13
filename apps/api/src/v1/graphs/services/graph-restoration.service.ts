@@ -76,7 +76,7 @@ export class GraphRestorationService {
    * Restores a single graph by recompiling it and registering it in the registry
    */
   private async restoreGraph(graph: GraphEntity): Promise<void> {
-    const { id, name, schema } = graph;
+    const { id, name } = graph;
 
     try {
       // Check if graph is already registered (shouldn't happen, but safety check)
@@ -85,11 +85,7 @@ export class GraphRestorationService {
       }
 
       // Compile the graph
-      const compiledGraph = await this.graphCompiler.compile(schema, {
-        graphId: graph.id,
-        name: graph.name,
-        version: graph.version,
-      });
+      const compiledGraph = await this.graphCompiler.compile(graph);
 
       // Register the compiled graph in the registry
       this.graphRegistry.register(id, compiledGraph);

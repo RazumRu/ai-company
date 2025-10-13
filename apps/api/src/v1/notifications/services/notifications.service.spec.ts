@@ -56,10 +56,6 @@ describe('NotificationsService', () => {
           schema: {
             nodes: [],
             edges: [],
-            metadata: {
-              graphId: 'test-graph-123',
-              version: '1.0.0',
-            },
           },
         },
       };
@@ -163,10 +159,6 @@ describe('NotificationsService', () => {
           schema: {
             nodes: [],
             edges: [],
-            metadata: {
-              graphId: 'test-graph-123',
-              version: '1.0.0',
-            },
           },
         },
       };

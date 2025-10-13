@@ -150,7 +150,7 @@ describe('ManualTriggerTemplate', () => {
       const agentConfig = {
         name: 'Test Agent',
         instructions: 'Test',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
       };
@@ -158,6 +158,7 @@ describe('ManualTriggerTemplate', () => {
       const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
         instance: {
           agent: mockSimpleAgent,
           config: agentConfig,
@@ -195,7 +196,7 @@ describe('ManualTriggerTemplate', () => {
       const agentConfig = {
         name: 'Test Agent',
         instructions: 'Test',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
       };
@@ -203,6 +204,7 @@ describe('ManualTriggerTemplate', () => {
       const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
         instance: {
           agent: mockSimpleAgent,
           config: agentConfig,
@@ -255,7 +257,7 @@ describe('ManualTriggerTemplate', () => {
       const agentConfig = {
         name: 'Test Agent',
         instructions: 'Test',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
       };
@@ -263,6 +265,7 @@ describe('ManualTriggerTemplate', () => {
       const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
         instance: {
           agent: mockSimpleAgent,
           config: agentConfig,
@@ -313,7 +316,7 @@ describe('ManualTriggerTemplate', () => {
       const agentConfig = {
         name: 'Test Agent',
         instructions: 'Test',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
       };
@@ -321,6 +324,7 @@ describe('ManualTriggerTemplate', () => {
       const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
         instance: {
           agent: mockSimpleAgent,
           config: agentConfig,

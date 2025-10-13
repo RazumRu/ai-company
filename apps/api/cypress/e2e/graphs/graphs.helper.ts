@@ -1,13 +1,10 @@
 import {
   CreateGraphDto,
+  ExecuteTriggerDto,
   GraphDto,
   UpdateGraphDto,
 } from '../../api-definitions';
-import {
-  CreateGraphDtoSchema,
-  GraphDtoSchema,
-  UpdateGraphDtoSchema,
-} from '../../api-definitions/schemas.gen';
+import { GraphDtoSchema } from '../../api-definitions/schemas.gen';
 import { generateRandomUUID, reqHeaders } from '../common.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 
@@ -100,6 +97,20 @@ export const destroyGraph = (id: string, headers = reqHeaders) =>
       return response;
     });
 
+export const executeTrigger = (
+  graphId: string,
+  triggerId: string,
+  body: ExecuteTriggerDto,
+  headers = reqHeaders,
+) =>
+  cy.request({
+    url: `/api/v1/graphs/${graphId}/triggers/${triggerId}/execute`,
+    method: 'POST',
+    headers,
+    body,
+    failOnStatusCode: false,
+  });
+
 export const validateGraph = (data: GraphDto) => {
   cy.validateSchema(data, GraphDtoSchema);
 };
@@ -118,7 +129,7 @@ export const createMockGraphData = (
         config: {
           name: 'Test Agent',
           instructions: 'You are a helpful test agent.',
-          invokeModelName: 'gpt-4',
+          invokeModelName: 'gpt-5-mini',
           invokeModelTemperature: 0.7,
         },
       },
@@ -136,11 +147,6 @@ export const createMockGraphData = (
         to: 'agent-1',
       },
     ],
-    metadata: {
-      graphId: generateRandomUUID(),
-      name: 'Test Graph',
-      version: '1.0.0',
-    },
   },
   metadata: {
     nodes: [
@@ -150,8 +156,51 @@ export const createMockGraphData = (
         config: {
           name: 'Test Agent',
           instructions: 'You are a helpful test agent.',
-          invokeModelName: 'gpt-4',
+          invokeModelName: 'gpt-5-mini',
           invokeModelTemperature: 0.7,
+        },
+      },
+      {
+        id: 'trigger-1',
+        template: 'manual-trigger',
+        config: {
+          agentId: 'agent-1',
+        },
+      },
+    ],
+    edges: [
+      {
+        from: 'trigger-1',
+        to: 'agent-1',
+      },
+    ],
+  },
+  ...overrides,
+});
+
+export const createMockGraphDataWithWebTool = (
+  overrides: Partial<CreateGraphDto> = {},
+): CreateGraphDto => ({
+  name: `Test Graph with Tools ${generateRandomUUID().slice(0, 8)}`,
+  description: 'Test graph with web search tool',
+  version: '1.0.0',
+  schema: {
+    nodes: [
+      {
+        id: 'web-search-tool-1',
+        template: 'web-search-tool',
+        config: {},
+      },
+      {
+        id: 'agent-1',
+        template: 'simple-agent',
+        config: {
+          name: 'Test Agent with Tools',
+          instructions:
+            'You are a helpful agent. You MUST use the web-search tool to answer questions about current events, weather, or real-time information. Always call the tool first before answering.',
+          invokeModelName: 'gpt-5-mini',
+          invokeModelTemperature: 0,
+          toolNodeIds: ['web-search-tool-1'],
         },
       },
       {

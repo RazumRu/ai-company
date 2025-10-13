@@ -3,10 +3,6 @@ import { z } from 'zod';
 
 import { GraphSchema as RealGraphSchema, GraphStatus } from '../graphs.types';
 
-export const GraphEditableSchemaField = RealGraphSchema.omit({
-  metadata: true,
-});
-
 export const GraphSchema = z.object({
   id: z.uuid(),
   name: z.string(),
@@ -26,8 +22,13 @@ export const GraphEditableSchema = GraphSchema.omit({
   error: true,
   createdAt: true,
   updatedAt: true,
-}).extend({
-  metadata: GraphEditableSchemaField,
+});
+
+export const ExecuteTriggerSchema = z.object({
+  messages: z
+    .array(z.string())
+    .min(1)
+    .describe('Array of messages to send to the trigger'),
 });
 
 export class GraphDto extends createZodDto(GraphSchema) {}
@@ -35,3 +36,4 @@ export class CreateGraphDto extends createZodDto(GraphEditableSchema) {}
 export class UpdateGraphDto extends createZodDto(
   GraphEditableSchema.partial(),
 ) {}
+export class ExecuteTriggerDto extends createZodDto(ExecuteTriggerSchema) {}

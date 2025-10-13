@@ -39,43 +39,9 @@ export type CreateGraphDto = {
        */
       label?: string;
     }>;
-    metadata: {
-      graphId: string;
-      name?: string;
-      version: string;
-    };
   };
-  metadata: {
-    nodes: Array<{
-      /**
-       * Unique identifier for this node
-       */
-      id: string;
-      /**
-       * Template name registered in TemplateRegistry
-       */
-      template: string;
-      /**
-       * Template-specific configuration
-       */
-      config: {
-        [key: string]: unknown;
-      };
-    }>;
-    edges?: Array<{
-      /**
-       * Source node ID
-       */
-      from: string;
-      /**
-       * Target node ID
-       */
-      to: string;
-      /**
-       * Optional edge label
-       */
-      label?: string;
-    }>;
+  metadata?: {
+    [key: string]: unknown;
   };
 };
 
@@ -116,11 +82,6 @@ export type GraphDto = {
        */
       label?: string;
     }>;
-    metadata: {
-      graphId: string;
-      name?: string;
-      version: string;
-    };
   };
   status: 'created' | 'running' | 'stopped' | 'error';
   metadata?: {
@@ -165,44 +126,17 @@ export type UpdateGraphDto = {
        */
       label?: string;
     }>;
-    metadata: {
-      graphId: string;
-      name?: string;
-      version: string;
-    };
   };
   metadata?: {
-    nodes: Array<{
-      /**
-       * Unique identifier for this node
-       */
-      id: string;
-      /**
-       * Template name registered in TemplateRegistry
-       */
-      template: string;
-      /**
-       * Template-specific configuration
-       */
-      config: {
-        [key: string]: unknown;
-      };
-    }>;
-    edges?: Array<{
-      /**
-       * Source node ID
-       */
-      from: string;
-      /**
-       * Target node ID
-       */
-      to: string;
-      /**
-       * Optional edge label
-       */
-      label?: string;
-    }>;
+    [key: string]: unknown;
   };
+};
+
+export type ExecuteTriggerDto = {
+  /**
+   * Array of messages to send to the trigger
+   */
+  messages: Array<string>;
 };
 
 export type TemplateDto = {
@@ -317,6 +251,23 @@ export type DestroyGraphResponses = {
 
 export type DestroyGraphResponse =
   DestroyGraphResponses[keyof DestroyGraphResponses];
+
+export type ExecuteTriggerData = {
+  body: ExecuteTriggerDto;
+  path: {
+    graphId: string;
+    triggerId: string;
+  };
+  query?: never;
+  url: '/api/v1/graphs/{graphId}/triggers/{triggerId}/execute';
+};
+
+export type ExecuteTriggerResponses = {
+  204: void;
+};
+
+export type ExecuteTriggerResponse =
+  ExecuteTriggerResponses[keyof ExecuteTriggerResponses];
 
 export type GetAllTemplatesData = {
   body?: never;

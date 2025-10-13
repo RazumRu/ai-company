@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationsService } from '../../notifications/services/notifications.service';
-import { GraphSchemaType, NodeKind } from '../graphs.types';
+import { GraphEntity } from '../entity/graph.entity';
+import { GraphSchemaType, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 
 describe('GraphCompiler', () => {
@@ -17,6 +18,24 @@ describe('GraphCompiler', () => {
     kind,
     schema: { parse: vi.fn((config) => config) },
     create: vi.fn(),
+  });
+
+  const createMockGraphEntity = (
+    schema: GraphSchemaType,
+    id = 'test-graph',
+    name = 'Test Graph',
+    version = '1.0.0',
+  ): GraphEntity => ({
+    id,
+    name,
+    version,
+    description: 'Test Description',
+    schema,
+    status: GraphStatus.Created,
+    createdBy: 'test-user',
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+    deletedAt: null,
   });
 
   beforeEach(async () => {
@@ -64,11 +83,6 @@ describe('GraphCompiler', () => {
           },
         ],
         edges: [],
-        metadata: {
-          graphId: 'test-graph',
-          name: 'Test Graph',
-          version: '1.0.0',
-        },
       };
 
       const mockTemplate = createMockTemplate(NodeKind.Runtime);
@@ -80,12 +94,14 @@ describe('GraphCompiler', () => {
         schema.nodes[0]!.config,
       );
 
-      const result = await compiler.compile(schema);
+      const entity = createMockGraphEntity(schema);
+      const result = await compiler.compile(entity);
 
       expect(result.nodes.size).toBe(1);
       expect(result.nodes.get('runtime-1')).toEqual({
         id: 'runtime-1',
         type: NodeKind.Runtime,
+        template: 'docker-runtime',
         instance: { container: 'runtime-instance' },
       });
       expect(result.edges).toEqual([]);
@@ -116,7 +132,6 @@ describe('GraphCompiler', () => {
           },
         ],
         edges: [{ from: 'python-runtime', to: 'shell-tool' }],
-        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
@@ -135,7 +150,8 @@ describe('GraphCompiler', () => {
         (_, config) => config,
       );
 
-      const result = await compiler.compile(schema);
+      const entity = createMockGraphEntity(schema);
+      const result = await compiler.compile(entity);
 
       expect(result.nodes.size).toBe(2);
       expect(result.nodes.get('python-runtime')).toBeDefined();
@@ -238,7 +254,8 @@ describe('GraphCompiler', () => {
         (_, config) => config,
       );
 
-      const result = await compiler.compile(schema);
+      const entity = createMockGraphEntity(schema);
+      const result = await compiler.compile(entity);
 
       // Verify all nodes were created
       expect(result.nodes.size).toBe(7);
@@ -280,7 +297,8 @@ describe('GraphCompiler', () => {
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
 
-      await expect(compiler.compile(schema)).rejects.toThrow(
+      const entity = createMockGraphEntity(schema);
+      await expect(compiler.compile(entity)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -295,13 +313,13 @@ describe('GraphCompiler', () => {
           },
         ],
         edges: [{ from: 'node-1', to: 'non-existent-node' }],
-        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
 
-      await expect(compiler.compile(schema)).rejects.toThrow(
+      const entity = createMockGraphEntity(schema);
+      await expect(compiler.compile(entity)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -320,7 +338,8 @@ describe('GraphCompiler', () => {
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(false);
 
-      await expect(compiler.compile(schema)).rejects.toThrow(
+      const entity = createMockGraphEntity(schema);
+      await expect(compiler.compile(entity)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -378,7 +397,8 @@ describe('GraphCompiler', () => {
         (_, config) => config,
       );
 
-      await compiler.compile(schema);
+      const entity = createMockGraphEntity(schema);
+      await compiler.compile(entity);
 
       // Verify creation order: runtime -> tool -> agent
       expect(createOrder).toEqual(['runtime', 'tool', 'agent']);
@@ -388,10 +408,10 @@ describe('GraphCompiler', () => {
       const schema = {
         nodes: [],
         edges: [],
-        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
-      const result = await compiler.compile(schema);
+      const entity = createMockGraphEntity(schema);
+      const result = await compiler.compile(entity);
 
       expect(result.nodes.size).toBe(0);
       expect(result.edges).toEqual([]);
@@ -416,7 +436,8 @@ describe('GraphCompiler', () => {
       vi.spyOn(templateRegistry, 'getTemplate').mockReturnValue(mockTemplate);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
 
-      const result = await compiler.compile(schema);
+      const entity = createMockGraphEntity(schema);
+      const result = await compiler.compile(entity);
 
       expect(result.nodes.size).toBe(1);
       expect(result.edges).toEqual([]);
@@ -455,7 +476,8 @@ describe('GraphCompiler', () => {
         (_, config) => config,
       );
 
-      await compiler.compile(schema);
+      const entity = createMockGraphEntity(schema);
+      await compiler.compile(entity);
 
       // Verify tool create was called with compiled nodes map containing runtime
       expect(toolTemplate.create).toHaveBeenCalledWith(
@@ -507,7 +529,6 @@ describe('GraphCompiler', () => {
           },
         ],
         edges: [{ from: 'missing-node', to: 'node-1' }],
-        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -528,7 +549,6 @@ describe('GraphCompiler', () => {
           },
         ],
         edges: [{ from: 'node-1', to: 'missing-node' }],
-        metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -607,22 +627,28 @@ describe('GraphCompiler', () => {
               summarizeKeepTokens: 100,
               instructions: 'You are a helpful assistant',
               name: 'test-agent',
-              invokeModelName: 'gpt-4',
+              invokeModelName: 'gpt-5-mini',
               toolNodeIds: [],
             },
           },
         ],
         edges: [],
-        metadata: { graphId: 'test-graph-123', version: '1.0.0' },
       };
 
-      await compiler.compile(schema);
+      const entity = createMockGraphEntity(
+        schema,
+        'test-graph-123',
+        'Test Graph',
+        '1.0.0',
+      );
+      await compiler.compile(entity);
 
       // Verify that template.create was called with the correct metadata
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map),
         {
+          name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'test-node-456',
@@ -672,7 +698,7 @@ describe('GraphCompiler', () => {
               summarizeKeepTokens: 100,
               instructions: 'Assistant 1',
               name: 'agent-1',
-              invokeModelName: 'gpt-4',
+              invokeModelName: 'gpt-5-mini',
               toolNodeIds: [],
             },
           },
@@ -684,22 +710,28 @@ describe('GraphCompiler', () => {
               summarizeKeepTokens: 100,
               instructions: 'Assistant 2',
               name: 'agent-2',
-              invokeModelName: 'gpt-4',
+              invokeModelName: 'gpt-5-mini',
               toolNodeIds: [],
             },
           },
         ],
         edges: [],
-        metadata: { graphId: 'test-graph-123', version: '1.0.0' },
       };
 
-      await compiler.compile(schema);
+      const entity = createMockGraphEntity(
+        schema,
+        'test-graph-123',
+        'Test Graph',
+        '1.0.0',
+      );
+      await compiler.compile(entity);
 
       // Verify that each template received the correct nodeId
       expect(mockTemplate1.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map),
         {
+          name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'node-1',
@@ -710,6 +742,7 @@ describe('GraphCompiler', () => {
         schema.nodes[1]!.config,
         expect.any(Map),
         {
+          name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'node-2',
@@ -749,7 +782,7 @@ describe('GraphCompiler', () => {
               summarizeKeepTokens: 100,
               instructions: 'You are a helpful assistant',
               name: 'test-agent',
-              invokeModelName: 'gpt-4',
+              invokeModelName: 'gpt-5-mini',
               toolNodeIds: [],
             },
           },
@@ -758,13 +791,15 @@ describe('GraphCompiler', () => {
         metadata: extendedMetadata,
       };
 
-      await compiler.compile(schema);
+      const entity = createMockGraphEntity(schema);
+      await compiler.compile(entity, extendedMetadata);
 
       // Verify that all metadata properties are preserved
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map),
         {
+          name: 'Test Graph',
           ...extendedMetadata,
           nodeId: 'test-node-456',
         },
@@ -825,7 +860,7 @@ describe('GraphCompiler', () => {
               summarizeKeepTokens: 100,
               instructions: 'Agent',
               name: 'agent',
-              invokeModelName: 'gpt-4',
+              invokeModelName: 'gpt-5-mini',
               toolNodeIds: [],
             },
           },
@@ -846,34 +881,59 @@ describe('GraphCompiler', () => {
           },
         ],
         edges: [],
-        metadata: { graphId: 'test-graph-123', version: '1.0.0' },
       };
 
-      await compiler.compile(schema);
+      const entity = createMockGraphEntity(
+        schema,
+        'test-graph-123',
+        'Test Graph',
+        '1.0.0',
+      );
+      await compiler.compile(entity);
 
       // Verify that each template received the correct metadata
       expect(mockAgentTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map),
-        { graphId: 'test-graph-123', version: '1.0.0', nodeId: 'agent-node' },
+        {
+          name: 'Test Graph',
+          graphId: 'test-graph-123',
+          version: '1.0.0',
+          nodeId: 'agent-node',
+        },
       );
 
       expect(mockToolTemplate.create).toHaveBeenCalledWith(
         schema.nodes[1]!.config,
         expect.any(Map),
-        { graphId: 'test-graph-123', version: '1.0.0', nodeId: 'tool-node' },
+        {
+          name: 'Test Graph',
+          graphId: 'test-graph-123',
+          version: '1.0.0',
+          nodeId: 'tool-node',
+        },
       );
 
       expect(mockRuntimeTemplate.create).toHaveBeenCalledWith(
         schema.nodes[2]!.config,
         expect.any(Map),
-        { graphId: 'test-graph-123', version: '1.0.0', nodeId: 'runtime-node' },
+        {
+          name: 'Test Graph',
+          graphId: 'test-graph-123',
+          version: '1.0.0',
+          nodeId: 'runtime-node',
+        },
       );
 
       expect(mockTriggerTemplate.create).toHaveBeenCalledWith(
         schema.nodes[3]!.config,
         expect.any(Map),
-        { graphId: 'test-graph-123', version: '1.0.0', nodeId: 'trigger-node' },
+        {
+          name: 'Test Graph',
+          graphId: 'test-graph-123',
+          version: '1.0.0',
+          nodeId: 'trigger-node',
+        },
       );
     });
   });

@@ -13,6 +13,8 @@ import type {
   DeleteGraphResponses,
   DestroyGraphData,
   DestroyGraphResponses,
+  ExecuteTriggerData,
+  ExecuteTriggerResponses,
   FindGraphByIdData,
   FindGraphByIdResponses,
   GetAllGraphsData,
@@ -186,6 +188,29 @@ export const destroyGraph = <ThrowOnError extends boolean = false>(
     ],
     url: '/api/v1/graphs/{id}/destroy',
     ...options,
+  });
+};
+
+export const executeTrigger = <ThrowOnError extends boolean = false>(
+  options: Options<ExecuteTriggerData, ThrowOnError>,
+) => {
+  return (options.client ?? client).post<
+    ExecuteTriggerResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/graphs/{graphId}/triggers/{triggerId}/execute',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
   });
 };
 

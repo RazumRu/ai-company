@@ -1,3 +1,4 @@
+import { HumanMessage } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
@@ -5,11 +6,16 @@ import { TypeormService } from '@packages/typeorm';
 import { isUndefined, omitBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 
-import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { GraphDao } from '../dao/graph.dao';
-import { CreateGraphDto, GraphDto, UpdateGraphDto } from '../dto/graphs.dto';
+import {
+  CreateGraphDto,
+  ExecuteTriggerDto,
+  GraphDto,
+  UpdateGraphDto,
+} from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
-import { GraphStatus } from '../graphs.types';
+import { GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 
@@ -112,7 +118,7 @@ export class GraphsService {
 
     try {
       // Compile the graph
-      const compiledGraph = await this.graphCompiler.compile(graph.schema, {
+      const compiledGraph = await this.graphCompiler.compile(graph, {
         graphId: graph.id,
         name: graph.name,
         version: graph.version,
@@ -168,5 +174,60 @@ export class GraphsService {
     }
 
     return this.prepareResponse(updated);
+  }
+
+  async executeTrigger(
+    graphId: string,
+    triggerId: string,
+    dto: ExecuteTriggerDto,
+  ): Promise<void> {
+    // Verify graph exists and user has access
+    const graph = await this.graphDao.getOne({
+      id: graphId,
+      createdBy: this.authContext.checkSub(),
+    });
+
+    if (!graph) {
+      throw new NotFoundException('GRAPH_NOT_FOUND');
+    }
+
+    // Get the compiled graph from registry
+    const compiledGraph = this.graphRegistry.get(graphId);
+    if (!compiledGraph) {
+      throw new BadRequestException(
+        'GRAPH_NOT_RUNNING',
+        'Graph must be running to execute triggers',
+      );
+    }
+
+    // Get the trigger node
+    const triggerNode = this.graphRegistry.getNode<BaseTrigger>(
+      graphId,
+      triggerId,
+    );
+    if (!triggerNode) {
+      throw new NotFoundException('TRIGGER_NOT_FOUND');
+    }
+
+    if (triggerNode.type !== NodeKind.Trigger) {
+      throw new BadRequestException(
+        'INVALID_NODE_TYPE',
+        'Node is not a trigger',
+      );
+    }
+
+    const trigger = triggerNode.instance;
+
+    // Check if trigger is started
+    if (!trigger.isStarted) {
+      throw new BadRequestException(
+        'TRIGGER_NOT_STARTED',
+        'Trigger is not in listening state',
+      );
+    }
+
+    const messages = dto.messages.map((msg) => new HumanMessage(msg));
+
+    await trigger.invokeAgent(messages, {});
   }
 }

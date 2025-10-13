@@ -10,9 +10,9 @@ import { TriggerEvent, TriggerStatus } from '../agent-triggers.types';
  * Base trigger class
  * All triggers must extend this class
  */
-export abstract class BaseTrigger<TConfig, TPayload = unknown> {
+export abstract class BaseTrigger<TConfig = unknown, TPayload = unknown> {
   protected status: TriggerStatus = TriggerStatus.IDLE;
-  protected invokeAgent!: (
+  public invokeAgent!: (
     messages: HumanMessage[],
     config: RunnableConfig<BaseAgentConfigurable>,
   ) => Promise<AgentOutput>;

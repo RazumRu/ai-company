@@ -7,6 +7,7 @@ import { TemplateRegistry } from '../../graph-templates/services/template-regist
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { GraphEntity } from '../entity/graph.entity';
 import {
   CompiledGraph,
   CompiledGraphNode,
@@ -77,11 +78,14 @@ export class GraphCompiler {
    * Compiles a graph schema into an executable graph structure
    */
   async compile(
-    schema: GraphSchemaType,
+    entity: GraphEntity,
     additionalMetadata?: Partial<GraphMetadataSchemaType>,
   ): Promise<CompiledGraph> {
-    const metadata = {
-      ...(schema.metadata || {}),
+    const schema = entity.schema;
+    const metadata: GraphMetadataSchemaType = {
+      name: entity.name,
+      version: entity.version,
+      graphId: entity.id,
       ...(additionalMetadata || {}),
     };
 
@@ -119,7 +123,7 @@ export class GraphCompiler {
         const compiledNode = await this.compileNode(
           node,
           compiledNodes,
-          schema.metadata,
+          metadata,
         );
         compiledNodes.set(node.id, compiledNode);
       }
@@ -236,6 +240,7 @@ export class GraphCompiler {
     return {
       id: node.id,
       type: template.kind,
+      template: node.template,
       instance,
     };
   }

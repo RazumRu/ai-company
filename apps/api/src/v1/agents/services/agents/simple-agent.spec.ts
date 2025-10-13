@@ -53,7 +53,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       expect(() => schema.parse(validConfig)).not.toThrow();
@@ -77,7 +77,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       expect(() => schema.parse(invalidConfig)).toThrow();
@@ -118,7 +118,7 @@ describe('SimpleAgent', () => {
   describe('buildLLM', () => {
     it('should create ChatOpenAI instance with correct configuration', () => {
       // Test that buildLLM method exists and returns something
-      const llm = agent.buildLLM('gpt-4');
+      const llm = agent.buildLLM('gpt-5-mini');
       expect(llm).toBeDefined();
       expect(typeof llm).toBe('object');
     });
@@ -148,7 +148,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       const messages = [new HumanMessage('Hello')];
@@ -191,7 +191,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       const customRunnableConfig = {
@@ -227,7 +227,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       await expect(agent.run('test-thread', [], config)).rejects.toThrow(

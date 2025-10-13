@@ -5,6 +5,8 @@ import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
   createMockGraphData,
+  createMockGraphDataWithWebTool,
+  executeTrigger,
   runGraph,
 } from '../graphs/graphs.helper';
 import {
@@ -138,11 +140,10 @@ describe('Socket Gateway E2E', () => {
     before(() => {
       // Create a test graph
       const graphData = createMockGraphData();
-      return createGraph(graphData, reqHeaders).then(
-        (response: { body: { id: string } }) => {
-          createdGraphId = response.body.id;
-        },
-      );
+      return createGraph(graphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(201);
+        createdGraphId = response.body.id;
+      });
     });
 
     beforeEach(() => {
@@ -151,44 +152,41 @@ describe('Socket Gateway E2E', () => {
     });
 
     it('should subscribe to graph updates when user is owner', () => {
-      // Create a fresh graph for this test to avoid "already running" issues
       const graphData = createMockGraphData();
 
-      return createGraph(graphData, reqHeaders).then(
-        (response: { body: { id: string } }) => {
-          const freshGraphId = response.body.id;
+      return createGraph(graphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(201);
+        const freshGraphId = response.body.id;
 
-          // Subscribe to graph updates
-          socket.emit('subscribe_graph', { graphId: freshGraphId });
+        // Subscribe to graph updates
+        socket.emit('subscribe_graph', { graphId: freshGraphId });
 
-          // Set up listener for graph update events
-          const notificationPromise = new Promise((resolve, reject) => {
-            socket.once('graph.update', (notification) => {
-              expect(notification).to.have.property('graphId', freshGraphId);
-              expect(notification).to.have.property('type', 'graph.update');
-              expect(notification).to.have.property('data');
-              expect(notification.data).to.have.property('state');
-              resolve(undefined);
-            });
-
-            socket.once('server_error', (error) => reject(error));
-
-            // Timeout after 10 seconds
-            setTimeout(() => {
-              reject(
-                new Error('Timeout waiting for graph update notification'),
-              );
-            }, 10000);
+        // Set up listener for graph update events
+        const notificationPromise = new Promise((resolve, reject) => {
+          socket.once('graph.update', (notification) => {
+            expect(notification).to.have.property('graphId', freshGraphId);
+            expect(notification).to.have.property('type', 'graph.update');
+            expect(notification).to.have.property('data');
+            expect(notification.data).to.have.property('state');
+            resolve(undefined);
           });
 
-          // Trigger a graph action that will emit notifications
-          // Running the graph will trigger compilation events
-          return runGraph(freshGraphId, reqHeaders).then(() => {
-            // Graph run request completed, now wait for notification
-            return notificationPromise;
-          });
-        },
-      );
+          socket.once('server_error', (error) => reject(error));
+
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            reject(new Error('Timeout waiting for graph update notification'));
+          }, 10000);
+        });
+
+        // Trigger a graph action that will emit notifications
+        // Running the graph will trigger compilation events
+        return runGraph(freshGraphId, reqHeaders).then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+          // Graph run request completed, now wait for notification
+          return notificationPromise;
+        });
+      });
     });
 
     it('should receive error when subscribing without graphId', () => {
@@ -248,11 +246,10 @@ describe('Socket Gateway E2E', () => {
       // Create a test graph if not already created
       if (!createdGraphId) {
         const graphData = createMockGraphData();
-        return createGraph(graphData, reqHeaders).then(
-          (response: { body: { id: string } }) => {
-            createdGraphId = response.body.id;
-          },
-        );
+        return createGraph(graphData, reqHeaders).then((response) => {
+          expect(response.status).to.equal(201);
+          createdGraphId = response.body.id;
+        });
       }
     });
 
@@ -267,38 +264,235 @@ describe('Socket Gateway E2E', () => {
       // Create a fresh graph for this test to avoid "already running" issues
       const graphData = createMockGraphData();
 
-      return createGraph(graphData, reqHeaders).then(
-        (response: { body: { id: string } }) => {
-          const freshGraphId = response.body.id;
+      return createGraph(graphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(201);
+        const freshGraphId = response.body.id;
 
-          // Set up listener for graph update events
-          const notificationPromise = new Promise((resolve, reject) => {
-            socket.once('graph.update', (notification) => {
+        // Set up listener for graph update events
+        const notificationPromise = new Promise((resolve, reject) => {
+          socket.once('graph.update', (notification) => {
+            expect(notification).to.have.property('graphId', freshGraphId);
+            expect(notification).to.have.property('type', 'graph.update');
+            expect(notification).to.have.property('data');
+            expect(notification.data).to.have.property('state');
+            resolve(undefined);
+          });
+
+          socket.once('server_error', (error) => reject(error));
+
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            reject(new Error('Timeout waiting for graph update notification'));
+          }, 10000);
+        });
+
+        // Trigger a graph action that will emit notifications
+        // Running the graph will trigger compilation events
+        return runGraph(freshGraphId, reqHeaders).then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+          // Graph run request completed, now wait for notification
+          return notificationPromise;
+        });
+      });
+    });
+
+    it('should receive message notifications with correct data', function () {
+      // Increase Cypress default timeout for this specific test
+      this.timeout(120000); // 2 minutes
+
+      // Create a fresh graph for this test
+      const graphData = createMockGraphData();
+      let freshGraphId: string;
+
+      // Set up the promise for waiting for notifications
+      const waitForNotification = () =>
+        new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Timeout waiting for message notification'));
+          }, 90000);
+
+          socket.on('graph.checkpointer.message', (notification) => {
+            clearTimeout(timeout);
+
+            // Verify the notification structure
+            try {
+              expect(notification).to.have.property(
+                'type',
+                'graph.checkpointer.message',
+              );
               expect(notification).to.have.property('graphId', freshGraphId);
-              expect(notification).to.have.property('type', 'graph.update');
+              expect(notification).to.have.property('ownerId', mockUserId);
+              expect(notification).to.have.property('nodeId');
+              expect(notification).to.have.property('threadId');
               expect(notification).to.have.property('data');
-              expect(notification.data).to.have.property('state');
+              expect(notification.data).to.have.property('content');
+              expect(notification.data).to.have.property('role');
+              expect(notification.data.content).to.be.a('string');
+              expect(notification.data.role).to.be.a('string');
+              resolve(undefined);
+            } catch (error) {
+              reject(error);
+            }
+          });
+
+          socket.once('server_error', (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          });
+        });
+
+      // Chain Cypress commands properly
+      return createGraph(graphData, reqHeaders)
+        .then((response) => {
+          expect(response.status).to.equal(201);
+          freshGraphId = response.body.id;
+
+          return runGraph(freshGraphId, reqHeaders);
+        })
+        .then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+
+          // Set up notification listener before triggering
+          const notificationPromise = waitForNotification();
+
+          // Trigger execution
+          return executeTrigger(
+            freshGraphId,
+            'trigger-1',
+            { messages: ['Hello, this is a test message'] },
+            reqHeaders,
+          ).then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(204);
+            return cy.wrap(notificationPromise, { timeout: 90000 });
+          });
+        });
+    });
+
+    it('should receive tool call notifications with correct data', () => {
+      // Create a graph with web-search-tool configured
+      const graphData = createMockGraphDataWithWebTool();
+
+      return createGraph(graphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(201);
+        const freshGraphId = response.body.id;
+
+        // Set up listener for tool call events
+        return cy.wrap(
+          new Promise((resolve, reject) => {
+            socket.on('graph.checkpointer.tool_call', (notification) => {
+              // Verify the notification structure
+              expect(notification).to.have.property(
+                'type',
+                'graph.checkpointer.tool_call',
+              );
+              expect(notification).to.have.property('graphId', freshGraphId);
+              expect(notification).to.have.property('ownerId', mockUserId);
+              expect(notification).to.have.property('nodeId');
+              expect(notification).to.have.property('threadId');
+              expect(notification).to.have.property('data');
+
+              // Verify tool call data structure
+              expect(notification.data).to.have.property('name');
+              expect(notification.data).to.have.property('args');
+              expect(notification.data.name).to.be.a('string');
+              expect(notification.data.args).to.exist;
+
               resolve(undefined);
             });
 
             socket.once('server_error', (error) => reject(error));
 
-            // Timeout after 10 seconds
-            setTimeout(() => {
-              reject(
-                new Error('Timeout waiting for graph update notification'),
-              );
-            }, 10000);
-          });
+            // Run the graph first, then execute the trigger
+            runGraph(freshGraphId, reqHeaders).then((runResponse) => {
+              expect(runResponse.status).to.equal(201);
+              // Execute the trigger with a query that should trigger web search
+              executeTrigger(
+                freshGraphId,
+                'trigger-1',
+                {
+                  messages: [
+                    'What is the current weather in Dubai? Check it in internet, use web tool',
+                  ],
+                },
+                reqHeaders,
+              ).then((triggerResponse) => {
+                expect(triggerResponse.status).to.equal(204);
+              });
+            });
 
-          // Trigger a graph action that will emit notifications
-          // Running the graph will trigger compilation events
-          return runGraph(freshGraphId, reqHeaders).then(() => {
-            // Graph run request completed, now wait for notification
-            return notificationPromise;
-          });
-        },
-      );
+            // Timeout after 45 seconds (tool execution may take time)
+            setTimeout(() => {
+              reject(new Error('Timeout waiting for tool call notification'));
+            }, 45000);
+          }),
+          {
+            timeout: 45000,
+          },
+        );
+      });
+    });
+
+    it('should receive multiple message notifications during graph execution', () => {
+      // This test verifies that multiple messages are detected and emitted correctly
+      const graphData = createMockGraphData();
+
+      return createGraph(graphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(201);
+        const freshGraphId = response.body.id;
+
+        const receivedMessages: unknown[] = [];
+
+        // Set up listener for message events
+        return cy.wrap(
+          new Promise((resolve, reject) => {
+            socket.on('graph.checkpointer.message', (notification) => {
+              receivedMessages.push(notification);
+              // Verify each message has the correct structure
+              expect(notification).to.have.property('graphId', freshGraphId);
+              expect(notification).to.have.property(
+                'type',
+                'graph.checkpointer.message',
+              );
+              expect(notification.data).to.have.property('content');
+              expect(notification.data).to.have.property('role');
+
+              // Once we have at least 2 messages (user + AI response), we're done
+              if (receivedMessages.length >= 2) {
+                resolve(undefined);
+              }
+            });
+
+            socket.once('server_error', (error) => reject(error));
+
+            // Run the graph first, then execute the trigger
+            runGraph(freshGraphId, reqHeaders).then((runResponse) => {
+              expect(runResponse.status).to.equal(201);
+              // Execute the trigger with a test message
+              executeTrigger(
+                freshGraphId,
+                'trigger-1',
+                { messages: ['Hello, how are you?'] },
+                reqHeaders,
+              ).then((triggerResponse) => {
+                expect(triggerResponse.status).to.equal(204);
+              });
+            });
+
+            // Timeout after 20 seconds
+            setTimeout(() => {
+              // We should have at least received some messages
+              if (receivedMessages.length > 0) {
+                resolve(undefined);
+              } else {
+                reject(new Error('Timeout: No message notifications received'));
+              }
+            }, 20000);
+          }),
+          {
+            timeout: 20000,
+          },
+        );
+      });
     });
   });
 
@@ -376,11 +570,13 @@ describe('Socket Gateway E2E', () => {
           // Create a new graph to trigger notification
           const graphData = createMockGraphData();
           return createGraph(graphData, reqHeaders).then(
-            (response: { body: { id: string } }) => {
+            (response: { status: number; body: { id: string } }) => {
+              expect(response.status).to.equal(201);
               const newGraphId = response.body.id;
 
               // Run the graph to trigger notifications
-              return runGraph(newGraphId, reqHeaders).then(() => {
+              return runGraph(newGraphId, reqHeaders).then((runResponse) => {
+                expect(runResponse.status).to.equal(201);
                 // Both sockets should receive the notification
                 return Promise.all([firstSocketEvent, secondSocketEvent]).then(
                   ([first, second]: [

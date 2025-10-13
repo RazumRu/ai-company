@@ -29,7 +29,7 @@ describe('GraphRestorationService', () => {
           config: {
             name: 'Test Agent',
             instructions: 'You are a helpful test agent.',
-            invokeModelName: 'gpt-4',
+            invokeModelName: 'gpt-5-mini',
             invokeModelTemperature: 0.7,
           },
         },
@@ -47,11 +47,6 @@ describe('GraphRestorationService', () => {
           to: 'agent-1',
         },
       ],
-      metadata: {
-        graphId: 'test-graph-id',
-        name: 'Test Graph',
-        version: '1.0.0',
-      },
     },
     status: GraphStatus.Running,
     createdBy: 'test-user',
@@ -133,7 +128,7 @@ describe('GraphRestorationService', () => {
 
       // Assert
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
-      expect(graphCompiler.compile).toHaveBeenCalledWith(mockGraph.schema);
+      expect(graphCompiler.compile).toHaveBeenCalledWith(mockGraph);
       expect(graphRegistry.register).toHaveBeenCalledWith(
         mockGraph.id,
         mockCompiledGraph,
@@ -166,7 +161,7 @@ describe('GraphRestorationService', () => {
 
       // Assert
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
-      expect(graphCompiler.compile).toHaveBeenCalledWith(mockGraph.schema);
+      expect(graphCompiler.compile).toHaveBeenCalledWith(mockGraph);
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraph.id, {
         status: GraphStatus.Error,
         error: 'Restoration failed: Compilation failed',

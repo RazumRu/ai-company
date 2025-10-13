@@ -86,7 +86,8 @@ describe('ShellToolTemplate', () => {
       } as unknown as BaseRuntime;
       const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
         id: 'runtime-1',
-        type: 'runtime',
+        type: NodeKind.Runtime,
+        template: 'docker-runtime',
         instance: mockRuntime,
       };
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
@@ -155,7 +156,8 @@ describe('ShellToolTemplate', () => {
       } as unknown as BaseRuntime;
       const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
         id: 'runtime-1',
-        type: 'runtime',
+        type: NodeKind.Runtime,
+        template: 'docker-runtime',
         instance: mockRuntime,
       };
       const compiledNodes = new Map([['runtime-1', mockRuntimeNode]]);
@@ -194,13 +196,15 @@ describe('ShellToolTemplate', () => {
 
       const mockRuntimeNode1: CompiledGraphNode<BaseRuntime> = {
         id: 'runtime-1',
-        type: 'runtime',
+        type: NodeKind.Runtime,
+        template: 'docker-runtime',
         instance: mockRuntime1,
       };
 
       const mockRuntimeNode2: CompiledGraphNode<BaseRuntime> = {
         id: 'runtime-2',
-        type: 'runtime',
+        type: NodeKind.Runtime,
+        template: 'docker-runtime',
         instance: mockRuntime2,
       };
 

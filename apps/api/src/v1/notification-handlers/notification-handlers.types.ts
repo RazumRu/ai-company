@@ -10,4 +10,6 @@ export interface IEnrichedNotification<T> {
 export enum EnrichedNotificationEvent {
   Graph = 'graph.update',
   Checkpointer = 'graph.checkpointer.update',
+  CheckpointerMessage = 'graph.checkpointer.message',
+  CheckpointerToolCall = 'graph.checkpointer.tool_call',
 }

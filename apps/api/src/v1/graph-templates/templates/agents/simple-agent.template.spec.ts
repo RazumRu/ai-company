@@ -3,12 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
-import {
-  SimpleAgent,
-  SimpleAgentSchemaType,
-} from '../../../agents/services/agents/simple-agent';
+import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
-import { SimpleAgentTemplateResult } from '../base-node.template';
 import {
   SimpleAgentTemplate,
   SimpleAgentTemplateSchema,
@@ -72,7 +68,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       expect(() => SimpleAgentTemplateSchema.parse(validConfig)).not.toThrow();
@@ -84,7 +80,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         toolNodeIds: ['tool-1', 'tool-2'],
       };
 
@@ -106,7 +102,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         toolNodeIds: [],
       };
 
@@ -127,13 +123,15 @@ describe('SimpleAgentTemplate', () => {
 
       mockToolNode1 = {
         id: 'tool-1',
-        type: 'tool',
+        type: NodeKind.Tool,
+        template: 'web-search-tool',
         instance: mockTool1,
       };
 
       mockToolNode2 = {
         id: 'tool-2',
-        type: 'tool',
+        type: NodeKind.Tool,
+        template: 'shell-tool',
         instance: mockTool2,
       };
 
@@ -149,7 +147,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       const result = await template.create(config, compiledNodes, {
@@ -168,7 +166,7 @@ describe('SimpleAgentTemplate', () => {
           summarizeKeepTokens: 500,
           instructions: 'Test agent instructions',
           name: 'Test Agent',
-          invokeModelName: 'gpt-4',
+          invokeModelName: 'gpt-5-mini',
         },
       });
     });
@@ -179,7 +177,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         toolNodeIds: [],
       };
 
@@ -199,7 +197,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         toolNodeIds: ['tool-1', 'tool-2'],
       };
 
@@ -220,7 +218,7 @@ describe('SimpleAgentTemplate', () => {
           summarizeKeepTokens: 500,
           instructions: 'Test agent instructions',
           name: 'Test Agent',
-          invokeModelName: 'gpt-4',
+          invokeModelName: 'gpt-5-mini',
         },
       });
     });
@@ -231,7 +229,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         toolNodeIds: ['tool-1', 'non-existent-tool', 'tool-2'],
       };
 
@@ -258,7 +256,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         toolNodeIds: ['tool-1', 'tool-2'],
       };
 
@@ -299,7 +297,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       await expect(
@@ -322,7 +320,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
         toolNodeIds: ['tool-1'],
       };
 
@@ -367,7 +365,7 @@ describe('SimpleAgentTemplate', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
-        invokeModelName: 'gpt-4',
+        invokeModelName: 'gpt-5-mini',
       };
 
       const result = await template.create(config, compiledNodes, {

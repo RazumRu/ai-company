@@ -1,7 +1,7 @@
 # ---------- Builder ----------
 FROM node:22-alpine AS build
 
-ENV APP_NAME="lusora-api"
+ENV APP_NAME="api"
 WORKDIR /usr/src/app
 
 ENV HUSKY=0
@@ -17,7 +17,7 @@ RUN corepack enable && \
 FROM node:22-alpine AS run
 
 ENV WORKDIR=/usr/src/app
-ENV APP_NAME="lusora-api"
+ENV APP_NAME="api"
 ENV HTTP_PORT=5000
 
 WORKDIR $WORKDIR

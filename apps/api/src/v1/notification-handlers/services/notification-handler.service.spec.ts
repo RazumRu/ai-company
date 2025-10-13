@@ -13,6 +13,8 @@ import { EnrichedNotificationEvent } from '../notification-handlers.types';
 import {
   CheckpointerNotificationHandler,
   ICheckpointerEnrichedNotification,
+  ICheckpointerMessageEnrichedNotification,
+  ICheckpointerToolCallEnrichedNotification,
 } from './event-handlers/checkpointer-notification-handler';
 import {
   GraphNotificationHandler,
@@ -225,6 +227,187 @@ describe('NotificationHandler', () => {
         mockNotification,
       );
       expect(emittedEvent).toEqual(mockEnrichedNotification);
+    });
+
+    it('should handle checkpointer notification and emit message event', async () => {
+      const mockMessageNotification: ICheckpointerMessageEnrichedNotification =
+        {
+          type: EnrichedNotificationEvent.CheckpointerMessage,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: {
+            content: 'Hello, world!',
+            role: 'ai',
+          },
+        };
+
+      checkpointerEventHandler.handle.mockResolvedValue([
+        mockMessageNotification,
+      ]);
+
+      const mockNotification: ICheckpointerNotification = {
+        type: NotificationEvent.Checkpointer,
+        graphId: mockGraphId,
+        nodeId: mockNodeId,
+        threadId: mockThreadId,
+        data: {
+          action: 'putWrites',
+          writes: [
+            {
+              channel: 'messages',
+              value: {
+                type: 'ai',
+                content: 'Hello, world!',
+              },
+            },
+          ],
+        },
+      };
+
+      let emittedEvent: any;
+      service.on('enriched_notification', (event) => {
+        emittedEvent = event;
+      });
+
+      // Get the subscribe callback and call it
+      const subscribeCallback =
+        notificationsService.subscribe.mock.calls[0]?.[0];
+      if (subscribeCallback) {
+        await subscribeCallback(mockNotification);
+      }
+
+      expect(checkpointerEventHandler.handle).toHaveBeenCalledWith(
+        mockNotification,
+      );
+      expect(emittedEvent).toEqual(mockMessageNotification);
+    });
+
+    it('should handle checkpointer notification and emit tool call event', async () => {
+      const mockToolCallNotification: ICheckpointerToolCallEnrichedNotification =
+        {
+          type: EnrichedNotificationEvent.CheckpointerToolCall,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: {
+            name: 'get_weather',
+            args: { city: 'San Francisco' },
+            id: 'call-123',
+          },
+        };
+
+      checkpointerEventHandler.handle.mockResolvedValue([
+        mockToolCallNotification,
+      ]);
+
+      const mockNotification: ICheckpointerNotification = {
+        type: NotificationEvent.Checkpointer,
+        graphId: mockGraphId,
+        nodeId: mockNodeId,
+        threadId: mockThreadId,
+        data: {
+          action: 'putWrites',
+          writes: [
+            {
+              channel: 'messages',
+              value: {
+                type: 'ai',
+                tool_calls: [
+                  {
+                    name: 'get_weather',
+                    args: { city: 'San Francisco' },
+                    id: 'call-123',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      };
+
+      let emittedEvent: any;
+      service.on('enriched_notification', (event) => {
+        emittedEvent = event;
+      });
+
+      // Get the subscribe callback and call it
+      const subscribeCallback =
+        notificationsService.subscribe.mock.calls[0]?.[0];
+      if (subscribeCallback) {
+        await subscribeCallback(mockNotification);
+      }
+
+      expect(checkpointerEventHandler.handle).toHaveBeenCalledWith(
+        mockNotification,
+      );
+      expect(emittedEvent).toEqual(mockToolCallNotification);
+    });
+
+    it('should handle checkpointer notification and emit multiple events', async () => {
+      const mockMessageNotification: ICheckpointerMessageEnrichedNotification =
+        {
+          type: EnrichedNotificationEvent.CheckpointerMessage,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: {
+            content: 'Hello!',
+            role: 'ai',
+          },
+        };
+
+      const mockToolCallNotification: ICheckpointerToolCallEnrichedNotification =
+        {
+          type: EnrichedNotificationEvent.CheckpointerToolCall,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: {
+            name: 'get_weather',
+            args: { city: 'SF' },
+            id: 'call-123',
+          },
+        };
+
+      checkpointerEventHandler.handle.mockResolvedValue([
+        mockMessageNotification,
+        mockToolCallNotification,
+      ]);
+
+      const mockNotification: ICheckpointerNotification = {
+        type: NotificationEvent.Checkpointer,
+        graphId: mockGraphId,
+        nodeId: mockNodeId,
+        threadId: mockThreadId,
+        data: {
+          action: 'putWrites',
+          writes: [],
+        },
+      };
+
+      const emittedEvents: any[] = [];
+      service.on('enriched_notification', (event) => {
+        emittedEvents.push(event);
+      });
+
+      // Get the subscribe callback and call it
+      const subscribeCallback =
+        notificationsService.subscribe.mock.calls[0]?.[0];
+      if (subscribeCallback) {
+        await subscribeCallback(mockNotification);
+      }
+
+      expect(checkpointerEventHandler.handle).toHaveBeenCalledWith(
+        mockNotification,
+      );
+      expect(emittedEvents).toHaveLength(2);
+      expect(emittedEvents[0]).toEqual(mockMessageNotification);
+      expect(emittedEvents[1]).toEqual(mockToolCallNotification);
     });
 
     it('should process multiple notifications', async () => {

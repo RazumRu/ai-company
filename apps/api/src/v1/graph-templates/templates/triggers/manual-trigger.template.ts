@@ -94,6 +94,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
           agentId: config.agentId,
           threadId,
           messageCount: messages.length,
+          metadata,
         });
         // Enrich runnableConfig with graph and node metadata
         const enrichedConfig: RunnableConfig<BaseAgentConfigurable> = {

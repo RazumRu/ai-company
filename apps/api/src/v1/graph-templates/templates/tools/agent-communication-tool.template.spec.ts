@@ -129,13 +129,14 @@ describe('AgentCommunicationToolTemplate', () => {
             summarizeKeepTokens: 500,
             instructions: 'Test agent instructions',
             name: 'Test Agent',
-            invokeModelName: 'gpt-4',
+            invokeModelName: 'gpt-5-mini',
           },
         };
 
       mockAgentNode = {
         id: 'target-agent-1',
-        type: 'simpleAgent',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
         instance: mockAgentResult,
       };
 

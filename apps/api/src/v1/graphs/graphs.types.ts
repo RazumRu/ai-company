@@ -16,7 +16,8 @@ export enum GraphStatus {
 
 export interface CompiledGraphNode<TInstance = unknown> {
   id: string;
-  type: string;
+  type: NodeKind;
+  template: string;
   instance: TInstance;
 }
 
@@ -61,7 +62,6 @@ export const GraphMetadataSchema = z.object({
 export const GraphSchema = z.object({
   nodes: z.array(GraphNodeSchema),
   edges: z.array(GraphEdgeSchema).optional(),
-  metadata: GraphMetadataSchema,
 });
 
 export type GraphSchemaType = z.infer<typeof GraphSchema>;

@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Put,
@@ -11,7 +13,12 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
 
 import { EntityUUIDDto } from '../../../utils/dto/misc.dto';
-import { CreateGraphDto, GraphDto, UpdateGraphDto } from '../dto/graphs.dto';
+import {
+  CreateGraphDto,
+  ExecuteTriggerDto,
+  GraphDto,
+  UpdateGraphDto,
+} from '../dto/graphs.dto';
 import { GraphsService } from '../services/graphs.service';
 
 @Controller('graphs')
@@ -57,5 +64,15 @@ export class GraphsController {
   @Post(':id/destroy')
   async destroyGraph(@Param() params: EntityUUIDDto): Promise<GraphDto> {
     return await this.graphsService.destroy(params.id);
+  }
+
+  @Post(':graphId/triggers/:triggerId/execute')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async executeTrigger(
+    @Param('graphId') graphId: string,
+    @Param('triggerId') triggerId: string,
+    @Body() payload: ExecuteTriggerDto,
+  ): Promise<void> {
+    await this.graphsService.executeTrigger(graphId, triggerId, payload);
   }
 }

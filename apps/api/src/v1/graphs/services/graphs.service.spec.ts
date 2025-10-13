@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GraphDao } from '../dao/graph.dao';
 import { CreateGraphDto, GraphDto, UpdateGraphDto } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
-import { CompiledGraph, GraphStatus } from '../graphs.types';
+import { CompiledGraph, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphsService } from './graphs.service';
@@ -40,11 +40,6 @@ describe('GraphsService', () => {
         },
       ],
       edges: [],
-      metadata: {
-        graphId: mockGraphId,
-        name: 'Test Graph',
-        version: '1.0.0',
-      },
     },
     status: GraphStatus.Created,
     createdBy: mockUserId,
@@ -68,11 +63,6 @@ describe('GraphsService', () => {
         },
       ],
       edges: [],
-      metadata: {
-        graphId: mockGraphId,
-        name: 'Test Graph',
-        version: '1.0.0',
-      },
     },
     status: GraphStatus.Created,
     createdAt: '2024-01-01T00:00:00.000Z',
@@ -86,7 +76,8 @@ describe('GraphsService', () => {
         'node-1',
         {
           id: 'node-1',
-          type: 'runtime',
+          type: NodeKind.Runtime,
+          template: 'test-runtime',
           instance: { container: 'test-container' },
         },
       ],
@@ -169,21 +160,11 @@ describe('GraphsService', () => {
             },
           ],
           edges: [],
-          metadata: {
-            graphId: 'new-graph',
-            name: 'New Graph',
-            version: '1.0.0',
-          },
         },
         metadata: {
-          nodes: [
-            {
-              id: 'node-1',
-              template: 'docker-runtime',
-              config: { image: 'python:3.11' },
-            },
-          ],
-          edges: [],
+          graphId: 'new-graph',
+          name: 'New Graph',
+          version: '1.0.0',
         },
       };
 
@@ -225,14 +206,10 @@ describe('GraphsService', () => {
         schema: {
           nodes: [],
           edges: [],
-          metadata: {
-            graphId: 'new-graph',
-            version: '1.0.0',
-          },
         },
         metadata: {
-          nodes: [],
-          edges: [],
+          graphId: 'new-graph',
+          version: '1.0.0',
         },
       };
 
@@ -426,7 +403,11 @@ describe('GraphsService', () => {
       const result = await service.run(mockGraphId);
 
       expect(result).toMatchObject(updatedGraph);
-      expect(graphCompiler.compile).toHaveBeenCalledWith(graph.schema);
+      expect(graphCompiler.compile).toHaveBeenCalledWith(graph, {
+        graphId: graph.id,
+        name: graph.name,
+        version: graph.version,
+      });
       expect(graphRegistry.register).toHaveBeenCalledWith(
         mockGraphId,
         compiledGraph,
@@ -601,20 +582,10 @@ describe('GraphsService', () => {
             },
           ],
           edges: [],
-          metadata: {
-            graphId: 'lifecycle-graph',
-            version: '1.0.0',
-          },
         },
         metadata: {
-          nodes: [
-            {
-              id: 'node-1',
-              template: 'docker-runtime',
-              config: { image: 'python:3.11' },
-            },
-          ],
-          edges: [],
+          graphId: 'lifecycle-graph',
+          version: '1.0.0',
         },
       };
 

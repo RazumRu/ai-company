@@ -43,13 +43,16 @@ export class GraphRegistry {
   /**
    * Gets a specific node from a graph
    */
-  getNode(graphId: string, nodeId: string): CompiledGraphNode | undefined {
+  getNode<TInstance>(
+    graphId: string,
+    nodeId: string,
+  ): CompiledGraphNode<TInstance> | undefined {
     const graph = this.graphs.get(graphId);
     if (!graph) {
       return undefined;
     }
 
-    return graph.nodes.get(nodeId);
+    return graph.nodes.get(nodeId) as CompiledGraphNode<TInstance> | undefined;
   }
 
   /**

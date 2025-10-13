@@ -4,7 +4,7 @@ export const environment = () =>
   ({
     env: getEnv('NODE_ENV', 'production'),
     tag: getEnv('TF_IMAGE_TAG', 'none'),
-    appName: getEnv('TF_APP_NAME', 'lusora-api'),
+    appName: getEnv('TF_APP_NAME', 'company-ai-api'),
     logLevel: getEnv('LOG_LEVEL', 'error'),
     lodDbQueries: getEnv('LOG_DB_QUERIES', false),
     prettyLog: getEnv('PRETTY_LOGS', false),
@@ -18,7 +18,7 @@ export const environment = () =>
     // auth
     authDevMode: getEnv('AUTH_DEV_MODE', false),
     keycloakUrl: getEnv('KEYCLOAK_URL'),
-    keycloakRealm: getEnv('KEYCLOAK_REALM', 'lusora'),
+    keycloakRealm: getEnv('KEYCLOAK_REALM', 'company-ai'),
 
     // connections
     postgresUrl: getEnv('POSTGRES_URL'),

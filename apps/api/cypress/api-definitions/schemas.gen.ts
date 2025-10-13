@@ -56,72 +56,18 @@ export const CreateGraphDtoSchema = {
             required: ['from', 'to'],
           },
         },
-        metadata: {
-          type: 'object',
-          properties: {
-            graphId: {
-              type: 'string',
-            },
-            name: {
-              type: 'string',
-            },
-            version: {
-              type: 'string',
-            },
-          },
-          required: ['graphId', 'version'],
-        },
-      },
-      required: ['nodes', 'metadata'],
-    },
-    metadata: {
-      type: 'object',
-      properties: {
-        nodes: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-              },
-              template: {
-                type: 'string',
-              },
-              config: {
-                type: 'object',
-                propertyNames: {
-                  type: 'string',
-                },
-                additionalProperties: {},
-              },
-            },
-            required: ['id', 'template', 'config'],
-          },
-        },
-        edges: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              from: {
-                type: 'string',
-              },
-              to: {
-                type: 'string',
-              },
-              label: {
-                type: 'string',
-              },
-            },
-            required: ['from', 'to'],
-          },
-        },
       },
       required: ['nodes'],
     },
+    metadata: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
   },
-  required: ['name', 'version', 'schema', 'metadata'],
+  required: ['name', 'version', 'schema'],
 } as const;
 
 export const GraphDtoSchema = {
@@ -190,23 +136,8 @@ export const GraphDtoSchema = {
             required: ['from', 'to'],
           },
         },
-        metadata: {
-          type: 'object',
-          properties: {
-            graphId: {
-              type: 'string',
-            },
-            name: {
-              type: 'string',
-            },
-            version: {
-              type: 'string',
-            },
-          },
-          required: ['graphId', 'version'],
-        },
       },
-      required: ['nodes', 'metadata'],
+      required: ['nodes'],
     },
     status: {
       type: 'string',
@@ -299,71 +230,31 @@ export const UpdateGraphDtoSchema = {
             required: ['from', 'to'],
           },
         },
-        metadata: {
-          type: 'object',
-          properties: {
-            graphId: {
-              type: 'string',
-            },
-            name: {
-              type: 'string',
-            },
-            version: {
-              type: 'string',
-            },
-          },
-          required: ['graphId', 'version'],
-        },
-      },
-      required: ['nodes', 'metadata'],
-    },
-    metadata: {
-      type: 'object',
-      properties: {
-        nodes: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-              },
-              template: {
-                type: 'string',
-              },
-              config: {
-                type: 'object',
-                propertyNames: {
-                  type: 'string',
-                },
-                additionalProperties: {},
-              },
-            },
-            required: ['id', 'template', 'config'],
-          },
-        },
-        edges: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              from: {
-                type: 'string',
-              },
-              to: {
-                type: 'string',
-              },
-              label: {
-                type: 'string',
-              },
-            },
-            required: ['from', 'to'],
-          },
-        },
       },
       required: ['nodes'],
     },
+    metadata: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
   },
+} as const;
+
+export const ExecuteTriggerDtoSchema = {
+  type: 'object',
+  properties: {
+    messages: {
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'string',
+      },
+    },
+  },
+  required: ['messages'],
 } as const;
 
 export const TemplateDtoSchema = {

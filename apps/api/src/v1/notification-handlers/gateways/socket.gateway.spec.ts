@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { AuthContextDataBuilder } from '@packages/http-server';
+import { Socket } from 'socket.io';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockDeep, MockProxy } from 'vitest-mock-extended';
 
@@ -90,19 +91,12 @@ describe('SocketGateway', () => {
   });
 
   describe('handleConnection', () => {
-    let mockClient: {
-      handshake: { auth: Record<string, string> };
-      id: string;
-      data: { userId?: string };
-      emit: ReturnType<typeof vi.fn>;
-      disconnect: ReturnType<typeof vi.fn>;
-      join: ReturnType<typeof vi.fn>;
-    };
+    let mockClient: Socket;
 
     beforeEach(() => {
       mockClient = {
         handshake: {
-          auth: { 
+          auth: {
             token: mockToken,
             'x-dev-jwt-sub': mockUserId,
           },
@@ -112,7 +106,7 @@ describe('SocketGateway', () => {
         emit: vi.fn(),
         disconnect: vi.fn(),
         join: vi.fn(),
-      };
+      } as unknown as Socket;
     });
 
     it('should authenticate and connect a client successfully', async () => {
