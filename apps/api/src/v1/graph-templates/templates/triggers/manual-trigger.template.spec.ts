@@ -247,7 +247,8 @@ describe('ManualTriggerTemplate', () => {
           configurable: expect.objectContaining({
             thread_id: 'thread-123',
             graph_id: 'test-graph',
-            node_id: 'test-node',
+            node_id: 'agent-1', // Uses agent's nodeId
+            checkpoint_ns: 'test-graph:agent-1', // Set to graphId:nodeId for node isolation
           }),
         }),
       );
@@ -298,13 +299,15 @@ describe('ManualTriggerTemplate', () => {
       await invokeAgentFn(messages, runnableConfig);
 
       expect(mockSimpleAgent.run).toHaveBeenCalledWith(
-        expect.stringMatching(/.+/),
+        'test-graph', // Default thread_id is graphId (shared across all nodes)
         messages,
         agentConfig,
         expect.objectContaining({
           configurable: expect.objectContaining({
+            thread_id: 'test-graph',
             graph_id: 'test-graph',
-            node_id: 'test-node',
+            node_id: 'agent-1', // Uses agent's nodeId, not trigger's
+            checkpoint_ns: 'test-graph:agent-1', // Set to graphId:nodeId for node isolation
           }),
         }),
       );
@@ -370,7 +373,8 @@ describe('ManualTriggerTemplate', () => {
             thread_id: 'test-thread-789',
             caller_agent: expect.any(Object),
             graph_id: 'test-graph', // Should be overridden with template metadata
-            node_id: 'test-node', // Should be overridden with template metadata
+            node_id: 'agent-1', // Uses agent's nodeId
+            checkpoint_ns: 'test-graph:agent-1', // Set to graphId:nodeId for node isolation
           }),
         }),
       );

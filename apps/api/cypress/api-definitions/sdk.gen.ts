@@ -21,6 +21,8 @@ import type {
   GetAllGraphsResponses,
   GetAllTemplatesData,
   GetAllTemplatesResponses,
+  GetNodeMessagesData,
+  GetNodeMessagesResponses,
   RunGraphData,
   RunGraphResponses,
   UpdateGraphData,
@@ -211,6 +213,26 @@ export const executeTrigger = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options.headers,
     },
+  });
+};
+
+export const getNodeMessages = <ThrowOnError extends boolean = false>(
+  options: Options<GetNodeMessagesData, ThrowOnError>,
+) => {
+  return (options.client ?? client).get<
+    GetNodeMessagesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/messages',
+    ...options,
   });
 };
 

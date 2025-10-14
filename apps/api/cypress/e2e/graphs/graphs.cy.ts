@@ -47,10 +47,8 @@ describe('Graphs E2E', () => {
 
     it('should return 400 for invalid graph data', () => {
       const invalidGraphData = {
-        name: '', // Empty name should be invalid
         version: '1.0.0',
         schema: {
-          nodes: [],
           metadata: {
             graphId: 'invalid-uuid',
             version: '1.0.0',

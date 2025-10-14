@@ -1,17 +1,31 @@
-import { HumanMessage } from '@langchain/core/messages';
+import { BaseMessage, HumanMessage } from '@langchain/core/messages';
+import {
+  BaseCheckpointSaver,
+  Checkpoint,
+} from '@langchain/langgraph-checkpoint';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
-import { TypeormService } from '@packages/typeorm';
+import { AdditionalParams, TypeormService } from '@packages/typeorm';
 import { isUndefined, omitBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
+import {
+  GraphCheckpointsDao,
+  SearchTerms,
+} from '../../agents/dao/graph-checkpoints.dao';
+import { GraphCheckpointEntity } from '../../agents/entity/graph-chekpoints.entity';
+import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
+  GetGraphMessagesQueryDto,
   GraphDto,
+  GraphMessagesResponseDto,
+  MessageDto,
+  ThreadMessagesDto,
   UpdateGraphDto,
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
@@ -27,6 +41,8 @@ export class GraphsService {
     private readonly graphRegistry: GraphRegistry,
     private readonly typeorm: TypeormService,
     private readonly authContext: AuthContextService,
+    private readonly graphCheckpointsDao: GraphCheckpointsDao,
+    private readonly pgCheckpointSaver: PgCheckpointSaver,
   ) {}
 
   private prepareResponse(entity: GraphEntity): GraphDto {
@@ -227,7 +243,222 @@ export class GraphsService {
     }
 
     const messages = dto.messages.map((msg) => new HumanMessage(msg));
+    trigger.invokeAgent(messages, {});
+  }
 
-    await trigger.invokeAgent(messages, {});
+  async getNodeMessages(
+    graphId: string,
+    nodeId: string,
+    query: GetGraphMessagesQueryDto,
+  ): Promise<GraphMessagesResponseDto> {
+    // Verify graph exists and user has access
+    const graph = await this.graphDao.getOne({
+      id: graphId,
+      createdBy: this.authContext.checkSub(),
+    });
+
+    if (!graph) {
+      throw new NotFoundException('GRAPH_NOT_FOUND');
+    }
+
+    // Verify the node exists in the graph schema
+    const nodeExists = graph.schema.nodes.some((node) => node.id === nodeId);
+    if (!nodeExists) {
+      throw new NotFoundException(
+        'NODE_NOT_FOUND',
+        `Node ${nodeId} not found in graph`,
+      );
+    }
+
+    const checkpointQuery: SearchTerms & AdditionalParams = {
+      checkpointNs: `${graphId}:${nodeId}`,
+      threadId: query.threadId || graphId,
+      order: { createdAt: 'DESC' },
+    };
+
+    const checkpoints = await this.graphCheckpointsDao.getAll(checkpointQuery);
+
+    if (checkpoints.length === 0) {
+      // No checkpoints found, return empty threads
+      return {
+        nodeId,
+        threads: [],
+      };
+    }
+
+    // Group checkpoints by threadId and get the latest checkpoint for each thread
+    const threadCheckpointsMap = new Map<string, GraphCheckpointEntity>();
+
+    for (const checkpoint of checkpoints) {
+      const threadId = checkpoint.threadId;
+      if (!threadCheckpointsMap.has(threadId)) {
+        threadCheckpointsMap.set(threadId, checkpoint);
+      }
+    }
+
+    // Process each thread's messages
+    const threads: ThreadMessagesDto[] = [];
+
+    for (const [threadId, checkpoint] of threadCheckpointsMap.entries()) {
+      // Deserialize the checkpoint to extract messages
+      const deserializedCheckpoint: Checkpoint =
+        await this.pgCheckpointSaver.serde.loadsTyped(
+          checkpoint.type,
+          checkpoint.checkpoint.toString('utf8'),
+        );
+
+      // Extract messages from the checkpoint channel values
+      const messagesChannel =
+        deserializedCheckpoint.channel_values?.['messages'];
+      let messages: BaseMessage[] = [];
+
+      if (Array.isArray(messagesChannel)) {
+        messages = messagesChannel;
+      }
+
+      // Apply limit if specified
+      if (query.limit && messages.length > query.limit) {
+        messages = messages.slice(-query.limit); // Get the last N messages
+      }
+
+      // Transform messages to DTOs
+      const messageDtos: MessageDto[] = messages.map((msg) =>
+        this.transformMessageToDto(msg),
+      );
+
+      threads.push({
+        id: threadId,
+        messages: messageDtos,
+        checkpointId: checkpoint.checkpointId,
+      });
+    }
+
+    return {
+      nodeId,
+      threads,
+    };
+  }
+
+  private getMessageRole(msg: BaseMessage): 'human' | 'ai' | 'system' | 'tool' {
+    const type = msg.getType();
+    switch (type) {
+      case 'human':
+        return 'human';
+      case 'ai':
+        return 'ai';
+      case 'system':
+        return 'system';
+      case 'tool':
+        return 'tool';
+      default:
+        return 'ai'; // Default fallback
+    }
+  }
+
+  private transformMessageToDto(msg: BaseMessage): MessageDto {
+    const role = this.getMessageRole(msg);
+
+    // Base message data
+    const baseData = {
+      role,
+      additionalKwargs: msg.additional_kwargs,
+    };
+
+    switch (role) {
+      case 'human':
+        return {
+          ...baseData,
+          role: 'human',
+          content:
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content),
+        };
+
+      case 'ai': {
+        const toolCalls = (msg as any).tool_calls || [];
+        return {
+          ...baseData,
+          role: 'ai',
+          content:
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content),
+          id: msg.id,
+          toolCalls: toolCalls.map((tc: any) => ({
+            name: tc.name,
+            args: tc.args,
+            type: tc.type || 'tool_call',
+            id: tc.id,
+          })),
+        };
+      }
+
+      case 'system':
+        return {
+          ...baseData,
+          role: 'system',
+          content:
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content),
+        };
+
+      case 'tool': {
+        // Parse tool content as JSON
+        let parsedContent: Record<string, unknown>;
+        try {
+          const contentStr =
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content);
+          parsedContent = JSON.parse(contentStr);
+        } catch (error) {
+          // If parsing fails, wrap the content in an object
+          parsedContent = {
+            raw: msg.content,
+          };
+        }
+
+        const toolName = msg.name || 'unknown';
+
+        // Return shell tool message with properly typed content
+        if (toolName === 'shell') {
+          return {
+            ...baseData,
+            role: 'tool-shell',
+            name: 'shell',
+            content: parsedContent as {
+              exitCode: number;
+              stdout: string;
+              stderr: string;
+              cmd: string;
+              fail?: boolean;
+            },
+            toolCallId: (msg as any).tool_call_id || '',
+          };
+        }
+
+        // Return generic tool message
+        return {
+          ...baseData,
+          role: 'tool',
+          content: parsedContent,
+          name: toolName,
+          toolCallId: (msg as any).tool_call_id || '',
+        };
+      }
+
+      default:
+        // Fallback
+        return {
+          ...baseData,
+          role: 'ai',
+          content:
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content),
+        } as MessageDto;
+    }
   }
 }

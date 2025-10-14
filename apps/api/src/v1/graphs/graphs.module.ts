@@ -3,6 +3,7 @@ import './graphs.exceptions';
 import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
+import { AgentsModule } from '../agents/agents.module';
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { GraphsController } from './controllers/graphs.controller';
@@ -18,6 +19,7 @@ import { GraphsService } from './services/graphs.service';
     registerEntities([GraphEntity]),
     GraphTemplatesModule,
     NotificationsModule,
+    AgentsModule,
   ],
   controllers: [GraphsController],
   providers: [
@@ -41,6 +43,6 @@ export class GraphsModule implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.graphRestorationService.restoreRunningGraphs();
+    this.graphRestorationService.restoreRunningGraphs().catch(console.error);
   }
 }

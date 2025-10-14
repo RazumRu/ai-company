@@ -107,7 +107,11 @@ describe('ShellTool', () => {
         cmd: 'echo "hello world"',
         env: undefined,
       });
-      expect(result).toEqual(mockExecResult);
+      expect(result).toEqual({
+        ...mockExecResult,
+        cmd: 'echo "hello world"',
+        env: undefined,
+      });
     });
 
     it('should execute command with environment variables', async () => {
@@ -121,16 +125,21 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
+      const envArray = [{ key: 'NODE_ENV', value: 'test' }];
       const result = await builtTool.invoke({
         cmd: 'echo $NODE_ENV',
-        env: [{ key: 'NODE_ENV', value: 'test' }],
+        env: envArray,
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith({
         cmd: 'echo $NODE_ENV',
         env: { NODE_ENV: 'test' },
       });
-      expect(result).toEqual(mockExecResult);
+      expect(result).toEqual({
+        ...mockExecResult,
+        cmd: 'echo $NODE_ENV',
+        env: envArray,
+      });
     });
 
     it('should execute command with all options', async () => {
@@ -144,11 +153,12 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
+      const envArray = [{ key: 'TEST', value: 'value' }];
       const result = await builtTool.invoke({
         cmd: 'pwd',
         timeoutMs: 5000,
         workdir: '/tmp',
-        env: [{ key: 'TEST', value: 'value' }],
+        env: envArray,
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith({
@@ -157,7 +167,11 @@ describe('ShellTool', () => {
         workdir: '/tmp',
         env: { TEST: 'value' },
       });
-      expect(result).toEqual(mockExecResult);
+      expect(result).toEqual({
+        ...mockExecResult,
+        cmd: 'pwd',
+        env: envArray,
+      });
     });
 
     it('should throw error when runtime is not provided', async () => {

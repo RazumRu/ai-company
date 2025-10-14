@@ -122,14 +122,6 @@ describe('SocketGateway', () => {
       );
       expect(mockClient.data.userId).toBe(mockUserId);
       expect(mockClient.join).toHaveBeenCalledWith(`user:${mockUserId}`);
-      expect(logger.debug).toHaveBeenCalledWith(
-        'Client connected',
-        expect.objectContaining({
-          socketId: mockClient.id,
-          userId: mockUserId,
-          userRoom: `user:${mockUserId}`,
-        }),
-      );
     });
 
     it('should reject connection without token', async () => {

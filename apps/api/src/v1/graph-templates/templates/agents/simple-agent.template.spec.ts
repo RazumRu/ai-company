@@ -87,6 +87,35 @@ describe('SimpleAgentTemplate', () => {
       expect(() => SimpleAgentTemplateSchema.parse(validConfig)).not.toThrow();
     });
 
+    it('should validate with optional enforceToolUsage', () => {
+      const validConfig = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test agent instructions',
+        name: 'Test Agent',
+        invokeModelName: 'gpt-5-mini',
+        enforceToolUsage: true,
+      };
+
+      expect(() => SimpleAgentTemplateSchema.parse(validConfig)).not.toThrow();
+
+      const parsed = SimpleAgentTemplateSchema.parse(validConfig);
+      expect(parsed.enforceToolUsage).toBe(true);
+    });
+
+    it('should have enforceToolUsage undefined when not provided (defaults to true in code)', () => {
+      const configWithoutEnforce = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test agent instructions',
+        name: 'Test Agent',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      const parsed = SimpleAgentTemplateSchema.parse(configWithoutEnforce);
+      expect(parsed.enforceToolUsage).toBeUndefined();
+    });
+
     it('should reject missing required fields', () => {
       const invalidConfig = {
         // missing required SimpleAgent fields

@@ -1,7 +1,9 @@
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
+  GetNodeMessagesData,
   GraphDto,
+  GraphMessagesResponseDto,
   UpdateGraphDto,
 } from '../../api-definitions';
 import { GraphDtoSchema } from '../../api-definitions/schemas.gen';
@@ -109,7 +111,23 @@ export const executeTrigger = (
     headers,
     body,
     failOnStatusCode: false,
+    timeout: 60000,
   });
+
+export const getNodeMessages = (
+  graphId: string,
+  nodeId: string,
+  query?: GetNodeMessagesData['query'],
+  headers = reqHeaders,
+) => {
+  return cy.request<GraphMessagesResponseDto>({
+    url: `/api/v1/graphs/${graphId}/nodes/${nodeId}/messages`,
+    method: 'GET',
+    headers,
+    failOnStatusCode: false,
+    qs: query,
+  });
+};
 
 export const validateGraph = (data: GraphDto) => {
   cy.validateSchema(data, GraphDtoSchema);

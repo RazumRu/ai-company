@@ -50,6 +50,12 @@ export const SimpleAgentSchema = z.object({
     .string()
     .default('gpt-5')
     .describe('Chat model used for the main reasoning/tool-call step.'),
+  enforceToolUsage: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, enforces that the agent must call a tool before finishing. Uses tool_usage_guard node to inject system messages requiring tool calls. Defaults to true.',
+    ),
 });
 
 export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
@@ -104,6 +110,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   }
 
   protected buildGraph(config: SimpleAgentSchemaType) {
+    // Apply defaults for optional fields
+    const enforceToolUsage = config.enforceToolUsage ?? true;
     // ---- summarize ----
     const summarizeNode = new SummarizeNode(
       this.buildLLM('gpt-5-mini'),
@@ -127,18 +135,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       this.logger,
     );
 
-    // ---- tool usage guard ----
-    const toolUsageGuardNode = new ToolUsageGuardNode(
-      {
-        getRestrictOutput: () => true,
-        getRestrictionMessage: () =>
-          "Do not produce a final answer directly. Before finishing, call a tool. If no tool is needed, call the 'finish' tool.",
-        getRestrictionMaxInjections: () => 2,
-      },
-      this.logger,
-    );
-
-    // ---- invoke ----
+    // ---- tool executor ----
     const toolExecutorNode = new ToolExecutorNode(
       tools,
       undefined,
@@ -151,31 +148,57 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     })
       .addNode('summarize', summarizeNode.invoke.bind(summarizeNode))
       .addNode('invoke_llm', invokeLlmNode.invoke.bind(invokeLlmNode))
-      .addNode(
-        'tool_usage_guard',
-        toolUsageGuardNode.invoke.bind(toolUsageGuardNode),
-      )
       .addNode('tools', toolExecutorNode.invoke.bind(toolExecutorNode))
       // ---- routing ----
       .addEdge(START, 'summarize')
-      .addEdge('summarize', 'invoke_llm')
-      .addConditionalEdges(
+      .addEdge('summarize', 'invoke_llm');
+
+    // ---- conditional tool usage guard ----
+    if (enforceToolUsage) {
+      // ---- tool usage guard ----
+      const toolUsageGuardNode = new ToolUsageGuardNode(
+        {
+          getRestrictOutput: () => true,
+          getRestrictionMessage: () =>
+            "Do not produce a final answer directly. Before finishing, call a tool. If no tool is needed, call the 'finish' tool.",
+          getRestrictionMaxInjections: () => 2,
+        },
+        this.logger,
+      );
+
+      g.addNode(
+        'tool_usage_guard',
+        toolUsageGuardNode.invoke.bind(toolUsageGuardNode),
+      )
+        .addConditionalEdges(
+          'invoke_llm',
+          (s) =>
+            ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ?? 0) > 0
+              ? 'tools'
+              : 'tool_usage_guard',
+          { tools: 'tools', tool_usage_guard: 'tool_usage_guard' },
+        )
+        .addConditionalEdges(
+          'tool_usage_guard',
+          (s) => (s.toolUsageGuardActivated ? 'invoke_llm' : END),
+          { invoke_llm: 'invoke_llm', [END]: END },
+        );
+    } else {
+      // Without tool usage guard, go directly to tools or END
+      g.addConditionalEdges(
         'invoke_llm',
         (s) =>
           ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ?? 0) > 0
             ? 'tools'
-            : 'tool_usage_guard',
-        { tools: 'tools', tool_usage_guard: 'tool_usage_guard' },
-      )
-      .addConditionalEdges(
-        'tool_usage_guard',
-        (s) => (s.toolUsageGuardActivated ? 'invoke_llm' : END),
-        { invoke_llm: 'invoke_llm', [END]: END },
-      )
-      .addConditionalEdges('tools', (s) => (s.done ? END : 'summarize'), {
-        summarize: 'summarize',
-        [END]: END,
-      });
+            : END,
+        { tools: 'tools', [END]: END },
+      );
+    }
+
+    g.addConditionalEdges('tools', (s) => (s.done ? END : 'summarize'), {
+      summarize: 'summarize',
+      [END]: END,
+    });
 
     return g.compile({ checkpointer: this.checkpointer });
   }

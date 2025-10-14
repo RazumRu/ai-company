@@ -78,31 +78,25 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
       },
     );
 
-    this.logger.debug('manual-trigger-template.create', {
-      agentId: config.agentId,
-      threadId: config.threadId,
-    });
-
     // Set the agent invocation function
     manualTrigger.setInvokeAgent(
       async (
         messages: HumanMessage[],
         runnableConfig: RunnableConfig<BaseAgentConfigurable>,
       ) => {
-        const threadId = runnableConfig.configurable?.thread_id || v4();
-        this.logger.debug('manual-trigger-template.invoke-agent', {
-          agentId: config.agentId,
-          threadId,
-          messageCount: messages.length,
-          metadata,
-        });
+        // Use graphId as thread_id (shared across all nodes in the graph)
+        const threadId =
+          runnableConfig.configurable?.thread_id || metadata.graphId;
+
         // Enrich runnableConfig with graph and node metadata
         const enrichedConfig: RunnableConfig<BaseAgentConfigurable> = {
           ...runnableConfig,
           configurable: {
             ...runnableConfig.configurable,
             graph_id: metadata.graphId,
-            node_id: metadata.nodeId,
+            node_id: config.agentId, // Use agent's nodeId, not trigger's
+            thread_id: threadId,
+            checkpoint_ns: `${metadata.graphId}:${config.agentId}`, // Set checkpoint namespace to graphId:nodeId for node isolation
           },
         };
 

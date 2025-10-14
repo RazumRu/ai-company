@@ -54,14 +54,6 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
       (event: IEnrichedNotification<unknown>) => {
         const { graphId, ownerId, type } = event;
 
-        this.logger.debug('[SocketGateway] Broadcasting event', {
-          type,
-          graphId,
-          ownerId,
-          graphRoom: this.getGraphRoomName(graphId),
-          userRoom: this.getUserRoomName(ownerId),
-        });
-
         this.broadcastToRoom(this.getGraphRoomName(graphId), type, event);
         this.broadcastToRoom(this.getUserRoomName(ownerId), type, event);
       },
@@ -92,12 +84,6 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
       // Automatically join user's personal room
       const userRoom = this.getUserRoomName(userId);
       await client.join(userRoom);
-
-      this.logger.debug('Client connected', {
-        socketId: client.id,
-        userId,
-        userRoom,
-      });
     } catch (err) {
       this.logger.error(<Error>err, 'Socket connection error');
       this.emitError(<Error>err, client, true);

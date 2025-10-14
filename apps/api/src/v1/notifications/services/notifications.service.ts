@@ -14,7 +14,6 @@ export class NotificationsService {
   }
 
   emit(event: Notification) {
-    this.logger.debug('notifications.emit', event);
     this.emitter.emit('event', event);
   }
 

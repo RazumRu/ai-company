@@ -139,6 +139,177 @@ export type ExecuteTriggerDto = {
   messages: Array<string>;
 };
 
+export type GraphMessagesResponseDto = {
+  /**
+   * Node ID
+   */
+  nodeId: string;
+  /**
+   * Array of threads with their messages
+   */
+  threads: Array<{
+    /**
+     * Thread ID
+     */
+    id: string;
+    /**
+     * Array of messages in this thread
+     */
+    messages: Array<
+      | {
+          /**
+           * Message role
+           */
+          role: string;
+          /**
+           * Message content
+           */
+          content: string;
+          /**
+           * Additional message metadata
+           */
+          additionalKwargs?: {
+            [key: string]: unknown;
+          };
+        }
+      | {
+          /**
+           * Message role
+           */
+          role: string;
+          /**
+           * Message content
+           */
+          content: string;
+          /**
+           * Message ID
+           */
+          id?: string;
+          /**
+           * Tool calls in the message
+           */
+          toolCalls?: Array<{
+            /**
+             * Tool name
+             */
+            name: string;
+            /**
+             * Tool arguments
+             */
+            args: {
+              [key: string]: unknown;
+            };
+            /**
+             * Tool call type
+             */
+            type: string;
+            /**
+             * Tool call ID
+             */
+            id: string;
+          }>;
+          /**
+           * Additional message metadata
+           */
+          additionalKwargs?: {
+            [key: string]: unknown;
+          };
+        }
+      | {
+          /**
+           * Message role
+           */
+          role: string;
+          /**
+           * Message content
+           */
+          content: string;
+          /**
+           * Additional message metadata
+           */
+          additionalKwargs?: {
+            [key: string]: unknown;
+          };
+        }
+      | {
+          /**
+           * Message role
+           */
+          role: string;
+          /**
+           * Tool name - shell
+           */
+          name: string;
+          /**
+           * Parsed shell execution result
+           */
+          content: {
+            /**
+             * Exit code of the shell command
+             */
+            exitCode: number;
+            /**
+             * Standard output from the command
+             */
+            stdout: string;
+            /**
+             * Standard error from the command
+             */
+            stderr: string;
+            /**
+             * The command that was executed
+             */
+            cmd: string;
+            /**
+             * Whether the command failed
+             */
+            fail?: boolean;
+          };
+          /**
+           * Tool call ID
+           */
+          toolCallId: string;
+          /**
+           * Additional message metadata
+           */
+          additionalKwargs?: {
+            [key: string]: unknown;
+          };
+        }
+      | {
+          /**
+           * Message role
+           */
+          role: string;
+          /**
+           * Tool name
+           */
+          name: string;
+          /**
+           * Parsed tool result as JSON
+           */
+          content: {
+            [key: string]: unknown;
+          };
+          /**
+           * Tool call ID
+           */
+          toolCallId: string;
+          /**
+           * Additional message metadata
+           */
+          additionalKwargs?: {
+            [key: string]: unknown;
+          };
+        }
+    >;
+    /**
+     * Checkpoint ID
+     */
+    checkpointId?: string;
+  }>;
+};
+
 export type TemplateDto = {
   name: string;
   description: string;
@@ -268,6 +439,32 @@ export type ExecuteTriggerResponses = {
 
 export type ExecuteTriggerResponse =
   ExecuteTriggerResponses[keyof ExecuteTriggerResponses];
+
+export type GetNodeMessagesData = {
+  body?: never;
+  path: {
+    graphId: string;
+    nodeId: string;
+  };
+  query?: {
+    /**
+     * Thread ID to filter messages (if not provided, returns all threads)
+     */
+    threadId?: string;
+    /**
+     * Maximum number of messages to return per thread
+     */
+    limit?: number;
+  };
+  url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/messages';
+};
+
+export type GetNodeMessagesResponses = {
+  200: GraphMessagesResponseDto;
+};
+
+export type GetNodeMessagesResponse =
+  GetNodeMessagesResponses[keyof GetNodeMessagesResponses];
 
 export type GetAllTemplatesData = {
   body?: never;

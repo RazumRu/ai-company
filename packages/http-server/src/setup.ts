@@ -215,6 +215,8 @@ export const buildHttpNestApp = async (
     rawBody: true,
   });
 
+  app.enableShutdownHooks();
+
   const cfg = app.get(AppBootstrapperConfigService);
 
   setupMiddlewares(app, {

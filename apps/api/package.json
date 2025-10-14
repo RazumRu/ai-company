@@ -19,7 +19,7 @@
     "test:e2e:local": "cypress run -P ./cypress --config baseUrl=http://localhost:5000",
     "test:e2e:open": "cypress open -P ./cypress",
     "test:e2e:open:local": "cypress open -P ./cypress --config baseUrl=http://localhost:5000",
-    "start:dev": "NODE_ENV=development pnpm ts-node-dev --compiler ts-patch/compiler --project ./tsconfig.json -r tsconfig-paths/register --respawn --files ./src/main",
+    "start:dev": "NODE_ENV=development pnpm ts-node-dev --compiler ts-patch/compiler --project ./tsconfig.json -r tsconfig-paths/register --respawn --exit-child --files ./src/main",
     "start": "node dist/main",
     "migration:create": "create-migration ./src/db",
     "migration:generate": "generate-migration ./src/db",

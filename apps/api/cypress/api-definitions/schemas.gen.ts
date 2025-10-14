@@ -257,6 +257,201 @@ export const ExecuteTriggerDtoSchema = {
   required: ['messages'],
 } as const;
 
+export const GraphMessagesResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    nodeId: {
+      type: 'string',
+    },
+    threads: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+          },
+          messages: {
+            type: 'array',
+            items: {
+              anyOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    role: {
+                      type: 'string',
+                      const: 'human',
+                    },
+                    content: {
+                      type: 'string',
+                    },
+                    additionalKwargs: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                      },
+                      additionalProperties: {},
+                    },
+                  },
+                  required: ['role', 'content'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    role: {
+                      type: 'string',
+                      const: 'ai',
+                    },
+                    content: {
+                      type: 'string',
+                    },
+                    id: {
+                      type: 'string',
+                    },
+                    toolCalls: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          name: {
+                            type: 'string',
+                          },
+                          args: {
+                            type: 'object',
+                            propertyNames: {
+                              type: 'string',
+                            },
+                            additionalProperties: {},
+                          },
+                          type: {
+                            type: 'string',
+                          },
+                          id: {
+                            type: 'string',
+                          },
+                        },
+                        required: ['name', 'args', 'type', 'id'],
+                      },
+                    },
+                    additionalKwargs: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                      },
+                      additionalProperties: {},
+                    },
+                  },
+                  required: ['role', 'content'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    role: {
+                      type: 'string',
+                      const: 'system',
+                    },
+                    content: {
+                      type: 'string',
+                    },
+                    additionalKwargs: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                      },
+                      additionalProperties: {},
+                    },
+                  },
+                  required: ['role', 'content'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    role: {
+                      type: 'string',
+                      const: 'tool-shell',
+                    },
+                    name: {
+                      type: 'string',
+                      const: 'shell',
+                    },
+                    content: {
+                      type: 'object',
+                      properties: {
+                        exitCode: {
+                          type: 'number',
+                        },
+                        stdout: {
+                          type: 'string',
+                        },
+                        stderr: {
+                          type: 'string',
+                        },
+                        cmd: {
+                          type: 'string',
+                        },
+                        fail: {
+                          type: 'boolean',
+                        },
+                      },
+                      required: ['exitCode', 'stdout', 'stderr', 'cmd'],
+                    },
+                    toolCallId: {
+                      type: 'string',
+                    },
+                    additionalKwargs: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                      },
+                      additionalProperties: {},
+                    },
+                  },
+                  required: ['role', 'name', 'content', 'toolCallId'],
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    role: {
+                      type: 'string',
+                      const: 'tool',
+                    },
+                    name: {
+                      type: 'string',
+                    },
+                    content: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                      },
+                      additionalProperties: {},
+                    },
+                    toolCallId: {
+                      type: 'string',
+                    },
+                    additionalKwargs: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                      },
+                      additionalProperties: {},
+                    },
+                  },
+                  required: ['role', 'name', 'content', 'toolCallId'],
+                },
+              ],
+            },
+          },
+          checkpointId: {
+            type: 'string',
+          },
+        },
+        required: ['id', 'messages'],
+      },
+    },
+  },
+  required: ['nodeId', 'threads'],
+} as const;
+
 export const TemplateDtoSchema = {
   type: 'object',
   properties: {

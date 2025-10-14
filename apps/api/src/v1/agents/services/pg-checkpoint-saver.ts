@@ -42,7 +42,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
 
     return {
       threadId,
-      checkpointNs: c.checkpoint_ns ?? '',
+      checkpointNs: c.checkpoint_ns || cfg?.metadata?.checkpoint_ns || '',
       checkpointId: c.checkpoint_id,
     };
   }

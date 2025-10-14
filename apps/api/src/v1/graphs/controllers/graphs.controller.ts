@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
@@ -16,7 +17,9 @@ import { EntityUUIDDto } from '../../../utils/dto/misc.dto';
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
+  GetGraphMessagesQueryDto,
   GraphDto,
+  GraphMessagesResponseDto,
   UpdateGraphDto,
 } from '../dto/graphs.dto';
 import { GraphsService } from '../services/graphs.service';
@@ -74,5 +77,14 @@ export class GraphsController {
     @Body() payload: ExecuteTriggerDto,
   ): Promise<void> {
     await this.graphsService.executeTrigger(graphId, triggerId, payload);
+  }
+
+  @Get(':graphId/nodes/:nodeId/messages')
+  async getNodeMessages(
+    @Param('graphId') graphId: string,
+    @Param('nodeId') nodeId: string,
+    @Query() query: GetGraphMessagesQueryDto,
+  ): Promise<GraphMessagesResponseDto> {
+    return await this.graphsService.getNodeMessages(graphId, nodeId, query);
   }
 }

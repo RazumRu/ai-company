@@ -8,6 +8,7 @@ export type BaseAgentConfigurable = {
   caller_agent?: BaseAgent<any>;
   graph_id?: string;
   node_id?: string;
+  checkpoint_ns?: string;
 };
 
 export abstract class BaseNode<

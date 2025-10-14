@@ -45,7 +45,7 @@ describe('NotificationsService', () => {
   });
 
   describe('emit', () => {
-    it('should emit graph notification and log debug message', () => {
+    it('should emit graph notification', () => {
       const graphNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
         graphId: 'test-graph-123',
@@ -64,10 +64,6 @@ describe('NotificationsService', () => {
 
       service.emit(graphNotification);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'notifications.emit',
-        graphNotification,
-      );
       expect(emitSpy).toHaveBeenCalledWith('event', graphNotification);
     });
 
@@ -99,10 +95,6 @@ describe('NotificationsService', () => {
 
       service.emit(checkpointerNotification);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'notifications.emit',
-        checkpointerNotification,
-      );
       expect(emitSpy).toHaveBeenCalledWith('event', checkpointerNotification);
     });
 
@@ -131,10 +123,6 @@ describe('NotificationsService', () => {
 
       service.emit(checkpointerNotification);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'notifications.emit',
-        checkpointerNotification,
-      );
       expect(emitSpy).toHaveBeenCalledWith('event', checkpointerNotification);
     });
   });

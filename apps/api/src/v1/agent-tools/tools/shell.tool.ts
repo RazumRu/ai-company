@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import { RuntimeExecResult } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { BaseTool } from './base-tool';
 
@@ -25,6 +26,11 @@ export const ShellToolSchema = z.object({
 });
 export type ShellToolSchemaType = z.infer<typeof ShellToolSchema>;
 
+export interface ShellToolOutput extends RuntimeExecResult {
+  cmd: string;
+  env: ShellToolSchemaType['env'];
+}
+
 @Injectable()
 export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public name = 'shell';
@@ -39,7 +45,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     data: ShellToolSchemaType,
     config: ShellToolOptions,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ) {
+  ): Promise<ShellToolOutput> {
     if (!config?.runtime) {
       throw new Error('Runtime is required for ShellTool');
     }
@@ -49,6 +55,10 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
     const res = await config.runtime.exec({ ...data, env });
 
-    return res;
+    return {
+      ...res,
+      cmd: data.cmd,
+      env: data.env,
+    };
   }
 }
