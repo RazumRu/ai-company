@@ -137,6 +137,21 @@ export type ExecuteTriggerDto = {
    * Array of messages to send to the trigger
    */
   messages: Array<string>;
+  /**
+   * Optional thread ID.
+   */
+  threadId?: string;
+};
+
+export type ExecuteTriggerResponseDto = {
+  /**
+   * The thread ID used for this execution
+   */
+  threadId: string;
+  /**
+   * The checkpoint namespace for this execution
+   */
+  checkpointNs?: string;
 };
 
 export type GraphMessagesResponseDto = {
@@ -434,7 +449,7 @@ export type ExecuteTriggerData = {
 };
 
 export type ExecuteTriggerResponses = {
-  204: void;
+  201: ExecuteTriggerResponseDto;
 };
 
 export type ExecuteTriggerResponse =
@@ -446,13 +461,13 @@ export type GetNodeMessagesData = {
     graphId: string;
     nodeId: string;
   };
-  query?: {
+  query: {
     /**
-     * Thread ID to filter messages (if not provided, returns all threads)
+     * Thread ID component (e.g., "my-session" or UUID) - will be combined with graphId
      */
-    threadId?: string;
+    threadId: string;
     /**
-     * Maximum number of messages to return per thread
+     * Maximum number of messages to return
      */
     limit?: number;
   };

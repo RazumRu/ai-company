@@ -32,7 +32,7 @@ export class DockerRuntime extends BaseRuntime {
     this.image = params?.image;
   }
 
-  private get containerName(): string {
+  private generateContainerName(): string {
     return `rt-${randomUUID()}`;
   }
 
@@ -70,6 +70,26 @@ export class DockerRuntime extends BaseRuntime {
     }
 
     return this.docker.getContainer(list[0].Id);
+  }
+
+  /**
+   * Check if a container with the given name already exists
+   */
+  private async getByName(name: string): Promise<Docker.Container | null> {
+    try {
+      const list = await this.docker.listContainers({
+        all: true,
+        filters: { name: [name] } as any,
+      });
+
+      if (!list[0]) {
+        return null;
+      }
+
+      return this.docker.getContainer(list[0].Id);
+    } catch {
+      return null;
+    }
   }
 
   private async runInitScript(
@@ -123,6 +143,26 @@ export class DockerRuntime extends BaseRuntime {
       throw new BadRequestException('Image not specified');
     }
 
+    // Determine container name: use provided name or generate a random one
+    const containerName = params?.containerName || this.generateContainerName();
+
+    // First, try to find an existing container by name (for graph restoration)
+    const existingByName = await this.getByName(containerName);
+    if (existingByName) {
+      this.container = existingByName;
+      const st = await existingByName.inspect();
+      if (!st.State.Running) {
+        await existingByName.start();
+      }
+
+      if (params?.initScript) {
+        await this.runInitScript(params.initScript, params.workdir, params.env);
+      }
+
+      return;
+    }
+
+    // Second, try to find a reusable container by labels
     const reusable = await this.getByLabels(params?.labels);
     if (reusable) {
       this.container = reusable;
@@ -138,13 +178,14 @@ export class DockerRuntime extends BaseRuntime {
       return;
     }
 
+    // If no existing container found, create a new one
     await this.ensureImage(imageName);
     const env = this.prepareEnv(params?.env);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
 
     const container = await this.docker.createContainer({
       Image: imageName,
-      name: this.containerName,
+      name: containerName,
       Env: env,
       WorkingDir: params?.workdir,
       Cmd: cmd,

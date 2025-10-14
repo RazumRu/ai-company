@@ -62,6 +62,7 @@ describe('ManualTrigger', () => {
     it('should invoke agent with messages', async () => {
       const mockOutput: AgentOutput = {
         messages: [new HumanMessage('response')],
+        threadId: 'test-thread-id',
       };
 
       const mockInvokeAgent = vi.fn().mockResolvedValue(mockOutput);
@@ -88,9 +89,11 @@ describe('ManualTrigger', () => {
     it('should handle multiple sequential invocations', async () => {
       const mockOutput1: AgentOutput = {
         messages: [new HumanMessage('response 1')],
+        threadId: 'test-thread-id-1',
       };
       const mockOutput2: AgentOutput = {
         messages: [new HumanMessage('response 2')],
+        threadId: 'test-thread-id-2',
       };
 
       const mockInvokeAgent = vi
@@ -112,6 +115,7 @@ describe('ManualTrigger', () => {
     it('should maintain LISTENING status after successful invocation', async () => {
       const mockOutput: AgentOutput = {
         messages: [new HumanMessage('response')],
+        threadId: 'test-thread-id',
       };
 
       trigger.setInvokeAgent(vi.fn().mockResolvedValue(mockOutput));
@@ -125,6 +129,7 @@ describe('ManualTrigger', () => {
     it('should throw error if stopped', async () => {
       const mockOutput: AgentOutput = {
         messages: [new HumanMessage('response')],
+        threadId: 'test-thread-id',
       };
 
       trigger.setInvokeAgent(vi.fn().mockResolvedValue(mockOutput));
@@ -141,6 +146,7 @@ describe('ManualTrigger', () => {
     it('should convert payload messages to HumanMessage instances', async () => {
       const mockOutput: AgentOutput = {
         messages: [new HumanMessage('response')],
+        threadId: 'test-thread-id',
       };
 
       let capturedMessages: HumanMessage[] = [];

@@ -84,9 +84,8 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
         messages: HumanMessage[],
         runnableConfig: RunnableConfig<BaseAgentConfigurable>,
       ) => {
-        // Use graphId as thread_id (shared across all nodes in the graph)
-        const threadId =
-          runnableConfig.configurable?.thread_id || metadata.graphId;
+        const threadId = `${metadata.graphId}:${runnableConfig.configurable?.thread_id || v4()}`;
+        const checkpointNs = `${threadId}:${config.agentId}`;
 
         // Enrich runnableConfig with graph and node metadata
         const enrichedConfig: RunnableConfig<BaseAgentConfigurable> = {
@@ -94,9 +93,9 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
           configurable: {
             ...runnableConfig.configurable,
             graph_id: metadata.graphId,
-            node_id: config.agentId, // Use agent's nodeId, not trigger's
+            node_id: config.agentId,
             thread_id: threadId,
-            checkpoint_ns: `${metadata.graphId}:${config.agentId}`, // Set checkpoint namespace to graphId:nodeId for node isolation
+            checkpoint_ns: checkpointNs,
           },
         };
 

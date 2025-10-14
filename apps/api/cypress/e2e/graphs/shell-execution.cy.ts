@@ -48,14 +48,17 @@ describe('Shell Execution E2E', () => {
 
       executeTrigger(shellGraphId, 'trigger-1', triggerData).then(
         (response) => {
-          // executeTrigger returns 204 NO_CONTENT on success
-          expect(response.status).to.equal(204);
+          expect(response.status).to.equal(201);
+          expect(response.body).to.have.property('threadId');
+          expect(response.body).to.have.property('checkpointNs');
 
-          // Wait for execution to complete
-          cy.wait(20000);
+          const threadComponent = response.body.threadId.split(':')[1];
+          expect(threadComponent).to.exist;
 
           // Verify messages were created
-          getNodeMessages(shellGraphId, 'agent-1').then((messagesResponse) => {
+          getNodeMessages(shellGraphId, 'agent-1', {
+            threadId: threadComponent,
+          }).then((messagesResponse) => {
             expect(messagesResponse.status).to.equal(200);
             expect(messagesResponse.body.threads).to.be.an('array');
             expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
@@ -104,17 +107,21 @@ describe('Shell Execution E2E', () => {
         messages: [
           'Execute the shell command to print environment variable: echo $FOO',
         ],
+        threadId: 'env-test',
       };
 
       executeTrigger(shellGraphId, 'trigger-1', triggerData).then(
         (response) => {
-          expect(response.status).to.equal(204);
+          expect(response.status).to.equal(201);
+          expect(response.body).to.have.property('threadId');
+          expect(response.body).to.have.property('checkpointNs');
 
-          // Wait for execution to complete
-          cy.wait(20000);
+          const threadComponent = response.body.threadId.split(':')[1];
 
           // Verify messages were created
-          getNodeMessages(shellGraphId, 'agent-1').then((messagesResponse) => {
+          getNodeMessages(shellGraphId, 'agent-1', {
+            threadId: threadComponent,
+          }).then((messagesResponse) => {
             expect(messagesResponse.status).to.equal(200);
             expect(messagesResponse.body.threads).to.be.an('array');
             expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
@@ -205,7 +212,9 @@ describe('Shell Execution E2E', () => {
 
       executeTrigger(customRuntimeGraphId, 'trigger-1', triggerData).then(
         (response) => {
-          expect(response.status).to.equal(204);
+          expect(response.status).to.equal(201);
+          expect(response.body).to.have.property('threadId');
+          expect(response.body).to.have.property('checkpointNs');
         },
       );
     });
@@ -246,7 +255,9 @@ describe('Shell Execution E2E', () => {
 
       executeTrigger(errorTestGraphId, 'trigger-1', triggerData).then(
         (response) => {
-          expect(response.status).to.equal(204);
+          expect(response.status).to.equal(201);
+          expect(response.body).to.have.property('threadId');
+          expect(response.body).to.have.property('checkpointNs');
         },
       );
     });
@@ -258,7 +269,9 @@ describe('Shell Execution E2E', () => {
 
       executeTrigger(errorTestGraphId, 'trigger-1', triggerData).then(
         (response) => {
-          expect(response.status).to.equal(204);
+          expect(response.status).to.equal(201);
+          expect(response.body).to.have.property('threadId');
+          expect(response.body).to.have.property('checkpointNs');
         },
       );
     });
@@ -329,7 +342,7 @@ function createMockGraphDataWithShellTool(options?: {
           id: 'runtime-1',
           template: 'docker-runtime',
           config: {
-            runtimeType: 'docker',
+            runtimeType: 'Docker',
             image: options?.dockerImage ?? 'node:20-alpine',
             workdir: options?.workdir ?? '/app',
             env: options?.env ?? {},

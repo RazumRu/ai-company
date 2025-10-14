@@ -244,6 +244,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       done: response.done,
     });
 
-    return response;
+    return {
+      messages: response.messages,
+      threadId,
+      checkpointNs: runnableConfig?.configurable?.checkpoint_ns,
+    };
   }
 }

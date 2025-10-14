@@ -47,13 +47,19 @@ describe('Graph Node Messages E2E', () => {
       executeTrigger(testGraphId, 'trigger-1', {
         messages: [testMessage],
       }).then((triggerResponse) => {
-        expect(triggerResponse.status).to.equal(204);
+        expect(triggerResponse.status).to.equal(201);
+        expect(triggerResponse.body).to.have.property('threadId');
+        expect(triggerResponse.body).to.have.property('checkpointNs');
 
-        // Wait for the agent to process and save checkpoint
-        cy.wait(20000);
+        // Extract thread component from full threadId (format: graphId:threadComponent)
+        const fullThreadId = triggerResponse.body.threadId;
+        const threadComponent = fullThreadId.split(':')[1];
+        expect(threadComponent).to.exist;
 
-        // Get messages
-        getNodeMessages(testGraphId, nodeId).then((response) => {
+        // Get messages using thread component
+        getNodeMessages(testGraphId, nodeId, {
+          threadId: threadComponent,
+        }).then((response) => {
           expect(response.status).to.equal(200);
           expect(response.body).to.have.property('nodeId', nodeId);
           expect(response.body).to.have.property('threads');
@@ -84,8 +90,11 @@ describe('Graph Node Messages E2E', () => {
 
     it('should return empty threads for node with no executions', () => {
       const nodeId = 'agent-1';
+      const nonExistentThread = 'non-existent-thread';
 
-      getNodeMessages(testGraphId, nodeId).then((response) => {
+      getNodeMessages(testGraphId, nodeId, {
+        threadId: nonExistentThread,
+      }).then((response) => {
         expect(response.status).to.equal(200);
         expect(response.body).to.have.property('threads');
         expect(response.body.threads).to.be.an('array');
@@ -96,29 +105,26 @@ describe('Graph Node Messages E2E', () => {
     it('should limit messages when limit parameter is provided', () => {
       const nodeId = 'agent-1';
 
-      // Execute multiple times to create more messages
+      // Execute to create messages with custom threadId
       executeTrigger(testGraphId, 'trigger-1', {
-        messages: ['First message'],
-      }).then(() => {
-        cy.wait(2000);
+        messages: ['Test message with multiple interactions'],
+        threadId: 'limit-test-thread',
+      }).then((triggerResponse) => {
+        expect(triggerResponse.status).to.equal(201);
+        const threadComponent = triggerResponse.body.threadId.split(':')[1];
 
-        executeTrigger(testGraphId, 'trigger-1', {
-          messages: ['Second message'],
-        }).then(() => {
-          cy.wait(20000);
-
-          // Get messages with limit
-          getNodeMessages(testGraphId, nodeId, { limit: 2 }).then(
-            (response) => {
-              expect(response.status).to.equal(200);
-              expect(response.body.threads).to.be.an('array');
-              if (response.body.threads.length > 0) {
-                const thread = response.body.threads[0];
-                expect(thread.messages).to.be.an('array');
-                expect(thread.messages.length).to.be.at.most(2);
-              }
-            },
-          );
+        // Get messages with limit
+        getNodeMessages(testGraphId, nodeId, {
+          threadId: threadComponent,
+          limit: 2,
+        }).then((response) => {
+          expect(response.status).to.equal(200);
+          expect(response.body.threads).to.be.an('array');
+          if (response.body.threads.length > 0) {
+            const thread = response.body.threads[0];
+            expect(thread.messages).to.be.an('array');
+            expect(thread.messages.length).to.be.at.most(2);
+          }
         });
       });
     });
@@ -127,11 +133,14 @@ describe('Graph Node Messages E2E', () => {
       const nonExistentGraphId = '00000000-0000-0000-0000-000000000000';
       const nodeId = 'agent-1';
 
-      getNodeMessages(nonExistentGraphId, nodeId, undefined, reqHeaders).then(
-        (response) => {
-          expect(response.status).to.equal(404);
-        },
-      );
+      getNodeMessages(
+        nonExistentGraphId,
+        nodeId,
+        { threadId: 'any-thread' },
+        reqHeaders,
+      ).then((response) => {
+        expect(response.status).to.equal(404);
+      });
     });
 
     it('should return 404 for non-existent node', () => {
@@ -140,7 +149,7 @@ describe('Graph Node Messages E2E', () => {
       getNodeMessages(
         testGraphId,
         nonExistentNodeId,
-        undefined,
+        { threadId: 'any-thread' },
         reqHeaders,
       ).then((response) => {
         expect(response.status).to.equal(404);
@@ -153,10 +162,13 @@ describe('Graph Node Messages E2E', () => {
 
       executeTrigger(testGraphId, 'trigger-1', {
         messages: [testQuestion],
-      }).then(() => {
-        cy.wait(20000);
+      }).then((triggerResponse) => {
+        expect(triggerResponse.status).to.equal(201);
+        const threadComponent = triggerResponse.body.threadId.split(':')[1];
 
-        getNodeMessages(testGraphId, nodeId).then((response) => {
+        getNodeMessages(testGraphId, nodeId, {
+          threadId: threadComponent,
+        }).then((response) => {
           expect(response.status).to.equal(200);
           expect(response.body.threads.length).to.be.greaterThan(0);
 
@@ -184,19 +196,22 @@ describe('Graph Node Messages E2E', () => {
       const nodeId = 'agent-1';
       const testMessage = 'Message before restart';
 
-      // Execute a trigger
+      // Execute a trigger with custom threadId
       executeTrigger(testGraphId, 'trigger-1', {
         messages: [testMessage],
-      }).then(() => {
-        cy.wait(20000);
+        threadId: 'persist-test',
+      }).then((triggerResponse) => {
+        expect(triggerResponse.status).to.equal(201);
+        const threadComponent = triggerResponse.body.threadId.split(':')[1];
 
         // Get the threadId from first execution
-        getNodeMessages(testGraphId, nodeId).then((firstResponse) => {
+        getNodeMessages(testGraphId, nodeId, {
+          threadId: threadComponent,
+        }).then((firstResponse) => {
           expect(firstResponse.status).to.equal(200);
           expect(firstResponse.body.threads.length).to.be.greaterThan(0);
 
           const firstThread = firstResponse.body.threads[0];
-          const threadId = firstThread.id;
           const initialMessageCount = firstThread.messages.length;
           expect(initialMessageCount).to.be.greaterThan(0);
 
@@ -210,30 +225,117 @@ describe('Graph Node Messages E2E', () => {
           // Stop and restart the graph
           destroyGraph(testGraphId).then(() => {
             runGraph(testGraphId).then(() => {
-              // Get messages again with the same threadId
-              getNodeMessages(testGraphId, nodeId, { threadId }).then(
-                (secondResponse) => {
-                  expect(secondResponse.status).to.equal(200);
-                  expect(secondResponse.body.threads.length).to.be.greaterThan(
-                    0,
-                  );
+              // Get messages again with the same threadId component
+              getNodeMessages(testGraphId, nodeId, {
+                threadId: threadComponent,
+              }).then((secondResponse) => {
+                expect(secondResponse.status).to.equal(200);
+                expect(secondResponse.body.threads.length).to.be.greaterThan(0);
 
-                  const secondThread = secondResponse.body.threads[0];
-                  expect(secondThread.id).to.equal(threadId);
-                  expect(secondThread.messages.length).to.equal(
-                    initialMessageCount,
-                  );
+                const secondThread = secondResponse.body.threads[0];
+                expect(secondThread.messages.length).to.equal(
+                  initialMessageCount,
+                );
 
-                  // Verify our sent message is still preserved after restart
-                  const humanMessage = secondThread.messages.find(
-                    (msg) => msg.role === 'human',
-                  );
-                  expect(humanMessage).to.exist;
-                  expect(humanMessage.content).to.equal(testMessage);
-                },
-              );
+                // Verify our sent message is still preserved after restart
+                const humanMessage = secondThread.messages.find(
+                  (msg) => msg.role === 'human',
+                );
+                expect(humanMessage).to.exist;
+                expect(humanMessage.content).to.equal(testMessage);
+              });
             });
           });
+        });
+      });
+    });
+
+    it('should isolate messages between different threads', () => {
+      const nodeId = 'agent-1';
+      const thread1Message = 'Message for thread 1';
+      const thread2Message = 'Message for thread 2';
+
+      // Execute trigger for thread 1
+      executeTrigger(testGraphId, 'trigger-1', {
+        messages: [thread1Message],
+        threadId: 'thread-1',
+      }).then((response1) => {
+        expect(response1.status).to.equal(201);
+        const thread1Component = response1.body.threadId.split(':')[1];
+
+        // Execute trigger for thread 2
+        executeTrigger(testGraphId, 'trigger-1', {
+          messages: [thread2Message],
+          threadId: 'thread-2',
+        }).then((response2) => {
+          expect(response2.status).to.equal(201);
+          const thread2Component = response2.body.threadId.split(':')[1];
+
+          // Get messages for thread 1
+          getNodeMessages(testGraphId, nodeId, {
+            threadId: thread1Component,
+          }).then((messagesResponse1) => {
+            expect(messagesResponse1.status).to.equal(200);
+            expect(messagesResponse1.body.threads.length).to.be.greaterThan(0);
+
+            const thread1 = messagesResponse1.body.threads[0];
+            const thread1HumanMsg = thread1.messages.find(
+              (msg) => msg.role === 'human',
+            );
+            expect(thread1HumanMsg).to.exist;
+            expect(thread1HumanMsg.content).to.equal(thread1Message);
+
+            // Verify thread 2 message is NOT in thread 1
+            const thread2MessageInThread1 = thread1.messages.find(
+              (msg) => msg.content === thread2Message,
+            );
+            expect(thread2MessageInThread1).to.not.exist;
+
+            // Get messages for thread 2
+            getNodeMessages(testGraphId, nodeId, {
+              threadId: thread2Component,
+            }).then((messagesResponse2) => {
+              expect(messagesResponse2.status).to.equal(200);
+              expect(messagesResponse2.body.threads.length).to.be.greaterThan(
+                0,
+              );
+
+              const thread2 = messagesResponse2.body.threads[0];
+              const thread2HumanMsg = thread2.messages.find(
+                (msg) => msg.role === 'human',
+              );
+              expect(thread2HumanMsg).to.exist;
+              expect(thread2HumanMsg.content).to.equal(thread2Message);
+
+              // Verify thread 1 message is NOT in thread 2
+              const thread1MessageInThread2 = thread2.messages.find(
+                (msg) => msg.content === thread1Message,
+              );
+              expect(thread1MessageInThread2).to.not.exist;
+            });
+          });
+        });
+      });
+    });
+
+    it('should not retrieve messages from one thread when querying another', () => {
+      const nodeId = 'agent-1';
+      const threadAMessage = 'Message for thread A';
+
+      // Execute trigger for thread A
+      executeTrigger(testGraphId, 'trigger-1', {
+        messages: [threadAMessage],
+        threadId: 'thread-a',
+      }).then((responseA) => {
+        expect(responseA.status).to.equal(201);
+
+        // Try to get messages for thread B (which doesn't exist)
+        getNodeMessages(testGraphId, nodeId, {
+          threadId: 'thread-b',
+        }).then((responseB) => {
+          expect(responseB.status).to.equal(200);
+          expect(responseB.body.threads).to.be.an('array');
+          expect(responseB.body.threads).to.have.length(0);
         });
       });
     });

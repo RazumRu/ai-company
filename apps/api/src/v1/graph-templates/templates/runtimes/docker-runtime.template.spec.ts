@@ -148,6 +148,7 @@ describe('DockerRuntimeTemplate', () => {
         labels: undefined,
         initScript: undefined,
         autostart: true,
+        containerName: 'rt-test-graph-test-node',
       });
       expect(result).toBe(mockRuntime);
     });
@@ -184,6 +185,7 @@ describe('DockerRuntimeTemplate', () => {
         labels: { version: '2.0.0', environment: 'prod' },
         initScript: ['npm ci', 'npm run build'],
         autostart: true,
+        containerName: 'rt-test-graph-test-node',
       });
       expect(result).toBe(mockRuntime);
     });

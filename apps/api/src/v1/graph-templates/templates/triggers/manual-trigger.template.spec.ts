@@ -229,28 +229,37 @@ describe('ManualTriggerTemplate', () => {
         .calls[0];
       const invokeAgentFn = setInvokeAgentCall[0];
 
-      // Test the invoke agent function
+      // Test the invoke agent function (with thread component as service would pass it)
       const messages = [new HumanMessage('test')];
+      const threadComponent = 'thread-123';
+      const expectedFullThreadId = `test-graph:${threadComponent}`;
       const runnableConfig = {
         configurable: {
-          thread_id: 'thread-123',
+          thread_id: threadComponent, // Service passes just the thread component
         },
       };
 
       await invokeAgentFn(messages, runnableConfig);
 
-      expect(mockSimpleAgent.run).toHaveBeenCalledWith(
-        'thread-123',
-        messages,
-        agentConfig,
-        expect.objectContaining({
-          configurable: expect.objectContaining({
-            thread_id: 'thread-123',
-            graph_id: 'test-graph',
-            node_id: 'agent-1', // Uses agent's nodeId
-            checkpoint_ns: 'test-graph:agent-1', // Set to graphId:nodeId for node isolation
-          }),
-        }),
+      const runCall = (mockSimpleAgent.run as any).mock.calls[0];
+      const [
+        actualThreadId,
+        actualMessages,
+        actualConfig,
+        actualRunnableConfig,
+      ] = runCall;
+
+      expect(actualThreadId).toBe(expectedFullThreadId);
+      expect(actualMessages).toEqual(messages);
+      expect(actualConfig).toEqual(agentConfig);
+      expect(actualRunnableConfig.configurable).toMatchObject({
+        thread_id: expectedFullThreadId,
+        graph_id: 'test-graph',
+        node_id: 'agent-1', // Uses agent's nodeId
+      });
+      // checkpoint_ns should be threadId:agentId
+      expect(actualRunnableConfig.configurable.checkpoint_ns).toBe(
+        `${expectedFullThreadId}:agent-1`,
       );
     });
 
@@ -298,18 +307,25 @@ describe('ManualTriggerTemplate', () => {
 
       await invokeAgentFn(messages, runnableConfig);
 
-      expect(mockSimpleAgent.run).toHaveBeenCalledWith(
-        'test-graph', // Default thread_id is graphId (shared across all nodes)
-        messages,
-        agentConfig,
-        expect.objectContaining({
-          configurable: expect.objectContaining({
-            thread_id: 'test-graph',
-            graph_id: 'test-graph',
-            node_id: 'agent-1', // Uses agent's nodeId, not trigger's
-            checkpoint_ns: 'test-graph:agent-1', // Set to graphId:nodeId for node isolation
-          }),
-        }),
+      const runCall = (mockSimpleAgent.run as any).mock.calls[0];
+      const [
+        actualThreadId,
+        actualMessages,
+        actualConfig,
+        actualRunnableConfig,
+      ] = runCall;
+
+      // thread_id should be auto-generated as graphId:uuid when not provided
+      expect(actualThreadId).toMatch(/^test-graph:[a-f0-9-]{36}$/);
+      expect(actualMessages).toEqual(messages);
+      expect(actualConfig).toEqual(agentConfig);
+      expect(actualRunnableConfig.configurable.graph_id).toBe('test-graph');
+      expect(actualRunnableConfig.configurable.node_id).toBe('agent-1');
+
+      // checkpoint_ns should be graphId:threadComponent:nodeId
+      const threadComponent = actualThreadId.split(':')[1];
+      expect(actualRunnableConfig.configurable.checkpoint_ns).toBe(
+        `test-graph:${threadComponent}:agent-1`,
       );
     });
   });
@@ -350,9 +366,11 @@ describe('ManualTriggerTemplate', () => {
         .calls[0];
       const invokeAgentFn = setInvokeAgentCall[0];
 
+      const threadComponent = 'test-thread-789';
+      const expectedFullThreadId = `test-graph:${threadComponent}`;
       const runnableConfig = {
         configurable: {
-          thread_id: 'test-thread-789',
+          thread_id: threadComponent, // Service passes just the thread component
           caller_agent: {} as any,
           graph_id: 'existing-graph',
           node_id: 'existing-node',
@@ -363,20 +381,28 @@ describe('ManualTriggerTemplate', () => {
 
       await invokeAgentFn(messages, runnableConfig);
 
+      const runCall = (mockSimpleAgent.run as any).mock.calls[0];
+      const [
+        actualThreadId,
+        actualMessages,
+        actualConfig,
+        actualRunnableConfig,
+      ] = runCall;
+
       // Verify that existing properties are preserved and new ones override
-      expect(mockSimpleAgent.run).toHaveBeenCalledWith(
-        'test-thread-789',
-        messages,
-        agentConfig,
-        expect.objectContaining({
-          configurable: expect.objectContaining({
-            thread_id: 'test-thread-789',
-            caller_agent: expect.any(Object),
-            graph_id: 'test-graph', // Should be overridden with template metadata
-            node_id: 'agent-1', // Uses agent's nodeId
-            checkpoint_ns: 'test-graph:agent-1', // Set to graphId:nodeId for node isolation
-          }),
-        }),
+      expect(actualThreadId).toBe(expectedFullThreadId);
+      expect(actualMessages).toEqual(messages);
+      expect(actualConfig).toEqual(agentConfig);
+      expect(actualRunnableConfig.configurable.thread_id).toBe(
+        expectedFullThreadId,
+      );
+      expect(actualRunnableConfig.configurable.caller_agent).toBeDefined();
+      expect(actualRunnableConfig.configurable.graph_id).toBe('test-graph'); // Should be overridden with template metadata
+      expect(actualRunnableConfig.configurable.node_id).toBe('agent-1'); // Uses agent's nodeId
+
+      // checkpoint_ns should be threadId:agentId
+      expect(actualRunnableConfig.configurable.checkpoint_ns).toBe(
+        `${expectedFullThreadId}:agent-1`,
       );
     });
   });

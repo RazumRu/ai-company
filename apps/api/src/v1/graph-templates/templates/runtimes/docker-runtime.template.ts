@@ -51,6 +51,7 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       labels: config.labels,
       initScript: config.initScript,
       autostart: true, // Always start automatically
+      containerName: `rt-${metadata.graphId}-${metadata.nodeId}`, // Use graphId and nodeId for consistent container naming
     });
   }
 }

@@ -1,8 +1,5 @@
 import { BaseMessage, HumanMessage } from '@langchain/core/messages';
-import {
-  BaseCheckpointSaver,
-  Checkpoint,
-} from '@langchain/langgraph-checkpoint';
+import { Checkpoint } from '@langchain/langgraph-checkpoint';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
@@ -21,6 +18,7 @@ import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
+  ExecuteTriggerResponseDto,
   GetGraphMessagesQueryDto,
   GraphDto,
   GraphMessagesResponseDto,
@@ -196,7 +194,7 @@ export class GraphsService {
     graphId: string,
     triggerId: string,
     dto: ExecuteTriggerDto,
-  ): Promise<void> {
+  ): Promise<ExecuteTriggerResponseDto> {
     // Verify graph exists and user has access
     const graph = await this.graphDao.getOne({
       id: graphId,
@@ -243,7 +241,16 @@ export class GraphsService {
     }
 
     const messages = dto.messages.map((msg) => new HumanMessage(msg));
-    trigger.invokeAgent(messages, {});
+    const res = await trigger.invokeAgent(messages, {
+      configurable: {
+        thread_id: dto.threadId,
+      },
+    });
+
+    return {
+      threadId: res.threadId,
+      checkpointNs: res.checkpointNs,
+    };
   }
 
   async getNodeMessages(
@@ -270,9 +277,14 @@ export class GraphsService {
       );
     }
 
+    // Construct full threadId and checkpointNs with graphId prefix
+    // Format: threadId = graphId:threadComponent, checkpointNs = graphId:threadComponent:nodeId
+    const fullThreadId = `${graphId}:${query.threadId}`;
+    const checkpointNs = `${graphId}:${query.threadId}:${nodeId}`;
+
     const checkpointQuery: SearchTerms & AdditionalParams = {
-      checkpointNs: `${graphId}:${nodeId}`,
-      threadId: query.threadId || graphId,
+      checkpointNs,
+      threadId: fullThreadId,
       order: { createdAt: 'DESC' },
     };
 

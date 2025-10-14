@@ -124,6 +124,7 @@ describe('GraphsService', () => {
           useValue: {
             register: vi.fn(),
             get: vi.fn(),
+            getNode: vi.fn(),
             destroy: vi.fn(),
           },
         },
@@ -597,6 +598,209 @@ describe('GraphsService', () => {
     });
   });
 
+  describe('executeTrigger', () => {
+    it('should execute trigger with custom threadId and return thread info', async () => {
+      const triggerId = 'trigger-1';
+      const agentId = 'agent-1';
+      const customThreadId = 'my-thread';
+      const expectedThreadId = `${mockGraphId}:${customThreadId}`;
+      const expectedCheckpointNs = `${expectedThreadId}:${agentId}`;
+
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Running,
+        schema: {
+          nodes: [
+            {
+              id: triggerId,
+              template: 'manual-trigger',
+              config: { agentId },
+            },
+          ],
+          edges: [],
+        },
+      });
+      const mockTrigger = {
+        isStarted: true,
+        invokeAgent: vi.fn().mockResolvedValue({
+          messages: [],
+          threadId: expectedThreadId,
+          checkpointNs: expectedCheckpointNs,
+        }),
+      };
+      const mockTriggerNode = {
+        id: triggerId,
+        type: NodeKind.Trigger,
+        template: 'manual-trigger',
+        instance: mockTrigger,
+      };
+      const mockCompiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(mockTriggerNode as any);
+
+      const result = await service.executeTrigger(mockGraphId, triggerId, {
+        messages: ['Test message'],
+        threadId: customThreadId,
+      });
+
+      expect(result).toEqual({
+        threadId: expectedThreadId,
+        checkpointNs: expectedCheckpointNs,
+      });
+
+      expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
+        [expect.objectContaining({ content: 'Test message' })],
+        {
+          configurable: {
+            thread_id: customThreadId,
+          },
+        },
+      );
+    });
+
+    it('should execute trigger with auto-generated threadId (UUID) and return thread info', async () => {
+      const triggerId = 'trigger-1';
+      const agentId = 'agent-1';
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Running,
+        schema: {
+          nodes: [
+            {
+              id: triggerId,
+              template: 'manual-trigger',
+              config: { agentId },
+            },
+          ],
+          edges: [],
+        },
+      });
+      // Mock with dynamic return value
+      const mockTrigger = {
+        isStarted: true,
+        invokeAgent: vi.fn().mockImplementation((messages, config) => {
+          // Generate threadId based on what's passed
+          const threadIdFromConfig = config?.configurable?.thread_id;
+          const fullThreadId = `${mockGraphId}:${threadIdFromConfig || 'generated-uuid'}`;
+          const checkpointNs = `${fullThreadId}:${agentId}`;
+          return Promise.resolve({
+            messages: [],
+            threadId: fullThreadId,
+            checkpointNs,
+          });
+        }),
+      };
+      const mockTriggerNode = {
+        id: triggerId,
+        type: NodeKind.Trigger,
+        template: 'manual-trigger',
+        instance: mockTrigger,
+      };
+      const mockCompiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(mockTriggerNode as any);
+
+      const result = await service.executeTrigger(mockGraphId, triggerId, {
+        messages: ['Test message'],
+      });
+
+      // Verify threadId format is graphId:generated or similar
+      expect(result.threadId).toMatch(new RegExp(`^${mockGraphId}:`));
+      // Verify checkpointNs format includes agentId
+      expect(result.checkpointNs).toContain(agentId);
+
+      expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
+        [expect.objectContaining({ content: 'Test message' })],
+        {
+          configurable: {
+            thread_id: undefined, // No threadId provided
+          },
+        },
+      );
+    });
+
+    it('should throw NotFoundException when graph not found', async () => {
+      vi.mocked(graphDao.getOne).mockResolvedValue(null);
+
+      await expect(
+        service.executeTrigger(mockGraphId, 'trigger-1', {
+          messages: ['Test'],
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when graph is not running', async () => {
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+
+      await expect(
+        service.executeTrigger(mockGraphId, 'trigger-1', {
+          messages: ['Test'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException when trigger not found', async () => {
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Running });
+      const mockCompiledGraph = createMockCompiledGraph();
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(undefined);
+
+      await expect(
+        service.executeTrigger(mockGraphId, 'trigger-1', {
+          messages: ['Test'],
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when node is not a trigger', async () => {
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Running });
+      const mockCompiledGraph = createMockCompiledGraph();
+      const mockNode = {
+        id: 'node-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {},
+      };
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(mockNode as any);
+
+      await expect(
+        service.executeTrigger(mockGraphId, 'node-1', { messages: ['Test'] }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when trigger is not started', async () => {
+      const triggerId = 'trigger-1';
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Running });
+      const mockTrigger = {
+        isStarted: false,
+        invokeAgent: vi.fn(),
+      };
+      const mockTriggerNode = {
+        id: triggerId,
+        type: NodeKind.Trigger,
+        template: 'manual-trigger',
+        instance: mockTrigger,
+      };
+      const mockCompiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(mockTriggerNode as any);
+
+      await expect(
+        service.executeTrigger(mockGraphId, triggerId, { messages: ['Test'] }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
   describe('integration scenarios', () => {
     it('should handle complete graph lifecycle', async () => {
       const createData: CreateGraphDto = {
@@ -693,13 +897,14 @@ describe('GraphsService', () => {
   describe('getNodeMessages', () => {
     const nodeId = 'agent-1';
     const threadId = 'thread-123';
+    const defaultThreadComponent = 'default-uuid';
 
     const createMockCheckpointEntity = (
       overrides: Partial<GraphCheckpointEntity> = {},
     ): GraphCheckpointEntity => ({
       id: 'checkpoint-id',
-      threadId: mockGraphId, // thread_id is graphId (shared across all nodes)
-      checkpointNs: `${mockGraphId}:${nodeId}`, // checkpoint_ns is graphId:nodeId
+      threadId: `${mockGraphId}:${defaultThreadComponent}`, // thread_id is graphId:threadComponent
+      checkpointNs: `${mockGraphId}:${defaultThreadComponent}:${nodeId}`, // checkpoint_ns is graphId:threadComponent:nodeId
       checkpointId: 'checkpoint-123',
       parentCheckpointId: null,
       type: 'json',
@@ -720,6 +925,7 @@ describe('GraphsService', () => {
     ];
 
     it('should retrieve messages for a node with explicit threadId', async () => {
+      const fullThreadId = `${mockGraphId}:${threadId}`;
       const mockGraph = createMockGraphEntity({
         schema: {
           nodes: [{ id: nodeId, template: 'simple-agent', config: {} }],
@@ -727,7 +933,8 @@ describe('GraphsService', () => {
         },
       });
       const mockCheckpoint = createMockCheckpointEntity({
-        threadId, // Explicitly set threadId in the mock checkpoint
+        threadId: fullThreadId,
+        checkpointNs: `${fullThreadId}:${nodeId}`,
       });
       const mockMessages = createMockMessages();
 
@@ -739,12 +946,13 @@ describe('GraphsService', () => {
         },
       });
 
+      // Pass just the thread component (e.g., from executeTrigger response, extract the component)
       const query: GetGraphMessagesQueryDto = { threadId };
       const result = await service.getNodeMessages(mockGraphId, nodeId, query);
 
       expect(result.nodeId).toBe(nodeId);
       expect(result.threads).toHaveLength(1);
-      expect(result.threads[0]?.id).toBe(threadId);
+      expect(result.threads[0]?.id).toBe(fullThreadId);
       expect(result.threads[0]?.checkpointId).toBe('checkpoint-123');
       expect(result.threads[0]?.messages).toHaveLength(2);
 
@@ -762,46 +970,8 @@ describe('GraphsService', () => {
         createdBy: mockUserId,
       });
       expect(graphCheckpointsDao.getAll).toHaveBeenCalledWith({
-        checkpointNs: `${mockGraphId}:${nodeId}`, // checkpoint_ns is graphId:nodeId
-        threadId, // thread_id is provided explicitly
-        order: { createdAt: 'DESC' },
-      });
-    });
-
-    it('should retrieve messages from node when no threadId specified (defaults to graphId)', async () => {
-      const mockGraph = createMockGraphEntity({
-        schema: {
-          nodes: [{ id: nodeId, template: 'simple-agent', config: {} }],
-          edges: [],
-        },
-      });
-      // When no threadId is provided, it defaults to graphId
-      const mockCheckpoint = createMockCheckpointEntity({
-        threadId: mockGraphId,
-        checkpointId: 'checkpoint-1',
-      });
-      const mockMessages = createMockMessages();
-
-      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([mockCheckpoint]);
-      vi.mocked(pgCheckpointSaver.serde.loadsTyped).mockResolvedValue({
-        channel_values: {
-          messages: mockMessages,
-        },
-      });
-
-      const query: GetGraphMessagesQueryDto = {};
-      const result = await service.getNodeMessages(mockGraphId, nodeId, query);
-
-      expect(result.nodeId).toBe(nodeId);
-      expect(result.threads).toHaveLength(1);
-      expect(result.threads[0]?.id).toBe(mockGraphId); // thread_id is graphId
-      expect(result.threads[0]?.messages).toHaveLength(2);
-
-      // Verify the query uses graphId:nodeId for checkpoint_ns and graphId for thread_id
-      expect(graphCheckpointsDao.getAll).toHaveBeenCalledWith({
-        checkpointNs: `${mockGraphId}:${nodeId}`, // checkpoint_ns is graphId:nodeId
-        threadId: mockGraphId, // thread_id defaults to graphId
+        checkpointNs: `${mockGraphId}:${threadId}:${nodeId}`, // graphId:threadComponent:nodeId
+        threadId: fullThreadId, // graphId:threadComponent
         order: { createdAt: 'DESC' },
       });
     });
@@ -848,7 +1018,7 @@ describe('GraphsService', () => {
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([]);
 
-      const query: GetGraphMessagesQueryDto = {};
+      const query: GetGraphMessagesQueryDto = { threadId };
       const result = await service.getNodeMessages(mockGraphId, nodeId, query);
 
       expect(result).toEqual({

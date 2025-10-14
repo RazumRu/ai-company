@@ -362,7 +362,7 @@ describe('Socket Gateway E2E', () => {
             { messages: ['Hello, this is a test message'] },
             reqHeaders,
           ).then((triggerResponse) => {
-            expect(triggerResponse.status).to.equal(204);
+            expect(triggerResponse.status).to.equal(201);
             return cy.wrap(notificationPromise, { timeout: 90000 });
           });
         });
@@ -416,7 +416,7 @@ describe('Socket Gateway E2E', () => {
                 },
                 reqHeaders,
               ).then((triggerResponse) => {
-                expect(triggerResponse.status).to.equal(204);
+                expect(triggerResponse.status).to.equal(201);
               });
             });
 
@@ -474,7 +474,7 @@ describe('Socket Gateway E2E', () => {
                 { messages: ['Hello, how are you?'] },
                 reqHeaders,
               ).then((triggerResponse) => {
-                expect(triggerResponse.status).to.equal(204);
+                expect(triggerResponse.status).to.equal(201);
               });
             });
 

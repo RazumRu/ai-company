@@ -27,6 +27,7 @@ export class RuntimeProvider {
         workdir: opts.workdir,
         labels: opts.labels,
         initScript: opts.initScript,
+        containerName: opts.containerName,
       });
     }
 

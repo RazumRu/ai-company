@@ -4,6 +4,7 @@ export interface RuntimeStartParams {
   workdir?: string;
   labels?: Record<string, string>;
   initScript?: string | string[];
+  containerName?: string;
 }
 
 export interface RuntimeExecParams {

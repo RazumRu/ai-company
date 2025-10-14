@@ -231,6 +231,8 @@ describe('SimpleAgent', () => {
       );
       expect(result).toEqual({
         messages: [new HumanMessage('Response')],
+        threadId: 'test-thread',
+        checkpointNs: undefined,
       });
     });
 

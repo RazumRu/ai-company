@@ -253,8 +253,24 @@ export const ExecuteTriggerDtoSchema = {
         type: 'string',
       },
     },
+    threadId: {
+      type: 'string',
+    },
   },
   required: ['messages'],
+} as const;
+
+export const ExecuteTriggerResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    threadId: {
+      type: 'string',
+    },
+    checkpointNs: {
+      type: 'string',
+    },
+  },
+  required: ['threadId'],
 } as const;
 
 export const GraphMessagesResponseDtoSchema = {

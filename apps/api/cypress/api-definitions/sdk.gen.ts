@@ -201,6 +201,7 @@ export const executeTrigger = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
+    responseType: 'json',
     security: [
       {
         scheme: 'bearer',

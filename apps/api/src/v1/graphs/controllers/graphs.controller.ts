@@ -17,6 +17,7 @@ import { EntityUUIDDto } from '../../../utils/dto/misc.dto';
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
+  ExecuteTriggerResponseDto,
   GetGraphMessagesQueryDto,
   GraphDto,
   GraphMessagesResponseDto,
@@ -70,13 +71,12 @@ export class GraphsController {
   }
 
   @Post(':graphId/triggers/:triggerId/execute')
-  @HttpCode(HttpStatus.NO_CONTENT)
   async executeTrigger(
     @Param('graphId') graphId: string,
     @Param('triggerId') triggerId: string,
     @Body() payload: ExecuteTriggerDto,
-  ): Promise<void> {
-    await this.graphsService.executeTrigger(graphId, triggerId, payload);
+  ): Promise<ExecuteTriggerResponseDto> {
+    return await this.graphsService.executeTrigger(graphId, triggerId, payload);
   }
 
   @Get(':graphId/nodes/:nodeId/messages')

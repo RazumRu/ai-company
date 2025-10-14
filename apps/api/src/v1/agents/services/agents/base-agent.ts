@@ -9,6 +9,8 @@ import { BaseAgentConfigurable } from '../nodes/base-node';
 
 export type AgentOutput = {
   messages: BaseMessage[];
+  threadId: string;
+  checkpointNs?: string;
 };
 
 export abstract class BaseAgent<TSchema> {

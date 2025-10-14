@@ -29,6 +29,15 @@ export const ExecuteTriggerSchema = z.object({
     .array(z.string())
     .min(1)
     .describe('Array of messages to send to the trigger'),
+  threadId: z.string().optional().describe('Optional thread ID.'),
+});
+
+export const ExecuteTriggerResponseSchema = z.object({
+  threadId: z.string().describe('The thread ID used for this execution'),
+  checkpointNs: z
+    .string()
+    .optional()
+    .describe('The checkpoint namespace for this execution'),
 });
 
 // Tool call schema for AI messages
@@ -121,9 +130,8 @@ export const MessageSchema = z.discriminatedUnion('role', [
 export const GetGraphMessagesQuerySchema = z.object({
   threadId: z
     .string()
-    .optional()
     .describe(
-      'Thread ID to filter messages (if not provided, returns all threads)',
+      'Thread ID component (e.g., "my-session" or UUID) - will be combined with graphId',
     ),
   limit: z.coerce
     .number()
@@ -131,7 +139,7 @@ export const GetGraphMessagesQuerySchema = z.object({
     .positive()
     .max(1000)
     .optional()
-    .describe('Maximum number of messages to return per thread'),
+    .describe('Maximum number of messages to return'),
 });
 
 export const ThreadMessagesSchema = z.object({
@@ -153,6 +161,9 @@ export class UpdateGraphDto extends createZodDto(
   GraphEditableSchema.partial(),
 ) {}
 export class ExecuteTriggerDto extends createZodDto(ExecuteTriggerSchema) {}
+export class ExecuteTriggerResponseDto extends createZodDto(
+  ExecuteTriggerResponseSchema,
+) {}
 
 // Export message types
 export type ToolCallDto = z.infer<typeof ToolCallSchema>;

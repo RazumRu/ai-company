@@ -1,6 +1,8 @@
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
+  ExecuteTriggerResponse,
+  ExecuteTriggerResponseDto,
   GetNodeMessagesData,
   GraphDto,
   GraphMessagesResponseDto,
@@ -105,13 +107,13 @@ export const executeTrigger = (
   body: ExecuteTriggerDto,
   headers = reqHeaders,
 ) =>
-  cy.request({
+  cy.request<ExecuteTriggerResponseDto>({
     url: `/api/v1/graphs/${graphId}/triggers/${triggerId}/execute`,
     method: 'POST',
     headers,
     body,
     failOnStatusCode: false,
-    timeout: 60000,
+    timeout: 180000,
   });
 
 export const getNodeMessages = (
