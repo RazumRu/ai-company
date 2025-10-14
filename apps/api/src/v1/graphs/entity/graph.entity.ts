@@ -39,4 +39,7 @@ export class GraphEntity extends TimestampsEntity {
   })
   @Index()
   createdBy!: string;
+
+  @Column({ type: 'boolean', default: false })
+  temporary!: boolean;
 }

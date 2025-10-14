@@ -14,6 +14,14 @@ export const GraphSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  temporary: z
+    .boolean()
+    .default(false)
+    .optional()
+    .nullable()
+    .describe(
+      'If true, graph will be deleted instead of restored after server restart',
+    ),
 });
 
 export const GraphEditableSchema = GraphSchema.omit({

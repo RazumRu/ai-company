@@ -58,6 +58,7 @@ export class GraphsService {
           ...data,
           status: GraphStatus.Created,
           createdBy: this.authContext.checkSub(),
+          temporary: data.temporary ?? false,
         },
         entityManager,
       );

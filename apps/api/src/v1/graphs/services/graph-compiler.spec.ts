@@ -36,6 +36,7 @@ describe('GraphCompiler', () => {
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
     deletedAt: null,
+    temporary: false,
   });
 
   beforeEach(async () => {

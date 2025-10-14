@@ -53,6 +53,7 @@ describe('GraphRestorationService', () => {
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null,
+    temporary: false,
   };
 
   const mockCompiledGraph = {
@@ -65,6 +66,7 @@ describe('GraphRestorationService', () => {
     const mockGraphDao = {
       getRunningGraphs: vi.fn(),
       updateById: vi.fn(),
+      deleteById: vi.fn(),
     };
 
     const mockGraphCompiler = {
@@ -211,6 +213,86 @@ describe('GraphRestorationService', () => {
         status: GraphStatus.Error,
         error: 'Restoration failed: Compilation failed',
       });
+    });
+
+    it('should delete temporary graphs instead of restoring them', async () => {
+      // Arrange
+      const temporaryGraph: GraphEntity = {
+        ...mockGraph,
+        id: 'temporary-graph-id',
+        name: 'Temporary Graph',
+        temporary: true,
+      };
+
+      graphDao.getRunningGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.deleteById.mockResolvedValue(undefined);
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Assert
+      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
+      expect(graphCompiler.compile).not.toHaveBeenCalled();
+      expect(graphRegistry.register).not.toHaveBeenCalled();
+    });
+
+    it('should handle mixed temporary and permanent graphs', async () => {
+      // Arrange
+      const temporaryGraph: GraphEntity = {
+        ...mockGraph,
+        id: 'temporary-graph-id',
+        name: 'Temporary Graph',
+        temporary: true,
+      };
+      const permanentGraph: GraphEntity = {
+        ...mockGraph,
+        id: 'permanent-graph-id',
+        name: 'Permanent Graph',
+        temporary: false,
+      };
+
+      graphDao.getRunningGraphs.mockResolvedValue([
+        temporaryGraph,
+        permanentGraph,
+      ]);
+      graphDao.deleteById.mockResolvedValue(undefined);
+      graphRegistry.get.mockReturnValue(undefined);
+      graphCompiler.compile.mockResolvedValue(mockCompiledGraph);
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Assert
+      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
+      expect(graphCompiler.compile).toHaveBeenCalledWith(permanentGraph);
+      expect(graphRegistry.register).toHaveBeenCalledWith(
+        permanentGraph.id,
+        mockCompiledGraph,
+      );
+    });
+
+    it('should handle errors when deleting temporary graphs', async () => {
+      // Arrange
+      const temporaryGraph: GraphEntity = {
+        ...mockGraph,
+        id: 'temporary-graph-id',
+        name: 'Temporary Graph',
+        temporary: true,
+      };
+      const deletionError = new Error('Deletion failed');
+
+      graphDao.getRunningGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.deleteById.mockRejectedValue(deletionError);
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Assert
+      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
+      expect(logger.error).toHaveBeenCalled();
     });
   });
 });

@@ -43,6 +43,10 @@ export type CreateGraphDto = {
   metadata?: {
     [key: string]: unknown;
   };
+  /**
+   * If true, graph will be deleted instead of restored after server restart
+   */
+  temporary?: boolean;
 };
 
 export type GraphDto = {
@@ -89,6 +93,10 @@ export type GraphDto = {
   };
   createdAt: string;
   updatedAt: string;
+  /**
+   * If true, graph will be deleted instead of restored after server restart
+   */
+  temporary?: boolean;
 };
 
 export type UpdateGraphDto = {
@@ -130,6 +138,10 @@ export type UpdateGraphDto = {
   metadata?: {
     [key: string]: unknown;
   };
+  /**
+   * If true, graph will be deleted instead of restored after server restart
+   */
+  temporary?: boolean;
 };
 
 export type ExecuteTriggerDto = {

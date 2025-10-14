@@ -141,6 +141,7 @@ export const createMockGraphData = (
   name: `Test Graph ${generateRandomUUID().slice(0, 8)}`,
   description: 'Test graph for e2e testing',
   version: '1.0.0',
+  temporary: true, // E2E test graphs are temporary by default
   schema: {
     nodes: [
       {
@@ -204,6 +205,7 @@ export const createMockGraphDataWithWebTool = (
   name: `Test Graph with Tools ${generateRandomUUID().slice(0, 8)}`,
   description: 'Test graph with web search tool',
   version: '1.0.0',
+  temporary: true, // E2E test graphs are temporary by default
   schema: {
     nodes: [
       {

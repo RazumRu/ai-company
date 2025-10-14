@@ -55,6 +55,7 @@ describe('GraphsService', () => {
     },
     status: GraphStatus.Created,
     createdBy: mockUserId,
+    temporary: true,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     deletedAt: null,
@@ -223,6 +224,7 @@ describe('GraphsService', () => {
           ...createData,
           status: GraphStatus.Created,
           createdBy: mockUserId,
+          temporary: false,
         },
         expect.any(Object), // EntityManager
       );

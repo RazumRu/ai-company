@@ -35,41 +35,87 @@ export class GraphRestorationService {
         return;
       }
 
-      this.logger.log('Graphs to restore', {
-        count: runningGraphs.length,
-        graphIds: runningGraphs.map((g) => g.id),
-      });
+      // Separate temporary and permanent graphs
+      const temporaryGraphs = runningGraphs.filter((g) => g.temporary === true);
+      const permanentGraphs = runningGraphs.filter((g) => g.temporary !== true);
 
-      const restorationPromises = runningGraphs.map((graph) =>
-        this.restoreGraph(graph).catch((error) => {
-          this.logger.error(
-            error instanceof Error ? error : new Error(String(error)),
-            `Failed to restore graph ${graph.id}`,
-            {
-              graphId: graph.id,
-              graphName: graph.name,
-            },
-          );
-          return { graphId: graph.id, error };
-        }),
-      );
-
-      const results = await Promise.allSettled(restorationPromises);
-
-      const successful = results.filter((r) => r.status === 'fulfilled').length;
-      const failed = results.filter((r) => r.status === 'rejected').length;
-
-      this.logger.log('Restoration complete', {
+      this.logger.log('Graphs to process', {
         total: runningGraphs.length,
-        successful,
-        failed,
+        temporary: temporaryGraphs.length,
+        permanent: permanentGraphs.length,
+        temporaryIds: temporaryGraphs.map((g) => g.id),
+        permanentIds: permanentGraphs.map((g) => g.id),
       });
+
+      // Delete temporary graphs
+      if (temporaryGraphs.length > 0) {
+        await this.deleteTemporaryGraphs(temporaryGraphs);
+      }
+
+      // Restore permanent graphs
+      if (permanentGraphs.length > 0) {
+        const restorationPromises = permanentGraphs.map((graph) =>
+          this.restoreGraph(graph).catch((error) => {
+            this.logger.error(
+              error instanceof Error ? error : new Error(String(error)),
+              `Failed to restore graph ${graph.id}`,
+              {
+                graphId: graph.id,
+                graphName: graph.name,
+              },
+            );
+            return { graphId: graph.id, error };
+          }),
+        );
+
+        const results = await Promise.allSettled(restorationPromises);
+
+        const successful = results.filter(
+          (r) => r.status === 'fulfilled',
+        ).length;
+        const failed = results.filter((r) => r.status === 'rejected').length;
+
+        this.logger.log('Restoration complete', {
+          total: permanentGraphs.length,
+          successful,
+          failed,
+        });
+      }
     } catch (error) {
       this.logger.error(
         error instanceof Error ? error : new Error(String(error)),
         'Failed to restore running graphs',
       );
     }
+  }
+
+  /**
+   * Deletes temporary graphs that were running before server restart
+   */
+  private async deleteTemporaryGraphs(
+    temporaryGraphs: GraphEntity[],
+  ): Promise<void> {
+    this.logger.log('Deleting temporary graphs', {
+      count: temporaryGraphs.length,
+      graphIds: temporaryGraphs.map((g) => g.id),
+    });
+
+    const deletionPromises = temporaryGraphs.map((graph) =>
+      this.graphDao.deleteById(graph.id).catch((error) => {
+        this.logger.error(
+          error instanceof Error ? error : new Error(String(error)),
+          `Failed to delete temporary graph ${graph.id}`,
+          {
+            graphId: graph.id,
+            graphName: graph.name,
+          },
+        );
+      }),
+    );
+
+    await Promise.allSettled(deletionPromises);
+
+    this.logger.log('Temporary graphs deletion complete');
   }
 
   /**

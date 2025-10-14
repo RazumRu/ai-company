@@ -290,6 +290,7 @@ function createMockGraphDataWithShellTool(options?: {
     ...baseGraphData,
     name: `Shell Execution Test Graph ${crypto.randomUUID().slice(0, 8)}`,
     description: 'Test graph with docker runtime and shell tool',
+    temporary: true, // E2E test graphs are temporary by default
     schema: {
       nodes: [
         {
