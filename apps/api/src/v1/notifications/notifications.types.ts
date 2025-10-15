@@ -1,7 +1,4 @@
-import type {
-  Checkpoint,
-  CheckpointMetadata,
-} from '@langchain/langgraph-checkpoint';
+import { BaseMessage } from '@langchain/core/messages';
 
 import { GraphSchemaType } from '../graphs/graphs.types';
 
@@ -26,22 +23,12 @@ export interface IGraphNotification
   type: NotificationEvent.Graph;
 }
 
-export interface ICheckpointerPutData {
-  action: 'put';
-  checkpoint: Checkpoint;
-  metadata: CheckpointMetadata;
-}
-
-export interface ICheckpointerPutWritesData {
-  action: 'putWrites';
-  writes: {
-    channel: string;
-    value: unknown;
-  }[];
+export interface ICheckpointerData {
+  messages: BaseMessage[];
 }
 
 export interface ICheckpointerNotification
-  extends INotification<ICheckpointerPutData | ICheckpointerPutWritesData> {
+  extends INotification<ICheckpointerData> {
   type: NotificationEvent.Checkpointer;
   nodeId: string;
   threadId: string;

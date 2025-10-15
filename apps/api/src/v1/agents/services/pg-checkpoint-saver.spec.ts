@@ -108,14 +108,16 @@ describe('PgCheckpointSaver', () => {
         nodeId: 'test-node-789',
         threadId: 'test-thread-123',
         data: {
-          action: 'put',
-          checkpoint,
-          metadata,
+          messages: [
+            expect.objectContaining({
+              content: 'Hello',
+            }),
+          ],
         },
       });
     });
 
-    it('should emit notification with unknown graphId when graph_id is missing', async () => {
+    it('should not emit notification when graph_id is missing and no messages', async () => {
       const config: RunnableConfig = {
         configurable: {
           thread_id: 'test-thread-123',
@@ -144,20 +146,11 @@ describe('PgCheckpointSaver', () => {
 
       await service.put(config, checkpoint, metadata);
 
-      expect(mockNotificationsService.emit).toHaveBeenCalledWith({
-        type: NotificationEvent.Checkpointer,
-        graphId: 'unknown',
-        nodeId: 'test-node-789',
-        threadId: 'test-thread-123',
-        data: {
-          action: 'put',
-          checkpoint,
-          metadata,
-        },
-      });
+      // No messages in checkpoint, so no notification should be emitted
+      expect(mockNotificationsService.emit).not.toHaveBeenCalled();
     });
 
-    it('should emit notification with undefined nodeId when node_id is missing', async () => {
+    it('should not emit notification when node_id is missing and no messages', async () => {
       const config: RunnableConfig = {
         configurable: {
           thread_id: 'test-thread-123',
@@ -186,22 +179,13 @@ describe('PgCheckpointSaver', () => {
 
       await service.put(config, checkpoint, metadata);
 
-      expect(mockNotificationsService.emit).toHaveBeenCalledWith({
-        type: NotificationEvent.Checkpointer,
-        graphId: 'test-graph-456',
-        nodeId: undefined,
-        threadId: 'test-thread-123',
-        data: {
-          action: 'put',
-          checkpoint,
-          metadata,
-        },
-      });
+      // No messages in checkpoint, so no notification should be emitted
+      expect(mockNotificationsService.emit).not.toHaveBeenCalled();
     });
   });
 
   describe('putWrites', () => {
-    it('should emit checkpointer notification with writes data', async () => {
+    it('should emit checkpointer notification with extracted messages from writes', async () => {
       const config: RunnableConfig = {
         configurable: {
           thread_id: 'test-thread-123',
@@ -231,23 +215,16 @@ describe('PgCheckpointSaver', () => {
         nodeId: 'test-node-789',
         threadId: 'test-thread-123',
         data: {
-          action: 'putWrites',
-          writes: [
-            {
-              channel: 'messages',
-              value: { content: 'Hello world', type: 'human' },
-            },
-            {
-              channel: 'tools',
-              value: { name: 'search', args: { query: 'test' } },
-            },
-            { channel: 'state', value: { currentStep: 1, status: 'running' } },
+          messages: [
+            expect.objectContaining({
+              content: 'Hello world',
+            }),
           ],
         },
       });
     });
 
-    it('should handle tool call writes correctly', async () => {
+    it('should not emit notification for non-message writes', async () => {
       const config: RunnableConfig = {
         configurable: {
           thread_id: 'test-thread-123',
@@ -276,26 +253,8 @@ describe('PgCheckpointSaver', () => {
 
       await service.putWrites(config, writes, taskId);
 
-      expect(mockNotificationsService.emit).toHaveBeenCalledWith({
-        type: NotificationEvent.Checkpointer,
-        graphId: 'test-graph-456',
-        nodeId: 'test-node-789',
-        threadId: 'test-thread-123',
-        data: {
-          action: 'putWrites',
-          writes: [
-            {
-              channel: 'tools',
-              value: {
-                name: 'web_search',
-                args: { query: 'latest AI news' },
-                id: 'tool-call-123',
-                type: 'tool_call',
-              },
-            },
-          ],
-        },
-      });
+      // No BaseMessage objects in writes, so no notification should be emitted
+      expect(mockNotificationsService.emit).not.toHaveBeenCalled();
     });
 
     it('should handle message writes correctly', async () => {
@@ -332,16 +291,11 @@ describe('PgCheckpointSaver', () => {
         nodeId: 'test-node-789',
         threadId: 'test-thread-123',
         data: {
-          action: 'putWrites',
-          writes: [
-            {
-              channel: 'messages',
-              value: {
-                content: 'I need to search for information about AI',
-                type: 'human',
-                id: 'msg-123',
-              },
-            },
+          messages: [
+            expect.objectContaining({
+              content: 'I need to search for information about AI',
+              id: 'msg-123',
+            }),
           ],
         },
       });
@@ -414,9 +368,10 @@ describe('PgCheckpointSaver', () => {
         expect(notification.graphId).toBe('integration-graph-456');
         expect(notification.nodeId).toBe('integration-node-789');
         expect(notification.threadId).toBe('integration-thread-123');
-        expect(notification.data.action).toBe('put');
-        expect(notification.data.checkpoint).toEqual(checkpoint);
-        expect(notification.data.metadata).toEqual(metadata);
+        expect(notification.data.messages).toBeDefined();
+        expect(notification.data.messages.length).toBeGreaterThan(0);
+        // Verify at least one message was extracted
+        expect(notification.data.messages[0].content).toBeDefined();
       });
 
       it('should capture tool call notifications with writes data', async () => {
@@ -466,28 +421,12 @@ describe('PgCheckpointSaver', () => {
         expect(notification.graphId).toBe('integration-graph-456');
         expect(notification.nodeId).toBe('search-tool-node');
         expect(notification.threadId).toBe('integration-thread-123');
-        expect(notification.data.action).toBe('putWrites');
-        expect(notification.data.writes).toHaveLength(2);
-
-        // Verify tool call write
-        const toolWrite = notification.data.writes.find(
-          (w: any) => w.channel === 'tools',
-        );
-        expect(toolWrite).toBeDefined();
-        expect(toolWrite.value.name).toBe('web_search');
-        expect(toolWrite.value.args.query).toBe(
-          'latest AI research papers 2024',
-        );
-
-        // Verify message write
-        const messageWrite = notification.data.writes.find(
-          (w: any) => w.channel === 'messages',
-        );
-        expect(messageWrite).toBeDefined();
-        expect(messageWrite.value.content).toBe(
+        expect(notification.data.messages).toBeDefined();
+        // Only AI message should be extracted (tool call is not a BaseMessage)
+        expect(notification.data.messages).toHaveLength(1);
+        expect(notification.data.messages[0].content).toBe(
           'I found some recent AI research papers. Here are the key findings...',
         );
-        expect(messageWrite.value.type).toBe('ai');
       });
 
       it('should handle multiple sequential notifications', async () => {
@@ -596,14 +535,8 @@ describe('PgCheckpointSaver', () => {
 
         await service.put(config, checkpoint, metadata);
 
-        // Verify notification was captured with fallback values
-        expect(capturedNotifications).toHaveLength(1);
-
-        const notification = capturedNotifications[0];
-        expect(notification.type).toBe(NotificationEvent.Checkpointer);
-        expect(notification.graphId).toBe('unknown');
-        expect(notification.nodeId).toBeUndefined();
-        expect(notification.threadId).toBe('thread-without-metadata');
+        // No messages in checkpoint, so no notification should be emitted
+        expect(capturedNotifications).toHaveLength(0);
       });
     });
   });

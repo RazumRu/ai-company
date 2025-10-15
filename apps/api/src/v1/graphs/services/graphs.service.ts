@@ -30,6 +30,7 @@ import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
+import { MessageTransformerService } from './message-transformer.service';
 
 @Injectable()
 export class GraphsService {
@@ -41,6 +42,7 @@ export class GraphsService {
     private readonly authContext: AuthContextService,
     private readonly graphCheckpointsDao: GraphCheckpointsDao,
     private readonly pgCheckpointSaver: PgCheckpointSaver,
+    private readonly messageTransformer: MessageTransformerService,
   ) {}
 
   private prepareResponse(entity: GraphEntity): GraphDto {
@@ -336,7 +338,7 @@ export class GraphsService {
 
       // Transform messages to DTOs
       const messageDtos: MessageDto[] = messages.map((msg) =>
-        this.transformMessageToDto(msg),
+        this.messageTransformer.transformMessageToDto(msg),
       );
 
       threads.push({
@@ -350,128 +352,5 @@ export class GraphsService {
       nodeId,
       threads,
     };
-  }
-
-  private getMessageRole(msg: BaseMessage): 'human' | 'ai' | 'system' | 'tool' {
-    const type = msg.getType();
-    switch (type) {
-      case 'human':
-        return 'human';
-      case 'ai':
-        return 'ai';
-      case 'system':
-        return 'system';
-      case 'tool':
-        return 'tool';
-      default:
-        return 'ai'; // Default fallback
-    }
-  }
-
-  private transformMessageToDto(msg: BaseMessage): MessageDto {
-    const role = this.getMessageRole(msg);
-
-    // Base message data
-    const baseData = {
-      role,
-      additionalKwargs: msg.additional_kwargs,
-    };
-
-    switch (role) {
-      case 'human':
-        return {
-          ...baseData,
-          role: 'human',
-          content:
-            typeof msg.content === 'string'
-              ? msg.content
-              : JSON.stringify(msg.content),
-        };
-
-      case 'ai': {
-        const toolCalls = (msg as any).tool_calls || [];
-        return {
-          ...baseData,
-          role: 'ai',
-          content:
-            typeof msg.content === 'string'
-              ? msg.content
-              : JSON.stringify(msg.content),
-          id: msg.id,
-          toolCalls: toolCalls.map((tc: any) => ({
-            name: tc.name,
-            args: tc.args,
-            type: tc.type || 'tool_call',
-            id: tc.id,
-          })),
-        };
-      }
-
-      case 'system':
-        return {
-          ...baseData,
-          role: 'system',
-          content:
-            typeof msg.content === 'string'
-              ? msg.content
-              : JSON.stringify(msg.content),
-        };
-
-      case 'tool': {
-        // Parse tool content as JSON
-        let parsedContent: Record<string, unknown>;
-        try {
-          const contentStr =
-            typeof msg.content === 'string'
-              ? msg.content
-              : JSON.stringify(msg.content);
-          parsedContent = JSON.parse(contentStr);
-        } catch (error) {
-          // If parsing fails, wrap the content in an object
-          parsedContent = {
-            raw: msg.content,
-          };
-        }
-
-        const toolName = msg.name || 'unknown';
-
-        // Return shell tool message with properly typed content
-        if (toolName === 'shell') {
-          return {
-            ...baseData,
-            role: 'tool-shell',
-            name: 'shell',
-            content: parsedContent as {
-              exitCode: number;
-              stdout: string;
-              stderr: string;
-              cmd: string;
-              fail?: boolean;
-            },
-            toolCallId: (msg as any).tool_call_id || '',
-          };
-        }
-
-        // Return generic tool message
-        return {
-          ...baseData,
-          role: 'tool',
-          content: parsedContent,
-          name: toolName,
-          toolCallId: (msg as any).tool_call_id || '',
-        };
-      }
-
-      default:
-        // Fallback
-        return {
-          ...baseData,
-          role: 'ai',
-          content:
-            typeof msg.content === 'string'
-              ? msg.content
-              : JSON.stringify(msg.content),
-        } as MessageDto;
-    }
   }
 }

@@ -368,7 +368,7 @@ describe('Socket Gateway E2E', () => {
         });
     });
 
-    it('should receive tool call notifications with correct data', () => {
+    it('should receive AI message with tool calls in correct format', () => {
       // Create a graph with web-search-tool configured
       const graphData = createMockGraphDataWithWebTool();
 
@@ -376,28 +376,38 @@ describe('Socket Gateway E2E', () => {
         expect(response.status).to.equal(201);
         const freshGraphId = response.body.id;
 
-        // Set up listener for tool call events
+        // Set up listener for message events with tool calls
         return cy.wrap(
           new Promise((resolve, reject) => {
-            socket.on('graph.checkpointer.tool_call', (notification) => {
-              // Verify the notification structure
-              expect(notification).to.have.property(
-                'type',
-                'graph.checkpointer.tool_call',
-              );
-              expect(notification).to.have.property('graphId', freshGraphId);
-              expect(notification).to.have.property('ownerId', mockUserId);
-              expect(notification).to.have.property('nodeId');
-              expect(notification).to.have.property('threadId');
-              expect(notification).to.have.property('data');
+            socket.on('graph.checkpointer.message', (notification) => {
+              // We're looking for AI messages with tool calls
+              if (
+                notification.data?.role === 'ai' &&
+                notification.data?.toolCalls &&
+                notification.data.toolCalls.length > 0
+              ) {
+                // Verify the notification structure
+                expect(notification).to.have.property(
+                  'type',
+                  'graph.checkpointer.message',
+                );
+                expect(notification).to.have.property('graphId', freshGraphId);
+                expect(notification).to.have.property('ownerId', mockUserId);
+                expect(notification).to.have.property('nodeId');
+                expect(notification).to.have.property('threadId');
+                expect(notification).to.have.property('data');
+                expect(notification.data).to.have.property('role', 'ai');
+                expect(notification.data).to.have.property('toolCalls');
 
-              // Verify tool call data structure
-              expect(notification.data).to.have.property('name');
-              expect(notification.data).to.have.property('args');
-              expect(notification.data.name).to.be.a('string');
-              expect(notification.data.args).to.exist;
+                // Verify tool call data structure
+                const toolCall = notification.data.toolCalls[0];
+                expect(toolCall).to.have.property('name');
+                expect(toolCall).to.have.property('args');
+                expect(toolCall.name).to.be.a('string');
+                expect(toolCall.args).to.exist;
 
-              resolve(undefined);
+                resolve(undefined);
+              }
             });
 
             socket.once('server_error', (error) => reject(error));
@@ -422,7 +432,11 @@ describe('Socket Gateway E2E', () => {
 
             // Timeout after 45 seconds (tool execution may take time)
             setTimeout(() => {
-              reject(new Error('Timeout waiting for tool call notification'));
+              reject(
+                new Error(
+                  'Timeout waiting for AI message with tool calls notification',
+                ),
+              );
             }, 45000);
           }),
           {

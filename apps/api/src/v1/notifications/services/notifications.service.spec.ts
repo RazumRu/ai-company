@@ -1,5 +1,6 @@
 import EventEmitter from 'node:events';
 
+import { HumanMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -67,27 +68,14 @@ describe('NotificationsService', () => {
       expect(emitSpy).toHaveBeenCalledWith('event', graphNotification);
     });
 
-    it('should emit checkpointer notification with put action', () => {
+    it('should emit checkpointer notification with messages', () => {
       const checkpointerNotification: ICheckpointerNotification = {
         type: NotificationEvent.Checkpointer,
         graphId: 'test-graph-123',
         nodeId: 'test-node-456',
         threadId: 'test-thread-789',
         data: {
-          action: 'put',
-          checkpoint: {
-            id: 'checkpoint-123',
-            ts: '2024-01-01T00:00:00Z',
-            v: 1,
-            channel_values: {},
-            channel_versions: {},
-            versions_seen: {},
-          },
-          metadata: {
-            source: 'input',
-            step: 1,
-            parents: {},
-          },
+          messages: [new HumanMessage('Hello world')],
         },
       };
 
@@ -98,24 +86,14 @@ describe('NotificationsService', () => {
       expect(emitSpy).toHaveBeenCalledWith('event', checkpointerNotification);
     });
 
-    it('should emit checkpointer notification with putWrites action', () => {
+    it('should emit checkpointer notification with empty messages', () => {
       const checkpointerNotification: ICheckpointerNotification = {
         type: NotificationEvent.Checkpointer,
         graphId: 'test-graph-123',
         nodeId: 'test-node-456',
         threadId: 'test-thread-789',
         data: {
-          action: 'putWrites',
-          writes: [
-            {
-              channel: 'messages',
-              value: { content: 'Hello world', type: 'human' },
-            },
-            {
-              channel: 'tools',
-              value: { name: 'search', args: { query: 'test' } },
-            },
-          ],
+          messages: [],
         },
       };
 

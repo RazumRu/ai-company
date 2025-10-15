@@ -1,4 +1,4 @@
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
@@ -22,6 +22,7 @@ import { CompiledGraph, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphsService } from './graphs.service';
+import { MessageTransformerService } from './message-transformer.service';
 
 describe('GraphsService', () => {
   let service: GraphsService;
@@ -32,6 +33,7 @@ describe('GraphsService', () => {
   let authContext: AuthContextService;
   let graphCheckpointsDao: GraphCheckpointsDao;
   let pgCheckpointSaver: PgCheckpointSaver;
+  let messageTransformer: MessageTransformerService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -156,6 +158,13 @@ describe('GraphsService', () => {
             },
           },
         },
+        {
+          provide: MessageTransformerService,
+          useValue: {
+            transformMessageToDto: vi.fn(),
+            transformMessagesToDto: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -167,6 +176,9 @@ describe('GraphsService', () => {
     authContext = module.get<AuthContextService>(AuthContextService);
     graphCheckpointsDao = module.get<GraphCheckpointsDao>(GraphCheckpointsDao);
     pgCheckpointSaver = module.get<PgCheckpointSaver>(PgCheckpointSaver);
+    messageTransformer = module.get<MessageTransformerService>(
+      MessageTransformerService,
+    );
 
     // Setup default mocks
     vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
@@ -174,6 +186,39 @@ describe('GraphsService', () => {
       const mockEntityManager = {} as EntityManager;
       return callback(mockEntityManager);
     });
+
+    // Mock message transformer to actually transform messages
+    const transformMessage = (msg: HumanMessage | AIMessage) => {
+      if (msg instanceof HumanMessage) {
+        return {
+          role: 'human',
+          content: msg.content as string,
+          additionalKwargs: msg.additional_kwargs,
+        };
+      } else if (msg instanceof AIMessage) {
+        return {
+          role: 'ai',
+          content: msg.content as string,
+          id: msg.id,
+          toolCalls:
+            msg.tool_calls && msg.tool_calls.length > 0 ? msg.tool_calls : [],
+          additionalKwargs: msg.additional_kwargs,
+        };
+      }
+
+      return {
+        role: 'system',
+        content: (msg as BaseMessage).content as string,
+        additionalKwargs: (msg as BaseMessage).additional_kwargs,
+      };
+    };
+
+    vi.mocked(messageTransformer.transformMessageToDto).mockImplementation(
+      transformMessage as any,
+    );
+    vi.mocked(messageTransformer.transformMessagesToDto).mockImplementation(
+      (messages) => messages.map(transformMessage as any),
+    );
   });
 
   describe('create', () => {

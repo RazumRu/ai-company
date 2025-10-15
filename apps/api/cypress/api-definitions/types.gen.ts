@@ -46,7 +46,7 @@ export type CreateGraphDto = {
   /**
    * If true, graph will be deleted instead of restored after server restart
    */
-  temporary?: boolean;
+  temporary?: boolean | unknown;
 };
 
 export type GraphDto = {
@@ -96,7 +96,7 @@ export type GraphDto = {
   /**
    * If true, graph will be deleted instead of restored after server restart
    */
-  temporary?: boolean;
+  temporary?: boolean | unknown;
 };
 
 export type UpdateGraphDto = {
@@ -141,7 +141,7 @@ export type UpdateGraphDto = {
   /**
    * If true, graph will be deleted instead of restored after server restart
    */
-  temporary?: boolean;
+  temporary?: boolean | unknown;
 };
 
 export type ExecuteTriggerDto = {

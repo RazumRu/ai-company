@@ -1,3 +1,4 @@
+import { BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import {
   BaseCheckpointSaver,
@@ -10,6 +11,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 import { Injectable, Optional, Scope } from '@nestjs/common';
 import { ValidationException } from '@packages/common';
+import { isArray, isObject } from 'lodash';
 import { Brackets } from 'typeorm';
 
 import { NotificationEvent } from '../../notifications/notifications.types';
@@ -18,6 +20,25 @@ import { GraphCheckpointsDao } from '../dao/graph-checkpoints.dao';
 import { GraphCheckpointsWritesDao } from '../dao/graph-checkpoints-writes.dao';
 
 type Keys = { threadId: string; checkpointNs: string; checkpointId?: string };
+
+/**
+ * Interface for checkpoint channel values that contain items
+ */
+interface CheckpointValueWithItems {
+  items?: unknown;
+}
+
+/**
+ * Interface for potential BaseMessage-like objects
+ */
+interface BaseMessageLike {
+  getType?: () => string;
+  content?: unknown;
+  lc_kwargs?: Record<string, unknown>;
+  type?: string;
+  role?: string;
+  lc_id?: string[];
+}
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class PgCheckpointSaver extends BaseCheckpointSaver {
@@ -206,21 +227,22 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       });
     }
 
-    // Emit checkpointer notification
+    // Extract messages from checkpoint and emit notification
     const graphId = config.configurable?.graph_id || 'unknown';
     const nodeId = config.configurable?.node_id;
+    const messages = this.extractMessagesFromCheckpoint(checkpoint);
 
-    this.notificationsService.emit({
-      type: NotificationEvent.Checkpointer,
-      graphId,
-      nodeId,
-      threadId,
-      data: {
-        action: 'put',
-        checkpoint,
-        metadata,
-      },
-    });
+    if (messages.length > 0) {
+      this.notificationsService.emit({
+        type: NotificationEvent.Checkpointer,
+        graphId,
+        nodeId,
+        threadId,
+        data: {
+          messages,
+        },
+      });
+    }
 
     return {
       configurable: {
@@ -273,20 +295,104 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       }),
     );
 
-    // Emit checkpointer notification
+    // Extract messages from writes and emit notification
     const graphId = config.configurable?.graph_id || 'unknown';
     const nodeId = config.configurable?.node_id;
+    const messages = this.extractMessagesFromWrites(writes);
 
-    this.notificationsService.emit({
-      type: NotificationEvent.Checkpointer,
-      graphId,
-      nodeId,
-      threadId,
-      data: {
-        action: 'putWrites',
-        writes: writes.map(([channel, value]) => ({ channel, value })),
-      },
-    });
+    if (messages.length > 0) {
+      this.notificationsService.emit({
+        type: NotificationEvent.Checkpointer,
+        graphId,
+        nodeId,
+        threadId,
+        data: {
+          messages,
+        },
+      });
+    }
+  }
+
+  /**
+   * Extract BaseMessage array from checkpoint channel_values
+   */
+  private extractMessagesFromCheckpoint(checkpoint: Checkpoint): BaseMessage[] {
+    const messagesChannel = checkpoint.channel_values?.['messages'];
+    return this.extractBaseMessagesFromValue(messagesChannel);
+  }
+
+  /**
+   * Extract BaseMessage array from pending writes
+   */
+  private extractMessagesFromWrites(writes: PendingWrite[]): BaseMessage[] {
+    const allMessages: BaseMessage[] = [];
+
+    for (const [channel, value] of writes) {
+      if (channel === 'messages') {
+        const messages = this.extractBaseMessagesFromValue(value);
+        allMessages.push(...messages);
+      }
+    }
+
+    return allMessages;
+  }
+
+  /**
+   * Extract BaseMessage array from various checkpoint value formats
+   * Handles: BaseMessage, BaseMessage[], { items: BaseMessage[] }, { items: BaseMessage[][] }
+   */
+  private extractBaseMessagesFromValue(value: unknown): BaseMessage[] {
+    // Handle null/undefined
+    if (!value) {
+      return [];
+    }
+
+    // Handle direct BaseMessage
+    if (this.isBaseMessage(value)) {
+      return [value as BaseMessage];
+    }
+
+    // Handle BaseMessage array
+    if (isArray(value)) {
+      const flatMessages: BaseMessage[] = [];
+      for (const item of value) {
+        if (this.isBaseMessage(item)) {
+          flatMessages.push(item as BaseMessage);
+        } else if (isObject(item) && 'items' in item) {
+          // Handle nested { items: BaseMessage[] }
+          const itemWithItems = item as CheckpointValueWithItems;
+          const nested = this.extractBaseMessagesFromValue(itemWithItems.items);
+          flatMessages.push(...nested);
+        }
+      }
+      return flatMessages;
+    }
+
+    // Handle { items: BaseMessage[] } or { items: BaseMessage[][] }
+    if (isObject(value) && 'items' in value) {
+      const valueWithItems = value as CheckpointValueWithItems;
+      if (isArray(valueWithItems.items)) {
+        return this.extractBaseMessagesFromValue(valueWithItems.items);
+      }
+    }
+
+    return [];
+  }
+
+  /**
+   * Check if a value is a BaseMessage by checking for characteristic properties
+   */
+  private isBaseMessage(value: unknown): value is BaseMessage {
+    if (!isObject(value)) {
+      return false;
+    }
+    const obj = value as BaseMessageLike;
+    // BaseMessage has getType() method or at minimum has content and a type/role
+    return (
+      typeof obj.getType === 'function' ||
+      (('content' in obj || 'lc_kwargs' in obj) &&
+        ('type' in obj || 'role' in obj || 'lc_id' in obj))
+    );
   }
 
   async deleteThread(threadId: string, ns = ''): Promise<void> {

@@ -13,6 +13,7 @@ import { GraphCompiler } from './services/graph-compiler';
 import { GraphRegistry } from './services/graph-registry';
 import { GraphRestorationService } from './services/graph-restoration.service';
 import { GraphsService } from './services/graphs.service';
+import { MessageTransformerService } from './services/message-transformer.service';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { GraphsService } from './services/graphs.service';
     GraphCompiler,
     GraphRegistry,
     GraphRestorationService,
+    MessageTransformerService,
   ],
   exports: [
     GraphDao,
@@ -35,6 +37,7 @@ import { GraphsService } from './services/graphs.service';
     GraphsService,
     GraphRegistry,
     GraphRestorationService,
+    MessageTransformerService,
   ],
 })
 export class GraphsModule implements OnModuleInit {
