@@ -4,9 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphSchemaType, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
+
+// Mock DockerRuntime
+vi.mock('../../runtime/services/docker-runtime', () => ({
+  DockerRuntime: {
+    cleanupByLabels: vi.fn(),
+  },
+}));
 
 describe('GraphCompiler', () => {
   let compiler: GraphCompiler;
@@ -935,6 +943,111 @@ describe('GraphCompiler', () => {
           version: '1.0.0',
           nodeId: 'trigger-node',
         },
+      );
+    });
+  });
+
+  describe('destroyNotCompiledGraph', () => {
+    it('should destroy runtime containers for graphs with docker-runtime nodes', async () => {
+      // Arrange
+      const graphWithRuntime = createMockGraphEntity({
+        nodes: [
+          {
+            id: 'runtime-1',
+            template: 'docker-runtime',
+            config: {
+              runtimeType: 'Docker',
+              image: 'node:20',
+            },
+          },
+          {
+            id: 'agent-1',
+            template: 'simple-agent',
+            config: {
+              name: 'Test Agent',
+              instructions: 'Test instructions',
+              invokeModelName: 'gpt-5-mini',
+              invokeModelTemperature: 0.7,
+            },
+          },
+        ],
+        edges: [],
+      });
+
+      // Act
+      await compiler.destroyNotCompiledGraph(graphWithRuntime);
+
+      // Assert
+      expect(vi.mocked(DockerRuntime.cleanupByLabels)).toHaveBeenCalledWith(
+        { 'ai-company/graph_id': graphWithRuntime.id },
+        expect.objectContaining({ socketPath: expect.any(String) }),
+      );
+    });
+
+    it('should do nothing for graphs without docker-runtime nodes', async () => {
+      // Arrange
+      const graphWithoutRuntime = createMockGraphEntity({
+        nodes: [
+          {
+            id: 'agent-1',
+            template: 'simple-agent',
+            config: {
+              name: 'Test Agent',
+              instructions: 'Test instructions',
+              invokeModelName: 'gpt-5-mini',
+              invokeModelTemperature: 0.7,
+            },
+          },
+        ],
+        edges: [],
+      });
+
+      // Mock the DockerRuntime import
+      const mockDockerRuntime = {
+        cleanupByLabels: vi.fn().mockResolvedValue(undefined),
+      };
+      vi.doMock('../../runtime/services/docker-runtime', () => ({
+        DockerRuntime: mockDockerRuntime,
+      }));
+
+      // Act
+      await compiler.destroyNotCompiledGraph(graphWithoutRuntime);
+
+      // Assert
+      expect(mockDockerRuntime.cleanupByLabels).not.toHaveBeenCalled();
+    });
+
+    it('should handle multiple docker-runtime nodes', async () => {
+      // Arrange
+      const graphWithMultipleRuntimes = createMockGraphEntity({
+        nodes: [
+          {
+            id: 'runtime-1',
+            template: 'docker-runtime',
+            config: {
+              runtimeType: 'Docker',
+              image: 'node:20',
+            },
+          },
+          {
+            id: 'runtime-2',
+            template: 'docker-runtime',
+            config: {
+              runtimeType: 'Docker',
+              image: 'python:3.11',
+            },
+          },
+        ],
+        edges: [],
+      });
+
+      // Act
+      await compiler.destroyNotCompiledGraph(graphWithMultipleRuntimes);
+
+      // Assert
+      expect(vi.mocked(DockerRuntime.cleanupByLabels)).toHaveBeenCalledWith(
+        { 'ai-company/graph_id': graphWithMultipleRuntimes.id },
+        expect.objectContaining({ socketPath: expect.any(String) }),
       );
     });
   });

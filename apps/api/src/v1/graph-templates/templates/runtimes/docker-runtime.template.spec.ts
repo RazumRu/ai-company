@@ -117,6 +117,42 @@ describe('DockerRuntimeTemplate', () => {
         DockerRuntimeTemplateSchema.parse(configWithArray),
       ).not.toThrow();
     });
+
+    it('should validate initScriptTimeoutMs as positive number', () => {
+      const configWithTimeout = {
+        runtimeType: RuntimeType.Docker,
+        image: 'python:3.11',
+        initScriptTimeoutMs: 300000, // 5 minutes
+      };
+
+      expect(() =>
+        DockerRuntimeTemplateSchema.parse(configWithTimeout),
+      ).not.toThrow();
+    });
+
+    it('should reject negative initScriptTimeoutMs', () => {
+      const configWithNegativeTimeout = {
+        runtimeType: RuntimeType.Docker,
+        image: 'python:3.11',
+        initScriptTimeoutMs: -1000,
+      };
+
+      expect(() =>
+        DockerRuntimeTemplateSchema.parse(configWithNegativeTimeout),
+      ).toThrow();
+    });
+
+    it('should reject zero initScriptTimeoutMs', () => {
+      const configWithZeroTimeout = {
+        runtimeType: RuntimeType.Docker,
+        image: 'python:3.11',
+        initScriptTimeoutMs: 0,
+      };
+
+      expect(() =>
+        DockerRuntimeTemplateSchema.parse(configWithZeroTimeout),
+      ).toThrow();
+    });
   });
 
   describe('create', () => {
@@ -145,8 +181,12 @@ describe('DockerRuntimeTemplate', () => {
         image: 'python:3.11',
         env: undefined,
         workdir: undefined,
-        labels: undefined,
+        labels: {
+          'ai-company/graph_id': 'test-graph',
+          'ai-company/node_id': 'test-node',
+        },
         initScript: undefined,
+        initScriptTimeoutMs: undefined,
         autostart: true,
         containerName: 'rt-test-graph-test-node',
       });
@@ -182,8 +222,14 @@ describe('DockerRuntimeTemplate', () => {
         image: 'node:20',
         env: { NODE_ENV: 'production', PORT: '3000' },
         workdir: '/app',
-        labels: { version: '2.0.0', environment: 'prod' },
+        labels: {
+          version: '2.0.0',
+          environment: 'prod',
+          'ai-company/graph_id': 'test-graph',
+          'ai-company/node_id': 'test-node',
+        },
         initScript: ['npm ci', 'npm run build'],
+        initScriptTimeoutMs: undefined,
         autostart: true,
         containerName: 'rt-test-graph-test-node',
       });
@@ -233,6 +279,45 @@ describe('DockerRuntimeTemplate', () => {
           autostart: true,
         }),
       );
+    });
+
+    it('should create runtime with initScriptTimeoutMs', async () => {
+      const mockRuntime = {
+        id: 'runtime-4',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
+      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
+
+      const config = {
+        runtimeType: RuntimeType.Docker,
+        image: 'python:3.11',
+        initScript: 'pip install -r requirements.txt',
+        initScriptTimeoutMs: 300000, // 5 minutes
+      };
+
+      const result = await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
+
+      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
+        type: RuntimeType.Docker,
+        image: 'python:3.11',
+        env: undefined,
+        workdir: undefined,
+        labels: {
+          'ai-company/graph_id': 'test-graph',
+          'ai-company/node_id': 'test-node',
+        },
+        initScript: 'pip install -r requirements.txt',
+        initScriptTimeoutMs: 300000,
+        autostart: true,
+        containerName: 'rt-test-graph-test-node',
+      });
+      expect(result).toBe(mockRuntime);
     });
   });
 });

@@ -23,6 +23,13 @@ export const DockerRuntimeTemplateSchema = z.object({
     .union([z.string(), z.array(z.string())])
     .optional()
     .describe('Initialization commands'),
+  initScriptTimeoutMs: z
+    .number()
+    .positive()
+    .optional()
+    .describe(
+      'Timeout in milliseconds for initialization script execution (default: 600000)',
+    ),
 });
 
 @Injectable()
@@ -43,13 +50,26 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
     compiledNodes: Map<string, any>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<BaseRuntime> {
+    // Automatically add graph_id and node_id labels for container management
+    const systemLabels = {
+      'ai-company/graph_id': metadata.graphId,
+      'ai-company/node_id': metadata.nodeId,
+    };
+
+    // Merge user-provided labels with system labels (system labels take precedence)
+    const mergedLabels = {
+      ...config.labels,
+      ...systemLabels,
+    };
+
     return await this.runtimeProvider.provide({
       type: config.runtimeType,
       image: config.image,
       env: config.env,
       workdir: config.workdir,
-      labels: config.labels,
+      labels: mergedLabels,
       initScript: config.initScript,
+      initScriptTimeoutMs: config.initScriptTimeoutMs,
       autostart: true, // Always start automatically
       containerName: `rt-${metadata.graphId}-${metadata.nodeId}`, // Use graphId and nodeId for consistent container naming
     });

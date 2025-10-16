@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
+import { isBoolean } from 'lodash';
 import { DataSource, In } from 'typeorm';
 
 import { GraphEntity } from '../entity/graph.entity';
@@ -10,6 +11,7 @@ export type SearchTerms = Partial<{
   createdBy: string;
   ids: string[];
   status: GraphStatus;
+  temporary: boolean;
 }>;
 
 @Injectable()
@@ -42,6 +44,12 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms, string> {
       });
     }
 
+    if (isBoolean(params?.temporary)) {
+      builder.andWhere({
+        temporary: params.temporary,
+      });
+    }
+
     if (params?.status) {
       builder.andWhere({
         status: params.status,
@@ -60,5 +68,9 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms, string> {
    */
   async getRunningGraphs(): Promise<GraphEntity[]> {
     return this.getAll({ status: GraphStatus.Running });
+  }
+
+  async getTemporaryGraphs(): Promise<GraphEntity[]> {
+    return this.getAll({ temporary: true });
   }
 }

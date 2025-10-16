@@ -23,99 +23,68 @@ export class GraphRestorationService {
 
   /**
    * Restores all graphs that were running before server restart
+   * Process order:
+   * 1. First: Destroy temporary graphs (run destroy pipeline)
+   * 2. Then: Restore permanent graphs
    */
   async restoreRunningGraphs(): Promise<void> {
     this.logger.log('Starting graph restoration process...');
 
-    try {
-      const runningGraphs = await this.graphDao.getRunningGraphs();
+    // STEP 1: Destroy temporary graphs first (run destroy pipeline)
+    const temporaryGraphs = await this.graphDao.getTemporaryGraphs();
+    await this.deleteTemporaryGraphs(temporaryGraphs);
 
-      if (runningGraphs.length === 0) {
-        this.logger.log('No running graphs to restore');
-        return;
-      }
-
-      // Separate temporary and permanent graphs
-      const temporaryGraphs = runningGraphs.filter((g) => g.temporary === true);
-      const permanentGraphs = runningGraphs.filter((g) => g.temporary !== true);
-
-      this.logger.log('Graphs to process', {
-        total: runningGraphs.length,
-        temporary: temporaryGraphs.length,
-        permanent: permanentGraphs.length,
-        temporaryIds: temporaryGraphs.map((g) => g.id),
-        permanentIds: permanentGraphs.map((g) => g.id),
-      });
-
-      // Delete temporary graphs
-      if (temporaryGraphs.length > 0) {
-        await this.deleteTemporaryGraphs(temporaryGraphs);
-      }
-
-      // Restore permanent graphs
-      if (permanentGraphs.length > 0) {
-        const restorationPromises = permanentGraphs.map((graph) =>
-          this.restoreGraph(graph).catch((error) => {
-            this.logger.error(
-              error instanceof Error ? error : new Error(String(error)),
-              `Failed to restore graph ${graph.id}`,
-              {
-                graphId: graph.id,
-                graphName: graph.name,
-              },
-            );
-            return { graphId: graph.id, error };
-          }),
-        );
-
-        const results = await Promise.allSettled(restorationPromises);
-
-        const successful = results.filter(
-          (r) => r.status === 'fulfilled',
-        ).length;
-        const failed = results.filter((r) => r.status === 'rejected').length;
-
-        this.logger.log('Restoration complete', {
-          total: permanentGraphs.length,
-          successful,
-          failed,
-        });
-      }
-    } catch (error) {
-      this.logger.error(
-        error instanceof Error ? error : new Error(String(error)),
-        'Failed to restore running graphs',
-      );
-    }
+    // STEP 2: Restore permanent graphs
+    const runningGraphs = await this.graphDao.getRunningGraphs();
+    const restorationPromises = runningGraphs.map((graph) =>
+      this.restoreGraph(graph),
+    );
+    await Promise.allSettled(restorationPromises);
   }
 
   /**
-   * Deletes temporary graphs that were running before server restart
+   * Destroys temporary graphs that were running before server restart
+   * Uses the proper destroy pipeline to stop triggers and runtimes
    */
   private async deleteTemporaryGraphs(
     temporaryGraphs: GraphEntity[],
   ): Promise<void> {
-    this.logger.log('Deleting temporary graphs', {
+    this.logger.log('Destroying temporary graphs', {
       count: temporaryGraphs.length,
       graphIds: temporaryGraphs.map((g) => g.id),
     });
 
-    const deletionPromises = temporaryGraphs.map((graph) =>
-      this.graphDao.deleteById(graph.id).catch((error) => {
-        this.logger.error(
-          error instanceof Error ? error : new Error(String(error)),
-          `Failed to delete temporary graph ${graph.id}`,
+    const deletionPromises = temporaryGraphs.map(async (graph) => {
+      try {
+        await this.graphCompiler.destroyNotCompiledGraph(graph);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to destroy runtime containers for temporary graph ${graph.id}`,
           {
             graphId: graph.id,
             graphName: graph.name,
+            error: error instanceof Error ? error.message : String(error),
           },
         );
-      }),
-    );
+      }
+
+      try {
+        await this.graphDao.deleteById(graph.id);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete temporary graph ${graph.id} from database`,
+          {
+            graphId: graph.id,
+            graphName: graph.name,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
+    });
 
     await Promise.allSettled(deletionPromises);
 
-    this.logger.log('Temporary graphs deletion complete');
+    this.logger.log('Temporary graphs destruction complete');
   }
 
   /**

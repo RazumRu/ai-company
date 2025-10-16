@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, DefaultLogger } from '@packages/common';
 import { groupBy } from 'lodash';
 
+import { environment } from '../../../environments';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
 import {
   CompiledGraph,
@@ -212,6 +214,31 @@ export class GraphCompiler {
 
     // Wait for all runtimes to be destroyed
     await Promise.all(runtimePromises);
+  }
+
+  /**
+   * Destroys runtimes associated with a graph without compiling it
+   * This is useful for cleaning up resources when a graph cannot be compiled
+   * (e.g., corrupted schema, missing templates, etc.)
+   */
+  async destroyNotCompiledGraph(graph: GraphEntity): Promise<void> {
+    const runtimeNodes = graph.schema.nodes.filter(
+      (node) => node.template === 'docker-runtime',
+    );
+
+    if (runtimeNodes.length === 0) {
+      return; // No runtime nodes to destroy
+    }
+
+    this.logger.log(
+      `Destroying ${runtimeNodes.length} runtime containers for graph ${graph.id} without compilation`,
+    );
+
+    // Clean up all runtime containers associated with this graph by label
+    await DockerRuntime.cleanupByLabels(
+      { 'ai-company/graph_id': graph.id },
+      { socketPath: environment.dockerSocket },
+    );
   }
 
   /**

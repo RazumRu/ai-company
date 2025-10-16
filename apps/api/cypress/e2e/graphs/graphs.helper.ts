@@ -82,6 +82,7 @@ export const runGraph = (id: string, headers = reqHeaders) => {
     method: 'POST',
     headers,
     failOnStatusCode: false,
+    timeout: 120000,
   });
 };
 

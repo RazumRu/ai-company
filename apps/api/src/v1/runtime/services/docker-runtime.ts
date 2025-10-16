@@ -24,12 +24,51 @@ export class DockerRuntime extends BaseRuntime {
   private container: Docker.Container | null = null;
 
   constructor(
-    dockerOptions?: Docker.DockerOptions,
+    private dockerOptions?: Docker.DockerOptions,
     params?: { image?: string },
   ) {
     super();
     this.docker = new Docker(dockerOptions);
     this.image = params?.image;
+  }
+
+  /**
+   * Stops and removes all containers matching the given labels
+   * This is useful for cleaning up containers by graph_id or other labels
+   */
+  static async cleanupByLabels(
+    labels: Record<string, string>,
+    dockerOptions?: Docker.DockerOptions,
+  ): Promise<void> {
+    const docker = new Docker(dockerOptions);
+
+    // Convert labels to Docker filter format
+    const labelFilters = Object.entries(labels).map(([k, v]) => `${k}=${v}`);
+
+    // List all containers (including stopped ones) matching the labels
+    const containers = await docker.listContainers({
+      all: true,
+      filters: { label: labelFilters },
+    });
+
+    // Stop and remove each container
+    const cleanupPromises = containers.map(async (containerInfo) => {
+      try {
+        const container = docker.getContainer(containerInfo.Id);
+
+        // Stop the container if it's running
+        if (containerInfo.State === 'running') {
+          await container.stop({ t: 10 }).catch(() => undefined);
+        }
+
+        // Remove the container
+        await container.remove({ force: true }).catch(() => undefined);
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
+    await Promise.all(cleanupPromises);
   }
 
   private generateContainerName(): string {
@@ -63,7 +102,7 @@ export class DockerRuntime extends BaseRuntime {
     const labelFilters = Object.entries(labels).map(([k, v]) => `${k}=${v}`);
     const list = await this.docker.listContainers({
       all: true,
-      filters: { label: labelFilters } as any,
+      filters: { label: labelFilters },
     });
     if (!list[0]) {
       return null;
@@ -79,7 +118,7 @@ export class DockerRuntime extends BaseRuntime {
     try {
       const list = await this.docker.listContainers({
         all: true,
-        filters: { name: [name] } as any,
+        filters: { name: [name] },
       });
 
       if (!list[0]) {
@@ -96,6 +135,7 @@ export class DockerRuntime extends BaseRuntime {
     script?: string | string[],
     workdir?: string,
     env?: Record<string, string>,
+    timeoutMs?: number,
   ) {
     if (!script) {
       return;
@@ -107,7 +147,7 @@ export class DockerRuntime extends BaseRuntime {
         cmd,
         workdir,
         env,
-        timeoutMs: 10 * 60_000,
+        timeoutMs: timeoutMs || 10 * 60_000, // Default to 10 minutes if not specified
       });
       if (res.fail) {
         throw new Error(`Init failed: ${res.stderr || res.stdout}`);
@@ -131,6 +171,7 @@ export class DockerRuntime extends BaseRuntime {
             params.initScript,
             params.workdir,
             params.env,
+            params.initScriptTimeoutMs,
           );
         }
 
@@ -156,32 +197,47 @@ export class DockerRuntime extends BaseRuntime {
       }
 
       if (params?.initScript) {
-        await this.runInitScript(params.initScript, params.workdir, params.env);
+        await this.runInitScript(
+          params.initScript,
+          params.workdir,
+          params.env,
+          params.initScriptTimeoutMs,
+        );
       }
 
       return;
     }
 
-    // Second, try to find a reusable container by labels
-    const reusable = await this.getByLabels(params?.labels);
-    if (reusable) {
-      this.container = reusable;
-      const st = await reusable.inspect();
-      if (!st.State.Running) {
-        await reusable.start();
-      }
-
-      if (params?.initScript) {
-        await this.runInitScript(params.initScript, params.workdir, params.env);
-      }
-
-      return;
-    }
+    // // Second, try to find a reusable container by labels
+    // const reusable = await this.getByLabels(params?.labels);
+    // if (reusable) {
+    //   this.container = reusable;
+    //   const st = await reusable.inspect();
+    //   if (!st.State.Running) {
+    //     await reusable.start();
+    //   }
+    //
+    //   if (params?.initScript) {
+    //     await this.runInitScript(params.initScript, params.workdir, params.env);
+    //   }
+    //
+    //   return;
+    // }
 
     // If no existing container found, create a new one
     await this.ensureImage(imageName);
     const env = this.prepareEnv(params?.env);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
+
+    const dockerSocket =
+      this.dockerOptions?.socketPath?.replace('unix://', '') ||
+      '/var/run/docker.sock';
+
+    // Prepare Docker-in-Docker binds if enabled
+    const hostConfig: Docker.HostConfig = {
+      Binds: [`${dockerSocket}:/var/run/docker.sock:rw`],
+      Privileged: true,
+    };
 
     const container = await this.docker.createContainer({
       Image: imageName,
@@ -195,13 +251,19 @@ export class DockerRuntime extends BaseRuntime {
       AttachStdout: false,
       AttachStderr: false,
       OpenStdin: false,
+      HostConfig: hostConfig,
     });
 
     await container.start();
     this.container = container;
 
     if (params?.initScript) {
-      await this.runInitScript(params.initScript, params.workdir, params.env);
+      await this.runInitScript(
+        params.initScript,
+        params.workdir,
+        params.env,
+        params.initScriptTimeoutMs,
+      );
     }
   }
 

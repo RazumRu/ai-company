@@ -2,12 +2,20 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRestorationService } from './graph-restoration.service';
+
+// Mock DockerRuntime static method
+vi.mock('../../runtime/services/docker-runtime', () => ({
+  DockerRuntime: {
+    cleanupByLabels: vi.fn(),
+  },
+}));
 
 describe('GraphRestorationService', () => {
   let service: GraphRestorationService;
@@ -65,12 +73,14 @@ describe('GraphRestorationService', () => {
   beforeEach(async () => {
     const mockGraphDao = {
       getRunningGraphs: vi.fn(),
+      getTemporaryGraphs: vi.fn(),
       updateById: vi.fn(),
       deleteById: vi.fn(),
     };
 
     const mockGraphCompiler = {
       compile: vi.fn(),
+      destroyNotCompiledGraph: vi.fn(),
     };
 
     const mockGraphRegistry = {
@@ -121,6 +131,8 @@ describe('GraphRestorationService', () => {
   describe('restoreRunningGraphs', () => {
     it('should restore running graphs successfully', async () => {
       // Arrange
+      graphDao.getTemporaryGraphs.mockResolvedValue([]);
+      graphDao.getTemporaryGraphs.mockResolvedValue([]);
       graphDao.getRunningGraphs.mockResolvedValue([mockGraph]);
       graphRegistry.get.mockReturnValue(undefined);
       graphCompiler.compile.mockResolvedValue(mockCompiledGraph);
@@ -129,6 +141,8 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.compile).toHaveBeenCalledWith(mockGraph);
       expect(graphRegistry.register).toHaveBeenCalledWith(
@@ -139,12 +153,15 @@ describe('GraphRestorationService', () => {
 
     it('should handle no running graphs', async () => {
       // Arrange
+      graphDao.getTemporaryGraphs.mockResolvedValue([]);
       graphDao.getRunningGraphs.mockResolvedValue([]);
 
       // Act
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.compile).not.toHaveBeenCalled();
       expect(graphRegistry.register).not.toHaveBeenCalled();
@@ -153,6 +170,8 @@ describe('GraphRestorationService', () => {
     it('should handle compilation errors and update graph status', async () => {
       // Arrange
       const compilationError = new Error('Compilation failed');
+      graphDao.getTemporaryGraphs.mockResolvedValue([]);
+      graphDao.getTemporaryGraphs.mockResolvedValue([]);
       graphDao.getRunningGraphs.mockResolvedValue([mockGraph]);
       graphRegistry.get.mockReturnValue(undefined);
       graphCompiler.compile.mockRejectedValue(compilationError);
@@ -162,6 +181,8 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.compile).toHaveBeenCalledWith(mockGraph);
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraph.id, {
@@ -172,6 +193,7 @@ describe('GraphRestorationService', () => {
 
     it('should skip already registered graphs', async () => {
       // Arrange
+      graphDao.getTemporaryGraphs.mockResolvedValue([]);
       graphDao.getRunningGraphs.mockResolvedValue([mockGraph]);
       graphRegistry.get.mockReturnValue(mockCompiledGraph);
 
@@ -179,6 +201,7 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.compile).not.toHaveBeenCalled();
       expect(graphRegistry.register).not.toHaveBeenCalled();
@@ -193,6 +216,7 @@ describe('GraphRestorationService', () => {
       };
       const compilationError = new Error('Compilation failed');
 
+      graphDao.getTemporaryGraphs.mockResolvedValue([]);
       graphDao.getRunningGraphs.mockResolvedValue([mockGraph, mockGraph2]);
       graphRegistry.get
         .mockReturnValueOnce(undefined) // First graph not registered
@@ -206,6 +230,7 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.compile).toHaveBeenCalledTimes(2);
       expect(graphRegistry.register).toHaveBeenCalledTimes(1);
@@ -215,7 +240,7 @@ describe('GraphRestorationService', () => {
       });
     });
 
-    it('should delete temporary graphs instead of restoring them', async () => {
+    it('should destroy temporary graphs using destroyNotCompiledGraph', async () => {
       // Arrange
       const temporaryGraph: GraphEntity = {
         ...mockGraph,
@@ -224,16 +249,50 @@ describe('GraphRestorationService', () => {
         temporary: true,
       };
 
-      graphDao.getRunningGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.getRunningGraphs.mockResolvedValue([]);
       graphDao.deleteById.mockResolvedValue(undefined);
+      graphCompiler.destroyNotCompiledGraph.mockResolvedValue(undefined);
 
       // Act
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
+        temporaryGraph,
+      );
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
-      expect(graphCompiler.compile).not.toHaveBeenCalled();
+      expect(graphRegistry.register).not.toHaveBeenCalled();
+    });
+
+    it('should handle destroyNotCompiledGraph errors gracefully', async () => {
+      // Arrange
+      const temporaryGraph: GraphEntity = {
+        ...mockGraph,
+        id: 'temporary-graph-id',
+        name: 'Temporary Graph',
+        temporary: true,
+      };
+
+      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.getRunningGraphs.mockResolvedValue([]);
+      graphDao.deleteById.mockResolvedValue(undefined);
+      graphCompiler.destroyNotCompiledGraph.mockRejectedValue(
+        new Error('Destroy failed'),
+      );
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
+        temporaryGraph,
+      );
+      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       expect(graphRegistry.register).not.toHaveBeenCalled();
     });
 
@@ -252,20 +311,25 @@ describe('GraphRestorationService', () => {
         temporary: false,
       };
 
-      graphDao.getRunningGraphs.mockResolvedValue([
-        temporaryGraph,
-        permanentGraph,
-      ]);
+      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.getRunningGraphs.mockResolvedValue([permanentGraph]);
       graphDao.deleteById.mockResolvedValue(undefined);
       graphRegistry.get.mockReturnValue(undefined);
+      graphCompiler.destroyNotCompiledGraph.mockResolvedValue(undefined);
       graphCompiler.compile.mockResolvedValue(mockCompiledGraph);
 
       // Act
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      // Temporary graph should be destroyed using destroyNotCompiledGraph
+      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
+        temporaryGraph,
+      );
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
+      // Then permanent graph should be compiled and registered
       expect(graphCompiler.compile).toHaveBeenCalledWith(permanentGraph);
       expect(graphRegistry.register).toHaveBeenCalledWith(
         permanentGraph.id,
@@ -283,16 +347,48 @@ describe('GraphRestorationService', () => {
       };
       const deletionError = new Error('Deletion failed');
 
-      graphDao.getRunningGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.getRunningGraphs.mockResolvedValue([]);
+      graphCompiler.destroyNotCompiledGraph.mockResolvedValue(undefined);
       graphDao.deleteById.mockRejectedValue(deletionError);
 
       // Act
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
+        temporaryGraph,
+      );
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
+    });
+
+    it('should cleanup runtime containers even if container cleanup fails', async () => {
+      // Arrange
+      const temporaryGraph: GraphEntity = {
+        ...mockGraph,
+        id: 'temporary-graph-id',
+        name: 'Temporary Graph',
+        temporary: true,
+      };
+      const cleanupError = new Error('Container cleanup failed');
+
+      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
+      graphDao.getRunningGraphs.mockResolvedValue([]);
+      graphCompiler.destroyNotCompiledGraph.mockRejectedValue(cleanupError);
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Assert
+      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
+        temporaryGraph,
+      );
+      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
     });
   });
 });

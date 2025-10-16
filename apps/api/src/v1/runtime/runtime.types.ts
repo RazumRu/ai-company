@@ -4,6 +4,7 @@ export interface RuntimeStartParams {
   workdir?: string;
   labels?: Record<string, string>;
   initScript?: string | string[];
+  initScriptTimeoutMs?: number;
   containerName?: string;
 }
 
