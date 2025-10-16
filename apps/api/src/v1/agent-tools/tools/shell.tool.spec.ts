@@ -53,6 +53,7 @@ describe('ShellTool', () => {
       const validData = {
         cmd: 'echo "hello"',
         timeoutMs: 5000,
+        tailTimeoutMs: 2000,
         workdir: '/tmp',
         env: [
           { key: 'NODE_ENV', value: 'test' },
@@ -74,6 +75,21 @@ describe('ShellTool', () => {
 
     it('should reject zero timeout', () => {
       const invalidData = { cmd: 'echo "hello"', timeoutMs: 0 };
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
+    it('should validate positive tail timeout', () => {
+      const validData = { cmd: 'echo "hello"', tailTimeoutMs: 1000 };
+      expect(() => tool.schema.parse(validData)).not.toThrow();
+    });
+
+    it('should reject negative tail timeout', () => {
+      const invalidData = { cmd: 'echo "hello"', tailTimeoutMs: -1000 };
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
+    it('should reject zero tail timeout', () => {
+      const invalidData = { cmd: 'echo "hello"', tailTimeoutMs: 0 };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
   });
@@ -157,6 +173,7 @@ describe('ShellTool', () => {
       const result = await builtTool.invoke({
         cmd: 'pwd',
         timeoutMs: 5000,
+        tailTimeoutMs: 2000,
         workdir: '/tmp',
         env: envArray,
       });
@@ -164,6 +181,7 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith({
         cmd: 'pwd',
         timeoutMs: 5000,
+        tailTimeoutMs: 2000,
         workdir: '/tmp',
         env: { TEST: 'value' },
       });
@@ -223,6 +241,29 @@ describe('ShellTool', () => {
           VAR1: 'value1',
           VAR2: 'value2',
         },
+      });
+    });
+
+    it('should execute command with tailTimeoutMs only', async () => {
+      const mockExecResult = {
+        stdout: 'output',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      await builtTool.invoke({
+        cmd: 'echo "test"',
+        tailTimeoutMs: 3000,
+      });
+
+      expect(mockRuntime.exec).toHaveBeenCalledWith({
+        cmd: 'echo "test"',
+        tailTimeoutMs: 3000,
+        env: undefined,
       });
     });
   });

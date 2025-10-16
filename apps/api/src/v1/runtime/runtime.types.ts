@@ -13,6 +13,7 @@ export interface RuntimeExecParams {
   workdir?: string;
   env?: Record<string, string>;
   timeoutMs?: number;
+  tailTimeoutMs?: number;
 }
 
 export interface RuntimeExecResult {

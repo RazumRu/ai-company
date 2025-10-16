@@ -276,6 +276,183 @@ describe('Shell Execution E2E', () => {
       );
     });
   });
+
+  describe('Shell Command Timeout Functionality', () => {
+    let timeoutTestGraphId: string;
+
+    before(() => {
+      const graphData = createMockGraphDataWithShellTool();
+      createGraph(graphData).then((response) => {
+        timeoutTestGraphId = response.body.id;
+        runGraph(timeoutTestGraphId);
+      });
+    });
+
+    after(() => {
+      destroyGraph(timeoutTestGraphId);
+      deleteGraph(timeoutTestGraphId);
+    });
+
+    it('should handle overall timeout for long-running commands', () => {
+      const triggerData = {
+        messages: [
+          'Execute this command with a 2-second timeout: sleep 5',
+        ],
+        threadId: 'timeout-test-1',
+      };
+
+      executeTrigger(timeoutTestGraphId, 'trigger-1', triggerData).then(
+        (response) => {
+          expect(response.status).to.equal(201);
+          expect(response.body).to.have.property('threadId');
+          expect(response.body).to.have.property('checkpointNs');
+
+          const threadComponent = response.body.threadId.split(':')[1];
+
+          // Wait a bit for the command to timeout
+          cy.wait(3000);
+
+          // Verify messages were created
+          getNodeMessages(timeoutTestGraphId, 'agent-1', {
+            threadId: threadComponent,
+          }).then((messagesResponse) => {
+            expect(messagesResponse.status).to.equal(200);
+            expect(messagesResponse.body.threads).to.be.an('array');
+            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+
+            const thread = messagesResponse.body.threads[0];
+            const messages = thread.messages;
+            expect(messages.length).to.be.greaterThan(0);
+
+            // Find the shell tool message
+            const shellMessage = messages.find(
+              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
+            );
+            expect(shellMessage).to.exist;
+
+            // Verify shell message content structure
+            const shellContent = shellMessage.content;
+            expect(shellContent).to.be.an('object');
+            expect(shellContent).to.have.property('exitCode').that.is.a('number');
+            expect(shellContent).to.have.property('stdout').that.is.a('string');
+            expect(shellContent).to.have.property('stderr').that.is.a('string');
+            expect(shellContent).to.have.property('cmd').that.is.a('string');
+
+            // The command should have timed out (exit code 124)
+            expect(shellContent).to.have.property('exitCode', 124);
+          });
+        },
+      );
+    });
+
+    it('should handle tail timeout for commands that stop producing output', () => {
+      const triggerData = {
+        messages: [
+          'Execute this command that will stop producing output: echo "start"; sleep 3; echo "end"',
+        ],
+        threadId: 'tail-timeout-test-1',
+      };
+
+      executeTrigger(timeoutTestGraphId, 'trigger-1', triggerData).then(
+        (response) => {
+          expect(response.status).to.equal(201);
+          expect(response.body).to.have.property('threadId');
+          expect(response.body).to.have.property('checkpointNs');
+
+          const threadComponent = response.body.threadId.split(':')[1];
+
+          // Wait for the command to complete or timeout
+          cy.wait(5000);
+
+          // Verify messages were created
+          getNodeMessages(timeoutTestGraphId, 'agent-1', {
+            threadId: threadComponent,
+          }).then((messagesResponse) => {
+            expect(messagesResponse.status).to.equal(200);
+            expect(messagesResponse.body.threads).to.be.an('array');
+            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+
+            const thread = messagesResponse.body.threads[0];
+            const messages = thread.messages;
+            expect(messages.length).to.be.greaterThan(0);
+
+            // Find the shell tool message
+            const shellMessage = messages.find(
+              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
+            );
+            expect(shellMessage).to.exist;
+
+            // Verify shell message content structure
+            const shellContent = shellMessage.content;
+            expect(shellContent).to.be.an('object');
+            expect(shellContent).to.have.property('exitCode').that.is.a('number');
+            expect(shellContent).to.have.property('stdout').that.is.a('string');
+            expect(shellContent).to.have.property('stderr').that.is.a('string');
+            expect(shellContent).to.have.property('cmd').that.is.a('string');
+
+            // The command should have completed successfully (exit code 0)
+            // since it produces output within the tail timeout
+            expect(shellContent).to.have.property('exitCode', 0);
+            expect((shellContent as any).stdout).to.contain('start');
+            expect((shellContent as any).stdout).to.contain('end');
+          });
+        },
+      );
+    });
+
+    it('should complete successfully when both timeouts are sufficient', () => {
+      const triggerData = {
+        messages: [
+          'Execute this quick command: echo "success"',
+        ],
+        threadId: 'success-test-1',
+      };
+
+      executeTrigger(timeoutTestGraphId, 'trigger-1', triggerData).then(
+        (response) => {
+          expect(response.status).to.equal(201);
+          expect(response.body).to.have.property('threadId');
+          expect(response.body).to.have.property('checkpointNs');
+
+          const threadComponent = response.body.threadId.split(':')[1];
+
+          // Wait for the command to complete
+          cy.wait(2000);
+
+          // Verify messages were created
+          getNodeMessages(timeoutTestGraphId, 'agent-1', {
+            threadId: threadComponent,
+          }).then((messagesResponse) => {
+            expect(messagesResponse.status).to.equal(200);
+            expect(messagesResponse.body.threads).to.be.an('array');
+            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+
+            const thread = messagesResponse.body.threads[0];
+            const messages = thread.messages;
+            expect(messages.length).to.be.greaterThan(0);
+
+            // Find the shell tool message
+            const shellMessage = messages.find(
+              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
+            );
+            expect(shellMessage).to.exist;
+
+            // Verify shell message content structure
+            const shellContent = shellMessage.content;
+            expect(shellContent).to.be.an('object');
+            expect(shellContent).to.have.property('exitCode').that.is.a('number');
+            expect(shellContent).to.have.property('stdout').that.is.a('string');
+            expect(shellContent).to.have.property('stderr').that.is.a('string');
+            expect(shellContent).to.have.property('cmd').that.is.a('string');
+
+            // The command should have completed successfully
+            expect(shellContent).to.have.property('exitCode', 0);
+            expect((shellContent as any).stdout).to.contain('success');
+          });
+        },
+      );
+    });
+  });
 });
 
 // Helper function to create mock graph data with shell tool

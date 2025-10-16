@@ -305,11 +305,48 @@ export class DockerRuntime extends BaseRuntime {
     this.docker.modem.demuxStream(execStream, stdoutStream, stderrStream);
 
     let timedOut = false;
-    let timer: NodeJS.Timeout | null = null;
+    let tailTimedOut = false;
+    let overallTimer: NodeJS.Timeout | null = null;
+    let tailTimer: NodeJS.Timeout | null = null;
+    let lastLogTime = Date.now();
+
+    // Function to reset the tail timeout timer
+    const resetTailTimer = () => {
+      if (tailTimer) clearTimeout(tailTimer);
+      lastLogTime = Date.now();
+
+      if (params.tailTimeoutMs && params.tailTimeoutMs > 0) {
+        tailTimer = setTimeout(() => {
+          tailTimedOut = true;
+          try {
+            execStream.destroy(
+              new Error('Process timed out - no logs received'),
+            );
+          } catch {
+            //
+          }
+        }, params.tailTimeoutMs).unref();
+      }
+    };
+
+    // Track data events to reset tail timeout
+    const onData = () => {
+      resetTailTimer();
+    };
+
+    stdoutStream.on('data', (c) => {
+      stdoutChunks.push(Buffer.from(c));
+      onData();
+    });
+    stderrStream.on('data', (c) => {
+      stderrChunks.push(Buffer.from(c));
+      onData();
+    });
 
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => {
-        if (timer) clearTimeout(timer);
+        if (overallTimer) clearTimeout(overallTimer);
+        if (tailTimer) clearTimeout(tailTimer);
         stdoutStream.removeAllListeners();
         stderrStream.removeAllListeners();
         execStream.removeAllListeners();
@@ -331,8 +368,9 @@ export class DockerRuntime extends BaseRuntime {
       execStream.on('close', done);
       execStream.on('error', fail);
 
+      // Set up overall timeout
       if (params.timeoutMs && params.timeoutMs > 0) {
-        timer = setTimeout(() => {
+        overallTimer = setTimeout(() => {
           timedOut = true;
           try {
             execStream.destroy(new Error('Process timed out'));
@@ -341,10 +379,13 @@ export class DockerRuntime extends BaseRuntime {
           }
         }, params.timeoutMs).unref();
       }
+
+      // Set up initial tail timeout
+      resetTailTimer();
     });
 
     const info = await ex.inspect();
-    const exitCode = timedOut ? 124 : info.ExitCode || 0;
+    const exitCode = timedOut || tailTimedOut ? 124 : info.ExitCode || 0;
     const stdout = Buffer.concat(stdoutChunks).toString('utf8');
     const stderr = Buffer.concat(stderrChunks).toString('utf8');
 

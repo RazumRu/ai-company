@@ -14,6 +14,7 @@ export interface ShellToolOptions {
 export const ShellToolSchema = z.object({
   cmd: z.string(),
   timeoutMs: z.number().int().positive().optional(),
+  tailTimeoutMs: z.number().int().positive().optional(),
   workdir: z.string().optional(),
   env: z
     .array(
