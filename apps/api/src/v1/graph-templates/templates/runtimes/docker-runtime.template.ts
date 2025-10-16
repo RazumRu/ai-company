@@ -12,7 +12,7 @@ import {
 
 export const DockerRuntimeTemplateSchema = z.object({
   runtimeType: z.literal(RuntimeType.Docker),
-  image: z.string().describe('Docker image to use'),
+  image: z.string().optional().describe('Docker image to use'),
   workdir: z.string().optional().describe('Working directory inside container'),
   env: z
     .record(z.string(), z.string())

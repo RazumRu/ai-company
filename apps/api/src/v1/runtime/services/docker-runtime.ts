@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import { BadRequestException } from '@packages/common';
 import Docker from 'dockerode';
 
+import { environment } from '../../../environments';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
@@ -179,7 +180,8 @@ export class DockerRuntime extends BaseRuntime {
       }
     }
 
-    const imageName = params?.image || this.image;
+    const imageName =
+      params?.image || this.image || environment.dockerRuntimeImage;
     if (!imageName) {
       throw new BadRequestException('Image not specified');
     }

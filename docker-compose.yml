@@ -7,7 +7,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       PORT: 4000
       DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/litellm"
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_MASTER_KEY: master
       LITELLM_SALT_KEY: salt
     ports:
       - "4000:4000"
@@ -45,10 +45,19 @@ services:
     networks:
       - ai
     ports:
-      - '8082:8080'
-    command: 'start-dev --import-realm'
+      - "8082:8080"
+    command: "start-dev --import-realm"
     volumes:
       - ./.docker/keycloak:/opt/keycloak/data/import
+
+  redis:
+    image: redis:7-alpine
+    command: [ "redis-server","--appendonly","yes","--appendfsync","everysec" ]
+    restart: unless-stopped
+    networks:
+      - ai
+    volumes:
+      - redis:/data
 
 networks:
   ai:
@@ -56,3 +65,4 @@ networks:
 
 volumes:
   postgres:
+  redis:
