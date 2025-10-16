@@ -21,11 +21,11 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - DATABASES=ai_company,keycloak,litellm
+      - DATABASES=ai_company,keycloak,litellm,infisical
     networks:
       - ai
     ports:
-      - '5439:5432'
+      - "5439:5432"
     volumes:
       - postgres:/var/lib/postgresql/data
       - ./.docker/postgres:/docker-entrypoint-initdb.d/

@@ -1,4 +1,4 @@
-# Lusora api
+# Ai company
 
 ## DB
 We use `TypeOrm`. Automatic synchronization is disabled in order to avoid production errors.

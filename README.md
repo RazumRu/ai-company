@@ -1,4 +1,4 @@
-# Lusora API
+# Ai company
 
 ## Usage
 
