@@ -19,7 +19,7 @@ import {
 
 export const SimpleAgentTemplateSchema = SimpleAgentSchema.extend({
   toolNodeIds: z.array(z.string()).optional(),
-});
+}).strict();
 
 export type SimpleAgentTemplateSchemaType = z.infer<
   typeof SimpleAgentTemplateSchema
@@ -42,7 +42,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   async create(
     config: SimpleAgentTemplateSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
-    metadata: NodeBaseTemplateMetadata,
+    _metadata: NodeBaseTemplateMetadata,
   ): Promise<SimpleAgentTemplateResult<SimpleAgentSchemaType>> {
     const agent = await this.agentFactoryService.create(SimpleAgent);
     const { toolNodeIds = [], ...agentConfig } = config;

@@ -262,7 +262,7 @@ describe('SimpleAgentTemplate', () => {
         toolNodeIds: ['tool-1', 'non-existent-tool', 'tool-2'],
       };
 
-      const result = await template.create(config, compiledNodes, {
+      const _result = await template.create(config, compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -289,7 +289,7 @@ describe('SimpleAgentTemplate', () => {
         toolNodeIds: ['tool-1', 'tool-2'],
       };
 
-      const result = await template.create(config, partialCompiledNodes, {
+      const _result = await template.create(config, partialCompiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

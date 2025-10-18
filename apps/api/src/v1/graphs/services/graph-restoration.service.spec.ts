@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus } from '../graphs.types';
@@ -38,7 +37,6 @@ describe('GraphRestorationService', () => {
             name: 'Test Agent',
             instructions: 'You are a helpful test agent.',
             invokeModelName: 'gpt-5-mini',
-            invokeModelTemperature: 0.7,
           },
         },
         {

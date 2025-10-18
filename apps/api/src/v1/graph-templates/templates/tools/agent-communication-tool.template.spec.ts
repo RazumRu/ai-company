@@ -8,7 +8,6 @@ import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentCommunicationTool } from '../../../agent-tools/tools/agent-communication.tool';
-import { AgentOutput } from '../../../agents/services/agents/base-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
@@ -172,7 +171,7 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'non-existent-agent',
       };
 
-      const tool = await template.create(config, emptyCompiledNodes, {
+      const _tool = await template.create(config, emptyCompiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -198,7 +197,7 @@ describe('AgentCommunicationToolTemplate', () => {
         agentId: 'missing-agent',
       };
 
-      const tool = await template.create(config, emptyCompiledNodes, {
+      const _tool = await template.create(config, emptyCompiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -256,7 +255,7 @@ describe('AgentCommunicationToolTemplate', () => {
         mockAgentNode.instance.config,
         expect.objectContaining({
           configurable: expect.objectContaining({
-            thread_id: 'parent-thread-123',
+            thread_id: 'parent-thread-123__child-conversation-1',
             graph_id: 'test-graph',
             node_id: 'test-node',
           }),
@@ -405,7 +404,7 @@ describe('AgentCommunicationToolTemplate', () => {
         mockAgentNode.instance.config,
         expect.objectContaining({
           configurable: expect.objectContaining({
-            thread_id: 'parent-123',
+            thread_id: 'parent-123__child-A',
             graph_id: 'test-graph',
             node_id: 'test-node',
           }),
@@ -419,7 +418,7 @@ describe('AgentCommunicationToolTemplate', () => {
         mockAgentNode.instance.config,
         expect.objectContaining({
           configurable: expect.objectContaining({
-            thread_id: 'parent-123',
+            thread_id: 'parent-123__child-B',
             graph_id: 'test-graph',
             node_id: 'test-node',
           }),

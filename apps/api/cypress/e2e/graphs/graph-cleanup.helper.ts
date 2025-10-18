@@ -1,5 +1,3 @@
-import { GraphDto } from '../../api-definitions';
-import { reqHeaders } from '../common.helper';
 import { deleteGraph, destroyGraph } from './graphs.helper';
 
 /**
@@ -60,7 +58,7 @@ class GraphCleanupManager {
       if (destroyResponse.status === 201 || destroyResponse.status === 200) {
         cy.log(`Graph ${graphId} destroyed successfully`);
       }
-      
+
       // Then delete the graph
       deleteGraph(graphId).then((deleteResponse) => {
         if (deleteResponse.status === 200) {

@@ -1,5 +1,9 @@
-import { ToolRunnableConfig } from '@langchain/core/tools';
+import {
+  DynamicStructuredTool,
+  ToolRunnableConfig,
+} from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { BadRequestException } from '@packages/common';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
@@ -9,6 +13,8 @@ import { BaseTool } from './base-tool';
 
 export interface ShellToolOptions {
   runtime: BaseRuntime;
+  env?: Record<string, string>;
+  additionalInfo?: string;
 }
 
 export const ShellToolSchema = z.object({
@@ -42,19 +48,44 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     return ShellToolSchema;
   }
 
+  public build(
+    config: ShellToolOptions,
+    lgConfig?: any,
+  ): DynamicStructuredTool {
+    const enhancedDescription = config.additionalInfo
+      ? `${this.description}\n\nAvailable Resources:\n${config.additionalInfo}`
+      : this.description;
+
+    return this.toolWrapper(this.invoke, config, {
+      ...lgConfig,
+      description: enhancedDescription,
+    });
+  }
+
   public async invoke(
     data: ShellToolSchemaType,
     config: ShellToolOptions,
-    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ShellToolOutput> {
     if (!config?.runtime) {
-      throw new Error('Runtime is required for ShellTool');
+      throw new BadRequestException(
+        undefined,
+        'Runtime is required for ShellTool',
+      );
     }
 
-    const env =
-      data.env && Object.fromEntries(data.env.map((v) => [v.key, v.value]));
+    // Get environment variables from config
+    const configEnv = config.env || {};
 
-    const res = await config.runtime.exec({ ...data, env });
+    // Convert provided env array to object
+    const providedEnv = data.env
+      ? Object.fromEntries(data.env.map((v) => [v.key, v.value]))
+      : {};
+
+    // Merge config env with provided env (provided env takes precedence)
+    const mergedEnv = { ...configEnv, ...providedEnv };
+
+    const res = await config.runtime.exec({ ...data, env: mergedEnv });
 
     return {
       ...res,

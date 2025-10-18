@@ -19,16 +19,6 @@ import {
   NodeKind,
 } from '../graphs.types';
 
-/**
- * GraphCompiler is responsible for taking a graph schema (JSON)
- * and compiling it into executable nodes with proper dependency resolution.
- *
- * It handles:
- * - Validating graph schema with Zod
- * - Building runtime instances
- * - Resolving and building tools with configuration
- * - Creating agent instances with injected dependencies
- */
 @Injectable()
 export class GraphCompiler {
   constructor(
@@ -37,28 +27,25 @@ export class GraphCompiler {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  /**
-   * Validates that all node IDs are unique
-   */
-  private validateSchema(schema: GraphSchemaType): void {
+  validateSchema(schema: GraphSchemaType): void {
     const ids = schema.nodes.map((n) => n.id);
     const uniqueIds = new Set(ids);
-
     if (ids.length !== uniqueIds.size) {
-      throw new BadRequestException('Duplicate node IDs found in graph schema');
+      throw new BadRequestException('GRAPH_DUPLICATE_NODE');
     }
 
     if (schema.edges) {
       const nodeIds = new Set(schema.nodes.map((n) => n.id));
-
       for (const edge of schema.edges) {
         if (!nodeIds.has(edge.from)) {
           throw new BadRequestException(
+            'GRAPH_EDGE_NOT_FOUND',
             `Edge references non-existent source node: ${edge.from}`,
           );
         }
         if (!nodeIds.has(edge.to)) {
           throw new BadRequestException(
+            'GRAPH_EDGE_NOT_FOUND',
             `Edge references non-existent target node: ${edge.to}`,
           );
         }
@@ -68,17 +55,55 @@ export class GraphCompiler {
     for (const node of schema.nodes) {
       if (!this.templateRegistry.hasTemplate(node.template)) {
         throw new BadRequestException(
+          'TEMPLATE_NOT_REGISTERED',
           `Template '${node.template}' is not registered`,
         );
       }
-
       this.templateRegistry.validateTemplateConfig(node.template, node.config);
+    }
+
+    const nodeMap = new Map(schema.nodes.map((n) => [n.id, n]));
+    for (const node of schema.nodes) {
+      if (node.config && typeof node.config === 'object') {
+        const config = node.config as Record<string, unknown>;
+        if (Array.isArray((config as any).resourceNodeIds)) {
+          for (const resourceNodeId of (config as any)
+            .resourceNodeIds as string[]) {
+            const resourceNode = nodeMap.get(resourceNodeId);
+            if (!resourceNode) {
+              throw new BadRequestException(
+                'GRAPH_NODE_NOT_FOUND',
+                `Node '${node.id}' references non-existent resource node: ${resourceNodeId}`,
+              );
+            }
+
+            const resourceTemplate = this.templateRegistry.getTemplate(
+              resourceNode.template,
+            );
+            if (
+              !resourceTemplate ||
+              resourceTemplate.kind !== NodeKind.Resource
+            ) {
+              throw new BadRequestException(
+                'GRAPH_NODE_NOT_FOUND',
+                `Node '${node.id}' references node '${resourceNodeId}' which is not a resource node`,
+              );
+            }
+
+            if (node.template === 'shell-tool') {
+              if (resourceNode.template !== 'github-resource') {
+                throw new BadRequestException(
+                  'WRONG_EDGE_CONNECTION',
+                  `Shell tool '${node.id}' can only use shell-compatible resources, but '${resourceNodeId}' is not a shell resource`,
+                );
+              }
+            }
+          }
+        }
+      }
     }
   }
 
-  /**
-   * Compiles a graph schema into an executable graph structure
-   */
   async compile(
     entity: GraphEntity,
     additionalMetadata?: Partial<GraphMetadataSchemaType>,
@@ -96,10 +121,7 @@ export class GraphCompiler {
     this.notificationsService.emit({
       type: NotificationEvent.Graph,
       graphId,
-      data: {
-        state: 'compiling',
-        schema,
-      },
+      data: { state: 'compiling', schema },
     });
 
     this.validateSchema(schema);
@@ -108,11 +130,15 @@ export class GraphCompiler {
     const nodesByKind = groupBy(schema.nodes, (node) => {
       const template = this.templateRegistry.getTemplate(node.template);
       if (!template) {
-        throw new BadRequestException(`Template '${node.template}' not found`);
+        throw new BadRequestException(
+          'GRAPH_TEMPLATE_NOT_FOUND',
+          `Template '${node.template}' not found`,
+        );
       }
       return template.kind;
     });
     const buildOrder = [
+      NodeKind.Resource,
       NodeKind.Runtime,
       NodeKind.Tool,
       NodeKind.SimpleAgent,
@@ -134,10 +160,7 @@ export class GraphCompiler {
     this.notificationsService.emit({
       type: NotificationEvent.Graph,
       graphId,
-      data: {
-        state: 'compiled',
-        schema,
-      },
+      data: { state: 'compiled', schema },
     });
 
     return {
@@ -145,28 +168,19 @@ export class GraphCompiler {
       edges: schema.edges || [],
       destroy: async () => {
         await this.destroyGraph(compiledNodes);
-
         this.notificationsService.emit({
           type: NotificationEvent.Graph,
           graphId,
-          data: {
-            state: 'destroyed',
-            schema,
-          },
+          data: { state: 'destroyed', schema },
         });
       },
     };
   }
 
-  /**
-   * Destroys a compiled graph and all its resources
-   */
   private async destroyGraph(
     nodes: Map<string, CompiledGraphNode>,
   ): Promise<void> {
     const destroyPromises: Promise<void>[] = [];
-
-    // Group nodes by kind for ordered destruction
     const triggerNodes: CompiledGraphNode<BaseTrigger<any>>[] = [];
     const runtimeNodes: CompiledGraphNode<BaseRuntime>[] = [];
 
@@ -178,7 +192,6 @@ export class GraphCompiler {
       }
     }
 
-    // First, stop all triggers
     for (const node of triggerNodes) {
       const trigger = node.instance;
       if (trigger && typeof trigger.stop === 'function') {
@@ -190,15 +203,12 @@ export class GraphCompiler {
       }
     }
 
-    // Wait for all triggers to stop
     await Promise.all(destroyPromises);
 
-    // Then, destroy all runtimes
     const runtimePromises: Promise<void>[] = [];
     for (const node of runtimeNodes) {
       const runtime = node.instance;
       if (runtime && typeof runtime.stop === 'function') {
-        // Add timeout to prevent hanging
         const stopPromise = Promise.race([
           runtime.stop(),
           new Promise<void>((_, reject) =>
@@ -207,43 +217,29 @@ export class GraphCompiler {
         ]).catch((error: Error) => {
           this.logger.error(error, `Failed to stop runtime ${node.id}`);
         });
-
         runtimePromises.push(stopPromise);
       }
     }
 
-    // Wait for all runtimes to be destroyed
     await Promise.all(runtimePromises);
   }
 
-  /**
-   * Destroys runtimes associated with a graph without compiling it
-   * This is useful for cleaning up resources when a graph cannot be compiled
-   * (e.g., corrupted schema, missing templates, etc.)
-   */
   async destroyNotCompiledGraph(graph: GraphEntity): Promise<void> {
     const runtimeNodes = graph.schema.nodes.filter(
       (node) => node.template === 'docker-runtime',
     );
-
-    if (runtimeNodes.length === 0) {
-      return; // No runtime nodes to destroy
-    }
+    if (runtimeNodes.length === 0) return;
 
     this.logger.log(
       `Destroying ${runtimeNodes.length} runtime containers for graph ${graph.id} without compilation`,
     );
 
-    // Clean up all runtime containers associated with this graph by label
     await DockerRuntime.cleanupByLabels(
       { 'ai-company/graph_id': graph.id },
       { socketPath: environment.dockerSocket },
     );
   }
 
-  /**
-   * Compiles a single node using its template factory
-   */
   private async compileNode(
     node: GraphNodeSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
@@ -256,7 +252,10 @@ export class GraphCompiler {
 
     const template = this.templateRegistry.getTemplate(node.template);
     if (!template) {
-      throw new BadRequestException(`Template '${node.template}' not found`);
+      throw new BadRequestException(
+        'GRAPH_TEMPLATE_NOT_FOUND',
+        `Template '${node.template}' not found`,
+      );
     }
 
     const instance = await template.create(config, compiledNodes, {

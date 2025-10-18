@@ -42,7 +42,7 @@ export type CreateGraphDto = {
   };
   metadata?: {
     [key: string]: unknown;
-  };
+  } | null;
   /**
    * If true, graph will be deleted instead of restored after server restart
    */
@@ -90,7 +90,7 @@ export type GraphDto = {
   status: 'created' | 'running' | 'stopped' | 'error';
   metadata?: {
     [key: string]: unknown;
-  };
+  } | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -137,7 +137,7 @@ export type UpdateGraphDto = {
   };
   metadata?: {
     [key: string]: unknown;
-  };
+  } | null;
   /**
    * If true, graph will be deleted instead of restored after server restart
    */
@@ -150,9 +150,9 @@ export type ExecuteTriggerDto = {
    */
   messages: Array<string>;
   /**
-   * Optional thread ID.
+   * Optional thread sub-ID that will be used to create the full thread ID.
    */
-  threadId?: string;
+  threadSubId?: string;
 };
 
 export type ExecuteTriggerResponseDto = {
@@ -330,17 +330,13 @@ export type GraphMessagesResponseDto = {
           };
         }
     >;
-    /**
-     * Checkpoint ID
-     */
-    checkpointId?: string;
   }>;
 };
 
 export type TemplateDto = {
   name: string;
   description: string;
-  kind: 'runtime' | 'tool' | 'simpleAgent' | 'trigger';
+  kind: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource';
   schema: {
     [key: string]: unknown;
   };
@@ -475,7 +471,7 @@ export type GetNodeMessagesData = {
   };
   query: {
     /**
-     * Thread ID component (e.g., "my-session" or UUID) - will be combined with graphId
+     * Full thread ID (e.g., "graphId:threadComponent")
      */
     threadId: string;
     /**

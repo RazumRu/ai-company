@@ -4,7 +4,7 @@ import { LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
-import { SimpleAgent, SimpleAgentSchema } from './simple-agent';
+import { SimpleAgent } from './simple-agent';
 
 // Mock dependencies
 vi.mock('@langchain/core/messages');

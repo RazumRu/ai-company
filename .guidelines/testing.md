@@ -212,6 +212,58 @@ This generates a coverage report in the `coverage/` directory.
 - **Fix failing tests immediately**: Don't ignore or skip failing tests
 - **Use descriptive assertions**: Make it clear what is expected
 
+### No Conditional Testing or Skips (Must-Fail Policy)
+
+- Do not write tests that conditionally skip or pass based on environment, data availability, or external setup.
+- If a prerequisite (environment variable, external service, seed data, docker dependency) is missing or misconfigured, the test MUST fail. Do not skip.
+- Rationale: Conditional/skipped tests hide real issues and create false confidence. We prefer fast feedback and explicit failures so problems are fixed early.
+
+Anti-patterns (do NOT do):
+
+- Cypress
+  - Avoid patterns like:
+    ```ts
+    const token = Cypress.env('GITHUB_PAT_TOKEN');
+    if (!token) {
+      // this is NOT allowed
+      cy.log('Skipping test: missing token');
+      return; // or this.skip()
+    }
+    ```
+  - Avoid conditional describes/its:
+    ```ts
+    (Cypress.env('FLAG') ? describe : describe.skip)('suite', () => { /* ... */ })
+    ```
+
+- Vitest
+  - Avoid:
+    ```ts
+    if (!process.env.SOME_REQUIRED_VAR) {
+      it.skip('does something', () => {/* ... */});
+    }
+    ```
+  - Avoid conditional exports or dynamic `describe.skip`/`it.skip` based on config.
+
+Correct approach:
+
+- Ensure required preconditions are present for the environment where tests run (CI and local):
+  - Document required env vars in .env.example and project docs.
+  - Provide docker-compose/services to satisfy dependencies.
+  - Seed or create required data within test setup; clean up after.
+- If a required prerequisite is truly unavailable at runtime, let the test fail with a clear error message.
+- If a test requires optional external integration (e.g., third-party API), either:
+  - Mock it in unit tests; or
+  - Provide a dedicated e2e job/profile where the prerequisite is guaranteed to exist. The test in that profile still must fail if the prerequisite is missing.
+
+Enforcement tips:
+
+- Prefer explicit assertions and setup checks that throw on missing config:
+  ```ts
+  const token = Cypress.env('GITHUB_PAT_TOKEN');
+  expect(token, 'GITHUB_PAT_TOKEN must be set for this test').to.be.a('string').and.not.empty;
+  ```
+- Avoid `it.skip`, `describe.skip`, or early `return`/`this.skip()` conditioned on environment.
+
 ## Troubleshooting
 
 ### Common Issues

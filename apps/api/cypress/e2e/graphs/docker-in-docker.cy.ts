@@ -38,10 +38,10 @@ describe('Docker-in-Docker E2E', () => {
 
     it('should verify docker socket is mounted', () => {
       const testCommand =
-        'Execute the command: ls -la /var/run/ && echo "---" && (test -S /var/run/docker.sock && echo "Socket exists" || echo "Socket not found")';
+        'Use the shell tool to execute this command: ls -la /var/run/ && echo "---" && (test -S /var/run/docker.sock && echo "Socket exists" || echo "Socket not found")';
       const triggerData = {
         messages: [testCommand],
-        threadId: 'docker-socket-test',
+        threadSubId: 'docker-socket-test',
       };
 
       executeTrigger(dindGraphId, 'trigger-1', triggerData).then((response) => {
@@ -49,32 +49,30 @@ describe('Docker-in-Docker E2E', () => {
         expect(response.body).to.have.property('threadId');
         expect(response.body).to.have.property('checkpointNs');
 
-        const threadComponent = response.body.threadId.split(':')[1];
-
         // Wait for command execution
         cy.wait(3000);
 
         // Verify messages were created
         getNodeMessages(dindGraphId, 'agent-1', {
-          threadId: threadComponent,
+          threadId: response.body.threadId,
         }).then((messagesResponse) => {
           expect(messagesResponse.status).to.equal(200);
+          expect(messagesResponse.body.threads).to.be.an('array');
+          expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
 
           const thread = messagesResponse.body.threads[0];
+          expect(thread).to.exist;
+          expect(thread.messages).to.be.an('array');
           const messages = thread.messages;
 
           // Find the shell tool message
           const shellMessage = messages.find(
             (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
           );
+
           expect(shellMessage).to.exist;
 
           const shellContent = shellMessage.content;
-
-          // Log the output for debugging
-          cy.log('stdout:', shellContent['stdout']);
-          cy.log('stderr:', shellContent['stderr']);
-          cy.log('exitCode:', shellContent['exitCode']);
 
           // Check if output confirms socket exists (should show in listing)
           const output = String(shellContent['stdout']);
@@ -89,10 +87,11 @@ describe('Docker-in-Docker E2E', () => {
     });
 
     it('should be able to use docker commands with mounted socket', () => {
-      const testCommand = 'Execute the command: docker ps';
+      const testCommand =
+        'Use the shell tool to execute this command: docker ps';
       const triggerData = {
         messages: [testCommand],
-        threadId: 'docker-ps-test',
+        threadSubId: 'docker-ps-test',
       };
 
       executeTrigger(dindGraphId, 'trigger-1', triggerData).then((response) => {
@@ -100,32 +99,30 @@ describe('Docker-in-Docker E2E', () => {
         expect(response.body).to.have.property('threadId');
         expect(response.body).to.have.property('checkpointNs');
 
-        const threadComponent = response.body.threadId.split(':')[1];
-
         // Wait for docker command execution
         cy.wait(5000);
 
         // Verify messages were created
         getNodeMessages(dindGraphId, 'agent-1', {
-          threadId: threadComponent,
+          threadId: response.body.threadId,
         }).then((messagesResponse) => {
           expect(messagesResponse.status).to.equal(200);
+          expect(messagesResponse.body.threads).to.be.an('array');
+          expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
 
           const thread = messagesResponse.body.threads[0];
+          expect(thread).to.exist;
+          expect(thread.messages).to.be.an('array');
           const messages = thread.messages;
 
           // Find the shell tool message
           const shellMessage = messages.find(
             (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
           );
+
           expect(shellMessage).to.exist;
 
           const shellContent = shellMessage.content;
-
-          // Log the output for debugging
-          cy.log('stdout:', shellContent['stdout']);
-          cy.log('stderr:', shellContent['stderr']);
-          cy.log('exitCode:', shellContent['exitCode']);
 
           // Docker ps should work (exit code 0)
           expect(shellContent).to.have.property('exitCode', 0);
@@ -194,7 +191,6 @@ function createMockGraphDataWithDockerInDocker() {
             instructions:
               'You are a shell command executor agent. When the user asks you to execute a command, you MUST use the shell tool to execute it. Always respond with the output from the shell tool.',
             invokeModelName: 'gpt-5-mini',
-            invokeModelTemperature: 0,
             toolNodeIds: ['shell-tool-1'],
           },
         },
@@ -241,7 +237,6 @@ function createMockGraphDataWithDockerInDocker() {
             instructions:
               'You are a shell command executor agent. When the user asks you to execute a command, you MUST use the shell tool to execute it. Always respond with the output from the shell tool.',
             invokeModelName: 'gpt-5-mini',
-            invokeModelTemperature: 0,
             toolNodeIds: ['shell-tool-1'],
           },
         },

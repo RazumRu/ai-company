@@ -24,6 +24,7 @@ export class TemplateRegistry {
   ): void {
     if (this.hasTemplate(template.name)) {
       throw new BadRequestException(
+        undefined,
         `Template with name '${template.name}' is already registered`,
       );
     }
@@ -72,7 +73,10 @@ export class TemplateRegistry {
   ): z.infer<TConfig> {
     const template = this.getTemplate<TConfig, TOutput>(templateName);
     if (!template) {
-      throw new BadRequestException(`Template '${templateName}' not found`);
+      throw new BadRequestException(
+        undefined,
+        `Template '${templateName}' not found`,
+      );
     }
 
     try {

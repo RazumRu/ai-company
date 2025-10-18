@@ -15,14 +15,14 @@ import { NotificationsService } from './notifications.service';
 describe('NotificationsService', () => {
   let service: NotificationsService;
   let mockLogger: any;
-  let mockEmitter: EventEmitter;
+  let _mockEmitter: EventEmitter;
 
   beforeEach(async () => {
     mockLogger = {
       debug: vi.fn(),
     };
 
-    mockEmitter = new EventEmitter();
+    _mockEmitter = new EventEmitter();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -36,9 +36,7 @@ describe('NotificationsService', () => {
 
     service = module.get<NotificationsService>(NotificationsService);
 
-    // Spy on the service's internal emitter
-    const emitSpy = vi.spyOn(service['emitter'], 'emit');
-    const onSpy = vi.spyOn(service['emitter'], 'on');
+    // Spy on the service's internal emitter (done within specific tests as needed)
   });
 
   afterEach(() => {

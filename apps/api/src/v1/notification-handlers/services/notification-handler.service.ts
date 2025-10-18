@@ -35,11 +35,6 @@ export class NotificationHandler extends EventEmitter {
     }
 
     this.handlers.get(type)!.push(handler);
-
-    this.logger.log('Event handler registered', {
-      type,
-      handlerName: handler.constructor.name,
-    });
   }
 
   async init() {

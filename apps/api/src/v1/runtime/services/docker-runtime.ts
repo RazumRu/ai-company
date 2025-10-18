@@ -183,7 +183,10 @@ export class DockerRuntime extends BaseRuntime {
     const imageName =
       params?.image || this.image || environment.dockerRuntimeImage;
     if (!imageName) {
-      throw new BadRequestException('Image not specified');
+      throw new BadRequestException(
+        'IMAGE_NOT_SPECIFIED',
+        'Image not specified',
+      );
     }
 
     // Determine container name: use provided name or generate a random one
@@ -280,7 +283,7 @@ export class DockerRuntime extends BaseRuntime {
     if (!this.container) throw new Error('Runtime not started');
 
     const cmd = Array.isArray(params.cmd)
-      ? params.cmd
+      ? ['sh', '-lc', ...params.cmd]
       : ['sh', '-lc', params.cmd];
     const env = this.prepareEnv(params.env);
     const abortController = new AbortController();
@@ -310,12 +313,10 @@ export class DockerRuntime extends BaseRuntime {
     let tailTimedOut = false;
     let overallTimer: NodeJS.Timeout | null = null;
     let tailTimer: NodeJS.Timeout | null = null;
-    let lastLogTime = Date.now();
 
     // Function to reset the tail timeout timer
     const resetTailTimer = () => {
       if (tailTimer) clearTimeout(tailTimer);
-      lastLogTime = Date.now();
 
       if (params.tailTimeoutMs && params.tailTimeoutMs > 0) {
         tailTimer = setTimeout(() => {

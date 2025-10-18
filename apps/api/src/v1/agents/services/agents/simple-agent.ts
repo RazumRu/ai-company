@@ -29,14 +29,14 @@ export const SimpleAgentSchema = z.object({
   summarizeMaxTokens: z
     .number()
     .optional()
-    .default(4096)
+    .default(100000)
     .describe(
       'Total token budget for summary + recent context. If current history exceeds this, older messages are folded into the rolling summary.',
     ),
   summarizeKeepTokens: z
     .number()
     .optional()
-    .default(1024)
+    .default(30000)
     .describe(
       'Token budget reserved for the most recent messages kept verbatim when summarizing (the “tail”).',
     ),
@@ -209,21 +209,14 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     config: SimpleAgentSchemaType,
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
-    this.logger.debug('simple-agent.run.start', {
-      threadId,
-      messageCount: messages.length,
-      model: config.invokeModelName,
-      agentName: config.name,
-    });
-
     const g = this.buildGraph(config);
 
     const merged: RunnableConfig<BaseAgentConfigurable> = {
       ...(runnableConfig ?? {}),
       configurable: {
+        ...(runnableConfig?.configurable ?? {}),
         thread_id: threadId,
         caller_agent: this,
-        ...(runnableConfig?.configurable ?? {}),
       },
       recursionLimit: runnableConfig?.recursionLimit ?? 2500,
     };
@@ -237,12 +230,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       },
       merged,
     );
-
-    this.logger.debug('simple-agent.run.complete', {
-      threadId,
-      responseMessageCount: response.messages.length,
-      done: response.done,
-    });
 
     return {
       messages: response.messages,

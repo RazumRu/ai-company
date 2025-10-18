@@ -31,14 +31,8 @@ export class SummarizeNode extends BaseNode<
   }
 
   async invoke(state: BaseAgentState): Promise<BaseAgentStateChange> {
-    this.logger?.debug('summarize-node.invoke', {
-      messageCount: state.messages.length,
-      hasSummary: Boolean(state.summary),
-    });
-
     const { maxTokens, keepTokens } = this.opts;
     if (maxTokens <= 0) {
-      this.logger?.debug('summarize-node.skip', { reason: 'maxTokens<=0' });
       return {
         messages: { mode: 'replace', items: state.messages },
         toolUsageGuardActivated: false,
@@ -51,22 +45,12 @@ export class SummarizeNode extends BaseNode<
       (state.summary ? await this.countTokens(state.summary) : 0);
 
     if (totalNow <= maxTokens) {
-      this.logger?.debug('summarize-node.within-budget', {
-        totalNow,
-        maxTokens,
-      });
       return {
         messages: { mode: 'replace', items: this.clean(state.messages) },
         toolUsageGuardActivated: false,
         toolUsageGuardActivatedCount: 0,
       };
     }
-
-    this.logger?.debug('summarize-node.summarizing', {
-      totalNow,
-      maxTokens,
-      keepTokens,
-    });
 
     let tail: BaseMessage[];
     if (keepTokens > 0) {
@@ -102,11 +86,6 @@ export class SummarizeNode extends BaseNode<
             allowPartial: false,
           }).invoke(tail)
         : [];
-
-    this.logger?.debug('summarize-node.complete', {
-      newSummaryLength: (newSummary || '').length,
-      finalTailLength: finalTail.length,
-    });
 
     return {
       messages: { mode: 'replace', items: this.clean(finalTail) },

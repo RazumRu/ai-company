@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
+import { IBaseResourceOutput } from '../../graph-resources/graph-resources.types';
 import {
   CompiledGraphNode,
   GraphMetadataSchemaType,
@@ -40,6 +41,13 @@ export abstract class ToolNodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
 > extends NodeBaseTemplate<TConfig, DynamicStructuredTool> {
   readonly kind: NodeKind = NodeKind.Tool;
+}
+
+export abstract class ResourceNodeBaseTemplate<
+  TConfig extends z.ZodTypeAny,
+  TResult extends IBaseResourceOutput<any> = IBaseResourceOutput<unknown>,
+> extends NodeBaseTemplate<TConfig, TResult> {
+  readonly kind: NodeKind = NodeKind.Resource;
 }
 
 export interface SimpleAgentTemplateResult<TConfig> {

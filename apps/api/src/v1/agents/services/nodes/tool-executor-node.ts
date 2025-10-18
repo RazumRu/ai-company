@@ -36,13 +36,7 @@ export class ToolExecutorNode extends BaseNode<
     const ai = last instanceof AIMessage ? last : undefined;
     const calls = ai?.tool_calls || [];
 
-    this.logger?.debug('tool-executor.invoke', {
-      toolCalls: calls.map((call) => call.name),
-      messageCount: state.messages.length,
-    });
-
     if (!calls.length) {
-      this.logger?.debug('tool-executor.no-calls');
       return {
         messages: { mode: 'append', items: [] },
       };
@@ -60,18 +54,10 @@ export class ToolExecutorNode extends BaseNode<
           new ToolMessage({ tool_call_id: callId, name: tc.name, content });
 
         if (!tool) {
-          this.logger?.warn('tool-executor.tool-not-found', {
-            toolName: tc.name,
-            callId,
-          });
           return makeMsg(`Tool '${tc.name}' not found.`);
         }
 
         try {
-          this.logger?.debug('tool-executor.tool-start', {
-            toolName: tc.name,
-            callId,
-          });
           const output = await tool.invoke<
             unknown,
             ToolRunnableConfig<BaseAgentConfigurable>
@@ -81,10 +67,7 @@ export class ToolExecutorNode extends BaseNode<
 
           if (output instanceof FinishToolResponse) {
             done = true;
-            this.logger?.debug('tool-executor.finish-called', {
-              toolName: tc.name,
-              callId,
-            });
+
             return makeMsg(output.message || 'Finished');
           }
 
@@ -92,20 +75,11 @@ export class ToolExecutorNode extends BaseNode<
             typeof output === 'string' ? output : JSON.stringify(output);
 
           if (content.length > this.maxOutputChars) {
-            this.logger?.warn('tool-executor.output-too-long', {
-              toolName: tc.name,
-              callId,
-              length: content.length,
-            });
             return makeMsg(
               `Error (output too long: ${content.length} characters).`,
             );
           }
 
-          this.logger?.debug('tool-executor.tool-success', {
-            toolName: tc.name,
-            callId,
-          });
           return makeMsg(content);
         } catch (e) {
           const err = e as Error;
@@ -119,11 +93,6 @@ export class ToolExecutorNode extends BaseNode<
         }
       }),
     );
-
-    this.logger?.debug('tool-executor.invoke.complete', {
-      done,
-      toolCallCount: calls.length,
-    });
 
     return {
       messages: { mode: 'append', items: toolMessages },

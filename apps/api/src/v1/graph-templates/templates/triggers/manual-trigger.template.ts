@@ -21,10 +21,12 @@ import {
 /**
  * Manual trigger template schema
  */
-export const ManualTriggerTemplateSchema = z.object({
-  agentId: z.string().min(1),
-  threadId: z.string().optional(),
-});
+export const ManualTriggerTemplateSchema = z
+  .object({
+    agentId: z.string().min(1),
+    threadId: z.string().optional(),
+  })
+  .strict();
 
 export type ManualTriggerTemplateSchemaType = z.infer<
   typeof ManualTriggerTemplateSchema

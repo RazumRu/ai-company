@@ -65,6 +65,7 @@ export const CreateGraphDtoSchema = {
         type: 'string',
       },
       additionalProperties: {},
+      nullable: true,
     },
     temporary: {
       anyOf: [
@@ -160,6 +161,7 @@ export const GraphDtoSchema = {
         type: 'string',
       },
       additionalProperties: {},
+      nullable: true,
     },
     createdAt: {
       type: 'string',
@@ -261,6 +263,7 @@ export const UpdateGraphDtoSchema = {
         type: 'string',
       },
       additionalProperties: {},
+      nullable: true,
     },
     temporary: {
       anyOf: [
@@ -286,7 +289,7 @@ export const ExecuteTriggerDtoSchema = {
         type: 'string',
       },
     },
-    threadId: {
+    threadSubId: {
       type: 'string',
     },
   },
@@ -490,9 +493,6 @@ export const GraphMessagesResponseDtoSchema = {
               ],
             },
           },
-          checkpointId: {
-            type: 'string',
-          },
         },
         required: ['id', 'messages'],
       },
@@ -512,7 +512,7 @@ export const TemplateDtoSchema = {
     },
     kind: {
       type: 'string',
-      enum: ['runtime', 'tool', 'simpleAgent', 'trigger'],
+      enum: ['runtime', 'tool', 'simpleAgent', 'trigger', 'resource'],
     },
     schema: {
       type: 'object',

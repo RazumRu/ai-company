@@ -1,5 +1,5 @@
 import { Module, OnModuleInit } from '@nestjs/common';
-import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
+import { DiscoveryModule, DiscoveryService } from '@nestjs/core';
 import { registerEntities } from '@packages/typeorm';
 import { Class } from 'type-fest';
 

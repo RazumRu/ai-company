@@ -1,6 +1,6 @@
 import './graphs.exceptions';
 
-import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { AgentsModule } from '../agents/agents.module';

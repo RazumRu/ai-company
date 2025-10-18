@@ -10,27 +10,35 @@ import {
   RuntimeNodeBaseTemplate,
 } from '../base-node.template';
 
-export const DockerRuntimeTemplateSchema = z.object({
-  runtimeType: z.literal(RuntimeType.Docker),
-  image: z.string().optional().describe('Docker image to use'),
-  workdir: z.string().optional().describe('Working directory inside container'),
-  env: z
-    .record(z.string(), z.string())
-    .optional()
-    .describe('Environment variables'),
-  labels: z.record(z.string(), z.string()).optional().describe('Docker labels'),
-  initScript: z
-    .union([z.string(), z.array(z.string())])
-    .optional()
-    .describe('Initialization commands'),
-  initScriptTimeoutMs: z
-    .number()
-    .positive()
-    .optional()
-    .describe(
-      'Timeout in milliseconds for initialization script execution (default: 600000)',
-    ),
-});
+export const DockerRuntimeTemplateSchema = z
+  .object({
+    runtimeType: z.literal(RuntimeType.Docker),
+    image: z.string().optional().describe('Docker image to use'),
+    workdir: z
+      .string()
+      .optional()
+      .describe('Working directory inside container'),
+    env: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('Environment variables'),
+    labels: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('Docker labels'),
+    initScript: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .describe('Initialization commands'),
+    initScriptTimeoutMs: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        'Timeout in milliseconds for initialization script execution (default: 600000)',
+      ),
+  })
+  .strict();
 
 @Injectable()
 @RegisterTemplate()

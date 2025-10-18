@@ -1,5 +1,4 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
-import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
@@ -26,8 +25,8 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
 
   public invoke(
     args: FinishToolSchemaType,
-    config: Record<PropertyKey, any>,
-    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    _config: Record<PropertyKey, any>,
+    _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ) {
     return new FinishToolResponse(args.message);
   }

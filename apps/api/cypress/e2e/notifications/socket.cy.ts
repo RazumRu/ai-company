@@ -1,11 +1,11 @@
 import { Socket } from 'socket.io-client';
 
-import { mockUserId, reqHeaders } from '../common.helper';
+import { CreateGraphDto } from '../../api-definitions';
+import { generateRandomUUID, mockUserId, reqHeaders } from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
   createMockGraphData,
-  createMockGraphDataWithWebTool,
   executeTrigger,
   runGraph,
 } from '../graphs/graphs.helper';
@@ -370,7 +370,45 @@ describe('Socket Gateway E2E', () => {
 
     it('should receive AI message with tool calls in correct format', () => {
       // Create a graph with web-search-tool configured
-      const graphData = createMockGraphDataWithWebTool();
+      const graphData: CreateGraphDto = {
+        name: `Test Graph with Tools ${generateRandomUUID().slice(0, 8)}`,
+        description: 'Test graph with web search tool',
+        version: '1.0.0',
+        temporary: true, // E2E test graphs are temporary by default
+        schema: {
+          nodes: [
+            {
+              id: 'web-search-tool-1',
+              template: 'web-search-tool',
+              config: {},
+            },
+            {
+              id: 'agent-1',
+              template: 'simple-agent',
+              config: {
+                name: 'Test Agent with Tools',
+                instructions:
+                  'You are a helpful agent. You MUST use the web-search tool to answer questions about current events, weather, or real-time information. Always call the tool first before answering.',
+                invokeModelName: 'gpt-5-mini',
+                toolNodeIds: ['web-search-tool-1'],
+              },
+            },
+            {
+              id: 'trigger-1',
+              template: 'manual-trigger',
+              config: {
+                agentId: 'agent-1',
+              },
+            },
+          ],
+          edges: [
+            {
+              from: 'trigger-1',
+              to: 'agent-1',
+            },
+          ],
+        },
+      };
 
       return createGraph(graphData, reqHeaders).then((response) => {
         expect(response.status).to.equal(201);

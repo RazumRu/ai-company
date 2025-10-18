@@ -163,7 +163,7 @@ describe('GraphRegistry', () => {
     it('should remove graph from registry even if destroy fails', async () => {
       const graphId = 'test-graph-1';
       const compiledGraph = createMockCompiledGraph();
-      const destroySpy = vi
+      const _destroySpy = vi
         .spyOn(compiledGraph, 'destroy')
         .mockRejectedValue(new Error('Destroy failed'));
 

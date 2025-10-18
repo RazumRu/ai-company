@@ -121,7 +121,7 @@ describe('ShellTool', () => {
 
       expect(mockRuntime.exec).toHaveBeenCalledWith({
         cmd: 'echo "hello world"',
-        env: undefined,
+        env: {},
       });
       expect(result).toEqual({
         ...mockExecResult,
@@ -263,8 +263,135 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith({
         cmd: 'echo "test"',
         tailTimeoutMs: 3000,
-        env: undefined,
+        env: {},
       });
+    });
+  });
+
+  describe('resource integration', () => {
+    it('should use environment variables from config', async () => {
+      const mockExecResult = {
+        stdout: 'merged',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = {
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token123',
+          GIT_REPO_URL: 'https://github.com/user/repo.git',
+        },
+      };
+      const builtTool = tool.build(config);
+
+      await builtTool.invoke({
+        cmd: 'echo $GITHUB_PAT_TOKEN',
+      });
+
+      expect(mockRuntime.exec).toHaveBeenCalledWith({
+        cmd: 'echo $GITHUB_PAT_TOKEN',
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token123',
+          GIT_REPO_URL: 'https://github.com/user/repo.git',
+        },
+      });
+    });
+
+    it('should prioritize provided environment variables over config variables', async () => {
+      const mockExecResult = {
+        stdout: 'overridden',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = {
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_config_token',
+        },
+      };
+      const builtTool = tool.build(config);
+
+      await builtTool.invoke({
+        cmd: 'echo $GITHUB_PAT_TOKEN',
+        env: [{ key: 'GITHUB_PAT_TOKEN', value: 'ghp_provided_token' }],
+      });
+
+      expect(mockRuntime.exec).toHaveBeenCalledWith({
+        cmd: 'echo $GITHUB_PAT_TOKEN',
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_provided_token', // Provided value should override config value
+        },
+      });
+    });
+
+    it('should handle config without environment variables', async () => {
+      const mockExecResult = {
+        stdout: 'no env',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      await builtTool.invoke({
+        cmd: 'echo "test"',
+      });
+
+      expect(mockRuntime.exec).toHaveBeenCalledWith({
+        cmd: 'echo "test"',
+        env: {},
+      });
+    });
+
+    it('should handle empty environment variables object', async () => {
+      const mockExecResult = {
+        stdout: 'empty',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime, env: {} };
+      const builtTool = tool.build(config);
+
+      await builtTool.invoke({
+        cmd: 'echo "test"',
+      });
+
+      expect(mockRuntime.exec).toHaveBeenCalledWith({
+        cmd: 'echo "test"',
+        env: {},
+      });
+    });
+
+    it('should enhance description with resource information', () => {
+      const config: ShellToolOptions = {
+        runtime: mockRuntime,
+        additionalInfo:
+          '- github-resource: GitHub CLI available for repository operations',
+      };
+
+      const builtTool = tool.build(config);
+
+      expect(builtTool.description).toContain('Available Resources:');
+      expect(builtTool.description).toContain(
+        '- github-resource: GitHub CLI available for repository operations',
+      );
+    });
+
+    it('should use original description when no resource information provided', () => {
+      const config: ShellToolOptions = { runtime: mockRuntime };
+
+      const builtTool = tool.build(config);
+
+      expect(builtTool.description).toBe(tool.description);
+      expect(builtTool.description).not.toContain('Available Resources:');
     });
   });
 });

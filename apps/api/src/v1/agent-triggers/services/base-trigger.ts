@@ -1,6 +1,6 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
-import { DefaultLogger } from '@packages/common';
+import { BadRequestException, DefaultLogger } from '@packages/common';
 
 import { AgentOutput } from '../../agents/services/agents/base-agent';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
@@ -42,7 +42,6 @@ export abstract class BaseTrigger<TConfig = unknown, TPayload = unknown> {
       config: RunnableConfig<BaseAgentConfigurable>,
     ) => Promise<AgentOutput>,
   ): void {
-    this.logger?.debug('trigger.invoke-agent.set');
     this.invokeAgent = invokeAgent;
   }
 
@@ -67,7 +66,10 @@ export abstract class BaseTrigger<TConfig = unknown, TPayload = unknown> {
     config: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
     if (!this.invokeAgent) {
-      throw new Error('Agent invocation function not set');
+      throw new BadRequestException(
+        undefined,
+        'Agent invocation function not set',
+      );
     }
 
     this.logger?.debug('trigger.handle-event', {
@@ -86,9 +88,7 @@ export abstract class BaseTrigger<TConfig = unknown, TPayload = unknown> {
     const result = await this.invokeAgent(messages, config);
 
     this.status = TriggerStatus.LISTENING;
-    this.logger?.debug('trigger.invoke.complete', {
-      status: this.status,
-    });
+
     return result;
   }
 

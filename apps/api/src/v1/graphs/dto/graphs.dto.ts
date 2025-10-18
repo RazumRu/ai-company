@@ -11,7 +11,7 @@ export const GraphSchema = z.object({
   version: z.string(),
   schema: RealGraphSchema,
   status: z.enum(GraphStatus),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   temporary: z
@@ -37,7 +37,12 @@ export const ExecuteTriggerSchema = z.object({
     .array(z.string())
     .min(1)
     .describe('Array of messages to send to the trigger'),
-  threadId: z.string().optional().describe('Optional thread ID.'),
+  threadSubId: z
+    .string()
+    .optional()
+    .describe(
+      'Optional thread sub-ID that will be used to create the full thread ID.',
+    ),
 });
 
 export const ExecuteTriggerResponseSchema = z.object({
@@ -138,9 +143,7 @@ export const MessageSchema = z.discriminatedUnion('role', [
 export const GetGraphMessagesQuerySchema = z.object({
   threadId: z
     .string()
-    .describe(
-      'Thread ID component (e.g., "my-session" or UUID) - will be combined with graphId',
-    ),
+    .describe('Full thread ID (e.g., "graphId:threadComponent")'),
   limit: z.coerce
     .number()
     .int()
@@ -153,7 +156,6 @@ export const GetGraphMessagesQuerySchema = z.object({
 export const ThreadMessagesSchema = z.object({
   id: z.string().describe('Thread ID'),
   messages: z.array(MessageSchema).describe('Array of messages in this thread'),
-  checkpointId: z.string().optional().describe('Checkpoint ID'),
 });
 
 export const GraphMessagesResponseSchema = z.object({

@@ -108,7 +108,10 @@ describe('AuthContextDataBuilder', () => {
       };
       const builderWithDevMode = new AuthContextDataBuilder({ devMode: true });
 
-      const result = await builderWithDevMode.buildContextData('token123', headers);
+      const result = await builderWithDevMode.buildContextData(
+        'token123',
+        headers,
+      );
 
       expect(result).toEqual({
         sub: 'dev-user',
@@ -117,29 +120,47 @@ describe('AuthContextDataBuilder', () => {
     });
 
     it('should fallback to token verification when dev mode is enabled but no dev headers', async () => {
-      const mockContextData: IContextData = { sub: 'token-user', email: 'token@example.com' };
+      const mockContextData: IContextData = {
+        sub: 'token-user',
+        email: 'token@example.com',
+      };
       const provider = new MockAuthProvider({ verifyResult: mockContextData });
-      const builderWithProvider = new AuthContextDataBuilder({ devMode: true }, provider);
+      const builderWithProvider = new AuthContextDataBuilder(
+        { devMode: true },
+        provider,
+      );
 
       const headers = {
         'authorization': 'Bearer token123',
       };
 
-      const result = await builderWithProvider.buildContextData('token123', headers);
+      const result = await builderWithProvider.buildContextData(
+        'token123',
+        headers,
+      );
 
       expect(result).toEqual(mockContextData);
     });
 
     it('should verify token when dev mode is disabled', async () => {
-      const mockContextData: IContextData = { sub: 'token-user', email: 'token@example.com' };
+      const mockContextData: IContextData = {
+        sub: 'token-user',
+        email: 'token@example.com',
+      };
       const provider = new MockAuthProvider({ verifyResult: mockContextData });
-      const builderWithProvider = new AuthContextDataBuilder({ devMode: false }, provider);
+      const builderWithProvider = new AuthContextDataBuilder(
+        { devMode: false },
+        provider,
+      );
 
       const headers = {
         'authorization': 'Bearer token123',
       };
 
-      const result = await builderWithProvider.buildContextData('token123', headers);
+      const result = await builderWithProvider.buildContextData(
+        'token123',
+        headers,
+      );
 
       expect(result).toEqual(mockContextData);
     });
@@ -154,7 +175,10 @@ describe('AuthContextDataBuilder', () => {
 
     it('should return undefined when no token but auth provider exists', async () => {
       const provider = new MockAuthProvider();
-      const builderWithProvider = new AuthContextDataBuilder(undefined, provider);
+      const builderWithProvider = new AuthContextDataBuilder(
+        undefined,
+        provider,
+      );
       const headers = {};
 
       const result = await builderWithProvider.buildContextData('', headers);
@@ -168,13 +192,18 @@ describe('AuthContextDataBuilder', () => {
       provider.verifyToken = async () => {
         throw new Error('Invalid token');
       };
-      const builderWithProvider = new AuthContextDataBuilder(undefined, provider);
+      const builderWithProvider = new AuthContextDataBuilder(
+        undefined,
+        provider,
+      );
 
       const headers = {
         'authorization': 'Bearer invalid-token',
       };
 
-      await expect(builderWithProvider.buildContextData('invalid-token', headers)).rejects.toThrow('Invalid token');
+      await expect(
+        builderWithProvider.buildContextData('invalid-token', headers),
+      ).rejects.toThrow('Invalid token');
     });
   });
 });

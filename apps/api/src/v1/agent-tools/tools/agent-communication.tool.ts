@@ -1,5 +1,6 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { BadRequestException } from '@packages/common';
 import { z } from 'zod';
 
 import { AgentOutput } from '../../agents/services/agents/base-agent';
@@ -49,7 +50,10 @@ export class AgentCommunicationTool extends BaseTool<
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
   ) {
     if (!config?.invokeAgent) {
-      throw new Error('Agent communication is not configured');
+      throw new BadRequestException(
+        undefined,
+        'Agent communication is not configured',
+      );
     }
 
     const response = await config.invokeAgent(

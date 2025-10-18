@@ -42,7 +42,10 @@ class MockAuthContextDataBuilder {
     return this.opts.devUserResult;
   }
 
-  public async buildContextData(token: string, headers: any): Promise<IContextData | undefined> {
+  public async buildContextData(
+    token: string,
+    headers: any,
+  ): Promise<IContextData | undefined> {
     if (this.opts.devMode && this.opts.devUserResult) {
       return this.opts.devUserResult;
     }
@@ -86,7 +89,6 @@ describe('AuthContextService', () => {
       expect(service.getToken()).toBeUndefined();
     });
   });
-
 
   describe('init', () => {
     it('returns dev user when devMode is true and dev headers present', async () => {

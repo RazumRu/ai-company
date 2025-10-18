@@ -22,13 +22,7 @@ export class ToolUsageGuardNode extends BaseNode<
   }
 
   async invoke(state: BaseAgentState): Promise<BaseAgentStateChange> {
-    this.logger?.debug('tool-usage-guard.invoke', {
-      messageCount: state.messages.length,
-      injectedCount: state.toolUsageGuardActivatedCount ?? 0,
-    });
-
     if (!this.g.getRestrictOutput()) {
-      this.logger?.debug('tool-usage-guard.allow-output');
       return {
         messages: { mode: 'append', items: [] },
         summary: state.summary,
@@ -41,7 +35,6 @@ export class ToolUsageGuardNode extends BaseNode<
     const hasToolCalls = (lastAI?.tool_calls?.length || 0) > 0;
 
     if (hasToolCalls) {
-      this.logger?.debug('tool-usage-guard.skip-has-tool-calls');
       return {
         messages: { mode: 'append', items: [] },
         summary: state.summary,
@@ -54,10 +47,6 @@ export class ToolUsageGuardNode extends BaseNode<
     const canInject = max === 0 || injectedSoFar < max;
 
     if (!canInject) {
-      this.logger?.debug('tool-usage-guard.max-injections', {
-        max,
-        injectedSoFar,
-      });
       return {
         messages: { mode: 'append', items: [] },
         summary: state.summary,
@@ -66,9 +55,6 @@ export class ToolUsageGuardNode extends BaseNode<
     }
 
     const restrictionMessage = this.g.getRestrictionMessage();
-    this.logger?.debug('tool-usage-guard.inject-restriction', {
-      restrictionMessage,
-    });
 
     const msg = new SystemMessage({
       content: restrictionMessage,

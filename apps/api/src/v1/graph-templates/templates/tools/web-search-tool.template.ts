@@ -9,7 +9,7 @@ import {
   ToolNodeBaseTemplate,
 } from '../base-node.template';
 
-export const WebSearchToolTemplateSchema = z.object({});
+export const WebSearchToolTemplateSchema = z.object({}).strict();
 
 @Injectable()
 @RegisterTemplate()
@@ -26,8 +26,8 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof WebSearchToolTemplateSchema>,
-    compiledNodes: Map<string, any>,
-    metadata: NodeBaseTemplateMetadata,
+    _compiledNodes: Map<string, any>,
+    _metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     return this.webSearchTool.build(config);
   }

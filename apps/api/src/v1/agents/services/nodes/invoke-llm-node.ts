@@ -26,12 +26,6 @@ export class InvokeLlmNode extends BaseNode<
   }
 
   async invoke(state: BaseAgentState): Promise<BaseAgentStateChange> {
-    this.logger?.debug('invoke-llm-node.invoke.start', {
-      toolNames: this.tools.map((tool) => tool.name),
-      messageCount: state.messages.length,
-      hasSummary: Boolean(state.summary),
-    });
-
     const runner = this.llm.bindTools(this.tools, {
       tool_choice: this.opts?.toolChoice,
       parallel_tool_calls: this.opts?.parallelToolCalls,
@@ -47,21 +41,8 @@ export class InvokeLlmNode extends BaseNode<
       ...state.messages,
     ];
 
-    this.logger?.debug('invoke-llm-node.invoke.messages', {
-      totalMessages: messages.length,
-      lastMessageType: messages.at(-1)?.constructor.name,
-    });
-
     const res = await runner.invoke(messages, { recursionLimit: 2500 });
     const out: BaseMessage[] = Array.isArray(res) ? res : [res as BaseMessage];
-
-    const first = out[0];
-    const toolCalls = (first as any)?.tool_calls || [];
-    this.logger?.debug('invoke-llm-node.invoke.complete', {
-      responseType: first?.constructor?.name,
-      toolCallCount: toolCalls.length,
-      toolCallNames: toolCalls.map((call: any) => call.name),
-    });
 
     return { messages: { mode: 'append', items: out } };
   }

@@ -52,12 +52,9 @@ describe('Shell Execution E2E', () => {
           expect(response.body).to.have.property('threadId');
           expect(response.body).to.have.property('checkpointNs');
 
-          const threadComponent = response.body.threadId.split(':')[1];
-          expect(threadComponent).to.exist;
-
           // Verify messages were created
           getNodeMessages(shellGraphId, 'agent-1', {
-            threadId: threadComponent,
+            threadId: response.body.threadId,
           }).then((messagesResponse) => {
             expect(messagesResponse.status).to.equal(200);
             expect(messagesResponse.body.threads).to.be.an('array');
@@ -107,7 +104,7 @@ describe('Shell Execution E2E', () => {
         messages: [
           'Execute the shell command to print environment variable: echo $FOO',
         ],
-        threadId: 'env-test',
+        threadSubId: 'env-test',
       };
 
       executeTrigger(shellGraphId, 'trigger-1', triggerData).then(
@@ -116,11 +113,9 @@ describe('Shell Execution E2E', () => {
           expect(response.body).to.have.property('threadId');
           expect(response.body).to.have.property('checkpointNs');
 
-          const threadComponent = response.body.threadId.split(':')[1];
-
           // Verify messages were created
           getNodeMessages(shellGraphId, 'agent-1', {
-            threadId: threadComponent,
+            threadId: response.body.threadId,
           }).then((messagesResponse) => {
             expect(messagesResponse.status).to.equal(200);
             expect(messagesResponse.body.threads).to.be.an('array');
@@ -295,10 +290,8 @@ describe('Shell Execution E2E', () => {
 
     it('should handle overall timeout for long-running commands', () => {
       const triggerData = {
-        messages: [
-          'Execute this command with a 2-second timeout: sleep 5',
-        ],
-        threadId: 'timeout-test-1',
+        messages: ['Execute this command with a 2-second timeout: sleep 5'],
+        threadSubId: 'timeout-test-1',
       };
 
       executeTrigger(timeoutTestGraphId, 'trigger-1', triggerData).then(
@@ -307,14 +300,12 @@ describe('Shell Execution E2E', () => {
           expect(response.body).to.have.property('threadId');
           expect(response.body).to.have.property('checkpointNs');
 
-          const threadComponent = response.body.threadId.split(':')[1];
-
           // Wait a bit for the command to timeout
           cy.wait(3000);
 
           // Verify messages were created
           getNodeMessages(timeoutTestGraphId, 'agent-1', {
-            threadId: threadComponent,
+            threadId: response.body.threadId,
           }).then((messagesResponse) => {
             expect(messagesResponse.status).to.equal(200);
             expect(messagesResponse.body.threads).to.be.an('array');
@@ -333,7 +324,9 @@ describe('Shell Execution E2E', () => {
             // Verify shell message content structure
             const shellContent = shellMessage.content;
             expect(shellContent).to.be.an('object');
-            expect(shellContent).to.have.property('exitCode').that.is.a('number');
+            expect(shellContent)
+              .to.have.property('exitCode')
+              .that.is.a('number');
             expect(shellContent).to.have.property('stdout').that.is.a('string');
             expect(shellContent).to.have.property('stderr').that.is.a('string');
             expect(shellContent).to.have.property('cmd').that.is.a('string');
@@ -350,7 +343,7 @@ describe('Shell Execution E2E', () => {
         messages: [
           'Execute this command that will stop producing output: echo "start"; sleep 3; echo "end"',
         ],
-        threadId: 'tail-timeout-test-1',
+        threadSubId: 'tail-timeout-test-1',
       };
 
       executeTrigger(timeoutTestGraphId, 'trigger-1', triggerData).then(
@@ -359,14 +352,12 @@ describe('Shell Execution E2E', () => {
           expect(response.body).to.have.property('threadId');
           expect(response.body).to.have.property('checkpointNs');
 
-          const threadComponent = response.body.threadId.split(':')[1];
-
           // Wait for the command to complete or timeout
           cy.wait(5000);
 
           // Verify messages were created
           getNodeMessages(timeoutTestGraphId, 'agent-1', {
-            threadId: threadComponent,
+            threadId: response.body.threadId,
           }).then((messagesResponse) => {
             expect(messagesResponse.status).to.equal(200);
             expect(messagesResponse.body.threads).to.be.an('array');
@@ -385,7 +376,9 @@ describe('Shell Execution E2E', () => {
             // Verify shell message content structure
             const shellContent = shellMessage.content;
             expect(shellContent).to.be.an('object');
-            expect(shellContent).to.have.property('exitCode').that.is.a('number');
+            expect(shellContent)
+              .to.have.property('exitCode')
+              .that.is.a('number');
             expect(shellContent).to.have.property('stdout').that.is.a('string');
             expect(shellContent).to.have.property('stderr').that.is.a('string');
             expect(shellContent).to.have.property('cmd').that.is.a('string');
@@ -402,10 +395,8 @@ describe('Shell Execution E2E', () => {
 
     it('should complete successfully when both timeouts are sufficient', () => {
       const triggerData = {
-        messages: [
-          'Execute this quick command: echo "success"',
-        ],
-        threadId: 'success-test-1',
+        messages: ['Execute this quick command: echo "success"'],
+        threadSubId: 'success-test-1',
       };
 
       executeTrigger(timeoutTestGraphId, 'trigger-1', triggerData).then(
@@ -414,14 +405,12 @@ describe('Shell Execution E2E', () => {
           expect(response.body).to.have.property('threadId');
           expect(response.body).to.have.property('checkpointNs');
 
-          const threadComponent = response.body.threadId.split(':')[1];
-
           // Wait for the command to complete
           cy.wait(2000);
 
           // Verify messages were created
           getNodeMessages(timeoutTestGraphId, 'agent-1', {
-            threadId: threadComponent,
+            threadId: response.body.threadId,
           }).then((messagesResponse) => {
             expect(messagesResponse.status).to.equal(200);
             expect(messagesResponse.body.threads).to.be.an('array');
@@ -440,7 +429,9 @@ describe('Shell Execution E2E', () => {
             // Verify shell message content structure
             const shellContent = shellMessage.content;
             expect(shellContent).to.be.an('object');
-            expect(shellContent).to.have.property('exitCode').that.is.a('number');
+            expect(shellContent)
+              .to.have.property('exitCode')
+              .that.is.a('number');
             expect(shellContent).to.have.property('stdout').that.is.a('string');
             expect(shellContent).to.have.property('stderr').that.is.a('string');
             expect(shellContent).to.have.property('cmd').that.is.a('string');
@@ -495,7 +486,6 @@ function createMockGraphDataWithShellTool(options?: {
             instructions:
               'You are a shell command executor agent. When the user asks you to execute a shell command, you MUST use the shell tool to execute it. Always respond with the output from the shell tool.',
             invokeModelName: 'gpt-5-mini',
-            invokeModelTemperature: 0,
             toolNodeIds: ['shell-tool-1'],
           },
         },
@@ -541,7 +531,6 @@ function createMockGraphDataWithShellTool(options?: {
             instructions:
               'You are a shell command executor agent. When the user asks you to execute a shell command, you MUST use the shell tool to execute it. Always respond with the output from the shell tool.',
             invokeModelName: 'gpt-5-mini',
-            invokeModelTemperature: 0,
             toolNodeIds: ['shell-tool-1'],
           },
         },

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ContextId, ModuleRef } from '@nestjs/core';
+import { BadRequestException } from '@packages/common';
 import { Class } from 'type-fest';
 
 import { BaseAgent } from './agents/base-agent';
@@ -29,7 +30,12 @@ export class AgentFactoryService {
     ctx?: ContextId,
   ): Promise<T> {
     const instance = this.agents.has(agentType);
-    if (!instance) throw new Error(`Unknown instance "${agentType.name}"`);
+    if (!instance) {
+      throw new BadRequestException(
+        undefined,
+        `Unknown instance "${agentType.name}"`,
+      );
+    }
 
     return this.moduleRef.resolve<T>(agentType, ctx, { strict: false });
   }

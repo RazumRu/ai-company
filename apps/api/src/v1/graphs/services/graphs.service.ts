@@ -54,6 +54,9 @@ export class GraphsService {
   }
 
   async create(data: CreateGraphDto): Promise<GraphDto> {
+    // Validate schema before creating the graph
+    this.graphCompiler.validateSchema(data.schema);
+
     return this.typeorm.trx(async (entityManager: EntityManager) => {
       const row = await this.graphDao.create(
         {
@@ -246,7 +249,7 @@ export class GraphsService {
     const messages = dto.messages.map((msg) => new HumanMessage(msg));
     const res = await trigger.invokeAgent(messages, {
       configurable: {
-        thread_id: dto.threadId,
+        thread_id: dto.threadSubId,
       },
     });
 
@@ -280,10 +283,10 @@ export class GraphsService {
       );
     }
 
-    // Construct full threadId and checkpointNs with graphId prefix
+    // Use the full threadId directly from query
     // Format: threadId = graphId:threadComponent, checkpointNs = graphId:threadComponent:nodeId
-    const fullThreadId = `${graphId}:${query.threadId}`;
-    const checkpointNs = `${graphId}:${query.threadId}:${nodeId}`;
+    const fullThreadId = query.threadId;
+    const checkpointNs = `${query.threadId}:${nodeId}`;
 
     const checkpointQuery: SearchTerms & AdditionalParams = {
       checkpointNs,
@@ -301,35 +304,56 @@ export class GraphsService {
       };
     }
 
-    // Group checkpoints by threadId and get the latest checkpoint for each thread
-    const threadCheckpointsMap = new Map<string, GraphCheckpointEntity>();
+    // Group checkpoints by threadId - collect ALL checkpoints for each thread
+    const threadCheckpointsMap = new Map<string, GraphCheckpointEntity[]>();
 
     for (const checkpoint of checkpoints) {
       const threadId = checkpoint.threadId;
       if (!threadCheckpointsMap.has(threadId)) {
-        threadCheckpointsMap.set(threadId, checkpoint);
+        threadCheckpointsMap.set(threadId, []);
       }
+      threadCheckpointsMap.get(threadId)!.push(checkpoint);
     }
 
     // Process each thread's messages
     const threads: ThreadMessagesDto[] = [];
 
-    for (const [threadId, checkpoint] of threadCheckpointsMap.entries()) {
-      // Deserialize the checkpoint to extract messages
-      const deserializedCheckpoint: Checkpoint =
-        await this.pgCheckpointSaver.serde.loadsTyped(
-          checkpoint.type,
-          checkpoint.checkpoint.toString('utf8'),
-        );
+    for (const [
+      threadId,
+      threadCheckpoints,
+    ] of threadCheckpointsMap.entries()) {
+      // Use a Map to track unique messages by a composite key
+      // This prevents duplicates while preserving insertion order
+      const uniqueMessagesMap = new Map<string, BaseMessage>();
 
-      // Extract messages from the checkpoint channel values
-      const messagesChannel =
-        deserializedCheckpoint.channel_values?.['messages'];
-      let messages: BaseMessage[] = [];
+      // Sort checkpoints by createdAt ASC to process from oldest to newest
+      const sortedCheckpoints = threadCheckpoints.sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
 
-      if (Array.isArray(messagesChannel)) {
-        messages = messagesChannel;
+      // Collect messages from all checkpoints
+      for (const checkpoint of sortedCheckpoints) {
+        const deserializedCheckpoint: Checkpoint =
+          await this.pgCheckpointSaver.serde.loadsTyped(
+            checkpoint.type,
+            checkpoint.checkpoint.toString('utf8'),
+          );
+
+        const messagesChannel =
+          deserializedCheckpoint.channel_values?.['messages'];
+
+        if (Array.isArray(messagesChannel)) {
+          for (const msg of messagesChannel) {
+            // Create a unique key based on message type, content, and position
+            const msgKey = `${msg.getType()}-${typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}-${msg.id || ''}`;
+            uniqueMessagesMap.set(msgKey, msg);
+          }
+        }
       }
+
+      // Convert to array
+      let messages = Array.from(uniqueMessagesMap.values());
 
       // Apply limit if specified
       if (query.limit && messages.length > query.limit) {
@@ -344,7 +368,6 @@ export class GraphsService {
       threads.push({
         id: threadId,
         messages: messageDtos,
-        checkpointId: checkpoint.checkpointId,
       });
     }
 

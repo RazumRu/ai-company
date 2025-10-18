@@ -79,6 +79,9 @@ describe('GraphCompiler', () => {
 
     compiler = module.get<GraphCompiler>(GraphCompiler);
     templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
+
+    // Reset all mocks before each test
+    vi.clearAllMocks();
   });
 
   describe('compile', () => {
@@ -520,11 +523,15 @@ describe('GraphCompiler', () => {
         metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
+      // Mock the template registry methods
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
 
-      expect(() => compiler['validateSchema'](schema)).toThrow(
+      expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        'GRAPH_DUPLICATE_NODE',
       );
     });
 
@@ -543,8 +550,11 @@ describe('GraphCompiler', () => {
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
 
-      expect(() => compiler['validateSchema'](schema)).toThrow(
+      expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        'Edge references non-existent source node: missing-node',
       );
     });
 
@@ -563,8 +573,11 @@ describe('GraphCompiler', () => {
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
 
-      expect(() => compiler['validateSchema'](schema)).toThrow(
+      expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        'Edge references non-existent target node: missing-node',
       );
     });
 
@@ -582,8 +595,11 @@ describe('GraphCompiler', () => {
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(false);
 
-      expect(() => compiler['validateSchema'](schema)).toThrow(
+      expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        "Template 'unregistered' is not registered",
       );
     });
 
@@ -604,9 +620,201 @@ describe('GraphCompiler', () => {
         .mockReturnValue({ key: 'value' });
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
 
-      compiler['validateSchema'](schema);
+      compiler.validateSchema(schema);
 
       expect(validateSpy).toHaveBeenCalledWith('test', { key: 'value' });
+    });
+
+    it('should pass validation for valid schema', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'test',
+            config: { key: 'value' },
+          },
+          {
+            id: 'node-2',
+            template: 'test2',
+            config: { key2: 'value2' },
+          },
+        ],
+        edges: [{ from: 'node-1', to: 'node-2' }],
+      };
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
+
+      expect(() => compiler.validateSchema(schema)).not.toThrow();
+    });
+
+    it('should handle schema without edges', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'test',
+            config: {},
+          },
+        ],
+      };
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
+
+      expect(() => compiler.validateSchema(schema)).not.toThrow();
+    });
+
+    it('should throw error for invalid template configuration', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'test',
+            config: { invalid: 'config' },
+          },
+        ],
+      };
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
+        () => {
+          throw new BadRequestException(
+            'INVALID_TEMPLATE_CONFIG',
+            'Template configuration validation failed',
+          );
+        },
+      );
+
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        'Template configuration validation failed',
+      );
+    });
+
+    it('should validate resource node references', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'tool-node',
+            template: 'shell-tool',
+            config: {
+              resourceNodeIds: ['resource-node'],
+            },
+          },
+          {
+            id: 'resource-node',
+            template: 'github-resource',
+            config: {},
+          },
+        ],
+      };
+
+      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
+      const mockToolTemplate = createMockTemplate(NodeKind.Tool);
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
+      vi.spyOn(templateRegistry, 'getTemplate')
+        .mockReturnValueOnce(mockResourceTemplate)
+        .mockReturnValueOnce(mockToolTemplate);
+
+      expect(() => compiler.validateSchema(schema)).not.toThrow();
+    });
+
+    it('should throw error for non-existent resource node reference', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'tool-node',
+            template: 'shell-tool',
+            config: {
+              resourceNodeIds: ['non-existent-resource'],
+            },
+          },
+        ],
+      };
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
+
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        "Node 'tool-node' references non-existent resource node: non-existent-resource",
+      );
+    });
+
+    it('should throw error for resource node that is not a resource', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'tool-node',
+            template: 'shell-tool',
+            config: {
+              resourceNodeIds: ['non-resource-node'],
+            },
+          },
+          {
+            id: 'non-resource-node',
+            template: 'docker-runtime',
+            config: {},
+          },
+        ],
+      };
+
+      const mockRuntimeTemplate = createMockTemplate(NodeKind.Runtime);
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
+      vi.spyOn(templateRegistry, 'getTemplate').mockReturnValue(
+        mockRuntimeTemplate,
+      );
+
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        "Node 'tool-node' references node 'non-resource-node' which is not a resource node",
+      );
+    });
+
+    it('should throw error for shell tool with non-shell resource', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'tool-node',
+            template: 'shell-tool',
+            config: {
+              resourceNodeIds: ['resource-node'],
+            },
+          },
+          {
+            id: 'resource-node',
+            template: 'non-shell-resource',
+            config: {},
+          },
+        ],
+      };
+
+      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
+      mockResourceTemplate.name = 'non-shell-resource';
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
+      vi.spyOn(templateRegistry, 'getTemplate').mockReturnValue(
+        mockResourceTemplate,
+      );
+
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        "Shell tool 'tool-node' can only use shell-compatible resources, but 'resource-node' is not a shell resource",
+      );
     });
   });
 
@@ -967,7 +1175,6 @@ describe('GraphCompiler', () => {
               name: 'Test Agent',
               instructions: 'Test instructions',
               invokeModelName: 'gpt-5-mini',
-              invokeModelTemperature: 0.7,
             },
           },
         ],
@@ -995,7 +1202,6 @@ describe('GraphCompiler', () => {
               name: 'Test Agent',
               instructions: 'Test instructions',
               invokeModelName: 'gpt-5-mini',
-              invokeModelTemperature: 0.7,
             },
           },
         ],

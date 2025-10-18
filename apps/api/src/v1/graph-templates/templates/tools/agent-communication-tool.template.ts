@@ -22,12 +22,14 @@ import {
   ToolNodeBaseTemplate,
 } from '../base-node.template';
 
-export const AgentCommunicationToolTemplateSchema = z.object({
-  metadata: z
-    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-    .optional(),
-  agentId: z.string().min(1, 'Target agent id is required'),
-});
+export const AgentCommunicationToolTemplateSchema = z
+  .object({
+    metadata: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+      .optional(),
+    agentId: z.string().min(1, 'Target agent id is required'),
+  })
+  .strict();
 
 @Injectable()
 @RegisterTemplate()
@@ -86,6 +88,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
         ...runnableConfig,
         configurable: {
           ...runnableConfig.configurable,
+          thread_id: effectiveThreadId,
           graph_id: metadata.graphId,
           node_id: metadata.nodeId,
         },

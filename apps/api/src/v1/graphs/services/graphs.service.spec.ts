@@ -120,6 +120,7 @@ describe('GraphsService', () => {
           provide: GraphCompiler,
           useValue: {
             compile: vi.fn(),
+            validateSchema: vi.fn(),
           },
         },
         {
@@ -296,6 +297,146 @@ describe('GraphsService', () => {
       await expect(service.create(createData)).rejects.toThrow(
         'Database error',
       );
+    });
+
+    it('should validate schema before creating graph', async () => {
+      const createData: CreateGraphDto = {
+        name: 'New Graph',
+        version: '1.0.0',
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+            },
+          ],
+          edges: [],
+        },
+        metadata: {
+          graphId: 'new-graph',
+          version: '1.0.0',
+        },
+      };
+
+      const expectedEntity = createMockGraphEntity({
+        id: 'new-graph-id',
+        name: 'New Graph',
+        status: GraphStatus.Created,
+        createdBy: mockUserId,
+      });
+
+      vi.mocked(graphDao.create).mockResolvedValue(expectedEntity);
+      vi.mocked(graphCompiler.validateSchema).mockImplementation(() => {});
+
+      await service.create(createData);
+
+      expect(graphCompiler.validateSchema).toHaveBeenCalledWith(
+        createData.schema,
+      );
+    });
+
+    it('should throw BadRequestException for invalid schema', async () => {
+      const createData: CreateGraphDto = {
+        name: 'New Graph',
+        version: '1.0.0',
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'invalid-template',
+              config: {},
+            },
+          ],
+          edges: [],
+        },
+        metadata: {
+          graphId: 'new-graph',
+          version: '1.0.0',
+        },
+      };
+
+      const validationError = new BadRequestException(
+        "Template 'invalid-template' is not registered",
+      );
+      vi.mocked(graphCompiler.validateSchema).mockImplementation(() => {
+        throw validationError;
+      });
+
+      await expect(service.create(createData)).rejects.toThrow(validationError);
+      expect(graphDao.create).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException for duplicate node IDs', async () => {
+      const createData: CreateGraphDto = {
+        name: 'New Graph',
+        version: '1.0.0',
+        schema: {
+          nodes: [
+            {
+              id: 'duplicate-id',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+            },
+            {
+              id: 'duplicate-id',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+            },
+          ],
+          edges: [],
+        },
+        metadata: {
+          graphId: 'new-graph',
+          version: '1.0.0',
+        },
+      };
+
+      const validationError = new BadRequestException(
+        'Duplicate node IDs found in graph schema',
+      );
+      vi.mocked(graphCompiler.validateSchema).mockImplementation(() => {
+        throw validationError;
+      });
+
+      await expect(service.create(createData)).rejects.toThrow(validationError);
+      expect(graphDao.create).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException for invalid edge references', async () => {
+      const createData: CreateGraphDto = {
+        name: 'New Graph',
+        version: '1.0.0',
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+            },
+          ],
+          edges: [
+            {
+              from: 'node-1',
+              to: 'non-existent-node',
+            },
+          ],
+        },
+        metadata: {
+          graphId: 'new-graph',
+          version: '1.0.0',
+        },
+      };
+
+      const validationError = new BadRequestException(
+        'Edge references non-existent target node: non-existent-node',
+      );
+      vi.mocked(graphCompiler.validateSchema).mockImplementation(() => {
+        throw validationError;
+      });
+
+      await expect(service.create(createData)).rejects.toThrow(validationError);
+      expect(graphDao.create).not.toHaveBeenCalled();
     });
   });
 
@@ -688,7 +829,7 @@ describe('GraphsService', () => {
 
       const result = await service.executeTrigger(mockGraphId, triggerId, {
         messages: ['Test message'],
-        threadId: customThreadId,
+        threadSubId: customThreadId,
       });
 
       expect(result).toEqual({
@@ -943,7 +1084,7 @@ describe('GraphsService', () => {
 
   describe('getNodeMessages', () => {
     const nodeId = 'agent-1';
-    const threadId = 'thread-123';
+    const threadId = `${mockGraphId}:thread-123`; // Full thread ID format
     const defaultThreadComponent = 'default-uuid';
 
     const createMockCheckpointEntity = (
@@ -972,7 +1113,6 @@ describe('GraphsService', () => {
     ];
 
     it('should retrieve messages for a node with explicit threadId', async () => {
-      const fullThreadId = `${mockGraphId}:${threadId}`;
       const mockGraph = createMockGraphEntity({
         schema: {
           nodes: [{ id: nodeId, template: 'simple-agent', config: {} }],
@@ -980,8 +1120,8 @@ describe('GraphsService', () => {
         },
       });
       const mockCheckpoint = createMockCheckpointEntity({
-        threadId: fullThreadId,
-        checkpointNs: `${fullThreadId}:${nodeId}`,
+        threadId: threadId,
+        checkpointNs: `${threadId}:${nodeId}`,
       });
       const mockMessages = createMockMessages();
 
@@ -993,14 +1133,13 @@ describe('GraphsService', () => {
         },
       });
 
-      // Pass just the thread component (e.g., from executeTrigger response, extract the component)
+      // Pass the full thread ID (e.g., from executeTrigger response)
       const query: GetGraphMessagesQueryDto = { threadId };
       const result = await service.getNodeMessages(mockGraphId, nodeId, query);
 
       expect(result.nodeId).toBe(nodeId);
       expect(result.threads).toHaveLength(1);
-      expect(result.threads[0]?.id).toBe(fullThreadId);
-      expect(result.threads[0]?.checkpointId).toBe('checkpoint-123');
+      expect(result.threads[0]?.id).toBe(threadId);
       expect(result.threads[0]?.messages).toHaveLength(2);
 
       const messages = result.threads[0]?.messages || [];
@@ -1017,8 +1156,8 @@ describe('GraphsService', () => {
         createdBy: mockUserId,
       });
       expect(graphCheckpointsDao.getAll).toHaveBeenCalledWith({
-        checkpointNs: `${mockGraphId}:${threadId}:${nodeId}`, // graphId:threadComponent:nodeId
-        threadId: fullThreadId, // graphId:threadComponent
+        checkpointNs: `${threadId}:${nodeId}`, // threadId:nodeId
+        threadId: threadId, // Full thread ID
         order: { createdAt: 'DESC' },
       });
     });

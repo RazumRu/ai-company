@@ -1,6 +1,6 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { Injectable, Scope } from '@nestjs/common';
-import { DefaultLogger } from '@packages/common';
+import { BadRequestException, DefaultLogger } from '@packages/common';
 
 import { AgentOutput } from '../../agents/services/agents/base-agent';
 import { TriggerEvent, TriggerStatus } from '../agent-triggers.types';
@@ -27,7 +27,6 @@ export class ManualTrigger extends BaseTrigger<unknown, ManualTriggerPayload> {
    * Start the trigger
    */
   async start(): Promise<void> {
-    this.logger?.debug('manual-trigger.start');
     this.status = TriggerStatus.LISTENING;
   }
 
@@ -35,7 +34,6 @@ export class ManualTrigger extends BaseTrigger<unknown, ManualTriggerPayload> {
    * Stop the trigger
    */
   async stop(): Promise<void> {
-    this.logger?.debug('manual-trigger.stop');
     this.status = TriggerStatus.DESTROYED;
   }
 
@@ -43,13 +41,9 @@ export class ManualTrigger extends BaseTrigger<unknown, ManualTriggerPayload> {
    * Manually trigger the agent with messages
    */
   async trigger(messages: string[]): Promise<AgentOutput> {
-    this.logger?.debug('manual-trigger.trigger', {
-      messageCount: messages.length,
-      status: this.status,
-    });
-
     if (!this.isStarted) {
-      throw new Error(
+      throw new BadRequestException(
+        undefined,
         `Trigger is not in listening state. Current status: ${this.status}`,
       );
     }
@@ -64,7 +58,6 @@ export class ManualTrigger extends BaseTrigger<unknown, ManualTriggerPayload> {
 
     const result = await this.handleTriggerEvent(event, {});
 
-    this.logger?.debug('manual-trigger.trigger.complete');
     return result;
   }
 
@@ -74,9 +67,6 @@ export class ManualTrigger extends BaseTrigger<unknown, ManualTriggerPayload> {
   protected convertPayloadToMessages(
     payload: ManualTriggerPayload,
   ): HumanMessage[] {
-    this.logger?.debug('manual-trigger.convert-payload', {
-      payloadMessageCount: payload.messages.length,
-    });
     return payload.messages.map((msg) => new HumanMessage(msg));
   }
 }

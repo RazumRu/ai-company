@@ -58,16 +58,16 @@ describe('WebSearchToolTemplate', () => {
       ).not.toThrow();
     });
 
-    it('should accept any additional properties', () => {
+    it('should reject additional properties with strict schema', () => {
       const configWithExtra = {
         someProperty: 'value',
         anotherProperty: 123,
       };
 
-      // Since it's an empty z.object(), it should accept additional properties
+      // With strict schema, additional properties should be rejected
       expect(() =>
         WebSearchToolTemplateSchema.parse(configWithExtra),
-      ).not.toThrow();
+      ).toThrow();
     });
   });
 

@@ -16,6 +16,8 @@ export default defineConfig({
     setupNodeEvents(on, config) {
       return _setupNodeEvents(on, config);
     },
-    env: {},
+    env: {
+      GITHUB_PAT_TOKEN: process.env.GITHUB_PAT_TOKEN,
+    },
   },
 });

@@ -48,7 +48,7 @@ describe('NotificationHandler', () => {
     },
   };
 
-  const mockCheckpoint = {
+  const _mockCheckpoint = {
     v: 1,
     ts: '2023-01-01T00:00:00.000Z',
     id: 'checkpoint-1',
@@ -57,7 +57,7 @@ describe('NotificationHandler', () => {
     versions_seen: {},
   };
 
-  const mockCheckpointMetadata = {
+  const _mockCheckpointMetadata = {
     source: 'update' as const,
     step: 1,
     parents: {},
@@ -118,15 +118,6 @@ describe('NotificationHandler', () => {
     it('should register event handlers', () => {
       service.registerHandler(graphEventHandler);
       service.registerHandler(checkpointerEventHandler);
-
-      expect(logger.log).toHaveBeenCalledWith('Event handler registered', {
-        type: NotificationEvent.Graph,
-        handlerName: 'GraphNotificationHandler',
-      });
-      expect(logger.log).toHaveBeenCalledWith('Event handler registered', {
-        type: NotificationEvent.Checkpointer,
-        handlerName: 'CheckpointerNotificationHandler',
-      });
     });
   });
 

@@ -60,6 +60,136 @@ describe('Graphs E2E', () => {
         expect(response.status).to.equal(403);
       });
     });
+
+    it('should return 400 for duplicate node IDs', () => {
+      const invalidGraphData = createMockGraphData({
+        schema: {
+          nodes: [
+            {
+              id: 'duplicate-id',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+            },
+            {
+              id: 'duplicate-id',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+            },
+          ],
+          edges: [],
+        },
+      });
+
+      createGraph(invalidGraphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(400);
+        expect(response.body).to.have.property('message');
+        expect((response.body as any).message).to.include(
+          'Duplicate node IDs found in graph schema',
+        );
+      });
+    });
+
+    it('should return 400 for invalid template', () => {
+      const invalidGraphData = createMockGraphData({
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'invalid-template',
+              config: {},
+            },
+          ],
+          edges: [],
+        },
+      });
+
+      createGraph(invalidGraphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(400);
+        expect(response.body).to.have.property('message');
+        expect((response.body as any).message).to.include(
+          "Template 'invalid-template' is not registered",
+        );
+      });
+    });
+
+    it('should return 400 for edge referencing non-existent node', () => {
+      const invalidGraphData = createMockGraphData({
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+            },
+          ],
+          edges: [
+            {
+              from: 'node-1',
+              to: 'non-existent-node',
+            },
+          ],
+        },
+      });
+
+      createGraph(invalidGraphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(400);
+        expect(response.body).to.have.property('message');
+        expect((response.body as any).message).to.include(
+          'Edge references non-existent target node: non-existent-node',
+        );
+      });
+    });
+
+    it('should return 400 for edge referencing non-existent source node', () => {
+      const invalidGraphData = createMockGraphData({
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+            },
+          ],
+          edges: [
+            {
+              from: 'non-existent-node',
+              to: 'node-1',
+            },
+          ],
+        },
+      });
+
+      createGraph(invalidGraphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(400);
+        expect(response.body).to.have.property('message');
+        expect((response.body as any).message).to.include(
+          'Edge references non-existent source node: non-existent-node',
+        );
+      });
+    });
+
+    it('should return 400 for invalid template configuration', () => {
+      const invalidGraphData = createMockGraphData({
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'docker-runtime',
+              config: { invalidConfig: 'invalid' },
+            },
+          ],
+          edges: [],
+        },
+      });
+
+      createGraph(invalidGraphData, reqHeaders).then((response) => {
+        expect(response.status).to.equal(400);
+        expect(response.body).to.have.property('message');
+        expect((response.body as any).message).to.include(
+          'Invalid configuration for template',
+        );
+      });
+    });
   });
 
   describe('GET /v1/graphs', () => {
