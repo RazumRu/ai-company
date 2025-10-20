@@ -132,6 +132,60 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
+  /**
+   * Ensure a Docker network exists, create it if it doesn't
+   */
+  private async ensureNetwork(networkName: string): Promise<void> {
+    try {
+      // Check if network already exists
+      const networks = await this.docker.listNetworks({
+        filters: { name: [networkName] },
+      });
+
+      if (networks.length > 0) {
+        return; // Network already exists
+      }
+
+      // Create the network
+      await this.docker.createNetwork({
+        Name: networkName,
+        Driver: 'bridge',
+        Labels: {
+          'ai-company/managed': 'true',
+          'ai-company/created-by': 'docker-runtime',
+        },
+      });
+    } catch (error) {
+      throw new Error(`Failed to create network ${networkName}: ${error}`);
+    }
+  }
+
+  /**
+   * Get network information
+   */
+  private async getNetwork(
+    networkName: string,
+  ): Promise<Docker.Network | null> {
+    try {
+      const networks = await this.docker.listNetworks({
+        filters: { name: [networkName] },
+      });
+
+      if (networks.length === 0) {
+        return null;
+      }
+
+      const networkId = networks[0]?.Id;
+      if (!networkId) {
+        return null;
+      }
+
+      return this.docker.getNetwork(networkId);
+    } catch {
+      return null;
+    }
+  }
+
   private async runInitScript(
     script?: string | string[],
     workdir?: string,
@@ -238,10 +292,16 @@ export class DockerRuntime extends BaseRuntime {
       this.dockerOptions?.socketPath?.replace('unix://', '') ||
       '/var/run/docker.sock';
 
+    // Handle network configuration
+    if (params?.network) {
+      await this.ensureNetwork(params.network);
+    }
+
     // Prepare Docker-in-Docker binds if enabled
     const hostConfig: Docker.HostConfig = {
       Binds: [`${dockerSocket}:/var/run/docker.sock:rw`],
       Privileged: true,
+      NetworkMode: params?.network || 'bridge',
     };
 
     const container = await this.docker.createContainer({
@@ -277,6 +337,47 @@ export class DockerRuntime extends BaseRuntime {
     await this.container.stop({ t: 10 }).catch(() => undefined);
     await this.container.remove({ force: true }).catch(() => undefined);
     this.container = null;
+  }
+
+  /**
+   * Clean up networks created by this runtime
+   */
+  async cleanupNetworks(networkName?: string): Promise<void> {
+    try {
+      if (networkName) {
+        // Clean up specific network
+        const network = await this.getNetwork(networkName);
+        if (network) {
+          const networkInfo = await network.inspect();
+          // Only remove networks created by this runtime
+          if (
+            networkInfo.Labels?.['ai-company/created-by'] === 'docker-runtime'
+          ) {
+            await network.remove();
+          }
+        }
+      } else {
+        // Clean up all networks created by this runtime
+        const networks = await this.docker.listNetworks({
+          filters: { label: ['ai-company/created-by=docker-runtime'] },
+        });
+
+        for (const networkInfo of networks) {
+          try {
+            const network = this.docker.getNetwork(networkInfo.Id);
+            await network.remove();
+          } catch (error) {
+            // Ignore errors when removing networks (they might be in use)
+            console.warn(
+              `Failed to remove network ${networkInfo.Name}:`,
+              error,
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to cleanup networks:', error);
+    }
   }
 
   async exec(params: RuntimeExecParams): Promise<RuntimeExecResult> {

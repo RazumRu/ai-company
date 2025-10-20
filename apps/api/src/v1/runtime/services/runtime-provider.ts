@@ -29,6 +29,7 @@ export class RuntimeProvider {
         initScript: opts.initScript,
         initScriptTimeoutMs: opts.initScriptTimeoutMs,
         containerName: opts.containerName,
+        network: opts.network,
       });
     }
 

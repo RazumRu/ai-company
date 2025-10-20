@@ -6,6 +6,7 @@ export interface RuntimeStartParams {
   initScript?: string | string[];
   initScriptTimeoutMs?: number;
   containerName?: string;
+  network?: string;
 }
 
 export interface RuntimeExecParams {

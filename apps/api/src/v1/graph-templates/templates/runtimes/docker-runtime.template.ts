@@ -70,6 +70,9 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       ...systemLabels,
     };
 
+    // Generate network name based on graph ID if not provided
+    const networkName = `ai-company-${metadata.graphId}`;
+
     return await this.runtimeProvider.provide({
       type: config.runtimeType,
       image: config.image,
@@ -80,6 +83,7 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       initScriptTimeoutMs: config.initScriptTimeoutMs,
       autostart: true, // Always start automatically
       containerName: `rt-${metadata.graphId}-${metadata.nodeId}`, // Use graphId and nodeId for consistent container naming
+      network: networkName,
     });
   }
 }

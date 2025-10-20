@@ -189,6 +189,7 @@ describe('DockerRuntimeTemplate', () => {
         initScriptTimeoutMs: undefined,
         autostart: true,
         containerName: 'rt-test-graph-test-node',
+        'network': 'ai-company-test-graph',
       });
       expect(result).toBe(mockRuntime);
     });
@@ -232,6 +233,7 @@ describe('DockerRuntimeTemplate', () => {
         initScriptTimeoutMs: undefined,
         autostart: true,
         containerName: 'rt-test-graph-test-node',
+        'network': 'ai-company-test-graph',
       });
       expect(result).toBe(mockRuntime);
     });
@@ -316,6 +318,7 @@ describe('DockerRuntimeTemplate', () => {
         initScriptTimeoutMs: 300000,
         autostart: true,
         containerName: 'rt-test-graph-test-node',
+        'network': 'ai-company-test-graph',
       });
       expect(result).toBe(mockRuntime);
     });
