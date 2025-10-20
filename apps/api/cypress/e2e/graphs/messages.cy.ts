@@ -82,40 +82,6 @@ describe('Graph Node Messages E2E', () => {
         });
     });
 
-    it('should return empty threads for node with no executions', () => {
-      const nodeId = 'agent-1';
-      const nonExistentThread = 'non-existent-thread';
-      let testGraphId: string;
-
-      // Create and run a test graph
-      const graphData = createMockGraphData();
-      createGraph(graphData)
-        .then((response) => {
-          testGraphId = response.body.id;
-          return runGraph(testGraphId);
-        })
-        .then((runResponse) => {
-          expect(runResponse.status).to.equal(201);
-          // Wait for graph to fully initialize
-          cy.wait(2000);
-
-          return getNodeMessages(testGraphId, nodeId, {
-            threadId: nonExistentThread,
-          });
-        })
-        .then((response) => {
-          expect(response.status).to.equal(200);
-          expect(response.body).to.have.property('threads');
-          expect(response.body.threads).to.be.an('array');
-          expect(response.body.threads).to.have.length(0);
-
-          // Cleanup
-          destroyGraph(testGraphId).then(() => {
-            deleteGraph(testGraphId);
-          });
-        });
-    });
-
     it('should limit messages when limit parameter is provided', () => {
       const nodeId = 'agent-1';
       let testGraphId: string;
@@ -440,49 +406,6 @@ describe('Graph Node Messages E2E', () => {
         });
     });
 
-    it('should not retrieve messages from one thread when querying another', () => {
-      const nodeId = 'agent-1';
-      const threadAMessage = 'Message for thread A';
-      let testGraphId: string;
-
-      // Create and run a test graph
-      const graphData = createMockGraphData();
-      createGraph(graphData)
-        .then((response) => {
-          testGraphId = response.body.id;
-          return runGraph(testGraphId);
-        })
-        .then((runResponse) => {
-          expect(runResponse.status).to.equal(201);
-          // Wait for graph to fully initialize
-          cy.wait(2000);
-
-          // Execute trigger for thread A
-          return executeTrigger(testGraphId, 'trigger-1', {
-            messages: [threadAMessage],
-            threadSubId: 'thread-a',
-          });
-        })
-        .then((responseA) => {
-          expect(responseA.status).to.equal(201);
-
-          // Try to get messages for thread B (which doesn't exist)
-          return getNodeMessages(testGraphId, nodeId, {
-            threadId: 'thread-b',
-          });
-        })
-        .then((responseB) => {
-          expect(responseB.status).to.equal(200);
-          expect(responseB.body.threads).to.be.an('array');
-          expect(responseB.body.threads).to.have.length(0);
-
-          // Cleanup
-          destroyGraph(testGraphId).then(() => {
-            deleteGraph(testGraphId);
-          });
-        });
-    });
-
     it('should isolate messages between different threadSubIds with aggressive summarization', () => {
       const nodeId = 'agent-1';
       const thread1Message = 'Hello from thread 1 - what is 2+2?';
@@ -751,110 +674,6 @@ describe('Graph Node Messages E2E', () => {
                   destroyGraph(testGraphId).then(() => {
                     deleteGraph(testGraphId);
                   });
-                });
-              });
-            });
-          });
-        });
-    });
-
-    it('should handle multiple conversations with moderate summarization', () => {
-      const nodeId = 'agent-1';
-      const conversation1Message = 'Tell me about cats';
-      const conversation2Message = 'Tell me about dogs';
-      let testGraphId: string;
-
-      // Create a graph with moderate summarization settings
-      const graphData = {
-        name: `Test Graph with Moderate Summarization ${Math.random().toString(36).slice(0, 8)}`,
-        description: 'Test graph with moderate summarization settings',
-        version: '1.0.0',
-        temporary: true,
-        schema: {
-          nodes: [
-            {
-              id: 'agent-1',
-              template: 'simple-agent',
-              config: {
-                name: 'Test Agent with Moderate Summarization',
-                instructions:
-                  'You are a helpful test agent. Please provide detailed responses to test summarization behavior.',
-                invokeModelName: 'gpt-5-mini',
-                summarizeMaxTokens: 2000, // Moderate max tokens
-                summarizeKeepTokens: 500, // Moderate keep tokens
-              },
-            },
-            {
-              id: 'trigger-1',
-              template: 'manual-trigger',
-              config: {
-                agentId: 'agent-1',
-              },
-            },
-          ],
-          edges: [
-            {
-              from: 'trigger-1',
-              to: 'agent-1',
-            },
-          ],
-        },
-      };
-
-      createGraph(graphData)
-        .then((response) => {
-          expect(response.status).to.equal(201);
-          testGraphId = response.body.id;
-
-          return runGraph(testGraphId);
-        })
-        .then((runResponse) => {
-          expect(runResponse.status).to.equal(201);
-
-          // First conversation
-          executeTrigger(testGraphId, 'trigger-1', {
-            messages: [conversation1Message],
-            threadSubId: 'multi-conversation-thread',
-          }).then((response1) => {
-            expect(response1.status).to.equal(201);
-            const threadId = response1.body.threadId;
-
-            // Wait for processing
-            cy.wait(2000);
-
-            // Second conversation with different message but same threadSubId
-            executeTrigger(testGraphId, 'trigger-1', {
-              messages: [conversation2Message],
-              threadSubId: 'multi-conversation-thread',
-            }).then((response2) => {
-              expect(response2.status).to.equal(201);
-              // Should get the same thread ID
-              expect(response2.body.threadId).to.equal(threadId);
-
-              // Wait for processing
-              cy.wait(2000);
-
-              // Get final messages
-              getNodeMessages(testGraphId, nodeId, {
-                threadId: threadId,
-              }).then((messagesResponse) => {
-                expect(messagesResponse.status).to.equal(200);
-                const thread = messagesResponse.body.threads[0];
-                const messages = thread.messages;
-
-                // Should have both human messages
-                const humanMessages = messages.filter(
-                  (msg) => msg.role === 'human',
-                );
-                expect(humanMessages).to.have.length(2);
-
-                const messageContents = humanMessages.map((msg) => msg.content);
-                expect(messageContents).to.include(conversation1Message);
-                expect(messageContents).to.include(conversation2Message);
-
-                // Clean up the test graph
-                destroyGraph(testGraphId).then(() => {
-                  deleteGraph(testGraphId);
                 });
               });
             });

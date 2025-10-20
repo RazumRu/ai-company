@@ -72,6 +72,18 @@ describe('UserService', () => {
 });
 ```
 
+### Prefer Updating Existing Test Files
+
+When adding new tests for a feature/module/API that already has test coverage:
+
+- Prefer updating the existing test file and add new test cases to the appropriate describe block instead of creating a new file.
+- Only create a new test file when the scope is clearly different (e.g., a new feature area, different module, or the existing file has become too large and logically split by domain).
+- Benefits: avoids duplication, keeps related scenarios together, simplifies maintenance and discovery.
+
+Examples:
+- Unit tests: if src/v1/users/users.service.spec.ts exists and you add more service methods, add new `describe/it` blocks there rather than creating another users.service.more.spec.ts.
+- E2E tests: if apps/api/cypress/e2e/users/users.cy.ts exists and you add new user flows, extend that file (or its existing suites) instead of creating users-new.cy.ts.
+
 ## E2E Testing
 
 ### Running E2E Tests
