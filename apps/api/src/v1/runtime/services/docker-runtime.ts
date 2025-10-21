@@ -315,17 +315,6 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   async start(params?: RuntimeStartParams): Promise<void> {
-    const runInit = async () => {
-      if (params?.initScript) {
-        await this.runInitScript(
-          params.initScript,
-          params.workdir,
-          params.env,
-          params.initScriptTimeoutMs,
-        );
-      }
-    };
-
     const ensureDind = async (
       baseName: string,
       network?: string,

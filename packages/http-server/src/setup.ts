@@ -84,6 +84,8 @@ export const setupSwagger = (
         methodKey,
     },
   );
+  openapiDocument.openapi = '3.1.0';
+
   const swp = [path].join('/').replace(/\/{1,}/g, '/');
 
   SwaggerModule.setup(swp, app, cleanupOpenApiDoc(openapiDocument), options);

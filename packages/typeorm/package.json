@@ -11,8 +11,8 @@
     "run-all-seeds": "src/bin/run-all-seeds.mjs"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.6",
-    "@nestjs/core": "^11.1.6",
+    "@nestjs/common": "^11.1.7",
+    "@nestjs/core": "^11.1.7",
     "@nestjs/typeorm": "^11.0.0",
     "@packages/common": "workspace:*",
     "lodash": "^4.17.21",
@@ -23,16 +23,16 @@
   },
   "devDependencies": {
     "@types/lodash": "^4.17.20",
-    "@types/node": "^24.7.1",
-    "eslint": "^9.37.0",
+    "@types/node": "^24.9.1",
+    "eslint": "^9.38.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "license": "ISC",
   "main": "dist/index.js",
   "peerDependencies": {
-    "@nestjs/common": "^11.1.6",
-    "@nestjs/core": "^11.1.6",
+    "@nestjs/common": "^11.1.7",
+    "@nestjs/core": "^11.1.7",
     "@packages/common": "workspace:*",
     "typeorm": "^0.3.27"
   },

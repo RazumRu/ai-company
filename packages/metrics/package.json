@@ -3,8 +3,8 @@
   "version": "1.6.7",
   "author": "Sergey Razumovskiy <s.razumru@gmail.com>",
   "dependencies": {
-    "@nestjs/common": "^11.1.6",
-    "@nestjs/swagger": "^11.2.0",
+    "@nestjs/common": "^11.1.7",
+    "@nestjs/swagger": "^11.2.1",
     "@packages/common": "workspace:*",
     "fastify": "^5.6.1",
     "lodash": "^4.17.21",
@@ -13,16 +13,16 @@
   },
   "devDependencies": {
     "@types/lodash": "^4.17.20",
-    "@types/node": "^24.7.1",
-    "eslint": "^9.37.0",
+    "@types/node": "^24.9.1",
+    "eslint": "^9.38.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "license": "ISC",
   "main": "dist/index.js",
   "peerDependencies": {
-    "@nestjs/common": "^11.1.6",
-    "@nestjs/swagger": "^11.2.0",
+    "@nestjs/common": "^11.1.7",
+    "@nestjs/swagger": "^11.2.1",
     "@packages/common": "workspace:*"
   },
   "scripts": {
