@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { z, ZodSchema } from 'zod';
 
 import { TemplateDto } from '../dto/templates.dto';
 import { TemplateRegistry } from './template-registry';
@@ -20,13 +21,10 @@ export class TemplatesService {
     return list;
   }
 
-  private serializeSchema(schema: any): Record<string, unknown> {
-    try {
-      // Try to serialize the schema to a plain object
-      return JSON.parse(JSON.stringify(schema._def || schema)) || {};
-    } catch {
-      // Fallback to empty object if serialization fails
-      return {};
-    }
+  private serializeSchema(schema: ZodSchema): Record<string, unknown> {
+    return z.toJSONSchema(schema, {
+      target: 'draft-7',
+      reused: 'ref',
+    });
   }
 }
