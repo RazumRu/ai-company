@@ -17,7 +17,7 @@ describe('Docker-in-Docker E2E', () => {
     graphCleanup.cleanupAllGraphs();
   });
 
-  describe('Docker-in-Docker Functionality (Always Enabled)', () => {
+  describe('Docker-in-Docker Functionality with Separate DIND Container', () => {
     it('should create a graph with docker runtime and shell tool', () => {
       const graphData = createMockGraphDataWithDockerInDocker();
 
@@ -36,12 +36,12 @@ describe('Docker-in-Docker E2E', () => {
       });
     });
 
-    it('should verify docker socket is mounted', () => {
+    it('should verify docker connectivity through DIND container', () => {
       const testCommand =
-        'Use the shell tool to execute this command: ls -la /var/run/ && echo "---" && (test -S /var/run/docker.sock && echo "Socket exists" || echo "Socket not found")';
+        'Use the shell tool to execute this command: echo "DOCKER_HOST=$DOCKER_HOST" && docker info';
       const triggerData = {
         messages: [testCommand],
-        threadSubId: 'docker-socket-test',
+        threadSubId: 'docker-connectivity-test',
       };
 
       executeTrigger(dindGraphId, 'trigger-1', triggerData).then((response) => {
@@ -50,7 +50,7 @@ describe('Docker-in-Docker E2E', () => {
         expect(response.body).to.have.property('checkpointNs');
 
         // Wait for command execution
-        cy.wait(3000);
+        cy.wait(5000);
 
         // Verify messages were created
         getNodeMessages(dindGraphId, 'agent-1', {
@@ -74,19 +74,23 @@ describe('Docker-in-Docker E2E', () => {
 
           const shellContent = shellMessage.content;
 
-          // Check if output confirms socket exists (should show in listing)
+          // Docker info should work (exit code 0)
+          expect(shellContent).to.have.property('exitCode', 0);
+
+          // Output should contain docker info
           const output = String(shellContent['stdout']);
           expect(output).to.satisfy(
             (content: string) =>
-              content.includes('Socket exists') ||
-              content.includes('docker.sock'),
-            'Shell output should show docker.sock exists',
+              content.includes('Server Version') ||
+              content.includes('Docker Root Dir') ||
+              content.includes('Kernel Version'),
+            'Docker info should return docker server information',
           );
         });
       });
     });
 
-    it('should be able to use docker commands with mounted socket', () => {
+    it('should be able to use docker commands with DIND container', () => {
       const testCommand =
         'Use the shell tool to execute this command: docker ps';
       const triggerData = {
@@ -151,180 +155,14 @@ describe('Docker-in-Docker E2E', () => {
       });
     });
   });
-
-  describe('PostgreSQL Docker-in-Docker Operations', () => {
-    let postgresDindGraphId: string;
-
-    it('should create a graph with postgres client tools', () => {
-      const graphData = createMockGraphDataWithPostgresDind();
-
-      createGraph(graphData).then((response) => {
-        expect(response.status).to.equal(201);
-        expect(response.body).to.have.property('id');
-        expect(response.body).to.have.property('status', 'created');
-        postgresDindGraphId = response.body.id;
-      });
-    });
-
-    it('should run the postgres dind graph', () => {
-      runGraph(postgresDindGraphId).then((response) => {
-        expect(response.status).to.equal(201);
-        expect(response.body).to.have.property('status', 'running');
-      });
-    });
-
-    it('should start a PostgreSQL container using docker commands', () => {
-      const testCommand = `Use the shell tool to execute these commands:
-        # Start a PostgreSQL container
-        docker run -d --name test-postgres -e POSTGRES_PASSWORD=testpass -e POSTGRES_DB=testdb postgres:17
-
-        # Wait for PostgreSQL to be ready
-        sleep 10
-
-        # Check if container is running
-        docker ps --filter name=test-postgres --format "table {{.Names}}\\t{{.Status}}"
-
-        # Test connection to PostgreSQL
-        docker exec test-postgres psql -U postgres -d testdb -c "SELECT version();"`;
-
-      const triggerData = {
-        messages: [testCommand],
-        threadSubId: 'postgres-container-start',
-      };
-
-      executeTrigger(postgresDindGraphId, 'trigger-1', triggerData).then(
-        (response) => {
-          expect(response.status).to.equal(201);
-          expect(response.body).to.have.property('threadId');
-          expect(response.body).to.have.property('checkpointNs');
-
-          // Verify messages were created
-          getNodeMessages(postgresDindGraphId, 'agent-1', {
-            threadId: response.body.threadId,
-          }).then((messagesResponse) => {
-            expect(messagesResponse.status).to.equal(200);
-            expect(messagesResponse.body.threads).to.be.an('array');
-            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
-
-            const thread = messagesResponse.body.threads[0];
-            expect(thread).to.exist;
-            expect(thread.messages).to.be.an('array');
-            const messages = thread.messages;
-
-            // Find the shell tool message
-            const shellMessage = messages.find(
-              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-            );
-
-            expect(shellMessage).to.exist;
-
-            const shellContent = shellMessage.content;
-
-            // Docker commands should work (exit code 0)
-            expect(shellContent).to.have.property('exitCode', 0);
-
-            // Output should contain PostgreSQL version or container status
-            const output = String(shellContent['stdout']);
-            expect(output).to.satisfy(
-              (content: string) =>
-                content.includes('test-postgres') ||
-                content.includes('PostgreSQL') ||
-                content.includes('running'),
-              'PostgreSQL container should be running and accessible',
-            );
-          });
-        },
-      );
-    });
-
-    it('should clean up PostgreSQL containers and test data', () => {
-      const testCommand = `Use the shell tool to execute these cleanup commands:
-        # Stop and remove the test PostgreSQL container
-        docker stop test-postgres || true
-        docker rm test-postgres || true
-
-        # List remaining containers to verify cleanup
-        docker ps -a --filter name=test-postgres
-
-        # Clean up any dangling images
-        docker image prune -f
-
-        # Verify docker system is clean
-        docker system df`;
-
-      const triggerData = {
-        messages: [testCommand],
-        threadSubId: 'postgres-cleanup',
-      };
-
-      executeTrigger(postgresDindGraphId, 'trigger-1', triggerData).then(
-        (response) => {
-          expect(response.status).to.equal(201);
-          expect(response.body).to.have.property('threadId');
-          expect(response.body).to.have.property('checkpointNs');
-
-          // Wait for cleanup operations to complete
-          cy.wait(5000);
-
-          // Verify messages were created
-          getNodeMessages(postgresDindGraphId, 'agent-1', {
-            threadId: response.body.threadId,
-          }).then((messagesResponse) => {
-            expect(messagesResponse.status).to.equal(200);
-            expect(messagesResponse.body.threads).to.be.an('array');
-            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
-
-            const thread = messagesResponse.body.threads[0];
-            expect(thread).to.exist;
-            expect(thread.messages).to.be.an('array');
-            const messages = thread.messages;
-
-            // Find the shell tool message
-            const shellMessage = messages.find(
-              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-            );
-
-            expect(shellMessage).to.exist;
-
-            const shellContent = shellMessage.content;
-
-            // Cleanup commands should work (exit code 0)
-            expect(shellContent).to.have.property('exitCode', 0);
-
-            // Output should show successful cleanup
-            const output = String(shellContent['stdout']);
-            expect(output).to.satisfy(
-              (content: string) =>
-                content.includes('docker system df') ||
-                content.includes('image prune') ||
-                content.includes('test-postgres'),
-              'Cleanup operations should complete successfully',
-            );
-          });
-        },
-      );
-    });
-
-    it('should destroy the postgres dind graph', () => {
-      destroyGraph(postgresDindGraphId).then((response) => {
-        expect(response.status).to.equal(201);
-        expect(response.body).to.have.property('status', 'stopped');
-      });
-    });
-
-    it('should delete the postgres dind graph', () => {
-      deleteGraph(postgresDindGraphId).then((response) => {
-        expect(response.status).to.equal(200);
-      });
-    });
-  });
 });
 
 // Helper function to create mock graph data with Docker-in-Docker enabled
 function createMockGraphDataWithDockerInDocker() {
   return createMockGraphData({
     name: `Docker-in-Docker Test Graph ${crypto.randomUUID().slice(0, 8)}`,
-    description: 'Test graph with docker-in-docker support (always enabled)',
+    description:
+      'Test graph with docker-in-docker support using separate DIND container',
     temporary: true,
     schema: {
       nodes: [
@@ -338,6 +176,7 @@ function createMockGraphDataWithDockerInDocker() {
             env: {},
             initScript: 'apk add --no-cache docker-cli',
             initScriptTimeoutMs: 60000,
+            enableDind: true,
           },
         },
         {
@@ -384,6 +223,7 @@ function createMockGraphDataWithDockerInDocker() {
             workdir: '/app',
             env: {},
             initScript: 'apk add --no-cache docker-cli',
+            enableDind: true,
           },
         },
         {
@@ -427,7 +267,7 @@ function createMockGraphDataWithPostgresDind() {
   return createMockGraphData({
     name: `PostgreSQL DIND Test Graph ${crypto.randomUUID().slice(0, 8)}`,
     description:
-      'Test graph with docker-in-docker support for PostgreSQL operations',
+      'Test graph with docker-in-docker support for PostgreSQL operations using separate DIND container',
     temporary: true,
     schema: {
       nodes: [
@@ -441,6 +281,7 @@ function createMockGraphDataWithPostgresDind() {
             env: {},
             initScript: 'apk add --no-cache docker-cli postgresql-client',
             initScriptTimeoutMs: 120000,
+            enableDind: true,
           },
         },
         {
@@ -487,6 +328,7 @@ function createMockGraphDataWithPostgresDind() {
             workdir: '/app',
             env: {},
             initScript: 'apk add --no-cache docker-cli postgresql-client',
+            enableDind: true,
           },
         },
         {

@@ -30,6 +30,7 @@ export class RuntimeProvider {
         initScriptTimeoutMs: opts.initScriptTimeoutMs,
         containerName: opts.containerName,
         network: opts.network,
+        enableDind: opts.enableDind,
       });
     }
 

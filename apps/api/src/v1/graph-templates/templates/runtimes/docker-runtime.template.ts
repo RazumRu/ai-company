@@ -37,6 +37,12 @@ export const DockerRuntimeTemplateSchema = z
       .describe(
         'Timeout in milliseconds for initialization script execution (default: 600000)',
       ),
+    enableDind: z
+      .boolean()
+      .optional()
+      .describe(
+        'Enable Docker-in-Docker by creating a separate DIND container for this runtime',
+      ),
   })
   .strict();
 
@@ -84,6 +90,7 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       autostart: true, // Always start automatically
       containerName: `rt-${metadata.graphId}-${metadata.nodeId}`, // Use graphId and nodeId for consistent container naming
       network: networkName,
+      enableDind: config.enableDind,
     });
   }
 }

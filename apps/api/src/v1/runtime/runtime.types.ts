@@ -7,6 +7,7 @@ export interface RuntimeStartParams {
   initScriptTimeoutMs?: number;
   containerName?: string;
   network?: string;
+  enableDind?: boolean;
 }
 
 export interface RuntimeExecParams {

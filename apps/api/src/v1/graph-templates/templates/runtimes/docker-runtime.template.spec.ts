@@ -153,6 +153,39 @@ describe('DockerRuntimeTemplate', () => {
         DockerRuntimeTemplateSchema.parse(configWithZeroTimeout),
       ).toThrow();
     });
+
+    it('should validate enableDind as boolean', () => {
+      const configWithDindEnabled = {
+        runtimeType: RuntimeType.Docker,
+        image: 'python:3.11',
+        enableDind: true,
+      };
+
+      const configWithDindDisabled = {
+        runtimeType: RuntimeType.Docker,
+        image: 'python:3.11',
+        enableDind: false,
+      };
+
+      expect(() =>
+        DockerRuntimeTemplateSchema.parse(configWithDindEnabled),
+      ).not.toThrow();
+      expect(() =>
+        DockerRuntimeTemplateSchema.parse(configWithDindDisabled),
+      ).not.toThrow();
+    });
+
+    it('should reject invalid enableDind type', () => {
+      const configWithInvalidDind = {
+        runtimeType: RuntimeType.Docker,
+        image: 'python:3.11',
+        enableDind: 'yes',
+      };
+
+      expect(() =>
+        DockerRuntimeTemplateSchema.parse(configWithInvalidDind),
+      ).toThrow();
+    });
   });
 
   describe('create', () => {
@@ -190,6 +223,7 @@ describe('DockerRuntimeTemplate', () => {
         autostart: true,
         containerName: 'rt-test-graph-test-node',
         'network': 'ai-company-test-graph',
+        enableDind: undefined,
       });
       expect(result).toBe(mockRuntime);
     });
@@ -234,6 +268,7 @@ describe('DockerRuntimeTemplate', () => {
         autostart: true,
         containerName: 'rt-test-graph-test-node',
         'network': 'ai-company-test-graph',
+        enableDind: undefined,
       });
       expect(result).toBe(mockRuntime);
     });
@@ -319,6 +354,87 @@ describe('DockerRuntimeTemplate', () => {
         autostart: true,
         containerName: 'rt-test-graph-test-node',
         'network': 'ai-company-test-graph',
+        enableDind: undefined,
+      });
+      expect(result).toBe(mockRuntime);
+    });
+
+    it('should create runtime with enableDind enabled', async () => {
+      const mockRuntime = {
+        id: 'runtime-5',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
+      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
+
+      const config = {
+        runtimeType: RuntimeType.Docker,
+        image: 'node:20-alpine',
+        enableDind: true,
+      };
+
+      const result = await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
+
+      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
+        type: RuntimeType.Docker,
+        image: 'node:20-alpine',
+        env: undefined,
+        workdir: undefined,
+        labels: {
+          'ai-company/graph_id': 'test-graph',
+          'ai-company/node_id': 'test-node',
+        },
+        initScript: undefined,
+        initScriptTimeoutMs: undefined,
+        autostart: true,
+        containerName: 'rt-test-graph-test-node',
+        'network': 'ai-company-test-graph',
+        enableDind: true,
+      });
+      expect(result).toBe(mockRuntime);
+    });
+
+    it('should create runtime with enableDind disabled explicitly', async () => {
+      const mockRuntime = {
+        id: 'runtime-6',
+        start: vi.fn(),
+        stop: vi.fn(),
+        exec: vi.fn(),
+      } as unknown as BaseRuntime;
+      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
+
+      const config = {
+        runtimeType: RuntimeType.Docker,
+        image: 'node:20-alpine',
+        enableDind: false,
+      };
+
+      const result = await template.create(config, new Map(), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
+
+      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
+        type: RuntimeType.Docker,
+        image: 'node:20-alpine',
+        env: undefined,
+        workdir: undefined,
+        labels: {
+          'ai-company/graph_id': 'test-graph',
+          'ai-company/node_id': 'test-node',
+        },
+        initScript: undefined,
+        initScriptTimeoutMs: undefined,
+        autostart: true,
+        containerName: 'rt-test-graph-test-node',
+        'network': 'ai-company-test-graph',
+        enableDind: false,
       });
       expect(result).toBe(mockRuntime);
     });

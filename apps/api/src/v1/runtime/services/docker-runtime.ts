@@ -23,6 +23,7 @@ export class DockerRuntime extends BaseRuntime {
   private docker: Docker;
   private image?: string;
   private container: Docker.Container | null = null;
+  private dindContainer: Docker.Container | null = null;
 
   constructor(
     private dockerOptions?: Docker.DockerOptions,
@@ -36,6 +37,7 @@ export class DockerRuntime extends BaseRuntime {
   /**
    * Stops and removes all containers matching the given labels
    * This is useful for cleaning up containers by graph_id or other labels
+   * Also cleans up associated DIND containers
    */
   static async cleanupByLabels(
     labels: Record<string, string>,
@@ -72,10 +74,6 @@ export class DockerRuntime extends BaseRuntime {
     await Promise.all(cleanupPromises);
   }
 
-  private generateContainerName(): string {
-    return `rt-${randomUUID()}`;
-  }
-
   private async ensureImage(name: string) {
     const ref = name.includes(':') ? name : `${name}:latest`;
     try {
@@ -105,6 +103,7 @@ export class DockerRuntime extends BaseRuntime {
       all: true,
       filters: { label: labelFilters },
     });
+
     if (!list[0]) {
       return null;
     }
@@ -210,15 +209,161 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
+  /**
+   * Wait until DIND dockerd is running and responsive (polls with timeout)
+   */
+  private async waitForDindReady(
+    container: Docker.Container,
+    timeoutMs = 30_000,
+    intervalMs = 500,
+  ): Promise<void> {
+    const start = Date.now();
+    for (;;) {
+      const st = await container.inspect();
+      if (st.State.Running) {
+        try {
+          // Probe: run `docker info` inside DIND
+          const ex = await container.exec({
+            Cmd: ['sh', '-lc', 'docker info >/dev/null 2>&1'],
+            AttachStdout: true,
+            AttachStderr: true,
+            Tty: false,
+          });
+          const stream = await ex.start({ hijack: true, stdin: false });
+          await new Promise<void>((resolve, reject) => {
+            stream.on('end', resolve);
+            stream.on('close', resolve);
+            stream.on('error', reject);
+          });
+          const info = await ex.inspect();
+          if (info.ExitCode === 0) {
+            return;
+          }
+        } catch {
+          //
+        }
+      }
+      if (Date.now() - start >= timeoutMs) {
+        throw new Error('DIND_NOT_READY');
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+
+  /**
+   * Start a separate DIND (Docker-in-Docker) container
+   */
+  private async startDindContainer(
+    containerName: string,
+    network: string,
+    labels?: Record<string, string>,
+  ): Promise<Docker.Container> {
+    const dindImage = 'docker:27-dind';
+    const dindContainerName = `dind-${containerName}`;
+
+    // Check if DIND container already exists
+    const existingDind = await this.getByName(dindContainerName);
+    if (existingDind) {
+      const st = await existingDind.inspect();
+      if (!st.State.Running) {
+        await existingDind.start();
+      }
+      // Wait for Docker daemon to be ready
+      await this.waitForDindReady(existingDind);
+      return existingDind;
+    }
+
+    // Ensure DIND image is available
+    await this.ensureImage(dindImage);
+
+    // Ensure network exists
+    await this.ensureNetwork(network);
+
+    // Create DIND-specific labels
+    const dindLabels = {
+      ...labels,
+      'ai-company/dind': 'true',
+      'ai-company/dind-for': containerName,
+    };
+
+    // Create DIND container with proper configuration
+    const dindContainer = await this.docker.createContainer({
+      Image: dindImage,
+      name: dindContainerName,
+      Labels: dindLabels,
+      Env: [
+        'DOCKER_TLS_CERTDIR=', // Disable TLS
+      ],
+      Cmd: [
+        'dockerd',
+        '--host=tcp://0.0.0.0:2375',
+        '--host=unix:///var/run/docker.sock',
+      ],
+      HostConfig: {
+        Privileged: true, // Required for DIND
+        NetworkMode: network,
+      },
+      Tty: false,
+    });
+
+    await dindContainer.start();
+
+    // Wait for Docker daemon to be ready inside DIND container
+    await this.waitForDindReady(dindContainer);
+
+    return dindContainer;
+  }
+
   async start(params?: RuntimeStartParams): Promise<void> {
+    const runInit = async () => {
+      if (params?.initScript) {
+        await this.runInitScript(
+          params.initScript,
+          params.workdir,
+          params.env,
+          params.initScriptTimeoutMs,
+        );
+      }
+    };
+
+    const ensureDind = async (
+      baseName: string,
+      network?: string,
+      labels?: Record<string, string>,
+    ) => {
+      if (!params?.enableDind) {
+        return;
+      }
+      const dindContainerName = `dind-${baseName}`;
+      const existingDind = await this.getByName(dindContainerName);
+      if (existingDind) {
+        this.dindContainer = existingDind;
+        const dindSt = await existingDind.inspect();
+        if (!dindSt.State.Running) {
+          await existingDind.start();
+        }
+        await this.waitForDindReady(existingDind);
+      } else if (network) {
+        this.dindContainer = await this.startDindContainer(
+          baseName,
+          network,
+          labels,
+        );
+      }
+    };
+
     if (this.container) {
       const st = await this.container.inspect();
-
       if (st.State.Running || st.State.Restarting) {
         return;
       }
 
       if (st.State.Paused || st.State.OOMKilled || st.State.Dead) {
+        // If DIND is enabled, ensure DIND container is also running
+        if (params?.enableDind && params?.containerName && params?.network) {
+          await ensureDind(params.containerName, params.network, params.labels);
+        }
+
         await this.container.start();
 
         if (params?.initScript) {
@@ -244,12 +389,18 @@ export class DockerRuntime extends BaseRuntime {
     }
 
     // Determine container name: use provided name or generate a random one
-    const containerName = params?.containerName || this.generateContainerName();
+    const containerName = params?.containerName || `rt-${randomUUID()}`;
 
     // First, try to find an existing container by name (for graph restoration)
     const existingByName = await this.getByName(containerName);
     if (existingByName) {
       this.container = existingByName;
+
+      // If DIND is enabled, ensure DIND container is also running
+      if (params?.enableDind && params?.network) {
+        await ensureDind(containerName, params.network, params.labels);
+      }
+
       const st = await existingByName.inspect();
       if (!st.State.Running) {
         await existingByName.start();
@@ -267,41 +418,42 @@ export class DockerRuntime extends BaseRuntime {
       return;
     }
 
-    // // Second, try to find a reusable container by labels
-    // const reusable = await this.getByLabels(params?.labels);
-    // if (reusable) {
-    //   this.container = reusable;
-    //   const st = await reusable.inspect();
-    //   if (!st.State.Running) {
-    //     await reusable.start();
-    //   }
-    //
-    //   if (params?.initScript) {
-    //     await this.runInitScript(params.initScript, params.workdir, params.env);
-    //   }
-    //
-    //   return;
-    // }
-
     // If no existing container found, create a new one
     await this.ensureImage(imageName);
-    const env = this.prepareEnv(params?.env);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
 
-    const dockerSocket =
-      this.dockerOptions?.socketPath?.replace('unix://', '') ||
-      '/var/run/docker.sock';
-
     // Handle network configuration
+    const networkName = params?.network || 'ai-company-runtime';
     if (params?.network) {
       await this.ensureNetwork(params.network);
     }
 
-    // Prepare Docker-in-Docker binds if enabled
+    // Start DIND container if enabled
+    if (params?.enableDind) {
+      this.dindContainer = await this.startDindContainer(
+        containerName,
+        networkName,
+        params?.labels,
+      );
+    }
+
+    // Prepare environment variables
+    let containerEnv = params?.env || {};
+
+    // If DIND is enabled, set DOCKER_HOST to point to the DIND container
+    if (params?.enableDind) {
+      containerEnv = {
+        ...containerEnv,
+        DOCKER_HOST: `tcp://dind-${containerName}:2375`,
+      };
+    }
+
+    const env = this.prepareEnv(containerEnv);
+
+    // Prepare host configuration
     const hostConfig: Docker.HostConfig = {
-      Binds: [`${dockerSocket}:/var/run/docker.sock:rw`],
-      Privileged: true,
-      NetworkMode: params?.network || 'bridge',
+      NetworkMode: networkName,
+      AutoRemove: true,
     };
 
     const container = await this.docker.createContainer({
@@ -333,10 +485,19 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   async stop(): Promise<void> {
-    if (!this.container) return;
+    if (!this.container) {
+      return;
+    }
     await this.container.stop({ t: 10 }).catch(() => undefined);
     await this.container.remove({ force: true }).catch(() => undefined);
     this.container = null;
+
+    // Stop and remove DIND container if it exists
+    if (this.dindContainer) {
+      await this.dindContainer.stop({ t: 10 }).catch(() => undefined);
+      await this.dindContainer.remove({ force: true }).catch(() => undefined);
+      this.dindContainer = null;
+    }
   }
 
   /**
@@ -381,7 +542,9 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   async exec(params: RuntimeExecParams): Promise<RuntimeExecResult> {
-    if (!this.container) throw new Error('Runtime not started');
+    if (!this.container) {
+      throw new Error('Runtime not started');
+    }
 
     const cmd = Array.isArray(params.cmd)
       ? ['sh', '-lc', ...params.cmd]
@@ -417,7 +580,9 @@ export class DockerRuntime extends BaseRuntime {
 
     // Function to reset the tail timeout timer
     const resetTailTimer = () => {
-      if (tailTimer) clearTimeout(tailTimer);
+      if (tailTimer) {
+        clearTimeout(tailTimer);
+      }
 
       if (params.tailTimeoutMs && params.tailTimeoutMs > 0) {
         tailTimer = setTimeout(() => {
@@ -449,8 +614,12 @@ export class DockerRuntime extends BaseRuntime {
 
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => {
-        if (overallTimer) clearTimeout(overallTimer);
-        if (tailTimer) clearTimeout(tailTimer);
+        if (overallTimer) {
+          clearTimeout(overallTimer);
+        }
+        if (tailTimer) {
+          clearTimeout(tailTimer);
+        }
         stdoutStream.removeAllListeners();
         stderrStream.removeAllListeners();
         execStream.removeAllListeners();
@@ -464,8 +633,11 @@ export class DockerRuntime extends BaseRuntime {
       const fail = (e: Error) => {
         cleanup();
         abortController.abort();
-        if (e.message.includes('Process timed out')) resolve();
-        else reject(e);
+        if (e.message.includes('Process timed out')) {
+          resolve();
+        } else {
+          reject(e);
+        }
       };
 
       execStream.on('end', done);
