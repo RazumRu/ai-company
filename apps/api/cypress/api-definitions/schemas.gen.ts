@@ -7,8 +7,14 @@ export const CreateGraphDtoSchema = {
       type: 'string',
     },
     description: {
-      type: 'string',
-      nullable: true,
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     version: {
       type: 'string',
@@ -60,12 +66,47 @@ export const CreateGraphDtoSchema = {
       required: ['nodes'],
     },
     metadata: {
-      type: 'object',
-      propertyNames: {
-        type: 'string',
-      },
-      additionalProperties: {},
-      nullable: true,
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            nodes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                  },
+                  x: {
+                    type: 'number',
+                  },
+                  y: {
+                    type: 'number',
+                  },
+                  name: {
+                    type: 'string',
+                  },
+                },
+                required: ['id', 'x', 'y'],
+              },
+            },
+            zoom: {
+              type: 'number',
+            },
+            x: {
+              type: 'number',
+            },
+            y: {
+              type: 'number',
+            },
+          },
+          additionalProperties: {},
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     temporary: {
       anyOf: [
@@ -95,12 +136,24 @@ export const GraphDtoSchema = {
       type: 'string',
     },
     description: {
-      type: 'string',
-      nullable: true,
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     error: {
-      type: 'string',
-      nullable: true,
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     version: {
       type: 'string',
@@ -156,12 +209,47 @@ export const GraphDtoSchema = {
       enum: ['created', 'running', 'stopped', 'error'],
     },
     metadata: {
-      type: 'object',
-      propertyNames: {
-        type: 'string',
-      },
-      additionalProperties: {},
-      nullable: true,
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            nodes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                  },
+                  x: {
+                    type: 'number',
+                  },
+                  y: {
+                    type: 'number',
+                  },
+                  name: {
+                    type: 'string',
+                  },
+                },
+                required: ['id', 'x', 'y'],
+              },
+            },
+            zoom: {
+              type: 'number',
+            },
+            x: {
+              type: 'number',
+            },
+            y: {
+              type: 'number',
+            },
+          },
+          additionalProperties: {},
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     createdAt: {
       type: 'string',
@@ -205,8 +293,14 @@ export const UpdateGraphDtoSchema = {
       type: 'string',
     },
     description: {
-      type: 'string',
-      nullable: true,
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     version: {
       type: 'string',
@@ -258,12 +352,47 @@ export const UpdateGraphDtoSchema = {
       required: ['nodes'],
     },
     metadata: {
-      type: 'object',
-      propertyNames: {
-        type: 'string',
-      },
-      additionalProperties: {},
-      nullable: true,
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            nodes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                  },
+                  x: {
+                    type: 'number',
+                  },
+                  y: {
+                    type: 'number',
+                  },
+                  name: {
+                    type: 'string',
+                  },
+                },
+                required: ['id', 'x', 'y'],
+              },
+            },
+            zoom: {
+              type: 'number',
+            },
+            x: {
+              type: 'number',
+            },
+            y: {
+              type: 'number',
+            },
+          },
+          additionalProperties: {},
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     temporary: {
       anyOf: [

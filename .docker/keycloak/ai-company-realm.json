@@ -8,9 +8,9 @@
   "rememberMe": false,
   "verifyEmail": false,
   "resetPasswordAllowed": false,
-  "accessTokenLifespan": 300,
-  "ssoSessionIdleTimeout": 1800,
-  "ssoSessionMaxLifespan": 36000,
+  "accessTokenLifespan": 86400,
+  "ssoSessionIdleTimeout": 86400,
+  "ssoSessionMaxLifespan": 86400,
   "offlineSessionIdleTimeout": 2592000,
   "clients": [
     {

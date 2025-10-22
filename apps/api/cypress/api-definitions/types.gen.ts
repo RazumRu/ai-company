@@ -41,12 +41,60 @@ export type CreateGraphDto = {
     }>;
   };
   metadata?: {
-    [key: string]: unknown;
+    /**
+     * Node coordinates and names by node ID
+     */
+    nodes?: Array<{
+      id: string;
+      /**
+       * X coordinate of the node
+       */
+      x: number;
+      /**
+       * Y coordinate of the node
+       */
+      y: number;
+      /**
+       * Optional display name for the node
+       */
+      name?: string;
+    }>;
+    /**
+     * Zoom level for graph display
+     */
+    zoom?: number;
+    /**
+     * X coordinate
+     */
+    x?: number;
+    /**
+     * Y coordinate
+     */
+    y?: number;
+    [key: string]:
+      | unknown
+      | Array<{
+          id: string;
+          /**
+           * X coordinate of the node
+           */
+          x: number;
+          /**
+           * Y coordinate of the node
+           */
+          y: number;
+          /**
+           * Optional display name for the node
+           */
+          name?: string;
+        }>
+      | number
+      | undefined;
   } | null;
   /**
    * If true, graph will be deleted instead of restored after server restart
    */
-  temporary?: boolean | unknown;
+  temporary?: boolean | null;
 };
 
 export type GraphDto = {
@@ -89,14 +137,62 @@ export type GraphDto = {
   };
   status: 'created' | 'running' | 'stopped' | 'error';
   metadata?: {
-    [key: string]: unknown;
+    /**
+     * Node coordinates and names by node ID
+     */
+    nodes?: Array<{
+      id: string;
+      /**
+       * X coordinate of the node
+       */
+      x: number;
+      /**
+       * Y coordinate of the node
+       */
+      y: number;
+      /**
+       * Optional display name for the node
+       */
+      name?: string;
+    }>;
+    /**
+     * Zoom level for graph display
+     */
+    zoom?: number;
+    /**
+     * X coordinate
+     */
+    x?: number;
+    /**
+     * Y coordinate
+     */
+    y?: number;
+    [key: string]:
+      | unknown
+      | Array<{
+          id: string;
+          /**
+           * X coordinate of the node
+           */
+          x: number;
+          /**
+           * Y coordinate of the node
+           */
+          y: number;
+          /**
+           * Optional display name for the node
+           */
+          name?: string;
+        }>
+      | number
+      | undefined;
   } | null;
   createdAt: string;
   updatedAt: string;
   /**
    * If true, graph will be deleted instead of restored after server restart
    */
-  temporary?: boolean | unknown;
+  temporary?: boolean | null;
 };
 
 export type UpdateGraphDto = {
@@ -136,12 +232,60 @@ export type UpdateGraphDto = {
     }>;
   };
   metadata?: {
-    [key: string]: unknown;
+    /**
+     * Node coordinates and names by node ID
+     */
+    nodes?: Array<{
+      id: string;
+      /**
+       * X coordinate of the node
+       */
+      x: number;
+      /**
+       * Y coordinate of the node
+       */
+      y: number;
+      /**
+       * Optional display name for the node
+       */
+      name?: string;
+    }>;
+    /**
+     * Zoom level for graph display
+     */
+    zoom?: number;
+    /**
+     * X coordinate
+     */
+    x?: number;
+    /**
+     * Y coordinate
+     */
+    y?: number;
+    [key: string]:
+      | unknown
+      | Array<{
+          id: string;
+          /**
+           * X coordinate of the node
+           */
+          x: number;
+          /**
+           * Y coordinate of the node
+           */
+          y: number;
+          /**
+           * Optional display name for the node
+           */
+          name?: string;
+        }>
+      | number
+      | undefined;
   } | null;
   /**
    * If true, graph will be deleted instead of restored after server restart
    */
-  temporary?: boolean | unknown;
+  temporary?: boolean | null;
 };
 
 export type ExecuteTriggerDto = {
@@ -187,7 +331,7 @@ export type GraphMessagesResponseDto = {
           /**
            * Message role
            */
-          role: string;
+          role: 'human';
           /**
            * Message content
            */
@@ -203,7 +347,7 @@ export type GraphMessagesResponseDto = {
           /**
            * Message role
            */
-          role: string;
+          role: 'ai';
           /**
            * Message content
            */
@@ -246,7 +390,7 @@ export type GraphMessagesResponseDto = {
           /**
            * Message role
            */
-          role: string;
+          role: 'system';
           /**
            * Message content
            */
@@ -262,11 +406,11 @@ export type GraphMessagesResponseDto = {
           /**
            * Message role
            */
-          role: string;
+          role: 'tool-shell';
           /**
            * Tool name - shell
            */
-          name: string;
+          name: 'shell';
           /**
            * Parsed shell execution result
            */
@@ -307,7 +451,7 @@ export type GraphMessagesResponseDto = {
           /**
            * Message role
            */
-          role: string;
+          role: 'tool';
           /**
            * Tool name
            */

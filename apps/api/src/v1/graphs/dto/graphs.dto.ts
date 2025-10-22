@@ -3,6 +3,27 @@ import { z } from 'zod';
 
 import { GraphSchema as RealGraphSchema, GraphStatus } from '../graphs.types';
 
+// Node coordinates schema for UI positioning
+export const NodeMetadataSchema = z.object({
+  id: z.string(),
+  x: z.number().describe('X coordinate of the node'),
+  y: z.number().describe('Y coordinate of the node'),
+  name: z.string().optional().describe('Optional display name for the node'),
+});
+
+// Graph metadata with node coordinates
+export const GraphMetadataSchema = z
+  .object({
+    nodes: z
+      .array(NodeMetadataSchema)
+      .optional()
+      .describe('Node coordinates and names by node ID'),
+    zoom: z.number().optional().describe('Zoom level for graph display'),
+    x: z.number().optional().describe('X coordinate'),
+    y: z.number().optional().describe('Y coordinate'),
+  })
+  .loose();
+
 export const GraphSchema = z.object({
   id: z.uuid(),
   name: z.string(),
@@ -11,7 +32,7 @@ export const GraphSchema = z.object({
   version: z.string(),
   schema: RealGraphSchema,
   status: z.enum(GraphStatus),
-  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
+  metadata: GraphMetadataSchema.optional().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   temporary: z
