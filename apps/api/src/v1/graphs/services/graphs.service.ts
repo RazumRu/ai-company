@@ -150,6 +150,7 @@ export class GraphsService {
       // Update status to running
       const updated = await this.graphDao.updateById(id, {
         status: GraphStatus.Running,
+        error: null,
       });
 
       if (!updated) {

@@ -38,7 +38,8 @@ export const DockerRuntimeTemplateSchema = z
     initScript: z
       .union([z.string(), z.array(z.string())])
       .optional()
-      .describe('Initialization commands'),
+      .describe('Initialization commands')
+      .meta({ 'x-ui:textarea': true }),
     initScriptTimeoutMs: z
       .number()
       .positive()

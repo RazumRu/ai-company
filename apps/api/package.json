@@ -11,6 +11,7 @@
     "lint": "pnpm eslint \"src/**/*.{js,ts,tsx}\" \"cypress/**/*.{js,ts,tsx}\"",
     "build": "tsc -p tsconfig.build.json",
     "build:tests": "tsc -p tsconfig.tests.json",
+    "build:runtime": "podman build -f runtime.Dockerfile -t ai-company-runtime:latest .",
     "prebuild": "rm -rf ./dist || true",
     "test": "vitest run --passWithNoTests",
     "test:cov": "vitest run --coverage --passWithNoTests",

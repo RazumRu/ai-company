@@ -117,7 +117,12 @@ describe('GithubResourceTemplate', () => {
         version: '1.0.0',
       };
 
-      const result = await template.create(config, new Map(), compiledNodes, metadata);
+      const result = await template.create(
+        config,
+        new Map(),
+        compiledNodes,
+        metadata,
+      );
 
       expect(mockGithubResource.setup).toHaveBeenCalledWith(config);
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);
@@ -153,7 +158,12 @@ describe('GithubResourceTemplate', () => {
         version: '1.0.0',
       };
 
-      const result = await template.create(config, new Map(), compiledNodes, metadata);
+      const result = await template.create(
+        config,
+        new Map(),
+        compiledNodes,
+        metadata,
+      );
 
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);
       expect(result).toBe(mockResourceOutput);

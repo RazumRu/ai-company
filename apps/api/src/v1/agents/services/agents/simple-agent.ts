@@ -44,12 +44,13 @@ export const SimpleAgentSchema = z.object({
     .string()
     .describe(
       'System prompt injected at the start of each turn: role, goals, constraints, style.',
-    ),
-  name: z.string().describe('Agent name.'),
+    )
+    .meta({ 'x-ui:textarea': true }),
   invokeModelName: z
     .string()
     .default('gpt-5')
-    .describe('Chat model used for the main reasoning/tool-call step.'),
+    .describe('Chat model used for the main reasoning/tool-call step.')
+    .meta({ 'x-ui:show-on-node': true }),
   enforceToolUsage: z
     .boolean()
     .optional()

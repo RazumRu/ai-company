@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 
 import { environment } from '../../../environments';
+import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
-import { DockerRuntime } from '../../runtime/services/docker-runtime';
 
 /**
  * GraphRestorationService handles restoring graphs with their agent states
@@ -62,12 +62,9 @@ export class GraphRestorationService {
       );
       this.logger.log('Temporary runtime containers cleanup complete');
     } catch (error) {
-      this.logger.warn(
-        'Failed to cleanup temporary runtime containers',
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      this.logger.warn('Failed to cleanup temporary runtime containers', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

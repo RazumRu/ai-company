@@ -179,11 +179,16 @@ describe('SimpleAgentTemplate', () => {
       // Use empty connected nodes map
       const emptyConnectedNodes = new Map<string, CompiledGraphNode>();
 
-      const result = await template.create(config, emptyConnectedNodes, new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      const result = await template.create(
+        config,
+        emptyConnectedNodes,
+        new Map(),
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
 
       expect(mockAgentFactoryService.create).toHaveBeenCalledWith(SimpleAgent);
       expect(mockSimpleAgent.addTool).not.toHaveBeenCalled();
@@ -212,11 +217,16 @@ describe('SimpleAgentTemplate', () => {
       // Create empty connected nodes map
       const emptyConnectedNodes = new Map<string, CompiledGraphNode>();
 
-      const result = await template.create(config, emptyConnectedNodes, new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      const result = await template.create(
+        config,
+        emptyConnectedNodes,
+        new Map(),
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
 
       expect(mockSimpleAgent.addTool).not.toHaveBeenCalled();
       expect(result.config).not.toHaveProperty('toolNodeIds');
@@ -288,11 +298,16 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const _result = await template.create(config, partialConnectedNodes, new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      const _result = await template.create(
+        config,
+        partialConnectedNodes,
+        new Map(),
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
 
       // Should only add available tools
       expect(mockSimpleAgent.addTool).toHaveBeenCalledTimes(1);

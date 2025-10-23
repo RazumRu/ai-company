@@ -131,7 +131,15 @@ describe('WebSearchToolTemplate', () => {
 
       const config = {};
       const compiledNodes = new Map([
-        ['some-node', { id: 'some-node', type: NodeKind.Runtime, template: 'some-template', instance: {} }],
+        [
+          'some-node',
+          {
+            id: 'some-node',
+            type: NodeKind.Runtime,
+            template: 'some-template',
+            instance: {},
+          },
+        ],
       ]);
 
       const result = await template.create(config, new Map(), compiledNodes, {
