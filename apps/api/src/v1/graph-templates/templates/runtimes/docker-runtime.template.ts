@@ -12,12 +12,20 @@ import {
 
 export const DockerRuntimeTemplateSchema = z
   .object({
-    runtimeType: z.literal(RuntimeType.Docker),
-    image: z.string().optional().describe('Docker image to use'),
+    runtimeType: z
+      .literal(RuntimeType.Docker)
+      .meta({ 'x-ui:show-on-node': true }),
+    image: z
+      .string()
+      .optional()
+      .describe('Docker image to use. If not set - will use default image')
+      .meta({ 'x-ui:show-on-node': true }),
     workdir: z
       .string()
       .optional()
-      .describe('Working directory inside container'),
+      .describe(
+        'Working directory inside container. If not set - will use default',
+      ),
     env: z
       .record(z.string(), z.string())
       .optional()
@@ -42,7 +50,8 @@ export const DockerRuntimeTemplateSchema = z
       .optional()
       .describe(
         'Enable Docker-in-Docker by creating a separate DIND container for this runtime',
-      ),
+      )
+      .meta({ 'x-ui:show-on-node': true }),
   })
   .strict();
 
@@ -61,7 +70,7 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof DockerRuntimeTemplateSchema>,
-    compiledNodes: Map<string, any>,
+    connectedNodes: Map<string, any>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<BaseRuntime> {
     // Automatically add graph_id and node_id labels for container management

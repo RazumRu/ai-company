@@ -62,43 +62,128 @@ export class GraphCompiler {
       this.templateRegistry.validateTemplateConfig(node.template, node.config);
     }
 
+    // Generic edge-based validation: every edge must be between existing nodes and
+    // must satisfy target's allowedTemplates rules
     const nodeMap = new Map(schema.nodes.map((n) => [n.id, n]));
-    for (const node of schema.nodes) {
-      if (node.config && typeof node.config === 'object') {
-        const config = node.config as Record<string, unknown>;
-        if (Array.isArray((config as any).resourceNodeIds)) {
-          for (const resourceNodeId of (config as any)
-            .resourceNodeIds as string[]) {
-            const resourceNode = nodeMap.get(resourceNodeId);
-            if (!resourceNode) {
-              throw new BadRequestException(
-                'GRAPH_NODE_NOT_FOUND',
-                `Node '${node.id}' references non-existent resource node: ${resourceNodeId}`,
-              );
-            }
+    const edges = schema.edges || [];
+    for (const edge of edges) {
+      const from = nodeMap.get(edge.from);
+      const to = nodeMap.get(edge.to);
+      if (!from) {
+        throw new BadRequestException(
+          'GRAPH_EDGE_NOT_FOUND',
+          `Edge references non-existent source node: ${edge.from}`,
+        );
+      }
+      if (!to) {
+        throw new BadRequestException(
+          'GRAPH_EDGE_NOT_FOUND',
+          `Edge references non-existent target node: ${edge.to}`,
+        );
+      }
 
-            const resourceTemplate = this.templateRegistry.getTemplate(
-              resourceNode.template,
-            );
-            if (
-              !resourceTemplate ||
-              resourceTemplate.kind !== NodeKind.Resource
-            ) {
-              throw new BadRequestException(
-                'GRAPH_NODE_NOT_FOUND',
-                `Node '${node.id}' references node '${resourceNodeId}' which is not a resource node`,
-              );
-            }
+      // Validate connection per target's constraints
+      this.validateTemplateConnection(from.template, to.template);
+    }
 
-            if (node.template === 'shell-tool') {
-              if (resourceNode.template !== 'github-resource') {
-                throw new BadRequestException(
-                  'WRONG_EDGE_CONNECTION',
-                  `Shell tool '${node.id}' can only use shell-compatible resources, but '${resourceNodeId}' is not a shell resource`,
-                );
-              }
-            }
+    // Validate required connections: templates with required=true in allowedTemplates must have at least one connection
+    this.validateRequiredConnections(schema.nodes, edges);
+  }
+
+  /**
+   * Validates that a template can connect to another template based on allowedTemplates and allowedTemplateKinds
+   */
+  private validateTemplateConnection(
+    sourceTemplateName: string,
+    targetTemplateName: string,
+  ): void {
+    const sourceTemplate =
+      this.templateRegistry.getTemplate(sourceTemplateName);
+    const targetTemplate =
+      this.templateRegistry.getTemplate(targetTemplateName);
+
+    if (!sourceTemplate || !targetTemplate) {
+      return; // Let other validation handle missing templates
+    }
+
+    // Target template declares allowed incoming connections with discriminated union
+    // allowedTemplates is now required - if empty array, no connections allowed
+    if (targetTemplate.allowedTemplates) {
+      if (targetTemplate.allowedTemplates.length === 0) {
+        throw new BadRequestException(
+          'WRONG_EDGE_CONNECTION',
+          `Template '${targetTemplateName}' does not accept any connections (allowedTemplates is empty), but got '${sourceTemplateName}' (kind: ${sourceTemplate.kind})`,
+        );
+      }
+
+      const isAllowed = targetTemplate.allowedTemplates.some((rule: any) => {
+        if (!rule || typeof rule !== 'object') return false;
+        if (rule.type === 'template') return rule.value === sourceTemplateName;
+        if (rule.type === 'kind') return rule.value === sourceTemplate.kind;
+        return false;
+      });
+
+      if (!isAllowed) {
+        const rulesHuman = targetTemplate.allowedTemplates
+          .map((r: any) => `${r.type}:${r.value}`)
+          .join(', ');
+        throw new BadRequestException(
+          'WRONG_EDGE_CONNECTION',
+          `Template '${targetTemplateName}' only accepts from [${rulesHuman}], but got '${sourceTemplateName}' (kind: ${sourceTemplate.kind})`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Validates that templates with required=true in allowedTemplates have at least one connection
+   */
+  private validateRequiredConnections(nodes: any[], edges: any[]): void {
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+    for (const node of nodes) {
+      const template = this.templateRegistry.getTemplate(node.template);
+      if (!template || !template.allowedTemplates) {
+        continue;
+      }
+
+      // Find required connection rules
+      const requiredRules = template.allowedTemplates.filter(
+        (rule: any) => rule.required === true,
+      );
+
+      for (const rule of requiredRules) {
+        // Check if this node has at least one connection matching the required rule
+        const hasRequiredConnection = edges.some((edge) => {
+          if (edge.to !== node.id) return false;
+
+          const sourceNode = nodeMap.get(edge.from);
+          if (!sourceNode) return false;
+
+          const sourceTemplate = this.templateRegistry.getTemplate(
+            sourceNode.template,
+          );
+          if (!sourceTemplate) return false;
+
+          // Check if the source matches the required rule
+          if (rule.type === 'template') {
+            return rule.value === sourceNode.template;
           }
+          if (rule.type === 'kind') {
+            return rule.value === sourceTemplate.kind;
+          }
+          return false;
+        });
+
+        if (!hasRequiredConnection) {
+          const ruleDescription =
+            rule.type === 'template'
+              ? `template '${rule.value}'`
+              : `kind '${rule.value}'`;
+          throw new BadRequestException(
+            'MISSING_REQUIRED_CONNECTION',
+            `Template '${node.template}' requires at least one connection from ${ruleDescription}, but none found`,
+          );
         }
       }
     }
@@ -127,6 +212,15 @@ export class GraphCompiler {
     this.validateSchema(schema);
 
     const compiledNodes = new Map<string, CompiledGraphNode>();
+    // Build adjacency of connected node IDs from edges (bidirectional)
+    const adjacency = new Map<string, Set<string>>();
+    const edges = schema.edges || [];
+    for (const edge of edges) {
+      if (!adjacency.has(edge.from)) adjacency.set(edge.from, new Set());
+      if (!adjacency.has(edge.to)) adjacency.set(edge.to, new Set());
+      adjacency.get(edge.from)!.add(edge.to);
+      adjacency.get(edge.to)!.add(edge.from);
+    }
     const nodesByKind = groupBy(schema.nodes, (node) => {
       const template = this.templateRegistry.getTemplate(node.template);
       if (!template) {
@@ -152,6 +246,7 @@ export class GraphCompiler {
           node,
           compiledNodes,
           metadata,
+          Array.from(adjacency.get(node.id) || []),
         );
         compiledNodes.set(node.id, compiledNode);
       }
@@ -244,6 +339,7 @@ export class GraphCompiler {
     node: GraphNodeSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
     metadata: GraphMetadataSchemaType,
+    connectedNodeIds: string[],
   ): Promise<CompiledGraphNode> {
     const config = this.templateRegistry.validateTemplateConfig(
       node.template,
@@ -258,7 +354,16 @@ export class GraphCompiler {
       );
     }
 
-    const instance = await template.create(config, compiledNodes, {
+    // Create connected nodes map from connected node IDs
+    const connectedNodes = new Map<string, CompiledGraphNode>();
+    for (const connectedId of connectedNodeIds) {
+      const connectedNode = compiledNodes.get(connectedId);
+      if (connectedNode) {
+        connectedNodes.set(connectedId, connectedNode);
+      }
+    }
+
+    const instance = await template.create(config, connectedNodes, {
       ...metadata,
       nodeId: node.id,
     });

@@ -17,17 +17,7 @@ import {
   ToolNodeBaseTemplate,
 } from '../base-node.template';
 
-export const ShellToolTemplateSchema = z
-  .object({
-    runtimeNodeId: z.string().describe('Reference to runtime node'),
-    resourceNodeIds: z
-      .array(z.string())
-      .optional()
-      .describe(
-        'References to resource nodes that provide environment variables and initialization scripts',
-      ),
-  })
-  .strict();
+export const ShellToolTemplateSchema = z.object({}).strict();
 
 @Injectable()
 @RegisterTemplate()
@@ -38,29 +28,57 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
   readonly description = 'Shell execution tool';
   readonly schema = ShellToolTemplateSchema;
 
+  readonly allowedTemplates = [
+    {
+      type: 'template',
+      value: 'github-resource',
+    },
+    {
+      type: 'kind',
+      value: NodeKind.Runtime,
+      required: true,
+    },
+  ] as const;
+
   constructor(private readonly shellTool: ShellTool) {
     super();
   }
 
   async create(
     config: z.infer<typeof ShellToolTemplateSchema>,
-    compiledNodes: Map<string, CompiledGraphNode>,
+    connectedNodes: Map<string, CompiledGraphNode>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
-    const runtimeNode: CompiledGraphNode<BaseRuntime> | undefined =
-      compiledNodes.get(config.runtimeNodeId) as CompiledGraphNode<BaseRuntime>;
+    // Find runtime node from connected nodes
+    let runtimeNode: CompiledGraphNode<BaseRuntime> | undefined;
+
+    for (const [_nodeId, node] of connectedNodes) {
+      if (node.type === NodeKind.Runtime) {
+        runtimeNode = node as CompiledGraphNode<BaseRuntime>;
+        break;
+      }
+    }
 
     if (!runtimeNode) {
       throw new NotFoundException(
         'NODE_NOT_FOUND',
-        `Node ${config.runtimeNodeId} not found`,
+        `Runtime node not found in connected nodes`,
       );
+    }
+
+    // Collect resource nodes from connected nodes
+    const resourceNodeIds: string[] = [];
+
+    for (const [nodeId, node] of connectedNodes) {
+      if (node.type === NodeKind.Resource) {
+        resourceNodeIds.push(nodeId);
+      }
     }
 
     // Discover and collect environment variables and information from resources
     const { env, information, initScripts } = this.collectResourceData(
-      config.resourceNodeIds || [],
-      compiledNodes,
+      resourceNodeIds,
+      connectedNodes,
     );
 
     // Execute init scripts on the runtime
@@ -89,7 +107,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
 
   private collectResourceData(
     resourceNodeIds: string[],
-    compiledNodes: Map<string, CompiledGraphNode>,
+    connectedNodes: Map<string, CompiledGraphNode>,
   ): {
     env: Record<string, string>;
     information: string;
@@ -100,7 +118,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     const initScripts: { cmd: string[] | string; timeout?: number }[] = [];
 
     for (const nodeId of resourceNodeIds) {
-      const node = compiledNodes.get(nodeId);
+      const node = connectedNodes.get(nodeId);
       if (node && node.type === NodeKind.Resource) {
         if ((<IBaseResourceOutput>node.instance)?.kind != ResourceKind.Shell) {
           continue;

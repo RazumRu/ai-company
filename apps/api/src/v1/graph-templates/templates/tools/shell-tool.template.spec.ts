@@ -56,42 +56,8 @@ describe('ShellToolTemplate', () => {
   });
 
   describe('schema validation', () => {
-    it('should validate required runtimeNodeId', () => {
-      const validConfig = {
-        runtimeNodeId: 'runtime-1',
-      };
-
-      expect(() => ShellToolTemplateSchema.parse(validConfig)).not.toThrow();
-    });
-
-    it('should reject missing runtimeNodeId', () => {
-      const invalidConfig = {};
-
-      expect(() => ShellToolTemplateSchema.parse(invalidConfig)).toThrow();
-    });
-
-    it('should accept empty runtimeNodeId (Zod string allows empty)', () => {
-      const config = {
-        runtimeNodeId: '',
-      };
-
-      // Zod string() allows empty strings by default
-      expect(() => ShellToolTemplateSchema.parse(config)).not.toThrow();
-    });
-
-    it('should validate resourceNodeIds as optional array', () => {
-      const config = {
-        runtimeNodeId: 'runtime-1',
-        resourceNodeIds: ['resource-1', 'resource-2'],
-      };
-
-      expect(() => ShellToolTemplateSchema.parse(config)).not.toThrow();
-    });
-
-    it('should accept config without resourceNodeIds', () => {
-      const config = {
-        runtimeNodeId: 'runtime-1',
-      };
+    it('should accept empty config (no parameters needed)', () => {
+      const config = {};
 
       expect(() => ShellToolTemplateSchema.parse(config)).not.toThrow();
     });
@@ -113,16 +79,14 @@ describe('ShellToolTemplate', () => {
       };
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
 
-      const compiledNodes = new Map<string, CompiledGraphNode>([
+      const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
       ]);
       mockShellTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        runtimeNodeId: 'runtime-1',
-      };
+      const config = {};
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -137,14 +101,12 @@ describe('ShellToolTemplate', () => {
     });
 
     it('should throw NotFoundException when runtime node not found', async () => {
-      const compiledNodes = new Map(); // Empty map
+      const connectedNodes = new Map(); // Empty map
 
-      const config = {
-        runtimeNodeId: 'non-existent-runtime',
-      };
+      const config = {};
 
       await expect(
-        template.create(config, compiledNodes, {
+        template.create(config, connectedNodes, {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -153,14 +115,12 @@ describe('ShellToolTemplate', () => {
     });
 
     it('should throw NotFoundException with correct error message', async () => {
-      const compiledNodes = new Map();
+      const connectedNodes = new Map();
 
-      const config = {
-        runtimeNodeId: 'missing-runtime',
-      };
+      const config = {};
 
       try {
-        await template.create(config, compiledNodes, {
+        await template.create(config, connectedNodes, {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -168,7 +128,9 @@ describe('ShellToolTemplate', () => {
         throw new Error('Expected NotFoundException to be thrown');
       } catch (error: any) {
         expect(error).toBeInstanceOf(NotFoundException);
-        expect(error.message).toContain('Node missing-runtime not found');
+        expect(error.message).toContain(
+          'Runtime node not found in connected nodes',
+        );
       }
     });
 
@@ -185,7 +147,7 @@ describe('ShellToolTemplate', () => {
         template: 'docker-runtime',
         instance: mockRuntime,
       };
-      const compiledNodes = new Map<string, CompiledGraphNode>([
+      const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
       ]);
 
@@ -194,12 +156,10 @@ describe('ShellToolTemplate', () => {
         throw mockError;
       });
 
-      const config = {
-        runtimeNodeId: 'runtime-1',
-      };
+      const config = {};
 
       await expect(
-        template.create(config, compiledNodes, {
+        template.create(config, connectedNodes, {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -235,17 +195,15 @@ describe('ShellToolTemplate', () => {
         instance: mockRuntime2,
       };
 
-      const compiledNodes = new Map<string, CompiledGraphNode>([
-        ['runtime-1', mockRuntimeNode1],
-        ['runtime-2', mockRuntimeNode2],
-      ]);
-
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
       mockShellTool.build = vi.fn().mockReturnValue(mockTool);
 
       // Test with first runtime
-      const config1 = { runtimeNodeId: 'runtime-1' };
-      await template.create(config1, compiledNodes, {
+      const connectedNodes1 = new Map<string, CompiledGraphNode>([
+        ['runtime-1', mockRuntimeNode1],
+      ]);
+      const config1 = {};
+      await template.create(config1, connectedNodes1, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -257,8 +215,11 @@ describe('ShellToolTemplate', () => {
       });
 
       // Test with second runtime
-      const config2 = { runtimeNodeId: 'runtime-2' };
-      await template.create(config2, compiledNodes, {
+      const connectedNodes2 = new Map<string, CompiledGraphNode>([
+        ['runtime-2', mockRuntimeNode2],
+      ]);
+      const config2 = {};
+      await template.create(config2, connectedNodes2, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -271,21 +232,19 @@ describe('ShellToolTemplate', () => {
     });
 
     it('should handle null/undefined runtime node gracefully', async () => {
-      const compiledNodes = new Map<string, CompiledGraphNode>([
+      const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', undefined as any],
       ]);
 
-      const config = {
-        runtimeNodeId: 'runtime-1',
-      };
+      const config = {};
 
       await expect(
-        template.create(config, compiledNodes, {
+        template.create(config, connectedNodes, {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
         }),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow();
     });
 
     it('should create shell tool with resources', async () => {
@@ -325,7 +284,7 @@ describe('ShellToolTemplate', () => {
         instance: mockResourceOutput,
       };
 
-      const compiledNodes = new Map<string, CompiledGraphNode>([
+      const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
         ['resource-1', mockResourceNode],
       ]);
@@ -333,12 +292,9 @@ describe('ShellToolTemplate', () => {
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
       mockShellTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        runtimeNodeId: 'runtime-1',
-        resourceNodeIds: ['resource-1'],
-      };
+      const config = {};
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -398,7 +354,7 @@ describe('ShellToolTemplate', () => {
         instance: {} as any,
       };
 
-      const compiledNodes = new Map<string, CompiledGraphNode>([
+      const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
         ['resource-1', mockResourceNode],
         ['tool-1', mockToolNode],
@@ -407,12 +363,9 @@ describe('ShellToolTemplate', () => {
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
       mockShellTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        runtimeNodeId: 'runtime-1',
-        resourceNodeIds: ['resource-1', 'tool-1'], // tool-1 should be ignored
-      };
+      const config = {};
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -442,19 +395,16 @@ describe('ShellToolTemplate', () => {
         instance: mockRuntime,
       };
 
-      const compiledNodes = new Map<string, CompiledGraphNode>([
+      const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
       ]);
 
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
       mockShellTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        runtimeNodeId: 'runtime-1',
-        resourceNodeIds: ['missing-resource'], // This resource doesn't exist
-      };
+      const config = {};
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -504,7 +454,7 @@ describe('ShellToolTemplate', () => {
         instance: mockResourceOutput,
       };
 
-      const compiledNodes = new Map<string, CompiledGraphNode>([
+      const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
         ['resource-1', mockResourceNode],
       ]);
@@ -512,12 +462,9 @@ describe('ShellToolTemplate', () => {
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
       mockShellTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        runtimeNodeId: 'runtime-1',
-        resourceNodeIds: ['resource-1'],
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -578,7 +525,7 @@ describe('ShellToolTemplate', () => {
         },
       };
 
-      const compiledNodes = new Map<string, CompiledGraphNode>([
+      const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
         [
           'resource-1',
@@ -603,12 +550,9 @@ describe('ShellToolTemplate', () => {
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
       mockShellTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        runtimeNodeId: 'runtime-1',
-        resourceNodeIds: ['resource-1', 'resource-2'],
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

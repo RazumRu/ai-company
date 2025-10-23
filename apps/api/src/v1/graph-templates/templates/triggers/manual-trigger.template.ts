@@ -51,11 +51,11 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
 
   async create(
     config: ManualTriggerTemplateSchemaType,
-    compiledNodes: Map<string, CompiledGraphNode>,
+    connectedNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<ManualTrigger> {
     // Get the target agent node
-    const agentNode = compiledNodes.get(config.agentId) as
+    const agentNode = connectedNodes.get(config.agentId) as
       | CompiledGraphNode<
           SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
         >

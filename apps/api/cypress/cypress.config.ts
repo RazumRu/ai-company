@@ -14,6 +14,12 @@ export default defineConfig({
     baseUrl: 'http://localhost:5000',
     specPattern: './e2e/**/*.cy.ts',
     setupNodeEvents(on, config) {
+      on('task', {
+        log(msg: string) {
+          console.log(msg);
+          return null;
+        },
+      });
       return _setupNodeEvents(on, config);
     },
     env: {

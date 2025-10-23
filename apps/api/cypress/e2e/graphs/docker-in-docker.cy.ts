@@ -182,9 +182,7 @@ function createMockGraphDataWithDockerInDocker() {
         {
           id: 'shell-tool-1',
           template: 'shell-tool',
-          config: {
-            runtimeNodeId: 'runtime-1',
-          },
+          config: {},
         },
         {
           id: 'agent-1',
@@ -194,7 +192,6 @@ function createMockGraphDataWithDockerInDocker() {
             instructions:
               'You are a shell command executor agent. When the user asks you to execute a command, you MUST use the shell tool to execute it. Always respond with the output from the shell tool.',
             invokeModelName: 'gpt-5-mini',
-            toolNodeIds: ['shell-tool-1'],
           },
         },
         {
@@ -210,52 +207,13 @@ function createMockGraphDataWithDockerInDocker() {
           from: 'trigger-1',
           to: 'agent-1',
         },
-      ],
-    },
-    metadata: {
-      nodes: [
         {
-          id: 'runtime-1',
-          template: 'docker-runtime',
-          config: {
-            runtimeType: 'Docker',
-            image: 'node:20-alpine',
-            workdir: '/app',
-            env: {},
-            initScript: 'apk add --no-cache docker-cli',
-            enableDind: true,
-          },
-        },
-        {
-          id: 'shell-tool-1',
-          template: 'shell-tool',
-          config: {
-            runtimeNodeId: 'runtime-1',
-          },
-        },
-        {
-          id: 'agent-1',
-          template: 'simple-agent',
-          config: {
-            name: 'Docker-in-Docker Test Agent',
-            instructions:
-              'You are a shell command executor agent. When the user asks you to execute a command, you MUST use the shell tool to execute it. Always respond with the output from the shell tool.',
-            invokeModelName: 'gpt-5-mini',
-            toolNodeIds: ['shell-tool-1'],
-          },
-        },
-        {
-          id: 'trigger-1',
-          template: 'manual-trigger',
-          config: {
-            agentId: 'agent-1',
-          },
-        },
-      ],
-      edges: [
-        {
-          from: 'trigger-1',
+          from: 'shell-tool-1',
           to: 'agent-1',
+        },
+        {
+          from: 'runtime-1',
+          to: 'shell-tool-1',
         },
       ],
     },

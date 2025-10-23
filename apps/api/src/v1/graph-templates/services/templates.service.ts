@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { sortBy } from 'lodash';
 import { z, ZodSchema } from 'zod';
 
 import { TemplateDto } from '../dto/templates.dto';
@@ -16,9 +17,12 @@ export class TemplatesService {
       description: template.description,
       kind: template.kind,
       schema: this.serializeSchema(template.schema),
+      allowedTemplates: template.allowedTemplates
+        ? [...template.allowedTemplates]
+        : undefined,
     }));
 
-    return list;
+    return sortBy(list, 'kind');
   }
 
   private serializeSchema(schema: ZodSchema): Record<string, unknown> {

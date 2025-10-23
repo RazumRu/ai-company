@@ -16,6 +16,10 @@ describe('TemplatesService', () => {
       description: 'Test tool template',
       kind: NodeKind.Tool,
       schema: z.object({ name: z.string() }),
+      allowedTemplates: [
+        { type: 'template', value: 'github-resource' },
+        { type: 'kind', value: NodeKind.Resource },
+      ],
     },
     {
       name: 'test-runtime-template',
@@ -67,19 +71,8 @@ describe('TemplatesService', () => {
 
       // Assert
       expect(result).toHaveLength(3);
+      // Templates are sorted by kind, so runtime comes first
       expect(result[0]).toEqual({
-        name: 'test-tool-template',
-        description: 'Test tool template',
-        kind: NodeKind.Tool,
-        schema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: { name: { type: 'string' } },
-          required: ['name'],
-          type: 'object',
-        },
-      });
-      expect(result[1]).toEqual({
         name: 'test-runtime-template',
         description: 'Test runtime template',
         kind: NodeKind.Runtime,
@@ -90,8 +83,9 @@ describe('TemplatesService', () => {
           required: ['image'],
           type: 'object',
         },
+        allowedTemplates: undefined,
       });
-      expect(result[2]).toEqual({
+      expect(result[1]).toEqual({
         name: 'test-agent-template',
         description: 'Test agent template',
         kind: NodeKind.SimpleAgent,
@@ -102,6 +96,23 @@ describe('TemplatesService', () => {
           required: ['model'],
           type: 'object',
         },
+        allowedTemplates: undefined,
+      });
+      expect(result[2]).toEqual({
+        name: 'test-tool-template',
+        description: 'Test tool template',
+        kind: NodeKind.Tool,
+        schema: {
+          $schema: 'http://json-schema.org/draft-07/schema#',
+          additionalProperties: false,
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+          type: 'object',
+        },
+        allowedTemplates: [
+          { type: 'template', value: 'github-resource' },
+          { type: 'kind', value: NodeKind.Resource },
+        ],
       });
       expect(templateRegistry.getAllTemplates).toHaveBeenCalledOnce();
     });

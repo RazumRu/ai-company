@@ -19,8 +19,9 @@ describe('Resource System E2E', () => {
 
   describe('GitHub Resource Integration', () => {
     it('should create and run a graph with GitHub resource and shell tool', () => {
-      // Skip test if no GitHub token is provided
-      const githubToken = Cypress.env('GITHUB_PAT_TOKEN');
+      // Use a mock token for testing
+      const githubToken =
+        Cypress.env('GITHUB_PAT_TOKEN') || 'mock-token-for-testing';
 
       const graphData: CreateGraphDto = {
         name: `GitHub Resource Test ${Date.now()}`,
@@ -47,10 +48,7 @@ describe('Resource System E2E', () => {
             {
               id: 'shell-tool-1',
               template: 'shell-tool',
-              config: {
-                runtimeNodeId: 'runtime-1',
-                resourceNodeIds: ['github-resource-1'],
-              },
+              config: {},
             },
             {
               id: 'agent-1',
@@ -60,7 +58,6 @@ describe('Resource System E2E', () => {
                 instructions:
                   'You are a helpful agent with access to GitHub CLI. Use the shell tool to interact with GitHub.',
                 invokeModelName: 'gpt-5-mini',
-                toolNodeIds: ['shell-tool-1'],
               },
             },
             {
@@ -75,6 +72,18 @@ describe('Resource System E2E', () => {
             {
               from: 'trigger-1',
               to: 'agent-1',
+            },
+            {
+              from: 'shell-tool-1',
+              to: 'agent-1',
+            },
+            {
+              from: 'runtime-1',
+              to: 'shell-tool-1',
+            },
+            {
+              from: 'github-resource-1',
+              to: 'shell-tool-1',
             },
           ],
         },
@@ -165,26 +174,27 @@ describe('Resource System E2E', () => {
             {
               id: 'shell-tool-1',
               template: 'shell-tool',
-              config: {
-                runtimeNodeId: 'runtime-1',
-                resourceNodeIds: ['non-existent-resource'], // Invalid resource reference
-              },
+              config: {},
             },
           ],
-          edges: [],
+          edges: [
+            {
+              from: 'shell-tool-1',
+              to: 'runtime-1',
+            },
+            {
+              from: 'shell-tool-1',
+              to: 'non-existent-resource', // Invalid resource reference
+            },
+          ],
         },
       };
 
       // This should fail validation
       createGraph(invalidGraphData).then((response) => {
-        cy.log(
-          'Invalid graph creation response:',
-          JSON.stringify(response.body, null, 2),
-        );
-
         expect(response.status).to.equal(400);
         expect((response.body as any).message).to.include(
-          'non-existent resource node',
+          'non-existent target node',
         );
       });
     });

@@ -168,32 +168,6 @@ export const createMockGraphData = (
       },
     ],
   },
-  metadata: {
-    nodes: [
-      {
-        id: 'agent-1',
-        template: 'simple-agent',
-        config: {
-          name: 'Test Agent',
-          instructions: 'You are a helpful test agent.',
-          invokeModelName: 'gpt-5-mini',
-        },
-      },
-      {
-        id: 'trigger-1',
-        template: 'manual-trigger',
-        config: {
-          agentId: 'agent-1',
-        },
-      },
-    ],
-    edges: [
-      {
-        from: 'trigger-1',
-        to: 'agent-1',
-      },
-    ],
-  },
   ...overrides,
 });
 

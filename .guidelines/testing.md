@@ -101,7 +101,15 @@ The project uses Cypress for E2E testing.
    pnpm deps:up
    ```
 
-2. **Start the server in background**:
+2. **Check if the server is already running**:
+   ```bash
+   # returns HTTP/1.1 200 if the API is up
+   curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5000/health/check
+   ```
+   - If you see 200, the server is up — you can skip the start step below.
+   - If you get anything else, start the server.
+
+3. **Start the server in background (if not running)**:
    ```bash
    cd apps/api
    pnpm start:dev &
@@ -109,9 +117,14 @@ The project uses Cypress for E2E testing.
    pnpm start:dev
    ```
 
-3. **Wait for server to be ready** (check http://localhost:3000/health)
+4. **Wait for server to be ready**:
+   ```bash
+   # wait-until-healthy helper (times out after ~30s)
+   until [ "$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health/check)" = "200" ]; do
+     echo "Waiting for API to be ready..."; sleep 2; done
+   ```
 
-4. **Run E2E tests**:
+5. **Run E2E tests**:
    ```bash
    # From project root
    pnpm test:e2e
@@ -151,6 +164,18 @@ pnpm test:e2e:generate-api
 2. **Location**: Place them in `apps/api/cypress/e2e/` directory
 3. **Helper functions**: Use the helper functions in corresponding `.helper.ts` files
 4. **API definitions**: Use generated API definitions from `apps/api/cypress/api-definitions/`
+
+#### Logging from E2E tests
+
+- You can log arbitrary messages from your Cypress tests to the terminal output using a predefined task:
+  ```ts
+  // inside your test
+  cy.task('log', 'Starting templates test...');
+  cy.task('log', `Payload: ${JSON.stringify(payload)}`);
+  ```
+  Where you will see it:
+  - When running via pnpm test:e2e, these logs appear in the terminal running Cypress.
+  - This works because apps/api/cypress/cypress.config.ts defines a `task` named `log` that proxies to console.log.
 
 Example structure:
 ```

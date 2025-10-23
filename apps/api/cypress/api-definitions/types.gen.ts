@@ -49,11 +49,11 @@ export type CreateGraphDto = {
       /**
        * X coordinate of the node
        */
-      x: number;
+      x?: number;
       /**
        * Y coordinate of the node
        */
-      y: number;
+      y?: number;
       /**
        * Optional display name for the node
        */
@@ -78,11 +78,11 @@ export type CreateGraphDto = {
           /**
            * X coordinate of the node
            */
-          x: number;
+          x?: number;
           /**
            * Y coordinate of the node
            */
-          y: number;
+          y?: number;
           /**
            * Optional display name for the node
            */
@@ -145,11 +145,11 @@ export type GraphDto = {
       /**
        * X coordinate of the node
        */
-      x: number;
+      x?: number;
       /**
        * Y coordinate of the node
        */
-      y: number;
+      y?: number;
       /**
        * Optional display name for the node
        */
@@ -174,11 +174,11 @@ export type GraphDto = {
           /**
            * X coordinate of the node
            */
-          x: number;
+          x?: number;
           /**
            * Y coordinate of the node
            */
-          y: number;
+          y?: number;
           /**
            * Optional display name for the node
            */
@@ -240,11 +240,11 @@ export type UpdateGraphDto = {
       /**
        * X coordinate of the node
        */
-      x: number;
+      x?: number;
       /**
        * Y coordinate of the node
        */
-      y: number;
+      y?: number;
       /**
        * Optional display name for the node
        */
@@ -269,11 +269,11 @@ export type UpdateGraphDto = {
           /**
            * X coordinate of the node
            */
-          x: number;
+          x?: number;
           /**
            * Y coordinate of the node
            */
-          y: number;
+          y?: number;
           /**
            * Optional display name for the node
            */
@@ -484,6 +484,18 @@ export type TemplateDto = {
   schema: {
     [key: string]: unknown;
   };
+  allowedTemplates?: Array<
+    | {
+        type: 'kind';
+        value: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource';
+        required?: boolean;
+      }
+    | {
+        type: 'template';
+        value: string;
+        required?: boolean;
+      }
+  >;
 };
 
 export type GetAllGraphsData = {

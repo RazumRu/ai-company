@@ -6,8 +6,8 @@ import { GraphSchema as RealGraphSchema, GraphStatus } from '../graphs.types';
 // Node coordinates schema for UI positioning
 export const NodeMetadataSchema = z.object({
   id: z.string(),
-  x: z.number().describe('X coordinate of the node'),
-  y: z.number().describe('Y coordinate of the node'),
+  x: z.number().optional().describe('X coordinate of the node'),
+  y: z.number().optional().describe('Y coordinate of the node'),
   name: z.string().optional().describe('Optional display name for the node'),
 });
 

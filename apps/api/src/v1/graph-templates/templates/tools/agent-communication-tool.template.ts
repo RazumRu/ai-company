@@ -47,7 +47,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof AgentCommunicationToolTemplateSchema>,
-    compiledNodes: Map<string, CompiledGraphNode>,
+    connectedNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     const invokeAgent: AgentCommunicationToolOptions['invokeAgent'] = async <
@@ -57,7 +57,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       childThreadId: string,
       runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
     ): Promise<T> => {
-      const agentNode = compiledNodes.get(config.agentId) as
+      const agentNode = connectedNodes.get(config.agentId) as
         | CompiledGraphNode<
             SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
           >

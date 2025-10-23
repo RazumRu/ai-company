@@ -88,7 +88,7 @@ export const CreateGraphDtoSchema = {
                     type: 'string',
                   },
                 },
-                required: ['id', 'x', 'y'],
+                required: ['id'],
               },
             },
             zoom: {
@@ -231,7 +231,7 @@ export const GraphDtoSchema = {
                     type: 'string',
                   },
                 },
-                required: ['id', 'x', 'y'],
+                required: ['id'],
               },
             },
             zoom: {
@@ -374,7 +374,7 @@ export const UpdateGraphDtoSchema = {
                     type: 'string',
                   },
                 },
-                required: ['id', 'x', 'y'],
+                required: ['id'],
               },
             },
             zoom: {
@@ -649,6 +649,46 @@ export const TemplateDtoSchema = {
         type: 'string',
       },
       additionalProperties: {},
+    },
+    allowedTemplates: {
+      type: 'array',
+      items: {
+        anyOf: [
+          {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                const: 'kind',
+              },
+              value: {
+                type: 'string',
+                enum: ['runtime', 'tool', 'simpleAgent', 'trigger', 'resource'],
+              },
+              required: {
+                type: 'boolean',
+              },
+            },
+            required: ['type', 'value'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                const: 'template',
+              },
+              value: {
+                type: 'string',
+              },
+              required: {
+                type: 'boolean',
+              },
+            },
+            required: ['type', 'value'],
+          },
+        ],
+      },
     },
   },
   required: ['name', 'description', 'kind', 'schema'],

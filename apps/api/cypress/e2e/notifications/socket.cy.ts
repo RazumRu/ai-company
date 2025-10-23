@@ -390,7 +390,6 @@ describe('Socket Gateway E2E', () => {
                 instructions:
                   'You are a helpful agent. You MUST use the web-search tool to answer questions about current events, weather, or real-time information. Always call the tool first before answering.',
                 invokeModelName: 'gpt-5-mini',
-                toolNodeIds: ['web-search-tool-1'],
               },
             },
             {

@@ -81,7 +81,6 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        toolNodeIds: ['tool-1', 'tool-2'],
       };
 
       expect(() => SimpleAgentTemplateSchema.parse(validConfig)).not.toThrow();
@@ -119,20 +118,18 @@ describe('SimpleAgentTemplate', () => {
     it('should reject missing required fields', () => {
       const invalidConfig = {
         // missing required SimpleAgent fields
-        toolNodeIds: ['tool-1'],
       };
 
       expect(() => SimpleAgentTemplateSchema.parse(invalidConfig)).toThrow();
     });
 
-    it('should validate empty toolNodeIds array', () => {
+    it('should validate valid configuration', () => {
       const validConfig = {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        toolNodeIds: [],
       };
 
       expect(() => SimpleAgentTemplateSchema.parse(validConfig)).not.toThrow();
@@ -144,7 +141,7 @@ describe('SimpleAgentTemplate', () => {
     let mockTool2: DynamicStructuredTool;
     let mockToolNode1: CompiledGraphNode<DynamicStructuredTool>;
     let mockToolNode2: CompiledGraphNode<DynamicStructuredTool>;
-    let compiledNodes: Map<string, CompiledGraphNode>;
+    let connectedNodes: Map<string, CompiledGraphNode>;
 
     beforeEach(() => {
       mockTool1 = { name: 'tool-1', invoke: vi.fn() } as any;
@@ -164,7 +161,7 @@ describe('SimpleAgentTemplate', () => {
         instance: mockTool2,
       };
 
-      compiledNodes = new Map([
+      connectedNodes = new Map([
         ['tool-1', mockToolNode1],
         ['tool-2', mockToolNode2],
       ]);
@@ -179,7 +176,10 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const result = await template.create(config, compiledNodes, {
+      // Use empty connected nodes map
+      const emptyConnectedNodes = new Map<string, CompiledGraphNode>();
+
+      const result = await template.create(config, emptyConnectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -200,17 +200,19 @@ describe('SimpleAgentTemplate', () => {
       });
     });
 
-    it('should create simple agent with empty toolNodeIds', async () => {
+    it('should create simple agent without connected tools', async () => {
       const config = {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        toolNodeIds: [],
       };
 
-      const result = await template.create(config, compiledNodes, {
+      // Create empty connected nodes map
+      const emptyConnectedNodes = new Map<string, CompiledGraphNode>();
+
+      const result = await template.create(config, emptyConnectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -220,17 +222,16 @@ describe('SimpleAgentTemplate', () => {
       expect(result.config).not.toHaveProperty('toolNodeIds');
     });
 
-    it('should create simple agent with tools', async () => {
+    it('should create simple agent with connected tools', async () => {
       const config = {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        toolNodeIds: ['tool-1', 'tool-2'],
       };
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -252,30 +253,29 @@ describe('SimpleAgentTemplate', () => {
       });
     });
 
-    it('should handle missing tool nodes gracefully', async () => {
+    it('should handle connected tool nodes', async () => {
       const config = {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        toolNodeIds: ['tool-1', 'non-existent-tool', 'tool-2'],
       };
 
-      const _result = await template.create(config, compiledNodes, {
+      const _result = await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
       });
 
-      // Should only add existing tools (compact removes undefined values)
+      // Should add all connected tool nodes
       expect(mockSimpleAgent.addTool).toHaveBeenCalledTimes(2);
       expect(mockSimpleAgent.addTool).toHaveBeenCalledWith(mockTool1);
       expect(mockSimpleAgent.addTool).toHaveBeenCalledWith(mockTool2);
     });
 
     it('should handle partial tool availability', async () => {
-      const partialCompiledNodes = new Map([
+      const partialConnectedNodes = new Map([
         ['tool-1', mockToolNode1],
         // tool-2 is missing
       ]);
@@ -286,10 +286,9 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        toolNodeIds: ['tool-1', 'tool-2'],
       };
 
-      const _result = await template.create(config, partialCompiledNodes, {
+      const _result = await template.create(config, partialConnectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -330,7 +329,7 @@ describe('SimpleAgentTemplate', () => {
       };
 
       await expect(
-        failingTemplate.create(config, compiledNodes, {
+        failingTemplate.create(config, connectedNodes, {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -350,11 +349,10 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        toolNodeIds: ['tool-1'],
       };
 
       await expect(
-        template.create(config, compiledNodes, {
+        template.create(config, connectedNodes, {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -369,10 +367,9 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Custom instructions',
         name: 'Custom Agent',
         invokeModelName: 'gpt-3.5-turbo',
-        toolNodeIds: ['tool-1'],
       };
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -397,7 +394,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

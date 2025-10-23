@@ -34,7 +34,7 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof GithubResourceTemplateSchema>,
-    _compiledNodes: Map<string, any>,
+    _connectedNodes: Map<string, any>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<IShellResourceOutput> {
     if (this.githubResource.setup) {

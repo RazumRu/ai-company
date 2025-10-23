@@ -26,7 +26,7 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof WebSearchToolTemplateSchema>,
-    _compiledNodes: Map<string, any>,
+    _connectedNodes: Map<string, any>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     return this.webSearchTool.build(config);
