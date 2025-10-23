@@ -25,7 +25,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
   typeof ShellToolTemplateSchema
 > {
   readonly name = 'shell-tool';
-  readonly description = 'Shell execution tool';
+  readonly description = 'Execute shell commands in the selected runtime';
   readonly schema = ShellToolTemplateSchema;
 
   readonly inputs = [
@@ -56,13 +56,14 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof ShellToolTemplateSchema>,
-    connectedNodes: Map<string, CompiledGraphNode>,
+    inputNodes: Map<string, CompiledGraphNode>,
+    _outputNodes: Map<string, CompiledGraphNode>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
-    // Find runtime node from connected nodes
+    // Find runtime node from input nodes
     let runtimeNode: CompiledGraphNode<BaseRuntime> | undefined;
 
-    for (const [_nodeId, node] of connectedNodes) {
+    for (const [_nodeId, node] of inputNodes) {
       if (node.type === NodeKind.Runtime) {
         runtimeNode = node as CompiledGraphNode<BaseRuntime>;
         break;
@@ -72,14 +73,14 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     if (!runtimeNode) {
       throw new NotFoundException(
         'NODE_NOT_FOUND',
-        `Runtime node not found in connected nodes`,
+        `Runtime node not found in input nodes`,
       );
     }
 
-    // Collect resource nodes from connected nodes
+    // Collect resource nodes from input nodes
     const resourceNodeIds: string[] = [];
 
-    for (const [nodeId, node] of connectedNodes) {
+    for (const [nodeId, node] of inputNodes) {
       if (node.type === NodeKind.Resource) {
         resourceNodeIds.push(nodeId);
       }
@@ -88,7 +89,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     // Discover and collect environment variables and information from resources
     const { env, information, initScripts } = this.collectResourceData(
       resourceNodeIds,
-      connectedNodes,
+      inputNodes,
     );
 
     // Execute init scripts on the runtime

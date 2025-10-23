@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { IShellResourceOutput } from '../../../graph-resources/graph-resources.types';
 import { GithubResource } from '../../../graph-resources/services/github-resource';
+import { CompiledGraphNode } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
   NodeBaseTemplateMetadata,
@@ -25,7 +26,8 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
   IShellResourceOutput
 > {
   readonly name = 'github-resource';
-  readonly description = 'GithHub resource';
+  readonly description =
+    'GitHub resource providing environment for shell execution';
   readonly schema = GithubResourceTemplateSchema;
 
   readonly outputs = [
@@ -42,7 +44,8 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof GithubResourceTemplateSchema>,
-    _connectedNodes: Map<string, any>,
+    _inputNodes: Map<string, CompiledGraphNode>,
+    _outputNodes: Map<string, CompiledGraphNode>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<IShellResourceOutput> {
     if (this.githubResource.setup) {

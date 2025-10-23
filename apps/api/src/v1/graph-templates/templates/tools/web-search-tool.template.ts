@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { WebSearchTool } from '../../../agent-tools/tools/web-search.tool';
+import { CompiledGraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
@@ -18,7 +19,7 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
   typeof WebSearchToolTemplateSchema
 > {
   readonly name = 'web-search-tool';
-  readonly description = 'Web search tool';
+  readonly description = 'Search the web for information';
   readonly schema = WebSearchToolTemplateSchema;
 
   readonly outputs = [
@@ -35,7 +36,8 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof WebSearchToolTemplateSchema>,
-    _connectedNodes: Map<string, any>,
+    _inputNodes: Map<string, CompiledGraphNode>,
+    _outputNodes: Map<string, CompiledGraphNode>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     return this.webSearchTool.build(config);

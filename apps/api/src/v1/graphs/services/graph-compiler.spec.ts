@@ -120,7 +120,8 @@ describe('GraphCompiler', () => {
       // Metadata is no longer returned in CompiledGraph
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         expect.objectContaining({
           name: 'Test Graph',
           version: '1.0.0',
@@ -497,17 +498,20 @@ describe('GraphCompiler', () => {
       const entity = createMockGraphEntity(schema);
       await compiler.compile(entity);
 
-      // Verify tool create was called with compiled nodes map containing runtime
+      // Verify tool create was called with input and output nodes maps containing runtime
       expect(toolTemplate.create).toHaveBeenCalledWith(
         {},
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         expect.objectContaining({
           nodeId: 'tool-1',
         }),
       );
 
-      const connectedNodesArg = toolTemplate.create.mock.calls[0]![1];
-      expect(connectedNodesArg.has('runtime-1')).toBe(true);
+      const inputNodesArg = toolTemplate.create.mock.calls[0]![1];
+      const outputNodesArg = toolTemplate.create.mock.calls[0]![2];
+      expect(inputNodesArg.has('runtime-1')).toBe(true);
+      expect(outputNodesArg.has('runtime-1')).toBe(true);
     });
   });
 
@@ -1184,12 +1188,14 @@ describe('GraphCompiler', () => {
       // Verify that template.create was called with the correct metadata
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'test-node-456',
+          temporary: false,
         },
       );
     });
@@ -1271,23 +1277,27 @@ describe('GraphCompiler', () => {
       // Verify that each template received the correct nodeId
       expect(mockTemplate1.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'node-1',
+          temporary: false,
         },
       );
 
       expect(mockTemplate2.create).toHaveBeenCalledWith(
         schema.nodes[1]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'node-2',
+          temporary: false,
         },
       );
     });
@@ -1341,11 +1351,13 @@ describe('GraphCompiler', () => {
       // Verify that all metadata properties are preserved
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         {
           name: 'Test Graph',
           ...extendedMetadata,
           nodeId: 'test-node-456',
+          temporary: false,
         },
       );
     });
@@ -1429,7 +1441,7 @@ describe('GraphCompiler', () => {
           {
             id: 'trigger-node',
             template: 'manual-trigger',
-            config: { agentId: 'agent-node' },
+            config: {},
           },
         ],
         edges: [],
@@ -1446,45 +1458,53 @@ describe('GraphCompiler', () => {
       // Verify that each template received the correct metadata
       expect(mockAgentTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'agent-node',
+          temporary: false,
         },
       );
 
       expect(mockToolTemplate.create).toHaveBeenCalledWith(
         schema.nodes[1]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'tool-node',
+          temporary: false,
         },
       );
 
       expect(mockRuntimeTemplate.create).toHaveBeenCalledWith(
         schema.nodes[2]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'runtime-node',
+          temporary: false,
         },
       );
 
       expect(mockTriggerTemplate.create).toHaveBeenCalledWith(
         schema.nodes[3]!.config,
-        expect.any(Map),
+        expect.any(Map), // inputNodes
+        expect.any(Map), // outputNodes
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
           version: '1.0.0',
           nodeId: 'trigger-node',
+          temporary: false,
         },
       );
     });

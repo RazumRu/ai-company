@@ -33,7 +33,8 @@ export abstract class NodeBaseTemplate<
 
   abstract create(
     config: z.infer<TConfig>,
-    connectedNodes: Map<string, CompiledGraphNode>,
+    inputNodes: Map<string, CompiledGraphNode>,
+    outputNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<TOutput>;
 }

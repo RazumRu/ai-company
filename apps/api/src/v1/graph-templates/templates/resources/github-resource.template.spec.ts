@@ -42,7 +42,9 @@ describe('GithubResourceTemplate', () => {
     });
 
     it('should have correct description', () => {
-      expect(template.description).toBe('GithHub resource');
+      expect(template.description).toBe(
+        'GitHub resource providing environment for shell execution',
+      );
     });
 
     it('should have correct kind', () => {
@@ -115,7 +117,7 @@ describe('GithubResourceTemplate', () => {
         version: '1.0.0',
       };
 
-      const result = await template.create(config, compiledNodes, metadata);
+      const result = await template.create(config, new Map(), compiledNodes, metadata);
 
       expect(mockGithubResource.setup).toHaveBeenCalledWith(config);
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);
@@ -151,7 +153,7 @@ describe('GithubResourceTemplate', () => {
         version: '1.0.0',
       };
 
-      const result = await template.create(config, compiledNodes, metadata);
+      const result = await template.create(config, new Map(), compiledNodes, metadata);
 
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);
       expect(result).toBe(mockResourceOutput);
@@ -173,7 +175,7 @@ describe('GithubResourceTemplate', () => {
       };
 
       await expect(
-        template.create(config, compiledNodes, metadata),
+        template.create(config, new Map(), compiledNodes, metadata),
       ).rejects.toThrow('Setup failed');
     });
 
@@ -194,7 +196,7 @@ describe('GithubResourceTemplate', () => {
       };
 
       await expect(
-        template.create(config, compiledNodes, metadata),
+        template.create(config, new Map(), compiledNodes, metadata),
       ).rejects.toThrow('GetData failed');
     });
 
@@ -226,7 +228,7 @@ describe('GithubResourceTemplate', () => {
         version: '1.0.0',
       };
 
-      await template.create(config, compiledNodes, metadata);
+      await template.create(config, new Map(), compiledNodes, metadata);
 
       expect(mockGithubResource.setup).toHaveBeenCalledWith(config);
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);

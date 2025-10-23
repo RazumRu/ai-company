@@ -57,6 +57,7 @@ export const GraphMetadataSchema = z.object({
   graphId: z.string(),
   name: z.string().optional(),
   version: z.string(),
+  temporary: z.boolean().optional(),
 });
 
 // Complete graph schema

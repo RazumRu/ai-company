@@ -29,7 +29,8 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   SimpleAgentTemplateResult<SimpleAgentSchemaType>
 > {
   readonly name = 'simple-agent';
-  readonly description = 'Simple agent with configurable tools and runtime';
+  readonly description =
+    'Configurable agent that can use connected tools and triggers';
   readonly schema = SimpleAgentTemplateSchema;
 
   readonly inputs = [
@@ -59,13 +60,14 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
   async create(
     config: SimpleAgentTemplateSchemaType,
-    connectedNodes: Map<string, CompiledGraphNode>,
+    inputNodes: Map<string, CompiledGraphNode>,
+    _outputNodes: Map<string, CompiledGraphNode>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<SimpleAgentTemplateResult<SimpleAgentSchemaType>> {
     const agent = await this.agentFactoryService.create(SimpleAgent);
     const { ...agentConfig } = config;
 
-    for (const [_nodeId, node] of connectedNodes) {
+    for (const [_nodeId, node] of inputNodes) {
       if (node.type === NodeKind.Tool) {
         agent.addTool(
           (node as CompiledGraphNode<DynamicStructuredTool>).instance,

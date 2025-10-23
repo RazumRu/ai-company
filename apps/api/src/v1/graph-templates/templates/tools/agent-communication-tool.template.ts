@@ -27,7 +27,6 @@ export const AgentCommunicationToolTemplateSchema = z
     metadata: z
       .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
       .optional(),
-    agentId: z.string().min(1, 'Target agent id is required'),
   })
   .strict();
 
@@ -63,7 +62,8 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof AgentCommunicationToolTemplateSchema>,
-    connectedNodes: Map<string, CompiledGraphNode>,
+    inputNodes: Map<string, CompiledGraphNode>,
+    outputNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     const invokeAgent: AgentCommunicationToolOptions['invokeAgent'] = async <
@@ -73,16 +73,27 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       childThreadId: string,
       runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
     ): Promise<T> => {
-      const agentNode = connectedNodes.get(config.agentId) as
-        | CompiledGraphNode<
-            SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
-          >
-        | undefined;
+      // Search for agent nodes in output nodes
+      const agentNodes = Array.from(outputNodes.values()).filter(
+        (node) => node.type === NodeKind.SimpleAgent,
+      ) as CompiledGraphNode<
+        SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
+      >[];
+
+      if (agentNodes.length === 0) {
+        throw new NotFoundException(
+          'TARGET_AGENT_NOT_FOUND',
+          'No agent nodes found in output nodes for communication',
+        );
+      }
+
+      // Use the first available agent (in the future, this could be made configurable)
+      const agentNode = agentNodes[0];
 
       if (!agentNode) {
         throw new NotFoundException(
           'TARGET_AGENT_NOT_FOUND',
-          `Agent ${config.agentId} is not available for communication`,
+          'No valid agent node found for communication',
         );
       }
 

@@ -37,7 +37,7 @@ describe('WebSearchToolTemplate', () => {
     });
 
     it('should have correct description', () => {
-      expect(template.description).toBe('Web search tool');
+      expect(template.description).toBe('Search the web for information');
     });
 
     it('should have correct kind', () => {
@@ -79,7 +79,7 @@ describe('WebSearchToolTemplate', () => {
       const config = {};
       const compiledNodes = new Map<string, CompiledGraphNode>();
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -98,7 +98,7 @@ describe('WebSearchToolTemplate', () => {
         timeout: 5000,
       } as any;
 
-      const result = await template.create(config, new Map(), {
+      const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -117,7 +117,7 @@ describe('WebSearchToolTemplate', () => {
       const config = {};
 
       await expect(
-        template.create(config, new Map(), {
+        template.create(config, new Map(), new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -131,10 +131,10 @@ describe('WebSearchToolTemplate', () => {
 
       const config = {};
       const compiledNodes = new Map([
-        ['some-node', { id: 'some-node', type: 'runtime', instance: {} }],
+        ['some-node', { id: 'some-node', type: NodeKind.Runtime, template: 'some-template', instance: {} }],
       ]);
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -157,7 +157,7 @@ describe('WebSearchToolTemplate', () => {
         customHeaders: { 'User-Agent': 'test-agent' },
       } as any;
 
-      await template.create(config, new Map(), {
+      await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -172,7 +172,7 @@ describe('WebSearchToolTemplate', () => {
 
       const config = {};
 
-      const result = await template.create(config, new Map(), {
+      const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -193,12 +193,12 @@ describe('WebSearchToolTemplate', () => {
       const config1 = { instance: 1 } as any;
       const config2 = { instance: 2 } as any;
 
-      const result1 = await template.create(config1, new Map(), {
+      const result1 = await template.create(config1, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
       });
-      const result2 = await template.create(config2, new Map(), {
+      const result2 = await template.create(config2, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

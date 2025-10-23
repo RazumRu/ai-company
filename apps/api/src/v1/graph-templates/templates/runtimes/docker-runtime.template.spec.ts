@@ -203,7 +203,7 @@ describe('DockerRuntimeTemplate', () => {
         image: 'python:3.11',
       };
 
-      const result = await template.create(config, new Map(), {
+      const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -246,7 +246,7 @@ describe('DockerRuntimeTemplate', () => {
         initScript: ['npm ci', 'npm run build'],
       };
 
-      const result = await template.create(config, new Map(), {
+      const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -283,7 +283,7 @@ describe('DockerRuntimeTemplate', () => {
       };
 
       await expect(
-        template.create(config, new Map(), {
+        template.create(config, new Map(), new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -305,7 +305,7 @@ describe('DockerRuntimeTemplate', () => {
         image: 'alpine:latest',
       };
 
-      await template.create(config, new Map(), {
+      await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -334,7 +334,7 @@ describe('DockerRuntimeTemplate', () => {
         initScriptTimeoutMs: 300000, // 5 minutes
       };
 
-      const result = await template.create(config, new Map(), {
+      const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -374,7 +374,7 @@ describe('DockerRuntimeTemplate', () => {
         enableDind: true,
       };
 
-      const result = await template.create(config, new Map(), {
+      const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -414,7 +414,7 @@ describe('DockerRuntimeTemplate', () => {
         enableDind: false,
       };
 
-      const result = await template.create(config, new Map(), {
+      const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

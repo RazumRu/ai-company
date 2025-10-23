@@ -23,7 +23,6 @@ import {
  */
 export const ManualTriggerTemplateSchema = z
   .object({
-    agentId: z.string().min(1),
     threadId: z.string().optional(),
   })
   .strict();
@@ -59,23 +58,26 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
 
   async create(
     config: ManualTriggerTemplateSchemaType,
-    connectedNodes: Map<string, CompiledGraphNode>,
+    inputNodes: Map<string, CompiledGraphNode>,
+    outputNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<ManualTrigger> {
-    // Get the target agent node
-    const agentNode = connectedNodes.get(config.agentId) as
-      | CompiledGraphNode<
-          SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
-        >
-      | undefined;
+    // Search for agent nodes in output nodes
+    const agentNodes = Array.from(outputNodes.values()).filter(
+      (node) => node.type === NodeKind.SimpleAgent,
+    ) as CompiledGraphNode<
+      SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
+    >[];
 
-    if (!agentNode) {
+    if (agentNodes.length === 0) {
       throw new NotFoundException(
         'AGENT_NOT_FOUND',
-        `Agent ${config.agentId} not found for trigger`,
+        `No agent nodes found in output connections for trigger`,
       );
     }
 
+    // Use the first agent node found
+    const agentNode = agentNodes[0]!;
     const agent = agentNode.instance.agent as SimpleAgent;
     const agentConfig = agentNode.instance.config;
 
@@ -95,7 +97,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
         runnableConfig: RunnableConfig<BaseAgentConfigurable>,
       ) => {
         const threadId = `${metadata.graphId}:${runnableConfig.configurable?.thread_id || v4()}`;
-        const checkpointNs = `${threadId}:${config.agentId}`;
+        const checkpointNs = `${threadId}:${agentNode.id}`;
 
         // Enrich runnableConfig with graph and node metadata
         const enrichedConfig: RunnableConfig<BaseAgentConfigurable> = {
@@ -103,7 +105,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
           configurable: {
             ...runnableConfig.configurable,
             graph_id: metadata.graphId,
-            node_id: config.agentId,
+            node_id: agentNode.id,
             thread_id: threadId,
             checkpoint_ns: checkpointNs,
           },

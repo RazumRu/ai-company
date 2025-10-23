@@ -48,7 +48,7 @@ describe('SimpleAgentTemplate', () => {
 
     it('should have correct description', () => {
       expect(template.description).toBe(
-        'Simple agent with configurable tools and runtime',
+        'Configurable agent that can use connected tools and triggers',
       );
     });
 
@@ -179,7 +179,7 @@ describe('SimpleAgentTemplate', () => {
       // Use empty connected nodes map
       const emptyConnectedNodes = new Map<string, CompiledGraphNode>();
 
-      const result = await template.create(config, emptyConnectedNodes, {
+      const result = await template.create(config, emptyConnectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -212,7 +212,7 @@ describe('SimpleAgentTemplate', () => {
       // Create empty connected nodes map
       const emptyConnectedNodes = new Map<string, CompiledGraphNode>();
 
-      const result = await template.create(config, emptyConnectedNodes, {
+      const result = await template.create(config, emptyConnectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -231,7 +231,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const result = await template.create(config, connectedNodes, {
+      const result = await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -262,7 +262,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const _result = await template.create(config, connectedNodes, {
+      const _result = await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -288,7 +288,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const _result = await template.create(config, partialConnectedNodes, {
+      const _result = await template.create(config, partialConnectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -329,7 +329,7 @@ describe('SimpleAgentTemplate', () => {
       };
 
       await expect(
-        failingTemplate.create(config, connectedNodes, {
+        failingTemplate.create(config, connectedNodes, new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -352,7 +352,7 @@ describe('SimpleAgentTemplate', () => {
       };
 
       await expect(
-        template.create(config, connectedNodes, {
+        template.create(config, connectedNodes, new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -369,7 +369,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-3.5-turbo',
       };
 
-      const result = await template.create(config, connectedNodes, {
+      const result = await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -394,7 +394,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const result = await template.create(config, connectedNodes, {
+      const result = await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

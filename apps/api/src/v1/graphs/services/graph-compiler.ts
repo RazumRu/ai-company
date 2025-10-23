@@ -226,6 +226,7 @@ export class GraphCompiler {
       name: entity.name,
       version: entity.version,
       graphId: entity.id,
+      temporary: entity.temporary,
       ...(additionalMetadata || {}),
     };
 
@@ -382,16 +383,21 @@ export class GraphCompiler {
       );
     }
 
-    // Create connected nodes map from connected node IDs
-    const connectedNodes = new Map<string, CompiledGraphNode>();
+    // Create input and output nodes maps from connected node IDs
+    const inputNodes = new Map<string, CompiledGraphNode>();
+    const outputNodes = new Map<string, CompiledGraphNode>();
+
     for (const connectedId of connectedNodeIds) {
       const connectedNode = compiledNodes.get(connectedId);
       if (connectedNode) {
-        connectedNodes.set(connectedId, connectedNode);
+        // For now, we'll put all connected nodes in both input and output
+        // This can be refined later based on edge direction
+        inputNodes.set(connectedId, connectedNode);
+        outputNodes.set(connectedId, connectedNode);
       }
     }
 
-    const instance = await template.create(config, connectedNodes, {
+    const instance = await template.create(config, inputNodes, outputNodes, {
       ...metadata,
       nodeId: node.id,
     });

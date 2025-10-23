@@ -156,9 +156,7 @@ export const createMockGraphData = (
       {
         id: 'trigger-1',
         template: 'manual-trigger',
-        config: {
-          agentId: 'agent-1',
-        },
+        config: {},
       },
     ],
     edges: [

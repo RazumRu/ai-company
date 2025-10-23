@@ -62,37 +62,16 @@ describe('AgentCommunicationToolTemplate', () => {
   });
 
   describe('schema validation', () => {
-    it('should validate required agentId', () => {
-      const validConfig = {
-        agentId: 'target-agent-1',
-      };
+    it('should validate empty config', () => {
+      const validConfig = {};
 
       expect(() =>
         AgentCommunicationToolTemplateSchema.parse(validConfig),
       ).not.toThrow();
     });
 
-    it('should reject missing agentId', () => {
-      const invalidConfig = {};
-
-      expect(() =>
-        AgentCommunicationToolTemplateSchema.parse(invalidConfig),
-      ).toThrow();
-    });
-
-    it('should reject empty agentId', () => {
-      const invalidConfig = {
-        agentId: '',
-      };
-
-      expect(() =>
-        AgentCommunicationToolTemplateSchema.parse(invalidConfig),
-      ).toThrow();
-    });
-
     it('should validate optional metadata', () => {
       const validConfig = {
-        agentId: 'target-agent-1',
         metadata: {
           priority: 'high',
           timeout: 30000,
@@ -146,11 +125,9 @@ describe('AgentCommunicationToolTemplate', () => {
       const mockTool = { name: 'agent-communication' } as DynamicStructuredTool;
       mockAgentCommunicationTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        agentId: 'target-agent-1',
-      };
+      const config = {};
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -167,15 +144,18 @@ describe('AgentCommunicationToolTemplate', () => {
       const mockTool = { name: 'agent-communication', invoke: vi.fn() } as any;
       mockAgentCommunicationTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        agentId: 'non-existent-agent',
-      };
+      const config = {};
 
-      const _tool = await template.create(config, emptyCompiledNodes, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      const _tool = await template.create(
+        config,
+        new Map(),
+        emptyCompiledNodes,
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
 
       // Get the invokeAgent function that was passed to build
       const buildCall = (mockAgentCommunicationTool.build as any).mock
@@ -193,15 +173,18 @@ describe('AgentCommunicationToolTemplate', () => {
       const mockTool = { name: 'agent-communication', invoke: vi.fn() } as any;
       mockAgentCommunicationTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {
-        agentId: 'missing-agent',
-      };
+      const config = {};
 
-      const _tool = await template.create(config, emptyCompiledNodes, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      const _tool = await template.create(
+        config,
+        new Map(),
+        emptyCompiledNodes,
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
 
       // Get the invokeAgent function that was passed to build
       const buildCall = (mockAgentCommunicationTool.build as any).mock
@@ -212,7 +195,7 @@ describe('AgentCommunicationToolTemplate', () => {
       await expect(
         invokeAgent(['test message'], 'child-thread-1', {} as any),
       ).rejects.toThrow(
-        'Agent missing-agent is not available for communication',
+        'No agent nodes found in output nodes for communication',
       );
     });
 
@@ -225,11 +208,9 @@ describe('AgentCommunicationToolTemplate', () => {
           return { name: 'agent-communication' } as DynamicStructuredTool;
         });
 
-      const config = {
-        agentId: 'target-agent-1',
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -275,11 +256,9 @@ describe('AgentCommunicationToolTemplate', () => {
           return { name: 'agent-communication' } as DynamicStructuredTool;
         });
 
-      const config = {
-        agentId: 'target-agent-1',
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -317,11 +296,9 @@ describe('AgentCommunicationToolTemplate', () => {
           return { name: 'agent-communication' } as DynamicStructuredTool;
         });
 
-      const config = {
-        agentId: 'target-agent-1',
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -351,11 +328,9 @@ describe('AgentCommunicationToolTemplate', () => {
       const mockError = new Error('Agent execution failed');
       mockAgent.run = vi.fn().mockRejectedValue(mockError);
 
-      const config = {
-        agentId: 'target-agent-1',
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -379,11 +354,9 @@ describe('AgentCommunicationToolTemplate', () => {
           return { name: 'agent-communication' } as DynamicStructuredTool;
         });
 
-      const config = {
-        agentId: 'target-agent-1',
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

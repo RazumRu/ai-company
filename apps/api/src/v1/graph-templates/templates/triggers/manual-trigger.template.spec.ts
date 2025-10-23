@@ -77,9 +77,9 @@ describe('ManualTriggerTemplate', () => {
   });
 
   describe('schema validation', () => {
-    it('should validate required agentId', () => {
+    it('should validate optional threadId', () => {
       const validConfig = {
-        agentId: 'agent-1',
+        threadId: 'thread-1',
       };
 
       expect(() =>
@@ -87,23 +87,16 @@ describe('ManualTriggerTemplate', () => {
       ).not.toThrow();
     });
 
-    it('should reject missing agentId', () => {
-      const invalidConfig = {};
+    it('should work with empty config', () => {
+      const validConfig = {};
 
-      expect(() => ManualTriggerTemplateSchema.parse(invalidConfig)).toThrow();
-    });
-
-    it('should reject empty agentId', () => {
-      const invalidConfig = {
-        agentId: '',
-      };
-
-      expect(() => ManualTriggerTemplateSchema.parse(invalidConfig)).toThrow();
+      expect(() =>
+        ManualTriggerTemplateSchema.parse(validConfig),
+      ).not.toThrow();
     });
 
     it('should validate optional threadId', () => {
       const validConfig = {
-        agentId: 'agent-1',
         threadId: 'thread-1',
       };
 
@@ -114,15 +107,11 @@ describe('ManualTriggerTemplate', () => {
   });
 
   describe('create', () => {
-    it('should throw NotFoundException when agent node not found', async () => {
-      const emptyCompiledNodes = new Map();
-
-      const config = {
-        agentId: 'non-existent-agent',
-      };
+    it('should throw NotFoundException when no agent nodes found in output connections', async () => {
+      const config = {};
 
       await expect(
-        template.create(config, emptyCompiledNodes, {
+        template.create(config, new Map(), new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -131,19 +120,17 @@ describe('ManualTriggerTemplate', () => {
     });
 
     it('should throw NotFoundException with correct error message', async () => {
-      const emptyCompiledNodes = new Map();
-
-      const config = {
-        agentId: 'missing-agent',
-      };
+      const config = {};
 
       await expect(
-        template.create(config, emptyCompiledNodes, {
+        template.create(config, new Map(), new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
         }),
-      ).rejects.toThrow('Agent missing-agent not found for trigger');
+      ).rejects.toThrow(
+        'No agent nodes found in output connections for trigger',
+      );
     });
 
     it('should create manual trigger with valid agent node', async () => {
@@ -165,14 +152,13 @@ describe('ManualTriggerTemplate', () => {
         },
       };
 
-      const compiledNodes = new Map([['agent-1', agentNode]]);
+      const outputNodes = new Map([['agent-1', agentNode]]);
 
       const config = {
-        agentId: 'agent-1',
         threadId: 'test-thread',
       };
 
-      const result = await template.create(config, compiledNodes, {
+      const result = await template.create(config, new Map(), outputNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -214,11 +200,10 @@ describe('ManualTriggerTemplate', () => {
       const compiledNodes = new Map([['agent-1', agentNode]]);
 
       const config = {
-        agentId: 'agent-1',
         threadId: 'test-thread',
       };
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -257,7 +242,7 @@ describe('ManualTriggerTemplate', () => {
         graph_id: 'test-graph',
         node_id: 'agent-1', // Uses agent's nodeId
       });
-      // checkpoint_ns should be threadId:agentId
+      // checkpoint_ns should be threadId:agentNodeId
       expect(actualRunnableConfig.configurable.checkpoint_ns).toBe(
         `${expectedFullThreadId}:agent-1`,
       );
@@ -284,11 +269,9 @@ describe('ManualTriggerTemplate', () => {
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
 
-      const config = {
-        agentId: 'agent-1',
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -352,11 +335,9 @@ describe('ManualTriggerTemplate', () => {
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
 
-      const config = {
-        agentId: 'agent-1',
-      };
+      const config = {};
 
-      await template.create(config, compiledNodes, {
+      await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -400,7 +381,7 @@ describe('ManualTriggerTemplate', () => {
       expect(actualRunnableConfig.configurable.graph_id).toBe('test-graph'); // Should be overridden with template metadata
       expect(actualRunnableConfig.configurable.node_id).toBe('agent-1'); // Uses agent's nodeId
 
-      // checkpoint_ns should be threadId:agentId
+      // checkpoint_ns should be threadId:agentNodeId
       expect(actualRunnableConfig.configurable.checkpoint_ns).toBe(
         `${expectedFullThreadId}:agent-1`,
       );

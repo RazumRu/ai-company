@@ -43,7 +43,9 @@ describe('ShellToolTemplate', () => {
     });
 
     it('should have correct description', () => {
-      expect(template.description).toBe('Shell execution tool');
+      expect(template.description).toBe(
+        'Execute shell commands in the selected runtime',
+      );
     });
 
     it('should have correct kind', () => {
@@ -112,7 +114,7 @@ describe('ShellToolTemplate', () => {
 
       const config = {};
 
-      const result = await template.create(config, connectedNodes, {
+      const result = await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -132,7 +134,7 @@ describe('ShellToolTemplate', () => {
       const config = {};
 
       await expect(
-        template.create(config, connectedNodes, {
+        template.create(config, connectedNodes, new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -146,7 +148,7 @@ describe('ShellToolTemplate', () => {
       const config = {};
 
       try {
-        await template.create(config, connectedNodes, {
+        await template.create(config, connectedNodes, new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -155,7 +157,7 @@ describe('ShellToolTemplate', () => {
       } catch (error: any) {
         expect(error).toBeInstanceOf(NotFoundException);
         expect(error.message).toContain(
-          'Runtime node not found in connected nodes',
+          'Runtime node not found in input nodes',
         );
       }
     });
@@ -185,7 +187,7 @@ describe('ShellToolTemplate', () => {
       const config = {};
 
       await expect(
-        template.create(config, connectedNodes, {
+        template.create(config, connectedNodes, new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -229,7 +231,7 @@ describe('ShellToolTemplate', () => {
         ['runtime-1', mockRuntimeNode1],
       ]);
       const config1 = {};
-      await template.create(config1, connectedNodes1, {
+      await template.create(config1, connectedNodes1, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -245,7 +247,7 @@ describe('ShellToolTemplate', () => {
         ['runtime-2', mockRuntimeNode2],
       ]);
       const config2 = {};
-      await template.create(config2, connectedNodes2, {
+      await template.create(config2, connectedNodes2, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -265,7 +267,7 @@ describe('ShellToolTemplate', () => {
       const config = {};
 
       await expect(
-        template.create(config, connectedNodes, {
+        template.create(config, connectedNodes, new Map(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -320,7 +322,7 @@ describe('ShellToolTemplate', () => {
 
       const config = {};
 
-      const result = await template.create(config, connectedNodes, {
+      const result = await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -391,7 +393,7 @@ describe('ShellToolTemplate', () => {
 
       const config = {};
 
-      const result = await template.create(config, connectedNodes, {
+      const result = await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -430,7 +432,7 @@ describe('ShellToolTemplate', () => {
 
       const config = {};
 
-      const result = await template.create(config, connectedNodes, {
+      const result = await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -490,7 +492,7 @@ describe('ShellToolTemplate', () => {
 
       const config = {};
 
-      await template.create(config, connectedNodes, {
+      await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -578,7 +580,7 @@ describe('ShellToolTemplate', () => {
 
       const config = {};
 
-      await template.create(config, connectedNodes, {
+      await template.create(config, connectedNodes, new Map(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

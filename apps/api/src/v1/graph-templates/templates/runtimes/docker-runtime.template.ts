@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
+import { CompiledGraphNode } from '../../../graphs/graphs.types';
 import { RuntimeType } from '../../../runtime/runtime.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
@@ -78,14 +79,20 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof DockerRuntimeTemplateSchema>,
-    connectedNodes: Map<string, any>,
+    inputNodes: Map<string, CompiledGraphNode>,
+    outputNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<BaseRuntime> {
     // Automatically add graph_id and node_id labels for container management
-    const systemLabels = {
+    const systemLabels: Record<string, string> = {
       'ai-company/graph_id': metadata.graphId,
       'ai-company/node_id': metadata.nodeId,
     };
+
+    // Add temporary label if the graph is temporary
+    if (metadata.temporary) {
+      systemLabels['ai-company/temporary'] = 'true';
+    }
 
     // Merge user-provided labels with system labels (system labels take precedence)
     const mergedLabels = {
