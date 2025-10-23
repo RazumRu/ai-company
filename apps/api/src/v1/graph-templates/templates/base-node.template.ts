@@ -15,9 +15,9 @@ export interface NodeBaseTemplateMetadata extends GraphMetadataSchemaType {
   nodeId: string;
 }
 
-export type AllowedTemplate =
-  | { type: 'kind'; value: NodeKind; required?: boolean }
-  | { type: 'template'; value: string; required?: boolean };
+export type NodeConnection =
+  | { type: 'kind'; value: NodeKind; required?: boolean; multiple: boolean }
+  | { type: 'template'; value: string; required?: boolean; multiple: boolean };
 
 export abstract class NodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
@@ -28,7 +28,8 @@ export abstract class NodeBaseTemplate<
   abstract readonly kind: NodeKind;
   abstract readonly schema: TConfig;
 
-  readonly allowedTemplates: readonly AllowedTemplate[] = [];
+  readonly inputs: readonly NodeConnection[] = [];
+  readonly outputs: readonly NodeConnection[] = [];
 
   abstract create(
     config: z.infer<TConfig>,

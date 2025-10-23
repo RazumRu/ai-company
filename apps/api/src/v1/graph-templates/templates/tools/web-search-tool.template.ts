@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { WebSearchTool } from '../../../agent-tools/tools/web-search.tool';
+import { NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
   NodeBaseTemplateMetadata,
@@ -19,6 +20,14 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
   readonly name = 'web-search-tool';
   readonly description = 'Web search tool';
   readonly schema = WebSearchToolTemplateSchema;
+
+  readonly outputs = [
+    {
+      type: 'kind',
+      value: NodeKind.SimpleAgent,
+      multiple: true,
+    },
+  ] as const;
 
   constructor(private readonly webSearchTool: WebSearchTool) {
     super();

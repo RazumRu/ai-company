@@ -64,6 +64,14 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
   readonly description = 'Docker runtime environment for executing code';
   readonly schema = DockerRuntimeTemplateSchema;
 
+  readonly outputs = [
+    {
+      type: 'template',
+      value: 'shell-tool',
+      multiple: true,
+    },
+  ] as const;
+
   constructor(private readonly runtimeProvider: RuntimeProvider) {
     super();
   }

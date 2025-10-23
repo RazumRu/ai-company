@@ -107,16 +107,16 @@ export class GraphCompiler {
     }
 
     // Target template declares allowed incoming connections with discriminated union
-    // allowedTemplates is now required - if empty array, no connections allowed
-    if (targetTemplate.allowedTemplates) {
-      if (targetTemplate.allowedTemplates.length === 0) {
+    // inputs is now required - if empty array, no connections allowed
+    if (targetTemplate.inputs) {
+      if (targetTemplate.inputs.length === 0) {
         throw new BadRequestException(
           'WRONG_EDGE_CONNECTION',
-          `Template '${targetTemplateName}' does not accept any connections (allowedTemplates is empty), but got '${sourceTemplateName}' (kind: ${sourceTemplate.kind})`,
+          `Template '${targetTemplateName}' does not accept any connections (inputs is empty), but got '${sourceTemplateName}' (kind: ${sourceTemplate.kind})`,
         );
       }
 
-      const isAllowed = targetTemplate.allowedTemplates.some((rule: any) => {
+      const isAllowed = targetTemplate.inputs.some((rule: any) => {
         if (!rule || typeof rule !== 'object') return false;
         if (rule.type === 'template') return rule.value === sourceTemplateName;
         if (rule.type === 'kind') return rule.value === sourceTemplate.kind;
@@ -124,7 +124,7 @@ export class GraphCompiler {
       });
 
       if (!isAllowed) {
-        const rulesHuman = targetTemplate.allowedTemplates
+        const rulesHuman = targetTemplate.inputs
           .map((r: any) => `${r.type}:${r.value}`)
           .join(', ');
         throw new BadRequestException(
@@ -133,22 +133,50 @@ export class GraphCompiler {
         );
       }
     }
+
+    // Source template declares allowed outgoing connections with discriminated union
+    // outputs is now required - if empty array, no connections allowed
+    if (sourceTemplate.outputs) {
+      if (sourceTemplate.outputs.length === 0) {
+        throw new BadRequestException(
+          'WRONG_EDGE_CONNECTION',
+          `Template '${sourceTemplateName}' does not provide any connections (outputs is empty), but trying to connect to '${targetTemplateName}' (kind: ${targetTemplate.kind})`,
+        );
+      }
+
+      const isAllowed = sourceTemplate.outputs.some((rule: any) => {
+        if (!rule || typeof rule !== 'object') return false;
+        if (rule.type === 'template') return rule.value === targetTemplateName;
+        if (rule.type === 'kind') return rule.value === targetTemplate.kind;
+        return false;
+      });
+
+      if (!isAllowed) {
+        const rulesHuman = sourceTemplate.outputs
+          .map((r: any) => `${r.type}:${r.value}`)
+          .join(', ');
+        throw new BadRequestException(
+          'WRONG_EDGE_CONNECTION',
+          `Template '${sourceTemplateName}' only provides to [${rulesHuman}], but trying to connect to '${targetTemplateName}' (kind: ${targetTemplate.kind})`,
+        );
+      }
+    }
   }
 
   /**
-   * Validates that templates with required=true in allowedTemplates have at least one connection
+   * Validates that templates with required=true in inputs have at least one connection
    */
   private validateRequiredConnections(nodes: any[], edges: any[]): void {
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
     for (const node of nodes) {
       const template = this.templateRegistry.getTemplate(node.template);
-      if (!template || !template.allowedTemplates) {
+      if (!template || !template.inputs) {
         continue;
       }
 
       // Find required connection rules
-      const requiredRules = template.allowedTemplates.filter(
+      const requiredRules = template.inputs.filter(
         (rule: any) => rule.required === true,
       );
 

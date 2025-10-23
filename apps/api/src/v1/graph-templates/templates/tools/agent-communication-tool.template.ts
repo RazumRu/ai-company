@@ -13,7 +13,7 @@ import {
 } from '../../../agent-tools/tools/agent-communication.tool';
 import { AgentOutput } from '../../../agents/services/agents/base-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import { CompiledGraphNode } from '../../../graphs/graphs.types';
+import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
 import {
@@ -40,6 +40,22 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
   readonly description =
     'Allows an agent to initiate communication with another agent via an internal request pipeline.';
   readonly schema = AgentCommunicationToolTemplateSchema;
+
+  readonly inputs = [
+    {
+      type: 'kind',
+      value: NodeKind.SimpleAgent,
+      multiple: true,
+    },
+  ] as const;
+
+  readonly outputs = [
+    {
+      type: 'kind',
+      value: NodeKind.SimpleAgent,
+      multiple: true,
+    },
+  ] as const;
 
   constructor(private readonly agentCommunicationTool: AgentCommunicationTool) {
     super();

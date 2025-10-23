@@ -16,22 +16,32 @@ describe('TemplatesService', () => {
       description: 'Test tool template',
       kind: NodeKind.Tool,
       schema: z.object({ name: z.string() }),
-      allowedTemplates: [
-        { type: 'template', value: 'github-resource' },
-        { type: 'kind', value: NodeKind.Resource },
+      inputs: [
+        { type: 'template', value: 'github-resource', multiple: true },
+        {
+          type: 'kind',
+          value: NodeKind.Runtime,
+          required: true,
+          multiple: false,
+        },
       ],
+      outputs: [],
     },
     {
       name: 'test-runtime-template',
       description: 'Test runtime template',
       kind: NodeKind.Runtime,
       schema: z.object({ image: z.string() }),
+      inputs: [],
+      outputs: [],
     },
     {
       name: 'test-agent-template',
       description: 'Test agent template',
       kind: NodeKind.SimpleAgent,
       schema: z.object({ model: z.string() }),
+      inputs: [],
+      outputs: [],
     },
   ];
 
@@ -83,7 +93,8 @@ describe('TemplatesService', () => {
           required: ['image'],
           type: 'object',
         },
-        allowedTemplates: undefined,
+        inputs: [],
+        outputs: [],
       });
       expect(result[1]).toEqual({
         name: 'test-agent-template',
@@ -96,7 +107,8 @@ describe('TemplatesService', () => {
           required: ['model'],
           type: 'object',
         },
-        allowedTemplates: undefined,
+        inputs: [],
+        outputs: [],
       });
       expect(result[2]).toEqual({
         name: 'test-tool-template',
@@ -109,10 +121,16 @@ describe('TemplatesService', () => {
           required: ['name'],
           type: 'object',
         },
-        allowedTemplates: [
-          { type: 'template', value: 'github-resource' },
-          { type: 'kind', value: NodeKind.Resource },
+        inputs: [
+          { type: 'template', value: 'github-resource', multiple: true },
+          {
+            type: 'kind',
+            value: NodeKind.Runtime,
+            required: true,
+            multiple: false,
+          },
         ],
+        outputs: [],
       });
       expect(templateRegistry.getAllTemplates).toHaveBeenCalledOnce();
     });

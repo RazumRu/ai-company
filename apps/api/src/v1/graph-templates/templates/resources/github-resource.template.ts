@@ -28,6 +28,14 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
   readonly description = 'GithHub resource';
   readonly schema = GithubResourceTemplateSchema;
 
+  readonly outputs = [
+    {
+      type: 'template',
+      value: 'shell-tool',
+      multiple: true,
+    },
+  ] as const;
+
   constructor(private readonly githubResource: GithubResource) {
     super();
   }

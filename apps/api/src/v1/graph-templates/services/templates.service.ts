@@ -17,9 +17,8 @@ export class TemplatesService {
       description: template.description,
       kind: template.kind,
       schema: this.serializeSchema(template.schema),
-      allowedTemplates: template.allowedTemplates
-        ? [...template.allowedTemplates]
-        : undefined,
+      inputs: template.inputs ? [...template.inputs] : undefined,
+      outputs: template.outputs ? [...template.outputs] : undefined,
     }));
 
     return sortBy(list, 'kind');

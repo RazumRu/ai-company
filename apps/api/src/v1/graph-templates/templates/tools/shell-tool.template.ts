@@ -28,15 +28,25 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
   readonly description = 'Shell execution tool';
   readonly schema = ShellToolTemplateSchema;
 
-  readonly allowedTemplates = [
+  readonly inputs = [
     {
       type: 'template',
       value: 'github-resource',
+      multiple: true,
     },
     {
       type: 'kind',
       value: NodeKind.Runtime,
       required: true,
+      multiple: false,
+    },
+  ] as const;
+
+  readonly outputs = [
+    {
+      type: 'kind',
+      value: NodeKind.SimpleAgent,
+      multiple: true,
     },
   ] as const;
 

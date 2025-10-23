@@ -762,7 +762,7 @@ describe('GraphCompiler', () => {
       );
     });
 
-    it('should validate template connection restrictions based on allowedTemplates', () => {
+    it('should validate template connection restrictions based on inputs', () => {
       const schema = {
         nodes: [
           {
@@ -789,9 +789,9 @@ describe('GraphCompiler', () => {
 
       const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
       mockResourceTemplate.name = 'forbidden-resource';
-      mockResourceTemplate.allowedTemplates = [
-        { type: 'template', value: 'github-resource' },
-        { type: 'kind', value: NodeKind.Resource },
+      mockResourceTemplate.inputs = [
+        { type: 'template', value: 'github-resource', multiple: true },
+        { type: 'kind', value: NodeKind.Resource, multiple: true },
       ];
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -831,8 +831,8 @@ describe('GraphCompiler', () => {
 
       const mockToolTemplate = createMockTemplate(NodeKind.Tool);
       mockToolTemplate.name = 'shell-tool';
-      mockToolTemplate.allowedTemplates = [
-        { type: 'template', value: 'github-resource' },
+      mockToolTemplate.inputs = [
+        { type: 'template', value: 'github-resource', multiple: true },
       ];
 
       const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
@@ -849,7 +849,7 @@ describe('GraphCompiler', () => {
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
 
-    it('should validate template connection restrictions based on allowedTemplates', () => {
+    it('should validate template connection restrictions based on inputs', () => {
       const schema = {
         nodes: [
           {
@@ -884,9 +884,9 @@ describe('GraphCompiler', () => {
 
       const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
       mockResourceTemplate.name = 'forbidden-resource';
-      mockResourceTemplate.allowedTemplates = [
-        { type: 'template', value: 'github-resource' },
-        { type: 'kind', value: NodeKind.Resource },
+      mockResourceTemplate.inputs = [
+        { type: 'template', value: 'github-resource', multiple: true },
+        { type: 'kind', value: NodeKind.Resource, multiple: true },
       ];
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -902,7 +902,7 @@ describe('GraphCompiler', () => {
       );
     });
 
-    it('should validate template connection restrictions based on allowedTemplateKinds', () => {
+    it('should validate template connection restrictions based on input kinds', () => {
       const schema = {
         nodes: [
           {
@@ -929,8 +929,8 @@ describe('GraphCompiler', () => {
 
       const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
       mockResourceTemplate.name = 'some-resource';
-      mockResourceTemplate.allowedTemplates = [
-        { type: 'kind', value: NodeKind.Resource },
+      mockResourceTemplate.inputs = [
+        { type: 'kind', value: NodeKind.Resource, multiple: true },
       ];
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
@@ -973,7 +973,9 @@ describe('GraphCompiler', () => {
 
       const mockToolTemplate = createMockTemplate(NodeKind.Tool);
       mockToolTemplate.name = 'shell-tool';
-      mockToolTemplate.allowedTemplates = ['github-resource'];
+      mockToolTemplate.inputs = [
+        { type: 'template', value: 'github-resource', multiple: true },
+      ];
 
       const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
       mockResourceTemplate.name = 'github-resource';
@@ -1021,7 +1023,7 @@ describe('GraphCompiler', () => {
 
       const mockToolTemplate = createMockTemplate(NodeKind.Tool);
       mockToolTemplate.name = 'unrestricted-tool';
-      // No allowedTemplates defined
+      // No inputs defined
 
       const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
       mockResourceTemplate.name = 'any-resource';
@@ -1041,6 +1043,98 @@ describe('GraphCompiler', () => {
       // Should not throw on connection rules
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
+
+    it('should validate template output restrictions based on outputs', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'source-node',
+            template: 'restricted-source',
+            config: {},
+          },
+          {
+            id: 'target-node',
+            template: 'forbidden-target',
+            config: {},
+          },
+        ],
+        edges: [
+          {
+            from: 'source-node',
+            to: 'target-node',
+          },
+        ],
+      };
+
+      const mockSourceTemplate = createMockTemplate(NodeKind.Tool);
+      mockSourceTemplate.name = 'restricted-source';
+      mockSourceTemplate.outputs = [
+        { type: 'template', value: 'allowed-target', multiple: true },
+      ];
+
+      const mockTargetTemplate = createMockTemplate(NodeKind.Resource);
+      mockTargetTemplate.name = 'forbidden-target';
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+        if (name === 'restricted-source') return mockSourceTemplate;
+        if (name === 'forbidden-target') return mockTargetTemplate;
+        return undefined;
+      });
+
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        "Template 'restricted-source' only provides to [template:allowed-target], but trying to connect to 'forbidden-target' (kind: resource)",
+      );
+    });
+
+    it('should validate template output restrictions with empty outputs', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'source-node',
+            template: 'no-output-source',
+            config: {},
+          },
+          {
+            id: 'target-node',
+            template: 'any-target',
+            config: {},
+          },
+        ],
+        edges: [
+          {
+            from: 'source-node',
+            to: 'target-node',
+          },
+        ],
+      };
+
+      const mockSourceTemplate = createMockTemplate(NodeKind.Tool);
+      mockSourceTemplate.name = 'no-output-source';
+      mockSourceTemplate.outputs = [];
+
+      const mockTargetTemplate = createMockTemplate(NodeKind.Resource);
+      mockTargetTemplate.name = 'any-target';
+
+      vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
+      vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+        if (name === 'no-output-source') return mockSourceTemplate;
+        if (name === 'any-target') return mockTargetTemplate;
+        return undefined;
+      });
+
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        "Template 'no-output-source' does not provide any connections (outputs is empty), but trying to connect to 'any-target' (kind: resource)",
+      );
+    });
   });
 
   describe('Metadata Propagation', () => {
@@ -1050,6 +1144,8 @@ describe('GraphCompiler', () => {
         description: 'Mock template',
         schema: {} as any,
         kind: NodeKind.SimpleAgent,
+        inputs: [],
+        outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'mock-instance' }),
       };
 
@@ -1104,6 +1200,8 @@ describe('GraphCompiler', () => {
         name: 'simple-agent',
         description: 'Mock template 1',
         schema: {} as any,
+        inputs: [],
+        outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'mock-instance-1' }),
       };
       const mockTemplate2 = {
@@ -1111,6 +1209,8 @@ describe('GraphCompiler', () => {
         name: 'simple-agent-2',
         description: 'Mock template 2',
         schema: {} as any,
+        inputs: [],
+        outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'mock-instance-2' }),
       };
 
@@ -1198,6 +1298,8 @@ describe('GraphCompiler', () => {
         description: 'Mock template',
         schema: {} as any,
         kind: NodeKind.SimpleAgent,
+        inputs: [],
+        outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'mock-instance' }),
       };
 
@@ -1254,6 +1356,8 @@ describe('GraphCompiler', () => {
         name: 'simple-agent',
         description: 'Agent template',
         schema: {} as any,
+        inputs: [],
+        outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'agent-instance' }),
       };
       const mockToolTemplate = {
@@ -1261,6 +1365,8 @@ describe('GraphCompiler', () => {
         name: 'web-search-tool',
         description: 'Tool template',
         schema: {} as any,
+        inputs: [],
+        outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'tool-instance' }),
       };
       const mockRuntimeTemplate = {
@@ -1268,6 +1374,8 @@ describe('GraphCompiler', () => {
         name: 'docker-runtime',
         description: 'Runtime template',
         schema: {} as any,
+        inputs: [],
+        outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'runtime-instance' }),
       };
       const mockTriggerTemplate = {
@@ -1275,6 +1383,8 @@ describe('GraphCompiler', () => {
         name: 'manual-trigger',
         description: 'Trigger template',
         schema: {} as any,
+        inputs: [],
+        outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'trigger-instance' }),
       };
 
@@ -1517,24 +1627,45 @@ describe('GraphCompiler', () => {
         if (name === 'shell-tool') {
           return {
             name: 'shell-tool',
-            kind: 'tool',
-            allowedTemplates: [
+            kind: NodeKind.Tool,
+            description: 'Shell tool',
+            schema: {} as any,
+            inputs: [
               {
                 type: 'kind',
-                value: 'runtime',
+                value: NodeKind.Runtime,
                 required: true,
+                multiple: false,
               },
             ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
         if (name === 'docker-runtime') {
           return {
             name: 'docker-runtime',
-            kind: 'runtime',
-            allowedTemplates: [],
+            kind: NodeKind.Runtime,
+            description: 'Docker runtime',
+            schema: {} as any,
+            inputs: [],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
-        return null;
+        return undefined;
       });
 
       // Mock template registry hasTemplate method
@@ -1569,17 +1700,28 @@ describe('GraphCompiler', () => {
         if (name === 'shell-tool') {
           return {
             name: 'shell-tool',
-            kind: 'tool',
-            allowedTemplates: [
+            kind: NodeKind.Tool,
+            description: 'Shell tool',
+            schema: {} as any,
+            inputs: [
               {
                 type: 'kind',
-                value: 'runtime',
+                value: NodeKind.Runtime,
                 required: true,
+                multiple: false,
               },
             ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
-        return null;
+        return undefined;
       });
 
       // Mock template registry hasTemplate method
@@ -1638,36 +1780,68 @@ describe('GraphCompiler', () => {
         if (name === 'shell-tool') {
           return {
             name: 'shell-tool',
-            kind: 'tool',
-            allowedTemplates: [
+            kind: NodeKind.Tool,
+            description: 'Shell tool',
+            schema: {} as any,
+            inputs: [
               {
                 type: 'kind',
-                value: 'runtime',
+                value: NodeKind.Runtime,
                 required: true,
+                multiple: false,
               },
               {
                 type: 'template',
                 value: 'github-resource',
                 required: true,
+                multiple: false,
               },
             ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
         if (name === 'docker-runtime') {
           return {
             name: 'docker-runtime',
-            kind: 'runtime',
-            allowedTemplates: [],
+            kind: NodeKind.Runtime,
+            description: 'Docker runtime',
+            schema: {} as any,
+            inputs: [],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
         if (name === 'github-resource') {
           return {
             name: 'github-resource',
-            kind: 'resource',
-            allowedTemplates: [],
+            kind: NodeKind.Resource,
+            description: 'GitHub resource',
+            schema: {} as any,
+            inputs: [],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
-        return null;
+        return undefined;
       });
 
       // Mock template registry hasTemplate method
@@ -1714,29 +1888,51 @@ describe('GraphCompiler', () => {
         if (name === 'shell-tool') {
           return {
             name: 'shell-tool',
-            kind: 'tool',
-            allowedTemplates: [
+            kind: NodeKind.Tool,
+            description: 'Shell tool',
+            schema: {} as any,
+            inputs: [
               {
                 type: 'kind',
-                value: 'runtime',
+                value: NodeKind.Runtime,
                 required: true,
+                multiple: false,
               },
               {
                 type: 'template',
                 value: 'github-resource',
                 required: true,
+                multiple: false,
               },
             ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
         if (name === 'docker-runtime') {
           return {
             name: 'docker-runtime',
-            kind: 'runtime',
-            allowedTemplates: [],
+            kind: NodeKind.Runtime,
+            description: 'Docker runtime',
+            schema: {} as any,
+            inputs: [],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
-        return null;
+        return undefined;
       });
 
       // Mock template registry hasTemplate method
@@ -1780,17 +1976,28 @@ describe('GraphCompiler', () => {
         if (name === 'simple-agent') {
           return {
             name: 'simple-agent',
-            kind: 'simpleAgent',
-            allowedTemplates: [
+            kind: NodeKind.SimpleAgent,
+            description: 'Simple agent',
+            schema: {} as any,
+            inputs: [
               {
                 type: 'kind',
-                value: 'tool',
+                value: NodeKind.Tool,
                 required: false,
+                multiple: true,
               },
             ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
-        return null;
+        return undefined;
       });
 
       // Mock template registry hasTemplate method
@@ -1807,7 +2014,7 @@ describe('GraphCompiler', () => {
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
 
-    it('should pass validation when template has empty allowedTemplates', () => {
+    it('should pass validation when template has empty inputs', () => {
       // Arrange
       const schema = {
         nodes: [
@@ -1825,11 +2032,21 @@ describe('GraphCompiler', () => {
         if (name === 'web-search-tool') {
           return {
             name: 'web-search-tool',
-            kind: 'tool',
-            allowedTemplates: [],
+            kind: NodeKind.Tool,
+            description: 'Web search tool',
+            schema: {} as any,
+            inputs: [],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
           };
         }
-        return null;
+        return undefined;
       });
 
       // Mock template registry hasTemplate method

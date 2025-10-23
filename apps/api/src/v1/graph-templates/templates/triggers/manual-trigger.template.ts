@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { ManualTrigger } from '../../../agent-triggers/services/manual-trigger';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import { CompiledGraphNode } from '../../../graphs/graphs.types';
+import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
 import {
@@ -41,6 +41,14 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
   readonly name = 'manual-trigger';
   readonly description = 'Manual trigger for direct agent invocation';
   readonly schema = ManualTriggerTemplateSchema;
+
+  readonly outputs = [
+    {
+      type: 'kind',
+      value: NodeKind.SimpleAgent,
+      multiple: true,
+    },
+  ] as const;
 
   constructor(
     private readonly moduleRef: ModuleRef,

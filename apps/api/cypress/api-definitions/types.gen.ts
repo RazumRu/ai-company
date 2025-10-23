@@ -484,16 +484,32 @@ export type TemplateDto = {
   schema: {
     [key: string]: unknown;
   };
-  allowedTemplates?: Array<
+  inputs?: Array<
     | {
         type: 'kind';
         value: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource';
         required?: boolean;
+        multiple: boolean;
       }
     | {
         type: 'template';
         value: string;
         required?: boolean;
+        multiple: boolean;
+      }
+  >;
+  outputs?: Array<
+    | {
+        type: 'kind';
+        value: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource';
+        required?: boolean;
+        multiple: boolean;
+      }
+    | {
+        type: 'template';
+        value: string;
+        required?: boolean;
+        multiple: boolean;
       }
   >;
 };

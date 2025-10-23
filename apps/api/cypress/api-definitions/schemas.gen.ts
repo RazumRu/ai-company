@@ -650,7 +650,7 @@ export const TemplateDtoSchema = {
       },
       additionalProperties: {},
     },
-    allowedTemplates: {
+    inputs: {
       type: 'array',
       items: {
         anyOf: [
@@ -668,8 +668,11 @@ export const TemplateDtoSchema = {
               required: {
                 type: 'boolean',
               },
+              multiple: {
+                type: 'boolean',
+              },
             },
-            required: ['type', 'value'],
+            required: ['type', 'value', 'multiple'],
           },
           {
             type: 'object',
@@ -684,8 +687,57 @@ export const TemplateDtoSchema = {
               required: {
                 type: 'boolean',
               },
+              multiple: {
+                type: 'boolean',
+              },
             },
-            required: ['type', 'value'],
+            required: ['type', 'value', 'multiple'],
+          },
+        ],
+      },
+    },
+    outputs: {
+      type: 'array',
+      items: {
+        anyOf: [
+          {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                const: 'kind',
+              },
+              value: {
+                type: 'string',
+                enum: ['runtime', 'tool', 'simpleAgent', 'trigger', 'resource'],
+              },
+              required: {
+                type: 'boolean',
+              },
+              multiple: {
+                type: 'boolean',
+              },
+            },
+            required: ['type', 'value', 'multiple'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                const: 'template',
+              },
+              value: {
+                type: 'string',
+              },
+              required: {
+                type: 'boolean',
+              },
+              multiple: {
+                type: 'boolean',
+              },
+            },
+            required: ['type', 'value', 'multiple'],
           },
         ],
       },

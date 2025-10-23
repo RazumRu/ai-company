@@ -32,14 +32,24 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   readonly description = 'Simple agent with configurable tools and runtime';
   readonly schema = SimpleAgentTemplateSchema;
 
-  readonly allowedTemplates = [
+  readonly inputs = [
     {
       type: 'kind',
       value: NodeKind.Tool,
+      multiple: true,
     },
     {
       type: 'kind',
       value: NodeKind.Trigger,
+      multiple: true,
+    },
+  ] as const;
+
+  readonly outputs = [
+    {
+      type: 'template',
+      value: 'agent-communication-tool',
+      multiple: true,
     },
   ] as const;
 

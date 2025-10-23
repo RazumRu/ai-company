@@ -53,6 +53,32 @@ describe('ShellToolTemplate', () => {
     it('should have correct schema', () => {
       expect(template.schema).toBe(ShellToolTemplateSchema);
     });
+
+    it('should have correct inputs', () => {
+      expect(template.inputs).toEqual([
+        {
+          type: 'template',
+          value: 'github-resource',
+          multiple: true,
+        },
+        {
+          type: 'kind',
+          value: NodeKind.Runtime,
+          required: true,
+          multiple: false,
+        },
+      ]);
+    });
+
+    it('should have correct outputs', () => {
+      expect(template.outputs).toEqual([
+        {
+          type: 'kind',
+          value: NodeKind.SimpleAgent,
+          multiple: true,
+        },
+      ]);
+    });
   });
 
   describe('schema validation', () => {

@@ -54,7 +54,7 @@ export const SimpleAgentSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'If true, enforces that the agent must call a tool before finishing. Uses tool_usage_guard node to inject system messages requiring tool calls. Defaults to true.',
+      'If true, enforces that the agent must call a tool before finishing. Uses tool_usage_guard node to inject system messages requiring tool calls.',
     ),
 });
 
