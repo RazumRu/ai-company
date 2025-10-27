@@ -20,6 +20,7 @@ export const environment = () =>
       'postgresql://postgres:postgres@localhost:5439/ai_company',
     ),
     llmBaseUrl: getEnv('LLM_BASE_URL', 'http://localhost:4000'),
+    redisUrl: getEnv('REDIS_URL', 'redis://localhost:6379'),
 
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY', 'master'),

@@ -2,9 +2,7 @@ import {
   CreateGraphDto,
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
-  GetNodeMessagesData,
   GraphDto,
-  GraphMessagesResponseDto,
   UpdateGraphDto,
 } from '../../api-definitions';
 import { GraphDtoSchema } from '../../api-definitions/schemas.gen';
@@ -81,7 +79,7 @@ export const runGraph = (id: string, headers = reqHeaders) => {
     method: 'POST',
     headers,
     failOnStatusCode: false,
-    timeout: 120000,
+    timeout: 180000,
   });
 };
 
@@ -116,20 +114,7 @@ export const executeTrigger = (
     timeout: 180000,
   });
 
-export const getNodeMessages = (
-  graphId: string,
-  nodeId: string,
-  query?: GetNodeMessagesData['query'],
-  headers = reqHeaders,
-) => {
-  return cy.request<GraphMessagesResponseDto>({
-    url: `/api/v1/graphs/${graphId}/nodes/${nodeId}/messages`,
-    method: 'GET',
-    headers,
-    failOnStatusCode: false,
-    qs: query,
-  });
-};
+// getNodeMessages removed in favor of thread-based endpoints (see threads.helper.ts)
 
 export const validateGraph = (data: GraphDto) => {
   cy.validateSchema(data, GraphDtoSchema);

@@ -241,7 +241,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const result = await template.create(config, connectedNodes, new Map(), {
+      const result = await template.create(config, new Map(), connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -272,7 +272,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const _result = await template.create(config, connectedNodes, new Map(), {
+      const _result = await template.create(config, new Map(), connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -300,8 +300,8 @@ describe('SimpleAgentTemplate', () => {
 
       const _result = await template.create(
         config,
-        partialConnectedNodes,
         new Map(),
+        partialConnectedNodes,
         {
           graphId: 'test-graph',
           nodeId: 'test-node',
@@ -367,7 +367,7 @@ describe('SimpleAgentTemplate', () => {
       };
 
       await expect(
-        template.create(config, connectedNodes, new Map(), {
+        template.create(config, new Map(), connectedNodes, {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -384,7 +384,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-3.5-turbo',
       };
 
-      const result = await template.create(config, connectedNodes, new Map(), {
+      const result = await template.create(config, new Map(), connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -409,7 +409,7 @@ describe('SimpleAgentTemplate', () => {
         invokeModelName: 'gpt-5-mini',
       };
 
-      const result = await template.create(config, connectedNodes, new Map(), {
+      const result = await template.create(config, new Map(), connectedNodes, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

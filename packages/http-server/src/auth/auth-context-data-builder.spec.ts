@@ -207,5 +207,3 @@ describe('AuthContextDataBuilder', () => {
     });
   });
 });
-
-

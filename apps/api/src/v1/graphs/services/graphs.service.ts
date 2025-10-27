@@ -1,29 +1,20 @@
-import { BaseMessage, HumanMessage } from '@langchain/core/messages';
-import { Checkpoint } from '@langchain/langgraph-checkpoint';
+import { HumanMessage } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
-import { AdditionalParams, TypeormService } from '@packages/typeorm';
+import { TypeormService } from '@packages/typeorm';
 import { isUndefined, omitBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
-import {
-  GraphCheckpointsDao,
-  SearchTerms,
-} from '../../agents/dao/graph-checkpoints.dao';
-import { GraphCheckpointEntity } from '../../agents/entity/graph-chekpoints.entity';
+import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
-  GetGraphMessagesQueryDto,
   GraphDto,
-  GraphMessagesResponseDto,
-  MessageDto,
-  ThreadMessagesDto,
   UpdateGraphDto,
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
@@ -257,124 +248,6 @@ export class GraphsService {
     return {
       threadId: res.threadId,
       checkpointNs: res.checkpointNs,
-    };
-  }
-
-  async getNodeMessages(
-    graphId: string,
-    nodeId: string,
-    query: GetGraphMessagesQueryDto,
-  ): Promise<GraphMessagesResponseDto> {
-    // Verify graph exists and user has access
-    const graph = await this.graphDao.getOne({
-      id: graphId,
-      createdBy: this.authContext.checkSub(),
-    });
-
-    if (!graph) {
-      throw new NotFoundException('GRAPH_NOT_FOUND');
-    }
-
-    // Verify the node exists in the graph schema
-    const nodeExists = graph.schema.nodes.some((node) => node.id === nodeId);
-    if (!nodeExists) {
-      throw new NotFoundException(
-        'NODE_NOT_FOUND',
-        `Node ${nodeId} not found in graph`,
-      );
-    }
-
-    // Use the full threadId directly from query
-    // Format: threadId = graphId:threadComponent, checkpointNs = graphId:threadComponent:nodeId
-    const fullThreadId = query.threadId;
-    const checkpointNs = `${query.threadId}:${nodeId}`;
-
-    const checkpointQuery: SearchTerms & AdditionalParams = {
-      checkpointNs,
-      threadId: fullThreadId,
-      order: { createdAt: 'DESC' },
-    };
-
-    const checkpoints = await this.graphCheckpointsDao.getAll(checkpointQuery);
-
-    if (checkpoints.length === 0) {
-      // No checkpoints found, return empty threads
-      return {
-        nodeId,
-        threads: [],
-      };
-    }
-
-    // Group checkpoints by threadId - collect ALL checkpoints for each thread
-    const threadCheckpointsMap = new Map<string, GraphCheckpointEntity[]>();
-
-    for (const checkpoint of checkpoints) {
-      const threadId = checkpoint.threadId;
-      if (!threadCheckpointsMap.has(threadId)) {
-        threadCheckpointsMap.set(threadId, []);
-      }
-      threadCheckpointsMap.get(threadId)!.push(checkpoint);
-    }
-
-    // Process each thread's messages
-    const threads: ThreadMessagesDto[] = [];
-
-    for (const [
-      threadId,
-      threadCheckpoints,
-    ] of threadCheckpointsMap.entries()) {
-      // Use a Map to track unique messages by a composite key
-      // This prevents duplicates while preserving insertion order
-      const uniqueMessagesMap = new Map<string, BaseMessage>();
-
-      // Sort checkpoints by createdAt ASC to process from oldest to newest
-      const sortedCheckpoints = threadCheckpoints.sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
-
-      // Collect messages from all checkpoints
-      for (const checkpoint of sortedCheckpoints) {
-        const deserializedCheckpoint: Checkpoint =
-          await this.pgCheckpointSaver.serde.loadsTyped(
-            checkpoint.type,
-            checkpoint.checkpoint.toString('utf8'),
-          );
-
-        const messagesChannel =
-          deserializedCheckpoint.channel_values?.['messages'];
-
-        if (Array.isArray(messagesChannel)) {
-          for (const msg of messagesChannel) {
-            // Create a unique key based on message type, content, and position
-            const msgKey = `${msg.getType()}-${typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}-${msg.id || ''}`;
-            uniqueMessagesMap.set(msgKey, msg);
-          }
-        }
-      }
-
-      // Convert to array
-      let messages = Array.from(uniqueMessagesMap.values());
-
-      // Apply limit if specified
-      if (query.limit && messages.length > query.limit) {
-        messages = messages.slice(-query.limit); // Get the last N messages
-      }
-
-      // Transform messages to DTOs
-      const messageDtos: MessageDto[] = messages.map((msg) =>
-        this.messageTransformer.transformMessageToDto(msg),
-      );
-
-      threads.push({
-        id: threadId,
-        messages: messageDtos,
-      });
-    }
-
-    return {
-      nodeId,
-      threads,
     };
   }
 }

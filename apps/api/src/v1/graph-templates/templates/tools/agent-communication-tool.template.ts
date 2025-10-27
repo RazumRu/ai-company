@@ -24,6 +24,7 @@ import {
 
 export const AgentCommunicationToolTemplateSchema = z
   .object({
+    description: z.string().optional(),
     metadata: z
       .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
       .optional(),
@@ -62,7 +63,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof AgentCommunicationToolTemplateSchema>,
-    inputNodes: Map<string, CompiledGraphNode>,
+    _inputNodes: Map<string, CompiledGraphNode>,
     outputNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
@@ -70,7 +71,6 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       T = AgentOutput,
     >(
       messages: string[],
-      childThreadId: string,
       runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
     ): Promise<T> => {
       // Search for agent nodes in output nodes
@@ -102,22 +102,28 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
 
       const preparedMessages = messages.map((msg) => new HumanMessage(msg));
 
-      // Get parent thread ID from runnableConfig
-      const parentThreadId =
-        runnableConfig.configurable?.thread_id || `inter-agent-${Date.now()}`;
+      // Get parent thread ID from runnableConfig - this should be the root thread ID from the trigger
+      // If not present, use the current thread_id as fallback
+      const rootParentThreadId =
+        runnableConfig.configurable?.parent_thread_id ||
+        runnableConfig.configurable?.thread_id ||
+        `inter-agent-${Date.now()}`;
 
-      // Compute effective child thread ID using the pattern: ${parentThreadId}__${childThreadId}
-      // This allows for persistent conversations with child agents while maintaining separation
-      const effectiveThreadId = `${parentThreadId}__${childThreadId}`;
+      // For consistent conversation flow, use the parent thread ID as the base
+      // This ensures that Agent A -> Agent B -> Agent C all share the same conversation context
+      // Only create a new thread ID if we don't have a parent thread ID
+      const effectiveThreadId = `${rootParentThreadId}__${metadata.nodeId}`;
 
       // Enrich runnableConfig with graph and node metadata
+      // Pass the same parent_thread_id so all agents share the same internal thread
       const enrichedConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
         ...runnableConfig,
         configurable: {
           ...runnableConfig.configurable,
           thread_id: effectiveThreadId,
           graph_id: metadata.graphId,
-          node_id: metadata.nodeId,
+          node_id: agentNode.id,
+          parent_thread_id: rootParentThreadId,
         },
       };
 
@@ -133,6 +139,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
 
     return this.agentCommunicationTool.build({
       invokeAgent,
+      description: config.description,
     });
   }
 }

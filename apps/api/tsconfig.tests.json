@@ -2,13 +2,14 @@
   "extends": "../../tsconfig.tests.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./",
     "plugins": [
       { "transform": "typescript-nestjs-swagger-plugin" },
     ]
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "cypress/**/*",
   ],
   "ts-node": {
     "compiler": "ts-patch/compiler"

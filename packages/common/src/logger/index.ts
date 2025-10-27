@@ -5,4 +5,4 @@ import { SentryService } from './sentry.service';
 
 export * from './logger.types';
 
-export { SentryService, BaseLogger, DefaultLogger, LoggerModule };
+export { BaseLogger, DefaultLogger, LoggerModule, SentryService };

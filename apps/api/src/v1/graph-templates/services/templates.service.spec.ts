@@ -79,7 +79,6 @@ describe('TemplatesService', () => {
       // Act
       const result = await service.getAllTemplates();
 
-      // Assert
       expect(result).toHaveLength(3);
       // Templates are sorted by kind, so runtime comes first
       expect(result[0]).toEqual({
@@ -142,7 +141,6 @@ describe('TemplatesService', () => {
       // Act
       const result = await service.getAllTemplates();
 
-      // Assert
       expect(result).toEqual([]);
       expect(templateRegistry.getAllTemplates).toHaveBeenCalledOnce();
     });
@@ -165,7 +163,6 @@ describe('TemplatesService', () => {
       // Act
       const result = await service.getAllTemplates();
 
-      // Assert
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
         name: 'complex-template',
@@ -193,7 +190,6 @@ describe('TemplatesService', () => {
       // Act
       const result = (service as any).serializeSchema(schema);
 
-      // Assert
       expect(result).toEqual({
         $schema: 'http://json-schema.org/draft-07/schema#',
         additionalProperties: false,
@@ -210,7 +206,6 @@ describe('TemplatesService', () => {
       // Act
       const result = (service as any).serializeSchema(schema);
 
-      // Assert
       expect(result).toEqual({
         $schema: 'http://json-schema.org/draft-07/schema#',
         type: 'string',

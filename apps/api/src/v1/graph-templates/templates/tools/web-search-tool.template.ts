@@ -22,7 +22,7 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
   readonly description = 'Search the web for information';
   readonly schema = WebSearchToolTemplateSchema;
 
-  readonly outputs = [
+  readonly inputs = [
     {
       type: 'kind',
       value: NodeKind.SimpleAgent,

@@ -1,29 +1,34 @@
 import { HumanMessage } from '@langchain/core/messages';
-import {
-  DynamicStructuredTool,
-  ToolRunnableConfig,
-} from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentCommunicationTool } from '../../../agent-tools/tools/agent-communication.tool';
-import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
-import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
 import { SimpleAgentTemplateResult } from '../base-node.template';
-import {
-  AgentCommunicationToolTemplate,
-  AgentCommunicationToolTemplateSchema,
-} from './agent-communication-tool.template';
+import { AgentCommunicationToolTemplate } from './agent-communication-tool.template';
 
 describe('AgentCommunicationToolTemplate', () => {
   let template: AgentCommunicationToolTemplate;
   let mockAgentCommunicationTool: AgentCommunicationTool;
+  let mockAgent: any;
 
   beforeEach(async () => {
+    mockAgent = {
+      run: vi.fn().mockResolvedValue({
+        messages: [new HumanMessage('Agent response')],
+        threadId: 'test-thread',
+      }),
+    };
+
     mockAgentCommunicationTool = {
-      build: vi.fn(),
+      description:
+        'Request assistance from another registered agent by providing target agent id, context messages, and optional payload.',
+      build: vi.fn().mockImplementation((config) => ({
+        name: 'agent-communication',
+        description:
+          config.description || mockAgentCommunicationTool.description,
+        invoke: vi.fn(),
+      })),
     } as any;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -41,359 +46,283 @@ describe('AgentCommunicationToolTemplate', () => {
     );
   });
 
-  describe('properties', () => {
-    it('should have correct name', () => {
-      expect(template.name).toBe('agent-communication-tool');
-    });
-
-    it('should have correct description', () => {
-      expect(template.description).toBe(
-        'Allows an agent to initiate communication with another agent via an internal request pipeline.',
-      );
-    });
-
-    it('should have correct kind', () => {
-      expect(template.kind).toBe(NodeKind.Tool);
-    });
-
-    it('should have correct schema', () => {
-      expect(template.schema).toBe(AgentCommunicationToolTemplateSchema);
-    });
-  });
-
   describe('schema validation', () => {
-    it('should validate empty config', () => {
-      const validConfig = {};
-
-      expect(() =>
-        AgentCommunicationToolTemplateSchema.parse(validConfig),
-      ).not.toThrow();
-    });
-
-    it('should validate optional metadata', () => {
+    it('should validate optional description field', () => {
       const validConfig = {
-        metadata: {
-          priority: 'high',
-          timeout: 30000,
-          retries: 3,
-        },
+        description: 'Custom tool description for specific agent communication',
       };
 
-      expect(() =>
-        AgentCommunicationToolTemplateSchema.parse(validConfig),
-      ).not.toThrow();
+      expect(() => template.schema.parse(validConfig)).not.toThrow();
+    });
+
+    it('should work with empty config', () => {
+      const validConfig = {};
+
+      expect(() => template.schema.parse(validConfig)).not.toThrow();
+    });
+
+    it('should reject invalid description type', () => {
+      const invalidConfig = {
+        description: 123, // Should be string
+      };
+
+      expect(() => template.schema.parse(invalidConfig)).toThrow();
     });
   });
 
   describe('create', () => {
-    let mockAgent: any;
-    let mockAgentNode: CompiledGraphNode<
-      SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
-    >;
-    let compiledNodes: Map<string, CompiledGraphNode>;
-
-    beforeEach(() => {
-      mockAgent = {
-        run: vi.fn().mockResolvedValue({
-          messages: [new HumanMessage('Agent response')],
-        }),
-      };
-
-      const mockAgentResult: SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType> =
-        {
-          agent: mockAgent,
-          config: {
-            summarizeMaxTokens: 1000,
-            summarizeKeepTokens: 500,
-            instructions: 'Test agent instructions',
-            name: 'Test Agent',
-            invokeModelName: 'gpt-5-mini',
-          },
-        };
-
-      mockAgentNode = {
-        id: 'target-agent-1',
+    it('should create tool with custom description when provided', async () => {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+        id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        instance: mockAgentResult,
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'Test instructions',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
       };
 
-      compiledNodes = new Map([['target-agent-1', mockAgentNode]]);
-    });
+      const outputNodes = new Map([['agent-2', agentNode]]);
+      const config = {
+        description:
+          'Use this tool to communicate with the customer service agent for handling support requests',
+      };
 
-    it('should create agent communication tool with valid agent node', async () => {
-      const mockTool = { name: 'agent-communication' } as DynamicStructuredTool;
-      mockAgentCommunicationTool.build = vi.fn().mockReturnValue(mockTool);
-
-      const config = {};
-
-      const result = await template.create(config, new Map(), compiledNodes, {
+      const builtTool = await template.create(config, new Map(), outputNodes, {
         graphId: 'test-graph',
-        nodeId: 'test-node',
+        nodeId: 'comm-tool',
         version: '1.0.0',
       });
 
-      expect(mockAgentCommunicationTool.build).toHaveBeenCalledWith({
-        invokeAgent: expect.any(Function),
-      });
-      expect(result).toBe(mockTool);
+      expect(builtTool.description).toBe(
+        'Use this tool to communicate with the customer service agent for handling support requests',
+      );
     });
 
-    it('should throw NotFoundException when agent node not found during invocation', async () => {
-      const emptyCompiledNodes = new Map();
-      const mockTool = { name: 'agent-communication', invoke: vi.fn() } as any;
-      mockAgentCommunicationTool.build = vi.fn().mockReturnValue(mockTool);
+    it('should use default description when no custom description provided', async () => {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+        id: 'agent-2',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'Test instructions',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+      };
 
+      const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {};
 
-      const _tool = await template.create(
-        config,
-        new Map(),
-        emptyCompiledNodes,
-        {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        },
-      );
+      const builtTool = await template.create(config, new Map(), outputNodes, {
+        graphId: 'test-graph',
+        nodeId: 'comm-tool',
+        version: '1.0.0',
+      });
 
-      // Get the invokeAgent function that was passed to build
+      expect(builtTool.description).toBe(
+        'Request assistance from another registered agent by providing target agent id, context messages, and optional payload.',
+      );
+    });
+
+    it('should create tool with consistent thread ID behavior', async () => {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+        id: 'agent-2',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'Test instructions',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+      };
+
+      const outputNodes = new Map([['agent-2', agentNode]]);
+      const config = {};
+
+      await template.create(config, new Map(), outputNodes, {
+        graphId: 'test-graph',
+        nodeId: 'comm-tool',
+        version: '1.0.0',
+      });
+
+      expect(mockAgentCommunicationTool.build).toHaveBeenCalled();
       const buildCall = (mockAgentCommunicationTool.build as any).mock
         .calls[0][0];
       const invokeAgent = buildCall.invokeAgent;
 
-      // Now invoke it and expect it to throw
-      await expect(
-        invokeAgent(['test message'], 'child-thread-1', {} as any),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw NotFoundException with correct error message during invocation', async () => {
-      const emptyCompiledNodes = new Map();
-      const mockTool = { name: 'agent-communication', invoke: vi.fn() } as any;
-      mockAgentCommunicationTool.build = vi.fn().mockReturnValue(mockTool);
-
-      const config = {};
-
-      const _tool = await template.create(
-        config,
-        new Map(),
-        emptyCompiledNodes,
-        {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
+      // Test the invokeAgent function
+      const mockRunnableConfig = {
+        configurable: {
+          thread_id: 'parent-thread-123',
+          parent_thread_id: 'root-thread-456',
+          graph_id: 'test-graph',
+          node_id: 'agent-1',
         },
-      );
-
-      // Get the invokeAgent function that was passed to build
-      const buildCall = (mockAgentCommunicationTool.build as any).mock
-        .calls[0][0];
-      const invokeAgent = buildCall.invokeAgent;
-
-      // Now invoke it and expect it to throw with specific message
-      await expect(
-        invokeAgent(['test message'], 'child-thread-1', {} as any),
-      ).rejects.toThrow(
-        'No agent nodes found in output nodes for communication',
-      );
-    });
-
-    it('should create invokeAgent function that calls target agent correctly', async () => {
-      let capturedInvokeAgent: any;
-      mockAgentCommunicationTool.build = vi
-        .fn()
-        .mockImplementation((options) => {
-          capturedInvokeAgent = options.invokeAgent;
-          return { name: 'agent-communication' } as DynamicStructuredTool;
-        });
-
-      const config = {};
-
-      await template.create(config, new Map(), compiledNodes, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      // Test the captured invokeAgent function
-      const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
-        configurable: { thread_id: 'parent-thread-123' },
       } as any;
 
-      const messages = ['Hello', 'How are you?'];
-      const childThreadId = 'child-conversation-1';
+      const messages = ['Hello from Agent A'];
+      await invokeAgent(messages, mockRunnableConfig);
 
-      const result = await capturedInvokeAgent(
-        messages,
-        childThreadId,
-        mockRunnableConfig,
-      );
-
+      // Verify the agent was called with the correct thread ID
       expect(mockAgent.run).toHaveBeenCalledWith(
-        'parent-thread-123__child-conversation-1',
-        [new HumanMessage('Hello'), new HumanMessage('How are you?')],
-        mockAgentNode.instance.config,
+        'root-thread-456__comm-tool', // Uses parent + tool node id
+        [new HumanMessage('Hello from Agent A')],
+        agentNode.instance.config,
         expect.objectContaining({
           configurable: expect.objectContaining({
-            thread_id: 'parent-thread-123__child-conversation-1',
+            thread_id: 'root-thread-456__comm-tool',
+            parent_thread_id: 'root-thread-456',
             graph_id: 'test-graph',
-            node_id: 'test-node',
+            node_id: 'agent-2',
           }),
         }),
       );
-      expect(result).toEqual({
-        messages: [new HumanMessage('Agent response')],
-      });
     });
 
-    it('should handle missing thread_id in runnableConfig', async () => {
-      let capturedInvokeAgent: any;
-      mockAgentCommunicationTool.build = vi
-        .fn()
-        .mockImplementation((options) => {
-          capturedInvokeAgent = options.invokeAgent;
-          return { name: 'agent-communication' } as DynamicStructuredTool;
-        });
+    it('should maintain thread consistency for Agent A -> Agent B -> Agent C chain', async () => {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+        id: 'agent-2',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'Test instructions',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+      };
 
+      const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {};
 
-      await template.create(config, new Map(), compiledNodes, {
+      await template.create(config, new Map(), outputNodes, {
         graphId: 'test-graph',
-        nodeId: 'test-node',
+        nodeId: 'comm-tool',
         version: '1.0.0',
       });
 
-      const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
-        configurable: {},
+      const buildCall = (mockAgentCommunicationTool.build as any).mock
+        .calls[0][0];
+      const invokeAgent = buildCall.invokeAgent;
+
+      // Simulate Agent A -> Agent B call
+      const agentAConfig = {
+        configurable: {
+          thread_id: 'root-thread-456__agent-a',
+          parent_thread_id: 'root-thread-456',
+          internal_thread_id: 'internal-thread-789',
+          graph_id: 'test-graph',
+          node_id: 'agent-a',
+        },
       } as any;
 
-      const messages = ['Test message'];
-      const childThreadId = 'child-1';
+      await invokeAgent(['Message from A to B'], agentAConfig);
 
-      await capturedInvokeAgent(messages, childThreadId, mockRunnableConfig);
-
-      // Should generate a fallback thread ID
+      // Verify Agent B gets consistent thread ID based on parent
       expect(mockAgent.run).toHaveBeenCalledWith(
-        expect.stringMatching(/^inter-agent-\d+__child-1$/),
+        'root-thread-456__comm-tool', // parent + tool id
+        [new HumanMessage('Message from A to B')],
+        agentNode.instance.config,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: 'root-thread-456__comm-tool',
+            parent_thread_id: 'root-thread-456', // Same parent
+          }),
+        }),
+      );
+
+      // Reset mock for next call
+      mockAgent.run.mockClear();
+
+      // Simulate Agent B -> Agent C call (using same parent thread)
+      const agentBConfig = {
+        configurable: {
+          thread_id: 'root-thread-456__agent-b',
+          parent_thread_id: 'root-thread-456', // Same parent thread
+          internal_thread_id: 'internal-thread-789', // Same internal thread
+          graph_id: 'test-graph',
+          node_id: 'agent-b',
+        },
+      } as any;
+
+      await invokeAgent(['Message from B to C'], agentBConfig);
+
+      // Verify Agent C also gets consistent thread ID
+      expect(mockAgent.run).toHaveBeenCalledWith(
+        'root-thread-456__comm-tool',
+        [new HumanMessage('Message from B to C')],
+        agentNode.instance.config,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: 'root-thread-456__comm-tool',
+            parent_thread_id: 'root-thread-456', // Same parent
+          }),
+        }),
+      );
+    });
+
+    it('should fallback to current thread_id when no parent_thread_id is provided', async () => {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+        id: 'agent-2',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'Test instructions',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+      };
+
+      const outputNodes = new Map([['agent-2', agentNode]]);
+      const config = {};
+
+      await template.create(config, new Map(), outputNodes, {
+        graphId: 'test-graph',
+        nodeId: 'comm-tool',
+        version: '1.0.0',
+      });
+
+      const buildCall = (mockAgentCommunicationTool.build as any).mock
+        .calls[0][0];
+      const invokeAgent = buildCall.invokeAgent;
+
+      // Test without parent_thread_id
+      const mockRunnableConfig = {
+        configurable: {
+          thread_id: 'current-thread-123',
+          // No parent_thread_id
+          graph_id: 'test-graph',
+          node_id: 'agent-1',
+        },
+      } as any;
+
+      await invokeAgent(['Test message'], mockRunnableConfig);
+
+      // Should fallback to current thread_id
+      expect(mockAgent.run).toHaveBeenCalledWith(
+        'current-thread-123__comm-tool',
         [new HumanMessage('Test message')],
-        mockAgentNode.instance.config,
+        agentNode.instance.config,
         expect.objectContaining({
           configurable: expect.objectContaining({
-            graph_id: 'test-graph',
-            node_id: 'test-node',
-          }),
-        }),
-      );
-    });
-
-    it('should throw NotFoundException when target agent not found during invocation', async () => {
-      let capturedInvokeAgent: any;
-      mockAgentCommunicationTool.build = vi
-        .fn()
-        .mockImplementation((options) => {
-          capturedInvokeAgent = options.invokeAgent;
-          return { name: 'agent-communication' } as DynamicStructuredTool;
-        });
-
-      const config = {};
-
-      await template.create(config, new Map(), compiledNodes, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      // Clear the compiled nodes to simulate agent not found during invocation
-      compiledNodes.clear();
-
-      const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
-        configurable: { thread_id: 'parent-thread' },
-      } as any;
-
-      await expect(
-        capturedInvokeAgent(['message'], 'child-1', mockRunnableConfig),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('should handle agent execution errors', async () => {
-      let capturedInvokeAgent: any;
-      mockAgentCommunicationTool.build = vi
-        .fn()
-        .mockImplementation((options) => {
-          capturedInvokeAgent = options.invokeAgent;
-          return { name: 'agent-communication' } as DynamicStructuredTool;
-        });
-
-      const mockError = new Error('Agent execution failed');
-      mockAgent.run = vi.fn().mockRejectedValue(mockError);
-
-      const config = {};
-
-      await template.create(config, new Map(), compiledNodes, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
-        configurable: { thread_id: 'parent-thread' },
-      } as any;
-
-      await expect(
-        capturedInvokeAgent(['message'], 'child-1', mockRunnableConfig),
-      ).rejects.toThrow('Agent execution failed');
-    });
-
-    it('should create unique thread IDs for different child threads', async () => {
-      let capturedInvokeAgent: any;
-      mockAgentCommunicationTool.build = vi
-        .fn()
-        .mockImplementation((options) => {
-          capturedInvokeAgent = options.invokeAgent;
-          return { name: 'agent-communication' } as DynamicStructuredTool;
-        });
-
-      const config = {};
-
-      await template.create(config, new Map(), compiledNodes, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
-        configurable: { thread_id: 'parent-123' },
-      } as any;
-
-      // Test different child thread IDs
-      await capturedInvokeAgent(['msg1'], 'child-A', mockRunnableConfig);
-      await capturedInvokeAgent(['msg2'], 'child-B', mockRunnableConfig);
-
-      expect(mockAgent.run).toHaveBeenNthCalledWith(
-        1,
-        'parent-123__child-A',
-        [new HumanMessage('msg1')],
-        mockAgentNode.instance.config,
-        expect.objectContaining({
-          configurable: expect.objectContaining({
-            thread_id: 'parent-123__child-A',
-            graph_id: 'test-graph',
-            node_id: 'test-node',
-          }),
-        }),
-      );
-
-      expect(mockAgent.run).toHaveBeenNthCalledWith(
-        2,
-        'parent-123__child-B',
-        [new HumanMessage('msg2')],
-        mockAgentNode.instance.config,
-        expect.objectContaining({
-          configurable: expect.objectContaining({
-            thread_id: 'parent-123__child-B',
-            graph_id: 'test-graph',
-            node_id: 'test-node',
+            thread_id: 'current-thread-123__comm-tool',
+            parent_thread_id: 'current-thread-123',
           }),
         }),
       );

@@ -24,6 +24,16 @@ interface RawToolCall {
   };
 }
 
+/**
+ * Interface for LangChain serialized message format
+ */
+interface SerializedMessage {
+  lc: number;
+  type: string;
+  id: string[];
+  kwargs: Record<string, unknown>;
+}
+
 @Injectable()
 export class MessageTransformerService {
   /**
@@ -39,7 +49,13 @@ export class MessageTransformerService {
   /**
    * Transform a LangChain BaseMessage to MessageDto
    */
-  transformMessageToDto(msg: BaseMessage): MessageDto {
+  transformMessageToDto(msg: BaseMessage | SerializedMessage): MessageDto {
+    // Handle serialized LangChain messages (with lc, type, id, kwargs structure)
+    if (this.isSerializedMessage(msg)) {
+      return this.transformSerializedMessage(msg as SerializedMessage);
+    }
+
+    // Handle actual LangChain message instances
     const additionalKwargs = this.normalizeAdditionalKwargs(
       msg.additional_kwargs,
     );
@@ -170,5 +186,94 @@ export class MessageTransformerService {
         };
       })
       .filter((tc) => tc.name);
+  }
+
+  /**
+   * Check if a message is in LangChain serialized format
+   */
+  private isSerializedMessage(
+    msg: BaseMessage | SerializedMessage,
+  ): msg is SerializedMessage {
+    return (
+      isObject(msg) &&
+      'lc' in msg &&
+      msg.lc === 1 &&
+      'type' in msg &&
+      msg.type === 'constructor' &&
+      'id' in msg &&
+      Array.isArray(msg.id) &&
+      msg.id.length >= 2 &&
+      msg.id[0] === 'langchain_core' &&
+      msg.id[1] === 'messages' &&
+      'kwargs' in msg &&
+      isObject(msg.kwargs)
+    );
+  }
+
+  /**
+   * Transform a serialized LangChain message to MessageDto
+   */
+  private transformSerializedMessage(msg: SerializedMessage): MessageDto {
+    const messageType = msg.id[2]; // e.g., 'ToolMessage', 'AIMessage', etc.
+    const kwargs = msg.kwargs;
+    const additionalKwargs = this.normalizeAdditionalKwargs(
+      kwargs.additional_kwargs,
+    );
+    const contentStr = this.normalizeContent(kwargs.content);
+
+    switch (messageType) {
+      case 'HumanMessage':
+        return { role: 'human', content: contentStr, additionalKwargs };
+
+      case 'SystemMessage':
+        return { role: 'system', content: contentStr, additionalKwargs };
+
+      case 'AIMessage': {
+        const toolCalls = this.mapToolCalls(
+          (kwargs.tool_calls as RawToolCall[]) || [],
+        );
+        return {
+          role: 'ai',
+          content: contentStr,
+          id: kwargs.id as string,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          additionalKwargs,
+        };
+      }
+
+      case 'ToolMessage': {
+        const toolName = (kwargs.name as string) || 'unknown';
+        const toolCallId = (kwargs.tool_call_id as string) || '';
+        const parsed = this.parseToolContent(kwargs.content);
+
+        if (toolName === 'shell') {
+          return {
+            role: 'tool-shell',
+            name: toolName,
+            content: parsed as {
+              exitCode: number;
+              stdout: string;
+              stderr: string;
+              cmd: string;
+              fail?: boolean;
+            },
+            toolCallId,
+            additionalKwargs,
+          };
+        }
+
+        return {
+          role: 'tool',
+          name: toolName,
+          content: parsed,
+          toolCallId,
+          additionalKwargs,
+        };
+      }
+
+      default:
+        // Fallback for unknown message types - treat as system message
+        return { role: 'system', content: contentStr, additionalKwargs };
+    }
   }
 }

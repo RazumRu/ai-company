@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, DefaultLogger } from '@packages/common';
-import { groupBy } from 'lodash';
 
 import { environment } from '../../../environments';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
@@ -13,6 +12,7 @@ import { GraphEntity } from '../entity/graph.entity';
 import {
   CompiledGraph,
   CompiledGraphNode,
+  GraphEdgeSchemaType,
   GraphMetadataSchemaType,
   GraphNodeSchemaType,
   GraphSchemaType,
@@ -106,34 +106,6 @@ export class GraphCompiler {
       return; // Let other validation handle missing templates
     }
 
-    // Target template declares allowed incoming connections with discriminated union
-    // inputs is now required - if empty array, no connections allowed
-    if (targetTemplate.inputs) {
-      if (targetTemplate.inputs.length === 0) {
-        throw new BadRequestException(
-          'WRONG_EDGE_CONNECTION',
-          `Template '${targetTemplateName}' does not accept any connections (inputs is empty), but got '${sourceTemplateName}' (kind: ${sourceTemplate.kind})`,
-        );
-      }
-
-      const isAllowed = targetTemplate.inputs.some((rule: any) => {
-        if (!rule || typeof rule !== 'object') return false;
-        if (rule.type === 'template') return rule.value === sourceTemplateName;
-        if (rule.type === 'kind') return rule.value === sourceTemplate.kind;
-        return false;
-      });
-
-      if (!isAllowed) {
-        const rulesHuman = targetTemplate.inputs
-          .map((r: any) => `${r.type}:${r.value}`)
-          .join(', ');
-        throw new BadRequestException(
-          'WRONG_EDGE_CONNECTION',
-          `Template '${targetTemplateName}' only accepts from [${rulesHuman}], but got '${sourceTemplateName}' (kind: ${sourceTemplate.kind})`,
-        );
-      }
-    }
-
     // Source template declares allowed outgoing connections with discriminated union
     // outputs is now required - if empty array, no connections allowed
     if (sourceTemplate.outputs) {
@@ -161,44 +133,72 @@ export class GraphCompiler {
         );
       }
     }
+
+    // Target template declares allowed incoming connections with discriminated union
+    // inputs is now required - if empty array, no connections allowed
+    if (targetTemplate.inputs) {
+      if (targetTemplate.inputs.length === 0) {
+        throw new BadRequestException(
+          'WRONG_EDGE_CONNECTION',
+          `Template '${targetTemplateName}' does not accept any connections (inputs is empty), but got '${sourceTemplateName}' (kind: ${sourceTemplate.kind})`,
+        );
+      }
+
+      const isAllowed = targetTemplate.inputs.some((rule: any) => {
+        if (!rule || typeof rule !== 'object') return false;
+        if (rule.type === 'template') return rule.value === sourceTemplateName;
+        if (rule.type === 'kind') return rule.value === sourceTemplate.kind;
+        return false;
+      });
+
+      if (!isAllowed) {
+        const rulesHuman = targetTemplate.inputs
+          .map((r: any) => `${r.type}:${r.value}`)
+          .join(', ');
+        throw new BadRequestException(
+          'WRONG_EDGE_CONNECTION',
+          `Template '${targetTemplateName}' only accepts from [${rulesHuman}], but got '${sourceTemplateName}' (kind: ${sourceTemplate.kind})`,
+        );
+      }
+    }
   }
 
   /**
-   * Validates that templates with required=true in inputs have at least one connection
+   * Validates that templates with required=true in outputs have at least one connection
    */
   private validateRequiredConnections(nodes: any[], edges: any[]): void {
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
     for (const node of nodes) {
       const template = this.templateRegistry.getTemplate(node.template);
-      if (!template || !template.inputs) {
+      if (!template || !template.outputs) {
         continue;
       }
 
       // Find required connection rules
-      const requiredRules = template.inputs.filter(
+      const requiredRules = template.outputs.filter(
         (rule: any) => rule.required === true,
       );
 
       for (const rule of requiredRules) {
         // Check if this node has at least one connection matching the required rule
         const hasRequiredConnection = edges.some((edge) => {
-          if (edge.to !== node.id) return false;
+          if (edge.from !== node.id) return false;
 
-          const sourceNode = nodeMap.get(edge.from);
-          if (!sourceNode) return false;
+          const targetNode = nodeMap.get(edge.to);
+          if (!targetNode) return false;
 
-          const sourceTemplate = this.templateRegistry.getTemplate(
-            sourceNode.template,
+          const targetTemplate = this.templateRegistry.getTemplate(
+            targetNode.template,
           );
-          if (!sourceTemplate) return false;
+          if (!targetTemplate) return false;
 
-          // Check if the source matches the required rule
+          // Check if the target matches the required rule
           if (rule.type === 'template') {
-            return rule.value === sourceNode.template;
+            return rule.value === targetNode.template;
           }
           if (rule.type === 'kind') {
-            return rule.value === sourceTemplate.kind;
+            return rule.value === targetTemplate.kind;
           }
           return false;
         });
@@ -210,7 +210,7 @@ export class GraphCompiler {
               : `kind '${rule.value}'`;
           throw new BadRequestException(
             'MISSING_REQUIRED_CONNECTION',
-            `Template '${node.template}' requires at least one connection from ${ruleDescription}, but none found`,
+            `Template '${node.template}' requires at least one connection to ${ruleDescription}, but none found`,
           );
         }
       }
@@ -232,7 +232,7 @@ export class GraphCompiler {
 
     const graphId = metadata.graphId || 'unknown';
 
-    this.notificationsService.emit({
+    await this.notificationsService.emit({
       type: NotificationEvent.Graph,
       graphId,
       data: { state: 'compiling', schema },
@@ -241,47 +241,21 @@ export class GraphCompiler {
     this.validateSchema(schema);
 
     const compiledNodes = new Map<string, CompiledGraphNode>();
-    // Build adjacency of connected node IDs from edges (bidirectional)
-    const adjacency = new Map<string, Set<string>>();
     const edges = schema.edges || [];
-    for (const edge of edges) {
-      if (!adjacency.has(edge.from)) adjacency.set(edge.from, new Set());
-      if (!adjacency.has(edge.to)) adjacency.set(edge.to, new Set());
-      adjacency.get(edge.from)!.add(edge.to);
-      adjacency.get(edge.to)!.add(edge.from);
-    }
-    const nodesByKind = groupBy(schema.nodes, (node) => {
-      const template = this.templateRegistry.getTemplate(node.template);
-      if (!template) {
-        throw new BadRequestException(
-          'GRAPH_TEMPLATE_NOT_FOUND',
-          `Template '${node.template}' not found`,
-        );
-      }
-      return template.kind;
-    });
-    const buildOrder = [
-      NodeKind.Resource,
-      NodeKind.Runtime,
-      NodeKind.Tool,
-      NodeKind.SimpleAgent,
-      NodeKind.Trigger,
-    ];
 
-    for (const kind of buildOrder) {
-      const nodes = nodesByKind[kind] || [];
-      for (const node of nodes) {
-        const compiledNode = await this.compileNode(
-          node,
-          compiledNodes,
-          metadata,
-          Array.from(adjacency.get(node.id) || []),
-        );
-        compiledNodes.set(node.id, compiledNode);
-      }
+    const buildOrder = this.getBuildOrder(schema);
+
+    for (const node of buildOrder) {
+      const compiledNode = await this.compileNode(
+        node,
+        compiledNodes,
+        metadata,
+        edges,
+      );
+      compiledNodes.set(node.id, compiledNode);
     }
 
-    this.notificationsService.emit({
+    await this.notificationsService.emit({
       type: NotificationEvent.Graph,
       graphId,
       data: { state: 'compiled', schema },
@@ -292,7 +266,7 @@ export class GraphCompiler {
       edges: schema.edges || [],
       destroy: async () => {
         await this.destroyGraph(compiledNodes);
-        this.notificationsService.emit({
+        await this.notificationsService.emit({
           type: NotificationEvent.Graph,
           graphId,
           data: { state: 'destroyed', schema },
@@ -368,7 +342,7 @@ export class GraphCompiler {
     node: GraphNodeSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
     metadata: GraphMetadataSchemaType,
-    connectedNodeIds: string[],
+    edges: GraphEdgeSchemaType[],
   ): Promise<CompiledGraphNode> {
     const config = this.templateRegistry.validateTemplateConfig(
       node.template,
@@ -383,17 +357,27 @@ export class GraphCompiler {
       );
     }
 
-    // Create input and output nodes maps from connected node IDs
+    // Create input and output nodes maps based on edge direction
     const inputNodes = new Map<string, CompiledGraphNode>();
     const outputNodes = new Map<string, CompiledGraphNode>();
 
-    for (const connectedId of connectedNodeIds) {
-      const connectedNode = compiledNodes.get(connectedId);
-      if (connectedNode) {
-        // For now, we'll put all connected nodes in both input and output
-        // This can be refined later based on edge direction
-        inputNodes.set(connectedId, connectedNode);
-        outputNodes.set(connectedId, connectedNode);
+    // Find edges where this node is the source (outputs) or target (inputs)
+    const outgoingEdges = edges.filter((edge) => edge.from === node.id);
+    const incomingEdges = edges.filter((edge) => edge.to === node.id);
+
+    // Add nodes that this node connects to (its inputs)
+    for (const edge of incomingEdges) {
+      const inputNode = compiledNodes.get(edge.from);
+      if (inputNode) {
+        inputNodes.set(edge.from, inputNode);
+      }
+    }
+
+    // Add nodes that this node provides for (its outputs)
+    for (const edge of outgoingEdges) {
+      const outputNode = compiledNodes.get(edge.to);
+      if (outputNode) {
+        outputNodes.set(edge.to, outputNode);
       }
     }
 
@@ -408,5 +392,72 @@ export class GraphCompiler {
       template: node.template,
       instance,
     };
+  }
+
+  /**
+   * Returns the build order for the graph nodes using a dependency-based topological sort.
+   * Throws if there are cycles.
+   */
+  private getBuildOrder(schema: GraphSchemaType): GraphNodeSchemaType[] {
+    const edges = schema.edges || [];
+
+    const dependsOn = new Map<string, Set<string>>();
+    const dependents = new Map<string, Set<string>>();
+
+    for (const node of schema.nodes) {
+      dependsOn.set(node.id, new Set());
+      dependents.set(node.id, new Set());
+    }
+
+    for (const edge of edges) {
+      dependsOn.get(edge.from)!.add(edge.to);
+      dependents.get(edge.to)!.add(edge.from);
+    }
+
+    const inDegree = new Map<string, number>();
+    for (const node of schema.nodes) {
+      inDegree.set(node.id, dependsOn.get(node.id)!.size);
+    }
+
+    const queue: GraphNodeSchemaType[] = [];
+    for (const node of schema.nodes) {
+      if (inDegree.get(node.id) === 0) {
+        queue.push(node);
+      }
+    }
+
+    const buildOrder: GraphNodeSchemaType[] = [];
+
+    while (queue.length > 0) {
+      const currentNode = queue.shift()!;
+      buildOrder.push(currentNode);
+
+      const currentDependents = dependents.get(currentNode.id)!;
+      for (const dependentId of currentDependents) {
+        const newInDegree = inDegree.get(dependentId)! - 1;
+        inDegree.set(dependentId, newInDegree);
+
+        if (newInDegree === 0) {
+          const dependentNode = schema.nodes.find((n) => n.id === dependentId);
+          if (dependentNode) {
+            queue.push(dependentNode);
+          }
+        }
+      }
+    }
+
+    if (buildOrder.length !== schema.nodes.length) {
+      const processedIds = new Set(buildOrder.map((n) => n.id));
+      const cycleNodes = schema.nodes
+        .filter((n) => !processedIds.has(n.id))
+        .map((n) => n.id);
+
+      throw new BadRequestException(
+        'GRAPH_CIRCULAR_DEPENDENCY',
+        `Graph contains circular dependencies involving nodes: ${cycleNodes.join(', ')}`,
+      );
+    }
+
+    return buildOrder;
   }
 }

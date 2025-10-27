@@ -4,7 +4,8 @@ import { GraphSchemaType } from '../graphs/graphs.types';
 
 export enum NotificationEvent {
   Graph = 'graph.update',
-  Checkpointer = 'graph.checkpointer.update',
+  AgentMessage = 'agent.message',
+  AgentInvoke = 'agent.invoke',
 }
 
 export interface INotification<T> {
@@ -13,6 +14,7 @@ export interface INotification<T> {
   graphId: string;
   nodeId?: string;
   threadId?: string;
+  parentThreadId?: string;
 }
 
 export interface IGraphNotification
@@ -23,15 +25,31 @@ export interface IGraphNotification
   type: NotificationEvent.Graph;
 }
 
-export interface ICheckpointerData {
+export interface IAgentMessageData {
   messages: BaseMessage[];
 }
 
-export interface ICheckpointerNotification
-  extends INotification<ICheckpointerData> {
-  type: NotificationEvent.Checkpointer;
+export interface IAgentMessageNotification
+  extends INotification<IAgentMessageData> {
+  type: NotificationEvent.AgentMessage;
   nodeId: string;
   threadId: string;
+  parentThreadId: string;
 }
 
-export type Notification = IGraphNotification | ICheckpointerNotification;
+export interface IAgentInvokeData {
+  messages: BaseMessage[];
+}
+
+export interface IAgentInvokeNotification
+  extends INotification<IAgentInvokeData> {
+  type: NotificationEvent.AgentInvoke;
+  nodeId: string;
+  threadId: string;
+  parentThreadId: string;
+}
+
+export type Notification =
+  | IGraphNotification
+  | IAgentMessageNotification
+  | IAgentInvokeNotification;

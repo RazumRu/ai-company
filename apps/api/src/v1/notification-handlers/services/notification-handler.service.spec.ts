@@ -5,16 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockDeep, MockProxy } from 'vitest-mock-extended';
 
 import {
-  ICheckpointerNotification,
+  IAgentMessageNotification,
   IGraphNotification,
   NotificationEvent,
 } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { EnrichedNotificationEvent } from '../notification-handlers.types';
 import {
-  CheckpointerNotificationHandler,
-  ICheckpointerEnrichedNotification,
-} from './event-handlers/checkpointer-notification-handler';
+  AgentMessageNotificationHandler,
+  IAgentMessageEnrichedNotification,
+} from './event-handlers/agent-message-notification-handler';
 import {
   GraphNotificationHandler,
   IGraphEnrichedNotification,
@@ -25,7 +25,7 @@ describe('NotificationHandler', () => {
   let service: NotificationHandler;
   let notificationsService: MockProxy<NotificationsService>;
   let graphEventHandler: MockProxy<GraphNotificationHandler>;
-  let checkpointerEventHandler: MockProxy<CheckpointerNotificationHandler>;
+  let agentMessageEventHandler: MockProxy<AgentMessageNotificationHandler>;
   let logger: MockProxy<DefaultLogger>;
 
   const mockGraphId = 'graph-123';
@@ -66,7 +66,7 @@ describe('NotificationHandler', () => {
   beforeEach(async () => {
     notificationsService = mockDeep<NotificationsService>();
     graphEventHandler = mockDeep<GraphNotificationHandler>();
-    checkpointerEventHandler = mockDeep<CheckpointerNotificationHandler>();
+    agentMessageEventHandler = mockDeep<AgentMessageNotificationHandler>();
     logger = mockDeep<DefaultLogger>();
 
     // Set up mock pattern properties using Object.defineProperty
@@ -74,8 +74,8 @@ describe('NotificationHandler', () => {
       value: NotificationEvent.Graph,
       writable: true,
     });
-    Object.defineProperty(checkpointerEventHandler, 'pattern', {
-      value: NotificationEvent.Checkpointer,
+    Object.defineProperty(agentMessageEventHandler, 'pattern', {
+      value: NotificationEvent.AgentMessage,
       writable: true,
     });
 
@@ -84,8 +84,8 @@ describe('NotificationHandler', () => {
       value: { name: 'GraphNotificationHandler' },
       writable: true,
     });
-    Object.defineProperty(checkpointerEventHandler, 'constructor', {
-      value: { name: 'CheckpointerNotificationHandler' },
+    Object.defineProperty(agentMessageEventHandler, 'constructor', {
+      value: { name: 'AgentMessageNotificationHandler' },
       writable: true,
     });
 
@@ -101,8 +101,8 @@ describe('NotificationHandler', () => {
           useValue: graphEventHandler,
         },
         {
-          provide: CheckpointerNotificationHandler,
-          useValue: checkpointerEventHandler,
+          provide: AgentMessageNotificationHandler,
+          useValue: agentMessageEventHandler,
         },
         {
           provide: DefaultLogger,
@@ -117,7 +117,7 @@ describe('NotificationHandler', () => {
   describe('registerHandler', () => {
     it('should register event handlers', () => {
       service.registerHandler(graphEventHandler);
-      service.registerHandler(checkpointerEventHandler);
+      service.registerHandler(agentMessageEventHandler);
     });
   });
 
@@ -133,7 +133,7 @@ describe('NotificationHandler', () => {
     beforeEach(async () => {
       // Register handlers for testing
       service.registerHandler(graphEventHandler);
-      service.registerHandler(checkpointerEventHandler);
+      service.registerHandler(agentMessageEventHandler);
 
       // Initialize the service to set up the subscription
       await service.init();
@@ -171,29 +171,39 @@ describe('NotificationHandler', () => {
       expect(emittedEvent).toEqual(mockEnrichedNotification);
     });
 
-    it('should handle checkpointer notification and emit message event', async () => {
-      const mockMessageNotification: ICheckpointerEnrichedNotification = {
-        type: EnrichedNotificationEvent.CheckpointerMessage,
+    it('should handle agent message notification and emit message event', async () => {
+      const mockMessageNotification: IAgentMessageEnrichedNotification = {
+        type: EnrichedNotificationEvent.AgentMessage,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        internalThreadId: 'internal-thread-123',
         data: {
-          role: 'ai',
-          content: 'Hello, world!',
+          id: 'message-123',
+          threadId: 'thread-123',
+          nodeId: mockNodeId,
+          externalThreadId: 'external-thread-123',
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          message: {
+            role: 'ai',
+            content: 'Hello, world!',
+          },
         },
       };
 
-      checkpointerEventHandler.handle.mockResolvedValue([
+      agentMessageEventHandler.handle.mockResolvedValue([
         mockMessageNotification,
       ]);
 
       const mockMessages = [new AIMessage('Hello, world!')];
-      const mockNotification: ICheckpointerNotification = {
-        type: NotificationEvent.Checkpointer,
+      const mockNotification: IAgentMessageNotification = {
+        type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        parentThreadId: 'parent-thread-123',
         data: {
           messages: mockMessages,
         },
@@ -211,35 +221,44 @@ describe('NotificationHandler', () => {
         await subscribeCallback(mockNotification);
       }
 
-      expect(checkpointerEventHandler.handle).toHaveBeenCalledWith(
+      expect(agentMessageEventHandler.handle).toHaveBeenCalledWith(
         mockNotification,
       );
       expect(emittedEvent).toEqual(mockMessageNotification);
     });
 
-    it('should handle checkpointer notification with AI message and tool calls', async () => {
-      const mockMessageNotification: ICheckpointerEnrichedNotification = {
-        type: EnrichedNotificationEvent.CheckpointerMessage,
+    it('should handle agent message notification with AI message and tool calls', async () => {
+      const mockMessageNotification: IAgentMessageEnrichedNotification = {
+        type: EnrichedNotificationEvent.AgentMessage,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        internalThreadId: 'internal-thread-123',
         data: {
-          role: 'ai',
-          content: '',
-          id: 'msg-123',
-          toolCalls: [
-            {
-              name: 'get_weather',
-              args: { city: 'San Francisco' },
-              type: 'tool_call',
-              id: 'call-123',
-            },
-          ],
+          id: 'message-124',
+          threadId: 'thread-124',
+          nodeId: mockNodeId,
+          externalThreadId: 'external-thread-124',
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          message: {
+            role: 'ai',
+            content: '',
+            id: 'msg-123',
+            toolCalls: [
+              {
+                name: 'get_weather',
+                args: { city: 'San Francisco' },
+                type: 'tool_call',
+                id: 'call-123',
+              },
+            ],
+          },
         },
       };
 
-      checkpointerEventHandler.handle.mockResolvedValue([
+      agentMessageEventHandler.handle.mockResolvedValue([
         mockMessageNotification,
       ]);
 
@@ -255,11 +274,12 @@ describe('NotificationHandler', () => {
           ],
         }),
       ];
-      const mockNotification: ICheckpointerNotification = {
-        type: NotificationEvent.Checkpointer,
+      const mockNotification: IAgentMessageNotification = {
+        type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        parentThreadId: 'parent-thread-123',
         data: {
           messages: mockMessages,
         },
@@ -277,48 +297,67 @@ describe('NotificationHandler', () => {
         await subscribeCallback(mockNotification);
       }
 
-      expect(checkpointerEventHandler.handle).toHaveBeenCalledWith(
+      expect(agentMessageEventHandler.handle).toHaveBeenCalledWith(
         mockNotification,
       );
       expect(emittedEvent).toEqual(mockMessageNotification);
     });
 
-    it('should handle checkpointer notification and emit multiple events', async () => {
-      const mockMessageNotification: ICheckpointerEnrichedNotification = {
-        type: EnrichedNotificationEvent.CheckpointerMessage,
+    it('should handle agent message notification and emit multiple events', async () => {
+      const mockMessageNotification: IAgentMessageEnrichedNotification = {
+        type: EnrichedNotificationEvent.AgentMessage,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        internalThreadId: 'internal-thread-123',
         data: {
-          role: 'ai',
-          content: 'Hello!',
+          id: 'message-125',
+          threadId: 'thread-125',
+          nodeId: mockNodeId,
+          externalThreadId: 'external-thread-125',
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          message: {
+            role: 'ai',
+            content: 'Hello!',
+          },
         },
       };
 
-      const mockMessageNotification2: ICheckpointerEnrichedNotification = {
-        type: EnrichedNotificationEvent.CheckpointerMessage,
+      const mockMessageNotification2: IAgentMessageEnrichedNotification = {
+        type: EnrichedNotificationEvent.AgentMessage,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        internalThreadId: 'internal-thread-123',
         data: {
-          role: 'human',
-          content: 'Hi!',
+          id: 'message-126',
+          threadId: 'thread-126',
+          nodeId: mockNodeId,
+          externalThreadId: 'external-thread-126',
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          message: {
+            role: 'human',
+            content: 'Hi!',
+          },
         },
       };
 
-      checkpointerEventHandler.handle.mockResolvedValue([
+      agentMessageEventHandler.handle.mockResolvedValue([
         mockMessageNotification,
         mockMessageNotification2,
       ]);
 
       const mockMessages = [new AIMessage('Hello!'), new HumanMessage('Hi!')];
-      const mockNotification: ICheckpointerNotification = {
-        type: NotificationEvent.Checkpointer,
+      const mockNotification: IAgentMessageNotification = {
+        type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        parentThreadId: 'parent-thread-123',
         data: {
           messages: mockMessages,
         },
@@ -336,7 +375,7 @@ describe('NotificationHandler', () => {
         await subscribeCallback(mockNotification);
       }
 
-      expect(checkpointerEventHandler.handle).toHaveBeenCalledWith(
+      expect(agentMessageEventHandler.handle).toHaveBeenCalledWith(
         mockNotification,
       );
       expect(emittedEvents).toHaveLength(2);
@@ -344,27 +383,36 @@ describe('NotificationHandler', () => {
       expect(emittedEvents[1]).toEqual(mockMessageNotification2);
     });
 
-    it('should handle checkpointer notification and emit shell tool message', async () => {
-      const mockMessageNotification: ICheckpointerEnrichedNotification = {
-        type: EnrichedNotificationEvent.CheckpointerMessage,
+    it('should handle agent message notification and emit shell tool message', async () => {
+      const mockMessageNotification: IAgentMessageEnrichedNotification = {
+        type: EnrichedNotificationEvent.AgentMessage,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        internalThreadId: 'internal-thread-123',
         data: {
-          role: 'tool-shell',
-          name: 'shell',
-          content: {
-            exitCode: 0,
-            stdout: 'Command output',
-            stderr: '',
-            cmd: 'echo test',
+          id: 'message-127',
+          threadId: 'thread-127',
+          nodeId: mockNodeId,
+          externalThreadId: 'external-thread-127',
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          message: {
+            role: 'tool-shell',
+            name: 'shell',
+            content: {
+              exitCode: 0,
+              stdout: 'Command output',
+              stderr: '',
+              cmd: 'echo test',
+            },
+            toolCallId: 'call-shell-1',
           },
-          toolCallId: 'call-shell-1',
         },
       };
 
-      checkpointerEventHandler.handle.mockResolvedValue([
+      agentMessageEventHandler.handle.mockResolvedValue([
         mockMessageNotification,
       ]);
 
@@ -380,11 +428,12 @@ describe('NotificationHandler', () => {
           name: 'shell',
         }),
       ];
-      const mockNotification: ICheckpointerNotification = {
-        type: NotificationEvent.Checkpointer,
+      const mockNotification: IAgentMessageNotification = {
+        type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
+        parentThreadId: 'parent-thread-123',
         data: {
           messages: mockMessages,
         },
@@ -402,7 +451,7 @@ describe('NotificationHandler', () => {
         await subscribeCallback(mockNotification);
       }
 
-      expect(checkpointerEventHandler.handle).toHaveBeenCalledWith(
+      expect(agentMessageEventHandler.handle).toHaveBeenCalledWith(
         mockNotification,
       );
       expect(emittedEvent).toEqual(mockMessageNotification);
@@ -482,17 +531,10 @@ describe('NotificationHandler', () => {
       const subscribeCallback =
         notificationsService.subscribe.mock.calls[0]?.[0];
       if (subscribeCallback) {
-        await subscribeCallback(mockNotification);
+        await expect(subscribeCallback(mockNotification)).rejects.toThrow(
+          'Processing error',
+        );
       }
-
-      expect(logger.error).toHaveBeenCalledWith(
-        error,
-        'Failed to handle notification',
-        {
-          graphId: mockGraphId,
-          type: NotificationEvent.Graph,
-        },
-      );
     });
   });
 

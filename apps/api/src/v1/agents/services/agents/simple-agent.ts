@@ -12,8 +12,11 @@ import { DefaultLogger } from '@packages/common';
 import { z } from 'zod';
 
 import { FinishTool } from '../../../agent-tools/tools/finish.tool';
+import { NotificationEvent } from '../../../notifications/notifications.types';
+import { NotificationsService } from '../../../notifications/services/notifications.service';
 import {
   BaseAgentState,
+  BaseAgentStateChange,
   BaseAgentStateMessagesUpdateValue,
 } from '../../agents.types';
 import { RegisterAgent } from '../../decorators/register-agent.decorator';
@@ -67,6 +70,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
     private readonly logger: DefaultLogger,
+    private readonly notificationsService: NotificationsService,
   ) {
     super();
 
@@ -113,6 +117,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   protected buildGraph(config: SimpleAgentSchemaType) {
     // Apply defaults for optional fields
     const enforceToolUsage = config.enforceToolUsage ?? true;
+
     // ---- summarize ----
     const summarizeNode = new SummarizeNode(
       this.buildLLM('gpt-5-mini'),
@@ -204,12 +209,90 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     return g.compile({ checkpointer: this.checkpointer });
   }
 
+  private buildInitialState(): BaseAgentState {
+    return {
+      messages: [],
+      summary: '',
+      done: false,
+      toolUsageGuardActivated: false,
+      toolUsageGuardActivatedCount: 0,
+    };
+  }
+
+  private applyChange(
+    prev: BaseAgentState,
+    change: BaseAgentStateChange,
+  ): BaseAgentState {
+    const nextMessages = change.messages
+      ? change.messages.mode === 'append'
+        ? [...prev.messages, ...change.messages.items]
+        : change.messages.items
+      : prev.messages;
+
+    return {
+      messages: nextMessages,
+      summary: change.summary ?? prev.summary,
+      done: change.done ?? prev.done,
+      toolUsageGuardActivated:
+        change.toolUsageGuardActivated ?? prev.toolUsageGuardActivated,
+      toolUsageGuardActivatedCount:
+        change.toolUsageGuardActivatedCount ??
+        prev.toolUsageGuardActivatedCount,
+    };
+  }
+
+  private async emitNewMessages(
+    prevLen: number,
+    nextState: BaseAgentState,
+    runnableConfig: RunnableConfig<BaseAgentConfigurable> | undefined,
+    threadId: string,
+  ) {
+    const graphId = runnableConfig?.configurable?.graph_id;
+    if (!graphId) return;
+
+    const nodeId = runnableConfig?.configurable?.node_id || 'unknown';
+    const parentThreadId =
+      runnableConfig?.configurable?.parent_thread_id || 'unknown';
+
+    const newMessages = nextState.messages.slice(prevLen);
+    if (newMessages.length === 0) return;
+
+    // Emit notification for each new message
+    for (const message of newMessages) {
+      await this.notificationsService.emit({
+        type: NotificationEvent.AgentMessage,
+        graphId,
+        nodeId,
+        threadId,
+        parentThreadId,
+        data: {
+          messages: [message],
+        },
+      });
+    }
+  }
+
   public async run(
     threadId: string,
     messages: BaseMessage[],
     config: SimpleAgentSchemaType,
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
+    // Emit AgentInvoke notification
+    if (runnableConfig?.configurable?.graph_id) {
+      await this.notificationsService.emit({
+        type: NotificationEvent.AgentInvoke,
+        graphId: runnableConfig.configurable.graph_id,
+        nodeId: runnableConfig.configurable.node_id || 'unknown',
+        threadId,
+        parentThreadId:
+          runnableConfig.configurable.parent_thread_id || 'unknown',
+        data: {
+          messages,
+        },
+      });
+    }
+
     const g = this.buildGraph(config);
 
     const merged: RunnableConfig<BaseAgentConfigurable> = {
@@ -222,18 +305,47 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       recursionLimit: runnableConfig?.recursionLimit ?? 2500,
     };
 
-    const response = await g.invoke(
+    // Use stream instead of invoke to capture messages
+    const stream = await g.stream(
       {
         messages: {
           mode: 'append',
           items: messages,
         },
       },
-      merged,
+      {
+        ...merged,
+        streamMode: 'updates',
+      },
     );
 
+    let finalState: BaseAgentState = this.buildInitialState();
+
+    // Process stream chunks and emit message notifications
+    for await (const chunk of stream) {
+      // chunk is a record of node outputs: { [nodeName]: nodeState }
+      for (const [_nodeName, nodeState] of Object.entries(chunk)) {
+        // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
+        const stateChange = nodeState as BaseAgentStateChange;
+        if (!stateChange || typeof stateChange !== 'object') continue;
+
+        const beforeLen = finalState.messages.length;
+
+        // Convert state change to final state for tracking
+        finalState = this.applyChange(finalState, stateChange);
+
+        // Emit notification for new messages
+        await this.emitNewMessages(
+          beforeLen,
+          finalState,
+          runnableConfig,
+          threadId,
+        );
+      }
+    }
+
     return {
-      messages: response.messages,
+      messages: finalState.messages,
       threadId,
       checkpointNs: runnableConfig?.configurable?.checkpoint_ns,
     };

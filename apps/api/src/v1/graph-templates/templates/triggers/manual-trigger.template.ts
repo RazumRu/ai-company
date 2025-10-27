@@ -58,7 +58,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
 
   async create(
     config: ManualTriggerTemplateSchemaType,
-    inputNodes: Map<string, CompiledGraphNode>,
+    _inputNodes: Map<string, CompiledGraphNode>,
     outputNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<ManualTrigger> {
@@ -99,6 +99,9 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
         const threadId = `${metadata.graphId}:${runnableConfig.configurable?.thread_id || v4()}`;
         const checkpointNs = `${threadId}:${agentNode.id}`;
 
+        // The threadId at trigger level becomes the parent_thread_id for all agents in this execution
+        const parentThreadId = threadId;
+
         // Enrich runnableConfig with graph and node metadata
         const enrichedConfig: RunnableConfig<BaseAgentConfigurable> = {
           ...runnableConfig,
@@ -108,6 +111,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
             node_id: agentNode.id,
             thread_id: threadId,
             checkpoint_ns: checkpointNs,
+            parent_thread_id: parentThreadId,
           },
         };
 

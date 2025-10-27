@@ -156,6 +156,130 @@ describe('MessageTransformerService', () => {
 
       expect(result.content).toEqual({ raw: 'not valid json' });
     });
+
+    it('should transform serialized human message', () => {
+      const serializedMsg = {
+        lc: 1,
+        type: 'constructor',
+        id: ['langchain_core', 'messages', 'HumanMessage'],
+        kwargs: {
+          content: 'Hello from serialized message!',
+          additional_kwargs: {},
+        },
+      };
+
+      const result = service.transformMessageToDto(serializedMsg);
+
+      expect(result).toEqual({
+        role: 'human',
+        content: 'Hello from serialized message!',
+        additionalKwargs: undefined,
+      } as HumanMessageDto);
+    });
+
+    it('should transform serialized tool message', () => {
+      const serializedMsg = {
+        lc: 1,
+        type: 'constructor',
+        id: ['langchain_core', 'messages', 'ToolMessage'],
+        kwargs: {
+          tool_call_id: 'call_QrlzvPAGfR5P9k8KgEzt7zgH',
+          name: 'shell',
+          content: JSON.stringify({
+            exitCode: 0,
+            stdout: 'Docker info output',
+            stderr: 'Some warnings',
+            cmd: 'docker info',
+            fail: false,
+          }),
+          additional_kwargs: {},
+        },
+      };
+
+      const result = service.transformMessageToDto(serializedMsg);
+
+      expect(result).toEqual({
+        role: 'tool-shell',
+        name: 'shell',
+        content: {
+          exitCode: 0,
+          stdout: 'Docker info output',
+          stderr: 'Some warnings',
+          cmd: 'docker info',
+          fail: false,
+        },
+        toolCallId: 'call_QrlzvPAGfR5P9k8KgEzt7zgH',
+        additionalKwargs: undefined,
+      } as ShellToolMessageDto);
+    });
+
+    it('should transform serialized AI message with tool calls', () => {
+      const serializedMsg = {
+        lc: 1,
+        type: 'constructor',
+        id: ['langchain_core', 'messages', 'AIMessage'],
+        kwargs: {
+          content: 'I will call a tool',
+          id: 'msg-123',
+          tool_calls: [
+            {
+              name: 'get_weather',
+              args: { city: 'SF' },
+              type: 'tool_call',
+              id: 'call-1',
+            },
+          ],
+          additional_kwargs: {},
+        },
+      };
+
+      const result = service.transformMessageToDto(serializedMsg);
+
+      expect(result).toEqual({
+        role: 'ai',
+        content: 'I will call a tool',
+        id: 'msg-123',
+        toolCalls: [
+          {
+            name: 'get_weather',
+            args: { city: 'SF' },
+            type: 'tool_call',
+            id: 'call-1',
+          },
+        ],
+        additionalKwargs: undefined,
+      } as AIMessageDto);
+    });
+
+    it('should handle the exact serialized message format from the user issue', () => {
+      const serializedMsg = {
+        lc: 1,
+        type: 'constructor',
+        id: ['langchain_core', 'messages', 'ToolMessage'],
+        kwargs: {
+          tool_call_id: 'call_QrlzvPAGfR5P9k8KgEzt7zgH',
+          name: 'shell',
+          content:
+            '{"exitCode":0,"stdout":"DOCKER_HOST=tcp://dind-rt-5ac512cd-3622-45ef-99bd-cdb9bfc09f03-runtime-1:2375\\nDOCKER_HOST=tcp://dind-rt-5ac512cd-3622-45ef-99bd-cdb9bfc09f03-runtime-1:2375\\nClient:\\n Version:    28.3.3\\n Context:    default\\n Debug Mode: false\\n\\nServer:\\n Containers: 0\\n  Running: 0\\n  Paused: 0\\n  Stopped: 0\\n Images: 0\\n Server Version: 27.5.1\\n Storage Driver: overlay2\\n  Backing Filesystem: xfs\\n  Supports d_type: true\\n  Using metacopy: false\\n  Native Overlay Diff: true\\n  userxattr: false\\n Logging Driver: json-file\\n Cgroup Driver: cgroupfs\\n Cgroup Version: 2\\n Plugins:\\n  Volume: local\\n  Network: bridge host ipvlan macvlan null overlay\\n  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog\\n Swarm: inactive\\n Runtimes: io.containerd.runc.v2 runc\\n Default Runtime: runc\\n Init Binary: docker-init\\n containerd version: bcc810d6b9066471b0b6fa75f557a15a1cbf31bb\\n runc version: v1.2.4-0-g6c52b3f\\n init version: de40ad0\\n Security Options:\\n  seccomp\\n   Profile: builtin\\n  cgroupns\\n Kernel Version: 6.12.13-200.fc41.aarch64\\n Operating System: Alpine Linux v3.21 (containerized)\\n OSType: linux\\n Architecture: aarch64\\n CPUs: 4\\n Total Memory: 18.13GiB\\n Name: f2995c57f1be\\n ID: c336402e-b158-4049-a33c-b1433ecc5a91\\n Docker Root Dir: /var/lib/docker\\n Debug Mode: false\\n Experimental: false\\n Insecure Registries:\\n  127.0.0.0/8\\n Live Restore Enabled: false\\n Product License: Community Engine\\n\\n Security Options:\\n  seccomp\\n   Profile: builtin\\n  cgroupns\\n Kernel Version: 6.12.13-200.fc41.aarch64\\n Operating System: Alpine Linux v3.21 (containerized)\\n OSType: linux\\n Architecture: aarch64\\n CPUs: 4\\n Total Memory: 18.13GiB\\n Name: f2995c57f1be\\n ID: c336402e-b158-4049-a33c-b1433ecc5a91\\n Docker Root Dir: /var/lib/docker\\n Debug Mode: false\\n Experimental: false\\n Insecure Registries:\\n  127.0.0.0/8\\n Live Restore Enabled: false\\n Product License: Community Engine\\n\\n","stderr":"[DEPRECATION NOTICE]: API is accessible on http://0.0.0.0:2375 without encryption.\\n         Access to the remote API is equivalent to root access on the host. Refer\\n         to the \'Docker daemon attack surface\' section in the documentation for\\n         more information: https://docs.docker.com/go/attack-surface/\\nIn future versions this will be a hard failure preventing the daemon from starting! Learn more at: https://docs.docker.com/go/api-security/\\n[DEPRECATION NOTICE]: API is accessible on http://0.0.0.0:2375 without encryption.\\n         Access to the remote API is equivalent to root access on the host. Refer\\n         to the \'Docker daemon attack surface\' section in the documentation for\\n         more information: https://docs.docker.com/go/attack-surface/\\nIn future versions this will be a hard failure preventing the daemon from starting! Learn more at: https://docs.docker.com/go/api-security/\\n","fail":false,"cmd":"echo \\"DOCKER_HOST=$DOCKER_HOST\\" && docker info"}',
+          additional_kwargs: {},
+          response_metadata: {},
+        },
+      };
+
+      const result = service.transformMessageToDto(serializedMsg);
+
+      expect(result.role).toBe('tool-shell');
+      if (result.role === 'tool-shell') {
+        expect(result.name).toBe('shell');
+        expect(result.toolCallId).toBe('call_QrlzvPAGfR5P9k8KgEzt7zgH');
+      }
+      expect(result.content).toBeDefined();
+      expect(result.content).toHaveProperty('exitCode', 0);
+      expect(result.content).toHaveProperty('stdout');
+      expect(result.content).toHaveProperty('stderr');
+      expect(result.content).toHaveProperty('cmd');
+      expect(result.content).toHaveProperty('fail', false);
+    });
   });
 
   describe('transformMessagesToDto', () => {

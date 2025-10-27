@@ -29,6 +29,7 @@ export const environment = () =>
     postgresDatabase: getEnv('POSTGRES_DATABASE'),
     postgresRunMigrations: getEnv('POSTGRES_RUN_MIGRATIONS', true),
     llmBaseUrl: getEnv('LLM_BASE_URL'),
+    redisUrl: getEnv('REDIS_URL'),
 
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY'),

@@ -1,3 +1,7 @@
+import {
+  getThreadByExternalId,
+  getThreadMessages,
+} from '../threads/threads.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {
   createGraph,
@@ -5,7 +9,6 @@ import {
   deleteGraph,
   destroyGraph,
   executeTrigger,
-  getNodeMessages,
   runGraph,
 } from './graphs.helper';
 
@@ -58,49 +61,54 @@ describe('Shell Execution E2E', () => {
           expect(response.body).to.have.property('threadId');
           expect(response.body).to.have.property('checkpointNs');
 
-          // Verify messages were created
-          getNodeMessages(shellGraphId, 'agent-1', {
-            threadId: response.body.threadId,
-          }).then((messagesResponse) => {
-            expect(messagesResponse.status).to.equal(200);
-            expect(messagesResponse.body.threads).to.be.an('array');
-            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+          // Verify messages were created via threads API
+          getThreadByExternalId(response.body.threadId)
+            .then((threadRes) => {
+              expect(threadRes.status).to.equal(200);
+              const internalThreadId = threadRes.body.id;
+              return getThreadMessages(internalThreadId);
+            })
+            .then((messagesResponse) => {
+              expect(messagesResponse.status).to.equal(200);
+              const messages = messagesResponse.body.map((m) => m.message);
+              expect(messages.length).to.be.greaterThan(0);
 
-            const thread = messagesResponse.body.threads[0];
-            const messages = thread.messages;
-            expect(messages.length).to.be.greaterThan(0);
+              // Verify our sent command is included
+              const humanMessage = messages.find((msg) => msg.role === 'human');
+              expect(humanMessage).to.exist;
+              expect(humanMessage?.content).to.equal(testCommand);
 
-            // Verify our sent command is included
-            const humanMessage = messages.find((msg) => msg.role === 'human');
-            expect(humanMessage).to.exist;
-            expect(humanMessage.content).to.equal(testCommand);
+              // Find the shell tool message
+              const shellMessage = messages.find(
+                (msg) =>
+                  msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
+              );
+              expect(shellMessage).to.exist;
+              expect(shellMessage).to.have.property('name', 'shell');
+              expect(shellMessage).to.have.property('toolCallId');
 
-            // Find the shell tool message
-            const shellMessage = messages.find(
-              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-            );
-            expect(shellMessage).to.exist;
-            expect(shellMessage).to.have.property('name', 'shell');
-            expect(shellMessage).to.have.property('toolCallId');
+              // Verify shell message content structure (ShellToolResultDto)
+              const shellContent = (shellMessage as any).content;
+              expect(shellContent).to.be.an('object');
+              expect(shellContent)
+                .to.have.property('exitCode')
+                .that.is.a('number');
+              expect(shellContent)
+                .to.have.property('stdout')
+                .that.is.a('string');
+              expect(shellContent)
+                .to.have.property('stderr')
+                .that.is.a('string');
+              expect(shellContent).to.have.property('cmd').that.is.a('string');
 
-            // Verify shell message content structure (ShellToolResultDto)
-            const shellContent = shellMessage.content;
-            expect(shellContent).to.be.an('object');
-            expect(shellContent)
-              .to.have.property('exitCode')
-              .that.is.a('number');
-            expect(shellContent).to.have.property('stdout').that.is.a('string');
-            expect(shellContent).to.have.property('stderr').that.is.a('string');
-            expect(shellContent).to.have.property('cmd').that.is.a('string');
-
-            // Verify the shell command output
-            expect(shellContent).to.have.property('exitCode', 0);
-            expect(String(shellContent['stdout']).toLowerCase()).to.satisfy(
-              (content: string) =>
-                content.includes('hello') || content.includes('cypress'),
-              'Shell output should contain the echo result',
-            );
-          });
+              // Verify the shell command output
+              expect(shellContent).to.have.property('exitCode', 0);
+              expect(String(shellContent['stdout']).toLowerCase()).to.satisfy(
+                (content: string) =>
+                  content.includes('hello') || content.includes('cypress'),
+                'Shell output should contain the echo result',
+              );
+            });
         },
       );
     });
@@ -119,53 +127,55 @@ describe('Shell Execution E2E', () => {
           expect(response.body).to.have.property('threadId');
           expect(response.body).to.have.property('checkpointNs');
 
-          // Verify messages were created
-          getNodeMessages(shellGraphId, 'agent-1', {
-            threadId: response.body.threadId,
-          }).then((messagesResponse) => {
-            expect(messagesResponse.status).to.equal(200);
-            expect(messagesResponse.body.threads).to.be.an('array');
-            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+          // Verify messages were created via threads API
+          getThreadByExternalId(response.body.threadId)
+            .then((threadRes) => {
+              expect(threadRes.status).to.equal(200);
+              const internalThreadId = threadRes.body.id;
+              return getThreadMessages(internalThreadId);
+            })
+            .then((messagesResponse) => {
+              expect(messagesResponse.status).to.equal(200);
+              const messages = messagesResponse.body.map((m) => m.message);
+              expect(messages.length).to.be.greaterThan(0);
 
-            const thread = messagesResponse.body.threads[0];
-            const messages = thread.messages;
-            expect(messages.length).to.be.greaterThan(0);
+              expect(
+                messages.find(
+                  (msg) =>
+                    msg.content === triggerData.messages[0] &&
+                    msg.role === 'human',
+                ),
+              ).to.not.be.undefined;
 
-            expect(
-              messages.find(
+              // Find shell tool messages
+              const shellMessages = messages.filter(
                 (msg) =>
-                  msg.content === triggerData.messages[0] &&
-                  msg.role === 'human',
-              ),
-            ).to.not.be.undefined;
-
-            // Find shell tool messages
-            const shellMessages = messages.filter(
-              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-            );
-            expect(shellMessages.length).to.greaterThan(0);
-
-            // Verify shell messages have proper structure
-            shellMessages.forEach((msg) => {
-              expect(msg['name']).to.equal('shell');
-              expect(msg.content).to.be.an('object');
-              expect(msg.content).to.have.property('exitCode');
-              expect(msg.content).to.have.property('stdout');
-              expect(msg.content).to.have.property('stderr');
-              expect(msg.content).to.have.property('cmd');
-            });
-
-            // Verify the shell execution output contains FOO=bar
-            const envVarShellMessage = shellMessages.find((msg) => {
-              const content = msg.content as any;
-              return (
-                content.stdout?.includes('bar') &&
-                (content.cmd?.includes('$FOO') || content.cmd?.includes('echo'))
+                  msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
               );
+              expect(shellMessages.length).to.greaterThan(0);
+
+              // Verify shell messages have proper structure
+              shellMessages.forEach((msg) => {
+                expect((msg as any)['name']).to.equal('shell');
+                expect((msg as any).content).to.be.an('object');
+                expect((msg as any).content).to.have.property('exitCode');
+                expect((msg as any).content).to.have.property('stdout');
+                expect((msg as any).content).to.have.property('stderr');
+                expect((msg as any).content).to.have.property('cmd');
+              });
+
+              // Verify the shell execution output contains FOO=bar
+              const envVarShellMessage = shellMessages.find((msg) => {
+                const content = (msg as any).content as any;
+                return (
+                  content.stdout?.includes('bar') &&
+                  (content.cmd?.includes('$FOO') ||
+                    content.cmd?.includes('echo'))
+                );
+              });
+              expect(envVarShellMessage).to.exist;
+              expect((envVarShellMessage?.content as any).exitCode).to.equal(0);
             });
-            expect(envVarShellMessage).to.exist;
-            expect((envVarShellMessage.content as any).exitCode).to.equal(0);
-          });
         },
       );
     });
@@ -309,37 +319,40 @@ describe('Shell Execution E2E', () => {
           // Wait a bit for the command to timeout
           cy.wait(3000);
 
-          // Verify messages were created
-          getNodeMessages(timeoutTestGraphId, 'agent-1', {
-            threadId: response.body.threadId,
-          }).then((messagesResponse) => {
-            expect(messagesResponse.status).to.equal(200);
-            expect(messagesResponse.body.threads).to.be.an('array');
-            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+          getThreadByExternalId(response.body.threadId)
+            .then((threadRes) => {
+              const internalThreadId = threadRes.body.id;
+              return getThreadMessages(internalThreadId);
+            })
+            .then((messagesResponse) => {
+              expect(messagesResponse.status).to.equal(200);
+              const messages = messagesResponse.body.map((m) => m.message);
+              expect(messages.length).to.be.greaterThan(0);
 
-            const thread = messagesResponse.body.threads[0];
-            const messages = thread.messages;
-            expect(messages.length).to.be.greaterThan(0);
+              // Find the shell tool message
+              const shellMessage = messages.find(
+                (msg) =>
+                  msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
+              );
+              expect(shellMessage).to.exist;
 
-            // Find the shell tool message
-            const shellMessage = messages.find(
-              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-            );
-            expect(shellMessage).to.exist;
+              // Verify shell message content structure
+              const shellContent = (shellMessage as any).content;
+              expect(shellContent).to.be.an('object');
+              expect(shellContent)
+                .to.have.property('exitCode')
+                .that.is.a('number');
+              expect(shellContent)
+                .to.have.property('stdout')
+                .that.is.a('string');
+              expect(shellContent)
+                .to.have.property('stderr')
+                .that.is.a('string');
+              expect(shellContent).to.have.property('cmd').that.is.a('string');
 
-            // Verify shell message content structure
-            const shellContent = shellMessage.content;
-            expect(shellContent).to.be.an('object');
-            expect(shellContent)
-              .to.have.property('exitCode')
-              .that.is.a('number');
-            expect(shellContent).to.have.property('stdout').that.is.a('string');
-            expect(shellContent).to.have.property('stderr').that.is.a('string');
-            expect(shellContent).to.have.property('cmd').that.is.a('string');
-
-            // The command should have timed out (exit code 124)
-            expect(shellContent).to.have.property('exitCode', 124);
-          });
+              // The command should have timed out (exit code 124)
+              expect(shellContent).to.have.property('exitCode', 124);
+            });
         },
       );
     });
@@ -361,40 +374,43 @@ describe('Shell Execution E2E', () => {
           // Wait for the command to complete or timeout
           cy.wait(5000);
 
-          // Verify messages were created
-          getNodeMessages(timeoutTestGraphId, 'agent-1', {
-            threadId: response.body.threadId,
-          }).then((messagesResponse) => {
-            expect(messagesResponse.status).to.equal(200);
-            expect(messagesResponse.body.threads).to.be.an('array');
-            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+          getThreadByExternalId(response.body.threadId)
+            .then((threadRes) => {
+              const internalThreadId = threadRes.body.id;
+              return getThreadMessages(internalThreadId);
+            })
+            .then((messagesResponse) => {
+              expect(messagesResponse.status).to.equal(200);
+              const messages = messagesResponse.body.map((m) => m.message);
+              expect(messages.length).to.be.greaterThan(0);
 
-            const thread = messagesResponse.body.threads[0];
-            const messages = thread.messages;
-            expect(messages.length).to.be.greaterThan(0);
+              // Find the shell tool message
+              const shellMessage = messages.find(
+                (msg) =>
+                  msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
+              );
+              expect(shellMessage).to.exist;
 
-            // Find the shell tool message
-            const shellMessage = messages.find(
-              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-            );
-            expect(shellMessage).to.exist;
+              // Verify shell message content structure
+              const shellContent = (shellMessage as any).content;
+              expect(shellContent).to.be.an('object');
+              expect(shellContent)
+                .to.have.property('exitCode')
+                .that.is.a('number');
+              expect(shellContent)
+                .to.have.property('stdout')
+                .that.is.a('string');
+              expect(shellContent)
+                .to.have.property('stderr')
+                .that.is.a('string');
+              expect(shellContent).to.have.property('cmd').that.is.a('string');
 
-            // Verify shell message content structure
-            const shellContent = shellMessage.content;
-            expect(shellContent).to.be.an('object');
-            expect(shellContent)
-              .to.have.property('exitCode')
-              .that.is.a('number');
-            expect(shellContent).to.have.property('stdout').that.is.a('string');
-            expect(shellContent).to.have.property('stderr').that.is.a('string');
-            expect(shellContent).to.have.property('cmd').that.is.a('string');
-
-            // The command should have completed successfully (exit code 0)
-            // since it produces output within the tail timeout
-            expect(shellContent).to.have.property('exitCode', 0);
-            expect((shellContent as any).stdout).to.contain('start');
-            expect((shellContent as any).stdout).to.contain('end');
-          });
+              // The command should have completed successfully (exit code 0)
+              // since it produces output within the tail timeout
+              expect(shellContent).to.have.property('exitCode', 0);
+              expect((shellContent as any).stdout).to.contain('start');
+              expect((shellContent as any).stdout).to.contain('end');
+            });
         },
       );
     });
@@ -414,38 +430,40 @@ describe('Shell Execution E2E', () => {
           // Wait for the command to complete
           cy.wait(2000);
 
-          // Verify messages were created
-          getNodeMessages(timeoutTestGraphId, 'agent-1', {
-            threadId: response.body.threadId,
-          }).then((messagesResponse) => {
-            expect(messagesResponse.status).to.equal(200);
-            expect(messagesResponse.body.threads).to.be.an('array');
-            expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+          getThreadByExternalId(response.body.threadId)
+            .then((threadRes) => {
+              const internalThreadId = threadRes.body.id;
+              return getThreadMessages(internalThreadId);
+            })
+            .then((messagesResponse) => {
+              expect(messagesResponse.status).to.equal(200);
+              const messages = messagesResponse.body.map((m) => m.message);
+              expect(messages.length).to.be.greaterThan(0);
 
-            const thread = messagesResponse.body.threads[0];
-            const messages = thread.messages;
-            expect(messages.length).to.be.greaterThan(0);
+              // Find the shell tool message
+              const shellMessage = messages.find(
+                (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
+              );
+              expect(shellMessage).to.exist;
 
-            // Find the shell tool message
-            const shellMessage = messages.find(
-              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-            );
-            expect(shellMessage).to.exist;
+              // Verify shell message content structure
+              const shellContent = shellMessage?.content;
+              expect(shellContent).to.be.an('object');
+              expect(shellContent)
+                .to.have.property('exitCode')
+                .that.is.a('number');
+              expect(shellContent)
+                .to.have.property('stdout')
+                .that.is.a('string');
+              expect(shellContent)
+                .to.have.property('stderr')
+                .that.is.a('string');
+              expect(shellContent).to.have.property('cmd').that.is.a('string');
 
-            // Verify shell message content structure
-            const shellContent = shellMessage.content;
-            expect(shellContent).to.be.an('object');
-            expect(shellContent)
-              .to.have.property('exitCode')
-              .that.is.a('number');
-            expect(shellContent).to.have.property('stdout').that.is.a('string');
-            expect(shellContent).to.have.property('stderr').that.is.a('string');
-            expect(shellContent).to.have.property('cmd').that.is.a('string');
-
-            // The command should have completed successfully
-            expect(shellContent).to.have.property('exitCode', 0);
-            expect((shellContent as any).stdout).to.contain('success');
-          });
+              // The command should have completed successfully
+              expect(shellContent).to.have.property('exitCode', 0);
+              expect((shellContent as any).stdout).to.contain('success');
+            });
         },
       );
     });
@@ -504,12 +522,12 @@ function createMockGraphDataWithShellTool(options?: {
           to: 'agent-1',
         },
         {
-          from: 'shell-tool-1',
-          to: 'agent-1',
+          from: 'agent-1',
+          to: 'shell-tool-1',
         },
         {
-          from: 'runtime-1',
-          to: 'shell-tool-1',
+          from: 'shell-tool-1',
+          to: 'runtime-1',
         },
       ],
     },

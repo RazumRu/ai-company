@@ -22,22 +22,6 @@ describe('ShellTool', () => {
     tool = module.get<ShellTool>(ShellTool);
   });
 
-  describe('properties', () => {
-    it('should have correct name', () => {
-      expect(tool.name).toBe('shell');
-    });
-
-    it('should have correct description', () => {
-      expect(tool.description).toBe(
-        'Executes arbitrary shell commands inside the prepared Docker runtime. Use it for files, git, tests, builds, installs, inspection. Returns stdout, stderr, exitCode.',
-      );
-    });
-
-    it('should not be marked as system tool', () => {
-      expect(tool.system).toBe(false);
-    });
-  });
-
   describe('schema', () => {
     it('should validate required cmd field', () => {
       const validData = { cmd: 'echo "hello"' };

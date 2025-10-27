@@ -239,10 +239,8 @@ describe('GraphRegistry', () => {
       const graphId = 'concurrent-graph';
       const compiledGraph = createMockCompiledGraph();
 
-      // Register graph
       registry.register(graphId, compiledGraph);
 
-      // Concurrent operations
       const operations = [
         registry.get(graphId),
         registry.getNode(graphId, 'node-1'),
@@ -263,7 +261,6 @@ describe('GraphRegistry', () => {
       const compiledGraph = createMockCompiledGraph(3);
       const destroySpy = vi.spyOn(compiledGraph, 'destroy');
 
-      // Register
       registry.register(graphId, compiledGraph);
       expect(registry.get(graphId)).toBe(compiledGraph);
 
@@ -288,7 +285,6 @@ describe('GraphRegistry', () => {
       const compiledGraph1 = createMockCompiledGraph(2);
       const compiledGraph2 = createMockCompiledGraph(3);
 
-      // Register both graphs
       registry.register(graphId1, compiledGraph1);
       registry.register(graphId2, compiledGraph2);
 

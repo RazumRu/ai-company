@@ -3,11 +3,19 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { SimpleAgent } from './simple-agent';
 
 // Mock dependencies
-vi.mock('@langchain/core/messages');
+vi.mock('@langchain/core/messages', () => ({
+  HumanMessage: class MockHumanMessage {
+    content: string;
+    constructor(content: string) {
+      this.content = content;
+    }
+  },
+}));
 vi.mock('@langchain/openai');
 vi.mock('@langchain/langgraph');
 
@@ -35,6 +43,10 @@ describe('SimpleAgent', () => {
         {
           provide: PgCheckpointSaver,
           useValue: mockCheckpointSaver,
+        },
+        {
+          provide: NotificationsService,
+          useValue: { emit: vi.fn() },
         },
       ],
     }).compile();
@@ -190,11 +202,23 @@ describe('SimpleAgent', () => {
 
   describe('run', () => {
     it('should execute agent with valid configuration', async () => {
+      const mockMessages = [new HumanMessage('Response')];
+
+      // Mock async generator for stream
+      async function* mockStream() {
+        yield {
+          'agent-1': {
+            messages: {
+              mode: 'append',
+              items: mockMessages,
+            },
+          },
+        };
+      }
+
       // Mock the graph compilation and execution
       const mockGraph = {
-        invoke: vi.fn().mockResolvedValue({
-          messages: [new HumanMessage('Response')],
-        }),
+        stream: vi.fn().mockReturnValue(mockStream()),
       };
 
       // Mock buildGraph to return our mock graph
@@ -214,7 +238,7 @@ describe('SimpleAgent', () => {
       const result = await agent.run(threadId, messages, config);
 
       expect(agent['buildGraph']).toHaveBeenCalledWith(config);
-      expect(mockGraph.invoke).toHaveBeenCalledWith(
+      expect(mockGraph.stream).toHaveBeenCalledWith(
         {
           messages: {
             mode: 'append',
@@ -230,17 +254,19 @@ describe('SimpleAgent', () => {
         }),
       );
       expect(result).toEqual({
-        messages: [new HumanMessage('Response')],
+        messages: mockMessages,
         threadId: 'test-thread',
         checkpointNs: undefined,
       });
     });
 
     it('should handle custom runnable config', async () => {
+      async function* mockStream() {
+        yield { node1: { messages: [] } };
+      }
+
       const mockGraph = {
-        invoke: vi.fn().mockResolvedValue({
-          messages: [],
-        }),
+        stream: vi.fn().mockReturnValue(mockStream()),
       };
 
       agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
@@ -260,7 +286,7 @@ describe('SimpleAgent', () => {
 
       await agent.run('test-thread', [], config, customRunnableConfig);
 
-      expect(mockGraph.invoke).toHaveBeenCalledWith(
+      expect(mockGraph.stream).toHaveBeenCalledWith(
         expect.any(Object),
         expect.objectContaining({
           recursionLimit: 1000,
@@ -275,8 +301,14 @@ describe('SimpleAgent', () => {
 
     it('should handle errors during execution', async () => {
       const mockError = new Error('Graph execution failed');
+
+      async function* mockStream() {
+        yield { 'agent-1': { messages: { mode: 'append', items: [] } } };
+        throw mockError;
+      }
+
       const mockGraph = {
-        invoke: vi.fn().mockRejectedValue(mockError),
+        stream: vi.fn().mockReturnValue(mockStream()),
       };
 
       agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);

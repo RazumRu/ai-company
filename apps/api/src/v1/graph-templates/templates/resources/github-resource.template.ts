@@ -30,7 +30,7 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
     'GitHub resource providing environment for shell execution';
   readonly schema = GithubResourceTemplateSchema;
 
-  readonly outputs = [
+  readonly inputs = [
     {
       type: 'template',
       value: 'shell-tool',

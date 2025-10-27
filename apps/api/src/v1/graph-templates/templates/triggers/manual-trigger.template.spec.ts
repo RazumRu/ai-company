@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ManualTrigger } from '../../../agent-triggers/services/manual-trigger';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { SimpleAgentTemplateResult } from '../base-node.template';
 import {
   ManualTriggerTemplate,
@@ -49,6 +50,16 @@ describe('ManualTriggerTemplate', () => {
         {
           provide: ModuleRef,
           useValue: mockModuleRef,
+        },
+        {
+          provide: ThreadsDao,
+          useValue: {
+            getOne: vi.fn().mockResolvedValue(null),
+            getAll: vi.fn(),
+            create: vi.fn(),
+            updateById: vi.fn(),
+            deleteById: vi.fn(),
+          },
         },
       ],
     }).compile();

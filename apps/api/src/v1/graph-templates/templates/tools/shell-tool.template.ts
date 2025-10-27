@@ -30,6 +30,14 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
 
   readonly inputs = [
     {
+      type: 'kind',
+      value: NodeKind.SimpleAgent,
+      multiple: true,
+    },
+  ] as const;
+
+  readonly outputs = [
+    {
       type: 'template',
       value: 'github-resource',
       multiple: true,
@@ -42,28 +50,20 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     },
   ] as const;
 
-  readonly outputs = [
-    {
-      type: 'kind',
-      value: NodeKind.SimpleAgent,
-      multiple: true,
-    },
-  ] as const;
-
   constructor(private readonly shellTool: ShellTool) {
     super();
   }
 
   async create(
     config: z.infer<typeof ShellToolTemplateSchema>,
-    inputNodes: Map<string, CompiledGraphNode>,
-    _outputNodes: Map<string, CompiledGraphNode>,
+    _inputNodes: Map<string, CompiledGraphNode>,
+    outputNodes: Map<string, CompiledGraphNode>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
-    // Find runtime node from input nodes
+    // Find runtime node from output nodes
     let runtimeNode: CompiledGraphNode<BaseRuntime> | undefined;
 
-    for (const [_nodeId, node] of inputNodes) {
+    for (const [_nodeId, node] of outputNodes) {
       if (node.type === NodeKind.Runtime) {
         runtimeNode = node as CompiledGraphNode<BaseRuntime>;
         break;
@@ -73,14 +73,14 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     if (!runtimeNode) {
       throw new NotFoundException(
         'NODE_NOT_FOUND',
-        `Runtime node not found in input nodes`,
+        `Runtime node not found in output nodes`,
       );
     }
 
-    // Collect resource nodes from input nodes
+    // Collect resource nodes from output nodes
     const resourceNodeIds: string[] = [];
 
-    for (const [nodeId, node] of inputNodes) {
+    for (const [nodeId, node] of outputNodes) {
       if (node.type === NodeKind.Resource) {
         resourceNodeIds.push(nodeId);
       }
@@ -89,7 +89,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     // Discover and collect environment variables and information from resources
     const { env, information, initScripts } = this.collectResourceData(
       resourceNodeIds,
-      inputNodes,
+      outputNodes,
     );
 
     // Execute init scripts on the runtime

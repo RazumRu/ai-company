@@ -3,8 +3,8 @@ import { IAppBootstrapperExtension } from '@packages/common';
 import { MetricsModule } from './metrics.module';
 import { MetricsService } from './services/metrics.service';
 
-export * from './metrics.types';
 export * from './metrics.module';
+export * from './metrics.types';
 export * from './services/metrics.service';
 
 export const buildMetricExtension = (

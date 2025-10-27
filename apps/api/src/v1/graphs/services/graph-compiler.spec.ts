@@ -80,7 +80,6 @@ describe('GraphCompiler', () => {
     compiler = module.get<GraphCompiler>(GraphCompiler);
     templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
 
-    // Reset all mocks before each test
     vi.clearAllMocks();
   });
 
@@ -117,7 +116,6 @@ describe('GraphCompiler', () => {
         instance: { container: 'runtime-instance' },
       });
       expect(result.edges).toEqual([]);
-      // Metadata is no longer returned in CompiledGraph
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map), // inputNodes
@@ -144,7 +142,7 @@ describe('GraphCompiler', () => {
             config: { runtimeNodeId: 'python-runtime' },
           },
         ],
-        edges: [{ from: 'python-runtime', to: 'shell-tool' }],
+        edges: [{ from: 'shell-tool', to: 'python-runtime' }],
       };
 
       const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
@@ -170,10 +168,9 @@ describe('GraphCompiler', () => {
       expect(result.nodes.get('python-runtime')).toBeDefined();
       expect(result.nodes.get('shell-tool')).toBeDefined();
       expect(result.edges).toEqual([
-        { from: 'python-runtime', to: 'shell-tool' },
+        { from: 'shell-tool', to: 'python-runtime' },
       ]);
 
-      // Verify runtime was created before tool
       expect(runtimeTemplate.create).toHaveBeenCalledBefore(
         toolTemplate.create,
       );
@@ -182,7 +179,6 @@ describe('GraphCompiler', () => {
     it('should compile complex graph with multiple runtimes, tools, and agents', async () => {
       const schema = {
         nodes: [
-          // Runtimes
           {
             id: 'python-runtime',
             template: 'docker-runtime',
@@ -193,7 +189,6 @@ describe('GraphCompiler', () => {
             template: 'docker-runtime',
             config: { image: 'node:20' },
           },
-          // Tools
           {
             id: 'python-shell',
             template: 'shell-tool',
@@ -209,7 +204,6 @@ describe('GraphCompiler', () => {
             template: 'web-search-tool',
             config: {},
           },
-          // Agents
           {
             id: 'python-agent',
             template: 'simple-agent',
@@ -230,11 +224,11 @@ describe('GraphCompiler', () => {
           },
         ],
         edges: [
-          { from: 'python-runtime', to: 'python-shell' },
-          { from: 'node-runtime', to: 'node-shell' },
-          { from: 'python-shell', to: 'python-agent' },
-          { from: 'web-search', to: 'python-agent' },
-          { from: 'node-shell', to: 'node-agent' },
+          { from: 'python-shell', to: 'python-runtime' },
+          { from: 'node-shell', to: 'node-runtime' },
+          { from: 'python-agent', to: 'python-shell' },
+          { from: 'python-agent', to: 'web-search' },
+          { from: 'node-agent', to: 'node-shell' },
         ],
         metadata: {
           graphId: 'test-graph',
@@ -270,7 +264,6 @@ describe('GraphCompiler', () => {
       const entity = createMockGraphEntity(schema);
       const result = await compiler.compile(entity);
 
-      // Verify all nodes were created
       expect(result.nodes.size).toBe(7);
       expect(result.nodes.get('python-runtime')).toBeDefined();
       expect(result.nodes.get('node-runtime')).toBeDefined();
@@ -280,14 +273,11 @@ describe('GraphCompiler', () => {
       expect(result.nodes.get('python-agent')).toBeDefined();
       expect(result.nodes.get('node-agent')).toBeDefined();
 
-      // Verify edges
       expect(result.edges).toHaveLength(5);
-      // Metadata is no longer returned in CompiledGraph
 
-      // Verify creation order: runtimes first, then tools, then agents
-      expect(runtimeTemplate.create).toHaveBeenCalledTimes(2);
-      expect(toolTemplate.create).toHaveBeenCalledTimes(3);
       expect(agentTemplate.create).toHaveBeenCalledTimes(2);
+      expect(toolTemplate.create).toHaveBeenCalledTimes(3);
+      expect(runtimeTemplate.create).toHaveBeenCalledTimes(2);
     });
 
     it('should validate unique node IDs', async () => {
@@ -360,7 +350,6 @@ describe('GraphCompiler', () => {
     it('should build nodes in correct dependency order', async () => {
       const schema = {
         nodes: [
-          // Defined in reverse order to test sorting
           {
             id: 'agent-1',
             template: 'simple-agent',
@@ -376,6 +365,10 @@ describe('GraphCompiler', () => {
             template: 'docker-runtime',
             config: { image: 'python:3.11' },
           },
+        ],
+        edges: [
+          { from: 'agent-1', to: 'tool-1' },
+          { from: 'tool-1', to: 'runtime-1' },
         ],
         metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
@@ -413,7 +406,6 @@ describe('GraphCompiler', () => {
       const entity = createMockGraphEntity(schema);
       await compiler.compile(entity);
 
-      // Verify creation order: runtime -> tool -> agent
       expect(createOrder).toEqual(['runtime', 'tool', 'agent']);
     });
 
@@ -498,20 +490,22 @@ describe('GraphCompiler', () => {
       const entity = createMockGraphEntity(schema);
       await compiler.compile(entity);
 
-      // Verify tool create was called with input and output nodes maps containing runtime
-      expect(toolTemplate.create).toHaveBeenCalledWith(
-        {},
+      expect(runtimeTemplate.create).toHaveBeenCalledWith(
+        expect.objectContaining({ image: 'python:3.11' }),
         expect.any(Map), // inputNodes
         expect.any(Map), // outputNodes
         expect.objectContaining({
-          nodeId: 'tool-1',
+          nodeId: 'runtime-1',
         }),
       );
 
-      const inputNodesArg = toolTemplate.create.mock.calls[0]![1];
-      const outputNodesArg = toolTemplate.create.mock.calls[0]![2];
-      expect(inputNodesArg.has('runtime-1')).toBe(true);
-      expect(outputNodesArg.has('runtime-1')).toBe(true);
+      expect(runtimeTemplate.create).toHaveBeenCalled();
+      expect(toolTemplate.create).toHaveBeenCalled();
+
+      const inputNodesArg = runtimeTemplate.create.mock.calls[0]![1];
+      const outputNodesArg = runtimeTemplate.create.mock.calls[0]![2];
+      expect(inputNodesArg.has('tool-1')).toBe(false);
+      expect(outputNodesArg.has('tool-1')).toBe(false);
     });
   });
 
@@ -533,7 +527,6 @@ describe('GraphCompiler', () => {
         metadata: { graphId: 'test-graph', version: '1.0.0' },
       };
 
-      // Mock the template registry methods
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
 
@@ -996,7 +989,6 @@ describe('GraphCompiler', () => {
         return undefined;
       });
 
-      // Should not throw on connection rules
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
 
@@ -1027,7 +1019,6 @@ describe('GraphCompiler', () => {
 
       const mockToolTemplate = createMockTemplate(NodeKind.Tool);
       mockToolTemplate.name = 'unrestricted-tool';
-      // No inputs defined
 
       const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
       mockResourceTemplate.name = 'any-resource';
@@ -1044,7 +1035,6 @@ describe('GraphCompiler', () => {
         return undefined;
       });
 
-      // Should not throw on connection rules
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
 
@@ -1185,7 +1175,6 @@ describe('GraphCompiler', () => {
       );
       await compiler.compile(entity);
 
-      // Verify that template.create was called with the correct metadata
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map), // inputNodes
@@ -1274,7 +1263,6 @@ describe('GraphCompiler', () => {
       );
       await compiler.compile(entity);
 
-      // Verify that each template received the correct nodeId
       expect(mockTemplate1.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map), // inputNodes
@@ -1348,7 +1336,6 @@ describe('GraphCompiler', () => {
       const entity = createMockGraphEntity(schema);
       await compiler.compile(entity, extendedMetadata);
 
-      // Verify that all metadata properties are preserved
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map), // inputNodes
@@ -1455,7 +1442,6 @@ describe('GraphCompiler', () => {
       );
       await compiler.compile(entity);
 
-      // Verify that each template received the correct metadata
       expect(mockAgentTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
         expect.any(Map), // inputNodes
@@ -1512,7 +1498,6 @@ describe('GraphCompiler', () => {
 
   describe('destroyNotCompiledGraph', () => {
     it('should destroy runtime containers for graphs with docker-runtime nodes', async () => {
-      // Arrange
       const graphWithRuntime = createMockGraphEntity({
         nodes: [
           {
@@ -1536,10 +1521,8 @@ describe('GraphCompiler', () => {
         edges: [],
       });
 
-      // Act
       await compiler.destroyNotCompiledGraph(graphWithRuntime);
 
-      // Assert
       expect(vi.mocked(DockerRuntime.cleanupByLabels)).toHaveBeenCalledWith(
         { 'ai-company/graph_id': graphWithRuntime.id },
         expect.objectContaining({ socketPath: expect.any(String) }),
@@ -1547,7 +1530,6 @@ describe('GraphCompiler', () => {
     });
 
     it('should do nothing for graphs without docker-runtime nodes', async () => {
-      // Arrange
       const graphWithoutRuntime = createMockGraphEntity({
         nodes: [
           {
@@ -1571,15 +1553,12 @@ describe('GraphCompiler', () => {
         DockerRuntime: mockDockerRuntime,
       }));
 
-      // Act
       await compiler.destroyNotCompiledGraph(graphWithoutRuntime);
 
-      // Assert
       expect(mockDockerRuntime.cleanupByLabels).not.toHaveBeenCalled();
     });
 
     it('should handle multiple docker-runtime nodes', async () => {
-      // Arrange
       const graphWithMultipleRuntimes = createMockGraphEntity({
         nodes: [
           {
@@ -1602,10 +1581,8 @@ describe('GraphCompiler', () => {
         edges: [],
       });
 
-      // Act
       await compiler.destroyNotCompiledGraph(graphWithMultipleRuntimes);
 
-      // Assert
       expect(vi.mocked(DockerRuntime.cleanupByLabels)).toHaveBeenCalledWith(
         { 'ai-company/graph_id': graphWithMultipleRuntimes.id },
         expect.objectContaining({ socketPath: expect.any(String) }),
@@ -1620,151 +1597,6 @@ describe('GraphCompiler', () => {
     });
 
     it('should pass validation when required connections are present', () => {
-      // Arrange
-      const schema = {
-        nodes: [
-          {
-            id: 'runtime-1',
-            template: 'docker-runtime',
-            config: { runtimeType: 'Docker' },
-          },
-          {
-            id: 'shell-tool-1',
-            template: 'shell-tool',
-            config: {},
-          },
-        ],
-        edges: [
-          {
-            from: 'runtime-1',
-            to: 'shell-tool-1',
-          },
-        ],
-      };
-
-      // Mock template registry to return templates
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
-        if (name === 'shell-tool') {
-          return {
-            name: 'shell-tool',
-            kind: NodeKind.Tool,
-            description: 'Shell tool',
-            schema: {} as any,
-            inputs: [
-              {
-                type: 'kind',
-                value: NodeKind.Runtime,
-                required: true,
-                multiple: false,
-              },
-            ],
-            outputs: [
-              {
-                type: 'kind',
-                value: NodeKind.Tool,
-                multiple: true,
-              },
-            ],
-            create: vi.fn(),
-          };
-        }
-        if (name === 'docker-runtime') {
-          return {
-            name: 'docker-runtime',
-            kind: NodeKind.Runtime,
-            description: 'Docker runtime',
-            schema: {} as any,
-            inputs: [],
-            outputs: [
-              {
-                type: 'kind',
-                value: NodeKind.Tool,
-                multiple: true,
-              },
-            ],
-            create: vi.fn(),
-          };
-        }
-        return undefined;
-      });
-
-      // Mock template registry hasTemplate method
-      vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
-        return ['shell-tool', 'docker-runtime'].includes(name);
-      });
-
-      // Mock template registry validateTemplateConfig method
-      vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
-        () => {},
-      );
-
-      // Act & Assert - should not throw
-      expect(() => compiler.validateSchema(schema)).not.toThrow();
-    });
-
-    it('should throw error when required connections are missing', () => {
-      // Arrange
-      const schema = {
-        nodes: [
-          {
-            id: 'shell-tool-1',
-            template: 'shell-tool',
-            config: {},
-          },
-        ],
-        edges: [],
-      };
-
-      // Mock template registry to return templates
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
-        if (name === 'shell-tool') {
-          return {
-            name: 'shell-tool',
-            kind: NodeKind.Tool,
-            description: 'Shell tool',
-            schema: {} as any,
-            inputs: [
-              {
-                type: 'kind',
-                value: NodeKind.Runtime,
-                required: true,
-                multiple: false,
-              },
-            ],
-            outputs: [
-              {
-                type: 'kind',
-                value: NodeKind.Tool,
-                multiple: true,
-              },
-            ],
-            create: vi.fn(),
-          };
-        }
-        return undefined;
-      });
-
-      // Mock template registry hasTemplate method
-      vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
-        return ['shell-tool'].includes(name);
-      });
-
-      // Mock template registry validateTemplateConfig method
-      vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
-        () => {},
-      );
-
-      // Act & Assert
-      expect(() => compiler.validateSchema(schema)).toThrow(
-        BadRequestException,
-      );
-      expect(() => compiler.validateSchema(schema)).toThrow(
-        "Template 'shell-tool' requires at least one connection from kind 'runtime', but none found",
-      );
-    });
-
-    it('should pass validation when multiple required connections are satisfied', () => {
-      // Arrange
       const schema = {
         nodes: [
           {
@@ -1785,17 +1617,16 @@ describe('GraphCompiler', () => {
         ],
         edges: [
           {
-            from: 'runtime-1',
-            to: 'shell-tool-1',
+            from: 'shell-tool-1',
+            to: 'runtime-1',
           },
           {
-            from: 'github-resource-1',
-            to: 'shell-tool-1',
+            from: 'shell-tool-1',
+            to: 'github-resource-1',
           },
         ],
       };
 
-      // Mock template registry to return templates
       vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
         if (name === 'shell-tool') {
           return {
@@ -1806,22 +1637,22 @@ describe('GraphCompiler', () => {
             inputs: [
               {
                 type: 'kind',
-                value: NodeKind.Runtime,
-                required: true,
-                multiple: false,
-              },
-              {
-                type: 'template',
-                value: 'github-resource',
-                required: true,
-                multiple: false,
+                value: NodeKind.SimpleAgent,
+                multiple: true,
               },
             ],
             outputs: [
               {
-                type: 'kind',
-                value: NodeKind.Tool,
+                type: 'template',
+                value: 'github-resource',
+                required: true,
                 multiple: true,
+              },
+              {
+                type: 'kind',
+                value: NodeKind.Runtime,
+                required: true,
+                multiple: false,
               },
             ],
             create: vi.fn(),
@@ -1833,7 +1664,13 @@ describe('GraphCompiler', () => {
             kind: NodeKind.Runtime,
             description: 'Docker runtime',
             schema: {} as any,
-            inputs: [],
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
             outputs: [
               {
                 type: 'kind',
@@ -1850,7 +1687,13 @@ describe('GraphCompiler', () => {
             kind: NodeKind.Resource,
             description: 'GitHub resource',
             schema: {} as any,
-            inputs: [],
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
             outputs: [
               {
                 type: 'kind',
@@ -1864,24 +1707,252 @@ describe('GraphCompiler', () => {
         return undefined;
       });
 
-      // Mock template registry hasTemplate method
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
         return ['shell-tool', 'docker-runtime', 'github-resource'].includes(
           name,
         );
       });
 
-      // Mock template registry validateTemplateConfig method
       vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
         () => {},
       );
 
-      // Act & Assert - should not throw
+      expect(() => compiler.validateSchema(schema)).not.toThrow();
+    });
+
+    it('should throw error when required connections are missing', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'shell-tool-1',
+            template: 'shell-tool',
+            config: {},
+          },
+        ],
+        edges: [],
+      };
+
+      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+        if (name === 'shell-tool') {
+          return {
+            name: 'shell-tool',
+            kind: NodeKind.Tool,
+            description: 'Shell tool',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.SimpleAgent,
+                multiple: true,
+              },
+            ],
+            outputs: [
+              {
+                type: 'template',
+                value: 'github-resource',
+                required: true,
+                multiple: true,
+              },
+              {
+                type: 'kind',
+                value: NodeKind.Runtime,
+                required: true,
+                multiple: false,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        if (name === 'github-resource') {
+          return {
+            name: 'github-resource',
+            kind: NodeKind.Resource,
+            description: 'GitHub resource',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        return undefined;
+      });
+
+      vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
+        return ['shell-tool'].includes(name);
+      });
+
+      vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
+        () => {},
+      );
+
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        BadRequestException,
+      );
+      expect(() => compiler.validateSchema(schema)).toThrow(
+        "Template 'shell-tool' requires at least one connection to template 'github-resource', but none found",
+      );
+    });
+
+    it('should pass validation when multiple required connections are satisfied', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'runtime-1',
+            template: 'docker-runtime',
+            config: { runtimeType: 'Docker' },
+          },
+          {
+            id: 'github-resource-1',
+            template: 'github-resource',
+            config: { patToken: 'test-token' },
+          },
+          {
+            id: 'shell-tool-1',
+            template: 'shell-tool',
+            config: {},
+          },
+        ],
+        edges: [
+          {
+            from: 'shell-tool-1',
+            to: 'runtime-1',
+          },
+          {
+            from: 'shell-tool-1',
+            to: 'github-resource-1',
+          },
+        ],
+      };
+
+      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+        if (name === 'shell-tool') {
+          return {
+            name: 'shell-tool',
+            kind: NodeKind.Tool,
+            description: 'Shell tool',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.SimpleAgent,
+                multiple: true,
+              },
+            ],
+            outputs: [
+              {
+                type: 'template',
+                value: 'github-resource',
+                required: true,
+                multiple: true,
+              },
+              {
+                type: 'kind',
+                value: NodeKind.Runtime,
+                required: true,
+                multiple: false,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        if (name === 'docker-runtime') {
+          return {
+            name: 'docker-runtime',
+            kind: NodeKind.Runtime,
+            description: 'Docker runtime',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        if (name === 'github-resource') {
+          return {
+            name: 'github-resource',
+            kind: NodeKind.Resource,
+            description: 'GitHub resource',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        if (name === 'github-resource') {
+          return {
+            name: 'github-resource',
+            kind: NodeKind.Resource,
+            description: 'GitHub resource',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        return undefined;
+      });
+
+      vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
+        return ['shell-tool', 'docker-runtime', 'github-resource'].includes(
+          name,
+        );
+      });
+
+      vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
+        () => {},
+      );
+
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
 
     it('should throw error when one of multiple required connections is missing', () => {
-      // Arrange
       const schema = {
         nodes: [
           {
@@ -1897,13 +1968,12 @@ describe('GraphCompiler', () => {
         ],
         edges: [
           {
-            from: 'runtime-1',
-            to: 'shell-tool-1',
+            from: 'shell-tool-1',
+            to: 'runtime-1',
           },
         ],
       };
 
-      // Mock template registry to return templates
       vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
         if (name === 'shell-tool') {
           return {
@@ -1914,15 +1984,38 @@ describe('GraphCompiler', () => {
             inputs: [
               {
                 type: 'kind',
-                value: NodeKind.Runtime,
-                required: true,
-                multiple: false,
+                value: NodeKind.SimpleAgent,
+                multiple: true,
               },
+            ],
+            outputs: [
               {
                 type: 'template',
                 value: 'github-resource',
                 required: true,
+                multiple: true,
+              },
+              {
+                type: 'kind',
+                value: NodeKind.Runtime,
+                required: true,
                 multiple: false,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        if (name === 'docker-runtime') {
+          return {
+            name: 'docker-runtime',
+            kind: NodeKind.Runtime,
+            description: 'Docker runtime',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
               },
             ],
             outputs: [
@@ -1935,13 +2028,19 @@ describe('GraphCompiler', () => {
             create: vi.fn(),
           };
         }
-        if (name === 'docker-runtime') {
+        if (name === 'github-resource') {
           return {
-            name: 'docker-runtime',
-            kind: NodeKind.Runtime,
-            description: 'Docker runtime',
+            name: 'github-resource',
+            kind: NodeKind.Resource,
+            description: 'GitHub resource',
             schema: {} as any,
-            inputs: [],
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
             outputs: [
               {
                 type: 'kind',
@@ -1955,27 +2054,23 @@ describe('GraphCompiler', () => {
         return undefined;
       });
 
-      // Mock template registry hasTemplate method
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
         return ['shell-tool', 'docker-runtime'].includes(name);
       });
 
-      // Mock template registry validateTemplateConfig method
       vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
         () => {},
       );
 
-      // Act & Assert
       expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
       );
       expect(() => compiler.validateSchema(schema)).toThrow(
-        "Template 'shell-tool' requires at least one connection from template 'github-resource', but none found",
+        "Template 'shell-tool' requires at least one connection to template 'github-resource', but none found",
       );
     });
 
     it('should pass validation when template has no required connections', () => {
-      // Arrange
       const schema = {
         nodes: [
           {
@@ -1991,7 +2086,6 @@ describe('GraphCompiler', () => {
         edges: [],
       };
 
-      // Mock template registry to return templates
       vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
         if (name === 'simple-agent') {
           return {
@@ -2017,45 +2111,19 @@ describe('GraphCompiler', () => {
             create: vi.fn(),
           };
         }
-        return undefined;
-      });
-
-      // Mock template registry hasTemplate method
-      vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
-        return ['simple-agent'].includes(name);
-      });
-
-      // Mock template registry validateTemplateConfig method
-      vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
-        () => {},
-      );
-
-      // Act & Assert - should not throw
-      expect(() => compiler.validateSchema(schema)).not.toThrow();
-    });
-
-    it('should pass validation when template has empty inputs', () => {
-      // Arrange
-      const schema = {
-        nodes: [
-          {
-            id: 'web-search-tool-1',
-            template: 'web-search-tool',
-            config: {},
-          },
-        ],
-        edges: [],
-      };
-
-      // Mock template registry to return templates
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
-        if (name === 'web-search-tool') {
+        if (name === 'github-resource') {
           return {
-            name: 'web-search-tool',
-            kind: NodeKind.Tool,
-            description: 'Web search tool',
+            name: 'github-resource',
+            kind: NodeKind.Resource,
+            description: 'GitHub resource',
             schema: {} as any,
-            inputs: [],
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
             outputs: [
               {
                 type: 'kind',
@@ -2069,17 +2137,87 @@ describe('GraphCompiler', () => {
         return undefined;
       });
 
-      // Mock template registry hasTemplate method
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
-        return ['web-search-tool'].includes(name);
+        return ['simple-agent'].includes(name);
       });
 
-      // Mock template registry validateTemplateConfig method
       vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
         () => {},
       );
 
-      // Act & Assert - should not throw
+      expect(() => compiler.validateSchema(schema)).not.toThrow();
+    });
+
+    it('should pass validation when template has empty inputs', () => {
+      const schema = {
+        nodes: [
+          {
+            id: 'web-search-tool-1',
+            template: 'web-search-tool',
+            config: {},
+          },
+        ],
+        edges: [],
+      };
+
+      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+        if (name === 'web-search-tool') {
+          return {
+            name: 'web-search-tool',
+            kind: NodeKind.Tool,
+            description: 'Web search tool',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        if (name === 'github-resource') {
+          return {
+            name: 'github-resource',
+            kind: NodeKind.Resource,
+            description: 'GitHub resource',
+            schema: {} as any,
+            inputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            outputs: [
+              {
+                type: 'kind',
+                value: NodeKind.Tool,
+                multiple: true,
+              },
+            ],
+            create: vi.fn(),
+          };
+        }
+        return undefined;
+      });
+
+      vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
+        return ['web-search-tool'].includes(name);
+      });
+
+      vi.mocked(templateRegistry.validateTemplateConfig).mockImplementation(
+        () => {},
+      );
+
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
   });

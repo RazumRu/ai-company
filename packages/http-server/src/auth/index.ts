@@ -6,13 +6,13 @@ import { AuthContextService } from './auth-context.service';
 
 export { AuthContextService, AuthModule };
 export * from './auth.types';
+export * from './auth-context-data-builder';
 export * from './decorators/context-data.decorator';
 export * from './decorators/only-for-auth.decorator';
-export * from './providers/keycloak.provider';
-export * from './providers/auth0.provider';
 export * from './providers/auth.provider';
+export * from './providers/auth0.provider';
+export * from './providers/keycloak.provider';
 export * from './providers/logto.provider';
-export * from './auth-context-data-builder';
 
 export const buildAuthExtension = (
   params: IAuthModuleParams,

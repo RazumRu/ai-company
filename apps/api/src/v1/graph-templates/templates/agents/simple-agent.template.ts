@@ -16,7 +16,7 @@ import {
   SimpleAgentTemplateResult,
 } from '../base-node.template';
 
-export const SimpleAgentTemplateSchema = SimpleAgentSchema.extend({}).strict();
+export const SimpleAgentTemplateSchema = SimpleAgentSchema;
 
 export type SimpleAgentTemplateSchemaType = z.infer<
   typeof SimpleAgentTemplateSchema
@@ -35,8 +35,8 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
   readonly inputs = [
     {
-      type: 'kind',
-      value: NodeKind.Tool,
+      type: 'template',
+      value: 'agent-communication-tool',
       multiple: true,
     },
     {
@@ -48,8 +48,8 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
   readonly outputs = [
     {
-      type: 'template',
-      value: 'agent-communication-tool',
+      type: 'kind',
+      value: NodeKind.Tool,
       multiple: true,
     },
   ] as const;
@@ -60,14 +60,14 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
   async create(
     config: SimpleAgentTemplateSchemaType,
-    inputNodes: Map<string, CompiledGraphNode>,
-    _outputNodes: Map<string, CompiledGraphNode>,
+    _inputNodes: Map<string, CompiledGraphNode>,
+    outputNodes: Map<string, CompiledGraphNode>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<SimpleAgentTemplateResult<SimpleAgentSchemaType>> {
     const agent = await this.agentFactoryService.create(SimpleAgent);
     const { ...agentConfig } = config;
 
-    for (const [_nodeId, node] of inputNodes) {
+    for (const [_nodeId, node] of outputNodes) {
       if (node.type === NodeKind.Tool) {
         agent.addTool(
           (node as CompiledGraphNode<DynamicStructuredTool>).instance,

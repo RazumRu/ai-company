@@ -40,14 +40,7 @@ export class NotificationHandler extends EventEmitter {
   async init() {
     // Subscribe to notifications service events
     this.notificationsService.subscribe(async (event) => {
-      try {
-        await this.handleNotification(event);
-      } catch (error) {
-        this.logger.error(<Error>error, 'Failed to handle notification', {
-          graphId: event.graphId,
-          type: event.type,
-        });
-      }
+      await this.handleNotification(event);
     });
   }
 

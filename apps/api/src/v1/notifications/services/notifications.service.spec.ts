@@ -1,28 +1,42 @@
-import EventEmitter from 'node:events';
-
 import { HumanMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  ICheckpointerNotification,
+  IAgentMessageNotification,
   IGraphNotification,
   NotificationEvent,
 } from '../notifications.types';
 import { NotificationsService } from './notifications.service';
 
+// Mock BullMQ and IORedis
+vi.mock('bullmq', () => ({
+  Queue: class MockQueue {
+    add = vi.fn().mockResolvedValue({ id: 'test-job-id' });
+    close = vi.fn().mockResolvedValue(undefined);
+  },
+  Worker: class MockWorker {
+    close = vi.fn().mockResolvedValue(undefined);
+  },
+}));
+
+vi.mock('ioredis', () => ({
+  default: class MockIORedis {
+    quit = vi.fn().mockResolvedValue(undefined);
+  },
+}));
+
 describe('NotificationsService', () => {
   let service: NotificationsService;
   let mockLogger: any;
-  let _mockEmitter: EventEmitter;
 
   beforeEach(async () => {
     mockLogger = {
       debug: vi.fn(),
+      log: vi.fn(),
+      error: vi.fn(),
     };
-
-    _mockEmitter = new EventEmitter();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -35,8 +49,6 @@ describe('NotificationsService', () => {
     }).compile();
 
     service = module.get<NotificationsService>(NotificationsService);
-
-    // Spy on the service's internal emitter (done within specific tests as needed)
   });
 
   afterEach(() => {
@@ -44,7 +56,7 @@ describe('NotificationsService', () => {
   });
 
   describe('emit', () => {
-    it('should emit graph notification', () => {
+    it('should emit graph notification through queue', async () => {
       const graphNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
         graphId: 'test-graph-123',
@@ -59,58 +71,112 @@ describe('NotificationsService', () => {
         },
       };
 
-      const emitSpy = vi.spyOn(service['emitter'], 'emit');
+      const queueAddSpy = vi.spyOn(service['queue'], 'add');
 
-      service.emit(graphNotification);
+      await service.emit(graphNotification);
 
-      expect(emitSpy).toHaveBeenCalledWith('event', graphNotification);
+      expect(queueAddSpy).toHaveBeenCalledWith(
+        'process-notification',
+        graphNotification,
+      );
     });
 
-    it('should emit checkpointer notification with messages', () => {
-      const checkpointerNotification: ICheckpointerNotification = {
-        type: NotificationEvent.Checkpointer,
+    it('should enqueue agent message notification through BullMQ', async () => {
+      const agentMessageNotification: IAgentMessageNotification = {
+        type: NotificationEvent.AgentMessage,
         graphId: 'test-graph-123',
         nodeId: 'test-node-456',
         threadId: 'test-thread-789',
+        parentThreadId: 'parent-thread-123',
         data: {
           messages: [new HumanMessage('Hello world')],
         },
       };
 
-      const emitSpy = vi.spyOn(service['emitter'], 'emit');
+      const queueAddSpy = vi.spyOn(service['queue'], 'add');
 
-      service.emit(checkpointerNotification);
+      await service.emit(agentMessageNotification);
 
-      expect(emitSpy).toHaveBeenCalledWith('event', checkpointerNotification);
+      expect(queueAddSpy).toHaveBeenCalledWith(
+        'process-notification',
+        agentMessageNotification,
+      );
     });
 
-    it('should emit checkpointer notification with empty messages', () => {
-      const checkpointerNotification: ICheckpointerNotification = {
-        type: NotificationEvent.Checkpointer,
+    it('should enqueue agent invoke notification through BullMQ', async () => {
+      const agentInvokeNotification = {
+        type: NotificationEvent.AgentInvoke,
         graphId: 'test-graph-123',
         nodeId: 'test-node-456',
         threadId: 'test-thread-789',
+        parentThreadId: 'parent-thread-123',
+        data: {
+          messages: [new HumanMessage('Hello')],
+        },
+      };
+
+      const queueAddSpy = vi.spyOn(service['queue'], 'add');
+
+      await service.emit(agentInvokeNotification as any);
+
+      expect(queueAddSpy).toHaveBeenCalledWith(
+        'process-notification',
+        agentInvokeNotification,
+      );
+    });
+
+    it('should enqueue agent message notification with empty messages', async () => {
+      const agentMessageNotification: IAgentMessageNotification = {
+        type: NotificationEvent.AgentMessage,
+        graphId: 'test-graph-123',
+        nodeId: 'test-node-456',
+        threadId: 'test-thread-789',
+        parentThreadId: 'parent-thread-123',
         data: {
           messages: [],
         },
       };
 
-      const emitSpy = vi.spyOn(service['emitter'], 'emit');
+      const queueAddSpy = vi.spyOn(service['queue'], 'add');
 
-      service.emit(checkpointerNotification);
+      await service.emit(agentMessageNotification);
 
-      expect(emitSpy).toHaveBeenCalledWith('event', checkpointerNotification);
+      expect(queueAddSpy).toHaveBeenCalledWith(
+        'process-notification',
+        agentMessageNotification,
+      );
+    });
+
+    it('should handle BullMQ enqueue errors gracefully', async () => {
+      const agentMessageNotification: IAgentMessageNotification = {
+        type: NotificationEvent.AgentMessage,
+        graphId: 'test-graph-123',
+        nodeId: 'test-node-456',
+        threadId: 'test-thread-789',
+        parentThreadId: 'parent-thread-123',
+        data: {
+          messages: [new HumanMessage('Hello')],
+        },
+      };
+
+      const queueError = new Error('BullMQ connection failed');
+      const queueAddSpy = vi.spyOn(service['queue'], 'add');
+      queueAddSpy.mockRejectedValue(queueError);
+
+      await expect(service.emit(agentMessageNotification)).rejects.toThrow(
+        'BullMQ connection failed',
+      );
     });
   });
 
   describe('subscribe', () => {
     it('should register event listener', () => {
       const mockCallback = vi.fn();
-      const onSpy = vi.spyOn(service['emitter'], 'on');
 
       service.subscribe(mockCallback);
 
-      expect(onSpy).toHaveBeenCalledWith('event', mockCallback);
+      // Verify the callback was added to subscribers array
+      expect(service['subscribers']).toContain(mockCallback);
     });
 
     it('should call registered callback when event is emitted', async () => {
@@ -128,10 +194,12 @@ describe('NotificationsService', () => {
       };
 
       service.subscribe(mockCallback);
-      service.emit(testNotification);
 
-      // Wait for async callback
-      await new Promise((resolve) => setImmediate(resolve));
+      // Simulate the job processing by calling the processJob method directly
+      await service['processJob']({
+        data: testNotification,
+        id: 'test-job',
+      } as any);
 
       expect(mockCallback).toHaveBeenCalledWith(testNotification);
     });

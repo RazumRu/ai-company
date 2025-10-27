@@ -2,16 +2,19 @@ import { Module, OnModuleInit } from '@nestjs/common';
 
 import { GraphsModule } from '../graphs/graphs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ThreadsModule } from '../threads/threads.module';
 import { SocketGateway } from './gateways/socket.gateway';
-import { CheckpointerNotificationHandler } from './services/event-handlers/checkpointer-notification-handler';
+import { AgentInvokeNotificationHandler } from './services/event-handlers/agent-invoke-notification-handler';
+import { AgentMessageNotificationHandler } from './services/event-handlers/agent-message-notification-handler';
 import { GraphNotificationHandler } from './services/event-handlers/graph-notification-handler';
 import { NotificationHandler } from './services/notification-handler.service';
 
 @Module({
-  imports: [GraphsModule, NotificationsModule],
+  imports: [GraphsModule, NotificationsModule, ThreadsModule],
   providers: [
     GraphNotificationHandler,
-    CheckpointerNotificationHandler,
+    AgentMessageNotificationHandler,
+    AgentInvokeNotificationHandler,
     NotificationHandler,
     SocketGateway,
   ],
@@ -21,12 +24,14 @@ export class NotificationHandlersModule implements OnModuleInit {
   constructor(
     private readonly eventsHandlerService: NotificationHandler,
     private readonly graphEventHandler: GraphNotificationHandler,
-    private readonly checkpointerEventHandler: CheckpointerNotificationHandler,
+    private readonly agentMessageEventHandler: AgentMessageNotificationHandler,
+    private readonly agentInvokeEventHandler: AgentInvokeNotificationHandler,
   ) {}
 
   async onModuleInit() {
     this.eventsHandlerService.registerHandler(this.graphEventHandler);
-    this.eventsHandlerService.registerHandler(this.checkpointerEventHandler);
+    this.eventsHandlerService.registerHandler(this.agentMessageEventHandler);
+    this.eventsHandlerService.registerHandler(this.agentInvokeEventHandler);
 
     await this.eventsHandlerService.init();
   }

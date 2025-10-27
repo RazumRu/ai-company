@@ -68,4 +68,5 @@ export const GraphSchema = z.object({
 
 export type GraphSchemaType = z.infer<typeof GraphSchema>;
 export type GraphNodeSchemaType = z.infer<typeof GraphNodeSchema>;
+export type GraphEdgeSchemaType = z.infer<typeof GraphEdgeSchema>;
 export type GraphMetadataSchemaType = z.infer<typeof GraphMetadataSchema>;

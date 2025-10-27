@@ -7,16 +7,9 @@ import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
-import { GraphCheckpointEntity } from '../../agents/entity/graph-chekpoints.entity';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { GraphDao } from '../dao/graph.dao';
-import {
-  AIMessageDto,
-  CreateGraphDto,
-  GetGraphMessagesQueryDto,
-  GraphDto,
-  UpdateGraphDto,
-} from '../dto/graphs.dto';
+import { CreateGraphDto, GraphDto, UpdateGraphDto } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
 import { CompiledGraph, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
@@ -31,8 +24,8 @@ describe('GraphsService', () => {
   let graphRegistry: GraphRegistry;
   let typeorm: TypeormService;
   let authContext: AuthContextService;
-  let graphCheckpointsDao: GraphCheckpointsDao;
-  let pgCheckpointSaver: PgCheckpointSaver;
+  let _graphCheckpointsDao: GraphCheckpointsDao;
+  let _pgCheckpointSaver: PgCheckpointSaver;
   let messageTransformer: MessageTransformerService;
 
   const mockUserId = 'user-123';
@@ -175,8 +168,8 @@ describe('GraphsService', () => {
     graphRegistry = module.get<GraphRegistry>(GraphRegistry);
     typeorm = module.get<TypeormService>(TypeormService);
     authContext = module.get<AuthContextService>(AuthContextService);
-    graphCheckpointsDao = module.get<GraphCheckpointsDao>(GraphCheckpointsDao);
-    pgCheckpointSaver = module.get<PgCheckpointSaver>(PgCheckpointSaver);
+    _graphCheckpointsDao = module.get<GraphCheckpointsDao>(GraphCheckpointsDao);
+    _pgCheckpointSaver = module.get<PgCheckpointSaver>(PgCheckpointSaver);
     messageTransformer = module.get<MessageTransformerService>(
       MessageTransformerService,
     );
@@ -630,9 +623,10 @@ describe('GraphsService', () => {
         mockGraphId,
         compiledGraph,
       );
-      expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
-        status: GraphStatus.Running,
-      });
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        expect.objectContaining({ status: GraphStatus.Running }),
+      );
     });
 
     it('should throw BadRequestException when graph is already running', async () => {
@@ -1025,12 +1019,10 @@ describe('GraphsService', () => {
       });
       const compiledGraph = createMockCompiledGraph();
 
-      // Create
       vi.mocked(graphDao.create).mockResolvedValue(createdGraph);
       const created = await service.create(createData);
       expect(created.status).toBe(GraphStatus.Created);
 
-      // Run
       vi.mocked(graphDao.getById).mockResolvedValue(createdGraph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
@@ -1046,7 +1038,6 @@ describe('GraphsService', () => {
       const stopped = await service.destroy('lifecycle-graph');
       expect(stopped.status).toBe(GraphStatus.Stopped);
 
-      // Delete
       vi.mocked(graphDao.getById).mockResolvedValue(stoppedGraph);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
       await service.delete('lifecycle-graph');
@@ -1078,195 +1069,6 @@ describe('GraphsService', () => {
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
         status: GraphStatus.Error,
         error: 'Compilation failed',
-      });
-    });
-  });
-
-  describe('getNodeMessages', () => {
-    const nodeId = 'agent-1';
-    const threadId = `${mockGraphId}:thread-123`; // Full thread ID format
-    const defaultThreadComponent = 'default-uuid';
-
-    const createMockCheckpointEntity = (
-      overrides: Partial<GraphCheckpointEntity> = {},
-    ): GraphCheckpointEntity => ({
-      id: 'checkpoint-id',
-      threadId: `${mockGraphId}:${defaultThreadComponent}`, // thread_id is graphId:threadComponent
-      checkpointNs: `${mockGraphId}:${defaultThreadComponent}:${nodeId}`, // checkpoint_ns is graphId:threadComponent:nodeId
-      checkpointId: 'checkpoint-123',
-      parentCheckpointId: null,
-      type: 'json',
-      checkpoint: Buffer.from(''),
-      metadata: Buffer.from(''),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      ...overrides,
-    });
-
-    const createMockMessages = () => [
-      new HumanMessage({ content: 'Hello', id: 'msg-1' }),
-      new AIMessage({
-        content: 'Hi there!',
-        id: 'msg-2',
-        tool_calls: [],
-      }),
-    ];
-
-    it('should retrieve messages for a node with explicit threadId', async () => {
-      const mockGraph = createMockGraphEntity({
-        schema: {
-          nodes: [{ id: nodeId, template: 'simple-agent', config: {} }],
-          edges: [],
-        },
-      });
-      const mockCheckpoint = createMockCheckpointEntity({
-        threadId: threadId,
-        checkpointNs: `${threadId}:${nodeId}`,
-      });
-      const mockMessages = createMockMessages();
-
-      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([mockCheckpoint]);
-      vi.mocked(pgCheckpointSaver.serde.loadsTyped).mockResolvedValue({
-        channel_values: {
-          messages: mockMessages,
-        },
-      });
-
-      // Pass the full thread ID (e.g., from executeTrigger response)
-      const query: GetGraphMessagesQueryDto = { threadId };
-      const result = await service.getNodeMessages(mockGraphId, nodeId, query);
-
-      expect(result.nodeId).toBe(nodeId);
-      expect(result.threads).toHaveLength(1);
-      expect(result.threads[0]?.id).toBe(threadId);
-      expect(result.threads[0]?.messages).toHaveLength(2);
-
-      const messages = result.threads[0]?.messages || [];
-      expect(messages[0]?.role).toBe('human');
-      expect(messages[0]?.content).toBe('Hello');
-      expect(messages[0]?.additionalKwargs).toBeDefined();
-      expect(messages[1]?.role).toBe('ai');
-      expect(messages[1]?.content).toBe('Hi there!');
-      expect((messages[1] as AIMessageDto)?.id).toBe('msg-2');
-      expect((messages[1] as AIMessageDto)?.toolCalls).toEqual([]);
-
-      expect(graphDao.getOne).toHaveBeenCalledWith({
-        id: mockGraphId,
-        createdBy: mockUserId,
-      });
-      expect(graphCheckpointsDao.getAll).toHaveBeenCalledWith({
-        checkpointNs: `${threadId}:${nodeId}`, // threadId:nodeId
-        threadId: threadId, // Full thread ID
-        order: { createdAt: 'DESC' },
-      });
-    });
-
-    it('should apply limit to messages per thread', async () => {
-      const mockGraph = createMockGraphEntity({
-        schema: {
-          nodes: [{ id: nodeId, template: 'simple-agent', config: {} }],
-          edges: [],
-        },
-      });
-      const mockCheckpoint = createMockCheckpointEntity();
-      const mockMessages = [
-        ...createMockMessages(),
-        new HumanMessage({ content: 'Another message', id: 'msg-3' }),
-      ];
-
-      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([mockCheckpoint]);
-      vi.mocked(pgCheckpointSaver.serde.loadsTyped).mockResolvedValue({
-        channel_values: {
-          messages: mockMessages,
-        },
-      });
-
-      const query: GetGraphMessagesQueryDto = { threadId, limit: 2 };
-      const result = await service.getNodeMessages(mockGraphId, nodeId, query);
-
-      expect(result.threads).toHaveLength(1);
-      expect(result.threads[0]?.messages).toHaveLength(2);
-      // Should return the last 2 messages
-      expect(result.threads[0]?.messages[0]?.content).toBe('Hi there!');
-      expect(result.threads[0]?.messages[1]?.content).toBe('Another message');
-    });
-
-    it('should return empty threads when no checkpoints exist', async () => {
-      const mockGraph = createMockGraphEntity({
-        schema: {
-          nodes: [{ id: nodeId, template: 'simple-agent', config: {} }],
-          edges: [],
-        },
-      });
-
-      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([]);
-
-      const query: GetGraphMessagesQueryDto = { threadId };
-      const result = await service.getNodeMessages(mockGraphId, nodeId, query);
-
-      expect(result).toEqual({
-        nodeId,
-        threads: [],
-      });
-    });
-
-    it('should throw NotFoundException when graph not found', async () => {
-      vi.mocked(graphDao.getOne).mockResolvedValue(null);
-
-      const query: GetGraphMessagesQueryDto = { threadId };
-
-      await expect(
-        service.getNodeMessages(mockGraphId, nodeId, query),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw NotFoundException when node not found in graph', async () => {
-      const mockGraph = createMockGraphEntity({
-        schema: {
-          nodes: [{ id: 'other-node', template: 'simple-agent', config: {} }],
-          edges: [],
-        },
-      });
-
-      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
-
-      const query: GetGraphMessagesQueryDto = { threadId };
-
-      await expect(
-        service.getNodeMessages(mockGraphId, nodeId, query),
-      ).rejects.toThrow(NotFoundException);
-
-      // Also verify the error message contains the node info
-      try {
-        await service.getNodeMessages(mockGraphId, nodeId, query);
-        throw new Error('Should have thrown');
-      } catch (error: any) {
-        expect(error.message).toContain('Node');
-        expect(error.message).toContain('not found');
-      }
-    });
-
-    it('should return empty threads when no checkpoints found for specified thread', async () => {
-      const mockGraph = createMockGraphEntity({
-        schema: {
-          nodes: [{ id: nodeId, template: 'simple-agent', config: {} }],
-          edges: [],
-        },
-      });
-
-      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([]);
-
-      const query: GetGraphMessagesQueryDto = { threadId };
-
-      const result = await service.getNodeMessages(mockGraphId, nodeId, query);
-
-      expect(result).toEqual({
-        nodeId,
-        threads: [],
       });
     });
   });

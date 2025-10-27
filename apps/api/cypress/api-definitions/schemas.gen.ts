@@ -438,198 +438,6 @@ export const ExecuteTriggerResponseDtoSchema = {
   required: ['threadId'],
 } as const;
 
-export const GraphMessagesResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    nodeId: {
-      type: 'string',
-    },
-    threads: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: {
-            type: 'string',
-          },
-          messages: {
-            type: 'array',
-            items: {
-              anyOf: [
-                {
-                  type: 'object',
-                  properties: {
-                    role: {
-                      type: 'string',
-                      const: 'human',
-                    },
-                    content: {
-                      type: 'string',
-                    },
-                    additionalKwargs: {
-                      type: 'object',
-                      propertyNames: {
-                        type: 'string',
-                      },
-                      additionalProperties: {},
-                    },
-                  },
-                  required: ['role', 'content'],
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    role: {
-                      type: 'string',
-                      const: 'ai',
-                    },
-                    content: {
-                      type: 'string',
-                    },
-                    id: {
-                      type: 'string',
-                    },
-                    toolCalls: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          name: {
-                            type: 'string',
-                          },
-                          args: {
-                            type: 'object',
-                            propertyNames: {
-                              type: 'string',
-                            },
-                            additionalProperties: {},
-                          },
-                          type: {
-                            type: 'string',
-                          },
-                          id: {
-                            type: 'string',
-                          },
-                        },
-                        required: ['name', 'args', 'type', 'id'],
-                      },
-                    },
-                    additionalKwargs: {
-                      type: 'object',
-                      propertyNames: {
-                        type: 'string',
-                      },
-                      additionalProperties: {},
-                    },
-                  },
-                  required: ['role', 'content'],
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    role: {
-                      type: 'string',
-                      const: 'system',
-                    },
-                    content: {
-                      type: 'string',
-                    },
-                    additionalKwargs: {
-                      type: 'object',
-                      propertyNames: {
-                        type: 'string',
-                      },
-                      additionalProperties: {},
-                    },
-                  },
-                  required: ['role', 'content'],
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    role: {
-                      type: 'string',
-                      const: 'tool-shell',
-                    },
-                    name: {
-                      type: 'string',
-                      const: 'shell',
-                    },
-                    content: {
-                      type: 'object',
-                      properties: {
-                        exitCode: {
-                          type: 'number',
-                        },
-                        stdout: {
-                          type: 'string',
-                        },
-                        stderr: {
-                          type: 'string',
-                        },
-                        cmd: {
-                          type: 'string',
-                        },
-                        fail: {
-                          type: 'boolean',
-                        },
-                      },
-                      required: ['exitCode', 'stdout', 'stderr', 'cmd'],
-                    },
-                    toolCallId: {
-                      type: 'string',
-                    },
-                    additionalKwargs: {
-                      type: 'object',
-                      propertyNames: {
-                        type: 'string',
-                      },
-                      additionalProperties: {},
-                    },
-                  },
-                  required: ['role', 'name', 'content', 'toolCallId'],
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    role: {
-                      type: 'string',
-                      const: 'tool',
-                    },
-                    name: {
-                      type: 'string',
-                    },
-                    content: {
-                      type: 'object',
-                      propertyNames: {
-                        type: 'string',
-                      },
-                      additionalProperties: {},
-                    },
-                    toolCallId: {
-                      type: 'string',
-                    },
-                    additionalKwargs: {
-                      type: 'object',
-                      propertyNames: {
-                        type: 'string',
-                      },
-                      additionalProperties: {},
-                    },
-                  },
-                  required: ['role', 'name', 'content', 'toolCallId'],
-                },
-              ],
-            },
-          },
-        },
-        required: ['id', 'messages'],
-      },
-    },
-  },
-  required: ['nodeId', 'threads'],
-} as const;
-
 export const TemplateDtoSchema = {
   type: 'object',
   properties: {
@@ -744,4 +552,264 @@ export const TemplateDtoSchema = {
     },
   },
   required: ['name', 'description', 'kind', 'schema'],
+} as const;
+
+export const ThreadDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    graphId: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    externalThreadId: {
+      type: 'string',
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    metadata: {
+      anyOf: [
+        {
+          type: 'object',
+          propertyNames: {
+            type: 'string',
+          },
+          additionalProperties: {},
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+  },
+  required: ['id', 'graphId', 'externalThreadId', 'createdAt', 'updatedAt'],
+} as const;
+
+export const ThreadMessageDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    threadId: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    nodeId: {
+      type: 'string',
+    },
+    externalThreadId: {
+      type: 'string',
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    message: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            role: {
+              type: 'string',
+              const: 'human',
+            },
+            content: {
+              type: 'string',
+            },
+            additionalKwargs: {
+              type: 'object',
+              propertyNames: {
+                type: 'string',
+              },
+              additionalProperties: {},
+            },
+          },
+          required: ['role', 'content'],
+        },
+        {
+          type: 'object',
+          properties: {
+            role: {
+              type: 'string',
+              const: 'ai',
+            },
+            content: {
+              type: 'string',
+            },
+            id: {
+              type: 'string',
+            },
+            toolCalls: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: {
+                    type: 'string',
+                  },
+                  args: {
+                    type: 'object',
+                    propertyNames: {
+                      type: 'string',
+                    },
+                    additionalProperties: {},
+                  },
+                  type: {
+                    type: 'string',
+                  },
+                  id: {
+                    type: 'string',
+                  },
+                },
+                required: ['name', 'args', 'type', 'id'],
+              },
+            },
+            additionalKwargs: {
+              type: 'object',
+              propertyNames: {
+                type: 'string',
+              },
+              additionalProperties: {},
+            },
+          },
+          required: ['role', 'content'],
+        },
+        {
+          type: 'object',
+          properties: {
+            role: {
+              type: 'string',
+              const: 'system',
+            },
+            content: {
+              type: 'string',
+            },
+            additionalKwargs: {
+              type: 'object',
+              propertyNames: {
+                type: 'string',
+              },
+              additionalProperties: {},
+            },
+          },
+          required: ['role', 'content'],
+        },
+        {
+          type: 'object',
+          properties: {
+            role: {
+              type: 'string',
+              const: 'tool-shell',
+            },
+            name: {
+              type: 'string',
+              const: 'shell',
+            },
+            content: {
+              type: 'object',
+              properties: {
+                exitCode: {
+                  type: 'number',
+                },
+                stdout: {
+                  type: 'string',
+                },
+                stderr: {
+                  type: 'string',
+                },
+                cmd: {
+                  type: 'string',
+                },
+                fail: {
+                  type: 'boolean',
+                },
+              },
+              required: ['exitCode', 'stdout', 'stderr', 'cmd'],
+            },
+            toolCallId: {
+              type: 'string',
+            },
+            additionalKwargs: {
+              type: 'object',
+              propertyNames: {
+                type: 'string',
+              },
+              additionalProperties: {},
+            },
+          },
+          required: ['role', 'name', 'content', 'toolCallId'],
+        },
+        {
+          type: 'object',
+          properties: {
+            role: {
+              type: 'string',
+              const: 'tool',
+            },
+            name: {
+              type: 'string',
+            },
+            content: {
+              type: 'object',
+              propertyNames: {
+                type: 'string',
+              },
+              additionalProperties: {},
+            },
+            toolCallId: {
+              type: 'string',
+            },
+            additionalKwargs: {
+              type: 'object',
+              propertyNames: {
+                type: 'string',
+              },
+              additionalProperties: {},
+            },
+          },
+          required: ['role', 'name', 'content', 'toolCallId'],
+        },
+      ],
+    },
+  },
+  required: [
+    'id',
+    'threadId',
+    'nodeId',
+    'externalThreadId',
+    'createdAt',
+    'updatedAt',
+    'message',
+  ],
 } as const;

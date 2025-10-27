@@ -23,7 +23,6 @@ export default mergeConfig(
         enabled: false,
         provider: 'v8',
         reporter: ['text', 'html', 'lcov'],
-        all: true,
         clean: true,
         include: ['src/**/*.{ts,tsx}'],
         exclude: ['**/node_modules/**', '**/dist/**', '**/generated/**'],

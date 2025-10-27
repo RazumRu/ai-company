@@ -5,6 +5,7 @@ import { GraphTemplatesModule } from './v1/graph-templates/graph-templates.modul
 import { GraphsModule } from './v1/graphs/graphs.module';
 import { NotificationHandlersModule } from './v1/notification-handlers/notification-handlers.module';
 import { RuntimeModule } from './v1/runtime/runtime.module';
+import { ThreadsModule } from './v1/threads/threads.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { RuntimeModule } from './v1/runtime/runtime.module';
     GraphsModule,
     GraphTemplatesModule,
     NotificationHandlersModule,
+    ThreadsModule,
   ],
   controllers: [],
   providers: [],

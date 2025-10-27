@@ -136,7 +136,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
@@ -155,7 +154,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
@@ -176,7 +174,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
@@ -196,7 +193,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.compile).not.toHaveBeenCalled();
@@ -225,7 +221,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.compile).toHaveBeenCalledTimes(2);
@@ -253,7 +248,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
@@ -282,7 +276,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
@@ -317,7 +310,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       // Temporary graph should be destroyed using destroyNotCompiledGraph
@@ -351,7 +343,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
@@ -378,7 +369,6 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      // Assert
       expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
       expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(

@@ -310,173 +310,6 @@ export type ExecuteTriggerResponseDto = {
   checkpointNs?: string;
 };
 
-export type GraphMessagesResponseDto = {
-  /**
-   * Node ID
-   */
-  nodeId: string;
-  /**
-   * Array of threads with their messages
-   */
-  threads: Array<{
-    /**
-     * Thread ID
-     */
-    id: string;
-    /**
-     * Array of messages in this thread
-     */
-    messages: Array<
-      | {
-          /**
-           * Message role
-           */
-          role: 'human';
-          /**
-           * Message content
-           */
-          content: string;
-          /**
-           * Additional message metadata
-           */
-          additionalKwargs?: {
-            [key: string]: unknown;
-          };
-        }
-      | {
-          /**
-           * Message role
-           */
-          role: 'ai';
-          /**
-           * Message content
-           */
-          content: string;
-          /**
-           * Message ID
-           */
-          id?: string;
-          /**
-           * Tool calls in the message
-           */
-          toolCalls?: Array<{
-            /**
-             * Tool name
-             */
-            name: string;
-            /**
-             * Tool arguments
-             */
-            args: {
-              [key: string]: unknown;
-            };
-            /**
-             * Tool call type
-             */
-            type: string;
-            /**
-             * Tool call ID
-             */
-            id: string;
-          }>;
-          /**
-           * Additional message metadata
-           */
-          additionalKwargs?: {
-            [key: string]: unknown;
-          };
-        }
-      | {
-          /**
-           * Message role
-           */
-          role: 'system';
-          /**
-           * Message content
-           */
-          content: string;
-          /**
-           * Additional message metadata
-           */
-          additionalKwargs?: {
-            [key: string]: unknown;
-          };
-        }
-      | {
-          /**
-           * Message role
-           */
-          role: 'tool-shell';
-          /**
-           * Tool name - shell
-           */
-          name: 'shell';
-          /**
-           * Parsed shell execution result
-           */
-          content: {
-            /**
-             * Exit code of the shell command
-             */
-            exitCode: number;
-            /**
-             * Standard output from the command
-             */
-            stdout: string;
-            /**
-             * Standard error from the command
-             */
-            stderr: string;
-            /**
-             * The command that was executed
-             */
-            cmd: string;
-            /**
-             * Whether the command failed
-             */
-            fail?: boolean;
-          };
-          /**
-           * Tool call ID
-           */
-          toolCallId: string;
-          /**
-           * Additional message metadata
-           */
-          additionalKwargs?: {
-            [key: string]: unknown;
-          };
-        }
-      | {
-          /**
-           * Message role
-           */
-          role: 'tool';
-          /**
-           * Tool name
-           */
-          name: string;
-          /**
-           * Parsed tool result as JSON
-           */
-          content: {
-            [key: string]: unknown;
-          };
-          /**
-           * Tool call ID
-           */
-          toolCallId: string;
-          /**
-           * Additional message metadata
-           */
-          additionalKwargs?: {
-            [key: string]: unknown;
-          };
-        }
-    >;
-  }>;
-};
-
 export type TemplateDto = {
   name: string;
   description: string;
@@ -512,6 +345,185 @@ export type TemplateDto = {
         multiple: boolean;
       }
   >;
+};
+
+export type ThreadDto = {
+  /**
+   * Thread ID
+   */
+  id: string;
+  /**
+   * Graph ID
+   */
+  graphId: string;
+  /**
+   * External thread ID from LangChain
+   */
+  externalThreadId: string;
+  createdAt: string;
+  updatedAt: string;
+  /**
+   * Additional thread metadata
+   */
+  metadata?: {
+    [key: string]: unknown;
+  } | null;
+};
+
+export type ThreadMessageDto = {
+  id: string;
+  threadId: string;
+  nodeId: string;
+  externalThreadId: string;
+  createdAt: string;
+  updatedAt: string;
+  message:
+    | {
+        /**
+         * Message role
+         */
+        role: 'human';
+        /**
+         * Message content
+         */
+        content: string;
+        /**
+         * Additional message metadata
+         */
+        additionalKwargs?: {
+          [key: string]: unknown;
+        };
+      }
+    | {
+        /**
+         * Message role
+         */
+        role: 'ai';
+        /**
+         * Message content
+         */
+        content: string;
+        /**
+         * Message ID
+         */
+        id?: string;
+        /**
+         * Tool calls in the message
+         */
+        toolCalls?: Array<{
+          /**
+           * Tool name
+           */
+          name: string;
+          /**
+           * Tool arguments
+           */
+          args: {
+            [key: string]: unknown;
+          };
+          /**
+           * Tool call type
+           */
+          type: string;
+          /**
+           * Tool call ID
+           */
+          id: string;
+        }>;
+        /**
+         * Additional message metadata
+         */
+        additionalKwargs?: {
+          [key: string]: unknown;
+        };
+      }
+    | {
+        /**
+         * Message role
+         */
+        role: 'system';
+        /**
+         * Message content
+         */
+        content: string;
+        /**
+         * Additional message metadata
+         */
+        additionalKwargs?: {
+          [key: string]: unknown;
+        };
+      }
+    | {
+        /**
+         * Message role
+         */
+        role: 'tool-shell';
+        /**
+         * Tool name - shell
+         */
+        name: 'shell';
+        /**
+         * Parsed shell execution result
+         */
+        content: {
+          /**
+           * Exit code of the shell command
+           */
+          exitCode: number;
+          /**
+           * Standard output from the command
+           */
+          stdout: string;
+          /**
+           * Standard error from the command
+           */
+          stderr: string;
+          /**
+           * The command that was executed
+           */
+          cmd: string;
+          /**
+           * Whether the command failed
+           */
+          fail?: boolean;
+        };
+        /**
+         * Tool call ID
+         */
+        toolCallId: string;
+        /**
+         * Additional message metadata
+         */
+        additionalKwargs?: {
+          [key: string]: unknown;
+        };
+      }
+    | {
+        /**
+         * Message role
+         */
+        role: 'tool';
+        /**
+         * Tool name
+         */
+        name: string;
+        /**
+         * Parsed tool result as JSON
+         */
+        content: {
+          [key: string]: unknown;
+        };
+        /**
+         * Tool call ID
+         */
+        toolCallId: string;
+        /**
+         * Additional message metadata
+         */
+        additionalKwargs?: {
+          [key: string]: unknown;
+        };
+      };
 };
 
 export type GetAllGraphsData = {
@@ -635,32 +647,6 @@ export type ExecuteTriggerResponses = {
 export type ExecuteTriggerResponse =
   ExecuteTriggerResponses[keyof ExecuteTriggerResponses];
 
-export type GetNodeMessagesData = {
-  body?: never;
-  path: {
-    graphId: string;
-    nodeId: string;
-  };
-  query: {
-    /**
-     * Full thread ID (e.g., "graphId:threadComponent")
-     */
-    threadId: string;
-    /**
-     * Maximum number of messages to return
-     */
-    limit?: number;
-  };
-  url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/messages';
-};
-
-export type GetNodeMessagesResponses = {
-  200: GraphMessagesResponseDto;
-};
-
-export type GetNodeMessagesResponse =
-  GetNodeMessagesResponses[keyof GetNodeMessagesResponses];
-
 export type GetAllTemplatesData = {
   body?: never;
   path?: never;
@@ -674,3 +660,90 @@ export type GetAllTemplatesResponses = {
 
 export type GetAllTemplatesResponse =
   GetAllTemplatesResponses[keyof GetAllTemplatesResponses];
+
+export type GetThreadsData = {
+  body?: never;
+  path?: never;
+  query: {
+    /**
+     * Filter by graph ID
+     */
+    graphId: string;
+    /**
+     * Maximum number of threads to return
+     */
+    limit?: number;
+    /**
+     * Number of threads to skip
+     */
+    offset?: number;
+  };
+  url: '/api/v1/threads';
+};
+
+export type GetThreadsResponses = {
+  200: Array<ThreadDto>;
+};
+
+export type GetThreadsResponse = GetThreadsResponses[keyof GetThreadsResponses];
+
+export type GetThreadByIdData = {
+  body?: never;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}';
+};
+
+export type GetThreadByIdResponses = {
+  200: ThreadDto;
+};
+
+export type GetThreadByIdResponse =
+  GetThreadByIdResponses[keyof GetThreadByIdResponses];
+
+export type GetThreadByExternalIdData = {
+  body?: never;
+  path: {
+    externalThreadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/external/{externalThreadId}';
+};
+
+export type GetThreadByExternalIdResponses = {
+  200: ThreadDto;
+};
+
+export type GetThreadByExternalIdResponse =
+  GetThreadByExternalIdResponses[keyof GetThreadByExternalIdResponses];
+
+export type GetThreadMessagesData = {
+  body?: never;
+  path: {
+    threadId: string;
+  };
+  query?: {
+    /**
+     * Filter messages by node ID (agent node)
+     */
+    nodeId?: string;
+    /**
+     * Maximum number of messages to return
+     */
+    limit?: number;
+    /**
+     * Number of messages to skip
+     */
+    offset?: number;
+  };
+  url: '/api/v1/threads/{threadId}/messages';
+};
+
+export type GetThreadMessagesResponses = {
+  200: Array<ThreadMessageDto>;
+};
+
+export type GetThreadMessagesResponse =
+  GetThreadMessagesResponses[keyof GetThreadMessagesResponses];

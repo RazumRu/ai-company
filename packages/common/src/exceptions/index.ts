@@ -8,18 +8,18 @@ import { NotFoundException } from './instances/not-found.exception';
 import { UnauthorizedException } from './instances/unauthorized.exception';
 import { ValidationException } from './instances/validation.exception';
 
-export * from './exceptions.types';
 export * from './exceptions.codes';
+export * from './exceptions.types';
 
 export {
-  BaseException,
   BadRequestException,
+  BaseException,
+  ConflictException,
   ForbiddenException,
   InternalException,
-  ValidationException,
-  UnauthorizedException,
   NotFoundException,
-  ConflictException,
+  UnauthorizedException,
+  ValidationException,
 };
 
 /**

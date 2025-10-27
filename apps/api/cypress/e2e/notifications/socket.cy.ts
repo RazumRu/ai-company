@@ -184,7 +184,7 @@ describe('Socket Gateway E2E', () => {
         return runGraph(freshGraphId, reqHeaders).then((runResponse) => {
           expect(runResponse.status).to.equal(201);
           // Graph run request completed, now wait for notification
-          return notificationPromise;
+          return cy.wrap(notificationPromise, { timeout: 10000 });
         });
       });
     });
@@ -311,24 +311,22 @@ describe('Socket Gateway E2E', () => {
             reject(new Error('Timeout waiting for message notification'));
           }, 90000);
 
-          socket.on('graph.checkpointer.message', (notification) => {
+          socket.on('agent.message', (notification) => {
             clearTimeout(timeout);
 
             // Verify the notification structure
             try {
-              expect(notification).to.have.property(
-                'type',
-                'graph.checkpointer.message',
-              );
+              expect(notification).to.have.property('type', 'agent.message');
               expect(notification).to.have.property('graphId', freshGraphId);
               expect(notification).to.have.property('ownerId', mockUserId);
               expect(notification).to.have.property('nodeId');
               expect(notification).to.have.property('threadId');
               expect(notification).to.have.property('data');
-              expect(notification.data).to.have.property('content');
-              expect(notification.data).to.have.property('role');
-              expect(notification.data.content).to.be.a('string');
-              expect(notification.data.role).to.be.a('string');
+              expect(notification.data).to.have.property('message');
+              expect(notification.data.message).to.have.property('content');
+              expect(notification.data.message).to.have.property('role');
+              expect(notification.data.message.content).to.be.a('string');
+              expect(notification.data.message.role).to.be.a('string');
               resolve(undefined);
             } catch (error) {
               reject(error);
@@ -414,28 +412,29 @@ describe('Socket Gateway E2E', () => {
         // Set up listener for message events with tool calls
         return cy.wrap(
           new Promise((resolve, reject) => {
-            socket.on('graph.checkpointer.message', (notification) => {
+            socket.on('agent.message', (notification) => {
               // We're looking for AI messages with tool calls
               if (
-                notification.data?.role === 'ai' &&
-                notification.data?.toolCalls &&
-                notification.data.toolCalls.length > 0
+                notification.data?.message?.role === 'ai' &&
+                notification.data?.message?.toolCalls &&
+                notification.data.message.toolCalls.length > 0
               ) {
                 // Verify the notification structure
-                expect(notification).to.have.property(
-                  'type',
-                  'graph.checkpointer.message',
-                );
+                expect(notification).to.have.property('type', 'agent.message');
                 expect(notification).to.have.property('graphId', freshGraphId);
                 expect(notification).to.have.property('ownerId', mockUserId);
                 expect(notification).to.have.property('nodeId');
                 expect(notification).to.have.property('threadId');
                 expect(notification).to.have.property('data');
-                expect(notification.data).to.have.property('role', 'ai');
-                expect(notification.data).to.have.property('toolCalls');
+                expect(notification.data).to.have.property('message');
+                expect(notification.data.message).to.have.property(
+                  'role',
+                  'ai',
+                );
+                expect(notification.data.message).to.have.property('toolCalls');
 
                 // Verify tool call data structure
-                const toolCall = notification.data.toolCalls[0];
+                const toolCall = notification.data.message.toolCalls[0];
                 expect(toolCall).to.have.property('name');
                 expect(toolCall).to.have.property('args');
                 expect(toolCall.name).to.be.a('string');
@@ -494,16 +493,14 @@ describe('Socket Gateway E2E', () => {
         // Set up listener for message events
         return cy.wrap(
           new Promise((resolve, reject) => {
-            socket.on('graph.checkpointer.message', (notification) => {
+            socket.on('agent.message', (notification) => {
               receivedMessages.push(notification);
               // Verify each message has the correct structure
               expect(notification).to.have.property('graphId', freshGraphId);
-              expect(notification).to.have.property(
-                'type',
-                'graph.checkpointer.message',
-              );
-              expect(notification.data).to.have.property('content');
-              expect(notification.data).to.have.property('role');
+              expect(notification).to.have.property('type', 'agent.message');
+              expect(notification.data).to.have.property('message');
+              expect(notification.data.message).to.have.property('content');
+              expect(notification.data.message).to.have.property('role');
 
               // Once we have at least 2 messages (user + AI response), we're done
               if (receivedMessages.length >= 2) {
@@ -628,10 +625,11 @@ describe('Socket Gateway E2E', () => {
                 expect(runResponse.status).to.equal(201);
                 // Both sockets should receive the notification
                 return Promise.all([firstSocketEvent, secondSocketEvent]).then(
-                  ([first, second]: [
-                    Record<string, unknown>,
-                    Record<string, unknown>,
-                  ]) => {
+                  (events) => {
+                    const [first, second] = events as [
+                      Record<string, unknown>,
+                      Record<string, unknown>,
+                    ];
                     expect(first).to.have.property('graphId');
                     expect(second).to.have.property('graphId');
                     expect(first.graphId).to.equal(second.graphId);

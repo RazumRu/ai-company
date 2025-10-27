@@ -1,9 +1,12 @@
 import { CreateGraphDto } from '../../api-definitions';
+import {
+  getThreadByExternalId,
+  getThreadMessages,
+} from '../threads/threads.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {
   createGraph,
   executeTrigger,
-  getNodeMessages,
   runGraph,
   validateGraph,
 } from './graphs.helper';
@@ -72,16 +75,16 @@ describe('Resource System E2E', () => {
               to: 'agent-1',
             },
             {
+              from: 'agent-1',
+              to: 'shell-tool-1',
+            },
+            {
               from: 'shell-tool-1',
-              to: 'agent-1',
+              to: 'runtime-1',
             },
             {
-              from: 'runtime-1',
-              to: 'shell-tool-1',
-            },
-            {
-              from: 'github-resource-1',
-              to: 'shell-tool-1',
+              from: 'shell-tool-1',
+              to: 'github-resource-1',
             },
           ],
         },
@@ -109,33 +112,26 @@ describe('Resource System E2E', () => {
         })
         .then((response) => {
           expect(response.status).to.equal(201);
-
-          return getNodeMessages(createdGraphId, 'agent-1', {
-            threadId: response.body.threadId,
-          });
+          return getThreadByExternalId(response.body.threadId);
+        })
+        .then((threadRes) => {
+          expect(threadRes.status).to.equal(200);
+          const internalThreadId = threadRes.body.id;
+          return getThreadMessages(internalThreadId);
         })
         .then((response) => {
           expect(response.status).to.equal(200);
-          expect(response.body).to.have.property('nodeId', 'agent-1');
-          expect(response.body).to.have.property('threads');
-          expect(response.body.threads).to.be.an('array');
-          expect(response.body.threads.length).to.be.greaterThan(0);
 
-          // Check if we have any threads
-          const firstThread = response.body.threads[0];
-          expect(firstThread).to.have.property('id'); // threadId
-          expect(firstThread).to.have.property('messages');
-          expect(firstThread.messages).to.be.an('array');
-
-          const messages = firstThread.messages;
+          const messages = response.body.map((m) => m.message);
           expect(messages.length).to.be.greaterThan(0);
 
           const shellMessage = messages.find(
-            (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
+            (msg) =>
+              msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
           );
-          expect(shellMessage).to.be.exist;
+          expect(shellMessage).to.exist;
 
-          const shellContent = shellMessage.content;
+          const shellContent = (shellMessage as any).content;
           expect(shellContent).to.be.an('object');
           expect(shellContent).to.have.property('exitCode').that.is.a('number');
           expect(shellContent).to.have.property('stdout').that.is.a('string');
@@ -177,8 +173,8 @@ describe('Resource System E2E', () => {
           ],
           edges: [
             {
-              from: 'shell-tool-1',
-              to: 'runtime-1',
+              from: 'runtime-1',
+              to: 'shell-tool-1',
             },
             {
               from: 'shell-tool-1',

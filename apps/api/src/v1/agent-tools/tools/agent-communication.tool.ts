@@ -1,4 +1,7 @@
-import { ToolRunnableConfig } from '@langchain/core/tools';
+import {
+  DynamicStructuredTool,
+  ToolRunnableConfig,
+} from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
 import { z } from 'zod';
@@ -8,9 +11,9 @@ import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 import { BaseTool } from './base-tool';
 
 export interface AgentCommunicationToolOptions {
+  description?: string;
   invokeAgent: <T = AgentOutput>(
     messages: string[],
-    childThreadId: string,
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
   ) => Promise<T>;
 }
@@ -20,12 +23,6 @@ export const AgentCommunicationSchema = z.object({
     .array(z.string().min(1))
     .min(1, 'Provide at least one message')
     .max(10, 'Max 10 messages'),
-  childThreadId: z
-    .string()
-    .min(1)
-    .describe(
-      'Required child thread identifier used to maintain a persistent conversation with the child agent. Use the same value to continue the same conversation across multiple calls; use a new value to start a separate conversation. The effective child thread is computed as `${parentThreadId}__${childThreadId}`.',
-    ),
 });
 export type AgentCommunicationSchemaType = z.infer<
   typeof AgentCommunicationSchema
@@ -56,12 +53,20 @@ export class AgentCommunicationTool extends BaseTool<
       );
     }
 
-    const response = await config.invokeAgent(
-      args.messages,
-      args.childThreadId,
-      runnableConfig,
-    );
+    return config.invokeAgent(args.messages, runnableConfig);
+  }
 
-    return response;
+  public build(
+    config: AgentCommunicationToolOptions,
+    lgConfig?: any,
+  ): DynamicStructuredTool {
+    const enhancedDescription = config.description
+      ? `${this.description}\n\n${config.description}`
+      : this.description;
+
+    return this.toolWrapper(this.invoke, config, {
+      ...lgConfig,
+      description: enhancedDescription,
+    });
   }
 }

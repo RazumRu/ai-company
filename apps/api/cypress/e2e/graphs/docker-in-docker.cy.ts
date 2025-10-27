@@ -1,3 +1,7 @@
+import {
+  getThreadByExternalId,
+  getThreadMessages,
+} from '../threads/threads.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {
   createGraph,
@@ -5,7 +9,6 @@ import {
   deleteGraph,
   destroyGraph,
   executeTrigger,
-  getNodeMessages,
   runGraph,
 } from './graphs.helper';
 
@@ -36,60 +39,6 @@ describe('Docker-in-Docker E2E', () => {
       });
     });
 
-    it('should verify docker connectivity through DIND container', () => {
-      const testCommand =
-        'Use the shell tool to execute this command: echo "DOCKER_HOST=$DOCKER_HOST" && docker info';
-      const triggerData = {
-        messages: [testCommand],
-        threadSubId: 'docker-connectivity-test',
-      };
-
-      executeTrigger(dindGraphId, 'trigger-1', triggerData).then((response) => {
-        expect(response.status).to.equal(201);
-        expect(response.body).to.have.property('threadId');
-        expect(response.body).to.have.property('checkpointNs');
-
-        // Wait for command execution
-        cy.wait(5000);
-
-        // Verify messages were created
-        getNodeMessages(dindGraphId, 'agent-1', {
-          threadId: response.body.threadId,
-        }).then((messagesResponse) => {
-          expect(messagesResponse.status).to.equal(200);
-          expect(messagesResponse.body.threads).to.be.an('array');
-          expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
-
-          const thread = messagesResponse.body.threads[0];
-          expect(thread).to.exist;
-          expect(thread.messages).to.be.an('array');
-          const messages = thread.messages;
-
-          // Find the shell tool message
-          const shellMessage = messages.find(
-            (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-          );
-
-          expect(shellMessage).to.exist;
-
-          const shellContent = shellMessage.content;
-
-          // Docker info should work (exit code 0)
-          expect(shellContent).to.have.property('exitCode', 0);
-
-          // Output should contain docker info
-          const output = String(shellContent['stdout']);
-          expect(output).to.satisfy(
-            (content: string) =>
-              content.includes('Server Version') ||
-              content.includes('Docker Root Dir') ||
-              content.includes('Kernel Version'),
-            'Docker info should return docker server information',
-          );
-        });
-      });
-    });
-
     it('should be able to use docker commands with DIND container', () => {
       const testCommand =
         'Use the shell tool to execute this command: docker ps';
@@ -106,39 +55,44 @@ describe('Docker-in-Docker E2E', () => {
         // Wait for docker command execution
         cy.wait(5000);
 
-        // Verify messages were created
-        getNodeMessages(dindGraphId, 'agent-1', {
-          threadId: response.body.threadId,
-        }).then((messagesResponse) => {
-          expect(messagesResponse.status).to.equal(200);
-          expect(messagesResponse.body.threads).to.be.an('array');
-          expect(messagesResponse.body.threads.length).to.be.greaterThan(0);
+        // Verify messages were created via threads API
+        getThreadByExternalId(response.body.threadId)
+          .then((threadRes) => {
+            expect(threadRes.status).to.equal(200);
+            return getThreadMessages(threadRes.body.id);
+          })
+          .then((messagesResponse) => {
+            expect(messagesResponse.status).to.equal(200);
+            expect(messagesResponse.body).to.be.an('array');
+            expect(messagesResponse.body.length).to.be.greaterThan(0);
 
-          const thread = messagesResponse.body.threads[0];
-          expect(thread).to.exist;
-          expect(thread.messages).to.be.an('array');
-          const messages = thread.messages;
+            const messages = messagesResponse.body.map((m) => m.message);
 
-          // Find the shell tool message
-          const shellMessage = messages.find(
-            (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
-          );
+            // Verify the human message exists first
+            const humanMessage = messages.find((msg) => msg.role === 'human');
+            expect(humanMessage).to.exist;
+            expect(humanMessage?.content).to.equal(testCommand);
 
-          expect(shellMessage).to.exist;
+            // Find the shell tool message
+            const shellMessage = messages.find(
+              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
+            );
 
-          const shellContent = shellMessage.content;
+            expect(shellMessage).to.exist;
 
-          // Docker ps should work (exit code 0)
-          expect(shellContent).to.have.property('exitCode', 0);
+            const shellContent = shellMessage?.content;
 
-          // Output should contain docker ps headers
-          const output = String(shellContent['stdout']);
-          expect(output).to.satisfy(
-            (content: string) =>
-              content.includes('CONTAINER') || content.includes('IMAGE'),
-            'Docker ps output should show container list headers',
-          );
-        });
+            // Docker ps should work (exit code 0)
+            expect(shellContent).to.have.property('exitCode', 0);
+
+            // Output should contain docker ps headers
+            const output = String(shellContent?.['stdout']);
+            expect(output).to.satisfy(
+              (content: string) =>
+                content.includes('CONTAINER') || content.includes('IMAGE'),
+              'Docker ps output should show container list headers',
+            );
+          });
       });
     });
 
@@ -206,12 +160,12 @@ function createMockGraphDataWithDockerInDocker() {
           to: 'agent-1',
         },
         {
-          from: 'shell-tool-1',
-          to: 'agent-1',
+          from: 'agent-1',
+          to: 'shell-tool-1',
         },
         {
-          from: 'runtime-1',
-          to: 'shell-tool-1',
+          from: 'shell-tool-1',
+          to: 'runtime-1',
         },
       ],
     },

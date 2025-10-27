@@ -11,8 +11,8 @@
     "run-all-seeds": "src/bin/run-all-seeds.mjs"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.7",
-    "@nestjs/core": "^11.1.7",
+    "@nestjs/common": "^11.1.8",
+    "@nestjs/core": "^11.1.8",
     "@nestjs/typeorm": "^11.0.0",
     "@packages/common": "workspace:*",
     "lodash": "^4.17.21",
@@ -31,8 +31,8 @@
   "license": "ISC",
   "main": "dist/index.js",
   "peerDependencies": {
-    "@nestjs/common": "^11.1.7",
-    "@nestjs/core": "^11.1.7",
+    "@nestjs/common": "^11.1.8",
+    "@nestjs/core": "^11.1.8",
     "@packages/common": "workspace:*",
     "typeorm": "^0.3.27"
   },

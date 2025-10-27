@@ -21,8 +21,14 @@ import type {
   GetAllGraphsResponses,
   GetAllTemplatesData,
   GetAllTemplatesResponses,
-  GetNodeMessagesData,
-  GetNodeMessagesResponses,
+  GetThreadByExternalIdData,
+  GetThreadByExternalIdResponses,
+  GetThreadByIdData,
+  GetThreadByIdResponses,
+  GetThreadMessagesData,
+  GetThreadMessagesResponses,
+  GetThreadsData,
+  GetThreadsResponses,
   RunGraphData,
   RunGraphResponses,
   UpdateGraphData,
@@ -217,26 +223,6 @@ export const executeTrigger = <ThrowOnError extends boolean = false>(
   });
 };
 
-export const getNodeMessages = <ThrowOnError extends boolean = false>(
-  options: Options<GetNodeMessagesData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
-    GetNodeMessagesResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
-    url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/messages',
-    ...options,
-  });
-};
-
 export const getAllTemplates = <ThrowOnError extends boolean = false>(
   options?: Options<GetAllTemplatesData, ThrowOnError>,
 ) => {
@@ -253,6 +239,86 @@ export const getAllTemplates = <ThrowOnError extends boolean = false>(
       },
     ],
     url: '/api/v1/templates',
+    ...options,
+  });
+};
+
+export const getThreads = <ThrowOnError extends boolean = false>(
+  options: Options<GetThreadsData, ThrowOnError>,
+) => {
+  return (options.client ?? client).get<
+    GetThreadsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/threads',
+    ...options,
+  });
+};
+
+export const getThreadById = <ThrowOnError extends boolean = false>(
+  options: Options<GetThreadByIdData, ThrowOnError>,
+) => {
+  return (options.client ?? client).get<
+    GetThreadByIdResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/threads/{threadId}',
+    ...options,
+  });
+};
+
+export const getThreadByExternalId = <ThrowOnError extends boolean = false>(
+  options: Options<GetThreadByExternalIdData, ThrowOnError>,
+) => {
+  return (options.client ?? client).get<
+    GetThreadByExternalIdResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/threads/external/{externalThreadId}',
+    ...options,
+  });
+};
+
+export const getThreadMessages = <ThrowOnError extends boolean = false>(
+  options: Options<GetThreadMessagesData, ThrowOnError>,
+) => {
+  return (options.client ?? client).get<
+    GetThreadMessagesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/threads/{threadId}/messages',
     ...options,
   });
 };
