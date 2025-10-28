@@ -47,6 +47,7 @@ export interface IAgentInvokeNotification
   nodeId: string;
   threadId: string;
   parentThreadId: string;
+  source?: string;
 }
 
 export type Notification =

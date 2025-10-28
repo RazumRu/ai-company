@@ -121,6 +121,7 @@ describe('AgentInvokeNotificationHandler', () => {
         graphId: mockGraphId,
         createdBy: mockUserId,
         externalThreadId: 'parent-thread-123',
+        source: undefined,
       });
       expect(result).toEqual([]);
     });
@@ -149,6 +150,7 @@ describe('AgentInvokeNotificationHandler', () => {
         graphId: mockGraphId,
         createdBy: mockUserId,
         externalThreadId: mockParentThreadId,
+        source: undefined,
       });
     });
 
@@ -182,6 +184,33 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(graphDao.getOne).toHaveBeenCalledWith({ id: mockGraphId });
       expect(threadsDao.getOne).not.toHaveBeenCalled();
       expect(threadsDao.create).not.toHaveBeenCalled();
+      expect(result).toEqual([]);
+    });
+
+    it('should create thread with source when provided', async () => {
+      const mockGraph = createMockGraphEntity();
+      const source = 'manual-trigger (trigger)';
+      const notification = createMockNotification({ source });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+      vi.spyOn(threadsDao, 'create').mockResolvedValue(
+        createMockThreadEntity(),
+      );
+
+      const result = await handler.handle(notification);
+
+      expect(graphDao.getOne).toHaveBeenCalledWith({ id: mockGraphId });
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        externalThreadId: 'parent-thread-123',
+        graphId: mockGraphId,
+      });
+      expect(threadsDao.create).toHaveBeenCalledWith({
+        graphId: mockGraphId,
+        createdBy: mockUserId,
+        externalThreadId: 'parent-thread-123',
+        source,
+      });
       expect(result).toEqual([]);
     });
 

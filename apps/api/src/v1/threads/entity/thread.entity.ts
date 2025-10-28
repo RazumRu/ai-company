@@ -22,4 +22,7 @@ export class ThreadEntity extends TimestampsEntity {
 
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, unknown>;
+
+  @Column({ type: 'varchar', nullable: true })
+  source?: string;
 }

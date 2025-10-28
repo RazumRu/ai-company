@@ -88,28 +88,8 @@ describe('ManualTriggerTemplate', () => {
   });
 
   describe('schema validation', () => {
-    it('should validate optional threadId', () => {
-      const validConfig = {
-        threadId: 'thread-1',
-      };
-
-      expect(() =>
-        ManualTriggerTemplateSchema.parse(validConfig),
-      ).not.toThrow();
-    });
-
     it('should work with empty config', () => {
       const validConfig = {};
-
-      expect(() =>
-        ManualTriggerTemplateSchema.parse(validConfig),
-      ).not.toThrow();
-    });
-
-    it('should validate optional threadId', () => {
-      const validConfig = {
-        threadId: 'thread-1',
-      };
 
       expect(() =>
         ManualTriggerTemplateSchema.parse(validConfig),
@@ -165,9 +145,7 @@ describe('ManualTriggerTemplate', () => {
 
       const outputNodes = new Map([['agent-1', agentNode]]);
 
-      const config = {
-        threadId: 'test-thread',
-      };
+      const config = {};
 
       const result = await template.create(config, new Map(), outputNodes, {
         graphId: 'test-graph',
@@ -210,9 +188,7 @@ describe('ManualTriggerTemplate', () => {
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
 
-      const config = {
-        threadId: 'test-thread',
-      };
+      const config = {};
 
       await template.create(config, new Map(), compiledNodes, {
         graphId: 'test-graph',
@@ -252,6 +228,7 @@ describe('ManualTriggerTemplate', () => {
         thread_id: expectedFullThreadId,
         graph_id: 'test-graph',
         node_id: 'agent-1', // Uses agent's nodeId
+        source: 'manual-trigger (trigger)',
       });
       // checkpoint_ns should be threadId:agentNodeId
       expect(actualRunnableConfig.configurable.checkpoint_ns).toBe(

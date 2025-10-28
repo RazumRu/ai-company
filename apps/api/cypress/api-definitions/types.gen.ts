@@ -368,6 +368,10 @@ export type ThreadDto = {
   metadata?: {
     [key: string]: unknown;
   } | null;
+  /**
+   * Source of thread creation (e.g., trigger template name)
+   */
+  source?: string | null;
 };
 
 export type ThreadMessageDto = {
@@ -478,14 +482,6 @@ export type ThreadMessageDto = {
            * Standard error from the command
            */
           stderr: string;
-          /**
-           * The command that was executed
-           */
-          cmd: string;
-          /**
-           * Whether the command failed
-           */
-          fail?: boolean;
         };
         /**
          * Tool call ID

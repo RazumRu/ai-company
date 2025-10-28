@@ -598,6 +598,16 @@ export const ThreadDtoSchema = {
         },
       ],
     },
+    source: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
   },
   required: ['id', 'graphId', 'externalThreadId', 'createdAt', 'updatedAt'],
 } as const;
@@ -748,14 +758,8 @@ export const ThreadMessageDtoSchema = {
                 stderr: {
                   type: 'string',
                 },
-                cmd: {
-                  type: 'string',
-                },
-                fail: {
-                  type: 'boolean',
-                },
               },
-              required: ['exitCode', 'stdout', 'stderr', 'cmd'],
+              required: ['exitCode', 'stdout', 'stderr'],
             },
             toolCallId: {
               type: 'string',

@@ -1,5 +1,18 @@
-import type { ThreadDto } from '../../api-definitions/types.gen';
+import type { ThreadDto, ThreadMessageDto } from '../../api-definitions/types.gen';
 import { reqHeaders } from '../common.helper';
+
+export const getThreadMessages = (
+  threadId: string,
+  query: { limit?: number; offset?: number; nodeId?: string } = {},
+  headers = reqHeaders,
+) =>
+  cy.request<ThreadMessageDto[]>({
+    url: `/api/v1/threads/${threadId}/messages`,
+    method: 'GET',
+    headers,
+    qs: query,
+    failOnStatusCode: false,
+  });
 
 export const getThreads = (
   query: { graphId: string; limit?: number; offset?: number },

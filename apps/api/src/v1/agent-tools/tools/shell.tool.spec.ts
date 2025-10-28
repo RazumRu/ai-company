@@ -109,7 +109,6 @@ describe('ShellTool', () => {
       });
       expect(result).toEqual({
         ...mockExecResult,
-        cmd: 'echo "hello world"',
         env: undefined,
       });
     });
@@ -137,7 +136,6 @@ describe('ShellTool', () => {
       });
       expect(result).toEqual({
         ...mockExecResult,
-        cmd: 'echo $NODE_ENV',
         env: envArray,
       });
     });
@@ -171,7 +169,6 @@ describe('ShellTool', () => {
       });
       expect(result).toEqual({
         ...mockExecResult,
-        cmd: 'pwd',
         env: envArray,
       });
     });

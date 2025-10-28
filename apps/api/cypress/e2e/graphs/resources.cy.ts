@@ -136,11 +136,6 @@ describe('Resource System E2E', () => {
           expect(shellContent).to.have.property('exitCode').that.is.a('number');
           expect(shellContent).to.have.property('stdout').that.is.a('string');
           expect(shellContent).to.have.property('stderr').that.is.a('string');
-          expect(shellContent).to.have.property('cmd').that.is.a('string');
-
-          expect(shellContent)
-            .to.have.property('cmd')
-            .that.includes('gh auth status');
 
           expect(shellContent)
             .to.have.property('stdout')

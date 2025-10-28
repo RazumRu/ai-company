@@ -1,3 +1,4 @@
+import { reqHeaders } from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
@@ -126,8 +127,12 @@ describe('Threads E2E', () => {
 
           // Should have messages from both agents
           const messages = messagesResponse.body;
-          const agent1Messages = messages.filter((m) => m.nodeId === 'agent-1');
-          const agent2Messages = messages.filter((m) => m.nodeId === 'agent-2');
+          const agent1Messages = messages.filter(
+            (m) => m.nodeId === 'agent-1',
+          );
+          const agent2Messages = messages.filter(
+            (m) => m.nodeId === 'agent-2',
+          );
 
           // Both agents should have contributed messages
           expect(agent1Messages.length).to.be.greaterThan(0);
@@ -684,7 +689,8 @@ describe('Threads E2E', () => {
             // Log duplicate messages if found
             if (messageSignatures.length !== uniqueSignatures.size) {
               const duplicates = messageSignatures.filter(
-                (sig, index) => messageSignatures.indexOf(sig) !== index,
+                (sig: any, index: any) =>
+                  messageSignatures.indexOf(sig) !== index,
               );
               cy.log('Duplicate message signatures found:', duplicates);
             }

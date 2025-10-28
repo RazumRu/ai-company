@@ -15,6 +15,11 @@ export const ThreadSchema = z.object({
     .optional()
     .nullable()
     .describe('Additional thread metadata'),
+  source: z
+    .string()
+    .optional()
+    .nullable()
+    .describe('Source of thread creation (e.g., trigger template name)'),
 });
 
 export const ThreadMessageSchema = z.object({

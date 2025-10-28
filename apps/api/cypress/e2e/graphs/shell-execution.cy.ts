@@ -74,7 +74,9 @@ describe('Shell Execution E2E', () => {
               expect(messages.length).to.be.greaterThan(0);
 
               // Verify our sent command is included
-              const humanMessage = messages.find((msg) => msg.role === 'human');
+              const humanMessage = messages.find(
+                (msg) => msg.role === 'human',
+              );
               expect(humanMessage).to.exist;
               expect(humanMessage?.content).to.equal(testCommand);
 
@@ -99,7 +101,6 @@ describe('Shell Execution E2E', () => {
               expect(shellContent)
                 .to.have.property('stderr')
                 .that.is.a('string');
-              expect(shellContent).to.have.property('cmd').that.is.a('string');
 
               // Verify the shell command output
               expect(shellContent).to.have.property('exitCode', 0);
@@ -156,25 +157,19 @@ describe('Shell Execution E2E', () => {
 
               // Verify shell messages have proper structure
               shellMessages.forEach((msg) => {
-                expect((msg as any)['name']).to.equal('shell');
-                expect((msg as any).content).to.be.an('object');
-                expect((msg as any).content).to.have.property('exitCode');
-                expect((msg as any).content).to.have.property('stdout');
-                expect((msg as any).content).to.have.property('stderr');
-                expect((msg as any).content).to.have.property('cmd');
+                expect(msg.content).to.be.an('object');
+                expect(msg.content).to.have.property('exitCode');
+                expect(msg.content).to.have.property('stdout');
+                expect(msg.content).to.have.property('stderr');
               });
 
               // Verify the shell execution output contains FOO=bar
               const envVarShellMessage = shellMessages.find((msg) => {
-                const content = (msg as any).content as any;
-                return (
-                  content.stdout?.includes('bar') &&
-                  (content.cmd?.includes('$FOO') ||
-                    content.cmd?.includes('echo'))
-                );
+                const content = msg.content;
+                return content.stdout?.includes('bar');
               });
               expect(envVarShellMessage).to.exist;
-              expect((envVarShellMessage?.content as any).exitCode).to.equal(0);
+              expect(envVarShellMessage?.content.exitCode).to.equal(0);
             });
         },
       );
@@ -348,7 +343,6 @@ describe('Shell Execution E2E', () => {
               expect(shellContent)
                 .to.have.property('stderr')
                 .that.is.a('string');
-              expect(shellContent).to.have.property('cmd').that.is.a('string');
 
               // The command should have timed out (exit code 124)
               expect(shellContent).to.have.property('exitCode', 124);
@@ -403,7 +397,6 @@ describe('Shell Execution E2E', () => {
               expect(shellContent)
                 .to.have.property('stderr')
                 .that.is.a('string');
-              expect(shellContent).to.have.property('cmd').that.is.a('string');
 
               // The command should have completed successfully (exit code 0)
               // since it produces output within the tail timeout
@@ -442,7 +435,8 @@ describe('Shell Execution E2E', () => {
 
               // Find the shell tool message
               const shellMessage = messages.find(
-                (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
+                (msg) =>
+                  msg.role === 'tool-shell' && msg['name'] === 'shell',
               );
               expect(shellMessage).to.exist;
 
@@ -458,7 +452,6 @@ describe('Shell Execution E2E', () => {
               expect(shellContent)
                 .to.have.property('stderr')
                 .that.is.a('string');
-              expect(shellContent).to.have.property('cmd').that.is.a('string');
 
               // The command should have completed successfully
               expect(shellContent).to.have.property('exitCode', 0);

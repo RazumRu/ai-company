@@ -122,8 +122,6 @@ export const ShellToolResultSchema = z.object({
   exitCode: z.number().describe('Exit code of the shell command'),
   stdout: z.string().describe('Standard output from the command'),
   stderr: z.string().describe('Standard error from the command'),
-  cmd: z.string().describe('The command that was executed'),
-  fail: z.boolean().optional().describe('Whether the command failed'),
 });
 
 // Shell tool message schema (specific for shell tool results)

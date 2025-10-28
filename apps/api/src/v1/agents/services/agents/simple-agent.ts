@@ -166,7 +166,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         {
           getRestrictOutput: () => true,
           getRestrictionMessage: () =>
-            "Do not produce a final answer directly. Before finishing, call a tool. If no tool is needed, call the 'finish' tool.",
+            "Do not produce a final answer directly. Before finishing, call a tool. If no tool is needed or if you already having a result, call the 'finish' tool.",
           getRestrictionMaxInjections: () => 2,
         },
         this.logger,
@@ -287,6 +287,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         threadId,
         parentThreadId:
           runnableConfig.configurable.parent_thread_id || 'unknown',
+        source: runnableConfig.configurable.source,
         data: {
           messages,
         },

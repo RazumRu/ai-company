@@ -405,7 +405,6 @@ describe('NotificationHandler', () => {
               exitCode: 0,
               stdout: 'Command output',
               stderr: '',
-              cmd: 'echo test',
             },
             toolCallId: 'call-shell-1',
           },

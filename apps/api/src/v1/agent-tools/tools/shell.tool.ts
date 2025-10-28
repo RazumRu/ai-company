@@ -34,7 +34,6 @@ export const ShellToolSchema = z.object({
 export type ShellToolSchemaType = z.infer<typeof ShellToolSchema>;
 
 export interface ShellToolOutput extends RuntimeExecResult {
-  cmd: string;
   env: ShellToolSchemaType['env'];
 }
 
@@ -89,7 +88,6 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
     return {
       ...res,
-      cmd: data.cmd,
       env: data.env,
     };
   }
