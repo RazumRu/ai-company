@@ -8,6 +8,7 @@ import {
   runGraph,
 } from '../graphs/graphs.helper';
 import {
+  deleteThread,
   getThreadByExternalId,
   getThreadById,
   getThreadMessages,
@@ -1508,6 +1509,306 @@ describe('Threads E2E', () => {
                       });
                   });
                 });
+            });
+          });
+      });
+    });
+
+    describe('Thread Deletion', () => {
+      it('should delete a thread and its messages', () => {
+        let testGraphId: string;
+        let internalThreadId: string;
+
+        const graphData = {
+          name: `Delete Thread Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for thread deletion',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Test Agent',
+                  instructions: 'You are a helpful test agent.',
+                  invokeModelName: 'gpt-5-mini',
+                },
+              },
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        };
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            cy.wait(2000);
+
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['Test message for deletion'],
+              threadSubId: 'delete-test',
+            });
+          })
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+
+            // Get thread by external ID
+            return getThreadByExternalId(triggerResponse.body.threadId);
+          })
+          .then((threadResponse) => {
+            expect(threadResponse.status).to.equal(200);
+            internalThreadId = threadResponse.body.id;
+
+            // Verify thread exists and has messages
+            return getThreadMessages(internalThreadId);
+          })
+          .then((messagesResponse) => {
+            expect(messagesResponse.status).to.equal(200);
+            expect(messagesResponse.body.length).to.be.greaterThan(0);
+
+            // Delete the thread
+            return deleteThread(internalThreadId);
+          })
+          .then((deleteResponse) => {
+            expect(deleteResponse.status).to.equal(200);
+
+            // Verify thread is deleted - should return 404
+            return getThreadById(internalThreadId);
+          })
+          .then((getResponse) => {
+            expect(getResponse.status).to.equal(404);
+
+            // Verify messages are also deleted
+            return getThreadMessages(internalThreadId);
+          })
+          .then((messagesResponse) => {
+            expect(messagesResponse.status).to.equal(404);
+
+            // Verify thread is not in the threads list
+            return getThreads({ graphId: testGraphId });
+          })
+          .then((threadsResponse) => {
+            expect(threadsResponse.status).to.equal(200);
+            expect(threadsResponse.body.length).to.equal(0);
+
+            // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+
+      it('should return 404 when trying to delete non-existent thread', () => {
+        const nonExistentThreadId = 'non-existent-thread-id';
+
+        deleteThread(nonExistentThreadId).then((response) => {
+          expect(response.status).to.equal(404);
+        });
+      });
+
+      it('should not allow deleting thread from different user', () => {
+        let testGraphId: string;
+        let internalThreadId: string;
+
+        const graphData = {
+          name: `Cross User Delete Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for cross-user deletion',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Test Agent',
+                  instructions: 'You are a helpful test agent.',
+                  invokeModelName: 'gpt-5-mini',
+                },
+              },
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        };
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            cy.wait(2000);
+
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['Test message'],
+              threadSubId: 'cross-user-test',
+            });
+          })
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+
+            return getThreadByExternalId(triggerResponse.body.threadId);
+          })
+          .then((threadResponse) => {
+            expect(threadResponse.status).to.equal(200);
+            internalThreadId = threadResponse.body.id;
+
+            // Try to delete with different user headers (simulating different user)
+            const differentUserHeaders = {
+              ...reqHeaders,
+              authorization: 'Bearer different-user-token',
+            };
+
+            return deleteThread(internalThreadId, differentUserHeaders);
+          })
+          .then((deleteResponse) => {
+            // Should return 404 because thread doesn't belong to this user
+            expect(deleteResponse.status).to.equal(404);
+
+            // Verify thread still exists for original user
+            return getThreadById(internalThreadId);
+          })
+          .then((getResponse) => {
+            expect(getResponse.status).to.equal(200);
+            expect(getResponse.body.id).to.equal(internalThreadId);
+
+            // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+
+      it('should delete thread and all its messages in multi-agent scenario', () => {
+        let testGraphId: string;
+        let internalThreadId: string;
+
+        const graphData = {
+          name: `Multi-Agent Delete Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for multi-agent thread deletion',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'First Agent',
+                  instructions:
+                    'You are the first agent. Use the agent-communication tool to ask the second agent a question.',
+                  invokeModelName: 'gpt-5-mini',
+                },
+              },
+              {
+                id: 'agent-2',
+                template: 'simple-agent',
+                config: {
+                  name: 'Second Agent',
+                  instructions: 'You are the second agent. Answer briefly.',
+                  invokeModelName: 'gpt-5-mini',
+                },
+              },
+              {
+                id: 'comm-tool',
+                template: 'agent-communication-tool',
+                config: {},
+              },
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [
+              { from: 'trigger-1', to: 'agent-1' },
+              { from: 'agent-1', to: 'comm-tool' },
+              { from: 'comm-tool', to: 'agent-2' },
+            ],
+          },
+        };
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            cy.wait(2000);
+
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['Ask agent 2 what is 2+2'],
+              threadSubId: 'multi-agent-delete-test',
+            });
+          })
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+
+            return getThreadByExternalId(triggerResponse.body.threadId);
+          })
+          .then((threadResponse) => {
+            expect(threadResponse.status).to.equal(200);
+            internalThreadId = threadResponse.body.id;
+
+            // Get messages from both agents
+            return getThreadMessages(internalThreadId);
+          })
+          .then((messagesResponse) => {
+            expect(messagesResponse.status).to.equal(200);
+            const messages = messagesResponse.body;
+
+            // Should have messages from both agents
+            const agent1Messages = messages.filter(
+              (m) => m.nodeId === 'agent-1',
+            );
+            const agent2Messages = messages.filter(
+              (m) => m.nodeId === 'agent-2',
+            );
+
+            expect(agent1Messages.length).to.be.greaterThan(0);
+            expect(agent2Messages.length).to.be.greaterThan(0);
+
+            // Delete the thread
+            return deleteThread(internalThreadId);
+          })
+          .then((deleteResponse) => {
+            expect(deleteResponse.status).to.equal(200);
+
+            // Verify thread is deleted
+            return getThreadById(internalThreadId);
+          })
+          .then((getResponse) => {
+            expect(getResponse.status).to.equal(404);
+
+            // Verify all messages are deleted
+            return getThreadMessages(internalThreadId);
+          })
+          .then((messagesResponse) => {
+            expect(messagesResponse.status).to.equal(404);
+
+            // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
             });
           });
       });

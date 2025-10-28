@@ -687,6 +687,19 @@ export type GetThreadsResponses = {
 
 export type GetThreadsResponse = GetThreadsResponses[keyof GetThreadsResponses];
 
+export type DeleteThreadData = {
+  body?: never;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}';
+};
+
+export type DeleteThreadResponses = {
+  200: unknown;
+};
+
 export type GetThreadByIdData = {
   body?: never;
   path: {

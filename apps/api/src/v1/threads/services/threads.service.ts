@@ -82,10 +82,30 @@ export class ThreadsService {
     const messages = await this.messagesDao.getAll({
       threadId,
       ...query,
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'DESC' },
     });
 
     return messages.map(this.prepareMessageResponse);
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    const userId = this.authContext.checkSub();
+
+    // First verify the thread exists and belongs to the user
+    const thread = await this.threadDao.getOne({
+      id: threadId,
+      createdBy: userId,
+    });
+
+    if (!thread) {
+      throw new NotFoundException('THREAD_NOT_FOUND');
+    }
+
+    // Delete all messages associated with this thread first
+    await this.messagesDao.delete({ threadId });
+
+    // Then delete the thread itself
+    await this.threadDao.deleteById(threadId);
   }
 
   public prepareThreadResponse(entity: ThreadEntity): ThreadDto {

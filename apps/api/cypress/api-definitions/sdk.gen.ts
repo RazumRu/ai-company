@@ -11,6 +11,8 @@ import type {
   CreateGraphResponses,
   DeleteGraphData,
   DeleteGraphResponses,
+  DeleteThreadData,
+  DeleteThreadResponses,
   DestroyGraphData,
   DestroyGraphResponses,
   ExecuteTriggerData,
@@ -259,6 +261,25 @@ export const getThreads = <ThrowOnError extends boolean = false>(
       },
     ],
     url: '/api/v1/threads',
+    ...options,
+  });
+};
+
+export const deleteThread = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteThreadData, ThrowOnError>,
+) => {
+  return (options.client ?? client).delete<
+    DeleteThreadResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/threads/{threadId}',
     ...options,
   });
 };

@@ -70,6 +70,7 @@ describe('ThreadsService', () => {
             getAll: vi.fn(),
             getOne: vi.fn(),
             create: vi.fn(),
+            delete: vi.fn(),
           },
         },
         {
@@ -243,7 +244,7 @@ describe('ThreadsService', () => {
         threadId: mockThreadId,
         limit: 100,
         offset: 0,
-        order: { createdAt: 'ASC' },
+        order: { createdAt: 'DESC' },
       });
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
@@ -273,7 +274,7 @@ describe('ThreadsService', () => {
         nodeId: 'node-1',
         limit: 100,
         offset: 0,
-        order: { createdAt: 'ASC' },
+        order: { createdAt: 'DESC' },
       });
     });
 
@@ -288,6 +289,60 @@ describe('ThreadsService', () => {
       await expect(
         service.getThreadMessages(mockThreadId, query),
       ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+    });
+  });
+
+  describe('deleteThread', () => {
+    it('should delete a thread and its messages', async () => {
+      const mockThread = createMockThreadEntity();
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'delete').mockResolvedValue(undefined);
+      vi.spyOn(threadsDao, 'deleteById').mockResolvedValue(undefined);
+
+      await service.deleteThread(mockThreadId);
+
+      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        id: mockThreadId,
+        createdBy: mockUserId,
+      });
+      expect(messagesDao.delete).toHaveBeenCalledWith({
+        threadId: mockThreadId,
+      });
+      expect(threadsDao.deleteById).toHaveBeenCalledWith(mockThreadId);
+    });
+
+    it('should throw error if thread not found', async () => {
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(service.deleteThread(mockThreadId)).rejects.toThrow(
+        '[THREAD_NOT_FOUND] An exception has occurred',
+      );
+
+      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        id: mockThreadId,
+        createdBy: mockUserId,
+      });
+      expect(messagesDao.delete).not.toHaveBeenCalled();
+      expect(threadsDao.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('should throw error if thread belongs to different user', async () => {
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(service.deleteThread(mockThreadId)).rejects.toThrow(
+        '[THREAD_NOT_FOUND] An exception has occurred',
+      );
+
+      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        id: mockThreadId,
+        createdBy: mockUserId,
+      });
+      expect(messagesDao.delete).not.toHaveBeenCalled();
+      expect(threadsDao.deleteById).not.toHaveBeenCalled();
     });
   });
 });

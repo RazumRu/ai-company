@@ -90,10 +90,12 @@ describe('ManualTrigger', () => {
       const mockOutput1: AgentOutput = {
         messages: [new HumanMessage('response 1')],
         threadId: 'test-thread-id-1',
+        summary: 'Test response summary 1',
       };
       const mockOutput2: AgentOutput = {
         messages: [new HumanMessage('response 2')],
         threadId: 'test-thread-id-2',
+        summary: 'Test response summary 2',
       };
 
       const mockInvokeAgent = vi

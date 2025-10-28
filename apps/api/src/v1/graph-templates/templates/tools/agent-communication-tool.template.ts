@@ -24,7 +24,7 @@ import {
 
 export const AgentCommunicationToolTemplateSchema = z
   .object({
-    description: z.string().optional(),
+    description: z.string().optional().meta({ 'x-ui:textarea': true }),
     metadata: z
       .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
       .optional(),
@@ -134,7 +134,38 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
         enrichedConfig,
       );
 
-      return response as T;
+      // Extract the last message content or finish tool message from the agent's response
+      const lastMessage = response.messages[response.messages.length - 1];
+      let responseMessage: string | undefined;
+
+      if (lastMessage) {
+        // Check if the last message is a tool message from finish tool
+        if (lastMessage.type === 'tool' && lastMessage.name === 'finish') {
+          responseMessage =
+            typeof lastMessage.content === 'string'
+              ? lastMessage.content
+              : JSON.stringify(lastMessage.content);
+        } else if (lastMessage.type === 'ai') {
+          // For AI messages, use the content
+          responseMessage =
+            typeof lastMessage.content === 'string'
+              ? lastMessage.content
+              : JSON.stringify(lastMessage.content);
+        } else if (lastMessage.type === 'human') {
+          // For human messages, use the content
+          responseMessage =
+            typeof lastMessage.content === 'string'
+              ? lastMessage.content
+              : JSON.stringify(lastMessage.content);
+        }
+      }
+
+      // Return the agent's response message instead of all messages
+      return {
+        message: responseMessage || 'No response message available',
+        threadId: response.threadId,
+        checkpointNs: response.checkpointNs,
+      } as T;
     };
 
     return this.agentCommunicationTool.build({

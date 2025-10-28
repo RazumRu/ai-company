@@ -21,11 +21,7 @@ import {
 /**
  * Manual trigger template schema
  */
-export const ManualTriggerTemplateSchema = z
-  .object({
-    threadId: z.string().optional(),
-  })
-  .strict();
+export const ManualTriggerTemplateSchema = z.object({}).strict();
 
 export type ManualTriggerTemplateSchemaType = z.infer<
   typeof ManualTriggerTemplateSchema

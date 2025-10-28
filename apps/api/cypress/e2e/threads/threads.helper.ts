@@ -1,7 +1,4 @@
-import type {
-  ThreadDto,
-  ThreadMessageDto,
-} from '../../api-definitions/types.gen';
+import type { ThreadDto } from '../../api-definitions/types.gen';
 import { reqHeaders } from '../common.helper';
 
 export const getThreads = (
@@ -35,15 +32,10 @@ export const getThreadByExternalId = (
     failOnStatusCode: false,
   });
 
-export const getThreadMessages = (
-  threadId: string,
-  query?: { nodeId?: string; limit?: number; offset?: number },
-  headers = reqHeaders,
-) =>
-  cy.request<ThreadMessageDto[]>({
-    url: `/api/v1/threads/${threadId}/messages`,
-    method: 'GET',
+export const deleteThread = (threadId: string, headers = reqHeaders) =>
+  cy.request({
+    url: `/api/v1/threads/${threadId}`,
+    method: 'DELETE',
     headers,
-    qs: query,
     failOnStatusCode: false,
   });

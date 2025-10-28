@@ -327,5 +327,112 @@ describe('AgentCommunicationToolTemplate', () => {
         }),
       );
     });
+
+    it('should return message instead of all messages', async () => {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+        id: 'agent-2',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'Test instructions',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+      };
+
+      const outputNodes = new Map([['agent-2', agentNode]]);
+      const config = {};
+
+      await template.create(config, new Map(), outputNodes, {
+        graphId: 'test-graph',
+        nodeId: 'comm-tool',
+        version: '1.0.0',
+      });
+
+      const buildCall = (mockAgentCommunicationTool.build as any).mock
+        .calls[0][0];
+      const invokeAgent = buildCall.invokeAgent;
+
+      const mockRunnableConfig = {
+        configurable: {
+          thread_id: 'test-thread',
+          parent_thread_id: 'root-thread',
+          graph_id: 'test-graph',
+          node_id: 'agent-1',
+        },
+      } as any;
+
+      const messages = ['Test message'];
+      const result = await invokeAgent(messages, mockRunnableConfig);
+
+      // Verify that the result contains message extracted from the last message
+      expect(result).toEqual({
+        message: 'Agent response',
+        threadId: 'test-thread',
+        checkpointNs: undefined,
+      });
+
+      // Verify that messages are not included in the result
+      expect(result.messages).toBeUndefined();
+    });
+
+    it('should handle empty messages gracefully', async () => {
+      // Mock agent that returns empty messages
+      const mockAgentEmptyMessages = {
+        run: vi.fn().mockResolvedValue({
+          messages: [],
+          threadId: 'test-thread',
+        }),
+      } as any;
+
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+        id: 'agent-2',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgentEmptyMessages,
+          config: {
+            name: 'Test Agent',
+            instructions: 'Test instructions',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+      };
+
+      const outputNodes = new Map([['agent-2', agentNode]]);
+      const config = {};
+
+      await template.create(config, new Map(), outputNodes, {
+        graphId: 'test-graph',
+        nodeId: 'comm-tool',
+        version: '1.0.0',
+      });
+
+      const buildCall = (mockAgentCommunicationTool.build as any).mock
+        .calls[0][0];
+      const invokeAgent = buildCall.invokeAgent;
+
+      const mockRunnableConfig = {
+        configurable: {
+          thread_id: 'test-thread',
+          parent_thread_id: 'root-thread',
+          graph_id: 'test-graph',
+          node_id: 'agent-1',
+        },
+      } as any;
+
+      const messages = ['Test message'];
+      const result = await invokeAgent(messages, mockRunnableConfig);
+
+      // Verify fallback message when no messages are available
+      expect(result).toEqual({
+        message: 'No response message available',
+        threadId: 'test-thread',
+        checkpointNs: undefined,
+      });
+    });
   });
 });
