@@ -123,11 +123,11 @@ export class MessageTransformerService {
       try {
         return JSON.parse(input);
       } catch {
-        return { raw: input };
+        return { message: input };
       }
     }
     if (isObject(input)) return input as Record<string, unknown>;
-    return { raw: input };
+    return { message: input };
   }
 
   private normalizeAdditionalKwargs(

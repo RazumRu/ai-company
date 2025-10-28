@@ -154,7 +154,7 @@ describe('MessageTransformerService', () => {
 
       const result = service.transformMessageToDto(msg) as ToolMessageDto;
 
-      expect(result.content).toEqual({ raw: 'not valid json' });
+      expect(result.content).toEqual({ message: 'not valid json' });
     });
 
     it('should transform serialized human message', () => {

@@ -108,8 +108,9 @@ describe('ShellTool', () => {
         env: {},
       });
       expect(result).toEqual({
-        ...mockExecResult,
-        env: undefined,
+        exitCode: mockExecResult.exitCode,
+        stdout: mockExecResult.stdout,
+        stderr: mockExecResult.stderr,
       });
     });
 
@@ -135,8 +136,9 @@ describe('ShellTool', () => {
         env: { NODE_ENV: 'test' },
       });
       expect(result).toEqual({
-        ...mockExecResult,
-        env: envArray,
+        exitCode: mockExecResult.exitCode,
+        stdout: mockExecResult.stdout,
+        stderr: mockExecResult.stderr,
       });
     });
 
@@ -168,8 +170,9 @@ describe('ShellTool', () => {
         env: { TEST: 'value' },
       });
       expect(result).toEqual({
-        ...mockExecResult,
-        env: envArray,
+        exitCode: mockExecResult.exitCode,
+        stdout: mockExecResult.stdout,
+        stderr: mockExecResult.stderr,
       });
     });
 
@@ -184,17 +187,39 @@ describe('ShellTool', () => {
     });
 
     it('should handle runtime execution errors', async () => {
-      const mockError = new Error('Command failed');
+      const mockError = new Error('Runtime not started');
       mockRuntime.exec = vi.fn().mockRejectedValue(mockError);
 
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      await expect(
-        builtTool.invoke({
-          cmd: 'invalid-command',
-        }),
-      ).rejects.toThrow('Command failed');
+      const result = await builtTool.invoke({
+        cmd: 'invalid-command',
+      });
+
+      expect(result).toEqual({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Runtime not started',
+      });
+    });
+
+    it('should handle "Runtime not started" error specifically', async () => {
+      const mockError = new Error('Runtime not started');
+      mockRuntime.exec = vi.fn().mockRejectedValue(mockError);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const result = await builtTool.invoke({
+        cmd: 'echo "test"',
+      });
+
+      expect(result).toEqual({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Runtime not started',
+      });
     });
 
     it('should convert env array to object correctly', async () => {

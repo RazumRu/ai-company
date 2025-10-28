@@ -7,7 +7,6 @@ import { BadRequestException } from '@packages/common';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
-import { RuntimeExecResult } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { BaseTool } from './base-tool';
 
@@ -33,8 +32,10 @@ export const ShellToolSchema = z.object({
 });
 export type ShellToolSchemaType = z.infer<typeof ShellToolSchema>;
 
-export interface ShellToolOutput extends RuntimeExecResult {
-  env: ShellToolSchemaType['env'];
+export interface ShellToolOutput {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
 }
 
 @Injectable()
@@ -84,11 +85,24 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     // Merge config env with provided env (provided env takes precedence)
     const mergedEnv = { ...configEnv, ...providedEnv };
 
-    const res = await config.runtime.exec({ ...data, env: mergedEnv });
+    try {
+      const res = await config.runtime.exec({ ...data, env: mergedEnv });
 
-    return {
-      ...res,
-      env: data.env,
-    };
+      return {
+        exitCode: res.exitCode,
+        stdout: res.stdout,
+        stderr: res.stderr,
+      };
+    } catch (error) {
+      // Handle runtime errors by returning them in the expected RuntimeExecResult format
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: errorMessage,
+      };
+    }
   }
 }

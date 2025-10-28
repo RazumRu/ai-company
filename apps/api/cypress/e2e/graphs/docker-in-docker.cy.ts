@@ -69,16 +69,13 @@ describe('Docker-in-Docker E2E', () => {
             const messages = messagesResponse.body.map((m) => m.message);
 
             // Verify the human message exists first
-            const humanMessage = messages.find(
-              (msg) => msg.role === 'human',
-            );
+            const humanMessage = messages.find((msg) => msg.role === 'human');
             expect(humanMessage).to.exist;
             expect(humanMessage?.content).to.equal(testCommand);
 
             // Find the shell tool message
             const shellMessage = messages.find(
-              (msg) =>
-                msg.role === 'tool-shell' && msg['name'] === 'shell',
+              (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
             );
 
             expect(shellMessage).to.exist;

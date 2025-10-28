@@ -1,4 +1,7 @@
-import type { ThreadDto, ThreadMessageDto } from '../../api-definitions/types.gen';
+import type {
+  ThreadDto,
+  ThreadMessageDto,
+} from '../../api-definitions/types.gen';
 import { reqHeaders } from '../common.helper';
 
 export const getThreadMessages = (

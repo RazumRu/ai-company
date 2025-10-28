@@ -127,12 +127,8 @@ describe('Threads E2E', () => {
 
           // Should have messages from both agents
           const messages = messagesResponse.body;
-          const agent1Messages = messages.filter(
-            (m) => m.nodeId === 'agent-1',
-          );
-          const agent2Messages = messages.filter(
-            (m) => m.nodeId === 'agent-2',
-          );
+          const agent1Messages = messages.filter((m) => m.nodeId === 'agent-1');
+          const agent2Messages = messages.filter((m) => m.nodeId === 'agent-2');
 
           // Both agents should have contributed messages
           expect(agent1Messages.length).to.be.greaterThan(0);

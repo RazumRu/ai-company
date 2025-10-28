@@ -74,9 +74,7 @@ describe('Shell Execution E2E', () => {
               expect(messages.length).to.be.greaterThan(0);
 
               // Verify our sent command is included
-              const humanMessage = messages.find(
-                (msg) => msg.role === 'human',
-              );
+              const humanMessage = messages.find((msg) => msg.role === 'human');
               expect(humanMessage).to.exist;
               expect(humanMessage?.content).to.equal(testCommand);
 
@@ -166,10 +164,37 @@ describe('Shell Execution E2E', () => {
               // Verify the shell execution output contains FOO=bar
               const envVarShellMessage = shellMessages.find((msg) => {
                 const content = msg.content;
-                return content.stdout?.includes('bar');
+                if (
+                  typeof content === 'object' &&
+                  content !== null &&
+                  'stdout' in content
+                ) {
+                  const shellContent = content as {
+                    stdout: string;
+                    stderr: string;
+                    exitCode: number;
+                  };
+                  return (
+                    typeof shellContent.stdout === 'string' &&
+                    shellContent.stdout.includes('bar')
+                  );
+                }
+                return false;
               });
               expect(envVarShellMessage).to.exist;
-              expect(envVarShellMessage?.content.exitCode).to.equal(0);
+              expect(envVarShellMessage?.content).to.be.an('object');
+              if (
+                envVarShellMessage?.content &&
+                typeof envVarShellMessage.content === 'object' &&
+                'exitCode' in envVarShellMessage.content
+              ) {
+                const shellContent = envVarShellMessage.content as {
+                  stdout: string;
+                  stderr: string;
+                  exitCode: number;
+                };
+                expect(shellContent.exitCode).to.equal(0);
+              }
             });
         },
       );
@@ -435,8 +460,7 @@ describe('Shell Execution E2E', () => {
 
               // Find the shell tool message
               const shellMessage = messages.find(
-                (msg) =>
-                  msg.role === 'tool-shell' && msg['name'] === 'shell',
+                (msg) => msg.role === 'tool-shell' && msg['name'] === 'shell',
               );
               expect(shellMessage).to.exist;
 
