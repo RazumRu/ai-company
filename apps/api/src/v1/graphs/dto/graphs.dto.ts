@@ -64,6 +64,12 @@ export const ExecuteTriggerSchema = z.object({
     .describe(
       'Optional thread sub-ID that will be used to create the full thread ID.',
     ),
+  async: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, do not wait for execution to finish (fire-and-forget).',
+    ),
 });
 
 export const ExecuteTriggerResponseSchema = z.object({

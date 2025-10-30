@@ -786,6 +786,118 @@ describe('GraphsService', () => {
   });
 
   describe('executeTrigger', () => {
+    it('should execute trigger in async mode, pass flag, and return thread info', async () => {
+      const triggerId = 'trigger-1';
+      const agentId = 'agent-1';
+      const customThreadId = 'async-thread';
+      const expectedThreadId = `${mockGraphId}:${customThreadId}`;
+
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Running,
+        schema: {
+          nodes: [
+            {
+              id: triggerId,
+              template: 'manual-trigger',
+              config: { agentId },
+            },
+          ],
+          edges: [],
+        },
+      });
+
+      const mockTrigger = {
+        isStarted: true,
+        invokeAgent: vi.fn().mockResolvedValue({
+          messages: [],
+          threadId: expectedThreadId,
+          checkpointNs: `${expectedThreadId}:${agentId}`,
+        }),
+      };
+      const mockTriggerNode = {
+        id: triggerId,
+        type: NodeKind.Trigger,
+        template: 'manual-trigger',
+        instance: mockTrigger,
+      };
+      const mockCompiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(
+        mockTriggerNode as unknown as CompiledGraphNode,
+      );
+
+      const result = await service.executeTrigger(mockGraphId, triggerId, {
+        messages: ['Async test message'],
+        threadSubId: customThreadId,
+        async: true,
+      });
+
+      expect(result).toEqual({
+        threadId: expectedThreadId,
+        checkpointNs: `${expectedThreadId}:${agentId}`,
+      });
+
+      // Ensure invokeAgent was called with provided threadSubId
+      expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
+        [expect.objectContaining({ content: 'Async test message' })],
+        { configurable: { thread_id: customThreadId, async: true } },
+      );
+    });
+
+    it('should execute trigger in async mode with auto-generated threadId when threadSubId not provided', async () => {
+      const triggerId = 'trigger-1';
+      const agentId = 'agent-1';
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Running,
+        schema: {
+          nodes: [
+            {
+              id: triggerId,
+              template: 'manual-trigger',
+              config: { agentId },
+            },
+          ],
+          edges: [],
+        },
+      });
+
+      const mockTrigger = {
+        isStarted: true,
+        invokeAgent: vi.fn().mockResolvedValue({
+          messages: [],
+          threadId: `${mockGraphId}:generated-uuid`,
+          checkpointNs: `${mockGraphId}:generated-uuid:${agentId}`,
+        }),
+      };
+      const mockTriggerNode = {
+        id: triggerId,
+        type: NodeKind.Trigger,
+        template: 'manual-trigger',
+        instance: mockTrigger,
+      };
+      const mockCompiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(
+        mockTriggerNode as unknown as CompiledGraphNode,
+      );
+
+      const result = await service.executeTrigger(mockGraphId, triggerId, {
+        messages: ['Async test message'],
+        async: true,
+      });
+
+      expect(result.threadId).toMatch(new RegExp(`^${mockGraphId}:`));
+      expect(result).toHaveProperty('checkpointNs');
+
+      expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
+        [expect.objectContaining({ content: 'Async test message' })],
+        { configurable: { thread_id: undefined, async: true } },
+      );
+    });
     it('should execute trigger with custom threadId and return thread info', async () => {
       const triggerId = 'trigger-1';
       const agentId = 'agent-1';

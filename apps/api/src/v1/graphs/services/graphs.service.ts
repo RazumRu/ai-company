@@ -239,9 +239,11 @@ export class GraphsService {
     }
 
     const messages = dto.messages.map((msg) => new HumanMessage(msg));
+
     const res = await trigger.invokeAgent(messages, {
       configurable: {
         thread_id: dto.threadSubId,
+        async: dto.async,
       },
     });
 

@@ -112,7 +112,27 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
           },
         };
 
-        return await agent.run(threadId, messages, agentConfig, enrichedConfig);
+        const promise = agent.run(
+          threadId,
+          messages,
+          agentConfig,
+          enrichedConfig,
+        );
+
+        // Support async execution: if configurable.async is true, fire-and-forget
+        if (runnableConfig.configurable?.async) {
+          void promise.catch((err) => {
+            this.logger.error(err);
+          });
+
+          return {
+            messages: [],
+            threadId,
+            checkpointNs,
+          };
+        }
+
+        return await promise;
       },
     );
 

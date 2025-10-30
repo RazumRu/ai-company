@@ -568,7 +568,7 @@ describe('SimpleAgent', () => {
         runnableConfig,
       );
 
-      // Expect exactly 2 AgentMessage emits: one for m1, one for m2
+      // Expect exactly 2 AgentMessage emits: one for m1, one for m2 (input baseline ignored)
       const emits = (mockNotificationsService.emit as any).mock.calls
         .map((c: any[]) => c[0])
         .filter((n: any) => n.type === NotificationEvent.AgentMessage);

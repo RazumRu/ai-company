@@ -421,6 +421,10 @@ export const ExecuteTriggerDtoSchema = {
     threadSubId: {
       type: 'string',
     },
+    async: {
+      type: 'boolean',
+      default: false,
+    },
   },
   required: ['messages'],
 } as const;

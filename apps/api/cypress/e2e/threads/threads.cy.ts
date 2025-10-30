@@ -1041,6 +1041,74 @@ describe('Threads E2E', () => {
           });
       });
 
+      it('should execute trigger with async=true and return immediately', () => {
+        const graphData = {
+          name: `Async Trigger Test ${Date.now()}`,
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Async Agent',
+                  instructions: 'You are a helpful test agent.',
+                  invokeModelName: 'gpt-5-mini',
+                },
+              },
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        } as const;
+
+        let testGraphId = '';
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['Say hello and then finish.'],
+              async: true,
+            });
+          })
+          .then((execResponse) => {
+            expect(execResponse.status).to.equal(201);
+            expect(execResponse.body).to.have.property('threadId');
+            const threadId = execResponse.body.threadId as string;
+            expect(execResponse.body).to.have.property('checkpointNs');
+
+            cy.wait(3000);
+
+            return getThreadByExternalId(threadId);
+          })
+          .then((threadRes) => {
+            expect(threadRes.status).to.equal(200);
+            const internalThreadId = threadRes.body.id;
+            return getThreadMessages(internalThreadId);
+          })
+          .then((messagesRes) => {
+            expect(messagesRes.status).to.equal(200);
+            expect(messagesRes.body.length).to.be.greaterThan(0);
+
+            // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+
       it('should persist messages across graph restarts', () => {
         const testMessage = 'Message before restart';
         let testGraphId: string;

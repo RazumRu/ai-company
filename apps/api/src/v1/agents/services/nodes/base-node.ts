@@ -11,6 +11,7 @@ export type BaseAgentConfigurable = {
   checkpoint_ns?: string;
   parent_thread_id?: string;
   source?: string;
+  async?: boolean;
 };
 
 export abstract class BaseNode<
