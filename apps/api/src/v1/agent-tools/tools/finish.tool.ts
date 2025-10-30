@@ -33,8 +33,7 @@ export type FinishToolSchemaType = z.infer<typeof FinishToolSchema>;
 @Injectable()
 export class FinishTool extends BaseTool<FinishToolSchemaType> {
   public name = 'finish';
-  public description =
-    'Signal the current task is complete or that you need more information from the user. ALWAYS call this tool before ending your response. If you have completed the task, set needsMoreInfo to false. If you need more information from the user, set needsMoreInfo to true and include your question in the message field. This is the ONLY way to end your response.';
+  public description = `Signal task completion or request strictly necessary info. Always call this tool to end your turn. Set needsMoreInfo=false when done. Set needsMoreInfo=true only if a specific required input is missing and you cannot proceed; do not ask open-ended or speculative questions. If you can proceed using context or reasonable defaults, do so and state assumptions in message. If you must ask, send one concise, structured request listing the exact fields and acceptable formats. This is the only way to end your response.`;
   public system = true;
 
   public get schema() {

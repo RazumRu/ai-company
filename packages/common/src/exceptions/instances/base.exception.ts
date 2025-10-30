@@ -6,7 +6,7 @@ import { IExceptionData, IExceptionFieldError } from '../exceptions.types';
 interface BaseExceptionData {
   description?: string;
   fields?: IExceptionFieldError[];
-  customData?: Record<string, any>;
+  customData?: Record<string, unknown>;
 }
 
 export class BaseException extends Error {
@@ -89,12 +89,14 @@ export class BaseException extends Error {
       statusCode,
       code: 'code' in ex && ex.code ? ex.code : code,
       message:
-        typeof (ex as any).getMessage === 'function'
-          ? (ex as any).getMessage()
+        typeof (ex as unknown as { getMessage?: () => string }).getMessage ===
+        'function'
+          ? (ex as unknown as { getMessage: () => string }).getMessage()
           : exception.message,
       fullMessage:
-        typeof (ex as any).getFullMessage === 'function'
-          ? (ex as any).getFullMessage()
+        typeof (ex as unknown as { getFullMessage?: () => string })
+          .getFullMessage === 'function'
+          ? (ex as unknown as { getFullMessage: () => string }).getFullMessage()
           : exception.message,
       fields: ex.data?.fields ?? [],
       customData: ex.data?.customData,

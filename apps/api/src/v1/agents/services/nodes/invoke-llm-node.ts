@@ -4,11 +4,13 @@ import {
   SystemMessage,
 } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { BaseNode } from './base-node';
+import { updateMessagesListWithMetadata } from '../../agents.utils';
+import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 type InvokeLlmNodeOpts = {
   systemPrompt?: string;
@@ -29,7 +31,10 @@ export class InvokeLlmNode extends BaseNode<
     super();
   }
 
-  async invoke(state: BaseAgentState): Promise<BaseAgentStateChange> {
+  async invoke(
+    state: BaseAgentState,
+    cfg: LangGraphRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<BaseAgentStateChange> {
     // Reset needsMoreInfo if there's a new human message in the state
     // Check if the last message is a human message (new user input)
     const lastMessage = state.messages[state.messages.length - 1];
@@ -41,18 +46,24 @@ export class InvokeLlmNode extends BaseNode<
       parallel_tool_calls: this.opts?.parallelToolCalls,
     });
 
-    const messages: BaseMessage[] = [
-      new SystemMessage(
-        this.opts?.systemPrompt || 'You are a helpful AI assistant.',
-      ),
-      ...(state.summary
-        ? [new SystemMessage(`Summary:\n${state.summary}`)]
-        : []),
-      ...state.messages,
-    ];
+    const messages: BaseMessage[] = updateMessagesListWithMetadata(
+      [
+        new SystemMessage(
+          this.opts?.systemPrompt || 'You are a helpful AI assistant.',
+        ),
+        ...(state.summary
+          ? [new SystemMessage(`Summary:\n${state.summary}`)]
+          : []),
+        ...state.messages,
+      ],
+      cfg,
+    );
 
     const res = await runner.invoke(messages, { recursionLimit: 2500 });
-    const out: BaseMessage[] = Array.isArray(res) ? res : [res as BaseMessage];
+    const out: BaseMessage[] = updateMessagesListWithMetadata(
+      Array.isArray(res) ? res : [res as BaseMessage],
+      cfg,
+    );
 
     return {
       messages: { mode: 'append', items: out },

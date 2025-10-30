@@ -6,7 +6,7 @@ export class ValidationException extends BaseException {
     errorCode: string = 'VALIDATION_ERROR',
     description?: string,
     public fields?: IExceptionFieldError[],
-    customData?: Record<string, any>,
+    customData?: Record<string, unknown>,
   ) {
     super(errorCode, 403, {
       description,

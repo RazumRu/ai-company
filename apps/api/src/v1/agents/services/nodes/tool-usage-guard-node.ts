@@ -1,8 +1,10 @@
 import { AIMessage, SystemMessage } from '@langchain/core/messages';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { BaseNode } from './base-node';
+import { updateMessagesListWithMetadata } from '../../agents.utils';
+import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 type RestrictGetters = {
   getRestrictOutput: () => boolean;
@@ -21,7 +23,10 @@ export class ToolUsageGuardNode extends BaseNode<
     super();
   }
 
-  async invoke(state: BaseAgentState): Promise<BaseAgentStateChange> {
+  async invoke(
+    state: BaseAgentState,
+    cfg: LangGraphRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<BaseAgentStateChange> {
     if (!this.g.getRestrictOutput()) {
       return {
         messages: { mode: 'append', items: [] },
@@ -60,7 +65,10 @@ export class ToolUsageGuardNode extends BaseNode<
       content: restrictionMessage,
     });
     return {
-      messages: { mode: 'append', items: [msg] },
+      messages: {
+        mode: 'append',
+        items: updateMessagesListWithMetadata([msg], cfg),
+      },
       toolUsageGuardActivatedCount: injectedSoFar + 1,
       toolUsageGuardActivated: true,
     };

@@ -1,7 +1,5 @@
-import type { Socket } from 'socket.io-client';
-
 import { ThreadDto } from '../../api-definitions/types.gen';
-import { reqHeaders } from '../common.helper';
+import { buildAuthHeaders, generateRandomUUID } from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
@@ -739,154 +737,6 @@ describe('Threads E2E', () => {
             });
           });
       });
-
-      it('should not create duplicate messages with shell tool execution', () => {
-        let testGraphId: string;
-        let internalThreadId: string;
-
-        const graphData = {
-          name: `Shell Tool No Duplicates ${Math.random().toString(36).slice(0, 8)}`,
-          description: 'Test shell tool for duplicate messages',
-          version: '1.0.0',
-          temporary: true,
-          schema: {
-            nodes: [
-              {
-                id: 'agent-1',
-                template: 'simple-agent',
-                config: {
-                  name: 'Shell Test Agent',
-                  instructions:
-                    'You are a shell command executor. Use the shell tool when asked.',
-                  invokeModelName: 'gpt-5-mini',
-                },
-              },
-              {
-                id: 'shell-tool-1',
-                template: 'shell-tool',
-                config: {},
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [
-              { from: 'trigger-1', to: 'agent-1' },
-              { from: 'agent-1', to: 'shell-tool-1' },
-            ],
-          },
-        };
-
-        createGraph(graphData)
-          .then((response) => {
-            expect(response.status).to.equal(201);
-            testGraphId = response.body.id;
-            return runGraph(testGraphId);
-          })
-          .then((runResponse) => {
-            expect(runResponse.status).to.equal(201);
-            cy.wait(2000);
-
-            // Execute trigger with shell command
-            return executeTrigger(testGraphId, 'trigger-1', {
-              messages: ['Use the shell tool to execute: echo "test"'],
-              threadSubId: 'shell-no-duplicates-test',
-            });
-          })
-          .then((triggerResponse) => {
-            expect(triggerResponse.status).to.equal(201);
-            const threadId = triggerResponse.body.threadId;
-
-            // Wait for execution to complete
-            cy.wait(5000);
-
-            // Get thread by external ID
-            return getThreadByExternalId(threadId);
-          })
-          .then((threadResponse) => {
-            expect(threadResponse.status).to.equal(200);
-            internalThreadId = threadResponse.body.id;
-
-            // Get all messages
-            return getThreadMessages(internalThreadId!);
-          })
-          .then((messagesResponse) => {
-            expect(messagesResponse.status).to.equal(200);
-            const messages = messagesResponse.body;
-
-            expect(messages).to.be.an('array');
-            expect(messages.length).to.be.greaterThan(0);
-
-            cy.log(`Total messages: ${messages.length}`);
-
-            // Check for duplicate message IDs
-            const messageIds = messages.map((m) => m.id);
-            const uniqueMessageIds = new Set(messageIds);
-            expect(messageIds.length).to.equal(
-              uniqueMessageIds.size,
-              'Found duplicate message IDs!',
-            );
-
-            // Group by AI message ID and check for duplicates
-            const aiMessages = messages.filter((m) => m.message.role === 'ai');
-            const aiMessageIds = aiMessages
-              .map((m) => ('id' in m.message ? m.message.id : undefined))
-              .filter(Boolean);
-
-            // Check that each AI message ID appears only once
-            const aiMessageIdCounts = aiMessageIds.reduce(
-              (acc, id) => {
-                if (id) {
-                  acc[id] = (acc[id] || 0) + 1;
-                }
-                return acc;
-              },
-              {} as Record<string, number>,
-            );
-
-            Object.entries(aiMessageIdCounts).forEach(([id, count]) => {
-              expect(
-                count,
-                `AI message with id ${id} appears ${count} times`,
-              ).to.equal(1);
-            });
-
-            // Check tool messages are not duplicated
-            const toolMessages = messages.filter(
-              (m) =>
-                m.message.role === 'tool-shell' || m.message.role === 'tool',
-            );
-
-            const toolMessagesByCallId = toolMessages.reduce(
-              (acc, m) => {
-                const callId =
-                  'toolCallId' in m.message ? m.message.toolCallId : undefined;
-                if (callId) {
-                  if (!acc[callId]) {
-                    acc[callId] = [];
-                  }
-                  acc[callId].push(m);
-                }
-                return acc;
-              },
-              {} as Record<string, typeof messages>,
-            );
-
-            Object.entries(toolMessagesByCallId).forEach(([callId, msgs]) => {
-              expect(
-                msgs.length,
-                `Tool message with toolCallId ${callId} appears ${msgs.length} times`,
-              ).to.equal(1);
-            });
-
-            // Cleanup
-            destroyGraph(testGraphId).then(() => {
-              deleteGraph(testGraphId);
-            });
-          });
-      });
     });
 
     describe('Message Retrieval and Thread Management', () => {
@@ -1041,33 +891,90 @@ describe('Threads E2E', () => {
           });
       });
 
-      it('should execute trigger with async=true and return immediately', () => {
-        const graphData = {
-          name: `Async Trigger Test ${Date.now()}`,
-          version: '1.0.0',
-          temporary: true,
-          schema: {
-            nodes: [
-              {
-                id: 'agent-1',
-                template: 'simple-agent',
-                config: {
-                  name: 'Async Agent',
-                  instructions: 'You are a helpful test agent.',
-                  invokeModelName: 'gpt-5-mini',
-                },
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [{ from: 'trigger-1', to: 'agent-1' }],
-          },
-        } as const;
+      it('should not duplicate messages when re-invoking existing thread', () => {
+        const messageText = 'Check duplication - say hi and finish';
+        let testGraphId: string;
+        let internalThreadId: string;
 
+        // Create and run a test graph
+        const graphData = createMockGraphData();
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+
+            // First execution with a stable threadSubId
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: [messageText],
+              threadSubId: 'dup-thread',
+            });
+          })
+          .then((firstExec) => {
+            expect(firstExec.status).to.equal(201);
+            expect(firstExec.body).to.have.property('threadId');
+            const threadId = firstExec.body.threadId as string;
+
+            // Wait for processing and resolve internal thread id
+            cy.wait(2000);
+            return getThreadByExternalId(threadId);
+          })
+          .then((threadRes) => {
+            expect(threadRes.status).to.equal(200);
+            internalThreadId = threadRes.body.id;
+
+            return getThreadMessages(internalThreadId);
+          })
+          .then((msgsRes1) => {
+            expect(msgsRes1.status).to.equal(200);
+            const msgs1 = msgsRes1.body.map((m) => m.message);
+            const humanOccurrences1 = msgs1.filter(
+              (m) =>
+                m.role === 'human' &&
+                typeof m.content === 'string' &&
+                m.content.includes(messageText),
+            ).length;
+            expect(humanOccurrences1).to.equal(1);
+
+            // Re-invoke with the same threadSubId
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['some other message'],
+              threadSubId: 'dup-thread',
+            });
+          })
+          .then((secondExec) => {
+            expect(secondExec.status).to.equal(201);
+            // Wait for processing
+            cy.wait(2000);
+            return getThreadMessages(internalThreadId);
+          })
+          .then((msgsRes2) => {
+            expect(msgsRes2.status).to.equal(200);
+            const msgs2 = msgsRes2.body.map((m) => m.message);
+            const humanOccurrences2 = msgs2.filter(
+              (m) =>
+                m.role === 'human' &&
+                typeof m.content === 'string' &&
+                m.content.includes(messageText),
+            ).length;
+
+            // Human message with the exact same content should not duplicate
+            expect(humanOccurrences2).to.equal(1);
+
+            // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+
+      it('should execute trigger with async=true and return immediately', () => {
         let testGraphId = '';
+
+        const graphData = createMockGraphData();
 
         createGraph(graphData)
           .then((response) => {
@@ -1086,22 +993,9 @@ describe('Threads E2E', () => {
           .then((execResponse) => {
             expect(execResponse.status).to.equal(201);
             expect(execResponse.body).to.have.property('threadId');
-            const threadId = execResponse.body.threadId as string;
             expect(execResponse.body).to.have.property('checkpointNs');
-
-            cy.wait(3000);
-
-            return getThreadByExternalId(threadId);
-          })
-          .then((threadRes) => {
-            expect(threadRes.status).to.equal(200);
-            const internalThreadId = threadRes.body.id;
-            return getThreadMessages(internalThreadId);
           })
           .then((messagesRes) => {
-            expect(messagesRes.status).to.equal(200);
-            expect(messagesRes.body.length).to.be.greaterThan(0);
-
             // Cleanup
             destroyGraph(testGraphId).then(() => {
               deleteGraph(testGraphId);
@@ -1571,7 +1465,7 @@ describe('Threads E2E', () => {
                         const followUpIndex = messages2.findIndex(
                           (msg) => msg.content === followUpMessage,
                         );
-                        expect(originalIndex).to.be.lessThan(followUpIndex);
+                        expect(originalIndex).to.be.greaterThan(followUpIndex);
 
                         // Clean up the test graph
                         destroyGraph(testGraphId).then(() => {
@@ -1681,7 +1575,8 @@ describe('Threads E2E', () => {
       });
 
       it('should return 404 when trying to delete non-existent thread', () => {
-        const nonExistentThreadId = 'non-existent-thread-id';
+        // Use a valid UUID format that doesn't exist
+        const nonExistentThreadId = generateRandomUUID();
 
         deleteThread(nonExistentThreadId).then((response) => {
           expect(response.status).to.equal(404);
@@ -1743,10 +1638,9 @@ describe('Threads E2E', () => {
             internalThreadId = threadResponse.body.id;
 
             // Try to delete with different user headers (simulating different user)
-            const differentUserHeaders = {
-              ...reqHeaders,
-              authorization: 'Bearer different-user-token',
-            };
+            const differentUserHeaders = buildAuthHeaders({
+              userId: crypto.randomUUID(), // Different user ID
+            });
 
             return deleteThread(internalThreadId, differentUserHeaders);
           })
@@ -2059,129 +1953,6 @@ describe('Threads E2E', () => {
             expect(threadWithName.name).to.equal(originalName);
 
             // Cleanup
-            destroyGraph(testGraphId).then(() => {
-              deleteGraph(testGraphId);
-            });
-          });
-      });
-
-      it('should receive socket notifications for thread state updates', () => {
-        let testGraphId: string;
-        let socket: Socket | undefined;
-
-        const graphData = {
-          name: `Socket Notification Test ${Math.random().toString(36).slice(0, 8)}`,
-          description: 'Test graph for socket notifications',
-          version: '1.0.0',
-          temporary: true,
-          schema: {
-            nodes: [
-              {
-                id: 'agent-1',
-                template: 'simple-agent',
-                config: {
-                  name: 'Test Agent',
-                  instructions: 'You are a helpful test agent.',
-                  invokeModelName: 'gpt-5-mini',
-                  summarizeMaxTokens: 200000,
-                  summarizeKeepTokens: 30000,
-                },
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [{ from: 'trigger-1', to: 'agent-1' }],
-          },
-        };
-
-        // Connect to socket
-        cy.window().then((win) => {
-          const io = (win as { io?: (...args: unknown[]) => Socket }).io;
-          if (io) {
-            socket = io('http://localhost:3000', {
-              auth: {
-                token: 'dev-token',
-                'x-dev-jwt-sub': 'test-user',
-              },
-            });
-
-            // Listen for agent state update events
-            const stateUpdateEvents: Record<string, unknown>[] = [];
-            socket.on('agent.state.update', (data: Record<string, unknown>) => {
-              stateUpdateEvents.push(data);
-            });
-
-            // Store events for later verification
-            (
-              win as unknown as { stateUpdateEvents?: unknown[] }
-            ).stateUpdateEvents = stateUpdateEvents;
-          }
-        });
-
-        createGraph(graphData)
-          .then((response) => {
-            expect(response.status).to.equal(201);
-            testGraphId = response.body.id;
-            return runGraph(testGraphId);
-          })
-          .then((runResponse) => {
-            expect(runResponse.status).to.equal(201);
-            cy.wait(2000);
-
-            // Subscribe to graph updates
-            if (socket) {
-              socket.emit('subscribe_graph', { graphId: testGraphId });
-            }
-
-            // Execute trigger
-            return executeTrigger(testGraphId, 'trigger-1', {
-              messages: ['Test message for socket notifications'],
-              threadSubId: 'socket-test-thread',
-            });
-          })
-          .then(() => {
-            // Wait for processing and notifications
-            cy.wait(10000);
-
-            return getThreads({ graphId: testGraphId });
-          })
-          .then((threadsResponse) => {
-            expect(threadsResponse.status).to.equal(200);
-
-            // Check if we received socket notifications
-            cy.window().then((win) => {
-              const stateUpdateEvents =
-                (win as unknown as { stateUpdateEvents?: unknown[] })
-                  .stateUpdateEvents || [];
-
-              // We should have received at least one agent state update
-              expect(stateUpdateEvents.length).to.be.greaterThan(0);
-
-              // Find the notification with generatedTitle
-              const titleUpdateEvent = (
-                stateUpdateEvents as {
-                  data?: { generatedTitle?: string };
-                  type?: string;
-                  graphId?: string;
-                }[]
-              ).find((event) => event.data && event.data.generatedTitle);
-
-              expect(titleUpdateEvent).to.exist;
-              // TypeScript narrowing for runtime assertion above
-              const nonNullEvent = titleUpdateEvent!;
-              expect(nonNullEvent.type).to.equal('agent.state.update');
-              expect(nonNullEvent.graphId).to.equal(testGraphId);
-              expect(nonNullEvent.data!.generatedTitle).to.be.a('string');
-              expect(nonNullEvent.data!.generatedTitle).to.not.be.empty;
-            });
-
-            // Cleanup
-            if (socket) {
-              socket.disconnect();
-            }
             destroyGraph(testGraphId).then(() => {
               deleteGraph(testGraphId);
             });

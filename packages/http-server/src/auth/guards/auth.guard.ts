@@ -7,7 +7,7 @@ import { AuthContextService } from '../auth-context.service';
 export class AuthGuard implements CanActivate {
   constructor(private contextService: AuthContextService) {}
 
-  async canActivate(context: ExecutionContext) {
+  async canActivate(_context: ExecutionContext) {
     if (!this.contextService.isAuthorized) {
       throw new UnauthorizedException();
     }

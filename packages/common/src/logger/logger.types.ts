@@ -21,7 +21,7 @@ export interface ISentryLogData {
   statusCode?: number;
   message?: string;
   url?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export const LoggerParams = Symbol('LoggerParams');

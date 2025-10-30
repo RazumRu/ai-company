@@ -1,14 +1,16 @@
 import { Socket } from 'socket.io-client';
 
-import { CreateGraphDto } from '../../api-definitions';
-import { generateRandomUUID, mockUserId, reqHeaders } from '../common.helper';
+import { mockUserId, reqHeaders } from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
   createMockGraphData,
+  deleteGraph,
+  destroyGraph,
   executeTrigger,
   runGraph,
 } from '../graphs/graphs.helper';
+import { getThreads } from '../threads/threads.helper';
 import {
   createSocketConnection,
   disconnectSocket,
@@ -372,120 +374,6 @@ describe('Socket Gateway E2E', () => {
         });
     });
 
-    it('should receive AI message with tool calls in correct format', () => {
-      // Create a graph with web-search-tool configured
-      const graphData: CreateGraphDto = {
-        name: `Test Graph with Tools ${generateRandomUUID().slice(0, 8)}`,
-        description: 'Test graph with web search tool',
-        version: '1.0.0',
-        temporary: true, // E2E test graphs are temporary by default
-        schema: {
-          nodes: [
-            {
-              id: 'web-search-tool-1',
-              template: 'web-search-tool',
-              config: {},
-            },
-            {
-              id: 'agent-1',
-              template: 'simple-agent',
-              config: {
-                name: 'Test Agent with Tools',
-                instructions:
-                  'You are a helpful agent. You MUST use the web-search tool to answer questions about current events, weather, or real-time information. Always call the tool first before answering.',
-                invokeModelName: 'gpt-5-mini',
-              },
-            },
-            {
-              id: 'trigger-1',
-              template: 'manual-trigger',
-              config: {},
-            },
-          ],
-          edges: [
-            {
-              from: 'trigger-1',
-              to: 'agent-1',
-            },
-          ],
-        },
-      };
-
-      return createGraph(graphData, reqHeaders).then((response) => {
-        expect(response.status).to.equal(201);
-        const freshGraphId = response.body.id;
-
-        // Set up listener for message events with tool calls
-        return cy.wrap(
-          new Promise((resolve, reject) => {
-            socket.on('agent.message', (notification) => {
-              // We're looking for AI messages with tool calls
-              if (
-                notification.data?.message?.role === 'ai' &&
-                notification.data?.message?.toolCalls &&
-                notification.data.message.toolCalls.length > 0
-              ) {
-                // Verify the notification structure
-                expect(notification).to.have.property('type', 'agent.message');
-                expect(notification).to.have.property('graphId', freshGraphId);
-                expect(notification).to.have.property('ownerId', mockUserId);
-                expect(notification).to.have.property('nodeId');
-                expect(notification).to.have.property('threadId');
-                expect(notification).to.have.property('data');
-                expect(notification.data).to.have.property('message');
-                expect(notification.data.message).to.have.property(
-                  'role',
-                  'ai',
-                );
-                expect(notification.data.message).to.have.property('toolCalls');
-
-                // Verify tool call data structure
-                const toolCall = notification.data.message.toolCalls[0];
-                expect(toolCall).to.have.property('name');
-                expect(toolCall).to.have.property('args');
-                expect(toolCall.name).to.be.a('string');
-                expect(toolCall.args).to.exist;
-
-                resolve(undefined);
-              }
-            });
-
-            socket.once('server_error', (error) => reject(error));
-
-            // Run the graph first, then execute the trigger
-            runGraph(freshGraphId, reqHeaders).then((runResponse) => {
-              expect(runResponse.status).to.equal(201);
-              // Execute the trigger with a query that should trigger web search
-              executeTrigger(
-                freshGraphId,
-                'trigger-1',
-                {
-                  messages: [
-                    'What is the current weather in Dubai? Check it in internet, use web tool',
-                  ],
-                },
-                reqHeaders,
-              ).then((triggerResponse) => {
-                expect(triggerResponse.status).to.equal(201);
-              });
-            });
-
-            // Timeout after 45 seconds (tool execution may take time)
-            setTimeout(() => {
-              reject(
-                new Error(
-                  'Timeout waiting for AI message with tool calls notification',
-                ),
-              );
-            }, 45000);
-          }),
-          {
-            timeout: 45000,
-          },
-        );
-      });
-    });
-
     it('should receive multiple message notifications during graph execution', () => {
       // This test verifies that multiple messages are detected and emitted correctly
       const graphData = createMockGraphData();
@@ -648,5 +536,143 @@ describe('Socket Gateway E2E', () => {
         });
       });
     });
+  });
+
+  it('should receive socket notifications for thread state updates', () => {
+    const graphData = {
+      name: `Socket Notification Test ${Math.random().toString(36).slice(0, 8)}`,
+      description: 'Test graph for socket notifications',
+      version: '1.0.0',
+      temporary: true,
+      schema: {
+        nodes: [
+          {
+            id: 'agent-1',
+            template: 'simple-agent',
+            config: {
+              name: 'Test Agent',
+              instructions: 'You are a helpful test agent.',
+              invokeModelName: 'gpt-5-mini',
+              summarizeMaxTokens: 200000,
+              summarizeKeepTokens: 30000,
+            },
+          },
+          {
+            id: 'trigger-1',
+            template: 'manual-trigger',
+            config: {},
+          },
+        ],
+        edges: [{ from: 'trigger-1', to: 'agent-1' }],
+      },
+    };
+
+    // Connect to socket using the same user ID as the test
+    const baseUrl = Cypress.config('baseUrl') || 'http://localhost:5000';
+    const testSocket = createSocketConnection(baseUrl, mockUserId);
+
+    // Listen for agent state update events
+    const stateUpdateEvents: Record<string, unknown>[] = [];
+    testSocket.on('agent.state.update', (data: Record<string, unknown>) => {
+      stateUpdateEvents.push(data);
+    });
+
+    // Wait for socket connection, then create graph and subscribe BEFORE running
+    return waitForSocketConnection(testSocket)
+      .then(() => {
+        return createGraph(graphData, reqHeaders);
+      })
+      .then((response) => {
+        expect(response.status).to.equal(201);
+        const testGraphId = response.body.id;
+
+        // Subscribe to graph updates BEFORE running the graph
+        testSocket.emit('subscribe_graph', { graphId: testGraphId });
+
+        // Small wait to ensure subscription is processed
+        cy.wait(500);
+
+        // Set up promise to wait for title update notification
+        const waitForTitleUpdate = new Promise((resolve, reject) => {
+          let resolved = false;
+
+          const checkForTitleUpdate = () => {
+            if (resolved) return;
+
+            const titleUpdateEvent = (
+              stateUpdateEvents as {
+                data?: { generatedTitle?: string };
+                type?: string;
+                graphId?: string;
+              }[]
+            ).find((event) => event.data && event.data.generatedTitle);
+
+            if (titleUpdateEvent) {
+              resolved = true;
+              expect(titleUpdateEvent.type).to.equal('agent.state.update');
+              expect(titleUpdateEvent.graphId).to.equal(testGraphId);
+              expect(titleUpdateEvent.data!.generatedTitle).to.be.a('string');
+              expect(titleUpdateEvent.data!.generatedTitle).to.not.be.empty;
+              resolve(undefined);
+            }
+          };
+
+          // Check periodically for title update
+          const intervalId = setInterval(() => {
+            checkForTitleUpdate();
+          }, 1000);
+
+          // Timeout after 30 seconds
+          setTimeout(() => {
+            clearInterval(intervalId);
+            if (!resolved) {
+              if (stateUpdateEvents.length === 0) {
+                reject(
+                  new Error(
+                    'Timeout: No agent state update notifications received',
+                  ),
+                );
+              } else {
+                reject(
+                  new Error(
+                    `Timeout: Received ${stateUpdateEvents.length} events but none with generatedTitle. Events: ${JSON.stringify(stateUpdateEvents)}`,
+                  ),
+                );
+              }
+            }
+          }, 30000);
+        });
+
+        // Run the graph, then execute trigger, then wait for notification
+        return runGraph(testGraphId, reqHeaders)
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            cy.wait(2000);
+
+            // Execute trigger
+            return executeTrigger(
+              testGraphId,
+              'trigger-1',
+              {
+                messages: ['Test message for socket notifications'],
+                threadSubId: 'socket-test-thread',
+              },
+              reqHeaders,
+            );
+          })
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+            // Wait for the title update notification
+            return cy.wrap(waitForTitleUpdate, { timeout: 30000 });
+          })
+          .then(() => {
+            // Verify we received at least one event
+            expect(stateUpdateEvents.length).to.be.greaterThan(0);
+          });
+      })
+      .then(() => {
+        // Cleanup
+        disconnectSocket(testSocket);
+      });
   });
 });

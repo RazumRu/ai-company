@@ -12,6 +12,7 @@ export type BaseAgentConfigurable = {
   parent_thread_id?: string;
   source?: string;
   async?: boolean;
+  run_id?: string;
 };
 
 export abstract class BaseNode<

@@ -20,7 +20,7 @@ describe('FinishTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Signal the current task is complete');
+      expect(tool.description).toContain('Signal task completion');
     });
 
     it('should be marked as system tool', () => {

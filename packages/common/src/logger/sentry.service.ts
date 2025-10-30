@@ -46,19 +46,19 @@ export class SentryService {
     }
 
     if (data?.requestId) {
-      scope.setTag('requestId', data.requestId);
+      scope.setTag('requestId', String(data.requestId));
     }
 
     if (data?.operationId) {
-      scope.setTag('operationId', data.operationId);
+      scope.setTag('operationId', String(data.operationId));
     }
 
     if (data?.errorCode) {
-      scope.setTag('errorCode', data.code);
+      scope.setTag('errorCode', String(data.errorCode));
     }
 
     if (data?.statusCode) {
-      scope.setTag('statusCode', data.statusCode);
+      scope.setTag('statusCode', String(data.statusCode));
     }
 
     if (this.loggerParams?.appVersion) {

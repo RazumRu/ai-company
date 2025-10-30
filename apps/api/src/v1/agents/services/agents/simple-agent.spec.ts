@@ -252,18 +252,31 @@ describe('SimpleAgent', () => {
 
       expect(agent['buildGraph']).toHaveBeenCalledWith(config);
       expect(mockGraph.stream).toHaveBeenCalledWith(
-        {
+        expect.objectContaining({
           messages: {
             mode: 'append',
-            items: messages,
+            items: expect.arrayContaining([
+              expect.objectContaining({
+                content: 'Hello',
+                additional_kwargs: expect.objectContaining({
+                  run_id: expect.any(String),
+                }),
+              }),
+            ]),
           },
-        },
+          done: false,
+          needsMoreInfo: false,
+          toolUsageGuardActivated: false,
+          toolUsageGuardActivatedCount: 0,
+        }),
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: threadId,
             caller_agent: agent,
+            run_id: expect.any(String),
           }),
           recursionLimit: 2500,
+          streamMode: 'updates',
         }),
       );
       expect(result).toEqual({
@@ -276,7 +289,14 @@ describe('SimpleAgent', () => {
 
     it('should handle custom runnable config', async () => {
       async function* mockStream() {
-        yield { node1: { messages: [] } };
+        yield {
+          node1: {
+            messages: {
+              mode: 'append',
+              items: [],
+            },
+          },
+        };
       }
 
       const mockGraph = {
@@ -525,14 +545,19 @@ describe('SimpleAgent', () => {
       // First chunk appends one message, second chunk appends another,
       // third chunk has no new messages
       async function* mockStream() {
+        const m1 = new HumanMessage('m1');
+        m1.additional_kwargs = { run_id: 'test-run-id' };
+        const m2 = new HumanMessage('m2');
+        m2.additional_kwargs = { run_id: 'test-run-id' };
+
         yield {
           any_node: {
-            messages: { mode: 'append', items: [new HumanMessage('m1')] },
+            messages: { mode: 'append', items: [m1] },
           },
         };
         yield {
           any_node: {
-            messages: { mode: 'append', items: [new HumanMessage('m2')] },
+            messages: { mode: 'append', items: [m2] },
           },
         };
         yield {
@@ -558,6 +583,7 @@ describe('SimpleAgent', () => {
           node_id: 'node-456',
           thread_id: 'thread-789',
           parent_thread_id: 'parent-thread-123',
+          run_id: 'test-run-id',
         },
       } as any;
 
@@ -568,13 +594,15 @@ describe('SimpleAgent', () => {
         runnableConfig,
       );
 
-      // Expect exactly 2 AgentMessage emits: one for m1, one for m2 (input baseline ignored)
+      // Expect exactly 2 AgentMessage emits: one for m1, one for m2 (no duplication)
       const emits = (mockNotificationsService.emit as any).mock.calls
         .map((c: any[]) => c[0])
         .filter((n: any) => n.type === NotificationEvent.AgentMessage);
+
       expect(emits).toHaveLength(2);
 
       // Ensure payloads correspond to distinct messages
+      // First message should be m1, then m2
       expect(emits[0]?.data?.messages?.[0]?.content).toBe('m1');
       expect(emits[1]?.data?.messages?.[0]?.content).toBe('m2');
     });
@@ -584,11 +612,16 @@ describe('SimpleAgent', () => {
 
       async function* mockStream() {
         // First chunk introduces m1 and m2 at once
+        const m1 = new HumanMessage('m1');
+        m1.additional_kwargs = { run_id: 'test-run-id' };
+        const m2 = new HumanMessage('m2');
+        m2.additional_kwargs = { run_id: 'test-run-id' };
+
         yield {
           node_a: {
             messages: {
               mode: 'append',
-              items: [new HumanMessage('m1'), new HumanMessage('m2')],
+              items: [m1, m2],
             },
           },
         };
@@ -612,6 +645,7 @@ describe('SimpleAgent', () => {
           node_id: 'node-456',
           thread_id: 'thread-789',
           parent_thread_id: 'parent-thread-123',
+          run_id: 'test-run-id',
         },
       } as any;
 
@@ -626,7 +660,7 @@ describe('SimpleAgent', () => {
         .map((c: any[]) => c[0])
         .filter((n: any) => n.type === NotificationEvent.AgentMessage);
 
-      // Should emit exactly twice (m1 and m2), no duplicates on second chunk
+      // Should emit exactly 2 times (m1 and m2), no duplicates on second chunk
       expect(emits).toHaveLength(2);
       const contents = emits.map((n: any) => n.data.messages[0].content);
       expect(contents).toEqual(['m1', 'm2']);

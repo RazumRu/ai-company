@@ -9,6 +9,7 @@ import { keyBy } from 'lodash';
 
 import { FinishToolResponse } from '../../../agent-tools/tools/finish.tool';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
+import { updateMessagesListWithMetadata } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 export class ToolExecutorNode extends BaseNode<
@@ -109,7 +110,10 @@ export class ToolExecutorNode extends BaseNode<
     );
 
     return {
-      messages: { mode: 'append', items: toolMessages },
+      messages: {
+        mode: 'append',
+        items: updateMessagesListWithMetadata(toolMessages, cfg),
+      },
       // Only set done if it was explicitly set by finish tool
       // If needsMoreInfo=true, done stays false and we don't set it
       ...(done ? { done: true } : {}),

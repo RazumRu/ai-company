@@ -3,12 +3,14 @@ import { RunnableConfig } from '@langchain/core/runnables';
 import {
   Annotation,
   BaseChannel,
+  CompiledStateGraph,
   END,
   START,
   StateGraph,
 } from '@langchain/langgraph';
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
+import { v4 } from 'uuid';
 import { z } from 'zod';
 
 import { FinishTool } from '../../../agent-tools/tools/finish.tool';
@@ -19,6 +21,7 @@ import {
   BaseAgentStateChange,
   BaseAgentStateMessagesUpdateValue,
 } from '../../agents.types';
+import { updateMessagesListWithMetadata } from '../../agents.utils';
 import { RegisterAgent } from '../../decorators/register-agent.decorator';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
@@ -68,6 +71,8 @@ export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
 @Injectable({ scope: Scope.TRANSIENT })
 @RegisterAgent()
 export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
+  private graph?: CompiledStateGraph<BaseAgentState, Record<string, unknown>>;
+
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
     private readonly logger: DefaultLogger,
@@ -122,132 +127,136 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   }
 
   protected buildGraph(config: SimpleAgentSchemaType) {
-    // Apply defaults for optional fields
-    const enforceToolUsage = config.enforceToolUsage ?? true;
+    if (!this.graph) {
+      // Apply defaults for optional fields
+      const enforceToolUsage = config.enforceToolUsage ?? true;
 
-    if (enforceToolUsage) {
-      this.addTool(new FinishTool().build({}));
-    }
+      if (enforceToolUsage) {
+        this.addTool(new FinishTool().build({}));
+      }
 
-    // ---- summarize ----
-    const summarizeNode = new SummarizeNode(
-      this.buildLLM('gpt-5-mini'),
-      {
-        maxTokens: config.summarizeMaxTokens,
-        keepTokens: config.summarizeKeepTokens,
-      },
-      this.logger,
-    );
-
-    // ---- invoke ----
-    const tools = this.tools;
-    const invokeLlmNode = new InvokeLlmNode(
-      this.buildLLM(config.invokeModelName),
-      tools,
-      {
-        systemPrompt: config.instructions,
-        toolChoice: enforceToolUsage
-          ? { type: 'function', function: { name: 'finish' } }
-          : 'auto',
-        parallelToolCalls: true,
-      },
-      this.logger,
-    );
-
-    // ---- tool executor ----
-    const toolExecutorNode = new ToolExecutorNode(
-      tools,
-      undefined,
-      this.logger,
-    );
-
-    // ---- title generation ----
-    const titleGenerationNode = new TitleGenerationNode(
-      this.buildLLM('gpt-5-mini'),
-      this.logger,
-    );
-
-    // ---- build ----
-    const g = new StateGraph({
-      stateSchema: this.buildState(),
-    })
-      .addNode('summarize', summarizeNode.invoke.bind(summarizeNode))
-      .addNode(
-        'generate_title',
-        titleGenerationNode.invoke.bind(titleGenerationNode),
-      )
-      .addNode('invoke_llm', invokeLlmNode.invoke.bind(invokeLlmNode))
-      .addNode('tools', toolExecutorNode.invoke.bind(toolExecutorNode))
-      // ---- routing ----
-      .addEdge(START, 'generate_title')
-      .addEdge('generate_title', 'summarize')
-      .addEdge('summarize', 'invoke_llm');
-
-    // ---- conditional tool usage guard ----
-    if (enforceToolUsage) {
-      // ---- tool usage guard ----
-      const toolUsageGuardNode = new ToolUsageGuardNode(
+      // ---- summarize ----
+      const summarizeNode = new SummarizeNode(
+        this.buildLLM('gpt-5-mini'),
         {
-          getRestrictOutput: () => true,
-          getRestrictionMessage: () =>
-            "You must call a tool before finishing. If you have completed the task or have a final answer, call the 'finish' tool. If you need more information from the user, call the 'finish' tool with needsMoreInfo set to true and include your question in the message. Never provide a direct text response without calling a tool first.",
-          getRestrictionMaxInjections: () => 2,
+          maxTokens: config.summarizeMaxTokens,
+          keepTokens: config.summarizeKeepTokens,
         },
         this.logger,
       );
 
-      g.addNode(
-        'tool_usage_guard',
-        toolUsageGuardNode.invoke.bind(toolUsageGuardNode),
-      )
-        .addConditionalEdges(
+      // ---- invoke ----
+      const tools = this.tools;
+      const invokeLlmNode = new InvokeLlmNode(
+        this.buildLLM(config.invokeModelName),
+        tools,
+        {
+          systemPrompt: config.instructions,
+          toolChoice: 'auto',
+          parallelToolCalls: true,
+        },
+        this.logger,
+      );
+
+      // ---- tool executor ----
+      const toolExecutorNode = new ToolExecutorNode(
+        tools,
+        undefined,
+        this.logger,
+      );
+
+      // ---- title generation ----
+      const titleGenerationNode = new TitleGenerationNode(
+        this.buildLLM('gpt-5-mini'),
+        this.logger,
+      );
+
+      // ---- build ----
+      const g = new StateGraph({
+        stateSchema: this.buildState(),
+      })
+        .addNode('summarize', summarizeNode.invoke.bind(summarizeNode))
+        .addNode(
+          'generate_title',
+          titleGenerationNode.invoke.bind(titleGenerationNode),
+        )
+        .addNode('invoke_llm', invokeLlmNode.invoke.bind(invokeLlmNode))
+        .addNode('tools', toolExecutorNode.invoke.bind(toolExecutorNode))
+        // ---- routing ----
+        .addEdge(START, 'generate_title')
+        .addEdge('generate_title', 'summarize')
+        .addEdge('summarize', 'invoke_llm');
+
+      // ---- conditional tool usage guard ----
+      if (enforceToolUsage) {
+        // ---- tool usage guard ----
+        const toolUsageGuardNode = new ToolUsageGuardNode(
+          {
+            getRestrictOutput: () => true,
+            getRestrictionMessage: () =>
+              "You must call a tool before finishing. If you have completed the task or have a final answer, call the 'finish' tool. If you need more information from the user, call the 'finish' tool with needsMoreInfo set to true and include your question in the message. Never provide a direct text response without calling a tool first.",
+            getRestrictionMaxInjections: () => 2,
+          },
+          this.logger,
+        );
+
+        g.addNode(
+          'tool_usage_guard',
+          toolUsageGuardNode.invoke.bind(toolUsageGuardNode),
+        )
+          .addConditionalEdges(
+            'invoke_llm',
+            (s) =>
+              ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ?? 0) > 0
+                ? 'tools'
+                : 'tool_usage_guard',
+            { tools: 'tools', tool_usage_guard: 'tool_usage_guard' },
+          )
+          .addConditionalEdges(
+            'tool_usage_guard',
+            (s) => (s.toolUsageGuardActivated ? 'invoke_llm' : END),
+            { invoke_llm: 'invoke_llm', [END]: END },
+          );
+      } else {
+        // Without tool usage guard, go directly to tools or END
+        g.addConditionalEdges(
           'invoke_llm',
           (s) =>
             ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ?? 0) > 0
               ? 'tools'
-              : 'tool_usage_guard',
-          { tools: 'tools', tool_usage_guard: 'tool_usage_guard' },
-        )
-        .addConditionalEdges(
-          'tool_usage_guard',
-          (s) => (s.toolUsageGuardActivated ? 'invoke_llm' : END),
-          { invoke_llm: 'invoke_llm', [END]: END },
+              : END,
+          { tools: 'tools', [END]: END },
         );
-    } else {
-      // Without tool usage guard, go directly to tools or END
+      }
+
       g.addConditionalEdges(
-        'invoke_llm',
-        (s) =>
-          ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ?? 0) > 0
-            ? 'tools'
-            : END,
-        { tools: 'tools', [END]: END },
+        'tools',
+        (s) => {
+          // If done is explicitly set, end
+          if (s.done) {
+            return END;
+          }
+
+          // If needsMoreInfo is set, stop execution and wait for user input
+          if (s.needsMoreInfo) {
+            return END;
+          }
+
+          // Otherwise, continue to summarize
+          return 'summarize';
+        },
+        {
+          summarize: 'summarize',
+          [END]: END,
+        },
       );
+
+      this.graph = g.compile({
+        checkpointer: this.checkpointer,
+      }) as CompiledStateGraph<BaseAgentState, Record<string, unknown>>;
     }
 
-    g.addConditionalEdges(
-      'tools',
-      (s) => {
-        // If done is explicitly set, end
-        if (s.done) {
-          return END;
-        }
-
-        // If needsMoreInfo is set, stop execution and wait for user input
-        if (s.needsMoreInfo) {
-          return END;
-        }
-
-        // Otherwise, continue to summarize
-        return 'summarize';
-      },
-      {
-        summarize: 'summarize',
-        [END]: END,
-      },
-    );
-
-    return g.compile({ checkpointer: this.checkpointer });
+    return this.graph;
   }
 
   private buildInitialState(): BaseAgentState {
@@ -287,32 +296,26 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   }
 
   private async emitNewMessages(
-    prevLen: number,
-    nextState: BaseAgentState,
-    runnableConfig: RunnableConfig<BaseAgentConfigurable> | undefined,
+    messages: BaseMessage[],
+    rc: RunnableConfig<BaseAgentConfigurable> | undefined,
     threadId: string,
   ) {
-    const graphId = runnableConfig?.configurable?.graph_id;
+    const graphId = rc?.configurable?.graph_id;
     if (!graphId) return;
+    const runId = rc?.configurable?.run_id;
+    const nodeId = rc?.configurable?.node_id || 'unknown';
+    const parentThreadId = rc?.configurable?.parent_thread_id || 'unknown';
 
-    const nodeId = runnableConfig?.configurable?.node_id || 'unknown';
-    const parentThreadId =
-      runnableConfig?.configurable?.parent_thread_id || 'unknown';
+    const fresh = messages.filter((m) => m.additional_kwargs?.run_id === runId);
 
-    const newMessages = nextState.messages.slice(prevLen);
-    if (newMessages.length === 0) return;
-
-    // Emit notification for each new message
-    for (const message of newMessages) {
+    for (const message of fresh) {
       await this.notificationsService.emit({
         type: NotificationEvent.AgentMessage,
         graphId,
         nodeId,
         threadId,
         parentThreadId,
-        data: {
-          messages: [message],
-        },
+        data: { messages: [message] },
       });
     }
   }
@@ -382,44 +385,56 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     config: SimpleAgentSchemaType,
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
+    const runId = runnableConfig?.configurable?.run_id || v4();
+
+    const mergedConfig: RunnableConfig<BaseAgentConfigurable> = {
+      ...(runnableConfig ?? {}),
+      configurable: {
+        ...(runnableConfig?.configurable ?? {}),
+        thread_id: threadId,
+        caller_agent: this,
+        run_id: runId,
+      },
+      recursionLimit: runnableConfig?.recursionLimit ?? 2500,
+    };
+
+    const updateMessages = updateMessagesListWithMetadata(
+      messages,
+      mergedConfig,
+    );
+
     // Emit AgentInvoke notification
-    if (runnableConfig?.configurable?.graph_id) {
+    if (mergedConfig?.configurable?.graph_id) {
       await this.notificationsService.emit({
         type: NotificationEvent.AgentInvoke,
-        graphId: runnableConfig.configurable.graph_id,
-        nodeId: runnableConfig.configurable.node_id || 'unknown',
+        graphId: mergedConfig.configurable.graph_id,
+        nodeId: mergedConfig.configurable.node_id || 'unknown',
         threadId,
-        parentThreadId:
-          runnableConfig.configurable.parent_thread_id || 'unknown',
-        source: runnableConfig.configurable.source,
+        parentThreadId: mergedConfig.configurable.parent_thread_id || 'unknown',
+        source: mergedConfig.configurable.source,
         data: {
-          messages,
+          messages: updateMessages,
         },
       });
     }
 
     const g = this.buildGraph(config);
 
-    const merged: RunnableConfig<BaseAgentConfigurable> = {
-      ...(runnableConfig ?? {}),
-      configurable: {
-        ...(runnableConfig?.configurable ?? {}),
-        thread_id: threadId,
-        caller_agent: this,
-      },
-      recursionLimit: runnableConfig?.recursionLimit ?? 2500,
-    };
-
     // Use stream instead of invoke to capture messages
+    // Reset flags from previous run to ensure fresh execution
     const stream = await g.stream(
       {
         messages: {
           mode: 'append',
-          items: messages,
+          items: updateMessages,
         },
+        done: false,
+        needsMoreInfo: false,
+        toolUsageGuardActivated: false,
+        toolUsageGuardActivatedCount: 0,
       },
       {
-        ...merged,
+        ...mergedConfig,
         streamMode: 'updates',
       },
     );
@@ -442,9 +457,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
         // Emit notification for new messages
         await this.emitNewMessages(
-          beforeLen,
-          finalState,
-          runnableConfig,
+          finalState.messages.slice(beforeLen),
+          mergedConfig,
           threadId,
         );
 
@@ -452,7 +466,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         await this.emitStateUpdate(
           prevState,
           finalState,
-          runnableConfig,
+          mergedConfig,
           threadId,
         );
       }
@@ -461,7 +475,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     return {
       messages: finalState.messages,
       threadId,
-      checkpointNs: runnableConfig?.configurable?.checkpoint_ns,
+      checkpointNs: mergedConfig?.configurable?.checkpoint_ns,
       needsMoreInfo: finalState.needsMoreInfo,
     };
   }

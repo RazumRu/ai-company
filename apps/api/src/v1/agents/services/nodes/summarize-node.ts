@@ -6,11 +6,13 @@ import {
   ToolMessage,
   trimMessages,
 } from '@langchain/core/messages';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { BaseNode } from './base-node';
+import { updateMessagesListWithMetadata } from '../../agents.utils';
+import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 type SummarizeOpts = {
   keepTokens: number;
@@ -30,7 +32,10 @@ export class SummarizeNode extends BaseNode<
     super();
   }
 
-  async invoke(state: BaseAgentState): Promise<BaseAgentStateChange> {
+  async invoke(
+    state: BaseAgentState,
+    cfg: LangGraphRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<BaseAgentStateChange> {
     const { maxTokens, keepTokens } = this.opts;
     if (maxTokens <= 0) {
       return {
@@ -46,7 +51,13 @@ export class SummarizeNode extends BaseNode<
 
     if (totalNow <= maxTokens) {
       return {
-        messages: { mode: 'replace', items: this.clean(state.messages) },
+        messages: {
+          mode: 'replace',
+          items: updateMessagesListWithMetadata(
+            this.clean(state.messages),
+            cfg,
+          ),
+        },
         toolUsageGuardActivated: false,
         toolUsageGuardActivatedCount: 0,
       };
@@ -88,7 +99,10 @@ export class SummarizeNode extends BaseNode<
         : [];
 
     return {
-      messages: { mode: 'replace', items: this.clean(finalTail) },
+      messages: {
+        mode: 'replace',
+        items: updateMessagesListWithMetadata(this.clean(finalTail), cfg),
+      },
       summary: newSummary || '',
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,

@@ -3,11 +3,13 @@ import {
   HumanMessage,
   SystemMessage,
 } from '@langchain/core/messages';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import { MockedFunction } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseAgentState } from '../../agents.types';
+import { BaseAgentConfigurable } from './base-node';
 import { TitleGenerationNode } from './title-generation-node';
 
 vi.mock('@langchain/openai');
@@ -41,11 +43,19 @@ describe('TitleGenerationNode', () => {
     ...overrides,
   });
 
+  const createMockConfig =
+    (): LangGraphRunnableConfig<BaseAgentConfigurable> => ({
+      configurable: {
+        run_id: 'test-run-id',
+        thread_id: 'test-thread-id',
+      },
+    });
+
   describe('invoke', () => {
     it('should return empty object if title already exists', async () => {
       const state = createMockState({ generatedTitle: 'Existing Title' });
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(result).toEqual({});
       expect(mockInvoke).not.toHaveBeenCalled();
@@ -61,7 +71,7 @@ describe('TitleGenerationNode', () => {
       const aiResponse = new AIMessage('Weather Update');
       mockInvoke.mockResolvedValue(aiResponse);
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(mockInvoke).toHaveBeenCalledWith([
         expect.any(SystemMessage),
@@ -76,7 +86,7 @@ describe('TitleGenerationNode', () => {
         generatedTitle: undefined,
       });
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(result).toEqual({});
       expect(mockInvoke).not.toHaveBeenCalled();
@@ -93,7 +103,7 @@ describe('TitleGenerationNode', () => {
       const aiResponse = new AIMessage(longTitle);
       mockInvoke.mockResolvedValue(aiResponse);
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(result.generatedTitle).toBe('A'.repeat(100));
     });
@@ -108,7 +118,7 @@ describe('TitleGenerationNode', () => {
       const aiResponse = new AIMessage('  Generated Title  ');
       mockInvoke.mockResolvedValue(aiResponse);
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(result.generatedTitle).toBe('Generated Title');
     });
@@ -123,7 +133,7 @@ describe('TitleGenerationNode', () => {
       const aiResponse = new AIMessage({ content: 'Title from object' });
       mockInvoke.mockResolvedValue(aiResponse);
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(result.generatedTitle).toContain('Title from object');
     });
@@ -137,7 +147,7 @@ describe('TitleGenerationNode', () => {
 
       vi.spyOn(mockLlm, 'invoke').mockRejectedValue(new Error('LLM Error'));
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(result).toEqual({});
     });
@@ -149,7 +159,7 @@ describe('TitleGenerationNode', () => {
         generatedTitle: undefined,
       });
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(result).toEqual({});
       expect(mockInvoke).not.toHaveBeenCalled();
@@ -166,7 +176,7 @@ describe('TitleGenerationNode', () => {
       const aiResponse = new AIMessage('Generated Title');
       mockInvoke.mockResolvedValue(aiResponse);
 
-      const result = await node.invoke(state);
+      const result = await node.invoke(state, createMockConfig());
 
       expect(result.generatedTitle).toBe('Generated Title');
       expect(mockInvoke).toHaveBeenCalledWith([

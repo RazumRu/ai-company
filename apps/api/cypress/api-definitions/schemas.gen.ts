@@ -423,7 +423,6 @@ export const ExecuteTriggerDtoSchema = {
     },
     async: {
       type: 'boolean',
-      default: false,
     },
   },
   required: ['messages'],

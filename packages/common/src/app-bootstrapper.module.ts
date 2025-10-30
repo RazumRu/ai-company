@@ -1,10 +1,7 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { ModuleMetadata } from '@nestjs/common/interfaces/modules/module-metadata.interface';
 
-import {
-  BootstrapParameters,
-  IAppBootstrapperParams,
-} from './app-bootstrapper.types';
+import { IAppBootstrapperParams } from './app-bootstrapper.types';
 import { AppBootstrapperConfigModule } from './app-bootstrapper-config.module';
 
 @Module({})

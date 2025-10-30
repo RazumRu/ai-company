@@ -2,7 +2,7 @@ export interface IExceptionFieldError {
   message: string;
   name: string;
   path: string;
-  value?: any;
+  value?: unknown;
 }
 
 export interface IExceptionData {
@@ -12,5 +12,5 @@ export interface IExceptionData {
   message: string;
   fullMessage: string;
   fields: IExceptionFieldError[];
-  customData?: any;
+  customData?: unknown;
 }

@@ -3,11 +3,12 @@ import {
   HumanMessage,
   SystemMessage,
 } from '@langchain/core/messages';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { BaseNode } from './base-node';
+import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 export class TitleGenerationNode extends BaseNode<
   BaseAgentState,
@@ -20,7 +21,10 @@ export class TitleGenerationNode extends BaseNode<
     super();
   }
 
-  async invoke(state: BaseAgentState): Promise<BaseAgentStateChange> {
+  async invoke(
+    state: BaseAgentState,
+    _cfg: LangGraphRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<BaseAgentStateChange> {
     // Only generate title if it doesn't exist and there are human messages
     if (state.generatedTitle) {
       return {};
