@@ -1,4 +1,8 @@
-import { AIMessage, BaseMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  BaseMessage,
+  SystemMessage,
+} from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import {
   Annotation,
@@ -72,6 +76,15 @@ export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
 @RegisterAgent()
 export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private graph?: CompiledStateGraph<BaseAgentState, Record<string, unknown>>;
+  private activeRuns = new Map<
+    string,
+    {
+      abortController: AbortController;
+      runnableConfig: RunnableConfig<BaseAgentConfigurable>;
+      threadId: string;
+      lastState: BaseAgentState;
+    }
+  >();
 
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
@@ -420,6 +433,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     const g = this.buildGraph(config);
 
+    const abortController = new AbortController();
+
     // Use stream instead of invoke to capture messages
     // Reset flags from previous run to ensure fresh execution
     const stream = await g.stream(
@@ -436,40 +451,70 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       {
         ...mergedConfig,
         streamMode: 'updates',
+        signal: abortController.signal,
       },
     );
 
     let finalState: BaseAgentState = this.buildInitialState();
 
-    // Process stream chunks and emit message notifications
-    for await (const chunk of stream) {
-      // chunk is a record of node outputs: { [nodeName]: nodeState }
-      for (const [_nodeName, nodeState] of Object.entries(chunk)) {
-        // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
-        const stateChange = nodeState as BaseAgentStateChange;
-        if (!stateChange || typeof stateChange !== 'object') continue;
+    // Track active run for cancellation and status updates
+    this.activeRuns.set(runId, {
+      abortController,
+      runnableConfig: mergedConfig,
+      threadId,
+      lastState: finalState,
+    });
 
-        const beforeLen = finalState.messages.length;
-        const prevState = { ...finalState };
+    try {
+      // Process stream chunks and emit message notifications
+      for await (const chunk of stream) {
+        // chunk is a record of node outputs: { [nodeName]: nodeState }
+        for (const [_nodeName, nodeState] of Object.entries(chunk)) {
+          // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
+          const stateChange = nodeState as BaseAgentStateChange;
+          if (!stateChange || typeof stateChange !== 'object') continue;
 
-        // Convert state change to final state for tracking
-        finalState = this.applyChange(finalState, stateChange);
+          const beforeLen = finalState.messages.length;
+          const prevState = { ...finalState };
 
-        // Emit notification for new messages
-        await this.emitNewMessages(
-          finalState.messages.slice(beforeLen),
-          mergedConfig,
-          threadId,
-        );
+          // Convert state change to final state for tracking
+          finalState = this.applyChange(finalState, stateChange);
 
-        // Emit state update notification (only changed fields)
-        await this.emitStateUpdate(
-          prevState,
-          finalState,
-          mergedConfig,
-          threadId,
-        );
+          // Persist latest state for potential stop handling
+          const runRef = this.activeRuns.get(runId);
+          if (runRef) {
+            runRef.lastState = finalState;
+          }
+
+          // Emit notification for new messages
+          await this.emitNewMessages(
+            finalState.messages.slice(beforeLen),
+            mergedConfig,
+            threadId,
+          );
+
+          // Emit state update notification (only changed fields)
+          await this.emitStateUpdate(
+            prevState,
+            finalState,
+            mergedConfig,
+            threadId,
+          );
+        }
       }
+    } catch (err) {
+      // Swallow abort-related errors to allow graceful stop
+      const name = (err as unknown as { name?: string })?.name;
+      const msg = (err as unknown as { message?: string })?.message || '';
+      const aborted = abortController.signal.aborted;
+      if (
+        !aborted ||
+        (name !== 'AbortError' && !msg.toLowerCase().includes('abort'))
+      ) {
+        throw err as Error;
+      }
+    } finally {
+      this.activeRuns.delete(runId);
     }
 
     return {
@@ -478,5 +523,34 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       checkpointNs: mergedConfig?.configurable?.checkpoint_ns,
       needsMoreInfo: finalState.needsMoreInfo,
     };
+  }
+
+  public async stop(): Promise<void> {
+    for (const [runId, run] of this.activeRuns.entries()) {
+      const graphId = run.runnableConfig?.configurable?.graph_id;
+      if (graphId && !run.lastState.done) {
+        const nodeId = run.runnableConfig?.configurable?.node_id || 'unknown';
+        const parentThreadId =
+          run.runnableConfig?.configurable?.parent_thread_id || 'unknown';
+        const msg = new SystemMessage('Graph execution was stopped');
+        const msgs = updateMessagesListWithMetadata([msg], run.runnableConfig);
+        await this.notificationsService.emit({
+          type: NotificationEvent.AgentMessage,
+          graphId,
+          nodeId,
+          threadId: run.threadId,
+          parentThreadId,
+          data: { messages: [msgs[0]!] },
+        });
+      }
+
+      try {
+        run.abortController.abort();
+      } catch {
+        // noop
+      }
+
+      this.activeRuns.delete(runId);
+    }
   }
 }

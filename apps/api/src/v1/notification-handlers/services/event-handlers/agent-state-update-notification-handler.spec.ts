@@ -1,22 +1,31 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { GraphDao } from '../../../graphs/dao/graph.dao';
+import { GraphEntity } from '../../../graphs/entity/graph.entity';
+import { GraphStatus } from '../../../graphs/graphs.types';
 import {
   IAgentStateUpdateNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
-import { AgentStateUpdateNotificationHandler } from './agent-state-update-notification-handler';
+import { EnrichedNotificationEvent } from '../../notification-handlers.types';
+import {
+  AgentStateUpdateNotificationHandler,
+  IAgentStateUpdateEnrichedNotification,
+} from './agent-state-update-notification-handler';
 
 describe('AgentStateUpdateNotificationHandler', () => {
   let handler: AgentStateUpdateNotificationHandler;
   let threadsDao: ThreadsDao;
+  let graphDao: GraphDao;
 
   const mockGraphId = 'graph-456';
   const mockNodeId = 'node-789';
   const mockThreadId = 'thread-abc';
   const mockParentThreadId = 'parent-thread-def';
+  const mockOwnerId = 'user-123';
 
   const createMockThreadEntity = (
     overrides: Partial<ThreadEntity> = {},
@@ -49,6 +58,21 @@ describe('AgentStateUpdateNotificationHandler', () => {
   });
 
   beforeEach(async () => {
+    const mockGraph: GraphEntity = {
+      id: mockGraphId,
+      createdBy: mockOwnerId,
+      name: 'Test Graph',
+      description: 'Test Description',
+      version: '1.0.0',
+      schema: { nodes: [], edges: [] },
+      status: GraphStatus.Created,
+      error: undefined,
+      temporary: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AgentStateUpdateNotificationHandler,
@@ -59,6 +83,12 @@ describe('AgentStateUpdateNotificationHandler', () => {
             updateById: vi.fn(),
           },
         },
+        {
+          provide: GraphDao,
+          useValue: {
+            getOne: vi.fn().mockResolvedValue(mockGraph),
+          },
+        },
       ],
     }).compile();
 
@@ -66,6 +96,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       AgentStateUpdateNotificationHandler,
     );
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
+    graphDao = module.get<GraphDao>(GraphDao);
   });
 
   describe('handle', () => {
@@ -89,7 +120,16 @@ describe('AgentStateUpdateNotificationHandler', () => {
       expect(threadsDao.updateById).toHaveBeenCalledWith(mockThread.id, {
         name: 'New Generated Title',
       });
-      expect(result).toEqual([]);
+      expect(result).toEqual([
+        {
+          type: EnrichedNotificationEvent.AgentStateUpdate,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: { generatedTitle: 'New Generated Title' },
+        },
+      ]);
     });
 
     it('should use threadId when parentThreadId is not provided', async () => {
@@ -124,7 +164,16 @@ describe('AgentStateUpdateNotificationHandler', () => {
 
       expect(threadsDao.getOne).not.toHaveBeenCalled();
       expect(threadsDao.updateById).not.toHaveBeenCalled();
-      expect(result).toEqual([]);
+      expect(result).toEqual([
+        {
+          type: EnrichedNotificationEvent.AgentStateUpdate,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: { summary: 'Some summary' },
+        },
+      ]);
     });
 
     it('should not update thread name if thread already has a name', async () => {
@@ -140,7 +189,16 @@ describe('AgentStateUpdateNotificationHandler', () => {
 
       expect(threadsDao.getOne).toHaveBeenCalled();
       expect(threadsDao.updateById).not.toHaveBeenCalled();
-      expect(result).toEqual([]);
+      expect(result).toEqual([
+        {
+          type: EnrichedNotificationEvent.AgentStateUpdate,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: { generatedTitle: 'New Generated Title' },
+        },
+      ]);
     });
 
     it('should skip update if thread not found', async () => {
@@ -155,7 +213,16 @@ describe('AgentStateUpdateNotificationHandler', () => {
 
       expect(threadsDao.getOne).toHaveBeenCalled();
       expect(threadsDao.updateById).not.toHaveBeenCalled();
-      expect(result).toEqual([]);
+      expect(result).toEqual([
+        {
+          type: EnrichedNotificationEvent.AgentStateUpdate,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: { generatedTitle: 'New Title' },
+        },
+      ]);
     });
 
     it('should handle empty generatedTitle string', async () => {
@@ -167,7 +234,16 @@ describe('AgentStateUpdateNotificationHandler', () => {
 
       expect(threadsDao.getOne).not.toHaveBeenCalled();
       expect(threadsDao.updateById).not.toHaveBeenCalled();
-      expect(result).toEqual([]);
+      expect(result).toEqual([
+        {
+          type: EnrichedNotificationEvent.AgentStateUpdate,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: { generatedTitle: '' },
+        },
+      ]);
     });
   });
 
@@ -202,7 +278,20 @@ describe('AgentStateUpdateNotificationHandler', () => {
       expect(threadsDao.updateById).toHaveBeenCalledWith(mockThread.id, {
         name: 'Socket Test Title',
       });
-      expect(result).toEqual([]);
+      expect(result).toEqual([
+        {
+          type: EnrichedNotificationEvent.AgentStateUpdate,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: {
+            generatedTitle: 'Socket Test Title',
+            summary: 'Updated summary',
+            done: false,
+          },
+        },
+      ]);
     });
 
     it('should handle notification with multiple state changes', async () => {
@@ -231,7 +320,22 @@ describe('AgentStateUpdateNotificationHandler', () => {
       expect(threadsDao.updateById).toHaveBeenCalledWith(mockThread.id, {
         name: 'Multi State Title',
       });
-      expect(result).toEqual([]);
+      expect(result).toEqual([
+        {
+          type: EnrichedNotificationEvent.AgentStateUpdate,
+          graphId: mockGraphId,
+          ownerId: mockOwnerId,
+          nodeId: mockNodeId,
+          threadId: mockThreadId,
+          data: {
+            generatedTitle: 'Multi State Title',
+            summary: 'Final summary',
+            done: true,
+            toolUsageGuardActivated: true,
+            toolUsageGuardActivatedCount: 3,
+          },
+        },
+      ]);
     });
   });
 });

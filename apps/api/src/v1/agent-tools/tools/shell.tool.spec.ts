@@ -114,6 +114,42 @@ describe('ShellTool', () => {
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
+
+    it('should validate positive maxOutputLength', () => {
+      const validData = {
+        purpose: 'Testing max output length',
+        cmd: 'echo "hello"',
+        maxOutputLength: 5000,
+      };
+      expect(() => tool.schema.parse(validData)).not.toThrow();
+    });
+
+    it('should reject negative maxOutputLength', () => {
+      const invalidData = {
+        purpose: 'Testing max output length',
+        cmd: 'echo "hello"',
+        maxOutputLength: -1000,
+      };
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
+    it('should reject zero maxOutputLength', () => {
+      const invalidData = {
+        purpose: 'Testing max output length',
+        cmd: 'echo "hello"',
+        maxOutputLength: 0,
+      };
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
+    it('should default maxOutputLength to 10000', () => {
+      const data = {
+        purpose: 'Testing default max output length',
+        cmd: 'echo "hello"',
+      };
+      const parsed = tool.schema.parse(data);
+      expect(parsed.maxOutputLength).toBe(10000);
+    });
   });
 
   describe('build', () => {
@@ -450,6 +486,140 @@ describe('ShellTool', () => {
 
       expect(builtTool.description).toBe(tool.description);
       expect(builtTool.description).not.toContain('Available Resources:');
+    });
+  });
+
+  describe('maxOutputLength', () => {
+    it('should trim stdout when it exceeds maxOutputLength', async () => {
+      const longOutput = 'a'.repeat(15000);
+      const mockExecResult = {
+        stdout: longOutput,
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const result = await builtTool.invoke({
+        purpose: 'Testing output trimming',
+        cmd: 'echo "long output"',
+        maxOutputLength: 5000,
+      });
+
+      expect(result.stdout).toHaveLength(5000);
+      expect(result.stdout).toBe(longOutput.slice(-5000));
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('should trim stderr when it exceeds maxOutputLength', async () => {
+      const longError = 'b'.repeat(15000);
+      const mockExecResult = {
+        stdout: '',
+        stderr: longError,
+        exitCode: 1,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const result = await builtTool.invoke({
+        purpose: 'Testing error trimming',
+        cmd: 'invalid-command',
+        maxOutputLength: 3000,
+      });
+
+      expect(result.stderr).toHaveLength(3000);
+      expect(result.stderr).toBe(longError.slice(-3000));
+      expect(result.exitCode).toBe(1);
+    });
+
+    it('should trim both stdout and stderr when they exceed maxOutputLength', async () => {
+      const longStdout = 'x'.repeat(12000);
+      const longStderr = 'y'.repeat(12000);
+      const mockExecResult = {
+        stdout: longStdout,
+        stderr: longStderr,
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const result = await builtTool.invoke({
+        purpose: 'Testing both outputs trimming',
+        cmd: 'some-command',
+        maxOutputLength: 8000,
+      });
+
+      expect(result.stdout).toHaveLength(8000);
+      expect(result.stdout).toBe(longStdout.slice(-8000));
+      expect(result.stderr).toHaveLength(8000);
+      expect(result.stderr).toBe(longStderr.slice(-8000));
+    });
+
+    it('should not trim output when it is within maxOutputLength', async () => {
+      const shortOutput = 'short output';
+      const mockExecResult = {
+        stdout: shortOutput,
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const result = await builtTool.invoke({
+        purpose: 'Testing no trimming needed',
+        cmd: 'echo "short"',
+        maxOutputLength: 1000,
+      });
+
+      expect(result.stdout).toBe(shortOutput);
+      expect(result.stdout).toHaveLength(shortOutput.length);
+    });
+
+    it('should use default maxOutputLength of 10000 when not specified', async () => {
+      const longOutput = 'z'.repeat(15000);
+      const mockExecResult = {
+        stdout: longOutput,
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const result = await builtTool.invoke({
+        purpose: 'Testing default max output length',
+        cmd: 'echo "long"',
+      });
+
+      expect(result.stdout).toHaveLength(10000);
+      expect(result.stdout).toBe(longOutput.slice(-10000));
+    });
+
+    it('should trim error messages when runtime execution fails', async () => {
+      const longErrorMessage = 'Error: '.repeat(2000); // Very long error message
+      mockRuntime.exec = vi.fn().mockRejectedValue(new Error(longErrorMessage));
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const result = await builtTool.invoke({
+        purpose: 'Testing error message trimming',
+        cmd: 'invalid-command',
+        maxOutputLength: 500,
+      });
+
+      expect(result.stderr).toHaveLength(500);
+      expect(result.stderr).toBe(longErrorMessage.slice(-500));
+      expect(result.exitCode).toBe(1);
     });
   });
 });

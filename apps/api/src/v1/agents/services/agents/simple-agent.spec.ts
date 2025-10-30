@@ -17,6 +17,12 @@ vi.mock('@langchain/core/messages', () => ({
       this.content = content;
     }
   },
+  SystemMessage: class MockSystemMessage {
+    content: string;
+    constructor(content: string) {
+      this.content = content;
+    }
+  },
 }));
 vi.mock('@langchain/openai');
 vi.mock('@langchain/langgraph');
@@ -664,6 +670,346 @@ describe('SimpleAgent', () => {
       expect(emits).toHaveLength(2);
       const contents = emits.map((n: any) => n.data.messages[0].content);
       expect(contents).toEqual(['m1', 'm2']);
+    });
+  });
+
+  describe('stop', () => {
+    it('should abort active runs and emit system message for unfinished runs', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      } as unknown as { stream: any };
+
+      // Create a long-running stream that can be aborted
+      let abortSignal: AbortSignal | undefined;
+      async function* mockStream() {
+        // Simulate a long-running operation
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        yield {
+          node1: {
+            messages: { mode: 'append', items: [] },
+            done: false,
+          },
+        };
+        // Wait for abort signal
+        await new Promise<void>((resolve) => {
+          if (abortSignal?.aborted) {
+            resolve();
+            return;
+          }
+          abortSignal?.addEventListener('abort', () => resolve(), {
+            once: true,
+          });
+        });
+      }
+
+      mockGraph.stream = vi.fn().mockImplementation((_state, config) => {
+        abortSignal = config.signal;
+        return mockStream();
+      });
+
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      const runnableConfig = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-789',
+          parent_thread_id: 'parent-thread-123',
+          run_id: 'test-run-id',
+        },
+      };
+
+      // Start the run (don't await - it will run until aborted)
+      const runPromise = agent.run(
+        'thread-789',
+        [new HumanMessage('Hello')],
+        config,
+        runnableConfig,
+      );
+
+      // Wait a bit to ensure the run has started
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Verify there's an active run
+      expect(agent['activeRuns'].size).toBe(1);
+      expect(agent['activeRuns'].has('test-run-id')).toBe(true);
+
+      // Stop the agent
+      await agent.stop();
+
+      // Verify abort was called
+      expect(abortSignal?.aborted).toBe(true);
+
+      // Verify system message was emitted (because done=false)
+      const systemMessageCalls = vi
+        .mocked(mockNotificationsService.emit)
+        .mock.calls.filter(
+          (call) =>
+            call[0]?.type === NotificationEvent.AgentMessage &&
+            call[0]?.data?.messages?.[0]?.content ===
+              'Graph execution was stopped',
+        );
+
+      expect(systemMessageCalls.length).toBeGreaterThan(0);
+      expect(systemMessageCalls[0]?.[0]).toMatchObject({
+        type: NotificationEvent.AgentMessage,
+        graphId: 'graph-123',
+        nodeId: 'node-456',
+        threadId: 'thread-789',
+        parentThreadId: 'parent-thread-123',
+        data: {
+          messages: [
+            expect.objectContaining({
+              content: 'Graph execution was stopped',
+            }),
+          ],
+        },
+      });
+
+      // Verify active runs are cleared
+      expect(agent['activeRuns'].size).toBe(0);
+
+      // The run promise should resolve (after abort error is swallowed)
+      await runPromise;
+    }, 10000);
+
+    it('should not emit system message for finished runs', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      } as unknown as { stream: any };
+
+      async function* mockStream() {
+        yield {
+          node1: {
+            messages: { mode: 'append', items: [] },
+            done: true, // Run is finished
+          },
+        };
+      }
+
+      mockGraph.stream = vi.fn().mockReturnValue(mockStream());
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      const runnableConfig = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-789',
+          parent_thread_id: 'parent-thread-123',
+          run_id: 'test-run-id-2',
+        },
+      };
+
+      // Complete the run first
+      await agent.run(
+        'thread-789',
+        [new HumanMessage('Hello')],
+        config,
+        runnableConfig,
+      );
+
+      // Verify no active runs
+      expect(agent['activeRuns'].size).toBe(0);
+
+      // Manually add a finished run to activeRuns to test stop() behavior
+      agent['activeRuns'].set('test-run-id-2', {
+        abortController: new AbortController(),
+        runnableConfig: runnableConfig as any,
+        threadId: 'thread-789',
+        lastState: { done: true } as any, // Marked as done
+      });
+
+      // Stop the agent
+      await agent.stop();
+
+      // Verify no system message was emitted (because done=true)
+      const systemMessageCalls = vi
+        .mocked(mockNotificationsService.emit)
+        .mock.calls.filter(
+          (call) =>
+            call[0]?.type === NotificationEvent.AgentMessage &&
+            call[0]?.data?.messages?.[0]?.content ===
+              'Graph execution was stopped',
+        );
+
+      expect(systemMessageCalls.length).toBe(0);
+    });
+
+    it('should handle multiple active runs', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      } as unknown as { stream: any };
+
+      const abortSignals: AbortSignal[] = [];
+      async function* mockStream(signal: AbortSignal) {
+        yield {
+          node1: {
+            messages: { mode: 'append', items: [] },
+            done: false,
+          },
+        };
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) {
+            resolve();
+            return;
+          }
+          signal.addEventListener('abort', () => resolve(), {
+            once: true,
+          });
+        });
+      }
+
+      mockGraph.stream = vi.fn().mockImplementation((_state, config) => {
+        abortSignals.push(config.signal);
+        return mockStream(config.signal);
+      });
+
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      // Start multiple runs
+      const runnableConfig1 = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-1',
+          parent_thread_id: 'parent-thread-123',
+          run_id: 'test-run-id-1',
+        },
+      };
+
+      const runnableConfig2 = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-2',
+          parent_thread_id: 'parent-thread-123',
+          run_id: 'test-run-id-2',
+        },
+      };
+
+      const promise1 = agent.run(
+        'thread-1',
+        [new HumanMessage('Hello')],
+        config,
+        runnableConfig1,
+      );
+      const promise2 = agent.run(
+        'thread-2',
+        [new HumanMessage('Hello')],
+        config,
+        runnableConfig2,
+      );
+
+      // Wait a bit
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify both runs are active
+      expect(agent['activeRuns'].size).toBe(2);
+
+      // Stop all runs
+      await agent.stop();
+
+      // Verify both abort signals were triggered
+      expect(abortSignals.length).toBe(2);
+      expect(abortSignals[0]?.aborted).toBe(true);
+      expect(abortSignals[1]?.aborted).toBe(true);
+
+      // Verify system messages were emitted for both
+      const systemMessageCalls = vi
+        .mocked(mockNotificationsService.emit)
+        .mock.calls.filter(
+          (call) =>
+            call[0]?.type === NotificationEvent.AgentMessage &&
+            call[0]?.data?.messages?.[0]?.content ===
+              'Graph execution was stopped',
+        );
+
+      expect(systemMessageCalls.length).toBe(2);
+
+      // Verify active runs are cleared
+      expect(agent['activeRuns'].size).toBe(0);
+
+      // Wait for promises to resolve
+      await Promise.all([promise1, promise2]);
+    }, 10000);
+
+    it('should handle stop when no active runs exist', async () => {
+      // Verify no active runs
+      expect(agent['activeRuns'].size).toBe(0);
+
+      // Stop should not throw
+      await expect(agent.stop()).resolves.not.toThrow();
+    });
+
+    it('should handle abort errors gracefully during stream processing', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      } as unknown as { stream: any };
+
+      async function* mockStream() {
+        yield {
+          node1: {
+            messages: { mode: 'append', items: [] },
+          },
+        };
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        // Simulate abort error
+        const error = new Error('The operation was aborted');
+        (error as any).name = 'AbortError';
+        throw error;
+      }
+
+      mockGraph.stream = vi.fn().mockImplementation((_state) => {
+        // Get the abort controller from the agent's active runs and abort it
+        // This simulates what happens when stop() is called
+        setTimeout(() => {
+          const activeRuns = agent['activeRuns'];
+          for (const run of activeRuns.values()) {
+            run.abortController.abort();
+          }
+        }, 10);
+        return mockStream();
+      });
+
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      // Run should complete without throwing (abort error is swallowed)
+      const result = await agent.run(
+        'thread-789',
+        [new HumanMessage('Hello')],
+        config,
+      );
+
+      expect(result).toBeDefined();
+      expect(agent['activeRuns'].size).toBe(0);
     });
   });
 });

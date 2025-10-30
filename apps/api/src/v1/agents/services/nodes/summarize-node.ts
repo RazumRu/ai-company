@@ -98,10 +98,24 @@ export class SummarizeNode extends BaseNode<
           }).invoke(tail)
         : [];
 
+    // Add system message if summarization occurred
+    const summaryChanged =
+      newSummary !== state.summary &&
+      newSummary !== undefined &&
+      newSummary !== '';
+    const messagesToReturn = summaryChanged
+      ? [
+          new SystemMessage(
+            `Summary updated: Previous messages have been summarized to manage context length.`,
+          ),
+          ...this.clean(finalTail),
+        ]
+      : this.clean(finalTail);
+
     return {
       messages: {
         mode: 'replace',
-        items: updateMessagesListWithMetadata(this.clean(finalTail), cfg),
+        items: updateMessagesListWithMetadata(messagesToReturn, cfg),
       },
       summary: newSummary || '',
       toolUsageGuardActivated: false,
@@ -117,6 +131,7 @@ export class SummarizeNode extends BaseNode<
         return x.length;
       }
     }
+
     let t = 0;
     for (const m of x) {
       const c =
@@ -127,6 +142,7 @@ export class SummarizeNode extends BaseNode<
         t += c.length;
       }
     }
+
     return t;
   }
 
@@ -141,7 +157,7 @@ export class SummarizeNode extends BaseNode<
     const lines = older
       .map(
         (m) =>
-          `${m.getType().toUpperCase()}: ${
+          `${m.type.toUpperCase()}: ${
             typeof m.content === 'string'
               ? m.content
               : JSON.stringify(m.content)

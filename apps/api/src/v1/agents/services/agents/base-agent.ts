@@ -39,4 +39,6 @@ export abstract class BaseAgent<TSchema> {
     config: z.infer<TSchema>,
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput>;
+
+  public abstract stop(): Promise<void>;
 }

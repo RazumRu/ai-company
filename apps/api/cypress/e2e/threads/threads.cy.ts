@@ -995,7 +995,7 @@ describe('Threads E2E', () => {
             expect(execResponse.body).to.have.property('threadId');
             expect(execResponse.body).to.have.property('checkpointNs');
           })
-          .then((messagesRes) => {
+          .then(() => {
             // Cleanup
             destroyGraph(testGraphId).then(() => {
               deleteGraph(testGraphId);
@@ -1205,8 +1205,8 @@ describe('Threads E2E', () => {
                   instructions:
                     'You are a helpful test agent. Please provide detailed responses to test summarization behavior.',
                   invokeModelName: 'gpt-5-mini',
-                  summarizeMaxTokens: 100, // Very low max tokens to force summarization
-                  summarizeKeepTokens: 50, // Very low keep tokens
+                  summarizeMaxTokens: 30, // Very low max tokens to force summarization
+                  summarizeKeepTokens: 15, // Very low keep tokens
                 },
               },
               {
@@ -1234,18 +1234,28 @@ describe('Threads E2E', () => {
           .then((runResponse) => {
             expect(runResponse.status).to.equal(201);
 
-            // Execute trigger for thread 1
+            // Execute trigger for thread 1 with multiple messages to trigger summarization
             executeTrigger(testGraphId, 'trigger-1', {
-              messages: [thread1Message],
+              messages: [
+                thread1Message,
+                'This is a follow-up message to trigger summarization with aggressive settings.',
+                'Another message to ensure we exceed the token limit.',
+                'Yet another message to force summarization.',
+              ],
               threadSubId: 'isolation-thread-1',
             }).then((response1) => {
               expect(response1.status).to.equal(201);
               expect(response1.body).to.have.property('threadId');
               const thread1Id = response1.body.threadId;
 
-              // Execute trigger for thread 2
+              // Execute trigger for thread 2 with multiple messages to trigger summarization
               executeTrigger(testGraphId, 'trigger-1', {
-                messages: [thread2Message],
+                messages: [
+                  thread2Message,
+                  'This is a follow-up message to trigger summarization with aggressive settings.',
+                  'Another message to ensure we exceed the token limit.',
+                  'Yet another message to force summarization.',
+                ],
                 threadSubId: 'isolation-thread-2',
               }).then((response2) => {
                 expect(response2.status).to.equal(201);
@@ -1272,12 +1282,18 @@ describe('Threads E2E', () => {
                       (m) => m.message,
                     );
 
-                    // Find the human message in thread 1
-                    const humanMessage1 = thread1Messages.find(
-                      (msg) => msg.role === 'human',
+                    // Check for system message indicating summarization occurred
+                    // With multiple messages and aggressive summarization settings, summarization should occur
+                    const summarySystemMessage = thread1Messages.find(
+                      (msg) =>
+                        msg.role === 'system' &&
+                        typeof msg.content === 'string' &&
+                        msg.content.includes('Summary updated'),
                     );
-                    expect(humanMessage1).to.exist;
-                    expect(humanMessage1?.content).to.equal(thread1Message);
+                    expect(summarySystemMessage).to.exist;
+                    expect(summarySystemMessage?.content).to.include(
+                      'Previous messages have been summarized',
+                    );
 
                     // Get messages for thread 2
                     getThreads({ graphId: testGraphId })
@@ -1298,12 +1314,18 @@ describe('Threads E2E', () => {
                           (m) => m.message,
                         );
 
-                        // Find the human message in thread 2
-                        const humanMessage2 = thread2Messages.find(
-                          (msg) => msg.role === 'human',
+                        // Check for system message indicating summarization occurred
+                        // With multiple messages and aggressive summarization settings, summarization should occur
+                        const summarySystemMessage2 = thread2Messages.find(
+                          (msg) =>
+                            msg.role === 'system' &&
+                            typeof msg.content === 'string' &&
+                            msg.content.includes('Summary updated'),
                         );
-                        expect(humanMessage2).to.exist;
-                        expect(humanMessage2?.content).to.equal(thread2Message);
+                        expect(summarySystemMessage2).to.exist;
+                        expect(summarySystemMessage2?.content).to.include(
+                          'Previous messages have been summarized',
+                        );
 
                         // Verify messages are isolated - thread 1 should not contain thread 2's message
                         const thread1ContainsThread2Message =

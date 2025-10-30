@@ -33,6 +33,14 @@ export const ShellToolSchema = z.object({
       }),
     )
     .optional(),
+  maxOutputLength: z
+    .number()
+    .int()
+    .positive()
+    .default(10000)
+    .describe(
+      'Maximum length of output. If output exceeds this length, only the last N characters will be returned. Useful to prevent context size increase. Default: 10000.',
+    ),
 });
 export type ShellToolSchemaType = z.infer<typeof ShellToolSchema>;
 
@@ -89,16 +97,24 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     // Merge config env with provided env (provided env takes precedence)
     const mergedEnv = { ...configEnv, ...providedEnv };
 
-    // Extract purpose from data before passing to runtime.exec
-    const { purpose: _purpose, ...execData } = data;
+    // Extract purpose and maxOutputLength from data before passing to runtime.exec
+    const { purpose: _purpose, maxOutputLength, ...execData } = data;
+
+    // Trim output to last N characters if it exceeds maxOutputLength
+    const trimOutput = (output: string): string => {
+      if (maxOutputLength && output.length > maxOutputLength) {
+        return output.slice(-maxOutputLength);
+      }
+      return output;
+    };
 
     try {
       const res = await config.runtime.exec({ ...execData, env: mergedEnv });
 
       return {
         exitCode: res.exitCode,
-        stdout: res.stdout,
-        stderr: res.stderr,
+        stdout: trimOutput(res.stdout),
+        stderr: trimOutput(res.stderr),
       };
     } catch (error) {
       // Handle runtime errors by returning them in the expected RuntimeExecResult format
@@ -108,7 +124,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       return {
         exitCode: 1,
         stdout: '',
-        stderr: errorMessage,
+        stderr: trimOutput(errorMessage),
       };
     }
   }

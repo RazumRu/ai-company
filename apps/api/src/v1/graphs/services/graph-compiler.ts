@@ -3,8 +3,13 @@ import { BadRequestException, DefaultLogger } from '@packages/common';
 
 import { environment } from '../../../environments';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
+import { BaseAgent } from '../../agents/services/agents/base-agent';
+import { SimpleAgentSchemaType } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
-import { NodeConnection } from '../../graph-templates/templates/base-node.template';
+import {
+  NodeConnection,
+  SimpleAgentTemplateResult,
+} from '../../graph-templates/templates/base-node.template';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
@@ -284,11 +289,20 @@ export class GraphCompiler {
   ): Promise<void> {
     const destroyPromises: Promise<void>[] = [];
     const triggerNodes: CompiledGraphNode<BaseTrigger<unknown>>[] = [];
+    const agentNodes: CompiledGraphNode<
+      SimpleAgentTemplateResult<SimpleAgentSchemaType>
+    >[] = [];
     const runtimeNodes: CompiledGraphNode<BaseRuntime>[] = [];
 
     for (const node of nodes.values()) {
       if (node.type === NodeKind.Trigger) {
         triggerNodes.push(node as CompiledGraphNode<BaseTrigger<unknown>>);
+      } else if (node.type === NodeKind.SimpleAgent) {
+        agentNodes.push(
+          node as CompiledGraphNode<
+            SimpleAgentTemplateResult<SimpleAgentSchemaType>
+          >,
+        );
       } else if (node.type === NodeKind.Runtime) {
         runtimeNodes.push(node as CompiledGraphNode<BaseRuntime>);
       }
@@ -306,6 +320,20 @@ export class GraphCompiler {
     }
 
     await Promise.all(destroyPromises);
+
+    // Stop agents (cancel active LangGraph streams)
+    const agentPromises: Promise<void>[] = [];
+    for (const node of agentNodes) {
+      const agentInstance = node.instance.agent;
+
+      agentPromises.push(
+        agentInstance.stop().catch((error: Error) => {
+          this.logger.error(error, `Failed to stop agent ${node.id}`);
+        }),
+      );
+    }
+
+    await Promise.all(agentPromises);
 
     const runtimePromises: Promise<void>[] = [];
     for (const node of runtimeNodes) {
