@@ -61,7 +61,7 @@ describe('BaseResource', () => {
       warn: vi.fn(),
       debug: vi.fn(),
       verbose: vi.fn(),
-    } as any;
+    } as unknown as DefaultLogger;
 
     const _module: TestingModule = await Test.createTestingModule({
       providers: [

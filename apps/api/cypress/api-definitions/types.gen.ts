@@ -372,6 +372,10 @@ export type ThreadDto = {
    * Source of thread creation (e.g., trigger template name)
    */
   source?: string | null;
+  /**
+   * Thread name (auto-generated from first user message)
+   */
+  name?: string | null;
 };
 
 export type ThreadMessageDto = {

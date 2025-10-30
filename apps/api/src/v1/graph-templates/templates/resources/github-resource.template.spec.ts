@@ -20,8 +20,8 @@ describe('GithubResourceTemplate', () => {
     mockGithubResource = {
       setup: vi.fn(),
       getData: vi.fn(),
-      kind: 'Shell' as any,
-    } as any;
+      kind: 'Shell' as ResourceKind,
+    } as unknown as GithubResource;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,7 +62,8 @@ describe('GithubResourceTemplate', () => {
         patToken: 'ghp_1234567890abcdef',
       };
 
-      expect(() => GithubResourceTemplateSchema.parse(validData)).not.toThrow();
+      const parsed = GithubResourceTemplateSchema.parse(validData);
+      expect(parsed.auth).toBe(true); // default value
     });
 
     it('should reject missing patToken', () => {
@@ -86,12 +87,72 @@ describe('GithubResourceTemplate', () => {
 
       expect(() => GithubResourceTemplateSchema.parse(validData)).not.toThrow();
     });
+
+    it('should accept optional name field', () => {
+      const validData = {
+        patToken: 'ghp_1234567890abcdef',
+        name: 'Test User',
+        auth: false,
+      };
+
+      expect(() => GithubResourceTemplateSchema.parse(validData)).not.toThrow();
+    });
+
+    it('should accept optional avatar field', () => {
+      const validData = {
+        patToken: 'ghp_1234567890abcdef',
+        avatar: 'https://example.com/avatar.png',
+        auth: false,
+      };
+
+      expect(() => GithubResourceTemplateSchema.parse(validData)).not.toThrow();
+    });
+
+    it('should accept both name and avatar fields', () => {
+      const validData = {
+        patToken: 'ghp_1234567890abcdef',
+        name: 'Test User',
+        avatar: 'https://example.com/avatar.png',
+        auth: false,
+      };
+
+      expect(() => GithubResourceTemplateSchema.parse(validData)).not.toThrow();
+    });
+
+    it('should default auth to true when not specified', () => {
+      const validData = {
+        patToken: 'ghp_1234567890abcdef',
+      };
+
+      const parsed = GithubResourceTemplateSchema.parse(validData);
+      expect(parsed.auth).toBe(true);
+    });
+
+    it('should accept auth field explicitly', () => {
+      const validData = {
+        patToken: 'ghp_1234567890abcdef',
+        auth: false,
+      };
+
+      const parsed = GithubResourceTemplateSchema.parse(validData);
+      expect(parsed.auth).toBe(false);
+    });
+
+    it('should reject invalid fields', () => {
+      const invalidData = {
+        patToken: 'ghp_1234567890abcdef',
+        invalidField: 'value',
+      };
+
+      expect(() => GithubResourceTemplateSchema.parse(invalidData)).toThrow();
+    });
   });
 
   describe('create', () => {
     it('should call setup if available', async () => {
       const config = {
         patToken: 'ghp_1234567890abcdef',
+        auth: false,
       };
 
       const mockResourceOutput: IShellResourceOutput = {
@@ -132,6 +193,7 @@ describe('GithubResourceTemplate', () => {
     it('should work without setup method', async () => {
       const config = {
         patToken: 'ghp_1234567890abcdef',
+        auth: false,
       };
 
       const mockResourceOutput: IShellResourceOutput = {
@@ -146,7 +208,7 @@ describe('GithubResourceTemplate', () => {
       };
 
       // Remove setup method
-      delete (mockGithubResource as any).setup;
+      delete (mockGithubResource as unknown as { setup?: unknown }).setup;
       vi.mocked(mockGithubResource.getData).mockResolvedValue(
         mockResourceOutput,
       );
@@ -172,6 +234,7 @@ describe('GithubResourceTemplate', () => {
     it('should handle setup errors', async () => {
       const config = {
         patToken: 'ghp_1234567890abcdef',
+        auth: false,
       };
 
       const setupError = new Error('Setup failed');
@@ -192,6 +255,7 @@ describe('GithubResourceTemplate', () => {
     it('should handle getData errors', async () => {
       const config = {
         patToken: 'ghp_1234567890abcdef',
+        auth: false,
       };
 
       const getDataError = new Error('GetData failed');
@@ -213,6 +277,7 @@ describe('GithubResourceTemplate', () => {
     it('should pass correct config to both setup and getData', async () => {
       const config = {
         patToken: 'ghp_test_token_123',
+        auth: false,
       };
 
       const mockResourceOutput: IShellResourceOutput = {

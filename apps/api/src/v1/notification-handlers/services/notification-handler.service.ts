@@ -57,7 +57,7 @@ export class NotificationHandler extends EventEmitter {
   }
 
   public subscribeEvents(
-    cb: (event: IEnrichedNotification<any>) => Promise<void> | void,
+    cb: (event: IEnrichedNotification<unknown>) => Promise<void> | void,
   ) {
     this.on('enriched_notification', cb);
   }

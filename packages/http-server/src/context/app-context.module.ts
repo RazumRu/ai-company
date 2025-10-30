@@ -6,7 +6,7 @@ import { RequestContextLogger } from './request-context-logger';
 @Global()
 export class AppContextModule {
   static forRoot(): DynamicModule {
-    const providers: any = [RequestContextService, RequestContextLogger];
+    const providers = [RequestContextService, RequestContextLogger];
 
     return {
       module: AppContextModule,

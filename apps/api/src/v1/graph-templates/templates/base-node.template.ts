@@ -53,7 +53,7 @@ export abstract class ToolNodeBaseTemplate<
 
 export abstract class ResourceNodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
-  TResult extends IBaseResourceOutput<any> = IBaseResourceOutput<unknown>,
+  TResult extends IBaseResourceOutput<unknown> = IBaseResourceOutput<unknown>,
 > extends NodeBaseTemplate<TConfig, TResult> {
   readonly kind: NodeKind = NodeKind.Resource;
 }

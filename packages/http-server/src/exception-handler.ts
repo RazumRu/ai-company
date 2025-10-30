@@ -18,9 +18,11 @@ export class ExceptionHandler {
     private readonly sentryService: SentryService,
   ) {}
 
-  public getSentryExceptionData(exception: any): ISentryExceptionData {
+  public getSentryExceptionData(exception: unknown): ISentryExceptionData {
     const requestData = this.requestContextService.getRequestData();
-    const exceptionData = BaseException.getExceptionData(exception);
+    const exceptionData = BaseException.getExceptionData(
+      exception as Error | BaseException,
+    );
 
     return {
       ...requestData,
@@ -32,17 +34,17 @@ export class ExceptionHandler {
     };
   }
 
-  public handle(exception: any, message?: string): ISentryExceptionData {
+  public handle(exception: unknown, message?: string): ISentryExceptionData {
     const data = this.getSentryExceptionData(exception);
 
     const realMessage = message || data.message;
 
-    this.logger.error(exception, realMessage, {
+    this.logger.error(exception as Error | string, realMessage, {
       ...data,
     });
 
     if (data.statusCode >= HttpStatus.BAD_REQUEST) {
-      this.sentryService.send(exception, data);
+      this.sentryService.send(exception as Error, data);
     }
 
     return data;

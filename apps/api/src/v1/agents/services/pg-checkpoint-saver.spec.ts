@@ -78,8 +78,10 @@ describe('PgCheckpointSaver', () => {
         parents: {},
       };
 
-      mockGraphCheckpointsDao.getOne.mockResolvedValue(null);
-      mockGraphCheckpointsDao.create.mockResolvedValue({ id: 'db-id' });
+      vi.mocked(mockGraphCheckpointsDao.getOne).mockResolvedValue(null);
+      vi.mocked(mockGraphCheckpointsDao.create).mockResolvedValue({
+        id: 'db-id',
+      });
 
       await service.put(config, checkpoint, metadata);
 
@@ -104,8 +106,10 @@ describe('PgCheckpointSaver', () => {
 
       const taskId = 'task-123';
 
-      mockGraphCheckpointsWritesDao.getOne.mockResolvedValue(null);
-      mockGraphCheckpointsWritesDao.create.mockResolvedValue({ id: 'db-id' });
+      vi.mocked(mockGraphCheckpointsWritesDao.getOne).mockResolvedValue(null);
+      vi.mocked(mockGraphCheckpointsWritesDao.create).mockResolvedValue({
+        id: 'db-id',
+      });
 
       await service.putWrites(config, writes, taskId);
 
@@ -127,10 +131,10 @@ describe('PgCheckpointSaver', () => {
 
       const taskId = 'task-123';
 
-      mockGraphCheckpointsWritesDao.getOne.mockResolvedValue({
+      vi.mocked(mockGraphCheckpointsWritesDao.getOne).mockResolvedValue({
         id: 'existing-id',
       });
-      mockGraphCheckpointsWritesDao.updateById.mockResolvedValue({
+      vi.mocked(mockGraphCheckpointsWritesDao.updateById).mockResolvedValue({
         id: 'existing-id',
       });
 

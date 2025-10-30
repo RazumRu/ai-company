@@ -2,9 +2,8 @@ import { UnauthorizedException } from '@packages/common';
 import type { FastifyRequest } from 'fastify';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { IAuthModuleParams, IContextData } from './auth.types';
+import type { IContextData } from './auth.types';
 import { AuthContextService } from './auth-context.service';
-import { AuthContextDataBuilder } from './auth-context-data-builder';
 import { AuthProvider } from './providers/auth.provider';
 
 class MockAuthProvider extends AuthProvider {
@@ -38,13 +37,13 @@ class MockAuthContextDataBuilder {
     } = {},
   ) {}
 
-  public getDevUser(headers: any): IContextData | undefined {
+  public getDevUser(_headers: unknown): IContextData | undefined {
     return this.opts.devUserResult;
   }
 
   public async buildContextData(
-    token: string,
-    headers: any,
+    _token: string,
+    _headers: unknown,
   ): Promise<IContextData | undefined> {
     if (this.opts.devMode && this.opts.devUserResult) {
       return this.opts.devUserResult;

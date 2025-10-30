@@ -11,7 +11,11 @@ import {
   ToolNodeBaseTemplate,
 } from '../base-node.template';
 
-export const WebSearchToolTemplateSchema = z.object({}).strict();
+export const WebSearchToolTemplateSchema = z
+  .object({
+    apiKey: z.string().min(1).describe('Tavily API key to authorize searches'),
+  })
+  .strict();
 
 @Injectable()
 @RegisterTemplate()

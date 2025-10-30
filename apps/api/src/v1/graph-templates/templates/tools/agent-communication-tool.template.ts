@@ -137,14 +137,28 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       // Extract the last message content or finish tool message from the agent's response
       const lastMessage = response.messages[response.messages.length - 1];
       let responseMessage: string | undefined;
+      let needsMoreInfo = false;
 
       if (lastMessage) {
         // Check if the last message is a tool message from finish tool
         if (lastMessage.type === 'tool' && lastMessage.name === 'finish') {
-          responseMessage =
+          const content =
             typeof lastMessage.content === 'string'
               ? lastMessage.content
               : JSON.stringify(lastMessage.content);
+
+          // Try to parse the content to extract needsMoreInfo flag
+          try {
+            const parsedContent = JSON.parse(content);
+            if (typeof parsedContent === 'object' && parsedContent !== null) {
+              responseMessage = parsedContent.message || content;
+              needsMoreInfo = parsedContent.needsMoreInfo === true;
+            } else {
+              responseMessage = content;
+            }
+          } catch {
+            responseMessage = content;
+          }
         } else if (lastMessage.type === 'ai') {
           // For AI messages, use the content
           responseMessage =
@@ -163,6 +177,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       // Return the agent's response message instead of all messages
       return {
         message: responseMessage || 'No response message available',
+        needsMoreInfo,
         threadId: response.threadId,
         checkpointNs: response.checkpointNs,
       } as T;

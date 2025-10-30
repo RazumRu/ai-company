@@ -19,14 +19,14 @@ describe('SimpleAgentTemplate', () => {
     mockSimpleAgent = {
       addTool: vi.fn(),
       run: vi.fn(),
-      schema: {} as any,
+      schema: {} as SimpleAgent['schema'],
       buildLLM: vi.fn(),
-    } as any;
+    } as unknown as SimpleAgent;
 
     mockAgentFactoryService = {
       create: vi.fn().mockResolvedValue(mockSimpleAgent),
       register: vi.fn(),
-    } as any;
+    } as unknown as AgentFactoryService;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -144,13 +144,20 @@ describe('SimpleAgentTemplate', () => {
     let connectedNodes: Map<string, CompiledGraphNode>;
 
     beforeEach(() => {
-      mockTool1 = { name: 'tool-1', invoke: vi.fn() } as any;
-      mockTool2 = { name: 'tool-2', invoke: vi.fn() } as any;
+      mockTool1 = {
+        name: 'tool-1',
+        invoke: vi.fn(),
+      } as unknown as DynamicStructuredTool;
+      mockTool2 = {
+        name: 'tool-2',
+        invoke: vi.fn(),
+      } as unknown as DynamicStructuredTool;
 
       mockToolNode1 = {
         id: 'tool-1',
         type: NodeKind.Tool,
         template: 'web-search-tool',
+        config: {},
         instance: mockTool1,
       };
 
@@ -158,6 +165,7 @@ describe('SimpleAgentTemplate', () => {
         id: 'tool-2',
         type: NodeKind.Tool,
         template: 'shell-tool',
+        config: {},
         instance: mockTool2,
       };
 
@@ -319,7 +327,7 @@ describe('SimpleAgentTemplate', () => {
       const failingAgentFactoryService = {
         create: vi.fn().mockRejectedValue(mockError),
         register: vi.fn(),
-      } as any;
+      } as unknown as AgentFactoryService;
 
       // Recreate template with failing factory service
       const module: TestingModule = await Test.createTestingModule({

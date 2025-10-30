@@ -44,6 +44,7 @@ export class ToolExecutorNode extends BaseNode<
 
     const toolsMap = keyBy(this.tools, 'name');
     let done = false;
+    let needsMoreInfo = false;
 
     const toolMessages: ToolMessage[] = await Promise.all(
       calls.map(async (tc) => {
@@ -66,9 +67,22 @@ export class ToolExecutorNode extends BaseNode<
           });
 
           if (output instanceof FinishToolResponse) {
-            done = true;
+            // Only set done=true if needsMoreInfo is false
+            // If needsMoreInfo is true, the agent needs user input and should stop
+            if (!output.needsMoreInfo) {
+              done = true;
+            } else {
+              // Set needsMoreInfo flag in state to stop execution
+              needsMoreInfo = true;
+            }
 
-            return makeMsg(output.message || 'Finished');
+            // Include needsMoreInfo flag in the tool message content
+            const toolResponse = {
+              message: output.message || 'Finished',
+              needsMoreInfo: output.needsMoreInfo,
+            };
+
+            return makeMsg(JSON.stringify(toolResponse));
           }
 
           const content =
@@ -96,7 +110,10 @@ export class ToolExecutorNode extends BaseNode<
 
     return {
       messages: { mode: 'append', items: toolMessages },
-      done: done || state.done,
+      // Only set done if it was explicitly set by finish tool
+      // If needsMoreInfo=true, done stays false and we don't set it
+      ...(done ? { done: true } : {}),
+      ...(needsMoreInfo ? { needsMoreInfo: true } : {}),
     };
   }
 }

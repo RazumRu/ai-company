@@ -15,11 +15,12 @@ export enum GraphStatus {
   Error = 'error',
 }
 
-export interface CompiledGraphNode<TInstance = unknown> {
+export interface CompiledGraphNode<TInstance = unknown, TConfig = unknown> {
   id: string;
   type: NodeKind;
   template: string;
   instance: TInstance;
+  config: TConfig;
 }
 
 export interface CompiledGraph {

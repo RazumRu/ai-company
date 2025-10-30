@@ -6,7 +6,7 @@ import {
 import { isUndefined } from 'lodash';
 
 export function IsRequiredIf(
-  cb: (object: any) => boolean,
+  cb: (object: unknown) => boolean,
   validationOptions?: ValidationOptions,
 ) {
   return function (object: object, propertyName: string) {
@@ -21,7 +21,7 @@ export function IsRequiredIf(
         ...(validationOptions || {}),
       },
       validator: {
-        validate(value: any, args: ValidationArguments) {
+        validate(value: unknown, args: ValidationArguments) {
           const [cb] = args.constraints;
 
           if (cb(args.object) && isUndefined(value)) {

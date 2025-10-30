@@ -5,7 +5,7 @@ import { HealthCheckerController } from './health-checker.controller';
 @Module({})
 export class HealthCheckerModule {
   static forRoot(): DynamicModule {
-    const providers: Type<any>[] = [];
+    const providers: Type<unknown>[] = [];
 
     return {
       controllers: [HealthCheckerController],

@@ -1,6 +1,8 @@
+import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 import { AgentCommunicationTool } from './agent-communication.tool';
 
 describe('AgentCommunicationTool', () => {
@@ -15,17 +17,35 @@ describe('AgentCommunicationTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required fields', () => {
+    it('should validate required purpose and messages fields', () => {
       const validData = {
+        purpose: 'Requesting help from another agent',
         messages: ['Hello, can you help me?'],
       };
 
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing required fields', () => {
+    it('should reject missing purpose field', () => {
       const invalidData = {
-        // missing messages and childThreadId
+        messages: ['Hello, can you help me?'],
+      };
+
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
+    it('should reject missing messages field', () => {
+      const invalidData = {
+        purpose: 'Requesting help',
+      };
+
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
+    it('should reject empty purpose', () => {
+      const invalidData = {
+        purpose: '',
+        messages: ['Hello, can you help me?'],
       };
 
       expect(() => tool.schema.parse(invalidData)).toThrow();
@@ -33,6 +53,7 @@ describe('AgentCommunicationTool', () => {
 
     it('should limit messages to 10', () => {
       const tooManyMessages = {
+        purpose: 'Sending multiple messages',
         messages: Array(11).fill('message'),
       };
 
@@ -45,16 +66,17 @@ describe('AgentCommunicationTool', () => {
       const mockInvokeAgent = vi
         .fn()
         .mockResolvedValue({ response: 'test response' });
-      const mockRunnableConfig = {
+      const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
         configurable: { thread_id: 'test-thread' },
       };
 
       const result = await tool.invoke(
         {
+          purpose: 'Requesting assistance',
           messages: ['Hello'],
         },
         { invokeAgent: mockInvokeAgent },
-        mockRunnableConfig as any,
+        mockRunnableConfig,
       );
 
       expect(mockInvokeAgent).toHaveBeenCalledWith(
@@ -66,17 +88,18 @@ describe('AgentCommunicationTool', () => {
     });
 
     it('should throw error when invokeAgent is not configured', async () => {
-      const mockRunnableConfig = {
+      const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
         configurable: { thread_id: 'test-thread' },
       };
 
       await expect(
         tool.invoke(
           {
+            purpose: 'Requesting assistance',
             messages: ['Hello'],
           },
-          {} as any,
-          mockRunnableConfig as any,
+          { invokeAgent: null as any },
+          mockRunnableConfig,
         ),
       ).rejects.toThrow('Agent communication is not configured');
     });

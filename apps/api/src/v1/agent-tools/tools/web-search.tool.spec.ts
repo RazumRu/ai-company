@@ -10,23 +10,22 @@ vi.mock('@tavily/core', () => ({
   })),
 }));
 
-// Mock environment
-vi.mock('../../../environments', () => ({
-  environment: {
-    tavilyApiKey: 'test-api-key',
-  },
-}));
+type TavilyClient = {
+  search: ReturnType<typeof vi.fn>;
+};
 
 describe('WebSearchTool', () => {
   let tool: WebSearchTool;
-  let mockTavilyClient: any;
+  let mockTavilyClient: TavilyClient;
 
   beforeEach(async () => {
     const { tavily } = await import('@tavily/core');
     mockTavilyClient = {
       search: vi.fn(),
     };
-    (tavily as any).mockReturnValue(mockTavilyClient);
+    vi.mocked(tavily).mockReturnValue(
+      mockTavilyClient as unknown as ReturnType<typeof tavily>,
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [WebSearchTool],
@@ -52,42 +51,74 @@ describe('WebSearchTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required query field', () => {
-      const validData = { query: 'test search' };
+    it('should validate required purpose and query fields', () => {
+      const validData = {
+        purpose: 'Searching for information about TypeScript',
+        query: 'test search',
+      };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
+    it('should reject missing purpose field', () => {
+      const invalidData = { query: 'test search' };
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
     it('should reject empty query', () => {
-      const invalidData = { query: '' };
+      const invalidData = {
+        purpose: 'Searching for information',
+        query: '',
+      };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should reject missing query', () => {
-      const invalidData = {};
+      const invalidData = { purpose: 'Searching for information' };
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
+    it('should reject empty purpose', () => {
+      const invalidData = { purpose: '', query: 'test search' };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should validate searchDepth enum', () => {
-      const validBasic = { query: 'test', searchDepth: 'basic' };
-      const validAdvanced = { query: 'test', searchDepth: 'advanced' };
+      const validBasic = {
+        purpose: 'Searching for information',
+        query: 'test',
+        searchDepth: 'basic',
+      };
+      const validAdvanced = {
+        purpose: 'Searching for information',
+        query: 'test',
+        searchDepth: 'advanced',
+      };
 
       expect(() => tool.schema.parse(validBasic)).not.toThrow();
       expect(() => tool.schema.parse(validAdvanced)).not.toThrow();
     });
 
     it('should reject invalid searchDepth', () => {
-      const invalidData = { query: 'test', searchDepth: 'invalid' };
+      const invalidData = {
+        purpose: 'Searching for information',
+        query: 'test',
+        searchDepth: 'invalid',
+      };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should default searchDepth to basic', () => {
-      const data = { query: 'test' };
+      const data = {
+        purpose: 'Searching for information',
+        query: 'test',
+      };
       const parsed = tool.schema.parse(data);
       expect(parsed.searchDepth).toBe('basic');
     });
 
     it('should validate optional arrays', () => {
       const validData = {
+        purpose: 'Searching for information',
         query: 'test',
         includeDomains: ['example.com', 'test.org'],
         excludeDomains: ['spam.com'],
@@ -96,9 +127,21 @@ describe('WebSearchTool', () => {
     });
 
     it('should validate maxResults range', () => {
-      const validMin = { query: 'test', maxResults: 1 };
-      const validMax = { query: 'test', maxResults: 20 };
-      const validMid = { query: 'test', maxResults: 10 };
+      const validMin = {
+        purpose: 'Searching for information',
+        query: 'test',
+        maxResults: 1,
+      };
+      const validMax = {
+        purpose: 'Searching for information',
+        query: 'test',
+        maxResults: 20,
+      };
+      const validMid = {
+        purpose: 'Searching for information',
+        query: 'test',
+        maxResults: 10,
+      };
 
       expect(() => tool.schema.parse(validMin)).not.toThrow();
       expect(() => tool.schema.parse(validMax)).not.toThrow();
@@ -106,8 +149,16 @@ describe('WebSearchTool', () => {
     });
 
     it('should reject maxResults out of range', () => {
-      const tooSmall = { query: 'test', maxResults: 0 };
-      const tooLarge = { query: 'test', maxResults: 21 };
+      const tooSmall = {
+        purpose: 'Searching for information',
+        query: 'test',
+        maxResults: 0,
+      };
+      const tooLarge = {
+        purpose: 'Searching for information',
+        query: 'test',
+        maxResults: 21,
+      };
 
       expect(() => tool.schema.parse(tooSmall)).toThrow();
       expect(() => tool.schema.parse(tooLarge)).toThrow();
@@ -116,7 +167,7 @@ describe('WebSearchTool', () => {
 
   describe('build', () => {
     it('should create a DynamicStructuredTool', () => {
-      const builtTool = tool.build({});
+      const builtTool = tool.build({ apiKey: 'test-api-key' });
 
       expect(builtTool).toBeDefined();
       expect(typeof builtTool.invoke).toBe('function');
@@ -136,8 +187,9 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build({});
+      const builtTool = tool.build({ apiKey: 'test-api-key' });
       const result = await builtTool.invoke({
+        purpose: 'Searching for test information',
         query: 'test search',
       });
 
@@ -170,8 +222,9 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build({});
+      const builtTool = tool.build({ apiKey: 'test-api-key' });
       const result = await builtTool.invoke({
+        purpose: 'Performing advanced search',
         query: 'advanced search',
         searchDepth: 'advanced',
         includeDomains: ['example.com'],
@@ -205,8 +258,9 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build({});
+      const builtTool = tool.build({ apiKey: 'test-api-key' });
       const result = await builtTool.invoke({
+        purpose: 'Testing empty results',
         query: 'no results query',
       });
 
@@ -223,8 +277,9 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build({});
+      const builtTool = tool.build({ apiKey: 'test-api-key' });
       const result = await builtTool.invoke({
+        purpose: 'Testing undefined results',
         query: 'undefined results query',
       });
 
@@ -238,10 +293,11 @@ describe('WebSearchTool', () => {
       const mockError = new Error('Search API error');
       mockTavilyClient.search.mockRejectedValue(mockError);
 
-      const builtTool = tool.build({});
+      const builtTool = tool.build({ apiKey: 'test-api-key' });
 
       await expect(
         builtTool.invoke({
+          purpose: 'Testing error handling',
           query: 'error query',
         }),
       ).rejects.toThrow('Search API error');
@@ -263,8 +319,9 @@ describe('WebSearchTool', () => {
       };
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
-      const builtTool = tool.build({});
+      const builtTool = tool.build({ apiKey: 'test-api-key' });
       const result = await builtTool.invoke({
+        purpose: 'Testing result filtering',
         query: 'test search',
       });
 

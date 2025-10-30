@@ -2,10 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { tavily } from '@tavily/core';
 import { z } from 'zod';
 
-import { environment } from '../../../environments';
 import { BaseTool } from './base-tool';
 
 export const WebSearchToolSchema = z.object({
+  purpose: z
+    .string()
+    .min(1)
+    .describe('Brief reason for using this tool. Keep it short (< 120 chars).'),
   query: z.string().min(1),
   searchDepth: z.enum(['basic', 'advanced']).default('basic'),
   includeDomains: z.array(z.string()).optional(),
@@ -19,10 +22,12 @@ type WebSearchOutput = {
   results: { title: string; url: string; content: string }[];
 };
 
+export type WebSearchToolConfig = { apiKey: string };
+
 @Injectable()
 export class WebSearchTool extends BaseTool<
   WebSearchToolSchemaType,
-  unknown,
+  WebSearchToolConfig,
   WebSearchOutput
 > {
   public name = 'web-search';
@@ -33,9 +38,13 @@ export class WebSearchTool extends BaseTool<
     return WebSearchToolSchema;
   }
 
-  public async invoke(args: WebSearchToolSchemaType): Promise<WebSearchOutput> {
-    const client = tavily({ apiKey: environment.tavilyApiKey });
-    const { query, ...opts } = args;
+  public async invoke(
+    args: WebSearchToolSchemaType,
+    config: WebSearchToolConfig,
+  ): Promise<WebSearchOutput> {
+    const client = tavily({ apiKey: config.apiKey });
+    // Extract purpose from args before passing to search client
+    const { purpose: _purpose, query, ...opts } = args;
 
     const res = await client.search(query, opts);
 

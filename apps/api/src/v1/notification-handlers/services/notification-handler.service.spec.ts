@@ -155,7 +155,7 @@ describe('NotificationHandler', () => {
         data: { state: 'compiled', schema: mockGraphSchema },
       };
 
-      let emittedEvent: any;
+      let emittedEvent: unknown;
       service.on('enriched_notification', (event) => {
         emittedEvent = event;
       });
@@ -209,7 +209,7 @@ describe('NotificationHandler', () => {
         },
       };
 
-      let emittedEvent: any;
+      let emittedEvent: unknown;
       service.on('enriched_notification', (event) => {
         emittedEvent = event;
       });
@@ -285,7 +285,7 @@ describe('NotificationHandler', () => {
         },
       };
 
-      let emittedEvent: any;
+      let emittedEvent: unknown;
       service.on('enriched_notification', (event) => {
         emittedEvent = event;
       });
@@ -363,7 +363,7 @@ describe('NotificationHandler', () => {
         },
       };
 
-      const emittedEvents: any[] = [];
+      const emittedEvents: unknown[] = [];
       service.on('enriched_notification', (event) => {
         emittedEvents.push(event);
       });
@@ -438,7 +438,7 @@ describe('NotificationHandler', () => {
         },
       };
 
-      let emittedEvent: any;
+      let emittedEvent: unknown;
       service.on('enriched_notification', (event) => {
         emittedEvent = event;
       });
@@ -472,7 +472,7 @@ describe('NotificationHandler', () => {
         data: { state: 'compiled', schema: mockGraphSchema },
       };
 
-      const emittedEvents: any[] = [];
+      const emittedEvents: unknown[] = [];
       service.on('enriched_notification', (event) => {
         emittedEvents.push(event);
       });
@@ -500,7 +500,7 @@ describe('NotificationHandler', () => {
         data: { state: 'compiled', schema: mockGraphSchema },
       };
 
-      const emittedEvents: any[] = [];
+      const emittedEvents: unknown[] = [];
       service.on('enriched_notification', (event) => {
         emittedEvents.push(event);
       });

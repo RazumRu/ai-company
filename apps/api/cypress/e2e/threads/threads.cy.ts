@@ -1,3 +1,6 @@
+import type { Socket } from 'socket.io-client';
+
+import { ThreadDto } from '../../api-definitions/types.gen';
 import { reqHeaders } from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
@@ -44,7 +47,7 @@ describe('Threads E2E', () => {
                 instructions:
                   'You are the first agent. When asked, use the agent-communication tool to ask the second agent a question.',
                 invokeModelName: 'gpt-5-mini',
-                summarizeMaxTokens: 100000,
+                summarizeMaxTokens: 200000,
                 summarizeKeepTokens: 30000,
               },
             },
@@ -56,7 +59,7 @@ describe('Threads E2E', () => {
                 instructions:
                   'You are the second agent. Answer questions briefly.',
                 invokeModelName: 'gpt-5-mini',
-                summarizeMaxTokens: 100000,
+                summarizeMaxTokens: 200000,
                 summarizeKeepTokens: 30000,
                 enforceToolUsage: false,
               },
@@ -685,7 +688,7 @@ describe('Threads E2E', () => {
             // Log duplicate messages if found
             if (messageSignatures.length !== uniqueSignatures.size) {
               const duplicates = messageSignatures.filter(
-                (sig: any, index: any) =>
+                (sig: string, index: unknown) =>
                   messageSignatures.indexOf(sig) !== index,
               );
               cy.log('Duplicate message signatures found:', duplicates);
@@ -1041,7 +1044,6 @@ describe('Threads E2E', () => {
       it('should persist messages across graph restarts', () => {
         const testMessage = 'Message before restart';
         let testGraphId: string;
-        let triggerResponse: any;
         let initialMessageCount: number;
 
         // Create and run a test graph
@@ -1063,8 +1065,7 @@ describe('Threads E2E', () => {
             });
           })
           .then((response) => {
-            triggerResponse = response;
-            expect(triggerResponse.status).to.equal(201);
+            expect(response.status).to.equal(201);
 
             // Get the threadId from first execution
             return getThreads({ graphId: testGraphId }).then((threadsRes) => {
@@ -1809,6 +1810,310 @@ describe('Threads E2E', () => {
             expect(messagesResponse.status).to.equal(404);
 
             // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+    });
+
+    describe('Thread Name Generation', () => {
+      it('should automatically generate and set thread name on first execution', () => {
+        let testGraphId: string;
+        let internalThreadId: string;
+
+        const graphData = {
+          name: `Thread Name Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for thread name generation',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Test Agent',
+                  instructions: 'You are a helpful test agent.',
+                  invokeModelName: 'gpt-5-mini',
+                  summarizeMaxTokens: 200000,
+                  summarizeKeepTokens: 30000,
+                },
+              },
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        };
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            cy.wait(2000);
+
+            // Execute trigger with a descriptive message that should generate a title
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['What is the weather like today in San Francisco?'],
+              threadSubId: 'thread-name-test',
+            });
+          })
+          .then(() => {
+            // Wait for title generation to complete
+            cy.wait(5000);
+
+            return getThreads({ graphId: testGraphId });
+          })
+          .then((threadsResponse) => {
+            expect(threadsResponse.status).to.equal(200);
+            expect(threadsResponse.body.length).to.equal(1);
+
+            internalThreadId = threadsResponse.body[0]?.id || '';
+
+            // Retrieve thread and verify it has a name
+            return getThreadById(internalThreadId);
+          })
+          .then((threadResponse) => {
+            expect(threadResponse.status).to.equal(200);
+            expect(threadResponse.body.id).to.equal(internalThreadId);
+
+            // Verify thread has a name set
+            const threadWithName = threadResponse.body as ThreadDto & {
+              name?: string | null;
+            };
+            expect(threadWithName).to.have.property('name');
+            expect(threadWithName.name).to.be.a('string');
+            expect(threadWithName.name).to.not.be.empty;
+            // Name should be related to the user's question about weather
+            if (threadWithName.name) {
+              expect(threadWithName.name.length).to.be.lte(100);
+            }
+
+            // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+
+      it('should not update thread name if it already exists', () => {
+        let testGraphId: string;
+        let internalThreadId: string;
+        let originalName: string;
+
+        const graphData = {
+          name: `Thread Name Update Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for thread name persistence',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Test Agent',
+                  instructions: 'You are a helpful test agent.',
+                  invokeModelName: 'gpt-5-mini',
+                  summarizeMaxTokens: 200000,
+                  summarizeKeepTokens: 30000,
+                },
+              },
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        };
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            cy.wait(2000);
+
+            // First execution - should generate a name
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['First message about weather'],
+              threadSubId: 'thread-name-persistence-test',
+            });
+          })
+          .then(() => {
+            cy.wait(5000);
+
+            return getThreads({ graphId: testGraphId });
+          })
+          .then((threadsResponse) => {
+            expect(threadsResponse.status).to.equal(200);
+            internalThreadId = threadsResponse.body[0]?.id || '';
+
+            return getThreadById(internalThreadId);
+          })
+          .then((threadResponse) => {
+            const threadWithName = threadResponse.body as ThreadDto & {
+              name?: string | null;
+            };
+            expect(threadWithName).to.have.property('name');
+            originalName = threadWithName.name || '';
+
+            // Second execution with different message
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['Second message about different topic'],
+              threadSubId: 'thread-name-persistence-test',
+            });
+          })
+          .then(() => {
+            cy.wait(5000);
+
+            // Verify the name hasn't changed
+            return getThreadById(internalThreadId);
+          })
+          .then((threadResponse) => {
+            const threadWithName = threadResponse.body as ThreadDto & {
+              name?: string | null;
+            };
+            expect(threadWithName).to.have.property('name');
+            expect(threadWithName.name).to.equal(originalName);
+
+            // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+
+      it('should receive socket notifications for thread state updates', () => {
+        let testGraphId: string;
+        let socket: Socket | undefined;
+
+        const graphData = {
+          name: `Socket Notification Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for socket notifications',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Test Agent',
+                  instructions: 'You are a helpful test agent.',
+                  invokeModelName: 'gpt-5-mini',
+                  summarizeMaxTokens: 200000,
+                  summarizeKeepTokens: 30000,
+                },
+              },
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        };
+
+        // Connect to socket
+        cy.window().then((win) => {
+          const io = (win as { io?: (...args: unknown[]) => Socket }).io;
+          if (io) {
+            socket = io('http://localhost:3000', {
+              auth: {
+                token: 'dev-token',
+                'x-dev-jwt-sub': 'test-user',
+              },
+            });
+
+            // Listen for agent state update events
+            const stateUpdateEvents: Record<string, unknown>[] = [];
+            socket.on('agent.state.update', (data: Record<string, unknown>) => {
+              stateUpdateEvents.push(data);
+            });
+
+            // Store events for later verification
+            (
+              win as unknown as { stateUpdateEvents?: unknown[] }
+            ).stateUpdateEvents = stateUpdateEvents;
+          }
+        });
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            cy.wait(2000);
+
+            // Subscribe to graph updates
+            if (socket) {
+              socket.emit('subscribe_graph', { graphId: testGraphId });
+            }
+
+            // Execute trigger
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['Test message for socket notifications'],
+              threadSubId: 'socket-test-thread',
+            });
+          })
+          .then(() => {
+            // Wait for processing and notifications
+            cy.wait(10000);
+
+            return getThreads({ graphId: testGraphId });
+          })
+          .then((threadsResponse) => {
+            expect(threadsResponse.status).to.equal(200);
+
+            // Check if we received socket notifications
+            cy.window().then((win) => {
+              const stateUpdateEvents =
+                (win as unknown as { stateUpdateEvents?: unknown[] })
+                  .stateUpdateEvents || [];
+
+              // We should have received at least one agent state update
+              expect(stateUpdateEvents.length).to.be.greaterThan(0);
+
+              // Find the notification with generatedTitle
+              const titleUpdateEvent = (
+                stateUpdateEvents as {
+                  data?: { generatedTitle?: string };
+                  type?: string;
+                  graphId?: string;
+                }[]
+              ).find((event) => event.data && event.data.generatedTitle);
+
+              expect(titleUpdateEvent).to.exist;
+              // TypeScript narrowing for runtime assertion above
+              const nonNullEvent = titleUpdateEvent!;
+              expect(nonNullEvent.type).to.equal('agent.state.update');
+              expect(nonNullEvent.graphId).to.equal(testGraphId);
+              expect(nonNullEvent.data!.generatedTitle).to.be.a('string');
+              expect(nonNullEvent.data!.generatedTitle).to.not.be.empty;
+            });
+
+            // Cleanup
+            if (socket) {
+              socket.disconnect();
+            }
             destroyGraph(testGraphId).then(() => {
               deleteGraph(testGraphId);
             });

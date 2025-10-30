@@ -8,6 +8,11 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 
+// Extended type to support description property
+type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
+  description?: string;
+};
+
 export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
   public abstract name: string;
   public abstract description: string;
@@ -15,10 +20,10 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
 
   public abstract get schema(): z.ZodType<TSchema>;
 
-  protected buildToolConfiguration(config?: LangGraphRunnableConfig) {
+  protected buildToolConfiguration(config?: ExtendedLangGraphRunnableConfig) {
     return {
       name: this.name,
-      description: this.description,
+      description: config?.description || this.description,
       schema: this.schema,
       ...config,
     };
@@ -32,7 +37,7 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
 
   public build(
     config: TConfig,
-    lgConfig?: LangGraphRunnableConfig,
+    lgConfig?: ExtendedLangGraphRunnableConfig,
   ): DynamicStructuredTool {
     return this.toolWrapper(this.invoke, config, lgConfig);
   }
@@ -40,7 +45,7 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
   protected toolWrapper(
     cb: typeof this.invoke,
     config: TConfig,
-    lgConfig?: LangGraphRunnableConfig,
+    lgConfig?: ExtendedLangGraphRunnableConfig,
   ) {
     return tool(async (args, runnableConfig) => {
       {

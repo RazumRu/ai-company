@@ -16,6 +16,7 @@ import {
   NodeBaseTemplateMetadata,
   ToolNodeBaseTemplate,
 } from '../base-node.template';
+import { DockerRuntimeTemplateSchema } from '../runtimes/docker-runtime.template';
 
 export const ShellToolTemplateSchema = z.object({}).strict();
 
@@ -58,7 +59,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     config: z.infer<typeof ShellToolTemplateSchema>,
     _inputNodes: Map<string, CompiledGraphNode>,
     outputNodes: Map<string, CompiledGraphNode>,
-    _metadata: NodeBaseTemplateMetadata,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     // Find runtime node from output nodes
     let runtimeNode: CompiledGraphNode<BaseRuntime> | undefined;
@@ -109,11 +110,65 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
       }
     }
 
+    // Collect runtime information from config
+    const { information: runtimeInformation } = this.collectRuntimeData(
+      runtimeNode,
+      metadata,
+    );
+
+    // Combine resource information and runtime information
+    const allInformationParts: string[] = [];
+    if (runtimeInformation) {
+      allInformationParts.push('Runtime Configuration:');
+      allInformationParts.push(runtimeInformation);
+    }
+    if (information) {
+      if (allInformationParts.length > 0) {
+        allInformationParts.push('');
+      }
+      allInformationParts.push('Available Resources:');
+      allInformationParts.push(information);
+    }
+    const combinedInfo = allInformationParts.join('\n');
+
     return this.shellTool.build({
       runtime: runtimeNode.instance,
       env,
-      additionalInfo: information,
+      additionalInfo: combinedInfo,
     });
+  }
+
+  private collectRuntimeData(
+    runtimeNode: CompiledGraphNode<BaseRuntime>,
+    metadata: NodeBaseTemplateMetadata,
+  ): {
+    information: string;
+  } {
+    const runtimeInfoParts: string[] = [];
+
+    // Check if runtime node has docker-runtime config
+    if (runtimeNode.template === 'docker-runtime') {
+      const runtimeConfig = runtimeNode.config as z.infer<
+        typeof DockerRuntimeTemplateSchema
+      >;
+
+      if (runtimeConfig.image) {
+        runtimeInfoParts.push(`- Docker Image: ${runtimeConfig.image}`);
+      }
+      if (runtimeConfig.workdir) {
+        runtimeInfoParts.push(`- Working Directory: ${runtimeConfig.workdir}`);
+      }
+      runtimeInfoParts.push(
+        `- Docker-in-Docker (DIND): ${runtimeConfig.enableDind ? 'Enabled' : 'Disabled'}`,
+      );
+      // Container name is generated from graphId and nodeId
+      const containerName = `rt-${metadata.graphId}-${runtimeNode.id}`;
+      runtimeInfoParts.push(`- Container Name: ${containerName}`);
+    }
+
+    return {
+      information: runtimeInfoParts.join('\n'),
+    };
   }
 
   private collectResourceData(

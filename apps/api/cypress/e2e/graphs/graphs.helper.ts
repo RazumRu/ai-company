@@ -114,8 +114,6 @@ export const executeTrigger = (
     timeout: 180000,
   });
 
-// getNodeMessages removed in favor of thread-based endpoints (see threads.helper.ts)
-
 export const validateGraph = (data: GraphDto) => {
   cy.validateSchema(data, GraphDtoSchema);
 };

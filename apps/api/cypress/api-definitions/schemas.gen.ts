@@ -608,6 +608,16 @@ export const ThreadDtoSchema = {
         },
       ],
     },
+    name: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
   },
   required: ['id', 'graphId', 'externalThreadId', 'createdAt', 'updatedAt'],
 } as const;

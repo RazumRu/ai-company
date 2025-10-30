@@ -56,7 +56,10 @@ describe('Graphs E2E', () => {
         },
       };
 
-      createGraph(invalidGraphData as any, reqHeaders).then((response) => {
+      createGraph(
+        invalidGraphData as unknown as Parameters<typeof createGraph>[0],
+        reqHeaders,
+      ).then((response) => {
         expect(response.status).to.equal(403);
       });
     });
@@ -83,9 +86,9 @@ describe('Graphs E2E', () => {
       createGraph(invalidGraphData, reqHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
-        expect((response.body as any).message).to.include(
-          'Duplicate node IDs found in graph schema',
-        );
+        expect(
+          (response.body as unknown as { message: string }).message,
+        ).to.include('Duplicate node IDs found in graph schema');
       });
     });
 
@@ -106,9 +109,9 @@ describe('Graphs E2E', () => {
       createGraph(invalidGraphData, reqHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
-        expect((response.body as any).message).to.include(
-          "Template 'invalid-template' is not registered",
-        );
+        expect(
+          (response.body as unknown as { message: string }).message,
+        ).to.include("Template 'invalid-template' is not registered");
       });
     });
 
@@ -134,7 +137,9 @@ describe('Graphs E2E', () => {
       createGraph(invalidGraphData, reqHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
-        expect((response.body as any).message).to.include(
+        expect(
+          (response.body as unknown as { message: string }).message,
+        ).to.include(
           'Edge references non-existent target node: non-existent-node',
         );
       });
@@ -162,7 +167,9 @@ describe('Graphs E2E', () => {
       createGraph(invalidGraphData, reqHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
-        expect((response.body as any).message).to.include(
+        expect(
+          (response.body as unknown as { message: string }).message,
+        ).to.include(
           'Edge references non-existent source node: non-existent-node',
         );
       });
@@ -185,9 +192,9 @@ describe('Graphs E2E', () => {
       createGraph(invalidGraphData, reqHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
-        expect((response.body as any).message).to.include(
-          'Invalid configuration for template',
-        );
+        expect(
+          (response.body as unknown as { message: string }).message,
+        ).to.include('Invalid configuration for template');
       });
     });
   });

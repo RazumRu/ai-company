@@ -15,7 +15,7 @@ describe('GithubResource', () => {
       warn: vi.fn(),
       debug: vi.fn(),
       verbose: vi.fn(),
-    } as any;
+    } as unknown as DefaultLogger;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -34,29 +34,85 @@ describe('GithubResource', () => {
     it('should return GitHub resource data with PAT token', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_1234567890abcdef',
+        auth: false,
       };
 
       const result = await githubResource.getData(config);
 
-      expect(result).toEqual({
-        information: expect.stringContaining(
-          'Purpose: Work with GitHub from shell via gh CLI',
-        ),
-        kind: 'Shell',
-        data: {
-          initScript:
-            'export DEBIAN_FRONTEND=noninteractive && apt-get update -y && apt-get install -y curl ca-certificates jq git && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /usr/share/keyrings/githubcli-archive-keyring.gpg >/dev/null && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && apt-get update -y && apt-get install -y gh && printf "%s" "$GITHUB_PAT_TOKEN" | gh auth login --hostname github.com --with-token && gh config set git_protocol https && git config --global pull.rebase false && gh auth status || true',
-          initScriptTimeout: 120000,
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_1234567890abcdef',
-          },
-        },
-      });
+      expect(result.information).toContain(
+        'Purpose: Work with GitHub from shell via gh CLI',
+      );
+      expect(result.kind).toBe('Shell');
+      expect(result.data.initScriptTimeout).toBe(300000);
+      expect(result.data.initScript).toContain('set -eu');
+      expect(result.data.initScript).not.toContain('gh auth login');
+      expect(result.data.initScript).not.toContain('gh auth status');
+      expect(result.data.initScript).toContain(
+        'gh config set git_protocol https',
+      );
+      expect(result.data.env?.GITHUB_PAT_TOKEN).toBe('ghp_1234567890abcdef');
+    });
+
+    it('should configure git user name when name is provided', async () => {
+      const config: GithubResourceConfig = {
+        patToken: 'ghp_test_token',
+        name: 'Test User',
+        auth: false,
+      };
+
+      const result = await githubResource.getData(config);
+
+      expect(result.data.initScript).toContain(
+        'git config --global user.name "Test User"',
+      );
+    });
+
+    it('should not configure git user name when name is not provided', async () => {
+      const config: GithubResourceConfig = {
+        patToken: 'ghp_test_token',
+        auth: false,
+      };
+
+      const result = await githubResource.getData(config);
+
+      expect(result.data.initScript).not.toContain(
+        'git config --global user.name',
+      );
+    });
+
+    it('should accept optional avatar field', async () => {
+      const config: GithubResourceConfig = {
+        patToken: 'ghp_test_token',
+        avatar: 'https://example.com/avatar.png',
+        auth: false,
+      };
+
+      const result = await githubResource.getData(config);
+
+      expect(result.data.env?.GITHUB_PAT_TOKEN).toBe('ghp_test_token');
+      // Avatar is stored but not used in init script
+    });
+
+    it('should work with both name and avatar provided', async () => {
+      const config: GithubResourceConfig = {
+        patToken: 'ghp_test_token',
+        name: 'Test User',
+        avatar: 'https://example.com/avatar.png',
+        auth: false,
+      };
+
+      const result = await githubResource.getData(config);
+
+      expect(result.data.initScript).toContain(
+        'git config --global user.name "Test User"',
+      );
+      expect(result.data.env?.GITHUB_PAT_TOKEN).toBe('ghp_test_token');
     });
 
     it('should include GitHub CLI help information', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_test_token',
+        auth: false,
       };
 
       const result = await githubResource.getData(config);
@@ -69,7 +125,35 @@ describe('GithubResource', () => {
       expect(result.information).toContain('gh api --help');
     });
 
-    it('should set up authentication with provided token', async () => {
+    it('should set up authentication with provided token when auth is true', async () => {
+      const config: GithubResourceConfig = {
+        patToken: 'ghp_my_secret_token',
+        auth: true,
+      };
+
+      const result = await githubResource.getData(config);
+
+      expect(result.data.initScript).toContain(
+        'printf "%s" "$GITHUB_PAT_TOKEN" | gh auth login --hostname github.com --with-token',
+      );
+      expect(result.data.initScript).toContain('gh auth status');
+    });
+
+    it('should not set up authentication when auth is false', async () => {
+      const config: GithubResourceConfig = {
+        patToken: 'ghp_my_secret_token',
+        auth: false,
+      };
+
+      const result = await githubResource.getData(config);
+
+      expect(result.data.initScript).not.toContain(
+        'printf "%s" "$GITHUB_PAT_TOKEN" | gh auth login --hostname github.com --with-token',
+      );
+      expect(result.data.initScript).not.toContain('gh auth status');
+    });
+
+    it('should set up authentication by default when auth is not specified', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_my_secret_token',
       };
@@ -79,11 +163,13 @@ describe('GithubResource', () => {
       expect(result.data.initScript).toContain(
         'printf "%s" "$GITHUB_PAT_TOKEN" | gh auth login --hostname github.com --with-token',
       );
+      expect(result.data.initScript).toContain('gh auth status');
     });
 
     it('should configure Git protocol to HTTPS', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_test',
+        auth: false,
       };
 
       const result = await githubResource.getData(config);
@@ -96,6 +182,7 @@ describe('GithubResource', () => {
     it('should disable Git pull rebase', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_test',
+        auth: false,
       };
 
       const result = await githubResource.getData(config);
@@ -108,29 +195,28 @@ describe('GithubResource', () => {
     it('should include error handling in init script', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_test',
+        auth: false,
       };
 
       const result = await githubResource.getData(config);
 
+      expect(result.data.initScript).toContain('set -eu');
       expect(result.data.initScript).toContain(
         'export DEBIAN_FRONTEND=noninteractive',
       );
-      expect(result.data.initScript).toContain('gh auth status || true');
     });
 
     it('should install required packages', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_test',
+        auth: false,
       };
 
       const result = await githubResource.getData(config);
 
-      expect(result.data.initScript).toContain(
-        'apt-get update -y && apt-get install -y curl ca-certificates jq git',
-      );
-      expect(result.data.initScript).toContain(
-        'curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg',
-      );
+      expect(result.data.initScript).toContain('command -v');
+      expect(result.data.initScript).toContain('curl');
+      expect(result.data.initScript).toContain('git');
     });
   });
 

@@ -12,8 +12,9 @@ export * from 'typeorm';
 
 export { DataSource, TypeormModule };
 
-export const registerEntities = (entities?: (any | EntitySchema)[]) =>
-  TypeOrmModule.forFeature(entities);
+export const registerEntities = (
+  entities?: ((new (...args: unknown[]) => unknown) | EntitySchema)[],
+) => TypeOrmModule.forFeature(entities);
 
 export const buildTypeormExtension = (
   dataSource: DataSource,

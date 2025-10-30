@@ -81,8 +81,9 @@ export class DockerRuntime extends BaseRuntime {
     } catch {
       const stream = await this.docker.pull(ref);
       await new Promise<void>((res, rej) =>
-        this.docker.modem.followProgress(stream, (err: any) =>
-          err ? rej(err) : res(),
+        this.docker.modem.followProgress(
+          stream,
+          (err: Error | null | undefined) => (err ? rej(err) : res()),
         ),
       );
     }

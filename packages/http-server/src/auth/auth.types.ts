@@ -2,7 +2,7 @@ import { AuthProvider } from './providers/auth.provider';
 
 export interface IContextData {
   sub?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface IAuthModuleParams {

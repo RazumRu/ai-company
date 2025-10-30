@@ -4,7 +4,7 @@ import { IBaseResourceOutput } from '../graph-resources.types';
 
 export abstract class BaseResource<
   TConfig = unknown,
-  TOutput extends IBaseResourceOutput<any> = IBaseResourceOutput<unknown>,
+  TOutput extends IBaseResourceOutput<unknown> = IBaseResourceOutput<unknown>,
 > {
   constructor(protected readonly logger?: DefaultLogger) {}
 

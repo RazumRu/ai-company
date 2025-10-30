@@ -19,6 +19,10 @@ export interface AgentCommunicationToolOptions {
 }
 
 export const AgentCommunicationSchema = z.object({
+  purpose: z
+    .string()
+    .min(1)
+    .describe('Brief reason for using this tool. Keep it short (< 120 chars).'),
   messages: z
     .array(z.string().min(1))
     .min(1, 'Provide at least one message')
@@ -58,7 +62,7 @@ export class AgentCommunicationTool extends BaseTool<
 
   public build(
     config: AgentCommunicationToolOptions,
-    lgConfig?: any,
+    lgConfig?: Parameters<typeof this.toolWrapper>[2],
   ): DynamicStructuredTool {
     const enhancedDescription = config.description
       ? `${this.description}\n\n${config.description}`

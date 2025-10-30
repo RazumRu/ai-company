@@ -56,7 +56,7 @@ export const setupSwagger = (
     appName: string;
     version: string;
     description?: string;
-    securitySchemas?: Record<string, any>;
+    securitySchemas?: Record<string, unknown>;
     options?: SwaggerCustomOptions;
   },
 ) => {
@@ -66,7 +66,10 @@ export const setupSwagger = (
     builder.addBearerAuth();
   } else {
     Object.entries(securitySchemas).forEach(([name, schema]) => {
-      builder.addSecurity(name, schema);
+      builder.addSecurity(
+        name,
+        schema as Parameters<typeof builder.addSecurity>[1],
+      );
     });
   }
 
@@ -123,7 +126,14 @@ export const setupMiddlewares = (
   //   app.use(Sentry.Handlers.requestHandler());
   // }
 
-  fastifyInstance.register(<any>qs, { comma: true });
+  fastifyInstance.register(
+    qs as unknown as (
+      instance: FastifyInstance,
+      opts: { comma: boolean },
+      done: (err?: Error) => void,
+    ) => void,
+    { comma: true },
+  );
 
   serverApp.useGlobalFilters(new ExceptionsFilter(serverApp));
 
@@ -213,9 +223,13 @@ export const buildHttpNestApp = async (
   params: IHttpServerParams,
 ) => {
   const adapter = new FastifyAdapter(params.fastifyOptions);
-  const app = await NestFactory.create(appBootstrapperModule, <any>adapter, {
-    rawBody: true,
-  });
+  const app = await NestFactory.create(
+    appBootstrapperModule,
+    adapter as unknown as FastifyAdapter,
+    {
+      rawBody: true,
+    },
+  );
 
   app.enableShutdownHooks();
 

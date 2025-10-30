@@ -17,6 +17,10 @@ export interface ShellToolOptions {
 }
 
 export const ShellToolSchema = z.object({
+  purpose: z
+    .string()
+    .min(1)
+    .describe('Brief reason for using this tool. Keep it short (< 120 chars).'),
   cmd: z.string(),
   timeoutMs: z.number().int().positive().optional(),
   tailTimeoutMs: z.number().int().positive().optional(),
@@ -50,10 +54,10 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
   public build(
     config: ShellToolOptions,
-    lgConfig?: any,
+    lgConfig?: Parameters<typeof this.toolWrapper>[2],
   ): DynamicStructuredTool {
     const enhancedDescription = config.additionalInfo
-      ? `${this.description}\n\nAvailable Resources:\n${config.additionalInfo}`
+      ? `${this.description}\n\n${config.additionalInfo}`
       : this.description;
 
     return this.toolWrapper(this.invoke, config, {
@@ -85,8 +89,11 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     // Merge config env with provided env (provided env takes precedence)
     const mergedEnv = { ...configEnv, ...providedEnv };
 
+    // Extract purpose from data before passing to runtime.exec
+    const { purpose: _purpose, ...execData } = data;
+
     try {
-      const res = await config.runtime.exec({ ...data, env: mergedEnv });
+      const res = await config.runtime.exec({ ...execData, env: mergedEnv });
 
       return {
         exitCode: res.exitCode,

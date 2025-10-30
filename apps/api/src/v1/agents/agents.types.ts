@@ -17,8 +17,10 @@ export interface BaseAgentState {
   messages: BaseMessage[];
   summary: string;
   done: boolean;
+  needsMoreInfo: boolean;
   toolUsageGuardActivated: boolean;
   toolUsageGuardActivatedCount: number;
+  generatedTitle?: string;
 }
 
 export interface BaseAgentStateChange

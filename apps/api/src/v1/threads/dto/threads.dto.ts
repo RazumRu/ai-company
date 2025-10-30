@@ -20,6 +20,11 @@ export const ThreadSchema = z.object({
     .optional()
     .nullable()
     .describe('Source of thread creation (e.g., trigger template name)'),
+  name: z
+    .string()
+    .optional()
+    .nullable()
+    .describe('Thread name (auto-generated from first user message)'),
 });
 
 export const ThreadMessageSchema = z.object({

@@ -127,11 +127,11 @@ describe('GraphRestorationService', () => {
   describe('restoreRunningGraphs', () => {
     it('should restore running graphs successfully', async () => {
       // Arrange
-      graphDao.getTemporaryGraphs.mockResolvedValue([]);
-      graphDao.getTemporaryGraphs.mockResolvedValue([]);
-      graphDao.getRunningGraphs.mockResolvedValue([mockGraph]);
-      graphRegistry.get.mockReturnValue(undefined);
-      graphCompiler.compile.mockResolvedValue(mockCompiledGraph);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(mockCompiledGraph);
 
       // Act
       await service.restoreRunningGraphs();
@@ -148,8 +148,8 @@ describe('GraphRestorationService', () => {
 
     it('should handle no running graphs', async () => {
       // Arrange
-      graphDao.getTemporaryGraphs.mockResolvedValue([]);
-      graphDao.getRunningGraphs.mockResolvedValue([]);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
 
       // Act
       await service.restoreRunningGraphs();
@@ -164,12 +164,12 @@ describe('GraphRestorationService', () => {
     it('should handle compilation errors and update graph status', async () => {
       // Arrange
       const compilationError = new Error('Compilation failed');
-      graphDao.getTemporaryGraphs.mockResolvedValue([]);
-      graphDao.getTemporaryGraphs.mockResolvedValue([]);
-      graphDao.getRunningGraphs.mockResolvedValue([mockGraph]);
-      graphRegistry.get.mockReturnValue(undefined);
-      graphCompiler.compile.mockRejectedValue(compilationError);
-      graphDao.updateById.mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphCompiler.compile).mockRejectedValue(compilationError);
+      vi.mocked(graphDao.updateById).mockResolvedValue(mockGraph);
 
       // Act
       await service.restoreRunningGraphs();
@@ -186,9 +186,9 @@ describe('GraphRestorationService', () => {
 
     it('should skip already registered graphs', async () => {
       // Arrange
-      graphDao.getTemporaryGraphs.mockResolvedValue([]);
-      graphDao.getRunningGraphs.mockResolvedValue([mockGraph]);
-      graphRegistry.get.mockReturnValue(mockCompiledGraph);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
 
       // Act
       await service.restoreRunningGraphs();
@@ -208,15 +208,18 @@ describe('GraphRestorationService', () => {
       };
       const compilationError = new Error('Compilation failed');
 
-      graphDao.getTemporaryGraphs.mockResolvedValue([]);
-      graphDao.getRunningGraphs.mockResolvedValue([mockGraph, mockGraph2]);
-      graphRegistry.get
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([
+        mockGraph,
+        mockGraph2,
+      ]);
+      vi.mocked(graphRegistry.get)
         .mockReturnValueOnce(undefined) // First graph not registered
         .mockReturnValueOnce(undefined); // Second graph not registered
-      graphCompiler.compile
+      vi.mocked(graphCompiler.compile)
         .mockResolvedValueOnce(mockCompiledGraph) // First graph compiles successfully
         .mockRejectedValueOnce(compilationError); // Second graph fails
-      graphDao.updateById.mockResolvedValue(mockGraph2);
+      vi.mocked(graphDao.updateById).mockResolvedValue(mockGraph2);
 
       // Act
       await service.restoreRunningGraphs();
@@ -240,10 +243,14 @@ describe('GraphRestorationService', () => {
         temporary: true,
       };
 
-      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
-      graphDao.getRunningGraphs.mockResolvedValue([]);
-      graphDao.deleteById.mockResolvedValue(undefined);
-      graphCompiler.destroyNotCompiledGraph.mockResolvedValue(undefined);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
+        temporaryGraph,
+      ]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
+      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockResolvedValue(
+        undefined,
+      );
 
       // Act
       await service.restoreRunningGraphs();
@@ -266,10 +273,12 @@ describe('GraphRestorationService', () => {
         temporary: true,
       };
 
-      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
-      graphDao.getRunningGraphs.mockResolvedValue([]);
-      graphDao.deleteById.mockResolvedValue(undefined);
-      graphCompiler.destroyNotCompiledGraph.mockRejectedValue(
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
+        temporaryGraph,
+      ]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
+      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockRejectedValue(
         new Error('Destroy failed'),
       );
 
@@ -300,12 +309,16 @@ describe('GraphRestorationService', () => {
         temporary: false,
       };
 
-      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
-      graphDao.getRunningGraphs.mockResolvedValue([permanentGraph]);
-      graphDao.deleteById.mockResolvedValue(undefined);
-      graphRegistry.get.mockReturnValue(undefined);
-      graphCompiler.destroyNotCompiledGraph.mockResolvedValue(undefined);
-      graphCompiler.compile.mockResolvedValue(mockCompiledGraph);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
+        temporaryGraph,
+      ]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([permanentGraph]);
+      vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockResolvedValue(
+        undefined,
+      );
+      vi.mocked(graphCompiler.compile).mockResolvedValue(mockCompiledGraph);
 
       // Act
       await service.restoreRunningGraphs();
@@ -335,10 +348,14 @@ describe('GraphRestorationService', () => {
       };
       const deletionError = new Error('Deletion failed');
 
-      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
-      graphDao.getRunningGraphs.mockResolvedValue([]);
-      graphCompiler.destroyNotCompiledGraph.mockResolvedValue(undefined);
-      graphDao.deleteById.mockRejectedValue(deletionError);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
+        temporaryGraph,
+      ]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockResolvedValue(
+        undefined,
+      );
+      vi.mocked(graphDao.deleteById).mockRejectedValue(deletionError);
 
       // Act
       await service.restoreRunningGraphs();
@@ -362,9 +379,13 @@ describe('GraphRestorationService', () => {
       };
       const cleanupError = new Error('Container cleanup failed');
 
-      graphDao.getTemporaryGraphs.mockResolvedValue([temporaryGraph]);
-      graphDao.getRunningGraphs.mockResolvedValue([]);
-      graphCompiler.destroyNotCompiledGraph.mockRejectedValue(cleanupError);
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
+        temporaryGraph,
+      ]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockRejectedValue(
+        cleanupError,
+      );
 
       // Act
       await service.restoreRunningGraphs();

@@ -1,7 +1,45 @@
 import { vi } from 'vitest';
 
-export const getRepositoryMock = (): any => {
-  const instance: any = {
+type MockRepositoryInstance = {
+  createQueryBuilder: ReturnType<typeof vi.fn>;
+  insert: ReturnType<typeof vi.fn>;
+  values: ReturnType<typeof vi.fn>;
+  returning: ReturnType<typeof vi.fn>;
+  execute: ReturnType<typeof vi.fn>;
+  where: ReturnType<typeof vi.fn>;
+  orWhere: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
+  offset: ReturnType<typeof vi.fn>;
+  andWhere: ReturnType<typeof vi.fn>;
+  set: ReturnType<typeof vi.fn>;
+  from: ReturnType<typeof vi.fn>;
+  getCount: ReturnType<typeof vi.fn>;
+  getMany: ReturnType<typeof vi.fn>;
+  orderBy: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
+  softDelete: ReturnType<typeof vi.fn>;
+  groupBy: ReturnType<typeof vi.fn>;
+  addGroupBy: ReturnType<typeof vi.fn>;
+  select: ReturnType<typeof vi.fn>;
+  addSelect: ReturnType<typeof vi.fn>;
+  innerJoin: ReturnType<typeof vi.fn>;
+  leftJoin: ReturnType<typeof vi.fn>;
+  distinct: ReturnType<typeof vi.fn>;
+  setParameter: ReturnType<typeof vi.fn>;
+  setParameters: ReturnType<typeof vi.fn>;
+  orUpdate: ReturnType<typeof vi.fn>;
+  withDeleted: ReturnType<typeof vi.fn>;
+  restore: ReturnType<typeof vi.fn>;
+  findOne: ReturnType<typeof vi.fn>;
+  getOne: ReturnType<typeof vi.fn>;
+  getRawMany: ReturnType<typeof vi.fn>;
+  getRawOne: ReturnType<typeof vi.fn>;
+  find: ReturnType<typeof vi.fn>;
+};
+
+export const getRepositoryMock = (): MockRepositoryInstance => {
+  const instance: MockRepositoryInstance = {
     createQueryBuilder: vi.fn(() => instance),
     insert: vi.fn(() => instance),
     values: vi.fn(() => instance),

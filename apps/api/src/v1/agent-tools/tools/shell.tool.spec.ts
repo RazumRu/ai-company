@@ -13,7 +13,7 @@ describe('ShellTool', () => {
       exec: vi.fn(),
       stop: vi.fn(),
       start: vi.fn(),
-    } as any;
+    } as unknown as BaseRuntime;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [ShellTool],
@@ -23,18 +23,32 @@ describe('ShellTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required cmd field', () => {
-      const validData = { cmd: 'echo "hello"' };
+    it('should validate required purpose and cmd fields', () => {
+      const validData = {
+        purpose: 'Testing echo command',
+        cmd: 'echo "hello"',
+      };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
+    it('should reject missing purpose field', () => {
+      const invalidData = { cmd: 'echo "hello"' };
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
     it('should reject missing cmd field', () => {
-      const invalidData = {};
+      const invalidData = { purpose: 'Testing command' };
+      expect(() => tool.schema.parse(invalidData)).toThrow();
+    });
+
+    it('should reject empty purpose', () => {
+      const invalidData = { purpose: '', cmd: 'echo "hello"' };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should validate optional fields', () => {
       const validData = {
+        purpose: 'Testing with all options',
         cmd: 'echo "hello"',
         timeoutMs: 5000,
         tailTimeoutMs: 2000,
@@ -48,32 +62,56 @@ describe('ShellTool', () => {
     });
 
     it('should validate positive timeout', () => {
-      const validData = { cmd: 'echo "hello"', timeoutMs: 1000 };
+      const validData = {
+        purpose: 'Testing timeout',
+        cmd: 'echo "hello"',
+        timeoutMs: 1000,
+      };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
     it('should reject negative timeout', () => {
-      const invalidData = { cmd: 'echo "hello"', timeoutMs: -1000 };
+      const invalidData = {
+        purpose: 'Testing timeout',
+        cmd: 'echo "hello"',
+        timeoutMs: -1000,
+      };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should reject zero timeout', () => {
-      const invalidData = { cmd: 'echo "hello"', timeoutMs: 0 };
+      const invalidData = {
+        purpose: 'Testing timeout',
+        cmd: 'echo "hello"',
+        timeoutMs: 0,
+      };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should validate positive tail timeout', () => {
-      const validData = { cmd: 'echo "hello"', tailTimeoutMs: 1000 };
+      const validData = {
+        purpose: 'Testing tail timeout',
+        cmd: 'echo "hello"',
+        tailTimeoutMs: 1000,
+      };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
     it('should reject negative tail timeout', () => {
-      const invalidData = { cmd: 'echo "hello"', tailTimeoutMs: -1000 };
+      const invalidData = {
+        purpose: 'Testing tail timeout',
+        cmd: 'echo "hello"',
+        tailTimeoutMs: -1000,
+      };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should reject zero tail timeout', () => {
-      const invalidData = { cmd: 'echo "hello"', tailTimeoutMs: 0 };
+      const invalidData = {
+        purpose: 'Testing tail timeout',
+        cmd: 'echo "hello"',
+        tailTimeoutMs: 0,
+      };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
   });
@@ -100,6 +138,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       const result = await builtTool.invoke({
+        purpose: 'Testing echo command',
         cmd: 'echo "hello world"',
       });
 
@@ -127,6 +166,7 @@ describe('ShellTool', () => {
 
       const envArray = [{ key: 'NODE_ENV', value: 'test' }];
       const result = await builtTool.invoke({
+        purpose: 'Testing environment variables',
         cmd: 'echo $NODE_ENV',
         env: envArray,
       });
@@ -155,6 +195,7 @@ describe('ShellTool', () => {
 
       const envArray = [{ key: 'TEST', value: 'value' }];
       const result = await builtTool.invoke({
+        purpose: 'Testing all options',
         cmd: 'pwd',
         timeoutMs: 5000,
         tailTimeoutMs: 2000,
@@ -177,10 +218,13 @@ describe('ShellTool', () => {
     });
 
     it('should throw error when runtime is not provided', async () => {
-      const builtTool = tool.build({ runtime: null as any });
+      const builtTool = tool.build({
+        runtime: null as unknown as BaseRuntime,
+      });
 
       await expect(
         builtTool.invoke({
+          purpose: 'Testing error handling',
           cmd: 'echo "hello"',
         }),
       ).rejects.toThrow('Runtime is required for ShellTool');
@@ -194,6 +238,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       const result = await builtTool.invoke({
+        purpose: 'Testing error handling',
         cmd: 'invalid-command',
       });
 
@@ -212,6 +257,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       const result = await builtTool.invoke({
+        purpose: 'Testing runtime error',
         cmd: 'echo "test"',
       });
 
@@ -234,6 +280,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       await builtTool.invoke({
+        purpose: 'Testing environment variable conversion',
         cmd: 'env',
         env: [
           { key: 'VAR1', value: 'value1' },
@@ -262,6 +309,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       await builtTool.invoke({
+        purpose: 'Testing tail timeout',
         cmd: 'echo "test"',
         tailTimeoutMs: 3000,
       });
@@ -293,6 +341,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       await builtTool.invoke({
+        purpose: 'Testing config environment variables',
         cmd: 'echo $GITHUB_PAT_TOKEN',
       });
 
@@ -322,6 +371,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       await builtTool.invoke({
+        purpose: 'Testing environment variable override',
         cmd: 'echo $GITHUB_PAT_TOKEN',
         env: [{ key: 'GITHUB_PAT_TOKEN', value: 'ghp_provided_token' }],
       });
@@ -346,6 +396,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       await builtTool.invoke({
+        purpose: 'Testing without environment variables',
         cmd: 'echo "test"',
       });
 
@@ -367,6 +418,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       await builtTool.invoke({
+        purpose: 'Testing with empty environment variables',
         cmd: 'echo "test"',
       });
 
@@ -380,7 +432,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = {
         runtime: mockRuntime,
         additionalInfo:
-          '- github-resource: GitHub CLI available for repository operations',
+          'Available Resources:\n- github-resource: GitHub CLI available for repository operations',
       };
 
       const builtTool = tool.build(config);

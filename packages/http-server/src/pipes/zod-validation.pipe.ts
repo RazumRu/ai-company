@@ -6,7 +6,10 @@ import z, { ZodError } from 'zod';
 export class ZodValidationPipe implements PipeTransform {
   transform(value: unknown, { metatype }: ArgumentMetadata) {
     const schema: z.ZodTypeAny | undefined =
-      (metatype as any)?.schema ?? (metatype as any)?.zodSchema;
+      (metatype as { schema?: z.ZodTypeAny; zodSchema?: z.ZodTypeAny })
+        ?.schema ??
+      (metatype as { schema?: z.ZodTypeAny; zodSchema?: z.ZodTypeAny })
+        ?.zodSchema;
 
     if (!schema) return value;
 

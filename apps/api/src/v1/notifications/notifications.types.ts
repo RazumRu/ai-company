@@ -6,6 +6,7 @@ export enum NotificationEvent {
   Graph = 'graph.update',
   AgentMessage = 'agent.message',
   AgentInvoke = 'agent.invoke',
+  AgentStateUpdate = 'agent.state.update',
 }
 
 export interface INotification<T> {
@@ -50,7 +51,24 @@ export interface IAgentInvokeNotification
   source?: string;
 }
 
+export interface IAgentStateUpdateData {
+  generatedTitle?: string;
+  summary?: string;
+  done?: boolean;
+  toolUsageGuardActivated?: boolean;
+  toolUsageGuardActivatedCount?: number;
+}
+
+export interface IAgentStateUpdateNotification
+  extends INotification<IAgentStateUpdateData> {
+  type: NotificationEvent.AgentStateUpdate;
+  nodeId: string;
+  threadId: string;
+  parentThreadId: string;
+}
+
 export type Notification =
   | IGraphNotification
   | IAgentMessageNotification
-  | IAgentInvokeNotification;
+  | IAgentInvokeNotification
+  | IAgentStateUpdateNotification;

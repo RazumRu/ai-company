@@ -22,7 +22,7 @@ describe('ShellToolTemplate', () => {
   beforeEach(async () => {
     mockShellTool = {
       build: vi.fn(),
-    } as any;
+    } as unknown as ShellTool;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -104,6 +104,12 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'node:18',
+          workdir: '/app',
+          enableDind: false,
+        },
       };
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
 
@@ -123,7 +129,7 @@ describe('ShellToolTemplate', () => {
       expect(mockShellTool.build).toHaveBeenCalledWith({
         runtime: mockRuntime,
         env: {},
-        additionalInfo: '',
+        additionalInfo: expect.stringContaining('Runtime Configuration:'),
       });
       expect(result).toBe(mockTool);
     });
@@ -154,9 +160,9 @@ describe('ShellToolTemplate', () => {
           version: '1.0.0',
         });
         throw new Error('Expected NotFoundException to be thrown');
-      } catch (error: any) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(NotFoundException);
-        expect(error.message).toContain(
+        expect((error as NotFoundException).message).toContain(
           'Runtime node not found in output nodes',
         );
       }
@@ -174,6 +180,11 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'node:18',
+          enableDind: false,
+        },
       };
       const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
@@ -214,6 +225,11 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime1,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'node:18',
+          enableDind: false,
+        },
       };
 
       const mockRuntimeNode2: CompiledGraphNode<BaseRuntime> = {
@@ -221,6 +237,11 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime2,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'python:3.11',
+          enableDind: true,
+        },
       };
 
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
@@ -239,7 +260,7 @@ describe('ShellToolTemplate', () => {
       expect(mockShellTool.build).toHaveBeenCalledWith({
         runtime: mockRuntime1,
         env: {},
-        additionalInfo: '',
+        additionalInfo: expect.stringContaining('Runtime Configuration:'),
       });
 
       // Test with second runtime
@@ -255,13 +276,13 @@ describe('ShellToolTemplate', () => {
       expect(mockShellTool.build).toHaveBeenCalledWith({
         runtime: mockRuntime2,
         env: {},
-        additionalInfo: '',
+        additionalInfo: expect.stringContaining('Runtime Configuration:'),
       });
     });
 
     it('should handle null/undefined runtime node gracefully', async () => {
       const connectedNodes = new Map<string, CompiledGraphNode>([
-        ['runtime-1', undefined as any],
+        ['runtime-1', undefined as unknown as CompiledGraphNode],
       ]);
 
       const config = {};
@@ -292,6 +313,12 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'node:18',
+          workdir: '/app',
+          enableDind: false,
+        },
       };
 
       const mockResourceOutput: IShellResourceOutput = {
@@ -309,6 +336,7 @@ describe('ShellToolTemplate', () => {
         id: 'resource-1',
         type: NodeKind.Resource,
         template: 'github-resource',
+        config: {},
         instance: mockResourceOutput,
       };
 
@@ -333,7 +361,21 @@ describe('ShellToolTemplate', () => {
         env: {
           GITHUB_PAT_TOKEN: 'ghp_token',
         },
-        additionalInfo: '- github-resource: GitHub resource information',
+        additionalInfo: expect.stringContaining('Runtime Configuration:'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+        },
+        additionalInfo: expect.stringContaining('Available Resources:'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+        },
+        additionalInfo: expect.stringContaining('GitHub resource information'),
       });
       expect(result).toBe(mockTool);
     });
@@ -355,6 +397,11 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'node:18',
+          enableDind: false,
+        },
       };
 
       const mockResourceOutput: IShellResourceOutput = {
@@ -372,6 +419,7 @@ describe('ShellToolTemplate', () => {
         id: 'resource-1',
         type: NodeKind.Resource,
         template: 'github-resource',
+        config: {},
         instance: mockResourceOutput,
       };
 
@@ -379,7 +427,8 @@ describe('ShellToolTemplate', () => {
         id: 'tool-1',
         type: NodeKind.Tool,
         template: 'web-search-tool',
-        instance: {} as any,
+        config: {},
+        instance: {} as DynamicStructuredTool,
       };
 
       const connectedNodes = new Map<string, CompiledGraphNode>([
@@ -404,7 +453,21 @@ describe('ShellToolTemplate', () => {
         env: {
           GITHUB_PAT_TOKEN: 'ghp_token',
         },
-        additionalInfo: '- github-resource: GitHub resource information',
+        additionalInfo: expect.stringContaining('Runtime Configuration:'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+        },
+        additionalInfo: expect.stringContaining('Available Resources:'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+        },
+        additionalInfo: expect.stringContaining('GitHub resource information'),
       });
       expect(result).toBe(mockTool);
     });
@@ -421,6 +484,11 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'node:18',
+          enableDind: false,
+        },
       };
 
       const connectedNodes = new Map<string, CompiledGraphNode>([
@@ -441,7 +509,7 @@ describe('ShellToolTemplate', () => {
       expect(mockShellTool.build).toHaveBeenCalledWith({
         runtime: mockRuntime,
         env: {}, // Empty object since resource doesn't exist
-        additionalInfo: '',
+        additionalInfo: expect.stringContaining('Runtime Configuration:'),
       });
       expect(result).toBe(mockTool);
     });
@@ -462,6 +530,11 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'node:18',
+          enableDind: false,
+        },
       };
 
       const mockResourceOutput: IShellResourceOutput = {
@@ -479,6 +552,7 @@ describe('ShellToolTemplate', () => {
         id: 'resource-1',
         type: NodeKind.Resource,
         template: 'github-resource',
+        config: {},
         instance: mockResourceOutput,
       };
 
@@ -512,7 +586,21 @@ describe('ShellToolTemplate', () => {
         env: {
           GITHUB_PAT_TOKEN: 'ghp_token',
         },
-        additionalInfo: '- github-resource: GitHub resource information',
+        additionalInfo: expect.stringContaining('Runtime Configuration:'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+        },
+        additionalInfo: expect.stringContaining('Available Resources:'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+        },
+        additionalInfo: expect.stringContaining('GitHub resource information'),
       });
     });
 
@@ -532,6 +620,11 @@ describe('ShellToolTemplate', () => {
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         instance: mockRuntime,
+        config: {
+          runtimeType: 'docker' as const,
+          image: 'node:18',
+          enableDind: true,
+        },
       };
 
       const mockResource1: IShellResourceOutput = {
@@ -561,6 +654,7 @@ describe('ShellToolTemplate', () => {
             id: 'resource-1',
             type: NodeKind.Resource,
             template: 'github-resource',
+            config: {},
             instance: mockResource1,
           },
         ],
@@ -570,6 +664,7 @@ describe('ShellToolTemplate', () => {
             id: 'resource-2',
             type: NodeKind.Resource,
             template: 'api-resource',
+            config: {},
             instance: mockResource2,
           },
         ],
@@ -610,8 +705,31 @@ describe('ShellToolTemplate', () => {
           GITHUB_PAT_TOKEN: 'ghp_token',
           API_KEY: 'api_key',
         },
-        additionalInfo:
-          '- github-resource: GitHub resource\n- api-resource: Another resource',
+        additionalInfo: expect.stringContaining('Runtime Configuration:'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+          API_KEY: 'api_key',
+        },
+        additionalInfo: expect.stringContaining('Available Resources:'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+          API_KEY: 'api_key',
+        },
+        additionalInfo: expect.stringContaining('GitHub resource'),
+      });
+      expect(mockShellTool.build).toHaveBeenCalledWith({
+        runtime: mockRuntime,
+        env: {
+          GITHUB_PAT_TOKEN: 'ghp_token',
+          API_KEY: 'api_key',
+        },
+        additionalInfo: expect.stringContaining('Another resource'),
       });
     });
   });

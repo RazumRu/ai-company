@@ -1,8 +1,11 @@
 import { HumanMessage } from '@langchain/core/messages';
+import { RunnableConfig } from '@langchain/core/runnables';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentCommunicationTool } from '../../../agent-tools/tools/agent-communication.tool';
+import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
+import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { SimpleAgentTemplateResult } from '../base-node.template';
 import { AgentCommunicationToolTemplate } from './agent-communication-tool.template';
@@ -10,7 +13,7 @@ import { AgentCommunicationToolTemplate } from './agent-communication-tool.templ
 describe('AgentCommunicationToolTemplate', () => {
   let template: AgentCommunicationToolTemplate;
   let mockAgentCommunicationTool: AgentCommunicationTool;
-  let mockAgent: any;
+  let mockAgent: SimpleAgent;
 
   beforeEach(async () => {
     mockAgent = {
@@ -18,7 +21,15 @@ describe('AgentCommunicationToolTemplate', () => {
         messages: [new HumanMessage('Agent response')],
         threadId: 'test-thread',
       }),
-    };
+      checkpointer: {} as any,
+      logger: {} as any,
+      notificationsService: {} as any,
+      buildState: vi.fn(),
+      buildGraph: vi.fn(),
+      buildLLM: vi.fn(),
+      addTool: vi.fn(),
+      schema: {} as any,
+    } as unknown as SimpleAgent;
 
     mockAgentCommunicationTool = {
       description:
@@ -29,7 +40,7 @@ describe('AgentCommunicationToolTemplate', () => {
           config.description || mockAgentCommunicationTool.description,
         invoke: vi.fn(),
       })),
-    } as any;
+    } as unknown as AgentCommunicationTool;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -72,10 +83,11 @@ describe('AgentCommunicationToolTemplate', () => {
 
   describe('create', () => {
     it('should create tool with custom description when provided', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
+        config: {},
         instance: {
           agent: mockAgent,
           config: {
@@ -104,10 +116,11 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should use default description when no custom description provided', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
+        config: {},
         instance: {
           agent: mockAgent,
           config: {
@@ -133,10 +146,11 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should create tool with consistent thread ID behavior', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
+        config: {},
         instance: {
           agent: mockAgent,
           config: {
@@ -157,8 +171,8 @@ describe('AgentCommunicationToolTemplate', () => {
       });
 
       expect(mockAgentCommunicationTool.build).toHaveBeenCalled();
-      const buildCall = (mockAgentCommunicationTool.build as any).mock
-        .calls[0][0];
+      const buildCall = vi.mocked(mockAgentCommunicationTool.build).mock
+        .calls[0]![0];
       const invokeAgent = buildCall.invokeAgent;
 
       // Test the invokeAgent function
@@ -169,7 +183,7 @@ describe('AgentCommunicationToolTemplate', () => {
           graph_id: 'test-graph',
           node_id: 'agent-1',
         },
-      } as any;
+      } as RunnableConfig<BaseAgentConfigurable>;
 
       const messages = ['Hello from Agent A'];
       await invokeAgent(messages, mockRunnableConfig);
@@ -191,10 +205,11 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should maintain thread consistency for Agent A -> Agent B -> Agent C chain', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
+        config: {},
         instance: {
           agent: mockAgent,
           config: {
@@ -214,8 +229,8 @@ describe('AgentCommunicationToolTemplate', () => {
         version: '1.0.0',
       });
 
-      const buildCall = (mockAgentCommunicationTool.build as any).mock
-        .calls[0][0];
+      const buildCall = vi.mocked(mockAgentCommunicationTool.build).mock
+        .calls[0]![0];
       const invokeAgent = buildCall.invokeAgent;
 
       // Simulate Agent A -> Agent B call
@@ -227,7 +242,7 @@ describe('AgentCommunicationToolTemplate', () => {
           graph_id: 'test-graph',
           node_id: 'agent-a',
         },
-      } as any;
+      } as RunnableConfig<BaseAgentConfigurable>;
 
       await invokeAgent(['Message from A to B'], agentAConfig);
 
@@ -245,7 +260,7 @@ describe('AgentCommunicationToolTemplate', () => {
       );
 
       // Reset mock for next call
-      mockAgent.run.mockClear();
+      vi.mocked(mockAgent.run).mockClear();
 
       // Simulate Agent B -> Agent C call (using same parent thread)
       const agentBConfig = {
@@ -256,7 +271,7 @@ describe('AgentCommunicationToolTemplate', () => {
           graph_id: 'test-graph',
           node_id: 'agent-b',
         },
-      } as any;
+      } as RunnableConfig<BaseAgentConfigurable>;
 
       await invokeAgent(['Message from B to C'], agentBConfig);
 
@@ -275,10 +290,11 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should fallback to current thread_id when no parent_thread_id is provided', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
+        config: {},
         instance: {
           agent: mockAgent,
           config: {
@@ -298,8 +314,8 @@ describe('AgentCommunicationToolTemplate', () => {
         version: '1.0.0',
       });
 
-      const buildCall = (mockAgentCommunicationTool.build as any).mock
-        .calls[0][0];
+      const buildCall = vi.mocked(mockAgentCommunicationTool.build).mock
+        .calls[0]![0];
       const invokeAgent = buildCall.invokeAgent;
 
       // Test without parent_thread_id
@@ -310,7 +326,7 @@ describe('AgentCommunicationToolTemplate', () => {
           graph_id: 'test-graph',
           node_id: 'agent-1',
         },
-      } as any;
+      } as RunnableConfig<BaseAgentConfigurable>;
 
       await invokeAgent(['Test message'], mockRunnableConfig);
 
@@ -329,10 +345,11 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should return message instead of all messages', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
+        config: {},
         instance: {
           agent: mockAgent,
           config: {
@@ -352,8 +369,8 @@ describe('AgentCommunicationToolTemplate', () => {
         version: '1.0.0',
       });
 
-      const buildCall = (mockAgentCommunicationTool.build as any).mock
-        .calls[0][0];
+      const buildCall = vi.mocked(mockAgentCommunicationTool.build).mock
+        .calls[0]![0];
       const invokeAgent = buildCall.invokeAgent;
 
       const mockRunnableConfig = {
@@ -363,7 +380,7 @@ describe('AgentCommunicationToolTemplate', () => {
           graph_id: 'test-graph',
           node_id: 'agent-1',
         },
-      } as any;
+      } as RunnableConfig<BaseAgentConfigurable>;
 
       const messages = ['Test message'];
       const result = await invokeAgent(messages, mockRunnableConfig);
@@ -373,6 +390,7 @@ describe('AgentCommunicationToolTemplate', () => {
         message: 'Agent response',
         threadId: 'test-thread',
         checkpointNs: undefined,
+        needsMoreInfo: false,
       });
 
       // Verify that messages are not included in the result
@@ -386,14 +404,15 @@ describe('AgentCommunicationToolTemplate', () => {
           messages: [],
           threadId: 'test-thread',
         }),
-      } as any;
+      } as RunnableConfig<BaseAgentConfigurable>;
 
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<any>> = {
+      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
+        config: {},
         instance: {
-          agent: mockAgentEmptyMessages,
+          agent: mockAgentEmptyMessages as unknown as SimpleAgent,
           config: {
             name: 'Test Agent',
             instructions: 'Test instructions',
@@ -411,8 +430,8 @@ describe('AgentCommunicationToolTemplate', () => {
         version: '1.0.0',
       });
 
-      const buildCall = (mockAgentCommunicationTool.build as any).mock
-        .calls[0][0];
+      const buildCall = vi.mocked(mockAgentCommunicationTool.build).mock
+        .calls[0]![0];
       const invokeAgent = buildCall.invokeAgent;
 
       const mockRunnableConfig = {
@@ -422,7 +441,7 @@ describe('AgentCommunicationToolTemplate', () => {
           graph_id: 'test-graph',
           node_id: 'agent-1',
         },
-      } as any;
+      } as RunnableConfig<BaseAgentConfigurable>;
 
       const messages = ['Test message'];
       const result = await invokeAgent(messages, mockRunnableConfig);
@@ -432,6 +451,7 @@ describe('AgentCommunicationToolTemplate', () => {
         message: 'No response message available',
         threadId: 'test-thread',
         checkpointNs: undefined,
+        needsMoreInfo: false,
       });
     });
   });

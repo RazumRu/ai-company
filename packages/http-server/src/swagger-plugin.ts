@@ -8,7 +8,9 @@ import * as ts from 'typescript';
 const modelClassVisitor = new ModelClassVisitor();
 const controllerClassVisitor = new ControllerClassVisitor();
 
-export default function (program: Program): any {
+export default function (
+  program: Program,
+): ts.TransformerFactory<ts.SourceFile> {
   const options = mergePluginOptions({
     dtoFileNameSuffix: ['.dto.ts'],
     introspectComments: true,
@@ -16,12 +18,13 @@ export default function (program: Program): any {
 
   const currentDir = program.getCurrentDirectory();
 
-  return (ctx: ts.TransformationContext): ts.Transformer<any> => {
-    return (sf: ts.SourceFile) => {
+  return (ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile> => {
+    return (sf: ts.SourceFile): ts.SourceFile => {
       if (sf.fileName.startsWith(currentDir)) {
         if (
           isFilenameMatched(<string[]>options.dtoFileNameSuffix, sf.fileName)
         ) {
+          // @ts-ignore
           return modelClassVisitor.visit(sf, ctx, program, options);
         }
         if (
@@ -30,6 +33,7 @@ export default function (program: Program): any {
             sf.fileName,
           )
         ) {
+          // @ts-ignore
           return controllerClassVisitor.visit(sf, ctx, program, options);
         }
       }

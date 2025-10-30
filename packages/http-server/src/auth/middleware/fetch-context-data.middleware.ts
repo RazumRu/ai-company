@@ -12,7 +12,11 @@ export class FetchContextDataMiddleware implements NestMiddleware {
     private readonly logger: BaseLogger,
   ) {}
 
-  use(req: FastifyRequest & any, res: FastifyReply, next: () => void) {
+  use(
+    req: FastifyRequest & Record<string, unknown>,
+    res: FastifyReply,
+    next: () => void,
+  ) {
     this.contextService
       .init()
       .then((contextData) => {

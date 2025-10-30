@@ -25,4 +25,7 @@ export class ThreadEntity extends TimestampsEntity {
 
   @Column({ type: 'varchar', nullable: true })
   source?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  name?: string;
 }

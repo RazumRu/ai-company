@@ -6,6 +6,7 @@ import { ThreadsModule } from '../threads/threads.module';
 import { SocketGateway } from './gateways/socket.gateway';
 import { AgentInvokeNotificationHandler } from './services/event-handlers/agent-invoke-notification-handler';
 import { AgentMessageNotificationHandler } from './services/event-handlers/agent-message-notification-handler';
+import { AgentStateUpdateNotificationHandler } from './services/event-handlers/agent-state-update-notification-handler';
 import { GraphNotificationHandler } from './services/event-handlers/graph-notification-handler';
 import { NotificationHandler } from './services/notification-handler.service';
 
@@ -15,6 +16,7 @@ import { NotificationHandler } from './services/notification-handler.service';
     GraphNotificationHandler,
     AgentMessageNotificationHandler,
     AgentInvokeNotificationHandler,
+    AgentStateUpdateNotificationHandler,
     NotificationHandler,
     SocketGateway,
   ],
@@ -26,12 +28,16 @@ export class NotificationHandlersModule implements OnModuleInit {
     private readonly graphEventHandler: GraphNotificationHandler,
     private readonly agentMessageEventHandler: AgentMessageNotificationHandler,
     private readonly agentInvokeEventHandler: AgentInvokeNotificationHandler,
+    private readonly agentStateUpdateEventHandler: AgentStateUpdateNotificationHandler,
   ) {}
 
   async onModuleInit() {
     this.eventsHandlerService.registerHandler(this.graphEventHandler);
     this.eventsHandlerService.registerHandler(this.agentMessageEventHandler);
     this.eventsHandlerService.registerHandler(this.agentInvokeEventHandler);
+    this.eventsHandlerService.registerHandler(
+      this.agentStateUpdateEventHandler,
+    );
 
     await this.eventsHandlerService.init();
   }

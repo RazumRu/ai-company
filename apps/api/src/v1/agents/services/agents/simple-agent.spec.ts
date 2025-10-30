@@ -1,8 +1,10 @@
 import { HumanMessage } from '@langchain/core/messages';
+import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NotificationEvent } from '../../../notifications/notifications.types';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { SimpleAgent } from './simple-agent';
@@ -22,11 +24,16 @@ vi.mock('@langchain/langgraph');
 describe('SimpleAgent', () => {
   let agent: SimpleAgent;
   let mockCheckpointSaver: PgCheckpointSaver;
+  let mockNotificationsService: NotificationsService;
 
   beforeEach(async () => {
     mockCheckpointSaver = {
       // Mock checkpoint saver methods
-    } as any;
+    } as unknown as PgCheckpointSaver;
+
+    mockNotificationsService = {
+      emit: vi.fn(),
+    } as unknown as NotificationsService;
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [
@@ -46,7 +53,7 @@ describe('SimpleAgent', () => {
         },
         {
           provide: NotificationsService,
-          useValue: { emit: vi.fn() },
+          useValue: mockNotificationsService,
         },
       ],
     }).compile();
@@ -159,7 +166,7 @@ describe('SimpleAgent', () => {
         name: 'test-tool',
         description: 'Test tool',
         invoke: vi.fn(),
-      } as any;
+      } as unknown as DynamicStructuredTool;
 
       const initialToolCount = agent['tools'].length;
 
@@ -170,8 +177,14 @@ describe('SimpleAgent', () => {
     });
 
     it('should add multiple tools', () => {
-      const mockTool1 = { name: 'tool1', invoke: vi.fn() } as any;
-      const mockTool2 = { name: 'tool2', invoke: vi.fn() } as any;
+      const mockTool1 = {
+        name: 'tool1',
+        invoke: vi.fn(),
+      } as unknown as DynamicStructuredTool;
+      const mockTool2 = {
+        name: 'tool2',
+        invoke: vi.fn(),
+      } as unknown as DynamicStructuredTool;
 
       const initialToolCount = agent['tools'].length;
 
@@ -257,6 +270,7 @@ describe('SimpleAgent', () => {
         messages: mockMessages,
         threadId: 'test-thread',
         checkpointNs: undefined,
+        needsMoreInfo: false,
       });
     });
 
@@ -331,6 +345,291 @@ describe('SimpleAgent', () => {
     it('should have buildGraph method available', () => {
       // buildGraph is a private method, just test that the agent has the method
       expect(typeof agent['buildGraph']).toBe('function');
+    });
+  });
+
+  describe('state updates', () => {
+    it('should emit state update notification when generatedTitle changes', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      };
+
+      async function* mockStream() {
+        yield {
+          generate_title: {
+            generatedTitle: 'Generated Title',
+          },
+        };
+      }
+
+      mockGraph.stream = vi.fn().mockReturnValue(mockStream());
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      const runnableConfig = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-789',
+          parent_thread_id: 'parent-thread-123',
+        },
+      };
+
+      await agent.run(
+        'thread-789',
+        [new HumanMessage('Hello')],
+        config,
+        runnableConfig,
+      );
+
+      expect(mockNotificationsService.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.AgentStateUpdate,
+          graphId: 'graph-123',
+          nodeId: 'node-456',
+          threadId: 'thread-789',
+          parentThreadId: 'parent-thread-123',
+          data: expect.objectContaining({
+            generatedTitle: 'Generated Title',
+          }),
+        }),
+      );
+    });
+
+    it('should only include changed fields in state update', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      };
+
+      async function* mockStream() {
+        yield {
+          generate_title: {
+            generatedTitle: 'Generated Title',
+          },
+        };
+        yield {
+          summarize: {
+            summary: 'New Summary',
+          },
+        };
+      }
+
+      mockGraph.stream = vi.fn().mockReturnValue(mockStream());
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      const runnableConfig = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-789',
+          parent_thread_id: 'parent-thread-123',
+        },
+      };
+
+      await agent.run(
+        'thread-789',
+        [new HumanMessage('Hello')],
+        config,
+        runnableConfig,
+      );
+
+      const stateUpdateCalls = vi
+        .mocked(mockNotificationsService.emit)
+        .mock.calls.filter(
+          (call) => call[0]?.type === NotificationEvent.AgentStateUpdate,
+        );
+
+      // Should have separate calls for title and summary changes
+      expect(stateUpdateCalls.length).toBeGreaterThanOrEqual(1);
+
+      // First call should only have generatedTitle
+      const firstCall = stateUpdateCalls[0];
+      if (firstCall) {
+        expect(firstCall[0]).toMatchObject({
+          data: expect.objectContaining({
+            generatedTitle: 'Generated Title',
+          }),
+        });
+      }
+    });
+
+    it('should not emit state update if no state changes', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      };
+
+      async function* mockStream() {
+        yield {
+          node1: {
+            messages: { mode: 'append', items: [] },
+          },
+        };
+      }
+
+      mockGraph.stream = vi.fn().mockReturnValue(mockStream());
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      const runnableConfig = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-789',
+          parent_thread_id: 'parent-thread-123',
+        },
+      };
+
+      await agent.run(
+        'thread-789',
+        [new HumanMessage('Hello')],
+        config,
+        runnableConfig,
+      );
+
+      const stateUpdateCalls = vi
+        .mocked(mockNotificationsService.emit)
+        .mock.calls.filter(
+          (call) => call[0]?.type === NotificationEvent.AgentStateUpdate,
+        );
+
+      // Should not emit state update if nothing changed
+      expect(stateUpdateCalls.length).toBe(0);
+    });
+  });
+
+  describe('agent message notifications (no duplication)', () => {
+    it('emits exactly one AgentMessage per new message across chunks', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      } as unknown as { stream: any };
+
+      // First chunk appends one message, second chunk appends another,
+      // third chunk has no new messages
+      async function* mockStream() {
+        yield {
+          any_node: {
+            messages: { mode: 'append', items: [new HumanMessage('m1')] },
+          },
+        };
+        yield {
+          any_node: {
+            messages: { mode: 'append', items: [new HumanMessage('m2')] },
+          },
+        };
+        yield {
+          any_node: {
+            // no messages change
+          },
+        };
+      }
+
+      mockGraph.stream = vi.fn().mockReturnValue(mockStream());
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      } as any;
+
+      const runnableConfig = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-789',
+          parent_thread_id: 'parent-thread-123',
+        },
+      } as any;
+
+      await agent.run(
+        'thread-789',
+        [new HumanMessage('Hi')],
+        config,
+        runnableConfig,
+      );
+
+      // Expect exactly 2 AgentMessage emits: one for m1, one for m2
+      const emits = (mockNotificationsService.emit as any).mock.calls
+        .map((c: any[]) => c[0])
+        .filter((n: any) => n.type === NotificationEvent.AgentMessage);
+      expect(emits).toHaveLength(2);
+
+      // Ensure payloads correspond to distinct messages
+      expect(emits[0]?.data?.messages?.[0]?.content).toBe('m1');
+      expect(emits[1]?.data?.messages?.[0]?.content).toBe('m2');
+    });
+
+    it('does not re-emit AgentMessage for previously emitted messages', async () => {
+      const mockGraph = { stream: vi.fn() } as unknown as { stream: any };
+
+      async function* mockStream() {
+        // First chunk introduces m1 and m2 at once
+        yield {
+          node_a: {
+            messages: {
+              mode: 'append',
+              items: [new HumanMessage('m1'), new HumanMessage('m2')],
+            },
+          },
+        };
+        // Second chunk repeats no new messages -> should not emit again
+        yield { node_a: {} };
+      }
+
+      mockGraph.stream = vi.fn().mockReturnValue(mockStream());
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      } as any;
+
+      const runnableConfig = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-789',
+          parent_thread_id: 'parent-thread-123',
+        },
+      } as any;
+
+      await agent.run(
+        'thread-789',
+        [new HumanMessage('Hi')],
+        config,
+        runnableConfig,
+      );
+
+      const emits = (mockNotificationsService.emit as any).mock.calls
+        .map((c: any[]) => c[0])
+        .filter((n: any) => n.type === NotificationEvent.AgentMessage);
+
+      // Should emit exactly twice (m1 and m2), no duplicates on second chunk
+      expect(emits).toHaveLength(2);
+      const contents = emits.map((n: any) => n.data.messages[0].content);
+      expect(contents).toEqual(['m1', 'm2']);
     });
   });
 });

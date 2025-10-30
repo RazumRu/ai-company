@@ -23,6 +23,7 @@ import { RegisterAgent } from '../../decorators/register-agent.decorator';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { SummarizeNode } from '../nodes/summarize-node';
+import { TitleGenerationNode } from '../nodes/title-generation-node';
 import { ToolExecutorNode } from '../nodes/tool-executor-node';
 import { ToolUsageGuardNode } from '../nodes/tool-usage-guard-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
@@ -32,7 +33,7 @@ export const SimpleAgentSchema = z.object({
   summarizeMaxTokens: z
     .number()
     .optional()
-    .default(100000)
+    .default(200000)
     .describe(
       'Total token budget for summary + recent context. If current history exceeds this, older messages are folded into the rolling summary.',
     ),
@@ -73,8 +74,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     private readonly notificationsService: NotificationsService,
   ) {
     super();
-
-    this.addTool(new FinishTool().build({}));
   }
 
   public get schema() {
@@ -100,6 +99,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         reducer: (left, right) => right ?? left,
         default: () => false,
       }),
+      needsMoreInfo: Annotation<boolean, boolean>({
+        reducer: (left, right) => right ?? left,
+        default: () => false,
+      }),
       toolUsageGuardActivatedCount: Annotation<number, number>({
         reducer: (left, right) => right ?? left,
         default: () => 0,
@@ -107,6 +110,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       toolUsageGuardActivated: Annotation<boolean, boolean>({
         reducer: (left, right) => right ?? left,
         default: () => false,
+      }),
+      generatedTitle: Annotation<string | undefined, string | undefined>({
+        reducer: (left, right) => right ?? left,
+        default: () => undefined,
       }),
     } satisfies Record<
       keyof BaseAgentState,
@@ -117,6 +124,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   protected buildGraph(config: SimpleAgentSchemaType) {
     // Apply defaults for optional fields
     const enforceToolUsage = config.enforceToolUsage ?? true;
+
+    if (enforceToolUsage) {
+      this.addTool(new FinishTool().build({}));
+    }
 
     // ---- summarize ----
     const summarizeNode = new SummarizeNode(
@@ -135,7 +146,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       tools,
       {
         systemPrompt: config.instructions,
-        toolChoice: 'auto',
+        toolChoice: enforceToolUsage
+          ? { type: 'function', function: { name: 'finish' } }
+          : 'auto',
         parallelToolCalls: true,
       },
       this.logger,
@@ -148,15 +161,26 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       this.logger,
     );
 
+    // ---- title generation ----
+    const titleGenerationNode = new TitleGenerationNode(
+      this.buildLLM('gpt-5-mini'),
+      this.logger,
+    );
+
     // ---- build ----
     const g = new StateGraph({
       stateSchema: this.buildState(),
     })
       .addNode('summarize', summarizeNode.invoke.bind(summarizeNode))
+      .addNode(
+        'generate_title',
+        titleGenerationNode.invoke.bind(titleGenerationNode),
+      )
       .addNode('invoke_llm', invokeLlmNode.invoke.bind(invokeLlmNode))
       .addNode('tools', toolExecutorNode.invoke.bind(toolExecutorNode))
       // ---- routing ----
-      .addEdge(START, 'summarize')
+      .addEdge(START, 'generate_title')
+      .addEdge('generate_title', 'summarize')
       .addEdge('summarize', 'invoke_llm');
 
     // ---- conditional tool usage guard ----
@@ -166,7 +190,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         {
           getRestrictOutput: () => true,
           getRestrictionMessage: () =>
-            "Do not produce a final answer directly. Before finishing, call a tool. If no tool is needed or if you already having a result, call the 'finish' tool.",
+            "You must call a tool before finishing. If you have completed the task or have a final answer, call the 'finish' tool. If you need more information from the user, call the 'finish' tool with needsMoreInfo set to true and include your question in the message. Never provide a direct text response without calling a tool first.",
           getRestrictionMaxInjections: () => 2,
         },
         this.logger,
@@ -201,10 +225,27 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       );
     }
 
-    g.addConditionalEdges('tools', (s) => (s.done ? END : 'summarize'), {
-      summarize: 'summarize',
-      [END]: END,
-    });
+    g.addConditionalEdges(
+      'tools',
+      (s) => {
+        // If done is explicitly set, end
+        if (s.done) {
+          return END;
+        }
+
+        // If needsMoreInfo is set, stop execution and wait for user input
+        if (s.needsMoreInfo) {
+          return END;
+        }
+
+        // Otherwise, continue to summarize
+        return 'summarize';
+      },
+      {
+        summarize: 'summarize',
+        [END]: END,
+      },
+    );
 
     return g.compile({ checkpointer: this.checkpointer });
   }
@@ -214,8 +255,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       messages: [],
       summary: '',
       done: false,
+      needsMoreInfo: false,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
+      generatedTitle: undefined,
     };
   }
 
@@ -233,11 +276,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       messages: nextMessages,
       summary: change.summary ?? prev.summary,
       done: change.done ?? prev.done,
+      needsMoreInfo: change.needsMoreInfo ?? prev.needsMoreInfo,
       toolUsageGuardActivated:
         change.toolUsageGuardActivated ?? prev.toolUsageGuardActivated,
       toolUsageGuardActivatedCount:
         change.toolUsageGuardActivatedCount ??
         prev.toolUsageGuardActivatedCount,
+      generatedTitle: change.generatedTitle ?? prev.generatedTitle,
     };
   }
 
@@ -270,6 +315,65 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         },
       });
     }
+  }
+
+  private async emitStateUpdate(
+    prevState: BaseAgentState,
+    nextState: BaseAgentState,
+    runnableConfig: RunnableConfig<BaseAgentConfigurable> | undefined,
+    threadId: string,
+  ) {
+    const graphId = runnableConfig?.configurable?.graph_id;
+    if (!graphId) return;
+
+    const nodeId = runnableConfig?.configurable?.node_id || 'unknown';
+    const parentThreadId =
+      runnableConfig?.configurable?.parent_thread_id || 'unknown';
+
+    // Build state change object with only changed fields
+    const stateChange: Partial<BaseAgentState> = {};
+
+    if (prevState.generatedTitle !== nextState.generatedTitle) {
+      stateChange.generatedTitle = nextState.generatedTitle;
+    }
+
+    if (prevState.summary !== nextState.summary) {
+      stateChange.summary = nextState.summary;
+    }
+
+    if (prevState.done !== nextState.done) {
+      stateChange.done = nextState.done;
+    }
+
+    if (prevState.needsMoreInfo !== nextState.needsMoreInfo) {
+      stateChange.needsMoreInfo = nextState.needsMoreInfo;
+    }
+
+    if (
+      prevState.toolUsageGuardActivated !== nextState.toolUsageGuardActivated
+    ) {
+      stateChange.toolUsageGuardActivated = nextState.toolUsageGuardActivated;
+    }
+
+    if (
+      prevState.toolUsageGuardActivatedCount !==
+      nextState.toolUsageGuardActivatedCount
+    ) {
+      stateChange.toolUsageGuardActivatedCount =
+        nextState.toolUsageGuardActivatedCount;
+    }
+
+    // Only emit if there are changes
+    if (Object.keys(stateChange).length === 0) return;
+
+    await this.notificationsService.emit({
+      type: NotificationEvent.AgentStateUpdate,
+      graphId,
+      nodeId,
+      threadId,
+      parentThreadId,
+      data: stateChange,
+    });
   }
 
   public async run(
@@ -331,6 +435,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         if (!stateChange || typeof stateChange !== 'object') continue;
 
         const beforeLen = finalState.messages.length;
+        const prevState = { ...finalState };
 
         // Convert state change to final state for tracking
         finalState = this.applyChange(finalState, stateChange);
@@ -342,6 +447,14 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           runnableConfig,
           threadId,
         );
+
+        // Emit state update notification (only changed fields)
+        await this.emitStateUpdate(
+          prevState,
+          finalState,
+          runnableConfig,
+          threadId,
+        );
       }
     }
 
@@ -349,6 +462,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       messages: finalState.messages,
       threadId,
       checkpointNs: runnableConfig?.configurable?.checkpoint_ns,
+      needsMoreInfo: finalState.needsMoreInfo,
     };
   }
 }

@@ -16,7 +16,7 @@ export const TransformQueryArray = (type?: (...args: unknown[]) => unknown) => {
   };
 };
 
-export type TransformEnumOptions<T extends { [key: string]: any }> = {
+export type TransformEnumOptions<T extends { [key: string]: unknown }> = {
   /**
    * Indicates if multiple enum values can be used as the same time (thus being an array).
    * Defaults to `false`.
@@ -34,7 +34,7 @@ export type TransformEnumOptions<T extends { [key: string]: any }> = {
   type?: 'string' | 'number';
 };
 
-export const TransformEnum = <T extends { [key: string]: any }>(
+export const TransformEnum = <T extends { [key: string]: unknown }>(
   options: TransformEnumOptions<T>,
 ) => {
   return function (target: object, propertyKey: string | symbol) {

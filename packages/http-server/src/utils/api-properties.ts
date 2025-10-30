@@ -5,7 +5,7 @@ import { isNumber, isString } from 'lodash';
 
 import { TransformEnum } from './transformers';
 
-export type ApiPropertyEnumOptions<T extends { [key: string]: any }> = {
+export type ApiPropertyEnumOptions<T extends { [key: string]: unknown }> = {
   /**
    * Indicates if multiple enum values can be used as the same time (thus being an array).
    * Defaults to `false`.
@@ -27,7 +27,7 @@ export type ApiPropertyEnumOptions<T extends { [key: string]: any }> = {
   transform?: 'string' | 'number';
 };
 
-export const ApiEnumProperty = <T extends { [key: string]: any }>(
+export const ApiEnumProperty = <T extends { [key: string]: unknown }>(
   options: ApiPropertyEnumOptions<T>,
 ): PropertyDecorator => {
   const {

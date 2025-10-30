@@ -4,7 +4,7 @@ import {
   ValidationOptions,
 } from 'class-validator';
 
-export function IsEqual(value: any, validationOptions?: ValidationOptions) {
+export function IsEqual(value: unknown, validationOptions?: ValidationOptions) {
   return function (object: object, propertyName: string) {
     registerDecorator({
       name: 'isEqual',
@@ -16,7 +16,7 @@ export function IsEqual(value: any, validationOptions?: ValidationOptions) {
         ...(validationOptions || {}),
       },
       validator: {
-        validate(propertyValue: any, args: ValidationArguments) {
+        validate(propertyValue: unknown, args: ValidationArguments) {
           return propertyValue === args.constraints[0];
         },
       },

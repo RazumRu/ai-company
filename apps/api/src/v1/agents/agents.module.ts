@@ -57,7 +57,9 @@ export class AgentsModule implements OnModuleInit {
       }
 
       // Register the agent class itself
-      this.agentFactoryService.register(w.metatype as Class<BaseAgent<any>>);
+      this.agentFactoryService.register(
+        w.metatype as Class<BaseAgent<unknown>>,
+      );
     }
   }
 }

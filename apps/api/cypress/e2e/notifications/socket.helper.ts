@@ -19,7 +19,7 @@ export const waitForSocketEvent = (
   socket: Socket,
   eventName: string,
   timeout = 5000,
-): Cypress.Chainable<any> => {
+): Cypress.Chainable<unknown> => {
   return cy.wrap(
     new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -37,7 +37,7 @@ export const waitForSocketEvent = (
 export const waitForSocketConnection = (
   socket: Socket,
   timeout = 5000,
-): Cypress.Chainable<any> => {
+): Cypress.Chainable<unknown> => {
   return cy.wrap(
     new Promise((resolve, reject) => {
       const timer = setTimeout(() => {

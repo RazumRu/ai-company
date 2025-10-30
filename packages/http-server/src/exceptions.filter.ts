@@ -22,7 +22,7 @@ export class ExceptionsFilter extends BaseExceptionFilter {
     super(applicationRef);
   }
 
-  async catch(exception: any, host: ArgumentsHost) {
+  async catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const contextId = ContextIdFactory.create();
     const response = ctx.getResponse();

@@ -22,8 +22,5 @@ export default defineConfig({
       });
       return _setupNodeEvents(on, config);
     },
-    env: {
-      GITHUB_PAT_TOKEN: process.env.GITHUB_PAT_TOKEN,
-    },
   },
 });

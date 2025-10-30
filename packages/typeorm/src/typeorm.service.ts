@@ -6,14 +6,14 @@ import { IsolationLevel } from 'typeorm/driver/types/IsolationLevel';
 export class TypeormService {
   constructor(private readonly connection: DataSource) {}
 
-  public trx<T = any>(
+  public trx<T = unknown>(
     cb: (entityManager: EntityManager) => Promise<T>,
     entityManager?: EntityManager,
   ): Promise<T> {
     return entityManager ? cb(entityManager) : this.connection.transaction(cb);
   }
 
-  public trxWithIsolationLevel<T = any>(
+  public trxWithIsolationLevel<T = unknown>(
     isolationLevel: IsolationLevel,
     cb: (entityManager: EntityManager) => Promise<T>,
     entityManager?: EntityManager,

@@ -2,6 +2,7 @@ import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { FinishToolResponse } from '../../../agent-tools/tools/finish.tool';
 import { BaseAgentState } from '../../agents.types';
 import { ToolExecutorNode } from './tool-executor-node';
 
@@ -9,28 +10,36 @@ describe('ToolExecutorNode', () => {
   let node: ToolExecutorNode;
   let mockTool1: DynamicStructuredTool;
   let mockTool2: DynamicStructuredTool;
+  let mockFinishTool: DynamicStructuredTool;
 
   beforeEach(() => {
     mockTool1 = {
       name: 'test-tool-1',
       description: 'Test tool 1',
       invoke: vi.fn(),
-    } as any;
+    } as unknown as DynamicStructuredTool;
 
     mockTool2 = {
       name: 'test-tool-2',
       description: 'Test tool 2',
       invoke: vi.fn(),
-    } as any;
+    } as unknown as DynamicStructuredTool;
 
-    node = new ToolExecutorNode([mockTool1, mockTool2]);
+    mockFinishTool = {
+      name: 'finish',
+      description: 'Finish tool',
+      invoke: vi.fn(),
+    } as unknown as DynamicStructuredTool;
+
+    node = new ToolExecutorNode([mockTool1, mockTool2, mockFinishTool]);
   });
 
   describe('constructor', () => {
     it('should initialize with tools', () => {
-      expect(node['tools']).toHaveLength(2);
+      expect(node['tools']).toHaveLength(3);
       expect(node['tools']).toContain(mockTool1);
       expect(node['tools']).toContain(mockTool2);
+      expect(node['tools']).toContain(mockFinishTool);
     });
 
     it('should initialize with empty tools array', () => {
@@ -41,7 +50,7 @@ describe('ToolExecutorNode', () => {
 
   describe('invoke', () => {
     let mockState: BaseAgentState;
-    let mockConfig: any;
+    let mockConfig: Record<string, unknown>;
 
     beforeEach(() => {
       mockState = {
@@ -49,6 +58,7 @@ describe('ToolExecutorNode', () => {
         toolUsageGuardActivated: false,
         summary: '',
         done: false,
+        needsMoreInfo: false,
         toolUsageGuardActivatedCount: 0,
       };
 
@@ -319,6 +329,71 @@ describe('ToolExecutorNode', () => {
         {
           configurable: customConfig.configurable,
         },
+      );
+    });
+
+    it('should handle FinishToolResponse and set done to true', async () => {
+      const toolCall = {
+        id: 'call-1',
+        name: 'finish',
+        args: {
+          purpose: 'Completing the task',
+          message: 'Task completed successfully',
+        },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Finishing task',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+      mockState.done = false;
+      mockFinishTool.invoke = vi
+        .fn()
+        .mockResolvedValue(
+          new FinishToolResponse('Task completed successfully', false),
+        );
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      expect(result.done).toBe(true);
+      expect(result.messages?.items?.[0]?.content).toBe(
+        '{"message":"Task completed successfully","needsMoreInfo":false}',
+      );
+    });
+
+    it('should handle FinishToolResponse with needsMoreInfo and NOT set done to true', async () => {
+      const toolCall = {
+        id: 'call-1',
+        name: 'finish',
+        args: {
+          purpose: 'Asking for more information',
+          message: 'What is the target environment?',
+          needsMoreInfo: true,
+        },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Need more info',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+      mockState.done = false;
+      mockState.needsMoreInfo = false;
+      mockFinishTool.invoke = vi
+        .fn()
+        .mockResolvedValue(
+          new FinishToolResponse('What is the target environment?', true),
+        );
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      expect(result.done).toBeUndefined(); // Should not set done when needsMoreInfo is true
+      expect(result.needsMoreInfo).toBe(true); // Should set needsMoreInfo to true
+      expect(result.messages?.items?.[0]?.content).toBe(
+        '{"message":"What is the target environment?","needsMoreInfo":true}',
       );
     });
   });

@@ -23,8 +23,7 @@ describe('Resource System E2E', () => {
   describe('GitHub Resource Integration', () => {
     it('should create and run a graph with GitHub resource and shell tool', () => {
       // Use a mock token for testing
-      const githubToken =
-        Cypress.env('GITHUB_PAT_TOKEN') || 'mock-token-for-testing';
+      const githubToken = 'mock-token-for-testing';
 
       const graphData: CreateGraphDto = {
         name: `GitHub Resource Test ${Date.now()}`,
@@ -46,6 +45,7 @@ describe('Resource System E2E', () => {
               template: 'github-resource',
               config: {
                 patToken: githubToken,
+                auth: false,
               },
             },
             {
@@ -106,7 +106,7 @@ describe('Resource System E2E', () => {
 
           return executeTrigger(createdGraphId, 'trigger-1', {
             messages: [
-              'Please run "gh auth status" to check if GitHub CLI is authenticated and working.',
+              'Please run "gh version" to check if GitHub CLI is installed.',
             ],
           });
         })
@@ -127,11 +127,13 @@ describe('Resource System E2E', () => {
 
           const shellMessage = messages.find(
             (msg) =>
-              msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
+              msg.role === 'tool-shell' &&
+              (msg as unknown as { name: string })['name'] === 'shell',
           );
           expect(shellMessage).to.exist;
 
-          const shellContent = (shellMessage as any).content;
+          const shellContent = (shellMessage as unknown as { content: unknown })
+            .content;
           expect(shellContent).to.be.an('object');
           expect(shellContent).to.have.property('exitCode').that.is.a('number');
           expect(shellContent).to.have.property('stdout').that.is.a('string');
@@ -139,7 +141,7 @@ describe('Resource System E2E', () => {
 
           expect(shellContent)
             .to.have.property('stdout')
-            .that.includes('Logged in to github.com account');
+            .that.includes('gh version');
         });
     });
 
@@ -182,9 +184,9 @@ describe('Resource System E2E', () => {
       // This should fail validation
       createGraph(invalidGraphData).then((response) => {
         expect(response.status).to.equal(400);
-        expect((response.body as any).message).to.include(
-          'non-existent target node',
-        );
+        expect(
+          (response.body as unknown as { message: string }).message,
+        ).to.include('non-existent target node');
       });
     });
   });

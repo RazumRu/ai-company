@@ -67,12 +67,12 @@ describe('SocketGateway', () => {
         emit: vi.fn(),
         to: vi.fn().mockReturnThis(),
       };
-      (gateway as any).ws = mockServer;
+      (gateway as unknown as { ws: unknown }).ws = mockServer;
 
       // First initialize the gateway to set up the subscription
       gateway.afterInit();
 
-      const mockEnrichedNotification: IEnrichedNotification<any> = {
+      const mockEnrichedNotification: IEnrichedNotification<unknown> = {
         type: 'graph.update' as any,
         graphId: mockGraphId,
         ownerId: mockUserId,
@@ -87,6 +87,46 @@ describe('SocketGateway', () => {
       // Verify that the gateway broadcasts to both rooms
       expect(mockServer.to).toHaveBeenCalledWith(`graph:${mockGraphId}`);
       expect(mockServer.to).toHaveBeenCalledWith(`user:${mockUserId}`);
+    });
+
+    it('should broadcast AgentStateUpdate notifications to graph and user rooms', () => {
+      // Mock the WebSocket server
+      const mockServer = {
+        emit: vi.fn(),
+        to: vi.fn().mockReturnThis(),
+      };
+      (gateway as unknown as { ws: unknown }).ws = mockServer;
+
+      // First initialize the gateway to set up the subscription
+      gateway.afterInit();
+
+      const mockAgentStateUpdateNotification: IEnrichedNotification<unknown> = {
+        type: 'agent.state.update' as any,
+        graphId: mockGraphId,
+        ownerId: mockUserId,
+        data: {
+          generatedTitle: 'Test Thread Title',
+          summary: 'Test summary',
+          done: false,
+        },
+        nodeId: 'agent-1',
+        threadId: 'thread-123',
+      };
+
+      // Get the event handler callback and call it
+      const eventHandlerCallback =
+        eventsHandler.subscribeEvents.mock.calls[0]![0];
+      eventHandlerCallback(mockAgentStateUpdateNotification);
+
+      // Verify that the gateway broadcasts to both rooms
+      expect(mockServer.to).toHaveBeenCalledWith(`graph:${mockGraphId}`);
+      expect(mockServer.to).toHaveBeenCalledWith(`user:${mockUserId}`);
+
+      // Verify the event type is passed correctly
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'agent.state.update',
+        mockAgentStateUpdateNotification,
+      );
     });
   });
 
@@ -169,14 +209,14 @@ describe('SocketGateway', () => {
   });
 
   describe('broadcast methods', () => {
-    let mockServer: any;
+    let mockServer: Record<string, unknown>;
 
     beforeEach(() => {
       mockServer = {
         emit: vi.fn(),
         to: vi.fn().mockReturnThis(),
       };
-      (gateway as any).ws = mockServer;
+      (gateway as unknown as { ws: unknown }).ws = mockServer;
     });
 
     it('should broadcast to all clients', () => {
@@ -197,6 +237,91 @@ describe('SocketGateway', () => {
 
       expect(mockServer.to).toHaveBeenCalledWith(room);
       expect(mockServer.emit).toHaveBeenCalledWith(event, payload);
+    });
+  });
+
+  describe('thread subscription', () => {
+    let mockClient: Socket;
+
+    beforeEach(() => {
+      mockClient = {
+        handshake: {
+          auth: {
+            token: mockToken,
+            'x-dev-jwt-sub': mockUserId,
+          },
+        },
+        id: 'socket-123',
+        data: { userId: mockUserId },
+        emit: vi.fn(),
+        disconnect: vi.fn(),
+        join: vi.fn(),
+        leave: vi.fn(),
+      } as unknown as Socket;
+    });
+
+    it('should allow subscribing to thread updates via graph subscription', async () => {
+      // Mock graph exists
+      graphDao.getOne.mockResolvedValue({
+        id: mockGraphId,
+        createdBy: mockUserId,
+        name: 'Test Graph',
+        description: 'Test Description',
+        version: '1.0.0',
+        temporary: false,
+        schema: {} as any,
+        status: 'compiled' as any,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      });
+
+      await gateway.handleSubscribeGraph(mockClient, { graphId: mockGraphId });
+
+      expect(graphDao.getOne).toHaveBeenCalledWith({
+        id: mockGraphId,
+        createdBy: mockUserId,
+      });
+      expect(mockClient.join).toHaveBeenCalledWith(`graph:${mockGraphId}`);
+    });
+
+    it('should handle thread state updates through graph room', () => {
+      // Mock the WebSocket server
+      const mockServer = {
+        emit: vi.fn(),
+        to: vi.fn().mockReturnThis(),
+      };
+      (gateway as unknown as { ws: unknown }).ws = mockServer;
+
+      // Initialize the gateway
+      gateway.afterInit();
+
+      // Simulate a thread state update notification
+      const threadStateUpdate: IEnrichedNotification<unknown> = {
+        type: 'agent.state.update' as any,
+        graphId: mockGraphId,
+        ownerId: mockUserId,
+        data: {
+          generatedTitle: 'New Thread Title',
+          summary: 'Updated summary',
+          done: true,
+        },
+        nodeId: 'agent-1',
+        threadId: 'thread-123',
+      };
+
+      // Get the event handler callback and call it
+      const eventHandlerCallback =
+        eventsHandler.subscribeEvents.mock.calls[0]![0];
+      eventHandlerCallback(threadStateUpdate);
+
+      // Verify that the gateway broadcasts to the graph room
+      expect(mockServer.to).toHaveBeenCalledWith(`graph:${mockGraphId}`);
+      expect(mockServer.to).toHaveBeenCalledWith(`user:${mockUserId}`);
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'agent.state.update',
+        threadStateUpdate,
+      );
     });
   });
 });

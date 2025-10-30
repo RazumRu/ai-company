@@ -16,6 +16,7 @@ describe('GraphRegistry', () => {
         id: `node-${i}`,
         type: i % 2 === 0 ? NodeKind.Runtime : NodeKind.Tool,
         template: i % 2 === 0 ? 'docker-runtime' : 'web-search-tool',
+        config: {},
         instance: { mockInstance: `instance-${i}` },
       });
     }
@@ -118,6 +119,7 @@ describe('GraphRegistry', () => {
         id: 'node-2',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
+        config: {},
         instance: { mockInstance: 'instance-2' },
       });
     });
@@ -216,6 +218,7 @@ describe('GraphRegistry', () => {
               id: 'only-node',
               type: NodeKind.SimpleAgent,
               template: 'simple-agent',
+              config: {},
               instance: { agent: 'test-agent' },
             },
           ],
@@ -231,6 +234,7 @@ describe('GraphRegistry', () => {
         id: 'only-node',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
+        config: {},
         instance: { agent: 'test-agent' },
       });
     });
@@ -329,6 +333,7 @@ describe('GraphRegistry', () => {
               id: 'runtime-node',
               type: NodeKind.Runtime,
               template: 'docker-runtime',
+              config: {},
               instance: { container: 'docker-container' },
             },
           ],
@@ -338,6 +343,7 @@ describe('GraphRegistry', () => {
               id: 'tool-node',
               type: NodeKind.Tool,
               template: 'shell-tool',
+              config: {},
               instance: { toolName: 'shell-tool' },
             },
           ],
@@ -347,6 +353,7 @@ describe('GraphRegistry', () => {
               id: 'agent-node',
               type: NodeKind.SimpleAgent,
               template: 'simple-agent',
+              config: {},
               instance: { agentName: 'test-agent' },
             },
           ],
@@ -356,6 +363,7 @@ describe('GraphRegistry', () => {
               id: 'trigger-node',
               type: NodeKind.Trigger,
               template: 'manual-trigger',
+              config: {},
               instance: { triggerType: 'manual' },
             },
           ],

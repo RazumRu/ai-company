@@ -192,20 +192,26 @@ describe('Socket Gateway E2E', () => {
     it('should receive error when subscribing without graphId', () => {
       socket.emit('subscribe_graph', {});
 
-      return waitForSocketEvent(socket, 'server_error').then((error) => {
-        expect(error).to.have.property('message');
-        expect(error.message).to.include('Graph ID is required');
-      });
+      return waitForSocketEvent(socket, 'server_error').then(
+        (error: unknown) => {
+          const e = error as { message?: string };
+          expect(e).to.have.property('message');
+          expect(e.message).to.include('Graph ID is required');
+        },
+      );
     });
 
     it('should receive error when subscribing to non-existent graph', () => {
       const fakeGraphId = '00000000-0000-0000-0000-000000000000';
       socket.emit('subscribe_graph', { graphId: fakeGraphId });
 
-      return waitForSocketEvent(socket, 'server_error').then((error) => {
-        expect(error).to.have.property('message');
-        expect(error.message).to.include('Graph not found');
-      });
+      return waitForSocketEvent(socket, 'server_error').then(
+        (error: unknown) => {
+          const e = error as { message?: string };
+          expect(e).to.have.property('message');
+          expect(e.message).to.include('Graph not found');
+        },
+      );
     });
 
     it('should unsubscribe from graph updates', () => {

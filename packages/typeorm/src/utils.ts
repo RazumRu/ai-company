@@ -1,6 +1,8 @@
 import { mapKeys } from 'lodash';
 
-export const removeKeysPrefix = <T extends Record<string, any> = any>(
+export const removeKeysPrefix = <
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(
   alias: string,
   data: T,
 ): T => {

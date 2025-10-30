@@ -1,4 +1,5 @@
 import { HumanMessage } from '@langchain/core/messages';
+import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentOutput } from '../../agents/services/agents/base-agent';
@@ -14,7 +15,7 @@ describe('ManualTrigger', () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-    } as any;
+    } as unknown as DefaultLogger;
     trigger = new ManualTrigger(mockLogger);
   });
 

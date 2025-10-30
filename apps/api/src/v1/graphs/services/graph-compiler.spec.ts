@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { NodeBaseTemplate } from '../../graph-templates/templates/base-node.template';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
@@ -20,13 +22,31 @@ describe('GraphCompiler', () => {
   let compiler: GraphCompiler;
   let templateRegistry: TemplateRegistry;
 
-  const createMockTemplate = (kind: NodeKind): any => ({
-    name: `mock-${kind}`,
-    description: `Mock ${kind} template`,
-    kind,
-    schema: { parse: vi.fn((config) => config) },
-    create: vi.fn(),
-  });
+  const createMockTemplate = (kind: NodeKind) => {
+    let inputs: any[] = [];
+    let outputs: any[] = [];
+
+    if (kind === NodeKind.Tool) {
+      inputs = [{ type: 'kind', value: NodeKind.SimpleAgent, multiple: true }];
+      outputs = [{ type: 'kind', value: NodeKind.Runtime, multiple: false }];
+    } else if (kind === NodeKind.SimpleAgent) {
+      outputs = [{ type: 'kind', value: NodeKind.Tool, multiple: true }];
+    } else if (kind === NodeKind.Runtime) {
+      inputs = [{ type: 'kind', value: NodeKind.Tool, multiple: true }];
+    } else if (kind === NodeKind.Resource) {
+      inputs = [{ type: 'kind', value: NodeKind.Tool, multiple: false }];
+    }
+
+    return {
+      name: `mock-${kind}`,
+      description: `Mock ${kind} template`,
+      kind,
+      schema: z.object({}),
+      inputs,
+      outputs,
+      create: vi.fn(),
+    } as unknown as NodeBaseTemplate<z.ZodTypeAny, unknown>;
+  };
 
   const createMockGraphEntity = (
     schema: GraphSchemaType,
@@ -97,7 +117,9 @@ describe('GraphCompiler', () => {
       };
 
       const mockTemplate = createMockTemplate(NodeKind.Runtime);
-      mockTemplate.create.mockResolvedValue({ container: 'runtime-instance' });
+      vi.mocked(mockTemplate.create).mockResolvedValue({
+        container: 'runtime-instance',
+      });
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'getTemplate').mockReturnValue(mockTemplate);
@@ -113,6 +135,7 @@ describe('GraphCompiler', () => {
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
+        config: schema.nodes[0]!.config,
         instance: { container: 'runtime-instance' },
       });
       expect(result.edges).toEqual([]);
@@ -148,15 +171,20 @@ describe('GraphCompiler', () => {
       const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
       const toolTemplate = createMockTemplate(NodeKind.Tool);
 
-      runtimeTemplate.create.mockResolvedValue({ exec: vi.fn() });
-      toolTemplate.create.mockResolvedValue({ name: 'shell', build: vi.fn() });
+      vi.mocked(runtimeTemplate.create).mockResolvedValue({ exec: vi.fn() });
+      vi.mocked(toolTemplate.create).mockResolvedValue({
+        name: 'shell',
+        build: vi.fn(),
+      });
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'docker-runtime') return runtimeTemplate;
         if (name === 'shell-tool') return toolTemplate;
         return undefined;
-      });
+      }) as any);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
         (_, config) => config,
       );
@@ -171,9 +199,13 @@ describe('GraphCompiler', () => {
         { from: 'shell-tool', to: 'python-runtime' },
       ]);
 
-      expect(runtimeTemplate.create).toHaveBeenCalledBefore(
-        toolTemplate.create,
-      );
+      const runtimeCallOrder = vi.mocked(runtimeTemplate.create).mock
+        .invocationCallOrder[0];
+      const toolCallOrder = vi.mocked(toolTemplate.create).mock
+        .invocationCallOrder[0];
+      expect(runtimeCallOrder).toBeDefined();
+      expect(toolCallOrder).toBeDefined();
+      expect(runtimeCallOrder!).toBeLessThan(toolCallOrder!);
     });
 
     it('should compile complex graph with multiple runtimes, tools, and agents', async () => {
@@ -242,21 +274,26 @@ describe('GraphCompiler', () => {
       const toolTemplate = createMockTemplate(NodeKind.Tool);
       const agentTemplate = createMockTemplate(NodeKind.SimpleAgent);
 
-      runtimeTemplate.create.mockResolvedValue({ exec: vi.fn() });
-      toolTemplate.create.mockResolvedValue({ name: 'tool', build: vi.fn() });
-      agentTemplate.create.mockResolvedValue({
+      vi.mocked(runtimeTemplate.create).mockResolvedValue({ exec: vi.fn() });
+      vi.mocked(toolTemplate.create).mockResolvedValue({
+        name: 'tool',
+        build: vi.fn(),
+      });
+      vi.mocked(agentTemplate.create).mockResolvedValue({
         run: vi.fn(),
         addTool: vi.fn(),
       });
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'docker-runtime') return runtimeTemplate;
         if (name === 'shell-tool') return toolTemplate;
         if (name === 'web-search-tool') return toolTemplate;
         if (name === 'simple-agent') return agentTemplate;
         return undefined;
-      });
+      }) as any);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
         (_, config) => config,
       );
@@ -379,26 +416,28 @@ describe('GraphCompiler', () => {
 
       const createOrder: string[] = [];
 
-      runtimeTemplate.create.mockImplementation(async () => {
+      vi.mocked(runtimeTemplate.create).mockImplementation(async () => {
         createOrder.push('runtime');
         return { exec: vi.fn() };
       });
-      toolTemplate.create.mockImplementation(async () => {
+      vi.mocked(toolTemplate.create).mockImplementation(async () => {
         createOrder.push('tool');
         return { name: 'shell' };
       });
-      agentTemplate.create.mockImplementation(async () => {
+      vi.mocked(agentTemplate.create).mockImplementation(async () => {
         createOrder.push('agent');
         return { run: vi.fn() };
       });
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'docker-runtime') return runtimeTemplate;
         if (name === 'shell-tool') return toolTemplate;
         if (name === 'simple-agent') return agentTemplate;
         return undefined;
-      });
+      }) as any);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
         (_, config) => config,
       );
@@ -435,7 +474,7 @@ describe('GraphCompiler', () => {
       };
 
       const mockTemplate = createMockTemplate(NodeKind.Runtime);
-      mockTemplate.create.mockResolvedValue({ instance: 'test' });
+      vi.mocked(mockTemplate.create).mockResolvedValue({ instance: 'test' });
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'getTemplate').mockReturnValue(mockTemplate);
@@ -474,15 +513,17 @@ describe('GraphCompiler', () => {
       const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
       const toolTemplate = createMockTemplate(NodeKind.Tool);
 
-      runtimeTemplate.create.mockResolvedValue({ exec: vi.fn() });
-      toolTemplate.create.mockResolvedValue({ name: 'shell' });
+      vi.mocked(runtimeTemplate.create).mockResolvedValue({ exec: vi.fn() });
+      vi.mocked(toolTemplate.create).mockResolvedValue({ name: 'shell' });
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'docker-runtime') return runtimeTemplate;
         if (name === 'shell-tool') return toolTemplate;
         return undefined;
-      });
+      }) as any);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockImplementation(
         (_, config) => config,
       );
@@ -502,8 +543,9 @@ describe('GraphCompiler', () => {
       expect(runtimeTemplate.create).toHaveBeenCalled();
       expect(toolTemplate.create).toHaveBeenCalled();
 
-      const inputNodesArg = runtimeTemplate.create.mock.calls[0]![1];
-      const outputNodesArg = runtimeTemplate.create.mock.calls[0]![2];
+      const inputNodesArg = vi.mocked(runtimeTemplate.create).mock.calls[0]![1];
+      const outputNodesArg = vi.mocked(runtimeTemplate.create).mock
+        .calls[0]![2];
       expect(inputNodesArg.has('tool-1')).toBe(false);
       expect(outputNodesArg.has('tool-1')).toBe(false);
     });
@@ -719,14 +761,24 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
-      const mockToolTemplate = createMockTemplate(NodeKind.Tool);
+      const mockResourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        inputs: [{ type: 'kind', value: NodeKind.Tool, multiple: false }],
+      };
+      const mockToolTemplate = {
+        ...createMockTemplate(NodeKind.Tool),
+        outputs: [{ type: 'kind', value: NodeKind.Resource, multiple: false }],
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate')
-        .mockReturnValueOnce(mockResourceTemplate)
-        .mockReturnValueOnce(mockToolTemplate);
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
+        if (name === 'shell-tool') return mockToolTemplate;
+        if (name === 'github-resource') return mockResourceTemplate;
+        return undefined;
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
@@ -781,23 +833,29 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      const mockToolTemplate = createMockTemplate(NodeKind.Tool);
-      mockToolTemplate.name = 'shell-tool';
+      const mockToolTemplate = {
+        ...createMockTemplate(NodeKind.Tool),
+        name: 'shell-tool',
+      };
 
-      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
-      mockResourceTemplate.name = 'forbidden-resource';
-      mockResourceTemplate.inputs = [
-        { type: 'template', value: 'github-resource', multiple: true },
-        { type: 'kind', value: NodeKind.Resource, multiple: true },
-      ];
+      const mockResourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'forbidden-resource',
+        inputs: [
+          { type: 'template', value: 'github-resource', multiple: true },
+          { type: 'kind', value: NodeKind.Resource, multiple: true },
+        ],
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'shell-tool') return mockToolTemplate;
         if (name === 'forbidden-resource') return mockResourceTemplate;
         return undefined;
-      });
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
@@ -826,22 +884,30 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      const mockToolTemplate = createMockTemplate(NodeKind.Tool);
-      mockToolTemplate.name = 'shell-tool';
-      mockToolTemplate.inputs = [
-        { type: 'template', value: 'github-resource', multiple: true },
-      ];
+      const mockToolTemplate = {
+        ...createMockTemplate(NodeKind.Tool),
+        name: 'shell-tool',
+        inputs: [
+          { type: 'template', value: 'github-resource', multiple: true },
+        ],
+        outputs: [{ type: 'kind', value: NodeKind.Resource, multiple: false }],
+      };
 
-      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
-      mockResourceTemplate.name = 'github-resource';
+      const mockResourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'github-resource',
+        inputs: [{ type: 'kind', value: NodeKind.Tool, multiple: false }],
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'shell-tool') return mockToolTemplate;
         if (name === 'github-resource') return mockResourceTemplate;
         return undefined;
-      });
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
@@ -876,23 +942,29 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      const mockToolTemplate = createMockTemplate(NodeKind.Tool);
-      mockToolTemplate.name = 'shell-tool';
+      const mockToolTemplate = {
+        ...createMockTemplate(NodeKind.Tool),
+        name: 'shell-tool',
+      };
 
-      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
-      mockResourceTemplate.name = 'forbidden-resource';
-      mockResourceTemplate.inputs = [
-        { type: 'template', value: 'github-resource', multiple: true },
-        { type: 'kind', value: NodeKind.Resource, multiple: true },
-      ];
+      const mockResourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'forbidden-resource',
+        inputs: [
+          { type: 'template', value: 'github-resource', multiple: true },
+          { type: 'kind', value: NodeKind.Resource, multiple: true },
+        ],
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'shell-tool') return mockToolTemplate;
         if (name === 'forbidden-resource') return mockResourceTemplate;
         return undefined;
-      });
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
@@ -921,22 +993,26 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      const mockToolTemplate = createMockTemplate(NodeKind.Tool);
-      mockToolTemplate.name = 'restricted-tool';
+      const mockToolTemplate = {
+        ...createMockTemplate(NodeKind.Tool),
+        name: 'restricted-tool',
+      };
 
-      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
-      mockResourceTemplate.name = 'some-resource';
-      mockResourceTemplate.inputs = [
-        { type: 'kind', value: NodeKind.Resource, multiple: true },
-      ];
+      const mockResourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'some-resource',
+        inputs: [{ type: 'kind', value: NodeKind.Resource, multiple: true }],
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'restricted-tool') return mockToolTemplate;
         if (name === 'some-resource') return mockResourceTemplate;
         return undefined;
-      });
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
@@ -968,26 +1044,34 @@ describe('GraphCompiler', () => {
         edges: [],
       };
 
-      const mockToolTemplate = createMockTemplate(NodeKind.Tool);
-      mockToolTemplate.name = 'shell-tool';
-      mockToolTemplate.inputs = [
-        { type: 'template', value: 'github-resource', multiple: true },
-      ];
+      const mockToolTemplate = {
+        ...createMockTemplate(NodeKind.Tool),
+        name: 'shell-tool',
+        inputs: [
+          { type: 'template', value: 'github-resource', multiple: true },
+        ],
+      };
 
-      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
-      mockResourceTemplate.name = 'github-resource';
+      const mockResourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'github-resource',
+      };
 
-      const mockRuntimeTemplate = createMockTemplate(NodeKind.Runtime);
-      mockRuntimeTemplate.name = 'docker-runtime';
+      const mockRuntimeTemplate = {
+        ...createMockTemplate(NodeKind.Runtime),
+        name: 'docker-runtime',
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'shell-tool') return mockToolTemplate;
         if (name === 'github-resource') return mockResourceTemplate;
         if (name === 'docker-runtime') return mockRuntimeTemplate;
         return undefined;
-      });
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
@@ -1017,23 +1101,31 @@ describe('GraphCompiler', () => {
         edges: [],
       };
 
-      const mockToolTemplate = createMockTemplate(NodeKind.Tool);
-      mockToolTemplate.name = 'unrestricted-tool';
+      const mockToolTemplate = {
+        ...createMockTemplate(NodeKind.Tool),
+        name: 'unrestricted-tool',
+      };
 
-      const mockResourceTemplate = createMockTemplate(NodeKind.Resource);
-      mockResourceTemplate.name = 'any-resource';
+      const mockResourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'any-resource',
+      };
 
-      const mockRuntimeTemplate = createMockTemplate(NodeKind.Runtime);
-      mockRuntimeTemplate.name = 'docker-runtime';
+      const mockRuntimeTemplate = {
+        ...createMockTemplate(NodeKind.Runtime),
+        name: 'docker-runtime',
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'unrestricted-tool') return mockToolTemplate;
         if (name === 'any-resource') return mockResourceTemplate;
         if (name === 'docker-runtime') return mockRuntimeTemplate;
         return undefined;
-      });
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).not.toThrow();
     });
@@ -1060,22 +1152,28 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      const mockSourceTemplate = createMockTemplate(NodeKind.Tool);
-      mockSourceTemplate.name = 'restricted-source';
-      mockSourceTemplate.outputs = [
-        { type: 'template', value: 'allowed-target', multiple: true },
-      ];
+      const mockSourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'restricted-source',
+        outputs: [
+          { type: 'template', value: 'allowed-target', multiple: true },
+        ],
+      };
 
-      const mockTargetTemplate = createMockTemplate(NodeKind.Resource);
-      mockTargetTemplate.name = 'forbidden-target';
+      const mockTargetTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'forbidden-target',
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'restricted-source') return mockSourceTemplate;
         if (name === 'forbidden-target') return mockTargetTemplate;
         return undefined;
-      });
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
@@ -1107,20 +1205,26 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      const mockSourceTemplate = createMockTemplate(NodeKind.Tool);
-      mockSourceTemplate.name = 'no-output-source';
-      mockSourceTemplate.outputs = [];
+      const mockSourceTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'no-output-source',
+        outputs: [],
+      };
 
-      const mockTargetTemplate = createMockTemplate(NodeKind.Resource);
-      mockTargetTemplate.name = 'any-target';
+      const mockTargetTemplate = {
+        ...createMockTemplate(NodeKind.Resource),
+        name: 'any-target',
+      };
 
       vi.spyOn(templateRegistry, 'hasTemplate').mockReturnValue(true);
       vi.spyOn(templateRegistry, 'validateTemplateConfig').mockReturnValue({});
-      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation((name) => {
+      vi.spyOn(templateRegistry, 'getTemplate').mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'no-output-source') return mockSourceTemplate;
         if (name === 'any-target') return mockTargetTemplate;
         return undefined;
-      });
+      }) as any);
 
       expect(() => compiler.validateSchema(schema)).toThrow(
         BadRequestException,
@@ -1136,7 +1240,7 @@ describe('GraphCompiler', () => {
       const mockTemplate = {
         name: 'mock-template',
         description: 'Mock template',
-        schema: {} as any,
+        schema: z.object({}),
         kind: NodeKind.SimpleAgent,
         inputs: [],
         outputs: [],
@@ -1194,7 +1298,7 @@ describe('GraphCompiler', () => {
         kind: NodeKind.SimpleAgent,
         name: 'simple-agent',
         description: 'Mock template 1',
-        schema: {} as any,
+        schema: z.object({}),
         inputs: [],
         outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'mock-instance-1' }),
@@ -1203,7 +1307,7 @@ describe('GraphCompiler', () => {
         kind: NodeKind.SimpleAgent,
         name: 'simple-agent-2',
         description: 'Mock template 2',
-        schema: {} as any,
+        schema: z.object({}),
         inputs: [],
         outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'mock-instance-2' }),
@@ -1294,7 +1398,7 @@ describe('GraphCompiler', () => {
       const mockTemplate = {
         name: 'mock-template',
         description: 'Mock template',
-        schema: {} as any,
+        schema: z.object({}),
         kind: NodeKind.SimpleAgent,
         inputs: [],
         outputs: [],
@@ -1354,7 +1458,7 @@ describe('GraphCompiler', () => {
         kind: NodeKind.SimpleAgent,
         name: 'simple-agent',
         description: 'Agent template',
-        schema: {} as any,
+        schema: z.object({}),
         inputs: [],
         outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'agent-instance' }),
@@ -1363,7 +1467,7 @@ describe('GraphCompiler', () => {
         kind: NodeKind.Tool,
         name: 'web-search-tool',
         description: 'Tool template',
-        schema: {} as any,
+        schema: z.object({}),
         inputs: [],
         outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'tool-instance' }),
@@ -1372,7 +1476,7 @@ describe('GraphCompiler', () => {
         kind: NodeKind.Runtime,
         name: 'docker-runtime',
         description: 'Runtime template',
-        schema: {} as any,
+        schema: z.object({}),
         inputs: [],
         outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'runtime-instance' }),
@@ -1381,7 +1485,7 @@ describe('GraphCompiler', () => {
         kind: NodeKind.Trigger,
         name: 'manual-trigger',
         description: 'Trigger template',
-        schema: {} as any,
+        schema: z.object({}),
         inputs: [],
         outputs: [],
         create: vi.fn().mockResolvedValue({ instance: 'trigger-instance' }),
@@ -1607,7 +1711,7 @@ describe('GraphCompiler', () => {
           {
             id: 'github-resource-1',
             template: 'github-resource',
-            config: { patToken: 'test-token' },
+            config: { patToken: 'test-token', auth: false },
           },
           {
             id: 'shell-tool-1',
@@ -1627,13 +1731,15 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+      vi.mocked(templateRegistry.getTemplate).mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'shell-tool') {
           return {
             name: 'shell-tool',
             kind: NodeKind.Tool,
             description: 'Shell tool',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1663,7 +1769,7 @@ describe('GraphCompiler', () => {
             name: 'docker-runtime',
             kind: NodeKind.Runtime,
             description: 'Docker runtime',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1686,7 +1792,7 @@ describe('GraphCompiler', () => {
             name: 'github-resource',
             kind: NodeKind.Resource,
             description: 'GitHub resource',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1705,7 +1811,7 @@ describe('GraphCompiler', () => {
           };
         }
         return undefined;
-      });
+      }) as any);
 
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
         return ['shell-tool', 'docker-runtime', 'github-resource'].includes(
@@ -1732,13 +1838,15 @@ describe('GraphCompiler', () => {
         edges: [],
       };
 
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+      vi.mocked(templateRegistry.getTemplate).mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'shell-tool') {
           return {
             name: 'shell-tool',
             kind: NodeKind.Tool,
             description: 'Shell tool',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1768,7 +1876,7 @@ describe('GraphCompiler', () => {
             name: 'github-resource',
             kind: NodeKind.Resource,
             description: 'GitHub resource',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1787,7 +1895,7 @@ describe('GraphCompiler', () => {
           };
         }
         return undefined;
-      });
+      }) as any);
 
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
         return ['shell-tool'].includes(name);
@@ -1816,7 +1924,7 @@ describe('GraphCompiler', () => {
           {
             id: 'github-resource-1',
             template: 'github-resource',
-            config: { patToken: 'test-token' },
+            config: { patToken: 'test-token', auth: false },
           },
           {
             id: 'shell-tool-1',
@@ -1836,13 +1944,15 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+      vi.mocked(templateRegistry.getTemplate).mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'shell-tool') {
           return {
             name: 'shell-tool',
             kind: NodeKind.Tool,
             description: 'Shell tool',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1872,7 +1982,7 @@ describe('GraphCompiler', () => {
             name: 'docker-runtime',
             kind: NodeKind.Runtime,
             description: 'Docker runtime',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1895,7 +2005,7 @@ describe('GraphCompiler', () => {
             name: 'github-resource',
             kind: NodeKind.Resource,
             description: 'GitHub resource',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1918,7 +2028,7 @@ describe('GraphCompiler', () => {
             name: 'github-resource',
             kind: NodeKind.Resource,
             description: 'GitHub resource',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -1937,7 +2047,7 @@ describe('GraphCompiler', () => {
           };
         }
         return undefined;
-      });
+      }) as any);
 
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
         return ['shell-tool', 'docker-runtime', 'github-resource'].includes(
@@ -1974,13 +2084,15 @@ describe('GraphCompiler', () => {
         ],
       };
 
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+      vi.mocked(templateRegistry.getTemplate).mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'shell-tool') {
           return {
             name: 'shell-tool',
             kind: NodeKind.Tool,
             description: 'Shell tool',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -2010,7 +2122,7 @@ describe('GraphCompiler', () => {
             name: 'docker-runtime',
             kind: NodeKind.Runtime,
             description: 'Docker runtime',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -2033,7 +2145,7 @@ describe('GraphCompiler', () => {
             name: 'github-resource',
             kind: NodeKind.Resource,
             description: 'GitHub resource',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -2052,7 +2164,7 @@ describe('GraphCompiler', () => {
           };
         }
         return undefined;
-      });
+      }) as any);
 
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
         return ['shell-tool', 'docker-runtime'].includes(name);
@@ -2086,13 +2198,15 @@ describe('GraphCompiler', () => {
         edges: [],
       };
 
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+      vi.mocked(templateRegistry.getTemplate).mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'simple-agent') {
           return {
             name: 'simple-agent',
             kind: NodeKind.SimpleAgent,
             description: 'Simple agent',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -2116,7 +2230,7 @@ describe('GraphCompiler', () => {
             name: 'github-resource',
             kind: NodeKind.Resource,
             description: 'GitHub resource',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -2135,7 +2249,7 @@ describe('GraphCompiler', () => {
           };
         }
         return undefined;
-      });
+      }) as any);
 
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
         return ['simple-agent'].includes(name);
@@ -2160,13 +2274,15 @@ describe('GraphCompiler', () => {
         edges: [],
       };
 
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((name) => {
+      vi.mocked(templateRegistry.getTemplate).mockImplementation(((
+        name: string,
+      ) => {
         if (name === 'web-search-tool') {
           return {
             name: 'web-search-tool',
             kind: NodeKind.Tool,
             description: 'Web search tool',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -2189,7 +2305,7 @@ describe('GraphCompiler', () => {
             name: 'github-resource',
             kind: NodeKind.Resource,
             description: 'GitHub resource',
-            schema: {} as any,
+            schema: z.object({}),
             inputs: [
               {
                 type: 'kind',
@@ -2208,7 +2324,7 @@ describe('GraphCompiler', () => {
           };
         }
         return undefined;
-      });
+      }) as any);
 
       vi.mocked(templateRegistry.hasTemplate).mockImplementation((name) => {
         return ['web-search-tool'].includes(name);

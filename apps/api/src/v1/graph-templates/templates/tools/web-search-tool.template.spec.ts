@@ -16,7 +16,7 @@ describe('WebSearchToolTemplate', () => {
   beforeEach(async () => {
     mockWebSearchTool = {
       build: vi.fn(),
-    } as any;
+    } as unknown as WebSearchTool;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,8 +50,8 @@ describe('WebSearchToolTemplate', () => {
   });
 
   describe('schema validation', () => {
-    it('should validate empty configuration', () => {
-      const validConfig = {};
+    it('should validate configuration with apiKey', () => {
+      const validConfig = { apiKey: 'test-api-key' };
 
       expect(() =>
         WebSearchToolTemplateSchema.parse(validConfig),
@@ -72,11 +72,11 @@ describe('WebSearchToolTemplate', () => {
   });
 
   describe('create', () => {
-    it('should create web search tool with empty configuration', async () => {
+    it('should create web search tool with apiKey configuration', async () => {
       const mockTool = { name: 'web-search' } as DynamicStructuredTool;
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {};
+      const config = { apiKey: 'test-api-key' };
       const compiledNodes = new Map<string, CompiledGraphNode>();
 
       const result = await template.create(config, new Map(), compiledNodes, {
@@ -94,9 +94,8 @@ describe('WebSearchToolTemplate', () => {
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = {
-        customProperty: 'value',
-        timeout: 5000,
-      } as any;
+        apiKey: 'test-api-key',
+      };
 
       const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
@@ -114,7 +113,7 @@ describe('WebSearchToolTemplate', () => {
         throw mockError;
       });
 
-      const config = {};
+      const config = { apiKey: 'test-api-key' };
 
       await expect(
         template.create(config, new Map(), new Map(), {
@@ -129,7 +128,7 @@ describe('WebSearchToolTemplate', () => {
       const mockTool = { name: 'web-search' } as DynamicStructuredTool;
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = {};
+      const config = { apiKey: 'test-api-key' };
       const compiledNodes = new Map([
         [
           'some-node',
@@ -137,6 +136,7 @@ describe('WebSearchToolTemplate', () => {
             id: 'some-node',
             type: NodeKind.Runtime,
             template: 'some-template',
+            config: {},
             instance: {},
           },
         ],
@@ -163,7 +163,7 @@ describe('WebSearchToolTemplate', () => {
         timeout: 30000,
         enableCache: true,
         customHeaders: { 'User-Agent': 'test-agent' },
-      } as any;
+      };
 
       await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
@@ -178,7 +178,7 @@ describe('WebSearchToolTemplate', () => {
       const mockTool = { name: 'web-search' } as DynamicStructuredTool;
       mockWebSearchTool.build = vi.fn().mockResolvedValue(mockTool);
 
-      const config = {};
+      const config = { apiKey: 'test-api-key' };
 
       const result = await template.create(config, new Map(), new Map(), {
         graphId: 'test-graph',
@@ -198,8 +198,8 @@ describe('WebSearchToolTemplate', () => {
         .mockReturnValueOnce(mockTool1)
         .mockReturnValueOnce(mockTool2);
 
-      const config1 = { instance: 1 } as any;
-      const config2 = { instance: 2 } as any;
+      const config1 = { apiKey: 'test-key-1' };
+      const config2 = { apiKey: 'test-key-2' };
 
       const result1 = await template.create(config1, new Map(), new Map(), {
         graphId: 'test-graph',

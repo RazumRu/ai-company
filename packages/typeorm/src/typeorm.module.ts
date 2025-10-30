@@ -38,7 +38,9 @@ export class TypeormModule {
 
   static forRootTesting(
     dataSource: DataSource,
-    entities: MixedList<(new (...args: any[]) => any) | string | EntitySchema>,
+    entities: MixedList<
+      (new (...args: unknown[]) => unknown) | string | EntitySchema
+    >,
   ): DynamicModule {
     dataSource.setOptions({
       ...dataSource.options,

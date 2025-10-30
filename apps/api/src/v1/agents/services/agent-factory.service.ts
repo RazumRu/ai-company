@@ -11,21 +11,21 @@ import { BaseAgent } from './agents/base-agent';
  */
 @Injectable()
 export class AgentFactoryService {
-  private agents = new Set<Class<BaseAgent<any>>>();
+  private agents = new Set<Class<BaseAgent<unknown>>>();
 
   constructor(private readonly moduleRef: ModuleRef) {}
 
   /**
    * Register an agent factory
    */
-  register(agentType: Class<BaseAgent<any>>) {
+  register(agentType: Class<BaseAgent<unknown>>) {
     this.agents.add(agentType);
   }
 
   /**
    * Get an agent factory by type
    */
-  create<T extends BaseAgent<any>>(
+  create<T extends BaseAgent<unknown>>(
     agentType: Class<T>,
     ctx?: ContextId,
   ): Promise<T> {

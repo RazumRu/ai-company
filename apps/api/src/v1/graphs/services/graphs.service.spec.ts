@@ -11,6 +11,7 @@ import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { GraphDao } from '../dao/graph.dao';
 import { CreateGraphDto, GraphDto, UpdateGraphDto } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
+import { CompiledGraphNode } from '../graphs.types';
 import { CompiledGraph, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
@@ -86,6 +87,7 @@ describe('GraphsService', () => {
           id: 'node-1',
           type: NodeKind.Runtime,
           template: 'test-runtime',
+          config: {},
           instance: { container: 'test-container' },
         },
       ],
@@ -208,10 +210,13 @@ describe('GraphsService', () => {
     };
 
     vi.mocked(messageTransformer.transformMessageToDto).mockImplementation(
-      transformMessage as any,
+      transformMessage as unknown as typeof messageTransformer.transformMessageToDto,
     );
     vi.mocked(messageTransformer.transformMessagesToDto).mockImplementation(
-      (messages) => messages.map(transformMessage as any),
+      (messages) =>
+        messages.map(
+          transformMessage as unknown as typeof messageTransformer.transformMessageToDto,
+        ),
     );
   });
 
@@ -819,7 +824,9 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
-      vi.mocked(graphRegistry.getNode).mockReturnValue(mockTriggerNode as any);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(
+        mockTriggerNode as unknown as CompiledGraphNode,
+      );
 
       const result = await service.executeTrigger(mockGraphId, triggerId, {
         messages: ['Test message'],
@@ -882,7 +889,9 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
-      vi.mocked(graphRegistry.getNode).mockReturnValue(mockTriggerNode as any);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(
+        mockTriggerNode as unknown as CompiledGraphNode,
+      );
 
       const result = await service.executeTrigger(mockGraphId, triggerId, {
         messages: ['Test message'],
@@ -951,7 +960,9 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
-      vi.mocked(graphRegistry.getNode).mockReturnValue(mockNode as any);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(
+        mockNode as unknown as CompiledGraphNode,
+      );
 
       await expect(
         service.executeTrigger(mockGraphId, 'node-1', { messages: ['Test'] }),
@@ -975,7 +986,9 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
-      vi.mocked(graphRegistry.getNode).mockReturnValue(mockTriggerNode as any);
+      vi.mocked(graphRegistry.getNode).mockReturnValue(
+        mockTriggerNode as unknown as CompiledGraphNode,
+      );
 
       await expect(
         service.executeTrigger(mockGraphId, triggerId, { messages: ['Test'] }),

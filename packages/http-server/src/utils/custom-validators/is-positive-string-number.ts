@@ -17,7 +17,7 @@ export function IsPositiveStringNumber(validationOptions?: ValidationOptions) {
         ...(validationOptions || {}),
       },
       validator: {
-        validate(value: any) {
+        validate(value: unknown) {
           const parsedValue = Number(value);
           return !isNaN(parsedValue) && parsedValue > 0;
         },

@@ -73,7 +73,7 @@ describe('TemplatesService', () => {
     it('should return all templates with serialized schemas', async () => {
       // Arrange
       vi.mocked(templateRegistry.getAllTemplates).mockReturnValue(
-        mockTemplates as any,
+        mockTemplates as unknown as any[],
       );
 
       // Act
@@ -158,7 +158,7 @@ describe('TemplatesService', () => {
       };
       vi.mocked(templateRegistry.getAllTemplates).mockReturnValue([
         complexTemplate,
-      ] as any);
+      ] as unknown as any[]);
 
       // Act
       const result = await service.getAllTemplates();
@@ -188,7 +188,9 @@ describe('TemplatesService', () => {
       const schema = z.object({ name: z.string() });
 
       // Act
-      const result = (service as any).serializeSchema(schema);
+      const result = (
+        service as unknown as { serializeSchema: (schema: unknown) => unknown }
+      ).serializeSchema(schema);
 
       expect(result).toEqual({
         $schema: 'http://json-schema.org/draft-07/schema#',
@@ -204,7 +206,9 @@ describe('TemplatesService', () => {
       const schema = z.string(); // Simple schema that will work
 
       // Act
-      const result = (service as any).serializeSchema(schema);
+      const result = (
+        service as unknown as { serializeSchema: (schema: unknown) => unknown }
+      ).serializeSchema(schema);
 
       expect(result).toEqual({
         $schema: 'http://json-schema.org/draft-07/schema#',

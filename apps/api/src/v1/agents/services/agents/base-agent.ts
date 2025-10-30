@@ -11,6 +11,7 @@ export type AgentOutput = {
   messages: BaseMessage[];
   threadId: string;
   checkpointNs?: string;
+  needsMoreInfo?: boolean;
 };
 
 export abstract class BaseAgent<TSchema> {

@@ -4,6 +4,7 @@ import { BadRequestException, DefaultLogger } from '@packages/common';
 import { environment } from '../../../environments';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { NodeConnection } from '../../graph-templates/templates/base-node.template';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
@@ -116,7 +117,7 @@ export class GraphCompiler {
         );
       }
 
-      const isAllowed = sourceTemplate.outputs.some((rule: any) => {
+      const isAllowed = sourceTemplate.outputs.some((rule: NodeConnection) => {
         if (!rule || typeof rule !== 'object') return false;
         if (rule.type === 'template') return rule.value === targetTemplateName;
         if (rule.type === 'kind') return rule.value === targetTemplate.kind;
@@ -125,7 +126,7 @@ export class GraphCompiler {
 
       if (!isAllowed) {
         const rulesHuman = sourceTemplate.outputs
-          .map((r: any) => `${r.type}:${r.value}`)
+          .map((r: NodeConnection) => `${r.type}:${r.value}`)
           .join(', ');
         throw new BadRequestException(
           'WRONG_EDGE_CONNECTION',
@@ -144,7 +145,7 @@ export class GraphCompiler {
         );
       }
 
-      const isAllowed = targetTemplate.inputs.some((rule: any) => {
+      const isAllowed = targetTemplate.inputs.some((rule: NodeConnection) => {
         if (!rule || typeof rule !== 'object') return false;
         if (rule.type === 'template') return rule.value === sourceTemplateName;
         if (rule.type === 'kind') return rule.value === sourceTemplate.kind;
@@ -153,7 +154,7 @@ export class GraphCompiler {
 
       if (!isAllowed) {
         const rulesHuman = targetTemplate.inputs
-          .map((r: any) => `${r.type}:${r.value}`)
+          .map((r: NodeConnection) => `${r.type}:${r.value}`)
           .join(', ');
         throw new BadRequestException(
           'WRONG_EDGE_CONNECTION',
@@ -166,7 +167,10 @@ export class GraphCompiler {
   /**
    * Validates that templates with required=true in outputs have at least one connection
    */
-  private validateRequiredConnections(nodes: any[], edges: any[]): void {
+  private validateRequiredConnections(
+    nodes: GraphNodeSchemaType[],
+    edges: GraphEdgeSchemaType[],
+  ): void {
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
     for (const node of nodes) {
@@ -177,7 +181,7 @@ export class GraphCompiler {
 
       // Find required connection rules
       const requiredRules = template.outputs.filter(
-        (rule: any) => rule.required === true,
+        (rule: NodeConnection) => rule.required === true,
       );
 
       for (const rule of requiredRules) {
@@ -279,12 +283,12 @@ export class GraphCompiler {
     nodes: Map<string, CompiledGraphNode>,
   ): Promise<void> {
     const destroyPromises: Promise<void>[] = [];
-    const triggerNodes: CompiledGraphNode<BaseTrigger<any>>[] = [];
+    const triggerNodes: CompiledGraphNode<BaseTrigger<unknown>>[] = [];
     const runtimeNodes: CompiledGraphNode<BaseRuntime>[] = [];
 
     for (const node of nodes.values()) {
       if (node.type === NodeKind.Trigger) {
-        triggerNodes.push(node as CompiledGraphNode<BaseTrigger<any>>);
+        triggerNodes.push(node as CompiledGraphNode<BaseTrigger<unknown>>);
       } else if (node.type === NodeKind.Runtime) {
         runtimeNodes.push(node as CompiledGraphNode<BaseRuntime>);
       }
@@ -391,6 +395,7 @@ export class GraphCompiler {
       type: template.kind,
       template: node.template,
       instance,
+      config,
     };
   }
 

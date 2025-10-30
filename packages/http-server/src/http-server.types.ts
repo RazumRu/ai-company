@@ -11,7 +11,7 @@ export interface IHttpServerParams {
     options?: SwaggerCustomOptions;
     path?: string;
     description?: string;
-    securitySchemas?: Record<string, any>;
+    securitySchemas?: Record<string, unknown>;
   };
   apiDefaultVersion?: string;
   port?: number;
@@ -27,9 +27,9 @@ export interface IRequestData {
   requestId: string;
   ip: string;
   method: string;
-  body: any;
+  body: unknown;
   url: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ISentryExceptionData

@@ -81,14 +81,17 @@ describe('Shell Execution E2E', () => {
               // Find the shell tool message
               const shellMessage = messages.find(
                 (msg) =>
-                  msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
+                  msg.role === 'tool-shell' &&
+                  (msg as unknown as { name: string })['name'] === 'shell',
               );
               expect(shellMessage).to.exist;
               expect(shellMessage).to.have.property('name', 'shell');
               expect(shellMessage).to.have.property('toolCallId');
 
               // Verify shell message content structure (ShellToolResultDto)
-              const shellContent = (shellMessage as any).content;
+              const shellContent = (
+                shellMessage as unknown as { content: unknown }
+              ).content;
               expect(shellContent).to.be.an('object');
               expect(shellContent)
                 .to.have.property('exitCode')
@@ -102,7 +105,11 @@ describe('Shell Execution E2E', () => {
 
               // Verify the shell command output
               expect(shellContent).to.have.property('exitCode', 0);
-              expect(String(shellContent['stdout']).toLowerCase()).to.satisfy(
+              expect(
+                String(
+                  (shellContent as { stdout: unknown }).stdout,
+                ).toLowerCase(),
+              ).to.satisfy(
                 (content: string) =>
                   content.includes('hello') || content.includes('cypress'),
                 'Shell output should contain the echo result',
@@ -149,7 +156,8 @@ describe('Shell Execution E2E', () => {
               // Find shell tool messages
               const shellMessages = messages.filter(
                 (msg) =>
-                  msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
+                  msg.role === 'tool-shell' &&
+                  (msg as unknown as { name: string })['name'] === 'shell',
               );
               expect(shellMessages.length).to.greaterThan(0);
 
@@ -352,12 +360,15 @@ describe('Shell Execution E2E', () => {
               // Find the shell tool message
               const shellMessage = messages.find(
                 (msg) =>
-                  msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
+                  msg.role === 'tool-shell' &&
+                  (msg as unknown as { name: string })['name'] === 'shell',
               );
               expect(shellMessage).to.exist;
 
               // Verify shell message content structure
-              const shellContent = (shellMessage as any).content;
+              const shellContent = (
+                shellMessage as unknown as { content: unknown }
+              ).content;
               expect(shellContent).to.be.an('object');
               expect(shellContent)
                 .to.have.property('exitCode')
@@ -406,12 +417,15 @@ describe('Shell Execution E2E', () => {
               // Find the shell tool message
               const shellMessage = messages.find(
                 (msg) =>
-                  msg.role === 'tool-shell' && (msg as any)['name'] === 'shell',
+                  msg.role === 'tool-shell' &&
+                  (msg as unknown as { name: string })['name'] === 'shell',
               );
               expect(shellMessage).to.exist;
 
               // Verify shell message content structure
-              const shellContent = (shellMessage as any).content;
+              const shellContent = (
+                shellMessage as unknown as { content: unknown }
+              ).content;
               expect(shellContent).to.be.an('object');
               expect(shellContent)
                 .to.have.property('exitCode')
@@ -426,8 +440,12 @@ describe('Shell Execution E2E', () => {
               // The command should have completed successfully (exit code 0)
               // since it produces output within the tail timeout
               expect(shellContent).to.have.property('exitCode', 0);
-              expect((shellContent as any).stdout).to.contain('start');
-              expect((shellContent as any).stdout).to.contain('end');
+              expect(
+                (shellContent as unknown as { stdout: string }).stdout,
+              ).to.contain('start');
+              expect(
+                (shellContent as unknown as { stdout: string }).stdout,
+              ).to.contain('end');
             });
         },
       );
@@ -479,7 +497,9 @@ describe('Shell Execution E2E', () => {
 
               // The command should have completed successfully
               expect(shellContent).to.have.property('exitCode', 0);
-              expect((shellContent as any).stdout).to.contain('success');
+              expect(
+                (shellContent as unknown as { stdout: string }).stdout,
+              ).to.contain('success');
             });
         },
       );

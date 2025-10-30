@@ -23,7 +23,8 @@ export class RequestContextService {
       method: this.request.method,
       body: this.request.body,
       url: this.request.originalUrl,
-      ...((<any>this.request).__contextData || {}),
+      ...((this.request as unknown as Record<string, unknown>).__contextData ||
+        {}),
     };
   }
 }

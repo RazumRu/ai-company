@@ -17,7 +17,7 @@ describe('DockerRuntimeTemplate', () => {
   beforeEach(async () => {
     mockRuntimeProvider = {
       provide: vi.fn(),
-    } as any;
+    } as unknown as RuntimeProvider;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

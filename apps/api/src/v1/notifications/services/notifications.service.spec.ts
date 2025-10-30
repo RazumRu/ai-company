@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { Notification } from '../notifications.types';
 import {
   IAgentMessageNotification,
   IGraphNotification,
@@ -29,7 +30,7 @@ vi.mock('ioredis', () => ({
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
-  let mockLogger: any;
+  let mockLogger: Record<string, unknown>;
 
   beforeEach(async () => {
     mockLogger = {
@@ -117,7 +118,7 @@ describe('NotificationsService', () => {
 
       const queueAddSpy = vi.spyOn(service['queue'], 'add');
 
-      await service.emit(agentInvokeNotification as any);
+      await service.emit(agentInvokeNotification as Notification);
 
       expect(queueAddSpy).toHaveBeenCalledWith(
         'process-notification',
@@ -199,7 +200,7 @@ describe('NotificationsService', () => {
       await service['processJob']({
         data: testNotification,
         id: 'test-job',
-      } as any);
+      } as unknown as any);
 
       expect(mockCallback).toHaveBeenCalledWith(testNotification);
     });

@@ -17,26 +17,27 @@ import { removeKeysPrefix } from './utils';
 type SortDir = 'ASC' | 'DESC';
 type OrderInput = Record<string, SortDir> | [string, SortDir][];
 
-export type AdditionalParams<T extends ObjectLiteral = any> = Partial<{
-  offset: number;
-  limit: number;
-  orderBy: string | null;
-  sortOrder: SortDir;
-  order: OrderInput;
-  projection: string[];
-  relations: string[];
-  withDeleted: boolean;
-  rawData: boolean;
-  updateSelectBuilder: (
-    builder: SelectQueryBuilder<T>,
-  ) => SelectQueryBuilder<T>;
-  customCondition:
-    | string
-    | Brackets
-    | ((qb: SelectQueryBuilder<T>) => string)
-    | ObjectLiteral
-    | ObjectLiteral[];
-}>;
+export type AdditionalParams<T extends ObjectLiteral = ObjectLiteral> =
+  Partial<{
+    offset: number;
+    limit: number;
+    orderBy: string | null;
+    sortOrder: SortDir;
+    order: OrderInput;
+    projection: string[];
+    relations: string[];
+    withDeleted: boolean;
+    rawData: boolean;
+    updateSelectBuilder: (
+      builder: SelectQueryBuilder<T>,
+    ) => SelectQueryBuilder<T>;
+    customCondition:
+      | string
+      | Brackets
+      | ((qb: SelectQueryBuilder<T>) => string)
+      | ObjectLiteral
+      | ObjectLiteral[];
+  }>;
 
 type StripKeys = 'createdAt' | 'updatedAt' | 'id' | 'deletedAt';
 
@@ -130,7 +131,7 @@ export abstract class BaseDao<
 
   protected applyAdditionalParams(
     builder: SelectQueryBuilder<T>,
-    params?: AdditionalParams,
+    params?: AdditionalParams<T>,
   ) {
     if (params?.order && Object.keys(params.order).length) {
       const entries = this.normalizeOrder(params.order);

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "full-check": "pnpm -s build && pnpm -s build:tests && pnpm -s lint:fix && pnpm -s test",
     "build": "turbo run build",
     "build:tests": "turbo run build:tests",
     "build:packages": "turbo run build --filter='./packages/*'",

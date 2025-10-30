@@ -5,7 +5,7 @@ import { BaseAgent } from '../agents/base-agent';
 
 export type BaseAgentConfigurable = {
   thread_id?: string;
-  caller_agent?: BaseAgent<any>;
+  caller_agent?: BaseAgent<unknown>;
   graph_id?: string;
   node_id?: string;
   checkpoint_ns?: string;
