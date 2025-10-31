@@ -181,6 +181,8 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith({
         cmd: 'echo "hello world"',
         env: {},
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
       expect(result).toEqual({
         exitCode: mockExecResult.exitCode,
@@ -210,6 +212,8 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith({
         cmd: 'echo $NODE_ENV',
         env: { NODE_ENV: 'test' },
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
       expect(result).toEqual({
         exitCode: mockExecResult.exitCode,
@@ -243,8 +247,9 @@ describe('ShellTool', () => {
         cmd: 'pwd',
         timeoutMs: 5000,
         tailTimeoutMs: 2000,
-        workdir: '/tmp',
         env: { TEST: 'value' },
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
       expect(result).toEqual({
         exitCode: mockExecResult.exitCode,
@@ -330,6 +335,8 @@ describe('ShellTool', () => {
           VAR1: 'value1',
           VAR2: 'value2',
         },
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
     });
 
@@ -354,6 +361,8 @@ describe('ShellTool', () => {
         cmd: 'echo "test"',
         tailTimeoutMs: 3000,
         env: {},
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
     });
   });
@@ -387,6 +396,8 @@ describe('ShellTool', () => {
           GITHUB_PAT_TOKEN: 'ghp_token123',
           GIT_REPO_URL: 'https://github.com/user/repo.git',
         },
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
     });
 
@@ -417,6 +428,8 @@ describe('ShellTool', () => {
         env: {
           GITHUB_PAT_TOKEN: 'ghp_provided_token', // Provided value should override config value
         },
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
     });
 
@@ -439,6 +452,8 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith({
         cmd: 'echo "test"',
         env: {},
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
     });
 
@@ -461,6 +476,8 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith({
         cmd: 'echo "test"',
         env: {},
+        childWorkdir: 'unknown',
+        createChildWorkdir: true,
       });
     });
 

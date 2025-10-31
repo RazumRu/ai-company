@@ -24,6 +24,8 @@ export class DockerRuntime extends BaseRuntime {
   private image?: string;
   private container: Docker.Container | null = null;
   private dindContainer: Docker.Container | null = null;
+  private createdWorkdirs = new Set<string>();
+  private containerWorkdir: string | null = null;
 
   constructor(
     private dockerOptions?: Docker.DockerOptions,
@@ -59,13 +61,7 @@ export class DockerRuntime extends BaseRuntime {
       try {
         const container = docker.getContainer(containerInfo.Id);
 
-        // Stop the container if it's running
-        if (containerInfo.State === 'running') {
-          await container.stop({ t: 10 }).catch(() => undefined);
-        }
-
-        // Remove the container
-        await container.remove({ force: true }).catch(() => undefined);
+        await DockerRuntime.stopByInstance(container);
       } catch (error) {
         console.error(error);
       }
@@ -188,7 +184,6 @@ export class DockerRuntime extends BaseRuntime {
 
   private async runInitScript(
     script?: string | string[],
-    workdir?: string,
     env?: Record<string, string>,
     timeoutMs?: number,
   ) {
@@ -200,7 +195,6 @@ export class DockerRuntime extends BaseRuntime {
     for (const cmd of cmds) {
       const res = await this.exec({
         cmd,
-        workdir,
         env,
         timeoutMs: timeoutMs || 10 * 60_000, // Default to 10 minutes if not specified
       });
@@ -259,19 +253,16 @@ export class DockerRuntime extends BaseRuntime {
     network: string,
     labels?: Record<string, string>,
   ): Promise<Docker.Container> {
+    if (this.dindContainer) {
+      await DockerRuntime.stopByInstance(this.dindContainer);
+    }
+
     const dindImage = 'docker:27-dind';
-    const dindContainerName = `dind-${containerName}`;
 
     // Check if DIND container already exists
-    const existingDind = await this.getByName(dindContainerName);
+    const existingDind = await this.getByName(containerName);
     if (existingDind) {
-      const st = await existingDind.inspect();
-      if (!st.State.Running) {
-        await existingDind.start();
-      }
-      // Wait for Docker daemon to be ready
-      await this.waitForDindReady(existingDind);
-      return existingDind;
+      await DockerRuntime.stopByInstance(existingDind);
     }
 
     // Ensure DIND image is available
@@ -290,7 +281,7 @@ export class DockerRuntime extends BaseRuntime {
     // Create DIND container with proper configuration
     const dindContainer = await this.docker.createContainer({
       Image: dindImage,
-      name: dindContainerName,
+      name: containerName,
       Labels: dindLabels,
       Env: [
         'DOCKER_TLS_CERTDIR=', // Disable TLS
@@ -316,57 +307,8 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   async start(params?: RuntimeStartParams): Promise<void> {
-    const ensureDind = async (
-      baseName: string,
-      network?: string,
-      labels?: Record<string, string>,
-    ) => {
-      if (!params?.enableDind) {
-        return;
-      }
-      const dindContainerName = `dind-${baseName}`;
-      const existingDind = await this.getByName(dindContainerName);
-      if (existingDind) {
-        this.dindContainer = existingDind;
-        const dindSt = await existingDind.inspect();
-        if (!dindSt.State.Running) {
-          await existingDind.start();
-        }
-        await this.waitForDindReady(existingDind);
-      } else if (network) {
-        this.dindContainer = await this.startDindContainer(
-          baseName,
-          network,
-          labels,
-        );
-      }
-    };
-
     if (this.container) {
-      const st = await this.container.inspect();
-      if (st.State.Running || st.State.Restarting) {
-        return;
-      }
-
-      if (st.State.Paused || st.State.OOMKilled || st.State.Dead) {
-        // If DIND is enabled, ensure DIND container is also running
-        if (params?.enableDind && params?.containerName && params?.network) {
-          await ensureDind(params.containerName, params.network, params.labels);
-        }
-
-        await this.container.start();
-
-        if (params?.initScript) {
-          await this.runInitScript(
-            params.initScript,
-            params.workdir,
-            params.env,
-            params.initScriptTimeoutMs,
-          );
-        }
-
-        return;
-      }
+      await DockerRuntime.stopByInstance(this.container);
     }
 
     const imageName =
@@ -380,58 +322,33 @@ export class DockerRuntime extends BaseRuntime {
 
     // Determine container name: use provided name or generate a random one
     const containerName = params?.containerName || `rt-${randomUUID()}`;
+    const existingContainer = await this.getByName(containerName);
 
-    // First, try to find an existing container by name (for graph restoration)
-    const existingByName = await this.getByName(containerName);
-    if (existingByName) {
-      this.container = existingByName;
-
-      // If DIND is enabled, ensure DIND container is also running
-      if (params?.enableDind && params?.network) {
-        await ensureDind(containerName, params.network, params.labels);
-      }
-
-      const st = await existingByName.inspect();
-      if (!st.State.Running) {
-        await existingByName.start();
-      }
-
-      if (params?.initScript) {
-        await this.runInitScript(
-          params.initScript,
-          params.workdir,
-          params.env,
-          params.initScriptTimeoutMs,
-        );
-      }
-
-      return;
+    if (existingContainer) {
+      await DockerRuntime.stopByInstance(existingContainer);
     }
 
-    // If no existing container found, create a new one
+    // If no existing container found or recreate=true, create a new one
     await this.ensureImage(imageName);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
 
     // Handle network configuration
     const networkName = params?.network || 'ai-company-runtime';
-    if (params?.network) {
-      await this.ensureNetwork(params.network);
-    }
-
-    // Start DIND container if enabled
-    if (params?.enableDind) {
-      this.dindContainer = await this.startDindContainer(
-        containerName,
-        networkName,
-        params?.labels,
-      );
-    }
+    await this.ensureNetwork(networkName);
 
     // Prepare environment variables
     let containerEnv = params?.env || {};
 
     // If DIND is enabled, set DOCKER_HOST to point to the DIND container
     if (params?.enableDind) {
+      const dindContainerName = `dind-${containerName}`;
+
+      this.dindContainer = await this.startDindContainer(
+        dindContainerName,
+        networkName,
+        params?.labels,
+      );
+
       containerEnv = {
         ...containerEnv,
         DOCKER_HOST: `tcp://dind-${containerName}:2375`,
@@ -450,7 +367,7 @@ export class DockerRuntime extends BaseRuntime {
       Image: imageName,
       name: containerName,
       Env: env,
-      WorkingDir: params?.workdir,
+      WorkingDir: this.getWorkdir(params?.workdir),
       Cmd: cmd,
       Labels: params?.labels,
       Tty: false,
@@ -463,11 +380,11 @@ export class DockerRuntime extends BaseRuntime {
 
     await container.start();
     this.container = container;
+    this.containerWorkdir = this.getWorkdir(params?.workdir);
 
     if (params?.initScript) {
       await this.runInitScript(
         params.initScript,
-        params.workdir,
         params.env,
         params.initScriptTimeoutMs,
       );
@@ -478,57 +395,49 @@ export class DockerRuntime extends BaseRuntime {
     if (!this.container) {
       return;
     }
-    await this.container.stop({ t: 10 }).catch(() => undefined);
-    await this.container.remove({ force: true }).catch(() => undefined);
+
+    await DockerRuntime.stopByInstance(this.container);
     this.container = null;
+    this.containerWorkdir = null;
 
     // Stop and remove DIND container if it exists
     if (this.dindContainer) {
-      await this.dindContainer.stop({ t: 10 }).catch(() => undefined);
-      await this.dindContainer.remove({ force: true }).catch(() => undefined);
+      await DockerRuntime.stopByInstance(this.dindContainer);
       this.dindContainer = null;
     }
   }
 
-  /**
-   * Clean up networks created by this runtime
-   */
-  async cleanupNetworks(networkName?: string): Promise<void> {
-    try {
-      if (networkName) {
-        // Clean up specific network
-        const network = await this.getNetwork(networkName);
-        if (network) {
-          const networkInfo = await network.inspect();
-          // Only remove networks created by this runtime
-          if (
-            networkInfo.Labels?.['ai-company/created-by'] === 'docker-runtime'
-          ) {
-            await network.remove();
-          }
-        }
-      } else {
-        // Clean up all networks created by this runtime
-        const networks = await this.docker.listNetworks({
-          filters: { label: ['ai-company/created-by=docker-runtime'] },
-        });
+  static async stopByInstance(container: Docker.Container): Promise<void> {
+    await container.stop({ t: 10 }).catch(() => undefined);
+    await container.remove({ force: true }).catch(() => undefined);
+  }
 
-        for (const networkInfo of networks) {
-          try {
-            const network = this.docker.getNetwork(networkInfo.Id);
-            await network.remove();
-          } catch (error) {
-            // Ignore errors when removing networks (they might be in use)
-            console.warn(
-              `Failed to remove network ${networkInfo.Name}:`,
-              error,
-            );
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to cleanup networks:', error);
+  private async ensureChildWorkdir(workdir: string) {
+    const fullWorkdir = this.getWorkdir(workdir, this.containerWorkdir || '');
+    if (this.createdWorkdirs.has(fullWorkdir) || !this.container) {
+      return fullWorkdir;
     }
+
+    const ex = await this.container.exec({
+      Cmd: ['sh', '-lc', `mkdir -p -- '${fullWorkdir.replace(/'/g, "'\\''")}'`],
+      AttachStdout: true,
+      AttachStderr: true,
+      Tty: false,
+    });
+    const stream = await ex.start({ hijack: true, stdin: false });
+    await new Promise<void>((resolve, reject) => {
+      stream.on('end', resolve);
+      stream.on('close', resolve);
+      stream.on('error', reject);
+    });
+    const info = await ex.inspect();
+    if (info.ExitCode !== 0) {
+      throw new Error('MKDIR_FAILED');
+    }
+
+    this.createdWorkdirs.add(fullWorkdir);
+
+    return fullWorkdir;
   }
 
   async exec(params: RuntimeExecParams): Promise<RuntimeExecResult> {
@@ -536,8 +445,15 @@ export class DockerRuntime extends BaseRuntime {
       throw new Error('Runtime not started');
     }
 
+    let fullWorkdir = this.containerWorkdir || undefined;
+    if (params.childWorkdir) {
+      fullWorkdir = params.createChildWorkdir
+        ? await this.ensureChildWorkdir(params.childWorkdir)
+        : this.getWorkdir(params.childWorkdir);
+    }
+
     const cmd = Array.isArray(params.cmd)
-      ? ['sh', '-lc', ...params.cmd]
+      ? ['sh', '-lc', params.cmd.join(' && ')]
       : ['sh', '-lc', params.cmd];
     const env = this.prepareEnv(params.env);
     const abortController = new AbortController();
@@ -545,7 +461,7 @@ export class DockerRuntime extends BaseRuntime {
     const ex = await this.container.exec({
       Cmd: cmd,
       Env: env,
-      WorkingDir: params.workdir,
+      WorkingDir: fullWorkdir,
       AttachStdout: true,
       AttachStderr: true,
       Tty: false,

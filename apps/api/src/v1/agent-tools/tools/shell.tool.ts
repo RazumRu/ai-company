@@ -4,6 +4,7 @@ import {
 } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
+import { isArray } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
@@ -24,7 +25,6 @@ export const ShellToolSchema = z.object({
   cmd: z.string(),
   timeoutMs: z.number().int().positive().optional(),
   tailTimeoutMs: z.number().int().positive().optional(),
-  workdir: z.string().optional(),
   env: z
     .array(
       z.object({
@@ -77,7 +77,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public async invoke(
     data: ShellToolSchemaType,
     config: ShellToolOptions,
-    _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ShellToolOutput> {
     if (!config?.runtime) {
       throw new BadRequestException(
@@ -108,8 +108,18 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       return output;
     };
 
+    const threadId =
+      cfg.configurable?.parent_thread_id ||
+      cfg.configurable?.thread_id ||
+      'unknown';
+
     try {
-      const res = await config.runtime.exec({ ...execData, env: mergedEnv });
+      const res = await config.runtime.exec({
+        ...execData,
+        env: mergedEnv,
+        childWorkdir: `${threadId}`,
+        createChildWorkdir: true,
+      });
 
       return {
         exitCode: res.exitCode,

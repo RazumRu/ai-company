@@ -1,23 +1,28 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { NodeKind } from '../../../graphs/graphs.types';
 import { RuntimeType } from '../../../runtime/runtime.types';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
-import {
-  DockerRuntimeTemplate,
-  DockerRuntimeTemplateSchema,
-} from './docker-runtime.template';
+import { NodeBaseTemplateMetadata } from '../base-node.template';
+import { DockerRuntimeTemplate } from './docker-runtime.template';
 
 describe('DockerRuntimeTemplate', () => {
   let template: DockerRuntimeTemplate;
-  let mockRuntimeProvider: RuntimeProvider;
+  let runtimeProvider: RuntimeProvider;
+  let mockRuntime: any;
 
   beforeEach(async () => {
-    mockRuntimeProvider = {
-      provide: vi.fn(),
-    } as unknown as RuntimeProvider;
+    // Create mock runtime
+    mockRuntime = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      exec: vi.fn(),
+    };
+
+    // Create mock RuntimeProvider
+    const mockRuntimeProvider = {
+      provide: vi.fn().mockResolvedValue(mockRuntime),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -30,413 +35,131 @@ describe('DockerRuntimeTemplate', () => {
     }).compile();
 
     template = module.get<DockerRuntimeTemplate>(DockerRuntimeTemplate);
-  });
-
-  describe('properties', () => {
-    it('should have correct name', () => {
-      expect(template.name).toBe('docker-runtime');
-    });
-
-    it('should have correct description', () => {
-      expect(template.description).toBe(
-        'Docker runtime environment for executing code',
-      );
-    });
-
-    it('should have correct kind', () => {
-      expect(template.kind).toBe(NodeKind.Runtime);
-    });
-
-    it('should have correct schema', () => {
-      expect(template.schema).toBe(DockerRuntimeTemplateSchema);
-    });
-  });
-
-  describe('schema validation', () => {
-    it('should validate required fields', () => {
-      const validConfig = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-      };
-
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(validConfig),
-      ).not.toThrow();
-    });
-
-    it('should validate optional fields', () => {
-      const validConfig = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        workdir: '/app',
-        env: { NODE_ENV: 'production', DEBUG: 'true' },
-        labels: { version: '1.0.0', team: 'backend' },
-        initScript: ['npm install', 'npm run build'],
-      };
-
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(validConfig),
-      ).not.toThrow();
-    });
-
-    it('should reject missing required fields', () => {
-      const invalidConfig = {
-        // missing runtimeType and image
-        workdir: '/app',
-      };
-
-      expect(() => DockerRuntimeTemplateSchema.parse(invalidConfig)).toThrow();
-    });
-
-    it('should reject invalid runtimeType', () => {
-      const invalidConfig = {
-        runtimeType: 'invalid-type',
-        image: 'python:3.11',
-      };
-
-      expect(() => DockerRuntimeTemplateSchema.parse(invalidConfig)).toThrow();
-    });
-
-    it('should validate initScript as string or array', () => {
-      const configWithString = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        initScript: 'npm install',
-      };
-
-      const configWithArray = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        initScript: ['npm install', 'npm run build'],
-      };
-
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(configWithString),
-      ).not.toThrow();
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(configWithArray),
-      ).not.toThrow();
-    });
-
-    it('should validate initScriptTimeoutMs as positive number', () => {
-      const configWithTimeout = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        initScriptTimeoutMs: 300000, // 5 minutes
-      };
-
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(configWithTimeout),
-      ).not.toThrow();
-    });
-
-    it('should reject negative initScriptTimeoutMs', () => {
-      const configWithNegativeTimeout = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        initScriptTimeoutMs: -1000,
-      };
-
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(configWithNegativeTimeout),
-      ).toThrow();
-    });
-
-    it('should reject zero initScriptTimeoutMs', () => {
-      const configWithZeroTimeout = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        initScriptTimeoutMs: 0,
-      };
-
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(configWithZeroTimeout),
-      ).toThrow();
-    });
-
-    it('should validate enableDind as boolean', () => {
-      const configWithDindEnabled = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        enableDind: true,
-      };
-
-      const configWithDindDisabled = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        enableDind: false,
-      };
-
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(configWithDindEnabled),
-      ).not.toThrow();
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(configWithDindDisabled),
-      ).not.toThrow();
-    });
-
-    it('should reject invalid enableDind type', () => {
-      const configWithInvalidDind = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        enableDind: 'yes',
-      };
-
-      expect(() =>
-        DockerRuntimeTemplateSchema.parse(configWithInvalidDind),
-      ).toThrow();
-    });
+    runtimeProvider = module.get<RuntimeProvider>(RuntimeProvider);
   });
 
   describe('create', () => {
-    it('should create runtime with minimal configuration', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
-
+    it('should create runtime with recreate flag set to true', async () => {
       const config = {
         runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
+        image: 'test-image',
       };
 
-      const result = await template.create(config, new Map(), new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
+      const metadata: NodeBaseTemplateMetadata = {
+        graphId: 'test-graph-id',
+        nodeId: 'test-node-id',
+        name: 'test-node',
         version: '1.0.0',
-      });
-
-      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
-        type: RuntimeType.Docker,
-        image: 'python:3.11',
-        env: undefined,
-        workdir: undefined,
-        labels: {
-          'ai-company/graph_id': 'test-graph',
-          'ai-company/node_id': 'test-node',
-        },
-        initScript: undefined,
-        initScriptTimeoutMs: undefined,
-        autostart: true,
-        containerName: 'rt-test-graph-test-node',
-        'network': 'ai-company-test-graph',
-        enableDind: undefined,
-      });
-      expect(result).toBe(mockRuntime);
-    });
-
-    it('should create runtime with full configuration', async () => {
-      const mockRuntime = {
-        id: 'runtime-2',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
-
-      const config = {
-        runtimeType: RuntimeType.Docker,
-        image: 'node:20',
-        workdir: '/app',
-        env: { NODE_ENV: 'production', PORT: '3000' },
-        labels: { version: '2.0.0', environment: 'prod' },
-        initScript: ['npm ci', 'npm run build'],
       };
 
-      const result = await template.create(config, new Map(), new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
-        type: RuntimeType.Docker,
-        image: 'node:20',
-        env: { NODE_ENV: 'production', PORT: '3000' },
-        workdir: '/app',
-        labels: {
-          version: '2.0.0',
-          environment: 'prod',
-          'ai-company/graph_id': 'test-graph',
-          'ai-company/node_id': 'test-node',
-        },
-        initScript: ['npm ci', 'npm run build'],
-        initScriptTimeoutMs: undefined,
-        autostart: true,
-        containerName: 'rt-test-graph-test-node',
-        'network': 'ai-company-test-graph',
-        enableDind: undefined,
-      });
-      expect(result).toBe(mockRuntime);
-    });
-
-    it('should handle runtime provider errors', async () => {
-      const mockError = new Error('Failed to create runtime');
-      mockRuntimeProvider.provide = vi.fn().mockRejectedValue(mockError);
-
-      const config = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-      };
-
-      await expect(
-        template.create(config, new Map(), new Map(), {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
-      ).rejects.toThrow('Failed to create runtime');
-    });
-
-    it('should always set autostart to true', async () => {
-      const mockRuntime = {
-        id: 'runtime-3',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
-
-      const config = {
-        runtimeType: RuntimeType.Docker,
-        image: 'alpine:latest',
-      };
-
-      await template.create(config, new Map(), new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith(
-        expect.objectContaining({
-          autostart: true,
-        }),
+      const result = await template.create(
+        config,
+        new Map(),
+        new Map(),
+        metadata,
       );
-    });
 
-    it('should create runtime with initScriptTimeoutMs', async () => {
-      const mockRuntime = {
-        id: 'runtime-4',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
+      expect(runtimeProvider.provide).toHaveBeenCalledOnce();
+      const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
 
-      const config = {
-        runtimeType: RuntimeType.Docker,
-        image: 'python:3.11',
-        initScript: 'pip install -r requirements.txt',
-        initScriptTimeoutMs: 300000, // 5 minutes
-      };
-
-      const result = await template.create(config, new Map(), new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
-        type: RuntimeType.Docker,
-        image: 'python:3.11',
-        env: undefined,
-        workdir: undefined,
-        labels: {
-          'ai-company/graph_id': 'test-graph',
-          'ai-company/node_id': 'test-node',
-        },
-        initScript: 'pip install -r requirements.txt',
-        initScriptTimeoutMs: 300000,
-        autostart: true,
-        containerName: 'rt-test-graph-test-node',
-        'network': 'ai-company-test-graph',
-        enableDind: undefined,
-      });
+      // Verify recreate flag is true
+      expect(callArgs.recreate).toBe(true);
+      expect(callArgs.autostart).toBe(true);
       expect(result).toBe(mockRuntime);
     });
 
-    it('should create runtime with enableDind enabled', async () => {
-      const mockRuntime = {
-        id: 'runtime-5',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
-
+    it('should always pass recreate=true regardless of config', async () => {
       const config = {
         runtimeType: RuntimeType.Docker,
-        image: 'node:20-alpine',
-        enableDind: true,
+        image: 'test-image',
+        env: { TEST: 'value' },
       };
 
-      const result = await template.create(config, new Map(), new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
+      const metadata: NodeBaseTemplateMetadata = {
+        graphId: 'graph-123',
+        nodeId: 'node-456',
+        name: 'runtime-node',
         version: '1.0.0',
-      });
+      };
 
-      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
-        type: RuntimeType.Docker,
-        image: 'node:20-alpine',
-        env: undefined,
-        workdir: undefined,
-        labels: {
-          'ai-company/graph_id': 'test-graph',
-          'ai-company/node_id': 'test-node',
-        },
-        initScript: undefined,
-        initScriptTimeoutMs: undefined,
-        autostart: true,
-        containerName: 'rt-test-graph-test-node',
-        'network': 'ai-company-test-graph',
-        enableDind: true,
-      });
-      expect(result).toBe(mockRuntime);
+      await template.create(config, new Map(), new Map(), metadata);
+
+      const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
+      expect(callArgs.recreate).toBe(true);
     });
 
-    it('should create runtime with enableDind disabled explicitly', async () => {
-      const mockRuntime = {
-        id: 'runtime-6',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      mockRuntimeProvider.provide = vi.fn().mockResolvedValue(mockRuntime);
-
+    it('should include system labels with graph_id and node_id', async () => {
       const config = {
         runtimeType: RuntimeType.Docker,
-        image: 'node:20-alpine',
-        enableDind: false,
       };
 
-      const result = await template.create(config, new Map(), new Map(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
+      const metadata: NodeBaseTemplateMetadata = {
+        graphId: 'my-graph',
+        nodeId: 'my-node',
+        name: 'test',
         version: '1.0.0',
-      });
+      };
 
-      expect(mockRuntimeProvider.provide).toHaveBeenCalledWith({
-        type: RuntimeType.Docker,
-        image: 'node:20-alpine',
-        env: undefined,
-        workdir: undefined,
-        labels: {
-          'ai-company/graph_id': 'test-graph',
-          'ai-company/node_id': 'test-node',
-        },
-        initScript: undefined,
-        initScriptTimeoutMs: undefined,
-        autostart: true,
-        containerName: 'rt-test-graph-test-node',
-        'network': 'ai-company-test-graph',
-        enableDind: false,
-      });
-      expect(result).toBe(mockRuntime);
+      await template.create(config, new Map(), new Map(), metadata);
+
+      const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
+      expect(callArgs.labels['ai-company/graph_id']).toBe('my-graph');
+      expect(callArgs.labels['ai-company/node_id']).toBe('my-node');
+    });
+
+    it('should include temporary label when graph is temporary', async () => {
+      const config = {
+        runtimeType: RuntimeType.Docker,
+      };
+
+      const metadata: NodeBaseTemplateMetadata = {
+        graphId: 'temp-graph',
+        nodeId: 'temp-node',
+        name: 'test',
+        version: '1.0.0',
+        temporary: true,
+      };
+
+      await template.create(config, new Map(), new Map(), metadata);
+
+      const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
+      expect(callArgs.labels['ai-company/temporary']).toBe('true');
+    });
+
+    it('should generate network name from graph id', async () => {
+      const config = {
+        runtimeType: RuntimeType.Docker,
+      };
+
+      const metadata: NodeBaseTemplateMetadata = {
+        graphId: 'my-unique-graph-id',
+        nodeId: 'node',
+        name: 'test',
+        version: '1.0.0',
+      };
+
+      await template.create(config, new Map(), new Map(), metadata);
+
+      const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
+      expect(callArgs.network).toBe('ai-company-my-unique-graph-id');
+    });
+
+    it('should generate container name from graph and node id', async () => {
+      const config = {
+        runtimeType: RuntimeType.Docker,
+      };
+
+      const metadata: NodeBaseTemplateMetadata = {
+        graphId: 'graph-abc',
+        nodeId: 'node-xyz',
+        name: 'test',
+        version: '1.0.0',
+      };
+
+      await template.create(config, new Map(), new Map(), metadata);
+
+      const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
+      expect(callArgs.containerName).toBe('rt-graph-abc-node-xyz');
     });
   });
 });

@@ -21,12 +21,6 @@ export const DockerRuntimeTemplateSchema = z
       .optional()
       .describe('Docker image to use. If not set - will use default image')
       .meta({ 'x-ui:show-on-node': true }),
-    workdir: z
-      .string()
-      .optional()
-      .describe(
-        'Working directory inside container. If not set - will use default',
-      ),
     env: z
       .record(z.string(), z.string())
       .optional()
@@ -80,8 +74,8 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof DockerRuntimeTemplateSchema>,
-    inputNodes: Map<string, CompiledGraphNode>,
-    outputNodes: Map<string, CompiledGraphNode>,
+    _inputNodes: Map<string, CompiledGraphNode>,
+    _outputNodes: Map<string, CompiledGraphNode>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<BaseRuntime> {
     // Automatically add graph_id and node_id labels for container management
@@ -108,11 +102,11 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       type: config.runtimeType,
       image: config.image,
       env: config.env,
-      workdir: config.workdir,
       labels: mergedLabels,
       initScript: config.initScript,
       initScriptTimeoutMs: config.initScriptTimeoutMs,
       autostart: true, // Always start automatically
+      recreate: true, // Always recreate the runtime
       containerName: `rt-${metadata.graphId}-${metadata.nodeId}`, // Use graphId and nodeId for consistent container naming
       network: networkName,
       enableDind: config.enableDind,

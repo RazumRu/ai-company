@@ -12,10 +12,11 @@ export interface RuntimeStartParams {
 
 export interface RuntimeExecParams {
   cmd: string[] | string;
-  workdir?: string;
+  childWorkdir?: string;
   env?: Record<string, string>;
   timeoutMs?: number;
   tailTimeoutMs?: number;
+  createChildWorkdir?: boolean;
 }
 
 export interface RuntimeExecResult {
@@ -32,4 +33,5 @@ export enum RuntimeType {
 export interface ProvideRuntimeParams extends RuntimeStartParams {
   autostart?: boolean;
   type: RuntimeType;
+  recreate?: boolean;
 }

@@ -155,15 +155,9 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
       if (runtimeConfig.image) {
         runtimeInfoParts.push(`- Docker Image: ${runtimeConfig.image}`);
       }
-      if (runtimeConfig.workdir) {
-        runtimeInfoParts.push(`- Working Directory: ${runtimeConfig.workdir}`);
-      }
       runtimeInfoParts.push(
         `- Docker-in-Docker (DIND): ${runtimeConfig.enableDind ? 'Enabled' : 'Disabled'}`,
       );
-      // Container name is generated from graphId and nodeId
-      const containerName = `rt-${metadata.graphId}-${runtimeNode.id}`;
-      runtimeInfoParts.push(`- Container Name: ${containerName}`);
     }
 
     return {
