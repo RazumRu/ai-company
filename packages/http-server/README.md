@@ -1,5 +1,8 @@
 # @packages/http-server
 
+Note: For repository-wide testing and code guidelines, see `.guidelines/testing.md` and `.guidelines/code-guidelines.md`.
+
+
 This library provides a NestJS module for setting up an HTTP server using `Fastify`. It seamlessly integrates with the `@packages/common` library to provide a complete server solution.
 
 ## Installation

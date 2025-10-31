@@ -8,6 +8,22 @@ The project uses two testing frameworks:
 - **Vitest** for unit tests
 - **Cypress** for E2E (end-to-end) tests
 
+## Full project check (mandatory)
+
+Before considering any task "done" (before opening/merging a PR or marking work complete), you must run the full project check locally and ensure it passes:
+
+```bash
+pnpm run full-check
+```
+
+This command will:
+- Build the project
+- Run linting (and apply safe fixes)
+- Build test targets
+- Run unit tests
+
+If any step fails, fix the issues and re-run the command until it completes successfully.
+
 ## Unit Testing
 
 ### Running Unit Tests

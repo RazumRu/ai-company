@@ -1,5 +1,8 @@
 # @packages/common
 
+Note: For repository-wide testing and code guidelines, see `.guidelines/testing.md` and `.guidelines/code-guidelines.md`.
+
+
 This library provides a Nest module that integrates `ConfigModule`, `Logger`, and additional modules to help bootstrap your application efficiently.
 
 ## Installation

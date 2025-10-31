@@ -1,5 +1,8 @@
 # @packages/cypress
 
+Note: For repository-wide testing and code guidelines, see `.guidelines/testing.md` and `.guidelines/code-guidelines.md`.
+
+
 Simplify your Cypress end-to-end test configuration with ease.
 
 ## Installation

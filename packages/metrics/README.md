@@ -1,5 +1,8 @@
 # @packages/metrics
 
+Note: For repository-wide testing and code guidelines, see `.guidelines/testing.md` and `.guidelines/code-guidelines.md`.
+
+
 This library provides a NestJS module for integrating with Prometheus metrics. It offers a service to initialize, configure, and manage different types of metrics for monitoring your application.
 
 ## Installation

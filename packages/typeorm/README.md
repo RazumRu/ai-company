@@ -1,5 +1,8 @@
 # @packages/typeorm
 
+Note: For repository-wide testing and code guidelines, see `.guidelines/testing.md` and `.guidelines/code-guidelines.md`.
+
+
 This package provides a module for integrating and managing `TypeORM` within your projects.
 
 ## Migration Commands
