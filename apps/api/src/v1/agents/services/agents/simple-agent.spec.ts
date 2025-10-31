@@ -962,6 +962,75 @@ describe('SimpleAgent', () => {
       await expect(agent.stop()).resolves.not.toThrow();
     });
 
+    it('should mark stop message with hideForLlm flag', async () => {
+      const mockGraph = {
+        stream: vi.fn(),
+      } as unknown as { stream: any };
+
+      async function* mockStream() {
+        yield {
+          node1: {
+            messages: { mode: 'append', items: [] },
+            done: false, // Not done - so stop message should be emitted
+          },
+        };
+      }
+
+      mockGraph.stream = vi.fn().mockReturnValue(mockStream());
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      const runnableConfig = {
+        configurable: {
+          graph_id: 'graph-123',
+          node_id: 'node-456',
+          thread_id: 'thread-789',
+          parent_thread_id: 'parent-thread-123',
+          run_id: 'test-run-id-3',
+        },
+      };
+
+      // Complete the run first
+      await agent.run(
+        'thread-789',
+        [new HumanMessage('Hello')],
+        config,
+        runnableConfig,
+      );
+
+      // Manually add an unfinished run to activeRuns to test stop() behavior
+      agent['activeRuns'].set('test-run-id-3', {
+        abortController: new AbortController(),
+        runnableConfig: runnableConfig as any,
+        threadId: 'thread-789',
+        lastState: { done: false } as any, // Not marked as done
+      });
+
+      // Stop the agent
+      await agent.stop();
+
+      // Verify the stop message was emitted with hideForLlm flag
+      const stopMessageCalls = vi
+        .mocked(mockNotificationsService.emit)
+        .mock.calls.filter(
+          (call) =>
+            call[0]?.type === NotificationEvent.AgentMessage &&
+            call[0]?.data?.messages?.[0]?.content ===
+              'Graph execution was stopped',
+        );
+
+      expect(stopMessageCalls.length).toBeGreaterThan(0);
+      const stopMessage = (stopMessageCalls[0]?.[0]?.data as any)
+        ?.messages?.[0];
+      expect(stopMessage?.additional_kwargs?.hideForLlm).toBe(true);
+    });
+
     it('should handle abort errors gracefully during stream processing', async () => {
       const mockGraph = {
         stream: vi.fn(),

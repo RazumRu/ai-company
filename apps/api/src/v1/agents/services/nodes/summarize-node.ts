@@ -11,7 +11,10 @@ import { ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { updateMessagesListWithMetadata } from '../../agents.utils';
+import {
+  markMessageHideForLlm,
+  updateMessagesListWithMetadata,
+} from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 type SummarizeOpts = {
@@ -105,8 +108,10 @@ export class SummarizeNode extends BaseNode<
       newSummary !== '';
     const messagesToReturn = summaryChanged
       ? [
-          new SystemMessage(
-            `Summary updated: Previous messages have been summarized to manage context length.`,
+          markMessageHideForLlm(
+            new SystemMessage(
+              `Summary updated: Previous messages have been summarized to manage context length.`,
+            ),
           ),
           ...this.clean(finalTail),
         ]

@@ -25,7 +25,10 @@ import {
   BaseAgentStateChange,
   BaseAgentStateMessagesUpdateValue,
 } from '../../agents.types';
-import { updateMessagesListWithMetadata } from '../../agents.utils';
+import {
+  markMessageHideForLlm,
+  updateMessagesListWithMetadata,
+} from '../../agents.utils';
 import { RegisterAgent } from '../../decorators/register-agent.decorator';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
@@ -532,7 +535,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         const nodeId = run.runnableConfig?.configurable?.node_id || 'unknown';
         const parentThreadId =
           run.runnableConfig?.configurable?.parent_thread_id || 'unknown';
-        const msg = new SystemMessage('Graph execution was stopped');
+        const msg = markMessageHideForLlm(
+          new SystemMessage('Graph execution was stopped'),
+        );
         const msgs = updateMessagesListWithMetadata([msg], run.runnableConfig);
         await this.notificationsService.emit({
           type: NotificationEvent.AgentMessage,

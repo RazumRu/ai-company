@@ -9,7 +9,10 @@ import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { updateMessagesListWithMetadata } from '../../agents.utils';
+import {
+  filterMessagesForLlm,
+  updateMessagesListWithMetadata,
+} from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 type InvokeLlmNodeOpts = {
@@ -54,7 +57,7 @@ export class InvokeLlmNode extends BaseNode<
         ...(state.summary
           ? [new SystemMessage(`Summary:\n${state.summary}`)]
           : []),
-        ...state.messages,
+        ...filterMessagesForLlm(state.messages),
       ],
       cfg,
     );

@@ -133,6 +133,40 @@ describe('SummarizeNode', () => {
       );
     });
 
+    it('should mark summary message with hideForLlm flag', async () => {
+      const messages = Array.from(
+        { length: 10 },
+        (_, i) => new HumanMessage(`Message ${i}`),
+      );
+      const state = createMockState({
+        messages,
+        summary: '',
+      });
+
+      mockGetNumTokens.mockImplementation(async (text: string) => {
+        if (typeof text === 'string' && text.startsWith('Message')) {
+          return 200;
+        }
+        return text.length;
+      });
+
+      const newSummary = 'Summarized conversation';
+      mockInvoke.mockResolvedValue(new AIMessage(newSummary));
+
+      const result = await node.invoke(state, createMockConfig());
+
+      expect(result.messages?.items).toBeDefined();
+      const returnedMessages = result.messages?.items || [];
+
+      const summarySystemMessage = returnedMessages.find(
+        (m) =>
+          m instanceof SystemMessage &&
+          m.content.toString().includes('Summary updated'),
+      );
+      expect(summarySystemMessage).toBeDefined();
+      expect(summarySystemMessage?.additional_kwargs?.hideForLlm).toBe(true);
+    });
+
     it('should not add system message when summary does not change', async () => {
       const existingSummary = 'Existing summary';
       const messages = [new HumanMessage('Test')];

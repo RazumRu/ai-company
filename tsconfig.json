@@ -4,6 +4,7 @@
     "rootDir": ".",
     "sourceMap": true,
     "declaration": true,
+    "strictFunctionTypes": true,
     "declarationMap": true,
     "moduleResolution": "NodeNext",
     "emitDecoratorMetadata": true,

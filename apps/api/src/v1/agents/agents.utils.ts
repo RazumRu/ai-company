@@ -31,3 +31,22 @@ export function updateMessagesListWithMetadata(
 ) {
   return messages.map((msg) => updateMessageWithMetadata(msg, runnableConfig));
 }
+
+export function markMessageHideForLlm(message: BaseMessage): BaseMessage {
+  const clone = Object.assign(
+    Object.create(Object.getPrototypeOf(message)),
+    message,
+  );
+
+  const prev = clone.additional_kwargs ?? {};
+  clone.additional_kwargs = {
+    ...prev,
+    hideForLlm: true,
+  };
+
+  return clone;
+}
+
+export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
+  return messages.filter((msg) => !msg.additional_kwargs?.hideForLlm);
+}
