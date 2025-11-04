@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { FinishTool } from '../../../agent-tools/tools/finish.tool';
 import { NotificationEvent } from '../../../notifications/notifications.types';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
+import { ThreadStatus } from '../../../threads/threads.types';
 import {
   BaseAgentState,
   BaseAgentStateChange,
@@ -43,7 +44,7 @@ export const SimpleAgentSchema = z.object({
   summarizeMaxTokens: z
     .number()
     .optional()
-    .default(200000)
+    .default(272000)
     .describe(
       'Total token budget for summary + recent context. If current history exceeds this, older messages are folded into the rolling summary.',
     ),
@@ -438,6 +439,16 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     const abortController = new AbortController();
 
+    let finalState: BaseAgentState = this.buildInitialState();
+
+    // Track active run for cancellation and status updates
+    this.activeRuns.set(runId, {
+      abortController,
+      runnableConfig: mergedConfig,
+      threadId,
+      lastState: finalState,
+    });
+
     // Use stream instead of invoke to capture messages
     // Reset flags from previous run to ensure fresh execution
     const stream = await g.stream(
@@ -457,16 +468,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         signal: abortController.signal,
       },
     );
-
-    let finalState: BaseAgentState = this.buildInitialState();
-
-    // Track active run for cancellation and status updates
-    this.activeRuns.set(runId, {
-      abortController,
-      runnableConfig: mergedConfig,
-      threadId,
-      lastState: finalState,
-    });
 
     try {
       // Process stream chunks and emit message notifications
@@ -546,6 +547,15 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           threadId: run.threadId,
           parentThreadId,
           data: { messages: [msgs[0]!] },
+        });
+
+        await this.notificationsService.emit({
+          type: NotificationEvent.ThreadUpdate,
+          graphId,
+          nodeId,
+          threadId: run.threadId,
+          parentThreadId,
+          data: { status: ThreadStatus.Stopped },
         });
       }
 

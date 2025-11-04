@@ -140,7 +140,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
 
   private collectRuntimeData(
     runtimeNode: CompiledGraphNode<BaseRuntime>,
-    metadata: NodeBaseTemplateMetadata,
+    _metadata: NodeBaseTemplateMetadata,
   ): {
     information: string;
   } {

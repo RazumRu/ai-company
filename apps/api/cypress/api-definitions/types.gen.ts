@@ -380,6 +380,10 @@ export type ThreadDto = {
    * Thread name (auto-generated from first user message)
    */
   name?: string | null;
+  /**
+   * Thread execution status
+   */
+  status: 'running' | 'done' | 'need_more_info' | 'stopped';
 };
 
 export type ThreadMessageDto = {

@@ -3,6 +3,7 @@ import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
 import { DataSource, In } from 'typeorm';
 
 import { ThreadEntity } from '../entity/thread.entity';
+import { ThreadStatus } from '../threads.types';
 
 export type SearchTerms = Partial<{
   id: string;
@@ -10,6 +11,8 @@ export type SearchTerms = Partial<{
   ids: string[];
   createdBy: string;
   externalThreadId: string;
+  status: ThreadStatus;
+  statuses: ThreadStatus[];
 }>;
 
 @Injectable()
@@ -57,6 +60,18 @@ export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms, string> {
     if (params?.externalThreadId) {
       builder.andWhere({
         externalThreadId: params.externalThreadId,
+      });
+    }
+
+    if (params?.status) {
+      builder.andWhere({
+        status: params.status,
+      });
+    }
+
+    if (params?.statuses && params?.statuses.length > 0) {
+      builder.andWhere({
+        status: In(params.statuses),
       });
     }
   }

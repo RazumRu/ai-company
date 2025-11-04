@@ -118,19 +118,15 @@ pnpm build:packages
 
 ### Migrations
 
-The project uses TypeORM for database management:
+The project uses TypeORM for database management. When schema changes are introduced you **must** generate migrations via the script – do not hand-write them or run raw TypeORM `migration:create` commands.
 
-- Create a new migration:
-  ```bash
-  cd apps/api
-  pnpm migration:create
-  ```
-
-- Generate a migration from schema changes:
+- Generate a migration from schema changes (required workflow):
   ```bash
   cd apps/api
   pnpm run migration:generate
   ```
+
+  > Never add migration files manually. The generated output should be committed as-is after review.
 
 - Revert the last migration:
   ```bash
@@ -151,6 +147,16 @@ The project uses TypeORM for database management:
   cd apps/api
   pnpm seed:run-all
   ```
+
+### API Definition Generation
+
+- Generate Cypress API types from the Swagger schema:
+  ```bash
+  cd apps/api
+  pnpm test:e2e:generate-api
+  ```
+
+  > Always use this script to refresh generated API typings for E2E tests. Never hand-craft or manually edit the files in `apps/api/cypress/api-definitions/`.
 
 ## Monorepo Management
 

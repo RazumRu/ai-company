@@ -1,0 +1,224 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { GraphDao } from '../../../graphs/dao/graph.dao';
+import { GraphEntity } from '../../../graphs/entity/graph.entity';
+import { GraphStatus } from '../../../graphs/graphs.types';
+import {
+  IThreadUpdateNotification,
+  NotificationEvent,
+} from '../../../notifications/notifications.types';
+import { ThreadsDao } from '../../../threads/dao/threads.dao';
+import { ThreadDto } from '../../../threads/dto/threads.dto';
+import { ThreadEntity } from '../../../threads/entity/thread.entity';
+import { ThreadStatus } from '../../../threads/threads.types';
+import { EnrichedNotificationEvent } from '../../notification-handlers.types';
+import {
+  IThreadUpdateEnrichedNotification,
+  ThreadUpdateNotificationHandler,
+} from './thread-update-notification-handler';
+
+describe('ThreadUpdateNotificationHandler', () => {
+  let handler: ThreadUpdateNotificationHandler;
+  let threadsDao: ThreadsDao;
+  let graphDao: GraphDao;
+
+  const mockGraphId = '22222222-2222-4222-8aaa-222222222222';
+  const mockOwnerId = 'user-123';
+  const mockThreadId = 'external-thread-123';
+
+  const createMockThreadEntity = (
+    overrides: Partial<ThreadEntity> = {},
+  ): ThreadEntity => ({
+    id: '11111111-1111-4111-8aaa-111111111111',
+    graphId: mockGraphId,
+    createdBy: mockOwnerId,
+    externalThreadId: mockThreadId,
+    metadata: {},
+    source: undefined,
+    name: 'Thread Name',
+    status: ThreadStatus.Running,
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+    updatedAt: new Date('2024-01-01T00:00:00Z'),
+    deletedAt: null,
+    ...overrides,
+  });
+
+  const createMockNotification = (
+    overrides: Partial<IThreadUpdateNotification> = {},
+  ): IThreadUpdateNotification => ({
+    type: NotificationEvent.ThreadUpdate,
+    graphId: mockGraphId,
+    threadId: mockThreadId,
+    data: {},
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    const mockGraph: GraphEntity = {
+      id: mockGraphId,
+      createdBy: mockOwnerId,
+      name: 'Graph',
+      description: 'Desc',
+      version: '1.0.0',
+      schema: { nodes: [], edges: [] },
+      status: GraphStatus.Created,
+      temporary: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      error: undefined,
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ThreadUpdateNotificationHandler,
+        {
+          provide: ThreadsDao,
+          useValue: {
+            getOne: vi.fn(),
+            updateById: vi.fn(),
+          },
+        },
+        {
+          provide: GraphDao,
+          useValue: {
+            getOne: vi.fn().mockResolvedValue(mockGraph),
+          },
+        },
+      ],
+    }).compile();
+
+    handler = module.get<ThreadUpdateNotificationHandler>(
+      ThreadUpdateNotificationHandler,
+    );
+    threadsDao = module.get<ThreadsDao>(ThreadsDao);
+    graphDao = module.get<GraphDao>(GraphDao);
+  });
+
+  const expectFullThreadPayload = (
+    result: IThreadUpdateEnrichedNotification[],
+    thread: ThreadEntity,
+  ) => {
+    const expectedThread: ThreadDto = {
+      id: thread.id,
+      graphId: thread.graphId,
+      externalThreadId: thread.externalThreadId,
+      createdAt: thread.createdAt.toISOString(),
+      updatedAt: thread.updatedAt.toISOString(),
+      metadata: thread.metadata ?? {},
+      source: thread.source ?? null,
+      name: thread.name ?? null,
+      status: thread.status,
+    };
+
+    expect(result).toEqual([
+      {
+        type: EnrichedNotificationEvent.ThreadUpdate,
+        graphId: mockGraphId,
+        ownerId: mockOwnerId,
+        threadId: mockThreadId,
+        internalThreadId: thread.id,
+        data: expectedThread,
+      },
+    ]);
+  };
+
+  describe('handle', () => {
+    it('updates status and emits full thread info', async () => {
+      const thread = createMockThreadEntity({ status: ThreadStatus.Running });
+      const updatedThread = {
+        ...thread,
+        status: ThreadStatus.Stopped,
+        updatedAt: new Date('2024-01-01T00:00:01Z'),
+      } satisfies ThreadEntity;
+      const notification = createMockNotification({
+        data: { status: ThreadStatus.Stopped },
+      });
+
+      const getOneSpy = vi
+        .spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(thread)
+        .mockResolvedValueOnce(updatedThread);
+      const updateSpy = vi
+        .spyOn(threadsDao, 'updateById')
+        .mockResolvedValue(updatedThread);
+
+      const result = await handler.handle(notification);
+
+      expect(graphDao.getOne).toHaveBeenCalledWith({ id: mockGraphId });
+      expect(getOneSpy).toHaveBeenNthCalledWith(1, {
+        externalThreadId: mockThreadId,
+        graphId: mockGraphId,
+      });
+      expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+        status: ThreadStatus.Stopped,
+      });
+      expect(getOneSpy).toHaveBeenNthCalledWith(2, {
+        id: thread.id,
+        graphId: mockGraphId,
+      });
+      expectFullThreadPayload(result, updatedThread);
+    });
+
+    it('updates name and emits full thread info', async () => {
+      const thread = createMockThreadEntity({ name: 'Old Name' });
+      const updatedThread = {
+        ...thread,
+        name: 'New Name',
+        updatedAt: new Date('2024-01-01T00:00:01Z'),
+      } satisfies ThreadEntity;
+      const notification = createMockNotification({
+        data: { name: 'New Name' },
+      });
+
+      const getOneSpy = vi
+        .spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(thread)
+        .mockResolvedValueOnce(updatedThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+
+      const result = await handler.handle(notification);
+
+      expect(getOneSpy).toHaveBeenNthCalledWith(1, {
+        externalThreadId: mockThreadId,
+        graphId: mockGraphId,
+      });
+      expect(threadsDao.updateById).toHaveBeenCalledWith(thread.id, {
+        name: 'New Name',
+      });
+      expect(getOneSpy).toHaveBeenNthCalledWith(2, {
+        id: thread.id,
+        graphId: mockGraphId,
+      });
+      expectFullThreadPayload(result, updatedThread);
+    });
+
+    it('emits existing thread when no fields provided', async () => {
+      const thread = createMockThreadEntity();
+      const notification = createMockNotification({ data: {} });
+
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(thread)
+        .mockResolvedValueOnce(thread);
+      const updateSpy = vi.spyOn(threadsDao, 'updateById');
+
+      const result = await handler.handle(notification);
+
+      expect(updateSpy).not.toHaveBeenCalled();
+      expectFullThreadPayload(result, thread);
+    });
+
+    it('returns empty array when thread not found', async () => {
+      const notification = createMockNotification({
+        data: { status: ThreadStatus.Stopped },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      const result = await handler.handle(notification);
+
+      expect(result).toEqual([]);
+    });
+  });
+});

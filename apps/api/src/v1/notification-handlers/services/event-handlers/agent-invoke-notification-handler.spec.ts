@@ -11,6 +11,7 @@ import {
 } from '../../../notifications/notifications.types';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
+import { ThreadStatus } from '../../../threads/threads.types';
 import { AgentInvokeNotificationHandler } from './agent-invoke-notification-handler';
 
 describe('AgentInvokeNotificationHandler', () => {
@@ -55,6 +56,7 @@ describe('AgentInvokeNotificationHandler', () => {
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     deletedAt: null,
+    status: ThreadStatus.Running,
     ...overrides,
   });
 
@@ -81,6 +83,7 @@ describe('AgentInvokeNotificationHandler', () => {
           useValue: {
             getOne: vi.fn(),
             create: vi.fn(),
+            updateById: vi.fn(),
           },
         },
         {
@@ -122,6 +125,7 @@ describe('AgentInvokeNotificationHandler', () => {
         createdBy: mockUserId,
         externalThreadId: 'parent-thread-123',
         source: undefined,
+        status: ThreadStatus.Running,
       });
       expect(result).toEqual([]);
     });
@@ -151,6 +155,7 @@ describe('AgentInvokeNotificationHandler', () => {
         createdBy: mockUserId,
         externalThreadId: mockParentThreadId,
         source: undefined,
+        status: ThreadStatus.Running,
       });
     });
 
@@ -162,6 +167,7 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(existingThread);
       vi.spyOn(threadsDao, 'create');
+      vi.spyOn(threadsDao, 'updateById');
 
       await handler.handle(notification);
 
@@ -170,6 +176,29 @@ describe('AgentInvokeNotificationHandler', () => {
         graphId: mockGraphId,
       });
       expect(threadsDao.create).not.toHaveBeenCalled();
+      expect(threadsDao.updateById).not.toHaveBeenCalled();
+    });
+
+    it('should reset thread status to running when existing thread is not running', async () => {
+      const mockGraph = createMockGraphEntity();
+      const existingThread = createMockThreadEntity({
+        status: ThreadStatus.NeedMoreInfo,
+      });
+      const notification = createMockNotification();
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(existingThread);
+      const updateSpy = vi
+        .spyOn(threadsDao, 'updateById')
+        .mockResolvedValue(
+          createMockThreadEntity({ status: ThreadStatus.Running }),
+        );
+
+      await handler.handle(notification);
+
+      expect(updateSpy).toHaveBeenCalledWith(existingThread.id, {
+        status: ThreadStatus.Running,
+      });
     });
 
     it('should skip thread creation if graph not found', async () => {
@@ -210,6 +239,7 @@ describe('AgentInvokeNotificationHandler', () => {
         createdBy: mockUserId,
         externalThreadId: 'parent-thread-123',
         source,
+        status: ThreadStatus.Running,
       });
       expect(result).toEqual([]);
     });
@@ -237,6 +267,7 @@ describe('AgentInvokeNotificationHandler', () => {
         graphId: mockGraphId,
         createdBy: mockUserId,
         externalThreadId: mockParentThreadId,
+        status: ThreadStatus.Running,
       });
 
       // Second agent invocation - should not create new thread

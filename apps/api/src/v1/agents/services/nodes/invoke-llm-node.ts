@@ -45,7 +45,7 @@ export class InvokeLlmNode extends BaseNode<
     const shouldResetNeedsMoreInfo = hasNewHumanMessage && state.needsMoreInfo;
 
     const runner = this.llm.bindTools(this.tools, {
-      tool_choice: this.opts?.toolChoice,
+      tool_choice: this.tools.length ? this.opts?.toolChoice : undefined,
       parallel_tool_calls: this.opts?.parallelToolCalls,
     });
 

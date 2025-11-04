@@ -7,6 +7,7 @@ import { ThreadsDao } from '../dao/threads.dao';
 import { GetMessagesQueryDto, GetThreadsQueryDto } from '../dto/threads.dto';
 import { MessageEntity } from '../entity/message.entity';
 import { ThreadEntity } from '../entity/thread.entity';
+import { ThreadStatus } from '../threads.types';
 import { ThreadsService } from './threads.service';
 
 describe('ThreadsService', () => {
@@ -30,6 +31,7 @@ describe('ThreadsService', () => {
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     deletedAt: null,
+    status: ThreadStatus.Running,
     ...overrides,
   });
 
@@ -120,6 +122,7 @@ describe('ThreadsService', () => {
         externalThreadId: 'external-thread-123',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        status: ThreadStatus.Running,
       });
     });
   });
@@ -141,6 +144,7 @@ describe('ThreadsService', () => {
         id: mockThreadId,
         graphId: mockGraphId,
         externalThreadId: 'external-thread-123',
+        status: ThreadStatus.Running,
       });
     });
 
@@ -179,6 +183,7 @@ describe('ThreadsService', () => {
         id: mockThreadId,
         graphId: mockGraphId,
         externalThreadId: 'external-thread-123',
+        status: ThreadStatus.Running,
       });
     });
 

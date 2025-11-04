@@ -11,6 +11,7 @@ When making changes to the codebase, follow this workflow to ensure quality and 
 - Write your code following the [code guidelines](./code-guidelines.md)
 - Follow the [project structure](./project-structure.md)
 - Keep changes focused and atomic
+- When database schema changes are involved, generate the migration via `pnpm run migration:generate` from `apps/api` and commit the generated file; never create migration files manually.
 
 ### 2. Build the Project
 
@@ -100,6 +101,8 @@ Run end-to-end tests to verify the complete flow:
    pnpm test:e2e:generate-api
    ```
 
+   > Always use this script to refresh Swagger-based API types. Do **not** add or edit the generated files manually.
+
 4. **Run Cypress tests**:
    ```bash
    cd apps/api
@@ -107,6 +110,45 @@ Run end-to-end tests to verify the complete flow:
    ```
 
 > **Note**: Check `package.json` for exact E2E test commands, as they may vary.
+
+#### Faster local loop (recommended): run one spec at a time
+
+When iterating locally, don't run the whole E2E suite after each change. Instead, run one spec at a time, fix failures, then continue with the next spec.
+
+- Run a single spec:
+  ```bash
+  cd apps/api
+  pnpm test:e2e:local -- --spec "cypress/e2e/notifications/socket.cy.ts"
+  ```
+
+- Get a list of spec files:
+  ```bash
+  cd apps/api
+  find cypress/e2e -type f \( -name "*.cy.ts" -o -name "*.cy.js" \) | sort
+  ```
+
+- Run specs sequentially, stopping on first failure (Bash/Zsh):
+  ```bash
+  cd apps/api
+  find cypress/e2e -type f \( -name "*.cy.ts" -o -name "*.cy.js" \) | sort | \
+  while IFS= read -r spec; do
+    echo "Running $spec"
+    pnpm test:e2e:local -- --spec "$spec" || { echo "Failed: $spec"; break; }
+  done
+  ```
+
+- Windows PowerShell (optional):
+  ```powershell
+  cd apps/api
+  $specs = Get-ChildItem -Path cypress/e2e -Recurse -Include *.cy.ts,*.cy.js | Sort-Object FullName
+  foreach ($s in $specs) {
+    Write-Host "Running $($s.FullName)"
+    pnpm test:e2e:local -- --spec "$($s.FullName)"
+    if ($LASTEXITCODE -ne 0) { throw "Failed: $($s.FullName)" }
+  }
+  ```
+
+See the detailed guidance and more examples in Testing Guidelines: [Speeding up E2E locally: run one spec at a time](./testing.md#speeding-up-e2e-locally-run-one-spec-at-a-time)
 
 ### 7. Review Your Changes
 

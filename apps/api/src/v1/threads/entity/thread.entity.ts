@@ -1,6 +1,8 @@
 import { TimestampsEntity } from '@packages/typeorm';
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
+import { ThreadStatus } from '../threads.types';
+
 @Entity('threads')
 export class ThreadEntity extends TimestampsEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -28,4 +30,8 @@ export class ThreadEntity extends TimestampsEntity {
 
   @Column({ type: 'varchar', nullable: true })
   name?: string;
+
+  @Column({ type: 'varchar', default: ThreadStatus.Running })
+  @Index()
+  status!: ThreadStatus;
 }

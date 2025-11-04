@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import { MessageSchema } from '../../graphs/dto/graphs.dto';
+import { ThreadStatus } from '../threads.types';
 
 // Thread schema
 export const ThreadSchema = z.object({
@@ -25,6 +26,7 @@ export const ThreadSchema = z.object({
     .optional()
     .nullable()
     .describe('Thread name (auto-generated from first user message)'),
+  status: z.enum(ThreadStatus).describe('Thread execution status'),
 });
 
 export const ThreadMessageSchema = z.object({

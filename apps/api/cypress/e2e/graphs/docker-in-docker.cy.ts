@@ -126,7 +126,6 @@ function createMockGraphDataWithDockerInDocker() {
           config: {
             runtimeType: 'Docker',
             image: 'node:20-alpine',
-            workdir: '/app',
             env: {},
             initScript: 'apk add --no-cache docker-cli',
             initScriptTimeoutMs: 60000,

@@ -3,7 +3,6 @@ import { BadRequestException, DefaultLogger } from '@packages/common';
 
 import { environment } from '../../../environments';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
-import { BaseAgent } from '../../agents/services/agents/base-agent';
 import { SimpleAgentSchemaType } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import {

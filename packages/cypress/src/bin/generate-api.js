@@ -1,4 +1,4 @@
-import { generateClient } from '../index';
+import { generateClient } from '../api-generator.js';
 
 let [url, output] = process.argv.slice(2);
 

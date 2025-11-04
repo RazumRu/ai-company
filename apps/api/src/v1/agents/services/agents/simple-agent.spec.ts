@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NotificationEvent } from '../../../notifications/notifications.types';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
+import { ThreadStatus } from '../../../threads/threads.types';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { SimpleAgent } from './simple-agent';
 
@@ -773,6 +774,24 @@ describe('SimpleAgent', () => {
         },
       });
 
+      const threadUpdateCalls = vi
+        .mocked(mockNotificationsService.emit)
+        .mock.calls.filter(
+          (call) => call[0]?.type === NotificationEvent.ThreadUpdate,
+        );
+
+      expect(threadUpdateCalls).toHaveLength(1);
+      expect(threadUpdateCalls[0]?.[0]).toMatchObject({
+        type: NotificationEvent.ThreadUpdate,
+        graphId: 'graph-123',
+        nodeId: 'node-456',
+        threadId: 'thread-789',
+        parentThreadId: 'parent-thread-123',
+        data: {
+          status: ThreadStatus.Stopped,
+        },
+      });
+
       // Verify active runs are cleared
       expect(agent['activeRuns'].size).toBe(0);
 
@@ -847,6 +866,14 @@ describe('SimpleAgent', () => {
         );
 
       expect(systemMessageCalls.length).toBe(0);
+
+      const threadUpdateCalls = vi
+        .mocked(mockNotificationsService.emit)
+        .mock.calls.filter(
+          (call) => call[0]?.type === NotificationEvent.ThreadUpdate,
+        );
+
+      expect(threadUpdateCalls.length).toBe(0);
     });
 
     it('should handle multiple active runs', async () => {

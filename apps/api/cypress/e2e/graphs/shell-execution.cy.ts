@@ -228,7 +228,6 @@ describe('Shell Execution E2E', () => {
     it('should create graph with custom Docker image (alpine)', () => {
       const graphData = createMockGraphDataWithShellTool({
         dockerImage: 'alpine:latest',
-        workdir: '/tmp',
       });
 
       createGraph(graphData).then((response) => {
@@ -510,7 +509,6 @@ describe('Shell Execution E2E', () => {
 // Helper function to create mock graph data with shell tool
 function createMockGraphDataWithShellTool(options?: {
   dockerImage?: string;
-  workdir?: string;
   env?: Record<string, string>;
 }) {
   const baseGraphData = createMockGraphData();
@@ -528,7 +526,6 @@ function createMockGraphDataWithShellTool(options?: {
           config: {
             runtimeType: 'Docker',
             image: options?.dockerImage ?? 'node:20-alpine',
-            workdir: options?.workdir ?? '/app',
             env: options?.env ?? {},
           },
         },

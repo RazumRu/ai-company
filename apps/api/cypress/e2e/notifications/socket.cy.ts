@@ -550,7 +550,7 @@ describe('Socket Gateway E2E', () => {
               name: 'Test Agent',
               instructions: 'You are a helpful test agent.',
               invokeModelName: 'gpt-5-mini',
-              summarizeMaxTokens: 200000,
+              summarizeMaxTokens: 272000,
               summarizeKeepTokens: 30000,
             },
           },

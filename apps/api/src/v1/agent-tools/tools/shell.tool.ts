@@ -4,7 +4,6 @@ import {
 } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
-import { isArray } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';

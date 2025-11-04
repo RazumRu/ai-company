@@ -3,7 +3,7 @@
   "version": "1.7.14",
   "author": "Sergey Razumovskiy <s.razumru@gmail.com>",
   "bin": {
-    "cy-generate-api": "dist/bin/generate-api.js"
+    "cy-generate-api": "src/bin/generate-api.js"
   },
   "dependencies": {
     "@hey-api/client-axios": "^0.9.1",

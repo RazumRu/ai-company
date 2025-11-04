@@ -128,6 +128,37 @@ describe('SocketGateway', () => {
         mockAgentStateUpdateNotification,
       );
     });
+
+    it('should broadcast ThreadUpdate notifications to graph and user rooms', () => {
+      const mockServer = {
+        emit: vi.fn(),
+        to: vi.fn().mockReturnThis(),
+      };
+      (gateway as unknown as { ws: unknown }).ws = mockServer;
+
+      gateway.afterInit();
+
+      const mockThreadUpdateNotification: IEnrichedNotification<unknown> = {
+        type: 'thread.update' as any,
+        graphId: mockGraphId,
+        ownerId: mockUserId,
+        data: {
+          status: 'stopped',
+        },
+        threadId: 'thread-123',
+      };
+
+      const eventHandlerCallback =
+        eventsHandler.subscribeEvents.mock.calls[0]![0];
+      eventHandlerCallback(mockThreadUpdateNotification);
+
+      expect(mockServer.to).toHaveBeenCalledWith(`graph:${mockGraphId}`);
+      expect(mockServer.to).toHaveBeenCalledWith(`user:${mockUserId}`);
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'thread.update',
+        mockThreadUpdateNotification,
+      );
+    });
   });
 
   describe('handleConnection', () => {

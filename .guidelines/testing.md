@@ -168,11 +168,60 @@ The project uses Cypress for E2E testing.
   pnpm test:e2e:generate-api
   ```
 
-**Important**: Before running E2E tests or generating API definitions, you should run the command to generate API definitions:
+**Important**: Before running E2E tests or generating API definitions, always run the script that generates the API types:
 ```bash
 cd apps/api
 pnpm test:e2e:generate-api
 ```
+
+> The generated files must never be edited or recreated by hand—rerun the script whenever the Swagger schema changes.
+
+### Speeding up E2E locally: run one spec at a time
+
+When iterating locally, prefer running specs one-by-one to get fast feedback, fix the failure, and then continue. This avoids rerunning the whole suite after each change.
+
+- Run a single spec (recommended):
+  ```bash
+  cd apps/api
+  pnpm test:e2e:local -- --spec "cypress/e2e/notifications/socket.cy.ts"
+  ```
+  You can replace the path with any spec you’re working on. Extra args after `--` are forwarded to Cypress.
+
+- List available spec files:
+  ```bash
+  cd apps/api
+  find cypress/e2e -type f \( -name "*.cy.ts" -o -name "*.cy.js" \) | sort
+  ```
+
+- Run all specs sequentially, stopping on first failure (Bash/Zsh):
+  ```bash
+  cd apps/api
+  find cypress/e2e -type f \( -name "*.cy.ts" -o -name "*.cy.js" \) | sort | \
+  while IFS= read -r spec; do
+    echo "Running $spec"
+    pnpm test:e2e:local -- --spec "$spec" || { echo "Failed: $spec"; break; }
+  done
+  ```
+
+- Windows PowerShell equivalent:
+  ```powershell
+  cd apps/api
+  $specs = Get-ChildItem -Path cypress/e2e -Recurse -Include *.cy.ts,*.cy.js | Sort-Object FullName
+  foreach ($s in $specs) {
+    Write-Host "Running $($s.FullName)"
+    pnpm test:e2e:local -- --spec "$($s.FullName)"
+    if ($LASTEXITCODE -ne 0) { throw "Failed: $($s.FullName)" }
+  }
+  ```
+
+- Tip: For interactive debugging, you can also open the Cypress runner and pick a single spec:
+  ```bash
+  cd apps/api
+  pnpm test:e2e:open:local
+  ```
+
+Workflow suggestion:
+1) Pick one spec and run it; 2) Fix the failure; 3) Re-run until green; 4) Move to the next spec.
 
 ### Writing E2E Tests
 

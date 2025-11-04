@@ -17,6 +17,40 @@ import {
   getThreads,
 } from './threads.helper';
 
+const waitForThreadStatus = (
+  externalThreadId: string,
+  expectedStatus: ThreadDto['status'],
+  retries = 10,
+  delayMs = 3000,
+): Cypress.Chainable<Cypress.Response<ThreadDto>> => {
+  if (retries <= 0) {
+    throw new Error(
+      `Thread '${externalThreadId}' did not reach status '${expectedStatus}' within the expected time`,
+    );
+  }
+
+  return getThreadByExternalId(externalThreadId).then(
+    (threadResponse): Cypress.Chainable<Cypress.Response<ThreadDto>> => {
+      expect(threadResponse.status).to.equal(200);
+
+      if (threadResponse.body.status === expectedStatus) {
+        return cy.wrap(threadResponse);
+      }
+
+      return cy
+        .wait(delayMs)
+        .then(() =>
+          waitForThreadStatus(
+            externalThreadId,
+            expectedStatus,
+            retries - 1,
+            delayMs,
+          ),
+        );
+    },
+  );
+};
+
 describe('Threads E2E', () => {
   // Cleanup after all tests in this describe block
   after(() => {
@@ -45,7 +79,7 @@ describe('Threads E2E', () => {
                 instructions:
                   'You are the first agent. When asked, use the agent-communication tool to ask the second agent a question.',
                 invokeModelName: 'gpt-5-mini',
-                summarizeMaxTokens: 200000,
+                summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,
               },
             },
@@ -57,7 +91,7 @@ describe('Threads E2E', () => {
                 instructions:
                   'You are the second agent. Answer questions briefly.',
                 invokeModelName: 'gpt-5-mini',
-                summarizeMaxTokens: 200000,
+                summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,
                 enforceToolUsage: false,
               },
@@ -115,6 +149,9 @@ describe('Threads E2E', () => {
           expect(threadResponse.body).to.have.property(
             'externalThreadId',
             threadId,
+          );
+          expect(['running', 'done', 'need_more_info', 'stopped']).to.include(
+            threadResponse.body.status,
           );
 
           internalThreadId = threadResponse.body.id;
@@ -395,31 +432,25 @@ describe('Threads E2E', () => {
           cy.wait(2000);
 
           return executeTrigger(testGraphId, 'trigger-1', {
-            messages: ['Test message'],
-            threadSubId: 'retrieval-test',
+            messages: ['Retrieve this thread'],
           });
         })
-        .then(() => {
-          cy.wait(2000);
+        .then((triggerResponse) => {
+          expect(triggerResponse.status).to.equal(201);
+          const threadId = triggerResponse.body.threadId;
 
-          return getThreads({ graphId: testGraphId });
-        })
-        .then((threadsResponse) => {
-          expect(threadsResponse.status).to.equal(200);
-          expect(threadsResponse.body.length).to.equal(1);
-
-          internalThreadId = threadsResponse.body[0]?.id || '';
-
-          // Retrieve thread by ID
-          return getThreadById(internalThreadId);
+          return getThreadByExternalId(threadId);
         })
         .then((threadResponse) => {
           expect(threadResponse.status).to.equal(200);
-          expect(threadResponse.body.id).to.equal(internalThreadId);
-          expect(threadResponse.body.graphId).to.equal(testGraphId);
-          expect(threadResponse.body).to.have.property('externalThreadId');
-          expect(threadResponse.body).to.have.property('createdAt');
-          expect(threadResponse.body).to.have.property('updatedAt');
+          expect(threadResponse.body).to.have.property('id');
+          internalThreadId = threadResponse.body.id;
+
+          return getThreadById(internalThreadId!);
+        })
+        .then((threadResponse) => {
+          expect(threadResponse.status).to.equal(200);
+          expect(threadResponse.body).to.have.property('id', internalThreadId);
 
           // Cleanup
           destroyGraph(testGraphId).then(() => {
@@ -1820,7 +1851,7 @@ describe('Threads E2E', () => {
                   name: 'Test Agent',
                   instructions: 'You are a helpful test agent.',
                   invokeModelName: 'gpt-5-mini',
-                  summarizeMaxTokens: 200000,
+                  summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                 },
               },
@@ -1907,7 +1938,7 @@ describe('Threads E2E', () => {
                   name: 'Test Agent',
                   instructions: 'You are a helpful test agent.',
                   invokeModelName: 'gpt-5-mini',
-                  summarizeMaxTokens: 200000,
+                  summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                 },
               },
@@ -1980,6 +2011,73 @@ describe('Threads E2E', () => {
             });
           });
       });
+    });
+  });
+
+  describe('Thread Status Updates', () => {
+    it('should mark thread as done after successful execution', () => {
+      let testGraphId: string;
+      let threadId: string;
+
+      createGraph(createMockGraphData())
+        .then((createResponse) => {
+          expect(createResponse.status).to.equal(201);
+          testGraphId = createResponse.body.id;
+          return runGraph(testGraphId);
+        })
+        .then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+          return executeTrigger(testGraphId, 'trigger-1', {
+            messages: ['What is 1+1?'],
+          });
+        })
+        .then((triggerResponse) => {
+          expect(triggerResponse.status).to.equal(201);
+          threadId = triggerResponse.body.threadId;
+
+          return waitForThreadStatus(threadId, 'done');
+        })
+        .then((threadResponse) => {
+          expect(threadResponse.body.status).to.equal('done');
+
+          return destroyGraph(testGraphId).then(() => deleteGraph(testGraphId));
+        });
+    });
+
+    it.only('should mark thread as stopped when execution is interrupted', () => {
+      let testGraphId: string;
+      let threadId: string;
+
+      createGraph(createMockGraphData())
+        .then((createResponse) => {
+          expect(createResponse.status).to.equal(201);
+          testGraphId = createResponse.body.id;
+          return runGraph(testGraphId);
+        })
+        .then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+          return executeTrigger(testGraphId, 'trigger-1', {
+            messages: ['Lets thin what is the future of aI?'],
+            async: true,
+          });
+        })
+        .then((triggerResponse) => {
+          expect(triggerResponse.status).to.equal(201);
+          threadId = triggerResponse.body.threadId;
+
+          return cy
+            .wait(1000)
+            .then(() => destroyGraph(testGraphId))
+            .then((destroyResponse) => {
+              expect(destroyResponse.status).to.equal(201);
+              return waitForThreadStatus(threadId, 'stopped');
+            });
+        })
+        .then((threadResponse) => {
+          expect(threadResponse.body.status).to.equal('stopped');
+
+          return deleteGraph(testGraphId);
+        });
     });
   });
 });

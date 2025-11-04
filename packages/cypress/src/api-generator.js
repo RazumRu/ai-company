@@ -1,12 +1,6 @@
 import { createClient } from '@hey-api/openapi-ts';
 
-export const generateClient = async ({
-  url,
-  output,
-}: {
-  url: string;
-  output: string;
-}) => {
+export const generateClient = async ({ url, output }) => {
   await createClient({
     input: url,
     logs: {

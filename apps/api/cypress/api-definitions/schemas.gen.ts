@@ -621,8 +621,19 @@ export const ThreadDtoSchema = {
         },
       ],
     },
+    status: {
+      type: 'string',
+      enum: ['running', 'done', 'need_more_info', 'stopped'],
+    },
   },
-  required: ['id', 'graphId', 'externalThreadId', 'createdAt', 'updatedAt'],
+  required: [
+    'id',
+    'graphId',
+    'externalThreadId',
+    'createdAt',
+    'updatedAt',
+    'status',
+  ],
 } as const;
 
 export const ThreadMessageDtoSchema = {
