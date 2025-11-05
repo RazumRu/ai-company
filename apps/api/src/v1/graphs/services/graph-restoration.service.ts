@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
 
 import { environment } from '../../../environments';
@@ -11,14 +12,19 @@ import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
-import { CompiledGraphNode, GraphStatus, NodeKind } from '../graphs.types';
+import { CompiledGraphNode, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
+import { GraphsService } from './graphs.service';
 
 /**
  * GraphRestorationService handles restoring graphs with their agent states
  * after server restart. It queries the database for graphs with 'running' status
  * and recompiles them into the GraphRegistry.
+ *
+ * Note: This service uses ModuleRef to lazily resolve GraphsService to avoid
+ * issues with request-scoped providers (AuthContextService) that would prevent
+ * onModuleInit from running.
  */
 @Injectable()
 export class GraphRestorationService {
@@ -28,6 +34,7 @@ export class GraphRestorationService {
     private readonly graphRegistry: GraphRegistry,
     private readonly threadsDao: ThreadsDao,
     private readonly graphCheckpointsDao: GraphCheckpointsDao,
+    private readonly moduleRef: ModuleRef,
     private readonly logger: DefaultLogger,
   ) {}
 
@@ -123,6 +130,7 @@ export class GraphRestorationService {
 
   /**
    * Restores a single graph by recompiling it and registering it in the registry
+   * Uses ModuleRef to lazily resolve GraphsService to avoid request-scoped dependency issues
    */
   private async restoreGraph(graph: GraphEntity): Promise<void> {
     const { id, name } = graph;
@@ -133,11 +141,11 @@ export class GraphRestorationService {
         return;
       }
 
-      // Compile the graph
-      const compiledGraph = await this.graphCompiler.compile(graph);
+      // Lazily resolve GraphsService using ModuleRef to avoid request-scoped issues
+      const graphsService = await this.moduleRef.create(GraphsService);
 
-      // Register the compiled graph in the registry
-      this.graphRegistry.register(id, compiledGraph);
+      // Use the run method from GraphsService
+      await graphsService.run(id);
 
       // Resume interrupted threads
       await this.resumeInterruptedThreads(id);
@@ -152,14 +160,7 @@ export class GraphRestorationService {
           graphName: name,
         },
       );
-
-      // Update graph status to error in database
-      await this.graphDao.updateById(id, {
-        status: GraphStatus.Error,
-        error: `Restoration failed: ${(error as Error).message}`,
-      });
-
-      throw error;
+      // Don't re-throw - allow other graphs to be restored
     }
   }
 

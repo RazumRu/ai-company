@@ -12,6 +12,7 @@ export enum NodeKind {
 
 export enum GraphStatus {
   Created = 'created',
+  Compiling = 'compiling',
   Running = 'running',
   Stopped = 'stopped',
   Error = 'error',

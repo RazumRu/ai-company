@@ -54,7 +54,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         updates.status = ThreadStatus.Running;
       }
 
-      if (source && existingInternalThread.source !== source) {
+      if (source && !existingInternalThread.source) {
         updates.source = source;
       }
 

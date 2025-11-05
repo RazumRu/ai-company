@@ -167,7 +167,7 @@ describe('Socket Gateway E2E', () => {
             expect(notification).to.have.property('graphId', freshGraphId);
             expect(notification).to.have.property('type', 'graph.update');
             expect(notification).to.have.property('data');
-            expect(notification.data).to.have.property('state');
+            expect(notification.data).to.have.property('status');
             resolve(undefined);
           });
 
@@ -280,7 +280,7 @@ describe('Socket Gateway E2E', () => {
             expect(notification).to.have.property('graphId', freshGraphId);
             expect(notification).to.have.property('type', 'graph.update');
             expect(notification).to.have.property('data');
-            expect(notification.data).to.have.property('state');
+            expect(notification.data).to.have.property('status');
             resolve(undefined);
           });
 

@@ -135,7 +135,7 @@ export type GraphDto = {
       label?: string;
     }>;
   };
-  status: 'created' | 'running' | 'stopped' | 'error';
+  status: 'created' | 'compiling' | 'running' | 'stopped' | 'error';
   metadata?: {
     /**
      * Node coordinates and names by node ID

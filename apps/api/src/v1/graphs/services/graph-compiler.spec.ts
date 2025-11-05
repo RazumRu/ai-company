@@ -5,7 +5,6 @@ import { z } from 'zod';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NodeBaseTemplate } from '../../graph-templates/templates/base-node.template';
-import { NotificationsService } from '../../notifications/services/notifications.service';
 import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphSchemaType, GraphStatus, NodeKind } from '../graphs.types';
@@ -98,12 +97,6 @@ describe('GraphCompiler', () => {
             hasTemplate: vi.fn(),
             getTemplate: vi.fn(),
             validateTemplateConfig: vi.fn(),
-          },
-        },
-        {
-          provide: NotificationsService,
-          useValue: {
-            emit: vi.fn(),
           },
         },
         {

@@ -4,6 +4,7 @@ import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockDeep, MockProxy } from 'vitest-mock-extended';
 
+import { GraphStatus } from '../../graphs/graphs.types';
 import {
   IAgentMessageNotification,
   IGraphNotification,
@@ -144,7 +145,7 @@ describe('NotificationHandler', () => {
         type: EnrichedNotificationEvent.Graph,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
-        data: { state: 'compiled', schema: mockGraphSchema },
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
       graphEventHandler.handle.mockResolvedValue([mockEnrichedNotification]);
@@ -152,7 +153,7 @@ describe('NotificationHandler', () => {
       const mockNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
         graphId: mockGraphId,
-        data: { state: 'compiled', schema: mockGraphSchema },
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
       let emittedEvent: unknown;
@@ -461,7 +462,7 @@ describe('NotificationHandler', () => {
         type: EnrichedNotificationEvent.Graph,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
-        data: { state: 'compiled', schema: mockGraphSchema },
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
       graphEventHandler.handle.mockResolvedValue([mockEnrichedNotification]);
@@ -469,7 +470,7 @@ describe('NotificationHandler', () => {
       const mockNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
         graphId: mockGraphId,
-        data: { state: 'compiled', schema: mockGraphSchema },
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
       const emittedEvents: unknown[] = [];
@@ -497,7 +498,7 @@ describe('NotificationHandler', () => {
       const mockNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
         graphId: mockGraphId,
-        data: { state: 'compiled', schema: mockGraphSchema },
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
       const emittedEvents: unknown[] = [];
@@ -523,7 +524,7 @@ describe('NotificationHandler', () => {
       const mockNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
         graphId: mockGraphId,
-        data: { state: 'compiled', schema: mockGraphSchema },
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
       // Get the subscribe callback and call it
@@ -547,7 +548,7 @@ describe('NotificationHandler', () => {
         type: EnrichedNotificationEvent.Graph,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
-        data: { state: 'compiled', schema: mockGraphSchema },
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
       service.emit('enriched_notification', testEvent);

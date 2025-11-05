@@ -9,8 +9,6 @@ import {
   NodeConnection,
   SimpleAgentTemplateResult,
 } from '../../graph-templates/templates/base-node.template';
-import { NotificationEvent } from '../../notifications/notifications.types';
-import { NotificationsService } from '../../notifications/services/notifications.service';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
@@ -31,7 +29,6 @@ export class GraphCompiler {
   constructor(
     private readonly templateRegistry: TemplateRegistry,
     private readonly logger: DefaultLogger,
-    private readonly notificationsService: NotificationsService,
     private readonly graphStateFactory: GraphStateFactory,
   ) {}
 
@@ -243,12 +240,6 @@ export class GraphCompiler {
 
     const graphId = metadata.graphId || 'unknown';
 
-    await this.notificationsService.emit({
-      type: NotificationEvent.Graph,
-      graphId,
-      data: { state: 'compiling', schema },
-    });
-
     this.validateSchema(schema);
 
     const compiledNodes = new Map<string, CompiledGraphNode>();
@@ -269,12 +260,6 @@ export class GraphCompiler {
       stateManager.attachGraphNode(node.id, compiledNode);
     }
 
-    await this.notificationsService.emit({
-      type: NotificationEvent.Graph,
-      graphId,
-      data: { state: 'compiled', schema },
-    });
-
     return {
       nodes: compiledNodes,
       edges: schema.edges || [],
@@ -282,11 +267,6 @@ export class GraphCompiler {
       destroy: async () => {
         await this.destroyGraph(compiledNodes);
         stateManager.destroy();
-        await this.notificationsService.emit({
-          type: NotificationEvent.Graph,
-          graphId,
-          data: { state: 'destroyed', schema },
-        });
       },
     };
   }

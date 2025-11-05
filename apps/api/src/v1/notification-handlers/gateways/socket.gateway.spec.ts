@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockDeep, MockProxy } from 'vitest-mock-extended';
 
 import { GraphDao } from '../../graphs/dao/graph.dao';
+import { GraphStatus } from '../../graphs/graphs.types';
 import { IEnrichedNotification } from '../notification-handlers.types';
 import { NotificationHandler } from '../services/notification-handler.service';
 import { SocketGateway } from './socket.gateway';
@@ -76,7 +77,7 @@ describe('SocketGateway', () => {
         type: 'graph.update' as any,
         graphId: mockGraphId,
         ownerId: mockUserId,
-        data: { state: 'compiled' },
+        data: { status: GraphStatus.Running },
       };
 
       // Get the event handler callback and call it
@@ -301,7 +302,7 @@ describe('SocketGateway', () => {
         version: '1.0.0',
         temporary: false,
         schema: {} as any,
-        status: 'compiled' as any,
+        status: GraphStatus.Running as any,
         createdAt: new Date(),
         updatedAt: new Date(),
         deletedAt: null,

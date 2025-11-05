@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { GraphStatus } from '../../graphs/graphs.types';
 import { Notification } from '../notifications.types';
 import {
   IAgentMessageNotification,
@@ -64,7 +65,7 @@ describe('NotificationsService', () => {
         nodeId: 'test-node-456',
         threadId: 'test-thread-789',
         data: {
-          state: 'compiled',
+          status: GraphStatus.Running,
           schema: {
             nodes: [],
             edges: [],
@@ -186,7 +187,7 @@ describe('NotificationsService', () => {
         type: NotificationEvent.Graph,
         graphId: 'test-graph-123',
         data: {
-          state: 'compiled',
+          status: GraphStatus.Running,
           schema: {
             nodes: [],
             edges: [],

@@ -7,6 +7,8 @@ import { isUndefined, omitBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
+import { NotificationEvent } from '../../notifications/notifications.types';
+import { NotificationsService } from '../../notifications/services/notifications.service';
 import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
@@ -29,6 +31,7 @@ export class GraphsService {
     private readonly graphCompiler: GraphCompiler,
     private readonly graphRegistry: GraphRegistry,
     private readonly typeorm: TypeormService,
+    private readonly notificationsService: NotificationsService,
     private readonly authContext: AuthContextService,
   ) {}
 
@@ -147,6 +150,27 @@ export class GraphsService {
       throw new BadRequestException('GRAPH_ALREADY_RUNNING');
     }
 
+    const schema = graph.schema;
+
+    // Update status to compiling
+    const compilingUpdate = await this.graphDao.updateById(id, {
+      status: GraphStatus.Compiling,
+      error: null,
+    });
+
+    if (!compilingUpdate) {
+      throw new NotFoundException('GRAPH_NOT_FOUND');
+    }
+
+    await this.notificationsService.emit({
+      type: NotificationEvent.Graph,
+      graphId: id,
+      data: {
+        status: GraphStatus.Compiling,
+        schema,
+      },
+    });
+
     try {
       // Compile the graph
       const compiledGraph = await this.graphCompiler.compile(graph, {
@@ -170,6 +194,15 @@ export class GraphsService {
         throw new NotFoundException('GRAPH_NOT_FOUND');
       }
 
+      await this.notificationsService.emit({
+        type: NotificationEvent.Graph,
+        graphId: id,
+        data: {
+          status: GraphStatus.Running,
+          schema,
+        },
+      });
+
       return this.prepareResponse(updated);
     } catch (error) {
       // Cleanup registry if it was registered
@@ -179,7 +212,16 @@ export class GraphsService {
 
       await this.graphDao.updateById(id, {
         status: GraphStatus.Error,
-        error: (<Error>error).message,
+        error: (error as Error).message,
+      });
+
+      await this.notificationsService.emit({
+        type: NotificationEvent.Graph,
+        graphId: id,
+        data: {
+          status: GraphStatus.Error,
+          schema,
+        },
       });
 
       throw error;
@@ -197,13 +239,24 @@ export class GraphsService {
       await this.graphRegistry.destroy(id);
     }
 
+    // Update status to stopped
     const updated = await this.graphDao.updateById(id, {
       status: GraphStatus.Stopped,
+      error: null,
     });
 
     if (!updated) {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
+
+    await this.notificationsService.emit({
+      type: NotificationEvent.Graph,
+      graphId: id,
+      data: {
+        status: GraphStatus.Stopped,
+        schema: graph.schema,
+      },
+    });
 
     return this.prepareResponse(updated);
   }

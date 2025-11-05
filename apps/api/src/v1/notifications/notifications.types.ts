@@ -4,6 +4,7 @@ import {
   GraphExecutionMetadata,
   GraphNodeStatus,
   GraphSchemaType,
+  GraphStatus,
 } from '../graphs/graphs.types';
 import { ThreadStatus } from '../threads/threads.types';
 
@@ -28,8 +29,8 @@ export interface INotification<T> {
 
 export interface IGraphNotification
   extends INotification<{
-    state: 'compiling' | 'compiled' | 'destroyed';
-    schema: GraphSchemaType;
+    status: GraphStatus;
+    schema?: GraphSchemaType;
   }> {
   type: NotificationEvent.Graph;
 }

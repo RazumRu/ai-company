@@ -206,7 +206,7 @@ export const GraphDtoSchema = {
     },
     status: {
       type: 'string',
-      enum: ['created', 'running', 'stopped', 'error'],
+      enum: ['created', 'compiling', 'running', 'stopped', 'error'],
     },
     metadata: {
       anyOf: [
