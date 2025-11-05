@@ -262,8 +262,9 @@ describe('Finish Tool E2E Tests', () => {
           expect(toolContent).to.have.property('needsMoreInfo');
           expect(toolContent.needsMoreInfo).to.be.true; // Should be true when asking for more info
 
-          // The message should contain a question
-          expect(toolContent.message).to.include('?');
+          // The message should provide clear follow-up instructions
+          expect(toolContent.message.length).to.be.greaterThan(0);
+          expect(toolContent.message.toLowerCase()).to.include('please');
           cy.log(
             'Finish tool response contains needsMoreInfo flag and question',
           );

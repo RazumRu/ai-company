@@ -15,41 +15,8 @@ import {
   getThreadById,
   getThreadMessages,
   getThreads,
+  waitForThreadStatus,
 } from './threads.helper';
-
-const waitForThreadStatus = (
-  externalThreadId: string,
-  expectedStatus: ThreadDto['status'],
-  retries = 10,
-  delayMs = 3000,
-): Cypress.Chainable<Cypress.Response<ThreadDto>> => {
-  if (retries <= 0) {
-    throw new Error(
-      `Thread '${externalThreadId}' did not reach status '${expectedStatus}' within the expected time`,
-    );
-  }
-
-  return getThreadByExternalId(externalThreadId).then(
-    (threadResponse): Cypress.Chainable<Cypress.Response<ThreadDto>> => {
-      expect(threadResponse.status).to.equal(200);
-
-      if (threadResponse.body.status === expectedStatus) {
-        return cy.wrap(threadResponse);
-      }
-
-      return cy
-        .wait(delayMs)
-        .then(() =>
-          waitForThreadStatus(
-            externalThreadId,
-            expectedStatus,
-            retries - 1,
-            delayMs,
-          ),
-        );
-    },
-  );
-};
 
 describe('Threads E2E', () => {
   // Cleanup after all tests in this describe block
@@ -133,14 +100,20 @@ describe('Threads E2E', () => {
               'Ask the second agent with communication tool what 2+2 is',
             ],
             threadSubId: 'multi-agent-test',
+            async: true,
           });
         })
         .then((triggerResponse) => {
           expect(triggerResponse.status).to.equal(201);
           threadId = triggerResponse.body.threadId;
 
-          // Get thread by external ID
-          return getThreadByExternalId(threadId);
+          // Wait for the thread to finish processing
+          return waitForThreadStatus(
+            threadId,
+            ['done', 'need_more_info'],
+            40,
+            5000,
+          );
         })
         .then((threadResponse) => {
           expect(threadResponse.status).to.equal(200);
@@ -150,7 +123,7 @@ describe('Threads E2E', () => {
             'externalThreadId',
             threadId,
           );
-          expect(['running', 'done', 'need_more_info', 'stopped']).to.include(
+          expect(['done', 'need_more_info']).to.include(
             threadResponse.body.status,
           );
 
@@ -2044,7 +2017,7 @@ describe('Threads E2E', () => {
         });
     });
 
-    it.only('should mark thread as stopped when execution is interrupted', () => {
+    it('should mark thread as stopped when execution is interrupted', () => {
       let testGraphId: string;
       let threadId: string;
 

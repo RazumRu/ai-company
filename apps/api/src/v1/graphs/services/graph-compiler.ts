@@ -23,6 +23,8 @@ import {
   GraphSchemaType,
   NodeKind,
 } from '../graphs.types';
+import { GraphStateFactory } from './graph-state.factory';
+import { GraphStateManager } from './graph-state.manager';
 
 @Injectable()
 export class GraphCompiler {
@@ -30,6 +32,7 @@ export class GraphCompiler {
     private readonly templateRegistry: TemplateRegistry,
     private readonly logger: DefaultLogger,
     private readonly notificationsService: NotificationsService,
+    private readonly graphStateFactory: GraphStateFactory,
   ) {}
 
   validateSchema(schema: GraphSchemaType): void {
@@ -249,6 +252,7 @@ export class GraphCompiler {
     this.validateSchema(schema);
 
     const compiledNodes = new Map<string, CompiledGraphNode>();
+    const stateManager = await this.graphStateFactory.create(graphId);
     const edges = schema.edges || [];
 
     const buildOrder = this.getBuildOrder(schema);
@@ -259,8 +263,10 @@ export class GraphCompiler {
         compiledNodes,
         metadata,
         edges,
+        stateManager,
       );
       compiledNodes.set(node.id, compiledNode);
+      stateManager.attachGraphNode(node.id, compiledNode);
     }
 
     await this.notificationsService.emit({
@@ -272,8 +278,10 @@ export class GraphCompiler {
     return {
       nodes: compiledNodes,
       edges: schema.edges || [],
+      state: stateManager,
       destroy: async () => {
         await this.destroyGraph(compiledNodes);
+        stateManager.destroy();
         await this.notificationsService.emit({
           type: NotificationEvent.Graph,
           graphId,
@@ -374,6 +382,7 @@ export class GraphCompiler {
     compiledNodes: Map<string, CompiledGraphNode>,
     metadata: GraphMetadataSchemaType,
     edges: GraphEdgeSchemaType[],
+    stateManager: GraphStateManager,
   ): Promise<CompiledGraphNode> {
     const config = this.templateRegistry.validateTemplateConfig(
       node.template,
@@ -412,6 +421,8 @@ export class GraphCompiler {
       }
     }
 
+    stateManager.registerNode(node.id);
+
     const instance = await template.create(config, inputNodes, outputNodes, {
       ...metadata,
       nodeId: node.id,
@@ -423,7 +434,7 @@ export class GraphCompiler {
       template: node.template,
       instance,
       config,
-    };
+    } satisfies CompiledGraphNode;
   }
 
   /**

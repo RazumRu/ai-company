@@ -18,9 +18,6 @@ import { v4 } from 'uuid';
 import { z } from 'zod';
 
 import { FinishTool } from '../../../agent-tools/tools/finish.tool';
-import { NotificationEvent } from '../../../notifications/notifications.types';
-import { NotificationsService } from '../../../notifications/services/notifications.service';
-import { ThreadStatus } from '../../../threads/threads.types';
 import {
   BaseAgentState,
   BaseAgentStateChange,
@@ -93,7 +90,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
     private readonly logger: DefaultLogger,
-    private readonly notificationsService: NotificationsService,
   ) {
     super();
   }
@@ -317,22 +313,19 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     rc: RunnableConfig<BaseAgentConfigurable> | undefined,
     threadId: string,
   ) {
-    const graphId = rc?.configurable?.graph_id;
-    if (!graphId) return;
-    const runId = rc?.configurable?.run_id;
-    const nodeId = rc?.configurable?.node_id || 'unknown';
-    const parentThreadId = rc?.configurable?.parent_thread_id || 'unknown';
+    if (!rc?.configurable?.graph_id) return;
+    const runId = rc.configurable.run_id;
 
     const fresh = messages.filter((m) => m.additional_kwargs?.run_id === runId);
 
-    for (const message of fresh) {
-      await this.notificationsService.emit({
-        type: NotificationEvent.AgentMessage,
-        graphId,
-        nodeId,
-        threadId,
-        parentThreadId,
-        data: { messages: [message] },
+    if (fresh.length > 0) {
+      this.emit({
+        type: 'message',
+        data: {
+          threadId,
+          messages: fresh,
+          config: rc,
+        },
       });
     }
   }
@@ -343,12 +336,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     runnableConfig: RunnableConfig<BaseAgentConfigurable> | undefined,
     threadId: string,
   ) {
-    const graphId = runnableConfig?.configurable?.graph_id;
-    if (!graphId) return;
-
-    const nodeId = runnableConfig?.configurable?.node_id || 'unknown';
-    const parentThreadId =
-      runnableConfig?.configurable?.parent_thread_id || 'unknown';
+    if (!runnableConfig?.configurable?.graph_id) return;
 
     // Build state change object with only changed fields
     const stateChange: Partial<BaseAgentState> = {};
@@ -386,13 +374,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     // Only emit if there are changes
     if (Object.keys(stateChange).length === 0) return;
 
-    await this.notificationsService.emit({
-      type: NotificationEvent.AgentStateUpdate,
-      graphId,
-      nodeId,
-      threadId,
-      parentThreadId,
-      data: stateChange,
+    this.emit({
+      type: 'stateUpdate',
+      data: {
+        threadId,
+        stateChange,
+        config: runnableConfig,
+      },
     });
   }
 
@@ -420,20 +408,15 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       mergedConfig,
     );
 
-    // Emit AgentInvoke notification
-    if (mergedConfig?.configurable?.graph_id) {
-      await this.notificationsService.emit({
-        type: NotificationEvent.AgentInvoke,
-        graphId: mergedConfig.configurable.graph_id,
-        nodeId: mergedConfig.configurable.node_id || 'unknown',
+    // Emit invoke event
+    this.emit({
+      type: 'invoke',
+      data: {
         threadId,
-        parentThreadId: mergedConfig.configurable.parent_thread_id || 'unknown',
-        source: mergedConfig.configurable.source,
-        data: {
-          messages: updateMessages,
-        },
-      });
-    }
+        messages: updateMessages,
+        config: mergedConfig,
+      },
+    });
 
     const g = this.buildGraph(config);
 
@@ -515,47 +498,59 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         !aborted ||
         (name !== 'AbortError' && !msg.toLowerCase().includes('abort'))
       ) {
-        throw err as Error;
+        const error = err as Error;
+        this.activeRuns.delete(runId);
+
+        // Emit run event with error
+        this.emit({
+          type: 'run',
+          data: { threadId, messages, config: mergedConfig, error },
+        });
+
+        throw error;
       }
     } finally {
       this.activeRuns.delete(runId);
     }
 
-    return {
+    const result = {
       messages: finalState.messages,
       threadId,
       checkpointNs: mergedConfig?.configurable?.checkpoint_ns,
       needsMoreInfo: finalState.needsMoreInfo,
     };
+
+    // Emit run event with result
+    this.emit({
+      type: 'run',
+      data: { threadId, messages, config: mergedConfig, result },
+    });
+
+    return result;
   }
 
   public async stop(): Promise<void> {
     for (const [runId, run] of this.activeRuns.entries()) {
       const graphId = run.runnableConfig?.configurable?.graph_id;
       if (graphId && !run.lastState.done) {
-        const nodeId = run.runnableConfig?.configurable?.node_id || 'unknown';
-        const parentThreadId =
-          run.runnableConfig?.configurable?.parent_thread_id || 'unknown';
         const msg = markMessageHideForLlm(
           new SystemMessage('Graph execution was stopped'),
         );
         const msgs = updateMessagesListWithMetadata([msg], run.runnableConfig);
-        await this.notificationsService.emit({
-          type: NotificationEvent.AgentMessage,
-          graphId,
-          nodeId,
-          threadId: run.threadId,
-          parentThreadId,
-          data: { messages: [msgs[0]!] },
+
+        // Emit message event
+        this.emit({
+          type: 'message',
+          data: {
+            threadId: run.threadId,
+            messages: msgs,
+            config: run.runnableConfig,
+          },
         });
 
-        await this.notificationsService.emit({
-          type: NotificationEvent.ThreadUpdate,
-          graphId,
-          nodeId,
-          threadId: run.threadId,
-          parentThreadId,
-          data: { status: ThreadStatus.Stopped },
+        this.emit({
+          type: 'stop',
+          data: { config: run.runnableConfig, threadId: run.threadId },
         });
       }
 

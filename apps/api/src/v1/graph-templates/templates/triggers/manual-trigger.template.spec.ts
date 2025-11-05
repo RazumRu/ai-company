@@ -6,13 +6,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ManualTrigger } from '../../../agent-triggers/services/manual-trigger';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode,
+  GraphNodeStatus,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { SimpleAgentTemplateResult } from '../base-node.template';
 import {
   ManualTriggerTemplate,
   ManualTriggerTemplateSchema,
 } from './manual-trigger.template';
+
+const buildCompiledNode = <TInstance>(options: {
+  id: string;
+  type: NodeKind;
+  template: string;
+  instance: TInstance;
+  config?: unknown;
+}): CompiledGraphNode<TInstance> =>
+  ({
+    ...options,
+    config: options.config ?? {},
+    getStatus: () => GraphNodeStatus.Idle,
+  }) as unknown as CompiledGraphNode<TInstance>;
 
 describe('ManualTriggerTemplate', () => {
   let template: ManualTriggerTemplate;
@@ -133,7 +150,7 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -142,7 +159,7 @@ describe('ManualTriggerTemplate', () => {
           agent: mockSimpleAgent,
           config: agentConfig,
         },
-      };
+      });
 
       const outputNodes = new Map([['agent-1', agentNode]]);
 
@@ -177,7 +194,7 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -186,7 +203,7 @@ describe('ManualTriggerTemplate', () => {
           agent: mockSimpleAgent,
           config: agentConfig,
         },
-      };
+      });
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
 
@@ -247,7 +264,7 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -256,7 +273,7 @@ describe('ManualTriggerTemplate', () => {
           agent: mockSimpleAgent,
           config: agentConfig,
         },
-      };
+      });
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
 
@@ -314,7 +331,7 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -323,7 +340,7 @@ describe('ManualTriggerTemplate', () => {
           agent: mockSimpleAgent,
           config: agentConfig,
         },
-      };
+      });
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
 

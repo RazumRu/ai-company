@@ -1,7 +1,7 @@
 import { CreateGraphDto } from '../../api-definitions';
 import {
-  getThreadByExternalId,
   getThreadMessages,
+  waitForThreadStatus,
 } from '../threads/threads.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {
@@ -93,7 +93,10 @@ describe('Resource System E2E', () => {
       // Create the graph
       createGraph(graphData)
         .then((response) => {
-          expect(response.status).to.equal(201);
+          expect(
+            response.status,
+            JSON.stringify(response.body, null, 2),
+          ).to.equal(201);
           expect(response.body).to.have.property('id');
           createdGraphId = response.body.id;
 
@@ -102,17 +105,32 @@ describe('Resource System E2E', () => {
           return runGraph(createdGraphId);
         })
         .then((runResponse) => {
-          expect(runResponse.status).to.equal(201);
+          expect(
+            runResponse.status,
+            JSON.stringify(runResponse.body, null, 2),
+          ).to.equal(201);
 
           return executeTrigger(createdGraphId, 'trigger-1', {
             messages: [
               'Please run "gh version" to check if GitHub CLI is installed.',
             ],
+            async: true,
           });
         })
         .then((response) => {
-          expect(response.status).to.equal(201);
-          return getThreadByExternalId(response.body.threadId);
+          expect(
+            response.status,
+            JSON.stringify(response.body, null, 2),
+          ).to.equal(201);
+
+          const threadId = response.body.threadId;
+
+          return waitForThreadStatus(
+            threadId,
+            ['done', 'need_more_info'],
+            40,
+            5000,
+          );
         })
         .then((threadRes) => {
           expect(threadRes.status).to.equal(200);

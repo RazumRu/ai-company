@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
@@ -16,6 +17,8 @@ import {
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
   GraphDto,
+  GraphNodesQueryDto,
+  GraphNodeWithStatusDto,
   UpdateGraphDto,
 } from '../dto/graphs.dto';
 import { GraphsService } from '../services/graphs.service';
@@ -40,6 +43,14 @@ export class GraphsController {
   @Get(':id')
   async findGraphById(@Param() params: EntityUUIDDto): Promise<GraphDto> {
     return await this.graphsService.findById(params.id);
+  }
+
+  @Get(':id/nodes')
+  async getCompiledNodes(
+    @Param() params: EntityUUIDDto,
+    @Query() query: GraphNodesQueryDto,
+  ): Promise<GraphNodeWithStatusDto[]> {
+    return await this.graphsService.getCompiledNodes(params.id, query);
   }
 
   @Put(':id')

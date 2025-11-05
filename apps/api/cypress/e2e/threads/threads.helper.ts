@@ -55,3 +55,57 @@ export const deleteThread = (threadId: string, headers = reqHeaders) =>
     headers,
     failOnStatusCode: false,
   });
+
+export const waitForThreadStatus = (
+  externalThreadId: string,
+  expectedStatus: ThreadDto['status'] | ThreadDto['status'][],
+  retries = 10,
+  delayMs = 3000,
+  headers = reqHeaders,
+): Cypress.Chainable<Cypress.Response<ThreadDto>> => {
+  if (retries <= 0) {
+    throw new Error(
+      `Thread '${externalThreadId}' did not reach status '${Array.isArray(expectedStatus) ? expectedStatus.join(', ') : expectedStatus}' within the expected time`,
+    );
+  }
+
+  const expectedStatuses = Array.isArray(expectedStatus)
+    ? expectedStatus
+    : [expectedStatus];
+
+  return getThreadByExternalId(externalThreadId, headers).then(
+    (threadResponse): Cypress.Chainable<Cypress.Response<ThreadDto>> => {
+      if (threadResponse.status === 404) {
+        return cy
+          .wait(delayMs)
+          .then(() =>
+            waitForThreadStatus(
+              externalThreadId,
+              expectedStatus,
+              retries - 1,
+              delayMs,
+              headers,
+            ),
+          );
+      }
+
+      expect(threadResponse.status).to.equal(200);
+
+      if (expectedStatuses.includes(threadResponse.body.status)) {
+        return cy.wrap(threadResponse);
+      }
+
+      return cy
+        .wait(delayMs)
+        .then(() =>
+          waitForThreadStatus(
+            externalThreadId,
+            expectedStatus,
+            retries - 1,
+            delayMs,
+            headers,
+          ),
+        );
+    },
+  );
+};

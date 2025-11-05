@@ -5,6 +5,7 @@ export interface IEnrichedNotification<T> {
   ownerId: string;
   nodeId?: string;
   threadId?: string;
+  runId?: string;
 }
 
 export enum EnrichedNotificationEvent {
@@ -12,4 +13,5 @@ export enum EnrichedNotificationEvent {
   AgentMessage = 'agent.message',
   AgentStateUpdate = 'agent.state.update',
   ThreadUpdate = 'thread.update',
+  GraphNodeUpdate = 'graph.node.update',
 }

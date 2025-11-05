@@ -23,6 +23,8 @@ import type {
   GetAllGraphsResponses,
   GetAllTemplatesData,
   GetAllTemplatesResponses,
+  GetCompiledNodesData,
+  GetCompiledNodesResponses,
   GetThreadByExternalIdData,
   GetThreadByExternalIdResponses,
   GetThreadByIdData,
@@ -158,6 +160,26 @@ export const updateGraph = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options.headers,
     },
+  });
+};
+
+export const getCompiledNodes = <ThrowOnError extends boolean = false>(
+  options: Options<GetCompiledNodesData, ThrowOnError>,
+) => {
+  return (options.client ?? client).get<
+    GetCompiledNodesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/graphs/{id}/nodes',
+    ...options,
   });
 };
 

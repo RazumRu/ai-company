@@ -12,6 +12,8 @@ import { GraphEntity } from './entity/graph.entity';
 import { GraphCompiler } from './services/graph-compiler';
 import { GraphRegistry } from './services/graph-registry';
 import { GraphRestorationService } from './services/graph-restoration.service';
+import { GraphStateFactory } from './services/graph-state.factory';
+import { GraphStateManager } from './services/graph-state.manager';
 import { GraphsService } from './services/graphs.service';
 import { MessageTransformerService } from './services/message-transformer.service';
 
@@ -30,6 +32,8 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphRegistry,
     GraphRestorationService,
     MessageTransformerService,
+    GraphStateManager,
+    GraphStateFactory,
   ],
   exports: [
     GraphDao,
@@ -38,6 +42,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphRegistry,
     GraphRestorationService,
     MessageTransformerService,
+    GraphStateManager,
   ],
 })
 export class GraphsModule implements OnModuleInit {

@@ -3,6 +3,7 @@ import {
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
   GraphDto,
+  GraphNodeWithStatusDto,
   UpdateGraphDto,
 } from '../../api-definitions';
 import { GraphDtoSchema } from '../../api-definitions/schemas.gen';
@@ -39,6 +40,20 @@ export const getGraphById = (id: string, headers = reqHeaders) =>
     method: 'GET',
     headers,
     failOnStatusCode: false,
+  });
+
+export const getCompiledNodes = (
+  id: string,
+  query: { threadId?: string; runId?: string } = {},
+  headers = reqHeaders,
+) =>
+  cy.request<GraphNodeWithStatusDto[]>({
+    url: `/api/v1/graphs/${id}/nodes`,
+    method: 'GET',
+    headers,
+    qs: query,
+    failOnStatusCode: false,
+    timeout: 60000,
   });
 
 export const updateGraph = (

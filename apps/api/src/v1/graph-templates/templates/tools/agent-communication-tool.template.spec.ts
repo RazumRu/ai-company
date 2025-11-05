@@ -6,9 +6,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentCommunicationTool } from '../../../agent-tools/tools/agent-communication.tool';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode,
+  GraphNodeStatus,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import { SimpleAgentTemplateResult } from '../base-node.template';
 import { AgentCommunicationToolTemplate } from './agent-communication-tool.template';
+
+const buildCompiledNode = <TInstance>(options: {
+  id: string;
+  type: NodeKind;
+  template: string;
+  instance: TInstance;
+  config?: unknown;
+}): CompiledGraphNode<TInstance> =>
+  ({
+    ...options,
+    config: options.config ?? {},
+    getStatus: () => GraphNodeStatus.Idle,
+  }) as unknown as CompiledGraphNode<TInstance>;
 
 describe('AgentCommunicationToolTemplate', () => {
   let template: AgentCommunicationToolTemplate;
@@ -83,7 +100,7 @@ describe('AgentCommunicationToolTemplate', () => {
 
   describe('create', () => {
     it('should create tool with custom description when provided', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -96,7 +113,7 @@ describe('AgentCommunicationToolTemplate', () => {
             invokeModelName: 'gpt-5-mini',
           },
         },
-      };
+      });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {
@@ -116,7 +133,7 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should use default description when no custom description provided', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -129,7 +146,7 @@ describe('AgentCommunicationToolTemplate', () => {
             invokeModelName: 'gpt-5-mini',
           },
         },
-      };
+      });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {};
@@ -146,7 +163,7 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should create tool with consistent thread ID behavior', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -159,7 +176,7 @@ describe('AgentCommunicationToolTemplate', () => {
             invokeModelName: 'gpt-5-mini',
           },
         },
-      };
+      });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {};
@@ -205,7 +222,7 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should maintain thread consistency for Agent A -> Agent B -> Agent C chain', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -218,7 +235,7 @@ describe('AgentCommunicationToolTemplate', () => {
             invokeModelName: 'gpt-5-mini',
           },
         },
-      };
+      });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {};
@@ -290,7 +307,7 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should fallback to current thread_id when no parent_thread_id is provided', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -303,7 +320,7 @@ describe('AgentCommunicationToolTemplate', () => {
             invokeModelName: 'gpt-5-mini',
           },
         },
-      };
+      });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {};
@@ -345,7 +362,7 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should return message instead of all messages', async () => {
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -358,7 +375,7 @@ describe('AgentCommunicationToolTemplate', () => {
             invokeModelName: 'gpt-5-mini',
           },
         },
-      };
+      });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {};
@@ -406,7 +423,7 @@ describe('AgentCommunicationToolTemplate', () => {
         }),
       } as RunnableConfig<BaseAgentConfigurable>;
 
-      const agentNode: CompiledGraphNode<SimpleAgentTemplateResult<unknown>> = {
+      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -419,7 +436,7 @@ describe('AgentCommunicationToolTemplate', () => {
             invokeModelName: 'gpt-5-mini',
           },
         },
-      };
+      });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
       const config = {};

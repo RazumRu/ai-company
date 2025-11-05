@@ -1,7 +1,12 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { GraphSchema as RealGraphSchema, GraphStatus } from '../graphs.types';
+import {
+  GraphNodeStatus,
+  GraphSchema as RealGraphSchema,
+  GraphStatus,
+  NodeKind,
+} from '../graphs.types';
 
 // Node coordinates schema for UI positioning
 export const NodeMetadataSchema = z.object({
@@ -190,6 +195,28 @@ export const GraphMessagesResponseSchema = z.object({
     .describe('Array of threads with their messages'),
 });
 
+export const GraphNodesQuerySchema = z.object({
+  threadId: z.string().optional(),
+  runId: z.string().optional(),
+});
+
+export const GraphNodeWithStatusSchema = z.object({
+  id: z.string().describe('Node ID'),
+  name: z.string().describe('Display name for node'),
+  template: z.string().describe('Template identifier'),
+  type: z.enum(NodeKind).describe('Node kind'),
+  status: z.enum(GraphNodeStatus).describe('Current node status'),
+  config: z.unknown().describe('Node configuration'),
+  error: z.string().nullable().optional().describe('Last error message'),
+  metadata: z
+    .object({
+      threadId: z.string().optional(),
+      runId: z.string().optional(),
+      parentThreadId: z.string().optional(),
+    })
+    .optional(),
+});
+
 export class GraphDto extends createZodDto(GraphSchema) {}
 export class CreateGraphDto extends createZodDto(GraphEditableSchema) {}
 export class UpdateGraphDto extends createZodDto(
@@ -198,6 +225,10 @@ export class UpdateGraphDto extends createZodDto(
 export class ExecuteTriggerDto extends createZodDto(ExecuteTriggerSchema) {}
 export class ExecuteTriggerResponseDto extends createZodDto(
   ExecuteTriggerResponseSchema,
+) {}
+export class GraphNodesQueryDto extends createZodDto(GraphNodesQuerySchema) {}
+export class GraphNodeWithStatusDto extends createZodDto(
+  GraphNodeWithStatusSchema,
 ) {}
 
 // Export message types

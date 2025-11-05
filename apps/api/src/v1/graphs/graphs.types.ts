@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { GraphStateManager } from './services/graph-state.manager';
+
 export enum NodeKind {
   Runtime = 'runtime',
   Tool = 'tool',
@@ -15,12 +17,37 @@ export enum GraphStatus {
   Error = 'error',
 }
 
+export enum GraphNodeStatus {
+  Stopped = 'stopped',
+  Starting = 'starting',
+  Running = 'running',
+  Idle = 'idle',
+}
+
 export interface CompiledGraphNode<TInstance = unknown, TConfig = unknown> {
   id: string;
   type: NodeKind;
   template: string;
   instance: TInstance;
   config: TConfig;
+}
+
+export interface GraphExecutionMetadata {
+  threadId?: string;
+  runId?: string;
+  parentThreadId?: string;
+}
+
+export interface GraphNodeStateSnapshot {
+  id: string;
+  name: string;
+  template: string;
+  type: NodeKind;
+  status: GraphNodeStatus;
+  config: unknown;
+  error?: string | null;
+  threadId?: string;
+  runId?: string;
 }
 
 export interface CompiledGraph {
@@ -30,6 +57,7 @@ export interface CompiledGraph {
     to: string;
     label?: string;
   }[];
+  state: GraphStateManager;
   /**
    * Destroys the graph and cleans up all resources
    * - Stops all triggers

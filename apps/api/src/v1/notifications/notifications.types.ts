@@ -1,6 +1,10 @@
 import { BaseMessage } from '@langchain/core/messages';
 
-import { GraphSchemaType } from '../graphs/graphs.types';
+import {
+  GraphExecutionMetadata,
+  GraphNodeStatus,
+  GraphSchemaType,
+} from '../graphs/graphs.types';
 import { ThreadStatus } from '../threads/threads.types';
 
 export enum NotificationEvent {
@@ -9,6 +13,7 @@ export enum NotificationEvent {
   AgentInvoke = 'agent.invoke',
   AgentStateUpdate = 'agent.state.update',
   ThreadUpdate = 'thread.update',
+  GraphNodeUpdate = 'graph.node.update',
 }
 
 export interface INotification<T> {
@@ -18,6 +23,7 @@ export interface INotification<T> {
   nodeId?: string;
   threadId?: string;
   parentThreadId?: string;
+  runId?: string;
 }
 
 export interface IGraphNotification
@@ -83,9 +89,22 @@ export interface IThreadUpdateNotification
   parentThreadId?: string;
 }
 
+export interface IGraphNodeUpdateData {
+  status: GraphNodeStatus;
+  error?: string | null;
+  metadata?: GraphExecutionMetadata;
+}
+
+export interface IGraphNodeUpdateNotification
+  extends INotification<IGraphNodeUpdateData> {
+  type: NotificationEvent.GraphNodeUpdate;
+  nodeId: string;
+}
+
 export type Notification =
   | IGraphNotification
   | IAgentMessageNotification
   | IAgentInvokeNotification
   | IAgentStateUpdateNotification
-  | IThreadUpdateNotification;
+  | IThreadUpdateNotification
+  | IGraphNodeUpdateNotification;

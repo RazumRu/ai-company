@@ -9,10 +9,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { GraphDao } from '../dao/graph.dao';
-import { CreateGraphDto, GraphDto, UpdateGraphDto } from '../dto/graphs.dto';
+import {
+  CreateGraphDto,
+  GraphDto,
+  GraphNodesQueryDto,
+  UpdateGraphDto,
+} from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
-import { CompiledGraphNode } from '../graphs.types';
-import { CompiledGraph, GraphStatus, NodeKind } from '../graphs.types';
+import {
+  CompiledGraph,
+  CompiledGraphNode,
+  GraphNodeStatus,
+  GraphStatus,
+  NodeKind,
+} from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphsService } from './graphs.service';
@@ -79,8 +89,8 @@ describe('GraphsService', () => {
     ...overrides,
   });
 
-  const createMockCompiledGraph = (): CompiledGraph => ({
-    nodes: new Map([
+  const createMockCompiledGraph = (): CompiledGraph => {
+    const nodes = new Map<string, CompiledGraphNode>([
       [
         'node-1',
         {
@@ -91,10 +101,30 @@ describe('GraphsService', () => {
           instance: { container: 'test-container' },
         },
       ],
-    ]),
-    edges: [],
-    destroy: vi.fn().mockResolvedValue(undefined),
-  });
+    ]);
+
+    const state = {
+      getSnapshots: vi.fn().mockImplementation(() =>
+        Array.from(nodes.values()).map((node) => ({
+          id: node.id,
+          name: node.id,
+          template: node.template,
+          type: node.type,
+          status: GraphNodeStatus.Idle,
+          config: node.config,
+          error: null,
+        })),
+      ),
+      handleGraphDestroyed: vi.fn(),
+    } as unknown as CompiledGraph['state'];
+
+    return {
+      nodes,
+      edges: [],
+      state,
+      destroy: vi.fn().mockResolvedValue(undefined),
+    } as CompiledGraph;
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -491,6 +521,106 @@ describe('GraphsService', () => {
     });
   });
 
+  describe('getCompiledNodes', () => {
+    it('should throw NotFoundException when graph is missing', async () => {
+      vi.mocked(graphDao.getOne).mockResolvedValue(null);
+
+      await expect(
+        service.getCompiledNodes(mockGraphId, {} as GraphNodesQueryDto),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when compiled graph is not available', async () => {
+      vi.mocked(graphDao.getOne).mockResolvedValue(createMockGraphEntity());
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+
+      await expect(
+        service.getCompiledNodes(mockGraphId, {} as GraphNodesQueryDto),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should return compiled nodes with statuses', async () => {
+      const compiledGraph = createMockCompiledGraph();
+      const stateGetSnapshots = compiledGraph.state
+        .getSnapshots as unknown as ReturnType<typeof vi.fn>;
+      stateGetSnapshots.mockReturnValue([
+        {
+          id: 'node-1',
+          name: 'node-1',
+          template: 'manual-trigger',
+          type: NodeKind.Trigger,
+          status: GraphNodeStatus.Running,
+          config: { enabled: true },
+          error: null,
+          metadata: {
+            threadId: undefined,
+            runId: undefined,
+            parentThreadId: undefined,
+            source: undefined,
+          },
+        },
+      ]);
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(
+        createMockGraphEntity({ status: GraphStatus.Running }),
+      );
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
+
+      const result = await service.getCompiledNodes(
+        mockGraphId,
+        {} as GraphNodesQueryDto,
+      );
+
+      expect(result).toEqual([
+        {
+          id: 'node-1',
+          name: 'node-1',
+          template: 'manual-trigger',
+          type: NodeKind.Trigger,
+          status: GraphNodeStatus.Running,
+          config: { enabled: true },
+          error: null,
+          metadata: {
+            threadId: undefined,
+            runId: undefined,
+            parentThreadId: undefined,
+            source: undefined,
+          },
+        },
+      ]);
+      expect(stateGetSnapshots).toHaveBeenCalledWith(undefined, undefined);
+
+      stateGetSnapshots.mockClear();
+      stateGetSnapshots.mockReturnValue([
+        {
+          id: 'node-1',
+          name: 'node-1',
+          template: 'manual-trigger',
+          type: NodeKind.Trigger,
+          status: GraphNodeStatus.Idle,
+          config: { enabled: true },
+          error: 'failed',
+          metadata: {
+            threadId: 'thread-123',
+            runId: 'run-456',
+            parentThreadId: undefined,
+            source: undefined,
+          },
+        },
+      ]);
+
+      await service.getCompiledNodes(mockGraphId, {
+        threadId: 'thread-123',
+        runId: 'run-456',
+      } as GraphNodesQueryDto);
+
+      expect(stateGetSnapshots).toHaveBeenLastCalledWith(
+        'thread-123',
+        'run-456',
+      );
+    });
+  });
+
   describe('update', () => {
     it('should update graph successfully', async () => {
       const updateData: UpdateGraphDto = {
@@ -819,6 +949,7 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
 
@@ -876,6 +1007,7 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
 
@@ -931,6 +1063,7 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
 
@@ -996,6 +1129,7 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
 
@@ -1068,6 +1202,7 @@ describe('GraphsService', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         instance: {},
+        getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
@@ -1093,6 +1228,7 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
 

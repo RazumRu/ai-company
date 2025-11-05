@@ -5,6 +5,7 @@ import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
   createMockGraphData,
+  destroyGraph,
   executeTrigger,
   runGraph,
 } from '../graphs/graphs.helper';
@@ -431,6 +432,132 @@ describe('Socket Gateway E2E', () => {
         );
       });
     });
+  });
+
+  it('should receive node status updates during graph execution', function () {
+    this.timeout(120000);
+
+    const graphData = createMockGraphData();
+    let testGraphId = '';
+    const nodeEvents: { data?: { status?: string } }[] = [];
+    const statusesSeen = new Set<string>();
+
+    const waitForNodeUpdates = (client: Socket) =>
+      new Promise<void>((resolve, reject) => {
+        let resolved = false;
+
+        const handleCleanup = () => {
+          if (resolved) return;
+          resolved = true;
+          client.off('graph.node.update', handleUpdate);
+          client.off('server_error', handleServerError);
+        };
+
+        const timeoutId = setTimeout(() => {
+          handleCleanup();
+          reject(
+            new Error('Timeout waiting for graph.node.update notifications'),
+          );
+        }, 90000);
+
+        const handleServerError = (error: unknown) => {
+          clearTimeout(timeoutId);
+          handleCleanup();
+          reject(error as Error);
+        };
+
+        const handleUpdate = (notification: {
+          graphId: string;
+          type: string;
+          nodeId: string;
+          data?: { status?: string };
+        }) => {
+          if (notification.graphId !== testGraphId) {
+            return;
+          }
+
+          try {
+            expect(notification.type).to.equal('graph.node.update');
+            expect(notification.nodeId).to.be.a('string');
+
+            nodeEvents.push(notification);
+
+            const status = notification.data?.status;
+            if (typeof status === 'string') {
+              statusesSeen.add(status);
+            }
+
+            if (statusesSeen.has('running') && statusesSeen.has('idle')) {
+              clearTimeout(timeoutId);
+              handleCleanup();
+              resolve();
+            }
+          } catch (error) {
+            clearTimeout(timeoutId);
+            handleCleanup();
+            reject(error as Error);
+          }
+        };
+
+        client.on('graph.node.update', handleUpdate);
+        client.once('server_error', handleServerError);
+      });
+
+    return waitForSocketConnection(
+      (socket = createSocketConnection(baseUrl, mockUserId)),
+    )
+      .then(() => createGraph(graphData, reqHeaders))
+      .then((createResponse) => {
+        expect(createResponse.status).to.equal(201);
+        testGraphId = createResponse.body.id;
+
+        socket.emit('subscribe_graph', { graphId: testGraphId });
+
+        return cy.wait(500);
+      })
+      .then(() => {
+        const updatesPromise = waitForNodeUpdates(socket);
+
+        return runGraph(testGraphId, reqHeaders)
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+
+            return executeTrigger(
+              testGraphId,
+              'trigger-1',
+              {
+                messages: [
+                  'Provide a short greeting and outline the next step before finishing.',
+                ],
+                async: true,
+              },
+              reqHeaders,
+            );
+          })
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+
+            return cy.wrap(updatesPromise, { timeout: 90000 });
+          })
+          .then(() => {
+            const runningEvents = nodeEvents.filter(
+              (event) => event.data?.status === 'running',
+            );
+            const idleEvents = nodeEvents.filter(
+              (event) => event.data?.status === 'idle',
+            );
+
+            expect(runningEvents.length).to.be.greaterThan(0);
+            expect(idleEvents.length).to.be.greaterThan(0);
+          });
+      })
+      .then(() => {
+        if (testGraphId) {
+          return destroyGraph(testGraphId, reqHeaders).then(() => undefined);
+        }
+
+        return undefined;
+      });
   });
 
   describe('Multiple Clients', () => {

@@ -1,10 +1,32 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { BadRequestException, DefaultLogger } from '@packages/common';
+import { EventEmitter } from 'events';
 
 import { AgentOutput } from '../../agents/services/agents/base-agent';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 import { TriggerEvent, TriggerStatus } from '../agent-triggers.types';
+
+export type TriggerStartEvent = {
+  config: unknown;
+  error?: unknown;
+};
+
+export type TriggerStopEvent = {
+  error?: unknown;
+};
+
+export type TriggerInvokeEvent = {
+  messages: HumanMessage[];
+  config: RunnableConfig<BaseAgentConfigurable>;
+  result?: AgentOutput;
+  error?: unknown;
+};
+
+export type TriggerEventType =
+  | { type: 'start'; data: TriggerStartEvent }
+  | { type: 'stop'; data: TriggerStopEvent }
+  | { type: 'invoke'; data: TriggerInvokeEvent };
 
 /**
  * Base trigger class
@@ -12,12 +34,34 @@ import { TriggerEvent, TriggerStatus } from '../agent-triggers.types';
  */
 export abstract class BaseTrigger<TConfig = unknown, TPayload = unknown> {
   protected status: TriggerStatus = TriggerStatus.IDLE;
+  protected eventEmitter = new EventEmitter();
   public invokeAgent!: (
     messages: HumanMessage[],
     config: RunnableConfig<BaseAgentConfigurable>,
   ) => Promise<AgentOutput>;
 
   constructor(protected readonly logger?: DefaultLogger) {}
+
+  /**
+   * Subscribe to trigger events
+   * Returns an unsubscriber function
+   */
+  subscribe(callback: (event: TriggerEventType) => Promise<void>): () => void {
+    const handler = (event: TriggerEventType) => callback(event);
+
+    this.eventEmitter.on('event', handler);
+
+    return () => {
+      this.eventEmitter.off('event', handler);
+    };
+  }
+
+  /**
+   * Emit trigger events
+   */
+  protected emit(event: TriggerEventType): void {
+    this.eventEmitter.emit('event', event);
+  }
 
   /**
    * Get current trigger status

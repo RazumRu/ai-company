@@ -10,6 +10,7 @@ import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphSchemaType, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
+import { GraphStateFactory } from './graph-state.factory';
 
 // Mock DockerRuntime
 vi.mock('../../runtime/services/docker-runtime', () => ({
@@ -21,6 +22,11 @@ vi.mock('../../runtime/services/docker-runtime', () => ({
 describe('GraphCompiler', () => {
   let compiler: GraphCompiler;
   let templateRegistry: TemplateRegistry;
+  let mockGraphStateManager: {
+    registerNode: ReturnType<typeof vi.fn>;
+    attachGraphNode: ReturnType<typeof vi.fn>;
+    destroy: ReturnType<typeof vi.fn>;
+  };
 
   const createMockTemplate = (kind: NodeKind) => {
     let inputs: any[] = [];
@@ -68,6 +74,12 @@ describe('GraphCompiler', () => {
   });
 
   beforeEach(async () => {
+    mockGraphStateManager = {
+      registerNode: vi.fn(),
+      attachGraphNode: vi.fn(),
+      destroy: vi.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       imports: [
         LoggerModule.forRoot({
@@ -94,12 +106,17 @@ describe('GraphCompiler', () => {
             emit: vi.fn(),
           },
         },
+        {
+          provide: GraphStateFactory,
+          useValue: {
+            create: vi.fn().mockResolvedValue(mockGraphStateManager),
+          },
+        },
       ],
     }).compile();
 
     compiler = module.get<GraphCompiler>(GraphCompiler);
     templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
-
     vi.clearAllMocks();
   });
 

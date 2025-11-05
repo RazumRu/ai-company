@@ -195,6 +195,42 @@ export type GraphDto = {
   temporary?: boolean | null;
 };
 
+export type GraphNodeWithStatusDto = {
+  /**
+   * Node ID
+   */
+  id: string;
+  /**
+   * Display name for node
+   */
+  name: string;
+  /**
+   * Template identifier
+   */
+  template: string;
+  /**
+   * Node kind
+   */
+  type: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource';
+  /**
+   * Current node status
+   */
+  status: 'stopped' | 'starting' | 'running' | 'idle';
+  /**
+   * Node configuration
+   */
+  config: unknown;
+  /**
+   * Last error message
+   */
+  error?: string | null;
+  metadata?: {
+    threadId?: string;
+    runId?: string;
+    parentThreadId?: string;
+  };
+};
+
 export type UpdateGraphDto = {
   name?: string;
   description?: string | null;
@@ -606,6 +642,25 @@ export type UpdateGraphResponses = {
 
 export type UpdateGraphResponse =
   UpdateGraphResponses[keyof UpdateGraphResponses];
+
+export type GetCompiledNodesData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    threadId?: string;
+    runId?: string;
+  };
+  url: '/api/v1/graphs/{id}/nodes';
+};
+
+export type GetCompiledNodesResponses = {
+  200: Array<GraphNodeWithStatusDto>;
+};
+
+export type GetCompiledNodesResponse =
+  GetCompiledNodesResponses[keyof GetCompiledNodesResponses];
 
 export type RunGraphData = {
   body?: never;

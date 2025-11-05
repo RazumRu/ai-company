@@ -286,6 +286,55 @@ export const GraphDtoSchema = {
   ],
 } as const;
 
+export const GraphNodeWithStatusDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+    },
+    name: {
+      type: 'string',
+    },
+    template: {
+      type: 'string',
+    },
+    type: {
+      type: 'string',
+      enum: ['runtime', 'tool', 'simpleAgent', 'trigger', 'resource'],
+    },
+    status: {
+      type: 'string',
+      enum: ['stopped', 'starting', 'running', 'idle'],
+    },
+    config: {},
+    error: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    metadata: {
+      type: 'object',
+      properties: {
+        threadId: {
+          type: 'string',
+        },
+        runId: {
+          type: 'string',
+        },
+        parentThreadId: {
+          type: 'string',
+        },
+      },
+    },
+  },
+  required: ['id', 'name', 'template', 'type', 'status', 'config'],
+} as const;
+
 export const UpdateGraphDtoSchema = {
   type: 'object',
   properties: {

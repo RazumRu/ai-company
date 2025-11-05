@@ -4,11 +4,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode,
+  GraphNodeStatus,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import {
   SimpleAgentTemplate,
   SimpleAgentTemplateSchema,
 } from './simple-agent.template';
+
+const buildCompiledNode = <TInstance>(options: {
+  id: string;
+  type: NodeKind;
+  template: string;
+  instance: TInstance;
+  config?: unknown;
+}): CompiledGraphNode<TInstance> =>
+  ({
+    ...options,
+    config: options.config ?? {},
+    getStatus: () => GraphNodeStatus.Idle,
+  }) as unknown as CompiledGraphNode<TInstance>;
 
 describe('SimpleAgentTemplate', () => {
   let template: SimpleAgentTemplate;
@@ -153,21 +170,21 @@ describe('SimpleAgentTemplate', () => {
         invoke: vi.fn(),
       } as unknown as DynamicStructuredTool;
 
-      mockToolNode1 = {
+      mockToolNode1 = buildCompiledNode<DynamicStructuredTool>({
         id: 'tool-1',
         type: NodeKind.Tool,
         template: 'web-search-tool',
         config: {},
         instance: mockTool1,
-      };
+      });
 
-      mockToolNode2 = {
+      mockToolNode2 = buildCompiledNode<DynamicStructuredTool>({
         id: 'tool-2',
         type: NodeKind.Tool,
         template: 'shell-tool',
         config: {},
         instance: mockTool2,
-      };
+      });
 
       connectedNodes = new Map([
         ['tool-1', mockToolNode1],

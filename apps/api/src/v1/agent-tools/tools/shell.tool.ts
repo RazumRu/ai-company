@@ -111,6 +111,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       cfg.configurable?.parent_thread_id ||
       cfg.configurable?.thread_id ||
       'unknown';
+    const runId = cfg.configurable?.run_id;
 
     try {
       const res = await config.runtime.exec({
@@ -118,6 +119,11 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         env: mergedEnv,
         childWorkdir: `${threadId}`,
         createChildWorkdir: true,
+        metadata: {
+          threadId,
+          runId,
+          parentThreadId: cfg.configurable?.parent_thread_id,
+        },
       });
 
       return {

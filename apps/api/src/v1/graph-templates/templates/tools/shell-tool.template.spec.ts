@@ -8,12 +8,30 @@ import {
   IShellResourceOutput,
   ResourceKind,
 } from '../../../graph-resources/graph-resources.types';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode,
+  GraphNodeStatus,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import {
   ShellToolTemplate,
   ShellToolTemplateSchema,
 } from './shell-tool.template';
+
+const buildMockNode = <TInstance = unknown>(options: {
+  id: string;
+  type: NodeKind;
+  template: string;
+  instance: TInstance;
+  config?: unknown;
+  getStatus?: () => GraphNodeStatus;
+}): CompiledGraphNode<TInstance> =>
+  ({
+    ...options,
+    config: options.config ?? {},
+    getStatus: options.getStatus || (() => GraphNodeStatus.Idle),
+  }) as unknown as CompiledGraphNode<TInstance>;
 
 describe('ShellToolTemplate', () => {
   let template: ShellToolTemplate;
@@ -99,7 +117,7 @@ describe('ShellToolTemplate', () => {
         stop: vi.fn(),
         exec: vi.fn(),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode = buildMockNode<BaseRuntime>({
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -110,7 +128,7 @@ describe('ShellToolTemplate', () => {
           workdir: '/app',
           enableDind: false,
         },
-      };
+      });
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
 
       const connectedNodes = new Map<string, CompiledGraphNode>([
@@ -175,7 +193,7 @@ describe('ShellToolTemplate', () => {
         stop: vi.fn(),
         exec: vi.fn(),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode = buildMockNode<BaseRuntime>({
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -185,7 +203,7 @@ describe('ShellToolTemplate', () => {
           image: 'node:18',
           enableDind: false,
         },
-      };
+      });
       const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
       ]);
@@ -220,7 +238,7 @@ describe('ShellToolTemplate', () => {
         exec: vi.fn(),
       } as unknown as BaseRuntime;
 
-      const mockRuntimeNode1: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode1 = buildMockNode<BaseRuntime>({
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -230,9 +248,9 @@ describe('ShellToolTemplate', () => {
           image: 'node:18',
           enableDind: false,
         },
-      };
+      });
 
-      const mockRuntimeNode2: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode2 = buildMockNode<BaseRuntime>({
         id: 'runtime-2',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -242,7 +260,7 @@ describe('ShellToolTemplate', () => {
           image: 'python:3.11',
           enableDind: true,
         },
-      };
+      });
 
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
       mockShellTool.build = vi.fn().mockReturnValue(mockTool);
@@ -308,7 +326,7 @@ describe('ShellToolTemplate', () => {
           fail: false,
         }),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode = buildMockNode<BaseRuntime>({
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -319,7 +337,7 @@ describe('ShellToolTemplate', () => {
           workdir: '/app',
           enableDind: false,
         },
-      };
+      });
 
       const mockResourceOutput: IShellResourceOutput = {
         information: 'GitHub resource information',
@@ -332,13 +350,13 @@ describe('ShellToolTemplate', () => {
           initScriptTimeout: 60000,
         },
       };
-      const mockResourceNode: CompiledGraphNode<IShellResourceOutput> = {
+      const mockResourceNode = buildMockNode<IShellResourceOutput>({
         id: 'resource-1',
         type: NodeKind.Resource,
         template: 'github-resource',
         config: {},
         instance: mockResourceOutput,
-      };
+      });
 
       const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
@@ -392,7 +410,7 @@ describe('ShellToolTemplate', () => {
           fail: false,
         }),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode = buildMockNode<BaseRuntime>({
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -402,7 +420,7 @@ describe('ShellToolTemplate', () => {
           image: 'node:18',
           enableDind: false,
         },
-      };
+      });
 
       const mockResourceOutput: IShellResourceOutput = {
         information: 'GitHub resource information',
@@ -415,21 +433,21 @@ describe('ShellToolTemplate', () => {
           initScriptTimeout: 60000,
         },
       };
-      const mockResourceNode: CompiledGraphNode<IShellResourceOutput> = {
+      const mockResourceNode = buildMockNode<IShellResourceOutput>({
         id: 'resource-1',
         type: NodeKind.Resource,
         template: 'github-resource',
         config: {},
         instance: mockResourceOutput,
-      };
+      });
 
-      const mockToolNode: CompiledGraphNode = {
+      const mockToolNode = buildMockNode({
         id: 'tool-1',
         type: NodeKind.Tool,
         template: 'web-search-tool',
         config: {},
         instance: {} as DynamicStructuredTool,
-      };
+      });
 
       const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
@@ -479,7 +497,7 @@ describe('ShellToolTemplate', () => {
         stop: vi.fn(),
         exec: vi.fn(),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode = buildMockNode<BaseRuntime>({
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -489,7 +507,7 @@ describe('ShellToolTemplate', () => {
           image: 'node:18',
           enableDind: false,
         },
-      };
+      });
 
       const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
@@ -525,7 +543,7 @@ describe('ShellToolTemplate', () => {
           exitCode: 0,
         }),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode = buildMockNode<BaseRuntime>({
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -535,7 +553,7 @@ describe('ShellToolTemplate', () => {
           image: 'node:18',
           enableDind: false,
         },
-      };
+      });
 
       const mockResourceOutput: IShellResourceOutput = {
         information: 'GitHub resource information',
@@ -548,13 +566,13 @@ describe('ShellToolTemplate', () => {
           initScriptTimeout: 60000,
         },
       };
-      const mockResourceNode: CompiledGraphNode<IShellResourceOutput> = {
+      const mockResourceNode = buildMockNode<IShellResourceOutput>({
         id: 'resource-1',
         type: NodeKind.Resource,
         template: 'github-resource',
         config: {},
         instance: mockResourceOutput,
-      };
+      });
 
       const connectedNodes = new Map<string, CompiledGraphNode>([
         ['runtime-1', mockRuntimeNode],
@@ -615,7 +633,7 @@ describe('ShellToolTemplate', () => {
           exitCode: 0,
         }),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode: CompiledGraphNode<BaseRuntime> = {
+      const mockRuntimeNode = buildMockNode<BaseRuntime>({
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
@@ -625,7 +643,7 @@ describe('ShellToolTemplate', () => {
           image: 'node:18',
           enableDind: true,
         },
-      };
+      });
 
       const mockResource1: IShellResourceOutput = {
         information: 'GitHub resource',

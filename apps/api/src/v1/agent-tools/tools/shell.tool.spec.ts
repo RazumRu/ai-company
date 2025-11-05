@@ -178,12 +178,15 @@ describe('ShellTool', () => {
         cmd: 'echo "hello world"',
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'echo "hello world"',
-        env: {},
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'echo "hello world"',
+          env: {},
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
       expect(result).toEqual({
         exitCode: mockExecResult.exitCode,
         stdout: mockExecResult.stdout,
@@ -209,12 +212,15 @@ describe('ShellTool', () => {
         env: envArray,
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'echo $NODE_ENV',
-        env: { NODE_ENV: 'test' },
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'echo $NODE_ENV',
+          env: { NODE_ENV: 'test' },
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
       expect(result).toEqual({
         exitCode: mockExecResult.exitCode,
         stdout: mockExecResult.stdout,
@@ -243,14 +249,17 @@ describe('ShellTool', () => {
         env: envArray,
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'pwd',
-        timeoutMs: 5000,
-        tailTimeoutMs: 2000,
-        env: { TEST: 'value' },
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'pwd',
+          timeoutMs: 5000,
+          tailTimeoutMs: 2000,
+          env: { TEST: 'value' },
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
       expect(result).toEqual({
         exitCode: mockExecResult.exitCode,
         stdout: mockExecResult.stdout,
@@ -329,15 +338,18 @@ describe('ShellTool', () => {
         ],
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'env',
-        env: {
-          VAR1: 'value1',
-          VAR2: 'value2',
-        },
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'env',
+          env: {
+            VAR1: 'value1',
+            VAR2: 'value2',
+          },
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
     });
 
     it('should execute command with tailTimeoutMs only', async () => {
@@ -357,13 +369,16 @@ describe('ShellTool', () => {
         tailTimeoutMs: 3000,
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'echo "test"',
-        tailTimeoutMs: 3000,
-        env: {},
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'echo "test"',
+          tailTimeoutMs: 3000,
+          env: {},
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
     });
   });
 
@@ -390,15 +405,18 @@ describe('ShellTool', () => {
         cmd: 'echo $GITHUB_PAT_TOKEN',
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'echo $GITHUB_PAT_TOKEN',
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token123',
-          GIT_REPO_URL: 'https://github.com/user/repo.git',
-        },
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'echo $GITHUB_PAT_TOKEN',
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token123',
+            GIT_REPO_URL: 'https://github.com/user/repo.git',
+          },
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
     });
 
     it('should prioritize provided environment variables over config variables', async () => {
@@ -423,14 +441,17 @@ describe('ShellTool', () => {
         env: [{ key: 'GITHUB_PAT_TOKEN', value: 'ghp_provided_token' }],
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'echo $GITHUB_PAT_TOKEN',
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_provided_token', // Provided value should override config value
-        },
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'echo $GITHUB_PAT_TOKEN',
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_provided_token', // Provided value should override config value
+          },
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
     });
 
     it('should handle config without environment variables', async () => {
@@ -449,12 +470,15 @@ describe('ShellTool', () => {
         cmd: 'echo "test"',
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'echo "test"',
-        env: {},
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'echo "test"',
+          env: {},
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
     });
 
     it('should handle empty environment variables object', async () => {
@@ -473,12 +497,15 @@ describe('ShellTool', () => {
         cmd: 'echo "test"',
       });
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: 'echo "test"',
-        env: {},
-        childWorkdir: 'unknown',
-        createChildWorkdir: true,
-      });
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: 'echo "test"',
+          env: {},
+          childWorkdir: 'unknown',
+          createChildWorkdir: true,
+          metadata: expect.objectContaining({ threadId: 'unknown' }),
+        }),
+      );
     });
 
     it('should enhance description with resource information', () => {

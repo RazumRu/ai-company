@@ -35,17 +35,6 @@ The project uses Vitest for unit testing:
   pnpm test
   ```
 
-- Run unit tests with coverage:
-  ```bash
-  pnpm test:cov
-  ```
-
-- Run tests for packages only:
-  ```bash
-  pnpm test:packages
-  ```
-
-
 ### Writing Unit Tests
 
 1. **File naming**: Create test files with `.spec.ts` extension
@@ -59,33 +48,6 @@ src/v1/users/
 ├── users.service.spec.ts  # Unit test
 ├── users.dao.ts
 └── users.dao.spec.ts      # Unit test
-```
-
-Example unit test:
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest';
-import { UserService } from './users.service';
-
-describe('UserService', () => {
-  let service: UserService;
-
-  beforeEach(() => {
-    // Setup
-    service = new UserService();
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  it('should create a user', async () => {
-    const userData = { email: 'test@example.com', name: 'Test User' };
-    const result = await service.create(userData);
-    
-    expect(result).toBeDefined();
-    expect(result.email).toBe(userData.email);
-  });
-});
 ```
 
 ### Prefer Updating Existing Test Files
@@ -110,11 +72,12 @@ The project uses Cypress for E2E testing.
 
 #### Complete E2E Test Workflow
 
-1. **Start dependencies (PostgreSQL)**:
+1. **Start dependencies**:
    ```bash
+   # if using docker
    docker-compose up -d
    # or
-   pnpm deps:up
+   pnpm run deps:up
    ```
 
 2. **Check if the server is already running**:
@@ -142,23 +105,16 @@ The project uses Cypress for E2E testing.
 
 5. **Run E2E tests**:
    ```bash
-   # From project root
-   pnpm test:e2e
-   
-   # Or from apps/api
+   # from apps/api
    cd apps/api
-   pnpm test:e2e:local
+   pnpm run test:e2e:local
    ```
 
 #### E2E Test Commands
 
-- Run all E2E tests:
-  ```bash
-  pnpm test:e2e
-  ```
-
 - Run E2E tests against a local server:
   ```bash
+  cd apps/api
   pnpm test:e2e:local
   ```
 
@@ -183,7 +139,7 @@ When iterating locally, prefer running specs one-by-one to get fast feedback, fi
 - Run a single spec (recommended):
   ```bash
   cd apps/api
-  pnpm test:e2e:local -- --spec "cypress/e2e/notifications/socket.cy.ts"
+  pnpm test:e2e:local --spec "cypress/e2e/notifications/socket.cy.ts"
   ```
   You can replace the path with any spec you’re working on. Extra args after `--` are forwarded to Cypress.
 
@@ -199,25 +155,8 @@ When iterating locally, prefer running specs one-by-one to get fast feedback, fi
   find cypress/e2e -type f \( -name "*.cy.ts" -o -name "*.cy.js" \) | sort | \
   while IFS= read -r spec; do
     echo "Running $spec"
-    pnpm test:e2e:local -- --spec "$spec" || { echo "Failed: $spec"; break; }
+    pnpm test:e2e:local --spec "$spec" || { echo "Failed: $spec"; break; }
   done
-  ```
-
-- Windows PowerShell equivalent:
-  ```powershell
-  cd apps/api
-  $specs = Get-ChildItem -Path cypress/e2e -Recurse -Include *.cy.ts,*.cy.js | Sort-Object FullName
-  foreach ($s in $specs) {
-    Write-Host "Running $($s.FullName)"
-    pnpm test:e2e:local -- --spec "$($s.FullName)"
-    if ($LASTEXITCODE -ne 0) { throw "Failed: $($s.FullName)" }
-  }
-  ```
-
-- Tip: For interactive debugging, you can also open the Cypress runner and pick a single spec:
-  ```bash
-  cd apps/api
-  pnpm test:e2e:open:local
   ```
 
 Workflow suggestion:
@@ -254,40 +193,6 @@ apps/api/cypress/
 │       └── auth.helper.ts
 └── api-definitions/           # Generated API types
 ```
-
-Example E2E test:
-```typescript
-import { createUser, deleteUser } from './users.helper';
-
-describe('Users API', () => {
-  it('should create a new user', () => {
-    const userData = {
-      email: 'test@example.com',
-      name: 'Test User',
-    };
-
-    createUser(userData).then((response) => {
-      expect(response.status).to.eq(201);
-      expect(response.body).to.have.property('id');
-      expect(response.body.email).to.eq(userData.email);
-    });
-  });
-
-  it('should get user by id', () => {
-    // Test implementation
-  });
-});
-```
-
-## Test Coverage
-
-### Checking Coverage
-
-```bash
-pnpm test:cov
-```
-
-This generates a coverage report in the `coverage/` directory.
 
 ## Testing Best Practices
 

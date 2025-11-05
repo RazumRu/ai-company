@@ -7,21 +7,20 @@ import { isUndefined, omitBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
-import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
-import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
   GraphDto,
+  GraphNodesQueryDto,
+  GraphNodeWithStatusDto,
   UpdateGraphDto,
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
-import { MessageTransformerService } from './message-transformer.service';
 
 @Injectable()
 export class GraphsService {
@@ -31,9 +30,6 @@ export class GraphsService {
     private readonly graphRegistry: GraphRegistry,
     private readonly typeorm: TypeormService,
     private readonly authContext: AuthContextService,
-    private readonly graphCheckpointsDao: GraphCheckpointsDao,
-    private readonly pgCheckpointSaver: PgCheckpointSaver,
-    private readonly messageTransformer: MessageTransformerService,
   ) {}
 
   private prepareResponse(entity: GraphEntity): GraphDto {
@@ -81,6 +77,30 @@ export class GraphsService {
     });
 
     return row.map(this.prepareResponse);
+  }
+
+  async getCompiledNodes(
+    id: string,
+    data: GraphNodesQueryDto,
+  ): Promise<GraphNodeWithStatusDto[]> {
+    const graph = await this.graphDao.getOne({
+      id,
+      createdBy: this.authContext.checkSub(),
+    });
+
+    if (!graph) {
+      throw new NotFoundException('GRAPH_NOT_FOUND');
+    }
+
+    const compiledGraph = this.graphRegistry.get(id);
+    if (!compiledGraph) {
+      throw new BadRequestException(
+        'GRAPH_NOT_RUNNING',
+        'Graph must be running to inspect compiled nodes',
+      );
+    }
+
+    return compiledGraph.state.getSnapshots(data.threadId, data.runId);
   }
 
   async update(id: string, data: UpdateGraphDto): Promise<GraphDto> {

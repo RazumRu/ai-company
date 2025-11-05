@@ -1,3 +1,5 @@
+import { GraphExecutionMetadata } from '../graphs/graphs.types';
+
 export interface RuntimeStartParams {
   image?: string;
   env?: Record<string, string>;
@@ -17,6 +19,7 @@ export interface RuntimeExecParams {
   timeoutMs?: number;
   tailTimeoutMs?: number;
   createChildWorkdir?: boolean;
+  metadata?: GraphExecutionMetadata;
 }
 
 export interface RuntimeExecResult {

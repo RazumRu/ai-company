@@ -363,47 +363,65 @@ export class DockerRuntime extends BaseRuntime {
       AutoRemove: true,
     };
 
-    const container = await this.docker.createContainer({
-      Image: imageName,
-      name: containerName,
-      Env: env,
-      WorkingDir: this.getWorkdir(params?.workdir),
-      Cmd: cmd,
-      Labels: params?.labels,
-      Tty: false,
-      AttachStdin: false,
-      AttachStdout: false,
-      AttachStderr: false,
-      OpenStdin: false,
-      HostConfig: hostConfig,
-    });
+    try {
+      const container = await this.docker.createContainer({
+        Image: imageName,
+        name: containerName,
+        Env: env,
+        WorkingDir: this.getWorkdir(params?.workdir),
+        Cmd: cmd,
+        Labels: params?.labels,
+        Tty: false,
+        AttachStdin: false,
+        AttachStdout: false,
+        AttachStderr: false,
+        OpenStdin: false,
+        HostConfig: hostConfig,
+      });
 
-    await container.start();
-    this.container = container;
-    this.containerWorkdir = this.getWorkdir(params?.workdir);
+      await container.start();
+      this.container = container;
+      this.containerWorkdir = this.getWorkdir(params?.workdir);
 
-    if (params?.initScript) {
-      await this.runInitScript(
-        params.initScript,
-        params.env,
-        params.initScriptTimeoutMs,
-      );
+      if (params?.initScript) {
+        await this.runInitScript(
+          params.initScript,
+          params.env,
+          params.initScriptTimeoutMs,
+        );
+      }
+
+      // Emit start event
+      this.emit({ type: 'start', data: { params: params || {} } });
+    } catch (error) {
+      // Emit start event with error
+      this.emit({ type: 'start', data: { params: params || {}, error } });
+      throw error;
     }
   }
 
   async stop(): Promise<void> {
-    if (!this.container) {
-      return;
-    }
+    try {
+      if (!this.container) {
+        return;
+      }
 
-    await DockerRuntime.stopByInstance(this.container);
-    this.container = null;
-    this.containerWorkdir = null;
+      await DockerRuntime.stopByInstance(this.container);
+      this.container = null;
+      this.containerWorkdir = null;
 
-    // Stop and remove DIND container if it exists
-    if (this.dindContainer) {
-      await DockerRuntime.stopByInstance(this.dindContainer);
-      this.dindContainer = null;
+      // Stop and remove DIND container if it exists
+      if (this.dindContainer) {
+        await DockerRuntime.stopByInstance(this.dindContainer);
+        this.dindContainer = null;
+      }
+
+      // Emit stop event
+      this.emit({ type: 'stop', data: {} });
+    } catch (error) {
+      // Emit stop event with error
+      this.emit({ type: 'stop', data: { error } });
+      throw error;
     }
   }
 
@@ -445,6 +463,8 @@ export class DockerRuntime extends BaseRuntime {
       throw new Error('Runtime not started');
     }
 
+    const execId = randomUUID();
+
     let fullWorkdir = this.containerWorkdir || undefined;
     if (params.childWorkdir) {
       fullWorkdir = params.createChildWorkdir
@@ -466,6 +486,12 @@ export class DockerRuntime extends BaseRuntime {
       AttachStderr: true,
       Tty: false,
       abortSignal: abortController.signal,
+    });
+
+    // Emit exec started event
+    this.emit({
+      type: 'execStart',
+      data: { execId, params },
     });
 
     const stdoutStream = new PassThrough();
@@ -509,68 +535,82 @@ export class DockerRuntime extends BaseRuntime {
       resetTailTimer();
     };
 
-    stdoutStream.on('data', (c) => {
-      stdoutChunks.push(Buffer.from(c));
-      onData();
-    });
-    stderrStream.on('data', (c) => {
-      stderrChunks.push(Buffer.from(c));
-      onData();
-    });
+    stdoutStream.on('data', onData);
+    stderrStream.on('data', onData);
 
-    await new Promise<void>((resolve, reject) => {
-      const cleanup = () => {
-        if (overallTimer) {
-          clearTimeout(overallTimer);
-        }
-        if (tailTimer) {
-          clearTimeout(tailTimer);
-        }
-        stdoutStream.removeAllListeners();
-        stderrStream.removeAllListeners();
-        execStream.removeAllListeners();
-        stdoutStream.end();
-        stderrStream.end();
-      };
-      const done = () => {
-        cleanup();
-        resolve();
-      };
-      const fail = (e: Error) => {
-        cleanup();
-        abortController.abort();
-        if (e.message.includes('Process timed out')) {
-          resolve();
-        } else {
-          reject(e);
-        }
-      };
+    const cleanup = () => {
+      if (overallTimer) clearTimeout(overallTimer);
+      if (tailTimer) clearTimeout(tailTimer);
+      stdoutStream.removeListener('data', onData);
+      stderrStream.removeListener('data', onData);
+    };
 
-      execStream.on('end', done);
-      execStream.on('close', done);
-      execStream.on('error', fail);
-
-      // Set up overall timeout
-      if (params.timeoutMs && params.timeoutMs > 0) {
-        overallTimer = setTimeout(() => {
-          timedOut = true;
-          try {
-            execStream.destroy(new Error('Process timed out'));
-          } catch {
-            //
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const done = () => {
+          cleanup();
+          abortController.abort();
+          if (timedOut || tailTimedOut) {
+            resolve();
+          } else {
+            resolve();
           }
-        }, params.timeoutMs).unref();
-      }
+        };
 
-      // Set up initial tail timeout
-      resetTailTimer();
-    });
+        const fail = (e: Error) => {
+          cleanup();
+          abortController.abort();
+          if (e.message.includes('Process timed out')) {
+            resolve();
+          } else {
+            reject(e);
+          }
+        };
 
-    const info = await ex.inspect();
-    const exitCode = timedOut || tailTimedOut ? 124 : info.ExitCode || 0;
-    const stdout = Buffer.concat(stdoutChunks).toString('utf8');
-    const stderr = Buffer.concat(stderrChunks).toString('utf8');
+        execStream.on('end', done);
+        execStream.on('close', done);
+        execStream.on('error', fail);
 
-    return { exitCode, stdout, stderr, fail: exitCode !== 0 };
+        // Set up overall timeout
+        if (params.timeoutMs && params.timeoutMs > 0) {
+          overallTimer = setTimeout(() => {
+            timedOut = true;
+            try {
+              execStream.destroy(new Error('Process timed out'));
+            } catch {
+              //
+            }
+          }, params.timeoutMs).unref();
+        }
+
+        // Set up initial tail timeout
+        resetTailTimer();
+      });
+
+      const info = await ex.inspect();
+      const exitCode = timedOut || tailTimedOut ? 124 : info.ExitCode || 0;
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8');
+      const stderr = Buffer.concat(stderrChunks).toString('utf8');
+
+      const result = { exitCode, stdout, stderr, fail: exitCode !== 0 };
+
+      // Emit exec finished event
+      this.emit({
+        type: 'execEnd',
+        data: { execId, params, result },
+      });
+
+      return result;
+    } catch (error) {
+      cleanup();
+
+      // Emit exec finished event with error
+      this.emit({
+        type: 'execEnd',
+        data: { execId, params, error },
+      });
+
+      throw error;
+    }
   }
 }

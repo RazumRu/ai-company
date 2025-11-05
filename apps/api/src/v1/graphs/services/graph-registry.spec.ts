@@ -2,7 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CompiledGraph, CompiledGraphNode, NodeKind } from '../graphs.types';
+import {
+  CompiledGraph,
+  CompiledGraphNode,
+  GraphNodeStatus,
+  NodeKind,
+} from '../graphs.types';
 import { GraphRegistry } from './graph-registry';
 
 describe('GraphRegistry', () => {
@@ -21,9 +26,25 @@ describe('GraphRegistry', () => {
       });
     }
 
+    const state = {
+      getSnapshots: vi.fn().mockImplementation(() =>
+        Array.from(nodes.values()).map((node) => ({
+          id: node.id,
+          name: node.id,
+          template: node.template,
+          type: node.type,
+          status: GraphNodeStatus.Idle,
+          config: node.config,
+          error: null,
+        })),
+      ),
+      handleGraphDestroyed: vi.fn(),
+    } as unknown as CompiledGraph['state'];
+
     return {
       nodes,
       edges: [{ from: 'node-1', to: 'node-2' }],
+      state,
       destroy: vi.fn().mockResolvedValue(undefined),
     };
   };
@@ -200,6 +221,10 @@ describe('GraphRegistry', () => {
       const emptyGraph: CompiledGraph = {
         nodes: new Map(),
         edges: [],
+        state: {
+          getSnapshots: vi.fn().mockReturnValue([]),
+          handleGraphDestroyed: vi.fn(),
+        } as unknown as CompiledGraph['state'],
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -224,6 +249,10 @@ describe('GraphRegistry', () => {
           ],
         ]),
         edges: [],
+        state: {
+          getSnapshots: vi.fn().mockReturnValue([]),
+          handleGraphDestroyed: vi.fn(),
+        } as unknown as CompiledGraph['state'],
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -369,6 +398,10 @@ describe('GraphRegistry', () => {
           ],
         ]),
         edges: [],
+        state: {
+          getSnapshots: vi.fn().mockReturnValue([]),
+          handleGraphDestroyed: vi.fn(),
+        } as unknown as CompiledGraph['state'],
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 
