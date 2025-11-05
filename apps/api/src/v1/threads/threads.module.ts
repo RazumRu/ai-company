@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { GraphsModule } from '../graphs/graphs.module';
@@ -10,7 +10,10 @@ import { ThreadEntity } from './entity/thread.entity';
 import { ThreadsService } from './services/threads.service';
 
 @Module({
-  imports: [registerEntities([ThreadEntity, MessageEntity]), GraphsModule],
+  imports: [
+    registerEntities([ThreadEntity, MessageEntity]),
+    forwardRef(() => GraphsModule),
+  ],
   controllers: [ThreadsController],
   providers: [ThreadsService, ThreadsDao, MessagesDao],
   exports: [ThreadsDao, MessagesDao, ThreadsService],

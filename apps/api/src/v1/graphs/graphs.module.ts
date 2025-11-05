@@ -1,11 +1,12 @@
 import './graphs.exceptions';
 
-import { Module, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { AgentsModule } from '../agents/agents.module';
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ThreadsModule } from '../threads/threads.module';
 import { GraphsController } from './controllers/graphs.controller';
 import { GraphDao } from './dao/graph.dao';
 import { GraphEntity } from './entity/graph.entity';
@@ -23,6 +24,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphTemplatesModule,
     NotificationsModule,
     AgentsModule,
+    forwardRef(() => ThreadsModule),
   ],
   controllers: [GraphsController],
   providers: [

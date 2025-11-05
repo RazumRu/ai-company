@@ -2,9 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
+import { ThreadsDao } from '../../threads/dao/threads.dao';
+import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
-import { GraphStatus } from '../graphs.types';
+import { GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRestorationService } from './graph-restoration.service';
@@ -21,6 +24,8 @@ describe('GraphRestorationService', () => {
   let graphDao: any;
   let graphCompiler: any;
   let graphRegistry: any;
+  let threadsDao: any;
+  let graphCheckpointsDao: any;
   let logger: any;
 
   const mockGraph: GraphEntity = {
@@ -84,6 +89,14 @@ describe('GraphRestorationService', () => {
       register: vi.fn(),
     };
 
+    const mockThreadsDao = {
+      getAll: vi.fn(),
+    };
+
+    const mockGraphCheckpointsDao = {
+      getAll: vi.fn(),
+    };
+
     const mockLogger = {
       log: vi.fn(),
       debug: vi.fn(),
@@ -107,6 +120,14 @@ describe('GraphRestorationService', () => {
           useValue: mockGraphRegistry,
         },
         {
+          provide: ThreadsDao,
+          useValue: mockThreadsDao,
+        },
+        {
+          provide: GraphCheckpointsDao,
+          useValue: mockGraphCheckpointsDao,
+        },
+        {
           provide: DefaultLogger,
           useValue: mockLogger,
         },
@@ -117,7 +138,11 @@ describe('GraphRestorationService', () => {
     graphDao = module.get(GraphDao);
     graphCompiler = module.get(GraphCompiler);
     graphRegistry = module.get(GraphRegistry);
+    threadsDao = module.get(ThreadsDao);
+    graphCheckpointsDao = module.get(GraphCheckpointsDao);
     logger = module.get(DefaultLogger);
+
+    vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -396,6 +421,287 @@ describe('GraphRestorationService', () => {
         temporaryGraph,
       );
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
+    });
+
+    it('should resume interrupted threads after restoring a graph', async () => {
+      // Arrange
+      const mockAgent = {
+        run: vi.fn().mockResolvedValue({
+          messages: [],
+          threadId: 'test-graph-id:thread-1',
+        }),
+      };
+
+      const mockAgentNode = {
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'You are a helpful test agent.',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+        config: {},
+      };
+
+      const mockCompiledGraphWithAgent = {
+        nodes: new Map([['agent-1', mockAgentNode]]),
+        edges: [],
+        state: {
+          getSnapshots: vi.fn(),
+        },
+        destroy: vi.fn(),
+      };
+
+      const mockThread = {
+        id: 'thread-uuid-1',
+        graphId: 'test-graph-id',
+        externalThreadId: 'test-graph-id:thread-1',
+        createdBy: 'test-user',
+        status: ThreadStatus.Running,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      vi.mocked(graphRegistry.get)
+        .mockReturnValueOnce(undefined) // Not registered yet
+        .mockReturnValueOnce(mockCompiledGraphWithAgent); // After registration, for thread resumption
+      vi.mocked(graphCompiler.compile).mockResolvedValue(
+        mockCompiledGraphWithAgent,
+      );
+      vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
+      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([
+        {
+          checkpointNs: '',
+          checkpointId: 'chk-empty',
+        } as any,
+        {
+          checkpointNs: `${mockThread.externalThreadId}:agent-1`,
+          checkpointId: 'chk-123',
+        } as any,
+      ]);
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Give some time for async thread resumption to start
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Assert
+      expect(threadsDao.getAll).toHaveBeenCalledWith({
+        graphId: 'test-graph-id',
+        status: ThreadStatus.Running,
+      });
+      expect(graphCheckpointsDao.getAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: mockThread.externalThreadId,
+          order: { createdAt: 'DESC' },
+          limit: 20,
+        }),
+      );
+      expect(mockAgent.run).toHaveBeenCalledWith(
+        'test-graph-id:thread-1',
+        [],
+        mockAgentNode.instance.config,
+        {
+          configurable: expect.objectContaining({
+            graph_id: 'test-graph-id',
+            node_id: 'agent-1',
+            parent_thread_id: 'test-graph-id:thread-1',
+            thread_id: 'test-graph-id:thread-1',
+            source: 'graph-restoration',
+            checkpoint_ns: `${mockThread.externalThreadId}:agent-1`,
+            checkpoint_id: 'chk-123',
+            async: true,
+          }),
+        },
+      );
+    });
+
+    it('should handle no interrupted threads gracefully', async () => {
+      // Arrange
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(mockCompiledGraph);
+      vi.mocked(threadsDao.getAll).mockResolvedValue([]);
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Assert
+      expect(threadsDao.getAll).toHaveBeenCalledWith({
+        graphId: 'test-graph-id',
+        status: ThreadStatus.Running,
+      });
+      expect(logger.log).toHaveBeenCalledWith(
+        expect.stringContaining('No interrupted threads'),
+      );
+    });
+
+    it('should extract node ID from thread ID with node suffix', async () => {
+      // Arrange
+      const mockAgent = {
+        run: vi.fn().mockResolvedValue({
+          messages: [],
+          threadId: 'test-graph-id:thread-1__agent-1',
+        }),
+      };
+
+      const mockAgentNode = {
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'You are a helpful test agent.',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+        config: {},
+      };
+
+      const mockCompiledGraphWithAgent = {
+        nodes: new Map([['agent-1', mockAgentNode]]),
+        edges: [],
+        state: {
+          getSnapshots: vi.fn(),
+        },
+        destroy: vi.fn(),
+      };
+
+      const mockThread = {
+        id: 'thread-uuid-1',
+        graphId: 'test-graph-id',
+        externalThreadId: 'test-graph-id:thread-1__agent-1',
+        createdBy: 'test-user',
+        status: ThreadStatus.Running,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      vi.mocked(graphRegistry.get)
+        .mockReturnValueOnce(undefined)
+        .mockReturnValueOnce(mockCompiledGraphWithAgent);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(
+        mockCompiledGraphWithAgent,
+      );
+      vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
+      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([
+        {
+          checkpointNs: '',
+          checkpointId: 'chk-empty',
+        } as any,
+        {
+          checkpointNs: `${mockThread.externalThreadId}:agent-1`,
+          checkpointId: 'chk-456',
+        } as any,
+      ]);
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Give some time for async thread resumption to start
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Assert
+      expect(mockAgent.run).toHaveBeenCalledWith(
+        'test-graph-id:thread-1__agent-1',
+        [],
+        mockAgentNode.instance.config,
+        {
+          configurable: expect.objectContaining({
+            node_id: 'agent-1',
+            checkpoint_ns: `${mockThread.externalThreadId}:agent-1`,
+            checkpoint_id: 'chk-456',
+            async: true,
+          }),
+        },
+      );
+    });
+
+    it('should handle thread resumption errors gracefully', async () => {
+      // Arrange
+      const mockAgent = {
+        run: vi.fn().mockRejectedValue(new Error('Resume failed')),
+      };
+
+      const mockAgentNode = {
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: {
+          agent: mockAgent,
+          config: {
+            name: 'Test Agent',
+            instructions: 'You are a helpful test agent.',
+            invokeModelName: 'gpt-5-mini',
+          },
+        },
+        config: {},
+      };
+
+      const mockCompiledGraphWithAgent = {
+        nodes: new Map([['agent-1', mockAgentNode]]),
+        edges: [],
+        state: {
+          getSnapshots: vi.fn(),
+        },
+        destroy: vi.fn(),
+      };
+
+      const mockThread = {
+        id: 'thread-uuid-1',
+        graphId: 'test-graph-id',
+        externalThreadId: 'test-graph-id:thread-1',
+        createdBy: 'test-user',
+        status: ThreadStatus.Running,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      vi.mocked(graphRegistry.get)
+        .mockReturnValueOnce(undefined)
+        .mockReturnValueOnce(mockCompiledGraphWithAgent);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(
+        mockCompiledGraphWithAgent,
+      );
+      vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
+      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([
+        {
+          checkpointNs: '',
+          checkpointId: 'chk-empty',
+        } as any,
+        {
+          checkpointNs: `${mockThread.externalThreadId}:agent-1`,
+          checkpointId: 'chk-999',
+        } as any,
+      ]);
+
+      // Act
+      await service.restoreRunningGraphs();
+
+      // Give some time for async thread resumption to complete
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Assert - should not throw, but log error
+      expect(mockAgent.run).toHaveBeenCalled();
+      // The graph should still be restored successfully
+      expect(graphRegistry.register).toHaveBeenCalledWith(
+        mockGraph.id,
+        mockCompiledGraphWithAgent,
+      );
     });
   });
 });
