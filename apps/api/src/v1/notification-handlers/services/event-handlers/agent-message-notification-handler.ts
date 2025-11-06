@@ -16,6 +16,7 @@ import {
 import {
   EnrichedNotificationEvent,
   IEnrichedNotification,
+  NotificationScope,
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
@@ -79,6 +80,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         nodeId: event.nodeId,
         threadId: event.threadId,
         internalThreadId: internalThread.id,
+        scope: [NotificationScope.Graph],
         data: ThreadMessageSchema.parse({
           ...createdMessage,
           createdAt: createdMessage.createdAt.toISOString(),

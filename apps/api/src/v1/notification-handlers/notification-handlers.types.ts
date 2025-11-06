@@ -1,3 +1,10 @@
+export enum NotificationScope {
+  /** Send notification only to graph room (users who explicitly subscribed) */
+  Graph = 'graph',
+  /** Send notification only to user room (owner's personal room) */
+  User = 'user',
+}
+
 export interface IEnrichedNotification<T> {
   type: EnrichedNotificationEvent;
   data: T;
@@ -6,6 +13,7 @@ export interface IEnrichedNotification<T> {
   nodeId?: string;
   threadId?: string;
   runId?: string;
+  scope: NotificationScope[];
 }
 
 export enum EnrichedNotificationEvent {

@@ -12,7 +12,10 @@ import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadStatus } from '../../../threads/threads.types';
-import { EnrichedNotificationEvent } from '../../notification-handlers.types';
+import {
+  EnrichedNotificationEvent,
+  NotificationScope,
+} from '../../notification-handlers.types';
 import {
   IThreadUpdateEnrichedNotification,
   ThreadUpdateNotificationHandler,
@@ -119,6 +122,7 @@ describe('ThreadUpdateNotificationHandler', () => {
         ownerId: mockOwnerId,
         threadId: mockThreadId,
         internalThreadId: thread.id,
+        scope: [NotificationScope.Graph],
         data: expectedThread,
       },
     ]);

@@ -12,7 +12,7 @@ import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
-import { CompiledGraphNode, NodeKind } from '../graphs.types';
+import { CompiledGraphNode, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphsService } from './graphs.service';
@@ -52,12 +52,25 @@ export class GraphRestorationService {
     await this.cleanupTemporaryRuntimes();
 
     // STEP 2: Destroy temporary graphs first (run destroy pipeline)
-    const temporaryGraphs = await this.graphDao.getTemporaryGraphs();
+    const temporaryGraphs = await this.graphDao.getAll({ temporary: true });
     await this.deleteTemporaryGraphs(temporaryGraphs);
 
-    // STEP 3: Restore permanent graphs
-    const runningGraphs = await this.graphDao.getRunningGraphs();
-    const restorationPromises = runningGraphs.map((graph) =>
+    // STEP 3: Restore permanent graphs (both running and compiling)
+    const graphsToRestore = await this.graphDao.getAll({
+      statuses: [GraphStatus.Running, GraphStatus.Compiling],
+    });
+
+    this.logger.log('Restoring graphs after restart', {
+      runningCount: graphsToRestore.filter(
+        (graph) => graph.status === GraphStatus.Running,
+      ).length,
+      compilingCount: graphsToRestore.filter(
+        (graph) => graph.status === GraphStatus.Compiling,
+      ).length,
+      total: graphsToRestore.length,
+    });
+
+    const restorationPromises = graphsToRestore.map((graph) =>
       this.restoreGraph(graph),
     );
     await Promise.allSettled(restorationPromises);

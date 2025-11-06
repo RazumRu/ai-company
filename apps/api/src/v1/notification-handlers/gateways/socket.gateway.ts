@@ -15,7 +15,10 @@ import { AuthContextDataBuilder } from '@packages/http-server';
 import { Server, Socket } from 'socket.io';
 
 import { GraphDao } from '../../graphs/dao/graph.dao';
-import { IEnrichedNotification } from '../notification-handlers.types';
+import {
+  IEnrichedNotification,
+  NotificationScope,
+} from '../notification-handlers.types';
 import { NotificationHandler } from '../services/notification-handler.service';
 
 @WebSocketGateway({
@@ -52,10 +55,22 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
     // Subscribe to events handler for enriched notifications
     this.eventsHandler.subscribeEvents(
       (event: IEnrichedNotification<unknown>) => {
-        const { graphId, ownerId, type } = event;
+        const { graphId, ownerId, type, scope } = event;
 
-        this.broadcastToRoom(this.getGraphRoomName(graphId), type, event);
-        this.broadcastToRoom(this.getUserRoomName(ownerId), type, event);
+        const graphRoom = this.getGraphRoomName(graphId);
+        const userRoom = this.getUserRoomName(ownerId);
+
+        // Send notifications based on scope array
+        for (const scopeItem of scope) {
+          switch (scopeItem) {
+            case NotificationScope.Graph:
+              this.broadcastToRoom(graphRoom, type, event);
+              break;
+            case NotificationScope.User:
+              this.broadcastToRoom(userRoom, type, event);
+              break;
+          }
+        }
       },
     );
   }

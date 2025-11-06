@@ -13,6 +13,7 @@ import { ThreadStatus } from '../../../threads/threads.types';
 import {
   EnrichedNotificationEvent,
   IEnrichedNotification,
+  NotificationScope,
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
@@ -53,6 +54,7 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
       nodeId,
       threadId,
       data,
+      scope: [NotificationScope.Graph],
     };
 
     notifications.push(agentStateNotification);

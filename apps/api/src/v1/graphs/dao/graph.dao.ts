@@ -11,6 +11,7 @@ export type SearchTerms = Partial<{
   createdBy: string;
   ids: string[];
   status: GraphStatus;
+  statuses: GraphStatus[];
   temporary: boolean;
 }>;
 
@@ -50,7 +51,11 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms, string> {
       });
     }
 
-    if (params?.status) {
+    if (params?.statuses && params.statuses.length > 0) {
+      builder.andWhere(`${this.alias}.status IN (:...statuses)`, {
+        statuses: params.statuses,
+      });
+    } else if (params?.status) {
       builder.andWhere({
         status: params.status,
       });
@@ -61,16 +66,5 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms, string> {
         createdBy: params.createdBy,
       });
     }
-  }
-
-  /**
-   * Get all graphs with running status
-   */
-  async getRunningGraphs(): Promise<GraphEntity[]> {
-    return this.getAll({ status: GraphStatus.Running });
-  }
-
-  async getTemporaryGraphs(): Promise<GraphEntity[]> {
-    return this.getAll({ temporary: true });
   }
 }

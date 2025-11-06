@@ -9,6 +9,7 @@ import {
 import {
   EnrichedNotificationEvent,
   IEnrichedNotification,
+  NotificationScope,
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
@@ -40,6 +41,7 @@ export class GraphNodeUpdateNotificationHandler extends BaseNotificationHandler<
         nodeId: event.nodeId,
         threadId: event.threadId,
         runId: event.runId,
+        scope: [NotificationScope.Graph],
         data: event.data,
       },
     ];

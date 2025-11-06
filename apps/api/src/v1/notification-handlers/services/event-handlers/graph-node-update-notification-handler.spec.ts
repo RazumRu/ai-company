@@ -8,7 +8,10 @@ import {
   IGraphNodeUpdateNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
-import { EnrichedNotificationEvent } from '../../notification-handlers.types';
+import {
+  EnrichedNotificationEvent,
+  NotificationScope,
+} from '../../notification-handlers.types';
 import {
   GraphNodeUpdateNotificationHandler,
   IGraphNodeUpdateEnrichedNotification,
@@ -62,6 +65,7 @@ describe('GraphNodeUpdateNotificationHandler', () => {
       nodeId: 'node-1',
       threadId: 'thread-1',
       runId: undefined,
+      scope: [NotificationScope.Graph],
       data: {
         status: GraphNodeStatus.Running,
         error: undefined,

@@ -9,6 +9,7 @@ import {
 import {
   EnrichedNotificationEvent,
   IEnrichedNotification,
+  NotificationScope,
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
@@ -36,6 +37,7 @@ export class GraphNotificationHandler extends BaseNotificationHandler<IGraphEnri
       ...event,
       type: EnrichedNotificationEvent.Graph,
       ownerId,
+      scope: [NotificationScope.Graph],
     };
 
     return [enrichedNotification];

@@ -12,7 +12,6 @@ import { GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRestorationService } from './graph-restoration.service';
-import { GraphsService } from './graphs.service';
 
 // Mock DockerRuntime static method
 vi.mock('../../runtime/services/docker-runtime', () => ({
@@ -29,8 +28,16 @@ describe('GraphRestorationService', () => {
   let threadsDao: any;
   let graphCheckpointsDao: any;
   let graphsService: any;
-  let moduleRef: any;
   let logger: any;
+
+  const mockGraphDaoLists = (
+    temporaryGraphs: GraphEntity[] = [],
+    statusGraphs: GraphEntity[] = [],
+  ) => {
+    vi.mocked(graphDao.getAll)
+      .mockResolvedValueOnce(temporaryGraphs)
+      .mockResolvedValueOnce(statusGraphs);
+  };
 
   const mockGraph: GraphEntity = {
     id: 'test-graph-id',
@@ -77,8 +84,7 @@ describe('GraphRestorationService', () => {
 
   beforeEach(async () => {
     const mockGraphDao = {
-      getRunningGraphs: vi.fn(),
-      getTemporaryGraphs: vi.fn(),
+      getAll: vi.fn(),
       updateById: vi.fn(),
       deleteById: vi.fn(),
     };
@@ -156,7 +162,6 @@ describe('GraphRestorationService', () => {
     graphRegistry = module.get(GraphRegistry);
     threadsDao = module.get(ThreadsDao);
     graphCheckpointsDao = module.get(GraphCheckpointsDao);
-    moduleRef = module.get(ModuleRef);
     graphsService = mockGraphsService;
     logger = module.get(DefaultLogger);
 
@@ -175,9 +180,7 @@ describe('GraphRestorationService', () => {
   describe('restoreRunningGraphs', () => {
     it('should restore running graphs successfully', async () => {
       // Arrange
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      mockGraphDaoLists([], [mockGraph]);
       vi.mocked(graphRegistry.get)
         .mockReturnValueOnce(undefined)
         .mockReturnValue(mockCompiledGraph);
@@ -185,23 +188,26 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
     });
 
     it('should handle no running graphs', async () => {
       // Arrange
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      mockGraphDaoLists([], []);
 
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphCompiler.compile).not.toHaveBeenCalled();
       expect(graphRegistry.register).not.toHaveBeenCalled();
     });
@@ -209,32 +215,34 @@ describe('GraphRestorationService', () => {
     it('should handle run errors gracefully', async () => {
       // Arrange
       const compilationError = new Error('Compilation failed');
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      mockGraphDaoLists([], [mockGraph]);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphsService.run).mockRejectedValue(compilationError);
 
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
     });
 
     it('should skip already registered graphs', async () => {
       // Arrange
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      mockGraphDaoLists([], [mockGraph]);
       vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
 
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphCompiler.compile).not.toHaveBeenCalled();
       expect(graphRegistry.register).not.toHaveBeenCalled();
     });
@@ -248,11 +256,9 @@ describe('GraphRestorationService', () => {
       };
       const compilationError = new Error('Compilation failed');
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([
-        mockGraph,
-        mockGraph2,
-      ]);
+      vi.mocked(graphDao.getAll)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([mockGraph, mockGraph2]);
       const registryGetMock = vi.mocked(graphRegistry.get);
       let firstGraphFirstCall = true;
       registryGetMock.mockImplementation((graphId: string) => {
@@ -275,8 +281,11 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph2.id);
     });
@@ -290,10 +299,9 @@ describe('GraphRestorationService', () => {
         temporary: true,
       };
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
-        temporaryGraph,
-      ]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getAll)
+        .mockResolvedValueOnce([temporaryGraph])
+        .mockResolvedValueOnce([]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
       vi.mocked(graphCompiler.destroyNotCompiledGraph).mockResolvedValue(
         undefined,
@@ -302,8 +310,11 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
         temporaryGraph,
       );
@@ -320,10 +331,9 @@ describe('GraphRestorationService', () => {
         temporary: true,
       };
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
-        temporaryGraph,
-      ]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      vi.mocked(graphDao.getAll)
+        .mockResolvedValueOnce([temporaryGraph])
+        .mockResolvedValueOnce([]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
       vi.mocked(graphCompiler.destroyNotCompiledGraph).mockRejectedValue(
         new Error('Destroy failed'),
@@ -332,8 +342,11 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
         temporaryGraph,
       );
@@ -356,10 +369,9 @@ describe('GraphRestorationService', () => {
         temporary: false,
       };
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
-        temporaryGraph,
-      ]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([permanentGraph]);
+      vi.mocked(graphDao.getAll)
+        .mockResolvedValueOnce([temporaryGraph])
+        .mockResolvedValueOnce([permanentGraph]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
       vi.mocked(graphRegistry.get)
         .mockReturnValueOnce(undefined)
@@ -375,8 +387,11 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       // Temporary graph should be destroyed using destroyNotCompiledGraph
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
         temporaryGraph,
@@ -396,10 +411,7 @@ describe('GraphRestorationService', () => {
       };
       const deletionError = new Error('Deletion failed');
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
-        temporaryGraph,
-      ]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      mockGraphDaoLists([temporaryGraph], []);
       vi.mocked(graphCompiler.destroyNotCompiledGraph).mockResolvedValue(
         undefined,
       );
@@ -408,8 +420,11 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
         temporaryGraph,
       );
@@ -427,10 +442,7 @@ describe('GraphRestorationService', () => {
       };
       const cleanupError = new Error('Container cleanup failed');
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([
-        temporaryGraph,
-      ]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([]);
+      mockGraphDaoLists([temporaryGraph], []);
       vi.mocked(graphCompiler.destroyNotCompiledGraph).mockRejectedValue(
         cleanupError,
       );
@@ -438,8 +450,11 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getTemporaryGraphs).toHaveBeenCalledTimes(1);
-      expect(graphDao.getRunningGraphs).toHaveBeenCalledTimes(1);
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
         temporaryGraph,
       );
@@ -489,8 +504,7 @@ describe('GraphRestorationService', () => {
         updatedAt: new Date(),
       };
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      mockGraphDaoLists([], [mockGraph]);
       const registryGetMock = vi.mocked(graphRegistry.get);
       let firstCall = true;
       registryGetMock.mockImplementation((graphId: string) => {
@@ -526,6 +540,16 @@ describe('GraphRestorationService', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Assert
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         graphId: 'test-graph-id',
         status: ThreadStatus.Running,
@@ -558,8 +582,7 @@ describe('GraphRestorationService', () => {
 
     it('should handle no interrupted threads gracefully', async () => {
       // Arrange
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      mockGraphDaoLists([], [mockGraph]);
       vi.mocked(graphRegistry.get)
         .mockReturnValueOnce(undefined)
         .mockReturnValueOnce(mockCompiledGraph);
@@ -573,6 +596,11 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         graphId: 'test-graph-id',
         status: ThreadStatus.Running,
@@ -625,8 +653,7 @@ describe('GraphRestorationService', () => {
         updatedAt: new Date(),
       };
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      mockGraphDaoLists([], [mockGraph]);
       const registryGetMockNodeSuffix = vi.mocked(graphRegistry.get);
       let firstCallNodeSuffix = true;
       registryGetMockNodeSuffix.mockImplementation((graphId: string) => {
@@ -662,6 +689,11 @@ describe('GraphRestorationService', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Assert
+      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
+      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      });
       expect(mockAgent.run).toHaveBeenCalledWith(
         'test-graph-id:thread-1__agent-1',
         [],
@@ -717,8 +749,7 @@ describe('GraphRestorationService', () => {
         updatedAt: new Date(),
       };
 
-      vi.mocked(graphDao.getTemporaryGraphs).mockResolvedValue([]);
-      vi.mocked(graphDao.getRunningGraphs).mockResolvedValue([mockGraph]);
+      mockGraphDaoLists([], [mockGraph]);
       const registryGetMockError = vi.mocked(graphRegistry.get);
       let firstCallError = true;
       registryGetMockError.mockImplementation((graphId: string) => {

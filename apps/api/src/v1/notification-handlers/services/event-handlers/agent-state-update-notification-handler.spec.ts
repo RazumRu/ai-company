@@ -12,7 +12,10 @@ import { NotificationsService } from '../../../notifications/services/notificati
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadStatus } from '../../../threads/threads.types';
-import { EnrichedNotificationEvent } from '../../notification-handlers.types';
+import {
+  EnrichedNotificationEvent,
+  NotificationScope,
+} from '../../notification-handlers.types';
 import { AgentStateUpdateNotificationHandler } from './agent-state-update-notification-handler';
 
 describe('AgentStateUpdateNotificationHandler', () => {
@@ -120,6 +123,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       expect(result).toEqual([
         {
           type: EnrichedNotificationEvent.AgentStateUpdate,
+          scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
@@ -225,6 +229,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       expect(result).toEqual([
         {
           type: EnrichedNotificationEvent.AgentStateUpdate,
+          scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
@@ -247,6 +252,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       expect(result).toEqual([
         {
           type: EnrichedNotificationEvent.AgentStateUpdate,
+          scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,
           nodeId: mockNodeId,

@@ -264,15 +264,17 @@ describe('Socket Gateway E2E', () => {
       return waitForSocketConnection(socket);
     });
 
-    it('should receive notifications in user room without explicit subscription', () => {
-      // User should automatically be in their user room and receive notifications
-      // for their graphs even without explicitly subscribing to the graph
+    it('should receive notifications after subscribing to graph', () => {
+      // Users must subscribe to graphs to receive notifications
       // Create a fresh graph for this test to avoid "already running" issues
       const graphData = createMockGraphData();
 
       return createGraph(graphData, reqHeaders).then((response) => {
         expect(response.status).to.equal(201);
         const freshGraphId = response.body.id;
+
+        // Subscribe to the graph
+        socket.emit('subscribe_graph', { graphId: freshGraphId });
 
         // Set up listener for graph update events
         const notificationPromise = new Promise((resolve, reject) => {
@@ -351,6 +353,9 @@ describe('Socket Gateway E2E', () => {
           expect(response.status).to.equal(201);
           freshGraphId = response.body.id;
 
+          // Subscribe to the graph
+          socket.emit('subscribe_graph', { graphId: freshGraphId });
+
           return runGraph(freshGraphId, reqHeaders);
         })
         .then((runResponse) => {
@@ -379,6 +384,9 @@ describe('Socket Gateway E2E', () => {
       return createGraph(graphData, reqHeaders).then((response) => {
         expect(response.status).to.equal(201);
         const freshGraphId = response.body.id;
+
+        // Subscribe to the graph
+        socket.emit('subscribe_graph', { graphId: freshGraphId });
 
         const receivedMessages: unknown[] = [];
 
@@ -638,6 +646,10 @@ describe('Socket Gateway E2E', () => {
               expect(response.status).to.equal(201);
               const newGraphId = response.body.id;
 
+              // Subscribe both sockets to the graph
+              socket.emit('subscribe_graph', { graphId: newGraphId });
+              secondSocket.emit('subscribe_graph', { graphId: newGraphId });
+
               // Run the graph to trigger notifications
               return runGraph(newGraphId, reqHeaders).then((runResponse) => {
                 expect(runResponse.status).to.equal(201);
@@ -798,5 +810,275 @@ describe('Socket Gateway E2E', () => {
         // Cleanup
         disconnectSocket(testSocket);
       });
+  });
+
+  describe('Duplicate Notification Prevention', () => {
+    it('should not receive duplicate message notifications', function () {
+      this.timeout(120000);
+
+      const graphData = createMockGraphData();
+      let testGraphId: string;
+      const messageNotifications: {
+        type: string;
+        graphId: string;
+        threadId: string;
+        data: { message: { content: string; role: string } };
+      }[] = [];
+
+      // Connect socket
+      socket = createSocketConnection(baseUrl, mockUserId);
+
+      return waitForSocketConnection(socket)
+        .then(() => {
+          // Set up message listener
+          socket.on('agent.message', (notification) => {
+            messageNotifications.push(notification);
+          });
+
+          return createGraph(graphData, reqHeaders);
+        })
+        .then((response) => {
+          expect(response.status).to.equal(201);
+          testGraphId = response.body.id;
+
+          // Subscribe to graph
+          socket.emit('subscribe_graph', { graphId: testGraphId });
+
+          return cy.wait(500);
+        })
+        .then(() => runGraph(testGraphId, reqHeaders))
+        .then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+
+          return executeTrigger(
+            testGraphId,
+            'trigger-1',
+            { messages: ['Test message for duplicate check'] },
+            reqHeaders,
+          );
+        })
+        .then((triggerResponse) => {
+          expect(triggerResponse.status).to.equal(201);
+
+          // Wait for messages to arrive
+          return cy.wait(10000);
+        })
+        .then(() => {
+          // Verify we received messages
+          expect(messageNotifications.length).to.be.greaterThan(0);
+
+          // Check for duplicates by comparing message content and threadId
+          const messageKeys = messageNotifications.map(
+            (n) =>
+              `${n.threadId}:${n.data.message.role}:${n.data.message.content}`,
+          );
+
+          const uniqueKeys = new Set(messageKeys);
+
+          // Assert no duplicates
+          expect(messageKeys.length).to.equal(
+            uniqueKeys.size,
+            `Found duplicate messages. Total: ${messageKeys.length}, Unique: ${uniqueKeys.size}. Messages: ${JSON.stringify(messageNotifications.map((n) => ({ role: n.data.message.role, content: typeof n.data.message.content === 'string' ? n.data.message.content.substring(0, 50) : JSON.stringify(n.data.message.content).substring(0, 50) })))}`,
+          );
+        });
+    });
+
+    it('should not receive duplicate node update notifications', function () {
+      this.timeout(120000);
+
+      const graphData = createMockGraphData();
+      let testGraphId: string;
+      const nodeUpdateNotifications: {
+        type: string;
+        graphId: string;
+        nodeId: string;
+        data: { status: string };
+      }[] = [];
+
+      // Connect socket
+      socket = createSocketConnection(baseUrl, mockUserId);
+
+      return waitForSocketConnection(socket)
+        .then(() => {
+          // Set up node update listener
+          socket.on('graph.node.update', (notification) => {
+            nodeUpdateNotifications.push(notification);
+          });
+
+          return createGraph(graphData, reqHeaders);
+        })
+        .then((response) => {
+          expect(response.status).to.equal(201);
+          testGraphId = response.body.id;
+
+          // Subscribe to graph
+          socket.emit('subscribe_graph', { graphId: testGraphId });
+
+          return cy.wait(500);
+        })
+        .then(() => runGraph(testGraphId, reqHeaders))
+        .then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+
+          return executeTrigger(
+            testGraphId,
+            'trigger-1',
+            { messages: ['Test message for node update duplicate check'] },
+            reqHeaders,
+          );
+        })
+        .then((triggerResponse) => {
+          expect(triggerResponse.status).to.equal(201);
+
+          // Wait for node updates to arrive
+          return cy.wait(10000);
+        })
+        .then(() => {
+          // Verify we received node updates
+          expect(nodeUpdateNotifications.length).to.be.greaterThan(0);
+
+          // Group by nodeId and status to detect duplicates
+          const updatesByNode = new Map<
+            string,
+            Map<string, typeof nodeUpdateNotifications>
+          >();
+
+          nodeUpdateNotifications.forEach((notification) => {
+            if (!updatesByNode.has(notification.nodeId)) {
+              updatesByNode.set(notification.nodeId, new Map());
+            }
+
+            const nodeUpdates = updatesByNode.get(notification.nodeId)!;
+            const status = notification.data.status;
+
+            if (!nodeUpdates.has(status)) {
+              nodeUpdates.set(status, []);
+            }
+
+            nodeUpdates.get(status)!.push(notification);
+          });
+
+          // Check for duplicate status updates for the same node
+          let duplicatesFound = false;
+          const duplicateDetails: string[] = [];
+
+          updatesByNode.forEach((statusMap, nodeId) => {
+            statusMap.forEach((updates, status) => {
+              if (updates.length > 1) {
+                duplicatesFound = true;
+                duplicateDetails.push(
+                  `Node ${nodeId} has ${updates.length} duplicate '${status}' updates`,
+                );
+              }
+            });
+          });
+
+          // Assert no duplicates
+          expect(
+            duplicatesFound,
+            `Found duplicate node updates: ${duplicateDetails.join(', ')}. Total notifications: ${nodeUpdateNotifications.length}`,
+          ).to.equal(false);
+        });
+    });
+
+    it('should not receive duplicate notifications with multiple socket connections', function () {
+      this.timeout(120000);
+
+      const graphData = createMockGraphData();
+      let testGraphId: string;
+      let secondSocket: Socket;
+
+      const socket1Messages: { content: string; threadId: string }[] = [];
+      const socket2Messages: { content: string; threadId: string }[] = [];
+
+      // Connect first socket
+      socket = createSocketConnection(baseUrl, mockUserId);
+
+      return waitForSocketConnection(socket)
+        .then(() => {
+          // Connect second socket for the same user
+          secondSocket = createSocketConnection(baseUrl, mockUserId);
+          return waitForSocketConnection(secondSocket);
+        })
+        .then(() => {
+          // Set up message listeners on both sockets
+          socket.on('agent.message', (notification) => {
+            socket1Messages.push({
+              content: notification.data.message.content,
+              threadId: notification.threadId,
+            });
+          });
+
+          secondSocket.on('agent.message', (notification) => {
+            socket2Messages.push({
+              content: notification.data.message.content,
+              threadId: notification.threadId,
+            });
+          });
+
+          return createGraph(graphData, reqHeaders);
+        })
+        .then((response) => {
+          expect(response.status).to.equal(201);
+          testGraphId = response.body.id;
+
+          // Subscribe both sockets to the graph
+          socket.emit('subscribe_graph', { graphId: testGraphId });
+          secondSocket.emit('subscribe_graph', { graphId: testGraphId });
+
+          return cy.wait(500);
+        })
+        .then(() => runGraph(testGraphId, reqHeaders))
+        .then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+
+          return executeTrigger(
+            testGraphId,
+            'trigger-1',
+            { messages: ['Test message for multi-socket duplicate check'] },
+            reqHeaders,
+          );
+        })
+        .then((triggerResponse) => {
+          expect(triggerResponse.status).to.equal(201);
+
+          // Wait for messages to arrive
+          return cy.wait(10000);
+        })
+        .then(() => {
+          // Both sockets should receive messages
+          expect(socket1Messages.length).to.be.greaterThan(0);
+          expect(socket2Messages.length).to.be.greaterThan(0);
+
+          // Both sockets should receive the same messages (broadcast)
+          expect(socket1Messages.length).to.equal(socket2Messages.length);
+
+          // Check for duplicates within each socket
+          const socket1Keys = socket1Messages.map(
+            (m) => `${m.threadId}:${m.content}`,
+          );
+          const socket2Keys = socket2Messages.map(
+            (m) => `${m.threadId}:${m.content}`,
+          );
+
+          const socket1Unique = new Set(socket1Keys);
+          const socket2Unique = new Set(socket2Keys);
+
+          expect(socket1Keys.length).to.equal(
+            socket1Unique.size,
+            'Socket 1 received duplicate messages',
+          );
+          expect(socket2Keys.length).to.equal(
+            socket2Unique.size,
+            'Socket 2 received duplicate messages',
+          );
+        })
+        .then(() => {
+          // Cleanup second socket
+          if (secondSocket) {
+            disconnectSocket(secondSocket);
+          }
+        });
+    });
   });
 });

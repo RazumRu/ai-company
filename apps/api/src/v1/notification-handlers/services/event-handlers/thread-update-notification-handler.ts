@@ -12,6 +12,7 @@ import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import {
   EnrichedNotificationEvent,
   IEnrichedNotification,
+  NotificationScope,
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
@@ -89,6 +90,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
         ownerId,
         threadId: externalThreadKey,
         internalThreadId: updatedThread.id,
+        scope: [NotificationScope.Graph],
         data: threadDto,
       },
     ];
