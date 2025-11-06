@@ -6,6 +6,7 @@ import {
   GraphSchemaType,
   GraphStatus,
 } from '../graphs/graphs.types';
+import { ThreadDto } from '../threads/dto/threads.dto';
 import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
 
@@ -16,6 +17,7 @@ export enum NotificationEvent {
   AgentStateUpdate = 'agent.state.update',
   ThreadCreate = 'thread.create',
   ThreadUpdate = 'thread.update',
+  ThreadDelete = 'thread.delete',
   GraphNodeUpdate = 'graph.node.update',
 }
 
@@ -91,12 +93,20 @@ export interface IThreadUpdateData {
   name?: string;
 }
 
+export type ThreadUpdateNotificationData = IThreadUpdateData | ThreadDto;
+
 export interface IThreadUpdateNotification
-  extends INotification<IThreadUpdateData> {
+  extends INotification<ThreadUpdateNotificationData> {
   type: NotificationEvent.ThreadUpdate;
   nodeId?: string;
   threadId: string;
   parentThreadId?: string;
+}
+
+export interface IThreadDeleteNotification extends INotification<ThreadEntity> {
+  type: NotificationEvent.ThreadDelete;
+  threadId: string;
+  internalThreadId: string;
 }
 
 export interface IGraphNodeUpdateData {
@@ -118,4 +128,5 @@ export type Notification =
   | IAgentStateUpdateNotification
   | IThreadCreateNotification
   | IThreadUpdateNotification
+  | IThreadDeleteNotification
   | IGraphNodeUpdateNotification;

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
@@ -8,6 +9,7 @@ import {
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
+import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
@@ -19,6 +21,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     private readonly threadDao: ThreadsDao,
     private readonly graphDao: GraphDao,
     private readonly notificationsService: NotificationsService,
+    private readonly moduleRef: ModuleRef,
   ) {
     super();
   }
@@ -71,6 +74,25 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
 
       if (Object.keys(updates).length > 0) {
         await this.threadDao.updateById(existingInternalThread.id, updates);
+
+        const refreshedThread = await this.threadDao.getOne({
+          id: existingInternalThread.id,
+          graphId,
+        });
+
+        if (refreshedThread) {
+          const threadsService = await this.moduleRef.create(ThreadsService);
+          const threadDto =
+            threadsService.prepareThreadResponse(refreshedThread);
+
+          await this.notificationsService.emit({
+            type: NotificationEvent.ThreadUpdate,
+            graphId,
+            threadId: externalThreadKey,
+            parentThreadId,
+            data: threadDto,
+          });
+        }
       }
     }
 

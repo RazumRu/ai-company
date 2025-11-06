@@ -4,7 +4,7 @@ import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
-  IThreadCreateNotification,
+  IThreadDeleteNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import { ThreadDto } from '../../../threads/dto/threads.dto';
@@ -16,16 +16,16 @@ import {
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
-export interface IThreadCreateEnrichedNotification
+export interface IThreadDeleteEnrichedNotification
   extends IEnrichedNotification<ThreadDto> {
-  type: EnrichedNotificationEvent.ThreadCreate;
+  type: EnrichedNotificationEvent.ThreadDelete;
   threadId: string;
   internalThreadId: string;
 }
 
 @Injectable()
-export class ThreadCreateNotificationHandler extends BaseNotificationHandler<IThreadCreateEnrichedNotification> {
-  readonly pattern = NotificationEvent.ThreadCreate;
+export class ThreadDeleteNotificationHandler extends BaseNotificationHandler<IThreadDeleteEnrichedNotification> {
+  readonly pattern = NotificationEvent.ThreadDelete;
 
   constructor(
     private readonly graphDao: GraphDao,
@@ -35,18 +35,18 @@ export class ThreadCreateNotificationHandler extends BaseNotificationHandler<ITh
   }
 
   async handle(
-    event: IThreadCreateNotification,
-  ): Promise<IThreadCreateEnrichedNotification[]> {
+    event: IThreadDeleteNotification,
+  ): Promise<IThreadDeleteEnrichedNotification[]> {
     const { graphId, threadId, data } = event;
 
     const ownerId = await this.getGraphOwner(graphId);
-
     const threadsService = await this.moduleRef.create(ThreadsService);
+
     const threadDto = threadsService.prepareThreadResponse(data);
 
     return [
       {
-        type: EnrichedNotificationEvent.ThreadCreate,
+        type: EnrichedNotificationEvent.ThreadDelete,
         graphId,
         ownerId,
         threadId,

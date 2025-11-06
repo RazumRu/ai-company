@@ -6,7 +6,7 @@ import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { GraphEntity } from '../../../graphs/entity/graph.entity';
 import { GraphStatus } from '../../../graphs/graphs.types';
 import {
-  IThreadCreateNotification,
+  IThreadDeleteNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import { ThreadDto } from '../../../threads/dto/threads.dto';
@@ -18,12 +18,24 @@ import {
   NotificationScope,
 } from '../../notification-handlers.types';
 import {
-  IThreadCreateEnrichedNotification,
-  ThreadCreateNotificationHandler,
-} from './thread-create-notification-handler';
+  IThreadDeleteEnrichedNotification,
+  ThreadDeleteNotificationHandler,
+} from './thread-delete-notification-handler';
 
-describe('ThreadCreateNotificationHandler', () => {
-  let handler: ThreadCreateNotificationHandler;
+const toThreadDto = (entity: ThreadEntity): ThreadDto => ({
+  id: entity.id,
+  graphId: entity.graphId,
+  externalThreadId: entity.externalThreadId,
+  createdAt: entity.createdAt.toISOString(),
+  updatedAt: entity.updatedAt.toISOString(),
+  metadata: entity.metadata ?? {},
+  source: entity.source ?? null,
+  name: entity.name ?? null,
+  status: entity.status,
+});
+
+describe('ThreadDeleteNotificationHandler', () => {
+  let handler: ThreadDeleteNotificationHandler;
   let graphDao: GraphDao;
   let moduleRefMock: { create: ReturnType<typeof vi.fn> };
   let threadsServiceMock: {
@@ -42,32 +54,20 @@ describe('ThreadCreateNotificationHandler', () => {
     graphId: mockGraphId,
     createdBy: mockOwnerId,
     externalThreadId: mockThreadId,
-    createdAt: new Date('2024-01-01T00:00:00Z'),
-    updatedAt: new Date('2024-01-01T00:00:00Z'),
-    deletedAt: null,
     metadata: {},
     source: undefined,
     name: undefined,
     status: ThreadStatus.Running,
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+    updatedAt: new Date('2024-01-01T00:00:00Z'),
+    deletedAt: null,
     ...overrides,
   });
 
-  const toThreadDto = (entity: ThreadEntity): ThreadDto => ({
-    id: entity.id,
-    graphId: entity.graphId,
-    externalThreadId: entity.externalThreadId,
-    createdAt: entity.createdAt.toISOString(),
-    updatedAt: entity.updatedAt.toISOString(),
-    metadata: entity.metadata ?? {},
-    source: entity.source ?? null,
-    name: entity.name ?? null,
-    status: entity.status,
-  });
-
   const createMockNotification = (
-    overrides: Partial<IThreadCreateNotification> = {},
-  ): IThreadCreateNotification => ({
-    type: NotificationEvent.ThreadCreate,
+    overrides: Partial<IThreadDeleteNotification> = {},
+  ): IThreadDeleteNotification => ({
+    type: NotificationEvent.ThreadDelete,
     graphId: mockGraphId,
     threadId: mockThreadId,
     internalThreadId: mockInternalThreadId,
@@ -103,7 +103,7 @@ describe('ThreadCreateNotificationHandler', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ThreadCreateNotificationHandler,
+        ThreadDeleteNotificationHandler,
         {
           provide: GraphDao,
           useValue: {
@@ -117,14 +117,14 @@ describe('ThreadCreateNotificationHandler', () => {
       ],
     }).compile();
 
-    handler = module.get<ThreadCreateNotificationHandler>(
-      ThreadCreateNotificationHandler,
+    handler = module.get<ThreadDeleteNotificationHandler>(
+      ThreadDeleteNotificationHandler,
     );
     graphDao = module.get<GraphDao>(GraphDao);
   });
 
   const expectThreadPayload = (
-    result: IThreadCreateEnrichedNotification[],
+    result: IThreadDeleteEnrichedNotification[],
     threadEntity: ThreadEntity,
   ) => {
     const expectedDto = toThreadDto(threadEntity);
@@ -138,7 +138,7 @@ describe('ThreadCreateNotificationHandler', () => {
     const firstResult = result[0]!;
 
     expect(firstResult).toEqual({
-      type: EnrichedNotificationEvent.ThreadCreate,
+      type: EnrichedNotificationEvent.ThreadDelete,
       graphId: mockGraphId,
       ownerId: mockOwnerId,
       threadId: mockThreadId,
@@ -149,37 +149,13 @@ describe('ThreadCreateNotificationHandler', () => {
   };
 
   describe('handle', () => {
-    it('emits full thread info for newly created thread', async () => {
+    it('emits full thread info for deleted thread', async () => {
       const thread = createMockThreadEntity();
       const notification = createMockNotification({ data: thread });
 
       const result = await handler.handle(notification);
 
       expect(graphDao.getOne).toHaveBeenCalledWith({ id: mockGraphId });
-      expectThreadPayload(result, thread);
-    });
-
-    it('includes source when thread has source', async () => {
-      const thread = createMockThreadEntity({
-        source: 'manual-trigger (trigger)',
-      });
-      const notification = createMockNotification({ data: thread });
-
-      const result = await handler.handle(notification);
-
-      const firstResult = result[0]!;
-      expect(firstResult.data.source).toBe('manual-trigger (trigger)');
-      expectThreadPayload(result, thread);
-    });
-
-    it('includes name when thread has name', async () => {
-      const thread = createMockThreadEntity({ name: 'Thread Name' });
-      const notification = createMockNotification({ data: thread });
-
-      const result = await handler.handle(notification);
-
-      const firstResult = result[0]!;
-      expect(firstResult.data.name).toBe('Thread Name');
       expectThreadPayload(result, thread);
     });
 
@@ -193,51 +169,11 @@ describe('ThreadCreateNotificationHandler', () => {
       );
       expect(moduleRefMock.create).not.toHaveBeenCalled();
     });
-
-    it('includes metadata in thread payload', async () => {
-      const thread = createMockThreadEntity({
-        metadata: { key: 'value', count: 42 },
-      });
-      const notification = createMockNotification({ data: thread });
-
-      const result = await handler.handle(notification);
-
-      const firstResult = result[0]!;
-      expect(firstResult.data.metadata).toEqual({ key: 'value', count: 42 });
-      expectThreadPayload(result, thread);
-    });
-
-    it('uses correct thread ID from notification', async () => {
-      const customThreadId = 'custom-external-thread-id';
-      const thread = createMockThreadEntity({
-        externalThreadId: customThreadId,
-      });
-      const notification = createMockNotification({
-        threadId: customThreadId,
-        data: thread,
-      });
-
-      const result = await handler.handle(notification);
-
-      const firstResult = result[0]!;
-      expect(firstResult.threadId).toBe(customThreadId);
-      expect(firstResult.data.externalThreadId).toBe(customThreadId);
-    });
-
-    it('sets correct notification scope to Graph', async () => {
-      const thread = createMockThreadEntity();
-      const notification = createMockNotification({ data: thread });
-
-      const result = await handler.handle(notification);
-
-      const firstResult = result[0]!;
-      expect(firstResult.scope).toEqual([NotificationScope.Graph]);
-    });
   });
 
   describe('pattern', () => {
     it('should have correct notification pattern', () => {
-      expect(handler.pattern).toBe(NotificationEvent.ThreadCreate);
+      expect(handler.pattern).toBe(NotificationEvent.ThreadDelete);
     });
   });
 });

@@ -2,6 +2,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { GraphsModule } from '../graphs/graphs.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ThreadsController } from './controllers/threads.controller';
 import { MessagesDao } from './dao/messages.dao';
 import { ThreadsDao } from './dao/threads.dao';
@@ -13,6 +14,7 @@ import { ThreadsService } from './services/threads.service';
   imports: [
     registerEntities([ThreadEntity, MessageEntity]),
     forwardRef(() => GraphsModule),
+    NotificationsModule,
   ],
   controllers: [ThreadsController],
   providers: [ThreadsService, ThreadsDao, MessagesDao],

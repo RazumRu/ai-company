@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthContextService } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NotificationEvent } from '../../notifications/notifications.types';
+import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../dao/messages.dao';
 import { ThreadsDao } from '../dao/threads.dao';
 import { GetMessagesQueryDto, GetThreadsQueryDto } from '../dto/threads.dto';
@@ -15,6 +17,7 @@ describe('ThreadsService', () => {
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
   let authContext: AuthContextService;
+  let notificationsService: NotificationsService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -81,6 +84,12 @@ describe('ThreadsService', () => {
             checkSub: vi.fn().mockReturnValue(mockUserId),
           },
         },
+        {
+          provide: NotificationsService,
+          useValue: {
+            emit: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -88,6 +97,8 @@ describe('ThreadsService', () => {
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     messagesDao = module.get<MessagesDao>(MessagesDao);
     authContext = module.get<AuthContextService>(AuthContextService);
+    notificationsService =
+      module.get<NotificationsService>(NotificationsService);
   });
 
   describe('getThreads', () => {
@@ -315,6 +326,13 @@ describe('ThreadsService', () => {
       expect(messagesDao.delete).toHaveBeenCalledWith({
         threadId: mockThreadId,
       });
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadDelete,
+        graphId: mockGraphId,
+        threadId: mockThread.externalThreadId,
+        internalThreadId: mockThread.id,
+        data: mockThread,
+      });
       expect(threadsDao.deleteById).toHaveBeenCalledWith(mockThreadId);
     });
 
@@ -331,6 +349,7 @@ describe('ThreadsService', () => {
         createdBy: mockUserId,
       });
       expect(messagesDao.delete).not.toHaveBeenCalled();
+      expect(notificationsService.emit).not.toHaveBeenCalled();
       expect(threadsDao.deleteById).not.toHaveBeenCalled();
     });
 
@@ -347,6 +366,7 @@ describe('ThreadsService', () => {
         createdBy: mockUserId,
       });
       expect(messagesDao.delete).not.toHaveBeenCalled();
+      expect(notificationsService.emit).not.toHaveBeenCalled();
       expect(threadsDao.deleteById).not.toHaveBeenCalled();
     });
   });

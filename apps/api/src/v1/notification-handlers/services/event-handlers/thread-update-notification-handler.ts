@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -7,8 +8,9 @@ import {
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
-import { ThreadDto, ThreadSchema } from '../../../threads/dto/threads.dto';
+import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
+import { ThreadsService } from '../../../threads/services/threads.service';
 import {
   EnrichedNotificationEvent,
   IEnrichedNotification,
@@ -30,6 +32,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
   constructor(
     private readonly threadsDao: ThreadsDao,
     private readonly graphDao: GraphDao,
+    private readonly moduleRef: ModuleRef,
   ) {
     super();
   }
@@ -52,14 +55,16 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       return [];
     }
 
-    const updates: Partial<Pick<ThreadEntity, 'status' | 'name'>> = {};
+    const updates: Partial<Pick<ThreadEntity, 'status'>> & {
+      name?: string | null;
+    } = {};
 
     if (data.status !== undefined) {
       updates.status = data.status;
     }
 
     if (data.name !== undefined) {
-      updates.name = data.name;
+      updates.name = data.name ?? null;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -75,14 +80,8 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       return [];
     }
 
-    const threadDto = ThreadSchema.parse({
-      ...updatedThread,
-      createdAt: updatedThread.createdAt.toISOString(),
-      updatedAt: updatedThread.updatedAt.toISOString(),
-      metadata: updatedThread.metadata ?? {},
-      source: updatedThread.source ?? null,
-      name: updatedThread.name ?? null,
-    });
+    const threadsService = await this.moduleRef.create(ThreadsService);
+    const threadDto = threadsService.prepareThreadResponse(updatedThread);
 
     return [
       {

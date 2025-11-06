@@ -10,6 +10,7 @@ import { AgentStateUpdateNotificationHandler } from './services/event-handlers/a
 import { GraphNodeUpdateNotificationHandler } from './services/event-handlers/graph-node-update-notification-handler';
 import { GraphNotificationHandler } from './services/event-handlers/graph-notification-handler';
 import { ThreadCreateNotificationHandler } from './services/event-handlers/thread-create-notification-handler';
+import { ThreadDeleteNotificationHandler } from './services/event-handlers/thread-delete-notification-handler';
 import { ThreadUpdateNotificationHandler } from './services/event-handlers/thread-update-notification-handler';
 import { NotificationHandler } from './services/notification-handler.service';
 
@@ -22,6 +23,7 @@ import { NotificationHandler } from './services/notification-handler.service';
     AgentStateUpdateNotificationHandler,
     GraphNodeUpdateNotificationHandler,
     ThreadCreateNotificationHandler,
+    ThreadDeleteNotificationHandler,
     ThreadUpdateNotificationHandler,
     NotificationHandler,
     SocketGateway,
@@ -36,6 +38,7 @@ export class NotificationHandlersModule implements OnModuleInit {
     private readonly agentInvokeEventHandler: AgentInvokeNotificationHandler,
     private readonly agentStateUpdateEventHandler: AgentStateUpdateNotificationHandler,
     private readonly threadCreateEventHandler: ThreadCreateNotificationHandler,
+    private readonly threadDeleteEventHandler: ThreadDeleteNotificationHandler,
     private readonly threadUpdateEventHandler: ThreadUpdateNotificationHandler,
     private readonly graphNodeUpdateEventHandler: GraphNodeUpdateNotificationHandler,
   ) {}
@@ -48,6 +51,7 @@ export class NotificationHandlersModule implements OnModuleInit {
       this.agentStateUpdateEventHandler,
     );
     this.eventsHandlerService.registerHandler(this.threadCreateEventHandler);
+    this.eventsHandlerService.registerHandler(this.threadDeleteEventHandler);
     this.eventsHandlerService.registerHandler(this.threadUpdateEventHandler);
     this.eventsHandlerService.registerHandler(this.graphNodeUpdateEventHandler);
 

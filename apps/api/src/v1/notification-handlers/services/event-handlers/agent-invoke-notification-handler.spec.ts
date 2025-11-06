@@ -1,4 +1,5 @@
 import { HumanMessage } from '@langchain/core/messages';
+import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,6 +13,7 @@ import {
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
+import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
 import { AgentInvokeNotificationHandler } from './agent-invoke-notification-handler';
 
@@ -20,6 +22,10 @@ describe('AgentInvokeNotificationHandler', () => {
   let threadsDao: ThreadsDao;
   let graphDao: GraphDao;
   let notificationsService: NotificationsService;
+  let moduleRefMock: { create: ReturnType<typeof vi.fn> };
+  let threadsServiceMock: {
+    prepareThreadResponse: ReturnType<typeof vi.fn>;
+  };
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -77,6 +83,24 @@ describe('AgentInvokeNotificationHandler', () => {
   });
 
   beforeEach(async () => {
+    threadsServiceMock = {
+      prepareThreadResponse: vi.fn((thread: ThreadEntity) => ({
+        id: thread.id,
+        graphId: thread.graphId,
+        externalThreadId: thread.externalThreadId,
+        status: thread.status,
+        name: thread.name ?? null,
+        source: thread.source ?? null,
+        metadata: thread.metadata ?? {},
+        createdAt: thread.createdAt.toISOString(),
+        updatedAt: thread.updatedAt.toISOString(),
+      })),
+    };
+
+    moduleRefMock = {
+      create: vi.fn().mockResolvedValue(threadsServiceMock),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AgentInvokeNotificationHandler,
@@ -99,6 +123,10 @@ describe('AgentInvokeNotificationHandler', () => {
           useValue: {
             emit: vi.fn().mockResolvedValue(undefined),
           },
+        },
+        {
+          provide: ModuleRef,
+          useValue: moduleRefMock,
         },
       ],
     }).compile();
@@ -201,6 +229,7 @@ describe('AgentInvokeNotificationHandler', () => {
       });
       expect(threadsDao.create).not.toHaveBeenCalled();
       expect(threadsDao.updateById).not.toHaveBeenCalled();
+      expect(moduleRefMock.create).not.toHaveBeenCalled();
       expect(notificationsService.emit).not.toHaveBeenCalled();
     });
 
@@ -209,20 +238,45 @@ describe('AgentInvokeNotificationHandler', () => {
       const existingThread = createMockThreadEntity({
         status: ThreadStatus.NeedMoreInfo,
       });
+      const updatedThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        updatedAt: new Date('2024-01-01T00:00:01Z'),
+      });
       const notification = createMockNotification();
 
       vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(existingThread);
+      const getOneSpy = vi
+        .spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(existingThread)
+        .mockResolvedValueOnce(updatedThread);
       const updateSpy = vi
         .spyOn(threadsDao, 'updateById')
-        .mockResolvedValue(
-          createMockThreadEntity({ status: ThreadStatus.Running }),
-        );
+        .mockResolvedValue(updatedThread);
+
+      const expectedThreadDto =
+        threadsServiceMock.prepareThreadResponse(updatedThread);
+      threadsServiceMock.prepareThreadResponse.mockClear();
+      moduleRefMock.create.mockClear();
 
       await handler.handle(notification);
 
       expect(updateSpy).toHaveBeenCalledWith(existingThread.id, {
         status: ThreadStatus.Running,
+      });
+      expect(getOneSpy).toHaveBeenNthCalledWith(2, {
+        id: existingThread.id,
+        graphId: mockGraphId,
+      });
+      expect(moduleRefMock.create).toHaveBeenCalledWith(ThreadsService);
+      expect(threadsServiceMock.prepareThreadResponse).toHaveBeenCalledWith(
+        updatedThread,
+      );
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadUpdate,
+        graphId: mockGraphId,
+        threadId: 'parent-thread-123',
+        parentThreadId: 'parent-thread-123',
+        data: expectedThreadDto,
       });
     });
 

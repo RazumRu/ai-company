@@ -1,3 +1,4 @@
+import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,6 +12,7 @@ import {
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
+import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
 import {
   EnrichedNotificationEvent,
@@ -25,6 +27,11 @@ describe('ThreadUpdateNotificationHandler', () => {
   let handler: ThreadUpdateNotificationHandler;
   let threadsDao: ThreadsDao;
   let graphDao: GraphDao;
+  let moduleRefMock: { create: ReturnType<typeof vi.fn> };
+  let threadsServiceMock: {
+    prepareThreadResponse: ReturnType<typeof vi.fn>;
+  };
+  let threadDtoFactory: (thread: ThreadEntity) => ThreadDto;
 
   const mockGraphId = '22222222-2222-4222-8aaa-222222222222';
   const mockOwnerId = 'user-123';
@@ -73,6 +80,28 @@ describe('ThreadUpdateNotificationHandler', () => {
       error: undefined,
     };
 
+    threadDtoFactory = (thread: ThreadEntity): ThreadDto => ({
+      id: thread.id,
+      graphId: thread.graphId,
+      externalThreadId: thread.externalThreadId,
+      status: thread.status,
+      name: thread.name ?? null,
+      source: thread.source ?? null,
+      metadata: thread.metadata ?? {},
+      createdAt: thread.createdAt.toISOString(),
+      updatedAt: thread.updatedAt.toISOString(),
+    });
+
+    threadsServiceMock = {
+      prepareThreadResponse: vi
+        .fn<(entity: ThreadEntity) => ThreadDto>()
+        .mockImplementation(threadDtoFactory),
+    };
+
+    moduleRefMock = {
+      create: vi.fn().mockResolvedValue(threadsServiceMock),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ThreadUpdateNotificationHandler,
@@ -89,6 +118,10 @@ describe('ThreadUpdateNotificationHandler', () => {
             getOne: vi.fn().mockResolvedValue(mockGraph),
           },
         },
+        {
+          provide: ModuleRef,
+          useValue: moduleRefMock,
+        },
       ],
     }).compile();
 
@@ -103,17 +136,12 @@ describe('ThreadUpdateNotificationHandler', () => {
     result: IThreadUpdateEnrichedNotification[],
     thread: ThreadEntity,
   ) => {
-    const expectedThread: ThreadDto = {
-      id: thread.id,
-      graphId: thread.graphId,
-      externalThreadId: thread.externalThreadId,
-      status: thread.status,
-      name: thread.name ?? null,
-      source: thread.source ?? null,
-      metadata: thread.metadata ?? {},
-      createdAt: thread.createdAt.toISOString(),
-      updatedAt: thread.updatedAt.toISOString(),
-    };
+    expect(moduleRefMock.create).toHaveBeenCalledWith(ThreadsService);
+    expect(threadsServiceMock.prepareThreadResponse).toHaveBeenCalledWith(
+      thread,
+    );
+
+    const expectedThread = threadDtoFactory(thread);
 
     expect(result).toEqual([
       {

@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 
+import { NotificationEvent } from '../../notifications/notifications.types';
+import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../dao/messages.dao';
 import { ThreadsDao } from '../dao/threads.dao';
 import {
@@ -19,6 +21,7 @@ export class ThreadsService {
     private readonly threadDao: ThreadsDao,
     private readonly messagesDao: MessagesDao,
     private readonly authContext: AuthContextService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getThreads(query: GetThreadsQueryDto): Promise<ThreadDto[]> {
@@ -104,6 +107,15 @@ export class ThreadsService {
     // Delete all messages associated with this thread first
     await this.messagesDao.delete({ threadId });
 
+    // Emit thread delete notification before removing the thread record
+    await this.notificationsService.emit({
+      type: NotificationEvent.ThreadDelete,
+      graphId: thread.graphId,
+      threadId: thread.externalThreadId,
+      internalThreadId: thread.id,
+      data: thread,
+    });
+
     // Then delete the thread itself
     await this.threadDao.deleteById(threadId);
   }
@@ -112,8 +124,8 @@ export class ThreadsService {
     const { deletedAt: _deletedAt, ...entityWithoutDeletedAt } = entity;
     return {
       ...entityWithoutDeletedAt,
-      createdAt: entity.createdAt.toISOString(),
-      updatedAt: entity.updatedAt.toISOString(),
+      createdAt: new Date(entity.createdAt).toISOString(),
+      updatedAt: new Date(entity.updatedAt).toISOString(),
       metadata: entity.metadata || {},
     };
   }
@@ -121,8 +133,8 @@ export class ThreadsService {
   public prepareMessageResponse(entity: MessageEntity): ThreadMessageDto {
     return {
       ...entity,
-      createdAt: entity.createdAt.toISOString(),
-      updatedAt: entity.updatedAt.toISOString(),
+      createdAt: new Date(entity.createdAt).toISOString(),
+      updatedAt: new Date(entity.updatedAt).toISOString(),
     };
   }
 }

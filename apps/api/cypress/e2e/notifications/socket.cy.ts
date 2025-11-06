@@ -9,6 +9,7 @@ import {
   executeTrigger,
   runGraph,
 } from '../graphs/graphs.helper';
+import { deleteThread } from '../threads/threads.helper';
 import {
   createSocketConnection,
   disconnectSocket,
@@ -903,6 +904,171 @@ describe('Socket Gateway E2E', () => {
       .then(() => {
         // Cleanup
         disconnectSocket(socket);
+      });
+  });
+
+  it('should receive thread.delete notification when thread is deleted', function () {
+    this.timeout(120000);
+
+    const graphData = createMockGraphData();
+    let testGraphId: string;
+    let createdThreadInternalId: string | undefined;
+    let createdThreadExternalId: string | undefined;
+
+    const threadCreateEvents: {
+      type: string;
+      graphId: string;
+      threadId: string;
+      data: Record<string, unknown>;
+    }[] = [];
+    const threadDeleteEvents: {
+      type: string;
+      graphId: string;
+      threadId: string;
+      data: Record<string, unknown>;
+    }[] = [];
+
+    // Connect socket
+    socket = createSocketConnection(baseUrl, mockUserId);
+
+    return waitForSocketConnection(socket)
+      .then(() => {
+        socket.on('thread.create', (notification) => {
+          threadCreateEvents.push(notification);
+        });
+
+        socket.on('thread.delete', (notification) => {
+          threadDeleteEvents.push(notification);
+        });
+
+        return createGraph(graphData, reqHeaders);
+      })
+      .then((response) => {
+        expect(response.status).to.equal(201);
+        testGraphId = response.body.id;
+
+        socket.emit('subscribe_graph', { graphId: testGraphId });
+
+        return cy.wait(500);
+      })
+      .then(() => runGraph(testGraphId, reqHeaders))
+      .then((runResponse) => {
+        expect(runResponse.status).to.equal(201);
+
+        const waitForThreadCreate = new Promise((resolve, reject) => {
+          const checkForThreadCreate = () => {
+            if (threadCreateEvents.length > 0) {
+              const event = threadCreateEvents[0]!;
+
+              try {
+                expect(event.type).to.equal('thread.create');
+                expect(event.graphId).to.equal(testGraphId);
+                expect(event.threadId).to.be.a('string');
+                expect(event.data).to.be.an('object');
+
+                const eventData = event.data as Record<string, unknown>;
+                expect(eventData).to.have.property('id');
+                expect(eventData).to.have.property('graphId', testGraphId);
+                expect(eventData).to.have.property('externalThreadId');
+
+                createdThreadInternalId = eventData.id as string;
+                createdThreadExternalId = eventData.externalThreadId as string;
+              } catch (error) {
+                cleanupTimers();
+                reject(error as Error);
+                return;
+              }
+
+              cleanupTimers();
+              resolve(event);
+            }
+          };
+
+          const intervalId = setInterval(checkForThreadCreate, 500);
+          const timeoutId = setTimeout(() => {
+            cleanupTimers();
+            reject(
+              new Error('Timeout: No thread.create notification received'),
+            );
+          }, 30000);
+
+          function cleanupTimers() {
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
+          }
+        });
+
+        const waitForThreadDelete = new Promise((resolve, reject) => {
+          const checkForThreadDelete = () => {
+            if (threadDeleteEvents.length > 0) {
+              const event = threadDeleteEvents[0]!;
+
+              try {
+                if (!createdThreadInternalId || !createdThreadExternalId) {
+                  return;
+                }
+
+                expect(event.type).to.equal('thread.delete');
+                expect(event.graphId).to.equal(testGraphId);
+                expect(event.threadId).to.equal(createdThreadExternalId);
+                expect(event.data).to.be.an('object');
+
+                const eventData = event.data as Record<string, unknown>;
+                expect(eventData).to.have.property(
+                  'id',
+                  createdThreadInternalId,
+                );
+                expect(eventData).to.have.property(
+                  'externalThreadId',
+                  createdThreadExternalId,
+                );
+              } catch (error) {
+                cleanupTimers();
+                reject(error as Error);
+                return;
+              }
+
+              cleanupTimers();
+              resolve(event);
+            }
+          };
+
+          const intervalId = setInterval(checkForThreadDelete, 500);
+          const timeoutId = setTimeout(() => {
+            cleanupTimers();
+            reject(
+              new Error('Timeout: No thread.delete notification received'),
+            );
+          }, 30000);
+
+          function cleanupTimers() {
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
+          }
+        });
+
+        return executeTrigger(
+          testGraphId,
+          'trigger-1',
+          { messages: ['Test message for thread deletion'] },
+          reqHeaders,
+        )
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+            return cy.wrap(waitForThreadCreate, { timeout: 30000 });
+          })
+          .then(() => {
+            expect(createdThreadInternalId).to.be.a('string');
+            expect(createdThreadExternalId).to.be.a('string');
+            return deleteThread(createdThreadInternalId!, reqHeaders);
+          })
+          .then((deleteResponse) => {
+            expect(deleteResponse.status).to.equal(200);
+            return cy.wrap(waitForThreadDelete, { timeout: 30000 });
+          })
+          .then(() => {
+            expect(threadDeleteEvents.length).to.be.greaterThan(0);
+          });
       });
   });
 
