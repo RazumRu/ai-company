@@ -5,6 +5,7 @@ import {
   IAgentInvokeNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
+import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadStatus } from '../../../threads/threads.types';
@@ -17,6 +18,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
   constructor(
     private readonly threadDao: ThreadsDao,
     private readonly graphDao: GraphDao,
+    private readonly notificationsService: NotificationsService,
   ) {
     super();
   }
@@ -40,12 +42,21 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     });
 
     if (!existingInternalThread) {
-      await this.threadDao.create({
+      const createdThread = await this.threadDao.create({
         graphId,
         createdBy: graph.createdBy,
         externalThreadId: externalThreadKey,
         source,
         status: ThreadStatus.Running,
+      });
+
+      // Emit ThreadCreate notification
+      await this.notificationsService.emit({
+        type: NotificationEvent.ThreadCreate,
+        graphId,
+        threadId: externalThreadKey,
+        internalThreadId: createdThread.id,
+        data: createdThread,
       });
     } else {
       const updates: Partial<Pick<ThreadEntity, 'status' | 'source'>> = {};

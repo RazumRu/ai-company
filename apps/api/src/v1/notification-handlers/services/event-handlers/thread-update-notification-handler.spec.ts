@@ -107,12 +107,12 @@ describe('ThreadUpdateNotificationHandler', () => {
       id: thread.id,
       graphId: thread.graphId,
       externalThreadId: thread.externalThreadId,
+      status: thread.status,
+      name: thread.name ?? null,
+      source: thread.source ?? null,
+      metadata: thread.metadata ?? {},
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
-      metadata: thread.metadata ?? {},
-      source: thread.source ?? null,
-      name: thread.name ?? null,
-      status: thread.status,
     };
 
     expect(result).toEqual([
@@ -198,7 +198,7 @@ describe('ThreadUpdateNotificationHandler', () => {
       expectFullThreadPayload(result, updatedThread);
     });
 
-    it('emits existing thread when no fields provided', async () => {
+    it('emits full thread when no fields provided', async () => {
       const thread = createMockThreadEntity();
       const notification = createMockNotification({ data: {} });
 

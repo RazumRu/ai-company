@@ -812,6 +812,100 @@ describe('Socket Gateway E2E', () => {
       });
   });
 
+  it('should receive thread.create notification when thread is created', function () {
+    this.timeout(120000);
+
+    const graphData = createMockGraphData();
+    let testGraphId: string;
+    const threadCreateEvents: {
+      type: string;
+      graphId: string;
+      threadId: string;
+      data: Record<string, unknown>;
+    }[] = [];
+
+    // Connect socket
+    socket = createSocketConnection(baseUrl, mockUserId);
+
+    return waitForSocketConnection(socket)
+      .then(() => {
+        // Set up thread.create listener
+        socket.on('thread.create', (notification) => {
+          threadCreateEvents.push(notification);
+        });
+
+        return createGraph(graphData, reqHeaders);
+      })
+      .then((response) => {
+        expect(response.status).to.equal(201);
+        testGraphId = response.body.id;
+
+        // Subscribe to graph
+        socket.emit('subscribe_graph', { graphId: testGraphId });
+
+        return cy.wait(500);
+      })
+      .then(() => runGraph(testGraphId, reqHeaders))
+      .then((runResponse) => {
+        expect(runResponse.status).to.equal(201);
+
+        // Set up promise to wait for thread.create notification
+        const waitForThreadCreate = new Promise((resolve, reject) => {
+          const checkForThreadCreate = () => {
+            if (threadCreateEvents.length > 0) {
+              const event = threadCreateEvents[0]!;
+              expect(event.type).to.equal('thread.create');
+              expect(event.graphId).to.equal(testGraphId);
+              expect(event.threadId).to.be.a('string');
+              expect(event.data).to.be.an('object');
+              expect(event.data).to.have.property('id');
+              expect(event.data).to.have.property('graphId', testGraphId);
+              expect(event.data).to.have.property('externalThreadId');
+              expect(event.data).to.have.property('status');
+              expect(event.data).to.have.property('createdAt');
+              expect(event.data).to.have.property('updatedAt');
+              resolve(undefined);
+            }
+          };
+
+          // Check periodically for thread create
+          const intervalId = setInterval(() => {
+            checkForThreadCreate();
+          }, 500);
+
+          // Timeout after 30 seconds
+          setTimeout(() => {
+            clearInterval(intervalId);
+            if (threadCreateEvents.length === 0) {
+              reject(
+                new Error('Timeout: No thread.create notification received'),
+              );
+            }
+          }, 30000);
+        });
+
+        return executeTrigger(
+          testGraphId,
+          'trigger-1',
+          { messages: ['Test message for thread creation'] },
+          reqHeaders,
+        )
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+            // Wait for the thread.create notification
+            return cy.wrap(waitForThreadCreate, { timeout: 30000 });
+          })
+          .then(() => {
+            // Verify we received the event
+            expect(threadCreateEvents.length).to.be.greaterThan(0);
+          });
+      })
+      .then(() => {
+        // Cleanup
+        disconnectSocket(socket);
+      });
+  });
+
   describe('Duplicate Notification Prevention', () => {
     it('should not receive duplicate message notifications', function () {
       this.timeout(120000);

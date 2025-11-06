@@ -9,6 +9,7 @@ import {
   IAgentInvokeNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
+import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadStatus } from '../../../threads/threads.types';
@@ -18,6 +19,7 @@ describe('AgentInvokeNotificationHandler', () => {
   let handler: AgentInvokeNotificationHandler;
   let threadsDao: ThreadsDao;
   let graphDao: GraphDao;
+  let notificationsService: NotificationsService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -92,6 +94,12 @@ describe('AgentInvokeNotificationHandler', () => {
             getOne: vi.fn(),
           },
         },
+        {
+          provide: NotificationsService,
+          useValue: {
+            emit: vi.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -100,18 +108,19 @@ describe('AgentInvokeNotificationHandler', () => {
     );
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     graphDao = module.get<GraphDao>(GraphDao);
+    notificationsService =
+      module.get<NotificationsService>(NotificationsService);
   });
 
   describe('handle', () => {
     it('should create a new internal thread when none exists and no parent thread', async () => {
       const mockGraph = createMockGraphEntity();
       const notification = createMockNotification();
+      const createdThread = createMockThreadEntity();
 
       vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
-      vi.spyOn(threadsDao, 'create').mockResolvedValue(
-        createMockThreadEntity(),
-      );
+      vi.spyOn(threadsDao, 'create').mockResolvedValue(createdThread);
 
       const result = await handler.handle(notification);
 
@@ -127,6 +136,13 @@ describe('AgentInvokeNotificationHandler', () => {
         source: undefined,
         status: ThreadStatus.Running,
       });
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadCreate,
+        graphId: mockGraphId,
+        threadId: 'parent-thread-123',
+        internalThreadId: createdThread.id,
+        data: createdThread,
+      });
       expect(result).toEqual([]);
     });
 
@@ -135,12 +151,13 @@ describe('AgentInvokeNotificationHandler', () => {
       const notification = createMockNotification({
         parentThreadId: mockParentThreadId,
       });
+      const createdThread = createMockThreadEntity({
+        externalThreadId: mockParentThreadId,
+      });
 
       vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
-      vi.spyOn(threadsDao, 'create').mockResolvedValue(
-        createMockThreadEntity({ externalThreadId: mockParentThreadId }),
-      );
+      vi.spyOn(threadsDao, 'create').mockResolvedValue(createdThread);
 
       await handler.handle(notification);
 
@@ -156,6 +173,13 @@ describe('AgentInvokeNotificationHandler', () => {
         externalThreadId: mockParentThreadId,
         source: undefined,
         status: ThreadStatus.Running,
+      });
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadCreate,
+        graphId: mockGraphId,
+        threadId: mockParentThreadId,
+        internalThreadId: createdThread.id,
+        data: createdThread,
       });
     });
 
@@ -177,6 +201,7 @@ describe('AgentInvokeNotificationHandler', () => {
       });
       expect(threadsDao.create).not.toHaveBeenCalled();
       expect(threadsDao.updateById).not.toHaveBeenCalled();
+      expect(notificationsService.emit).not.toHaveBeenCalled();
     });
 
     it('should reset thread status to running when existing thread is not running', async () => {
@@ -220,12 +245,11 @@ describe('AgentInvokeNotificationHandler', () => {
       const mockGraph = createMockGraphEntity();
       const source = 'manual-trigger (trigger)';
       const notification = createMockNotification({ source });
+      const createdThread = createMockThreadEntity();
 
       vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
-      vi.spyOn(threadsDao, 'create').mockResolvedValue(
-        createMockThreadEntity(),
-      );
+      vi.spyOn(threadsDao, 'create').mockResolvedValue(createdThread);
 
       const result = await handler.handle(notification);
 
@@ -240,6 +264,13 @@ describe('AgentInvokeNotificationHandler', () => {
         externalThreadId: 'parent-thread-123',
         source,
         status: ThreadStatus.Running,
+      });
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadCreate,
+        graphId: mockGraphId,
+        threadId: 'parent-thread-123',
+        internalThreadId: createdThread.id,
+        data: createdThread,
       });
       expect(result).toEqual([]);
     });
@@ -269,6 +300,7 @@ describe('AgentInvokeNotificationHandler', () => {
         externalThreadId: mockParentThreadId,
         status: ThreadStatus.Running,
       });
+      expect(notificationsService.emit).toHaveBeenCalledTimes(1);
 
       // Second agent invocation - should not create new thread
       const notification2 = createMockNotification({
@@ -279,8 +311,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValueOnce(mockParentThread);
       await handler.handle(notification2);
 
-      // Still only 1 create call
+      // Still only 1 create call and 1 emit call
       expect(threadsDao.create).toHaveBeenCalledTimes(1);
+      expect(notificationsService.emit).toHaveBeenCalledTimes(1);
     });
   });
 

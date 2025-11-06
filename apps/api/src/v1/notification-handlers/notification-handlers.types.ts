@@ -20,6 +20,7 @@ export enum EnrichedNotificationEvent {
   Graph = 'graph.update',
   AgentMessage = 'agent.message',
   AgentStateUpdate = 'agent.state.update',
+  ThreadCreate = 'thread.create',
   ThreadUpdate = 'thread.update',
   GraphNodeUpdate = 'graph.node.update',
 }

@@ -81,6 +81,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       updatedAt: updatedThread.updatedAt.toISOString(),
       metadata: updatedThread.metadata ?? {},
       source: updatedThread.source ?? null,
+      name: updatedThread.name ?? null,
     });
 
     return [

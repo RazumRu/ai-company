@@ -9,6 +9,7 @@ import { AgentMessageNotificationHandler } from './services/event-handlers/agent
 import { AgentStateUpdateNotificationHandler } from './services/event-handlers/agent-state-update-notification-handler';
 import { GraphNodeUpdateNotificationHandler } from './services/event-handlers/graph-node-update-notification-handler';
 import { GraphNotificationHandler } from './services/event-handlers/graph-notification-handler';
+import { ThreadCreateNotificationHandler } from './services/event-handlers/thread-create-notification-handler';
 import { ThreadUpdateNotificationHandler } from './services/event-handlers/thread-update-notification-handler';
 import { NotificationHandler } from './services/notification-handler.service';
 
@@ -20,6 +21,7 @@ import { NotificationHandler } from './services/notification-handler.service';
     AgentInvokeNotificationHandler,
     AgentStateUpdateNotificationHandler,
     GraphNodeUpdateNotificationHandler,
+    ThreadCreateNotificationHandler,
     ThreadUpdateNotificationHandler,
     NotificationHandler,
     SocketGateway,
@@ -33,6 +35,7 @@ export class NotificationHandlersModule implements OnModuleInit {
     private readonly agentMessageEventHandler: AgentMessageNotificationHandler,
     private readonly agentInvokeEventHandler: AgentInvokeNotificationHandler,
     private readonly agentStateUpdateEventHandler: AgentStateUpdateNotificationHandler,
+    private readonly threadCreateEventHandler: ThreadCreateNotificationHandler,
     private readonly threadUpdateEventHandler: ThreadUpdateNotificationHandler,
     private readonly graphNodeUpdateEventHandler: GraphNodeUpdateNotificationHandler,
   ) {}
@@ -44,6 +47,7 @@ export class NotificationHandlersModule implements OnModuleInit {
     this.eventsHandlerService.registerHandler(
       this.agentStateUpdateEventHandler,
     );
+    this.eventsHandlerService.registerHandler(this.threadCreateEventHandler);
     this.eventsHandlerService.registerHandler(this.threadUpdateEventHandler);
     this.eventsHandlerService.registerHandler(this.graphNodeUpdateEventHandler);
 

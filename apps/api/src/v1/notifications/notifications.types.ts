@@ -6,6 +6,7 @@ import {
   GraphSchemaType,
   GraphStatus,
 } from '../graphs/graphs.types';
+import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
 
 export enum NotificationEvent {
@@ -13,6 +14,7 @@ export enum NotificationEvent {
   AgentMessage = 'agent.message',
   AgentInvoke = 'agent.invoke',
   AgentStateUpdate = 'agent.state.update',
+  ThreadCreate = 'thread.create',
   ThreadUpdate = 'thread.update',
   GraphNodeUpdate = 'graph.node.update',
 }
@@ -77,6 +79,13 @@ export interface IAgentStateUpdateNotification
   parentThreadId: string;
 }
 
+export interface IThreadCreateNotification extends INotification<ThreadEntity> {
+  type: NotificationEvent.ThreadCreate;
+  threadId: string;
+  parentThreadId?: string;
+  internalThreadId: string;
+}
+
 export interface IThreadUpdateData {
   status?: ThreadStatus;
   name?: string;
@@ -107,5 +116,6 @@ export type Notification =
   | IAgentMessageNotification
   | IAgentInvokeNotification
   | IAgentStateUpdateNotification
+  | IThreadCreateNotification
   | IThreadUpdateNotification
   | IGraphNodeUpdateNotification;
