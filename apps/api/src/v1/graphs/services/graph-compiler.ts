@@ -3,12 +3,9 @@ import { BadRequestException, DefaultLogger } from '@packages/common';
 
 import { environment } from '../../../environments';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
-import { SimpleAgentSchemaType } from '../../agents/services/agents/simple-agent';
+import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
-import {
-  NodeConnection,
-  SimpleAgentTemplateResult,
-} from '../../graph-templates/templates/base-node.template';
+import { NodeConnection } from '../../graph-templates/templates/base-node.template';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
@@ -271,62 +268,26 @@ export class GraphCompiler {
     };
   }
 
-  private async destroyGraph(
-    nodes: Map<string, CompiledGraphNode>,
-  ): Promise<void> {
-    const destroyPromises: Promise<void>[] = [];
-    const triggerNodes: CompiledGraphNode<BaseTrigger<unknown>>[] = [];
-    const agentNodes: CompiledGraphNode<
-      SimpleAgentTemplateResult<SimpleAgentSchemaType>
-    >[] = [];
-    const runtimeNodes: CompiledGraphNode<BaseRuntime>[] = [];
-
-    for (const node of nodes.values()) {
-      if (node.type === NodeKind.Trigger) {
-        triggerNodes.push(node as CompiledGraphNode<BaseTrigger<unknown>>);
-      } else if (node.type === NodeKind.SimpleAgent) {
-        agentNodes.push(
-          node as CompiledGraphNode<
-            SimpleAgentTemplateResult<SimpleAgentSchemaType>
-          >,
-        );
-      } else if (node.type === NodeKind.Runtime) {
-        runtimeNodes.push(node as CompiledGraphNode<BaseRuntime>);
-      }
-    }
-
-    for (const node of triggerNodes) {
-      const trigger = node.instance;
+  /**
+   * Destroy a single node by calling its destroy/stop method
+   */
+  async destroyNode(node: CompiledGraphNode): Promise<void> {
+    if (node.type === NodeKind.Trigger) {
+      const trigger = node.instance as BaseTrigger<unknown>;
       if (trigger && typeof trigger.stop === 'function') {
-        destroyPromises.push(
-          trigger.stop().catch((error: Error) => {
-            this.logger.error(error, `Failed to stop trigger ${node.id}`);
-          }),
-        );
+        await trigger.stop().catch((error: Error) => {
+          this.logger.error(error, `Failed to stop trigger ${node.id}`);
+        });
       }
-    }
-
-    await Promise.all(destroyPromises);
-
-    // Stop agents (cancel active LangGraph streams)
-    const agentPromises: Promise<void>[] = [];
-    for (const node of agentNodes) {
-      const agentInstance = node.instance.agent;
-
-      agentPromises.push(
-        agentInstance.stop().catch((error: Error) => {
-          this.logger.error(error, `Failed to stop agent ${node.id}`);
-        }),
-      );
-    }
-
-    await Promise.all(agentPromises);
-
-    const runtimePromises: Promise<void>[] = [];
-    for (const node of runtimeNodes) {
-      const runtime = node.instance;
+    } else if (node.type === NodeKind.SimpleAgent) {
+      const agent = node.instance as SimpleAgent;
+      await agent.stop().catch((error: Error) => {
+        this.logger.error(error, `Failed to stop agent ${node.id}`);
+      });
+    } else if (node.type === NodeKind.Runtime) {
+      const runtime = node.instance as BaseRuntime;
       if (runtime && typeof runtime.stop === 'function') {
-        const stopPromise = Promise.race([
+        await Promise.race([
           runtime.stop(),
           new Promise<void>((_, reject) =>
             setTimeout(() => reject(new Error('Runtime stop timeout')), 15000),
@@ -334,11 +295,36 @@ export class GraphCompiler {
         ]).catch((error: Error) => {
           this.logger.error(error, `Failed to stop runtime ${node.id}`);
         });
-        runtimePromises.push(stopPromise);
+      }
+    }
+  }
+
+  private async destroyGraph(
+    nodes: Map<string, CompiledGraphNode>,
+  ): Promise<void> {
+    // Group nodes by type for ordered destruction
+    const triggerNodes: CompiledGraphNode[] = [];
+    const agentNodes: CompiledGraphNode[] = [];
+    const runtimeNodes: CompiledGraphNode[] = [];
+
+    for (const node of nodes.values()) {
+      if (node.type === NodeKind.Trigger) {
+        triggerNodes.push(node);
+      } else if (node.type === NodeKind.SimpleAgent) {
+        agentNodes.push(node);
+      } else if (node.type === NodeKind.Runtime) {
+        runtimeNodes.push(node);
       }
     }
 
-    await Promise.all(runtimePromises);
+    // Destroy triggers first (they might be actively processing)
+    await Promise.all(triggerNodes.map((node) => this.destroyNode(node)));
+
+    // Then destroy agents (they might have active streams)
+    await Promise.all(agentNodes.map((node) => this.destroyNode(node)));
+
+    // Finally destroy runtimes (they might have containers running)
+    await Promise.all(runtimeNodes.map((node) => this.destroyNode(node)));
   }
 
   async destroyNotCompiledGraph(graph: GraphEntity): Promise<void> {

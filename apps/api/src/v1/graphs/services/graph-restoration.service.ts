@@ -5,8 +5,7 @@ import { DefaultLogger } from '@packages/common';
 import { environment } from '../../../environments';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { GraphCheckpointEntity } from '../../agents/entity/graph-chekpoints.entity';
-import { SimpleAgentSchemaType } from '../../agents/services/agents/simple-agent';
-import { SimpleAgentTemplateResult } from '../../graph-templates/templates/base-node.template';
+import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
@@ -336,13 +335,10 @@ export class GraphRestorationService {
         return;
       }
 
-      const simpleAgentNode = agentNode as CompiledGraphNode<
-        SimpleAgentTemplateResult<SimpleAgentSchemaType>
-      >;
-      const agent = simpleAgentNode.instance?.agent;
-      const agentConfig = simpleAgentNode.instance?.config;
+      const simpleAgentNode = agentNode as CompiledGraphNode<SimpleAgent>;
+      const agent = simpleAgentNode.instance;
 
-      if (!agent || !agentConfig) {
+      if (!agent) {
         this.logger.warn(
           `Agent instance not available for node ${agentNodeId}, thread ${externalThreadId}`,
         );
@@ -363,7 +359,7 @@ export class GraphRestorationService {
       // Resume the agent with empty messages to continue from checkpoint
       // LangGraph will automatically load from the last checkpoint and continue
       void agent
-        .run(externalThreadId, [], agentConfig, {
+        .run(externalThreadId, [], undefined, {
           configurable: {
             graph_id: graphId,
             node_id: agentNodeId,

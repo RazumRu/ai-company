@@ -210,7 +210,7 @@ Enhance your NestJS project with automatic DTO decorator generation for Swagger 
 {
   "compilerOptions": {
     "plugins": [
-      { "transform": "@packages/http-server/dist/swagger-plugin.js" }
+      { "transform": "@packages/http-server/swagger-plugin.js" }
     ]
   }
 }

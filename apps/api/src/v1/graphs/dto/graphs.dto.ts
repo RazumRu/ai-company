@@ -56,6 +56,7 @@ export const GraphEditableSchema = GraphSchema.omit({
   error: true,
   createdAt: true,
   updatedAt: true,
+  version: true,
 });
 
 export const ExecuteTriggerSchema = z.object({
@@ -170,29 +171,9 @@ export const MessageSchema = z.discriminatedUnion('role', [
   ToolMessageSchema,
 ]);
 
-export const GetGraphMessagesQuerySchema = z.object({
-  threadId: z
-    .string()
-    .describe('Full thread ID (e.g., "graphId:threadComponent")'),
-  limit: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(1000)
-    .optional()
-    .describe('Maximum number of messages to return'),
-});
-
 export const ThreadMessagesSchema = z.object({
   id: z.string().describe('Thread ID'),
   messages: z.array(MessageSchema).describe('Array of messages in this thread'),
-});
-
-export const GraphMessagesResponseSchema = z.object({
-  nodeId: z.string().describe('Node ID'),
-  threads: z
-    .array(ThreadMessagesSchema)
-    .describe('Array of threads with their messages'),
 });
 
 export const GraphNodesQuerySchema = z.object({
@@ -219,9 +200,13 @@ export const GraphNodeWithStatusSchema = z.object({
 
 export class GraphDto extends createZodDto(GraphSchema) {}
 export class CreateGraphDto extends createZodDto(GraphEditableSchema) {}
-export class UpdateGraphDto extends createZodDto(
-  GraphEditableSchema.partial(),
-) {}
+const UpdateGraphSchema = GraphEditableSchema.partial()
+  .extend({
+    currentVersion: z.string(),
+  })
+  .strict();
+
+export class UpdateGraphDto extends createZodDto(UpdateGraphSchema) {}
 export class ExecuteTriggerDto extends createZodDto(ExecuteTriggerSchema) {}
 export class ExecuteTriggerResponseDto extends createZodDto(
   ExecuteTriggerResponseSchema,
@@ -232,8 +217,6 @@ export class GraphNodeWithStatusDto extends createZodDto(
 ) {}
 
 // Export message types
-export type ToolCallDto = z.infer<typeof ToolCallSchema>;
-export type ShellToolResultDto = z.infer<typeof ShellToolResultSchema>;
 export type HumanMessageDto = z.infer<typeof HumanMessageSchema>;
 export type AIMessageDto = z.infer<typeof AIMessageSchema>;
 export type SystemMessageDto = z.infer<typeof SystemMessageSchema>;
@@ -245,11 +228,3 @@ export type MessageDto =
   | SystemMessageDto
   | ShellToolMessageDto
   | ToolMessageDto;
-
-export class GetGraphMessagesQueryDto extends createZodDto(
-  GetGraphMessagesQuerySchema,
-) {}
-export class ThreadMessagesDto extends createZodDto(ThreadMessagesSchema) {}
-export class GraphMessagesResponseDto extends createZodDto(
-  GraphMessagesResponseSchema,
-) {}

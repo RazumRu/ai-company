@@ -7,7 +7,6 @@ export type ClientOptions = {
 export type CreateGraphDto = {
   name: string;
   description?: string | null;
-  version: string;
   schema: {
     nodes: Array<{
       /**
@@ -234,7 +233,6 @@ export type GraphNodeWithStatusDto = {
 export type UpdateGraphDto = {
   name?: string;
   description?: string | null;
-  version?: string;
   schema?: {
     nodes: Array<{
       /**
@@ -322,6 +320,7 @@ export type UpdateGraphDto = {
    * If true, graph will be deleted instead of restored after server restart
    */
   temporary?: boolean | null;
+  currentVersion: string;
 };
 
 export type ExecuteTriggerDto = {
@@ -348,6 +347,83 @@ export type ExecuteTriggerResponseDto = {
    * The checkpoint namespace for this execution
    */
   checkpointNs?: string;
+};
+
+export type GraphRevisionDto = {
+  id: string;
+  graphId: string;
+  fromVersion: string;
+  toVersion: string;
+  /**
+   * JSON Patch (RFC 6902) operations between old and new schemas
+   */
+  configurationDiff: Array<
+    | {
+        op: 'add';
+        path: string;
+        value: unknown;
+      }
+    | {
+        op: 'remove';
+        path: string;
+      }
+    | {
+        op: 'replace';
+        path: string;
+        value: unknown;
+      }
+    | {
+        op: 'move';
+        from: string;
+        path: string;
+      }
+    | {
+        op: 'copy';
+        from: string;
+        path: string;
+      }
+    | {
+        op: 'test';
+        path: string;
+        value: unknown;
+      }
+  >;
+  newSchema: {
+    nodes: Array<{
+      /**
+       * Unique identifier for this node
+       */
+      id: string;
+      /**
+       * Template name registered in TemplateRegistry
+       */
+      template: string;
+      /**
+       * Template-specific configuration
+       */
+      config: {
+        [key: string]: unknown;
+      };
+    }>;
+    edges?: Array<{
+      /**
+       * Source node ID
+       */
+      from: string;
+      /**
+       * Target node ID
+       */
+      to: string;
+      /**
+       * Optional edge label
+       */
+      label?: string;
+    }>;
+  };
+  status: 'pending' | 'applying' | 'applied' | 'failed';
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type TemplateDto = {
@@ -709,6 +785,45 @@ export type ExecuteTriggerResponses = {
 
 export type ExecuteTriggerResponse =
   ExecuteTriggerResponses[keyof ExecuteTriggerResponses];
+
+export type GetGraphRevisionsData = {
+  body?: never;
+  path: {
+    graphId: string;
+  };
+  query?: {
+    status?: 'pending' | 'applying' | 'applied' | 'failed';
+    /**
+     * Maximum number of revisions to return
+     */
+    limit?: number;
+  };
+  url: '/api/v1/graphs/{graphId}/revisions';
+};
+
+export type GetGraphRevisionsResponses = {
+  200: Array<GraphRevisionDto>;
+};
+
+export type GetGraphRevisionsResponse =
+  GetGraphRevisionsResponses[keyof GetGraphRevisionsResponses];
+
+export type GetGraphRevisionData = {
+  body?: never;
+  path: {
+    graphId: string;
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/graphs/{graphId}/revisions/{id}';
+};
+
+export type GetGraphRevisionResponses = {
+  200: GraphRevisionDto;
+};
+
+export type GetGraphRevisionResponse =
+  GetGraphRevisionResponses[keyof GetGraphRevisionResponses];
 
 export type GetAllTemplatesData = {
   body?: never;

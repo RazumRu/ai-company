@@ -162,6 +162,29 @@ When iterating locally, prefer running specs one-by-one to get fast feedback, fi
 Workflow suggestion:
 1) Pick one spec and run it; 2) Fix the failure; 3) Re-run until green; 4) Move to the next spec.
 
+### Focus on changed E2E scenarios first
+
+- **Isolate the exact tests you touched**: Use Cypress's `describe.only`, `it.only`, or temporary `it.skip`/`describe.skip` while developing to run only the block you're editing. This keeps feedback quick.
+- **Example (temporary)**:
+  ```ts
+  describe.only('notifications flow', () => {
+    it('sends a push notification', () => {
+      // ... test code ...
+    });
+
+    it.skip('queues a fallback email', () => {
+      // temporarily skipped while iterating; remove before commit
+    });
+  });
+  ```
+- **Run the spec file in isolation** once the focused test passes:
+  ```bash
+  cd apps/api
+  pnpm test:e2e:local --spec "cypress/e2e/notifications/socket.cy.ts"
+  ```
+- **Remove all `.only`/`.skip` tags** before committing and run the spec without filters to ensure the full suite for that file passes.
+- **Finish by running your usual broader command** (e.g. `pnpm test:e2e:local`) when you are ready for final verification.
+
 ### Writing E2E Tests
 
 1. **File naming**: Create test files with `.cy.ts` extension

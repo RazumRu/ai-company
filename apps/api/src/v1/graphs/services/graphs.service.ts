@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
-import { isUndefined, omitBy } from 'lodash';
+import { isEqual, isUndefined, omitBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
@@ -23,6 +23,7 @@ import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
+import { GraphRevisionService } from './graph-revision.service';
 
 @Injectable()
 export class GraphsService {
@@ -30,6 +31,7 @@ export class GraphsService {
     private readonly graphDao: GraphDao,
     private readonly graphCompiler: GraphCompiler,
     private readonly graphRegistry: GraphRegistry,
+    private readonly graphRevisionService: GraphRevisionService,
     private readonly typeorm: TypeormService,
     private readonly notificationsService: NotificationsService,
     private readonly authContext: AuthContextService,
@@ -38,8 +40,8 @@ export class GraphsService {
   private prepareResponse(entity: GraphEntity): GraphDto {
     return {
       ...entity,
-      createdAt: entity.createdAt.toISOString(),
-      updatedAt: entity.updatedAt.toISOString(),
+      createdAt: new Date(entity.createdAt).toISOString(),
+      updatedAt: new Date(entity.updatedAt).toISOString(),
     };
   }
 
@@ -54,6 +56,7 @@ export class GraphsService {
           status: GraphStatus.Created,
           createdBy: this.authContext.checkSub(),
           temporary: data.temporary ?? false,
+          version: '1.0.0',
         },
         entityManager,
       );
@@ -107,13 +110,73 @@ export class GraphsService {
   }
 
   async update(id: string, data: UpdateGraphDto): Promise<GraphDto> {
+    const { currentVersion, schema, ...rest } = data;
+
+    // Use transaction with row-level locking to prevent simultaneous updates
     return this.typeorm.trx(async (entityManager: EntityManager) => {
+      // Lock the graph row for update (prevents race conditions)
+      const graph = await this.graphDao.getOne(
+        {
+          id: id,
+          createdBy: this.authContext.checkSub(),
+          lock: 'pessimistic_write',
+        },
+        entityManager,
+      );
+
+      if (!graph) {
+        throw new NotFoundException('GRAPH_NOT_FOUND');
+      }
+
+      if (graph.version !== currentVersion) {
+        throw new BadRequestException(
+          'VERSION_CONFLICT',
+          `Graph version mismatch. Expected ${currentVersion} but found ${graph.version}`,
+        );
+      }
+
+      // If schema is being updated and graph is running or compiling, queue the update
+      const schemaChanged = schema ? !isEqual(schema, graph.schema) : false;
+
+      if (
+        schema &&
+        (graph.status === GraphStatus.Running ||
+          graph.status === GraphStatus.Compiling)
+      ) {
+        this.graphCompiler.validateSchema(schema);
+
+        if (schemaChanged) {
+          // Queue the update for live application
+          // Note: Version will be incremented when the revision is applied, not now
+          await this.graphRevisionService.queueRevision(graph, schema);
+
+          // Return current graph state (update is queued, version unchanged)
+          return this.prepareResponse(graph);
+        }
+      }
+
+      const updatePayload = omitBy(
+        {
+          ...rest,
+          ...(schemaChanged
+            ? {
+                schema,
+                version: this.graphRevisionService.generateNextVersion(
+                  graph.version,
+                ),
+              }
+            : {}),
+        },
+        isUndefined,
+      );
+
+      if (Object.keys(updatePayload).length === 0) {
+        return this.prepareResponse(graph);
+      }
+
       const updated = await this.graphDao.updateById(
         id,
-        omitBy(data, isUndefined),
-        {
-          createdBy: this.authContext.checkSub(),
-        },
+        updatePayload,
         entityManager,
       );
 

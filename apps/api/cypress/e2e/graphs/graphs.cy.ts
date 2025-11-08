@@ -14,6 +14,14 @@ import {
   validateGraph,
 } from './graphs.helper';
 
+const incrementVersion = (version: string): string => {
+  const parts = version.split('.');
+  const lastIndex = parts.length - 1;
+  const lastValue = parseInt(parts[lastIndex] ?? '0', 10) || 0;
+  parts[lastIndex] = String(lastValue + 1);
+  return parts.join('.');
+};
+
 describe('Graphs E2E', () => {
   let createdGraphId: string;
 
@@ -264,19 +272,23 @@ describe('Graphs E2E', () => {
     });
 
     it('should update a graph', () => {
-      const updateData = createMockUpdateData();
+      getGraphById(createdGraphId).then((graphResponse) => {
+        const currentVersion = graphResponse.body.version;
+        const updateData = createMockUpdateData(currentVersion);
 
-      updateGraph(createdGraphId, updateData).then((response) => {
-        expect(response.status).to.equal(200);
-        expect(response.body).to.have.property('id', createdGraphId);
-        expect(response.body).to.have.property('name', updateData.name);
-        expect(response.body).to.have.property(
-          'description',
-          updateData.description,
-        );
-        expect(response.body).to.have.property('updatedAt');
+        updateGraph(createdGraphId, updateData).then((response) => {
+          expect(response.status).to.equal(200);
+          expect(response.body).to.have.property('id', createdGraphId);
+          expect(response.body).to.have.property('name', updateData.name);
+          expect(response.body).to.have.property(
+            'description',
+            updateData.description,
+          );
+          expect(response.body).to.have.property('updatedAt');
+          expect(response.body.version).to.equal(currentVersion);
 
-        validateGraph(response.body);
+          validateGraph(response.body);
+        });
       });
     });
 
@@ -285,23 +297,131 @@ describe('Graphs E2E', () => {
         name: 'Partially Updated Graph',
       };
 
-      updateGraph(createdGraphId, partialUpdateData).then((response) => {
-        expect(response.status).to.equal(200);
-        expect(response.body).to.have.property('id', createdGraphId);
-        expect(response.body).to.have.property('name', partialUpdateData.name);
-        // Description should remain unchanged
-        expect(response.body).to.have.property('description');
+      getGraphById(createdGraphId).then((graphResponse) => {
+        const currentVersion = graphResponse.body.version;
 
-        validateGraph(response.body);
+        updateGraph(createdGraphId, {
+          ...partialUpdateData,
+          currentVersion,
+        }).then((response) => {
+          expect(response.status).to.equal(200);
+          expect(response.body).to.have.property('id', createdGraphId);
+          expect(response.body).to.have.property(
+            'name',
+            partialUpdateData.name,
+          );
+          // Description should remain unchanged
+          expect(response.body).to.have.property('description');
+          expect(response.body.version).to.equal(currentVersion);
+
+          validateGraph(response.body);
+        });
       });
     });
 
     it('should return 404 for non-existent graph', () => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
-      const updateData = createMockUpdateData();
+      const updateData = createMockUpdateData('0.0.0');
 
       updateGraph(nonExistentId, updateData, reqHeaders).then((response) => {
         expect(response.status).to.equal(404);
+      });
+    });
+
+    it('should increment version when updating schema on a stopped graph', () => {
+      const graphData = createMockGraphData();
+
+      createGraph(graphData).then((createResponse) => {
+        expect(createResponse.status).to.equal(201);
+        const graphId = createResponse.body.id;
+        const currentVersion = createResponse.body.version;
+
+        const updatedSchema = {
+          ...createResponse.body.schema,
+          nodes: createResponse.body.schema.nodes.map((node) =>
+            node.id === 'agent-1'
+              ? {
+                  ...node,
+                  config: {
+                    ...node.config,
+                    instructions: 'Schema update via e2e test',
+                  },
+                }
+              : node,
+          ),
+        };
+
+        updateGraph(graphId, {
+          schema: updatedSchema,
+          currentVersion,
+        }).then((updateResponse) => {
+          expect(updateResponse.status).to.equal(200);
+          expect(updateResponse.body.version).to.equal(
+            incrementVersion(currentVersion),
+          );
+          expect(
+            updateResponse.body.schema.nodes.find(
+              (node) => node.id === 'agent-1',
+            )?.config.instructions,
+          ).to.equal('Schema update via e2e test');
+        });
+      });
+    });
+
+    it('should return 400 when currentVersion does not match latest version', () => {
+      const graphData = createMockGraphData();
+
+      createGraph(graphData).then((createResponse) => {
+        expect(createResponse.status).to.equal(201);
+        const graphId = createResponse.body.id;
+        const originalVersion = createResponse.body.version;
+
+        const updatedSchema = {
+          ...createResponse.body.schema,
+          nodes: createResponse.body.schema.nodes.map((node) =>
+            node.id === 'agent-1'
+              ? {
+                  ...node,
+                  config: {
+                    ...node.config,
+                    instructions: 'First schema update',
+                  },
+                }
+              : node,
+          ),
+        };
+
+        updateGraph(graphId, {
+          schema: updatedSchema,
+          currentVersion: originalVersion,
+        }).then((firstUpdateResponse) => {
+          expect(firstUpdateResponse.status).to.equal(200);
+
+          const secondSchema = {
+            ...updatedSchema,
+            nodes: updatedSchema.nodes.map((node) =>
+              node.id === 'agent-1'
+                ? {
+                    ...node,
+                    config: {
+                      ...node.config,
+                      instructions: 'Second schema update should fail',
+                    },
+                  }
+                : node,
+            ),
+          };
+
+          updateGraph(graphId, {
+            schema: secondSchema,
+            currentVersion: originalVersion,
+          }).then((conflictResponse) => {
+            expect(conflictResponse.status).to.equal(400);
+            expect(
+              (conflictResponse.body as { message?: string }).message,
+            ).to.include('Graph version mismatch');
+          });
+        });
       });
     });
   });
@@ -438,7 +558,7 @@ describe('Graphs E2E', () => {
         lifecycleGraphId = createResponse.body.id;
 
         // 2. Update the graph
-        const updateData = createMockUpdateData();
+        const updateData = createMockUpdateData(createResponse.body.version);
         updateGraph(lifecycleGraphId, updateData).then((updateResponse) => {
           expect(updateResponse.status).to.equal(200);
           expect(updateResponse.body.name).to.equal(updateData.name);

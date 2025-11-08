@@ -474,14 +474,7 @@ describe('GraphRestorationService', () => {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'You are a helpful test agent.',
-            invokeModelName: 'gpt-5-mini',
-          },
-        },
+        instance: mockAgent,
         config: {},
       };
 
@@ -564,7 +557,7 @@ describe('GraphRestorationService', () => {
       expect(mockAgent.run).toHaveBeenCalledWith(
         'test-graph-id:thread-1',
         [],
-        mockAgentNode.instance.config,
+        undefined,
         {
           configurable: expect.objectContaining({
             graph_id: 'test-graph-id',
@@ -623,14 +616,7 @@ describe('GraphRestorationService', () => {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'You are a helpful test agent.',
-            invokeModelName: 'gpt-5-mini',
-          },
-        },
+        instance: mockAgent,
         config: {},
       };
 
@@ -697,7 +683,7 @@ describe('GraphRestorationService', () => {
       expect(mockAgent.run).toHaveBeenCalledWith(
         'test-graph-id:thread-1__agent-1',
         [],
-        mockAgentNode.instance.config,
+        undefined,
         {
           configurable: expect.objectContaining({
             node_id: 'agent-1',
@@ -719,14 +705,7 @@ describe('GraphRestorationService', () => {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'You are a helpful test agent.',
-            invokeModelName: 'gpt-5-mini',
-          },
-        },
+        instance: mockAgent,
         config: {},
       };
 

@@ -2,8 +2,7 @@ import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
-import { SimpleAgentSchemaType } from '../../agents/services/agents/simple-agent';
-import { SimpleAgentTemplateResult } from '../../graph-templates/templates/base-node.template';
+import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
@@ -72,9 +71,7 @@ export class GraphStateManager {
       case NodeKind.SimpleAgent:
         this.attachAgentListeners(
           state,
-          node as CompiledGraphNode<
-            SimpleAgentTemplateResult<SimpleAgentSchemaType>
-          >,
+          node as CompiledGraphNode<SimpleAgent>,
         );
         break;
       case NodeKind.Trigger:
@@ -226,9 +223,9 @@ export class GraphStateManager {
 
   private attachAgentListeners(
     state: NodeState,
-    node: CompiledGraphNode<SimpleAgentTemplateResult<SimpleAgentSchemaType>>,
+    node: CompiledGraphNode<SimpleAgent>,
   ) {
-    const agent = node.instance?.agent;
+    const agent = node.instance;
 
     const unsub = agent.subscribe(async (event) => {
       try {
@@ -515,5 +512,12 @@ export class GraphStateManager {
       this.logger.error(e as Error, 'Failed to stringify graph node error');
       return String(error);
     }
+  }
+
+  /**
+   * Unregister a node from the state manager
+   */
+  unregisterNode(nodeId: string): void {
+    this.nodes.delete(nodeId);
   }
 }

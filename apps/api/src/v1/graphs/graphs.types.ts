@@ -25,6 +25,13 @@ export enum GraphNodeStatus {
   Idle = 'idle',
 }
 
+export enum GraphRevisionStatus {
+  Pending = 'pending',
+  Applying = 'applying',
+  Applied = 'applied',
+  Failed = 'failed',
+}
+
 export interface CompiledGraphNode<TInstance = unknown, TConfig = unknown> {
   id: string;
   type: NodeKind;

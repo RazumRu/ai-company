@@ -83,8 +83,8 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         scope: [NotificationScope.Graph],
         data: ThreadMessageSchema.parse({
           ...createdMessage,
-          createdAt: createdMessage.createdAt.toISOString(),
-          updatedAt: createdMessage.updatedAt.toISOString(),
+          createdAt: new Date(createdMessage.createdAt).toISOString(),
+          updatedAt: new Date(createdMessage.updatedAt).toISOString(),
         }),
       });
     }

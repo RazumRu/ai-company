@@ -36,6 +36,7 @@ describe('SimpleAgentTemplate', () => {
     mockSimpleAgent = {
       addTool: vi.fn(),
       run: vi.fn(),
+      setConfig: vi.fn(),
       schema: {} as SimpleAgent['schema'],
       buildLLM: vi.fn(),
     } as unknown as SimpleAgent;
@@ -217,17 +218,7 @@ describe('SimpleAgentTemplate', () => {
 
       expect(mockAgentFactoryService.create).toHaveBeenCalledWith(SimpleAgent);
       expect(mockSimpleAgent.addTool).not.toHaveBeenCalled();
-
-      expect(result).toEqual({
-        agent: mockSimpleAgent,
-        config: {
-          summarizeMaxTokens: 1000,
-          summarizeKeepTokens: 500,
-          instructions: 'Test agent instructions',
-          name: 'Test Agent',
-          invokeModelName: 'gpt-5-mini',
-        },
-      });
+      expect(result).toBe(mockSimpleAgent);
     });
 
     it('should create simple agent without connected tools', async () => {
@@ -254,7 +245,7 @@ describe('SimpleAgentTemplate', () => {
       );
 
       expect(mockSimpleAgent.addTool).not.toHaveBeenCalled();
-      expect(result.config).not.toHaveProperty('toolNodeIds');
+      expect(result).toBe(mockSimpleAgent);
     });
 
     it('should create simple agent with connected tools', async () => {
@@ -275,17 +266,7 @@ describe('SimpleAgentTemplate', () => {
       expect(mockSimpleAgent.addTool).toHaveBeenCalledTimes(2);
       expect(mockSimpleAgent.addTool).toHaveBeenCalledWith(mockTool1);
       expect(mockSimpleAgent.addTool).toHaveBeenCalledWith(mockTool2);
-
-      expect(result).toEqual({
-        agent: mockSimpleAgent,
-        config: {
-          summarizeMaxTokens: 1000,
-          summarizeKeepTokens: 500,
-          instructions: 'Test agent instructions',
-          name: 'Test Agent',
-          invokeModelName: 'gpt-5-mini',
-        },
-      });
+      expect(result).toBe(mockSimpleAgent);
     });
 
     it('should handle connected tool nodes', async () => {
@@ -415,14 +396,8 @@ describe('SimpleAgentTemplate', () => {
         version: '1.0.0',
       });
 
-      expect(result.config).toEqual({
-        summarizeMaxTokens: 2000,
-        summarizeKeepTokens: 1000,
-        instructions: 'Custom instructions',
-        name: 'Custom Agent',
-        invokeModelName: 'gpt-3.5-turbo',
-      });
-      expect(result.config).not.toHaveProperty('toolNodeIds');
+      expect(result).toBe(mockSimpleAgent);
+      expect(mockSimpleAgent.addTool).toHaveBeenCalledTimes(2);
     });
 
     it('should return correct result type', async () => {
@@ -440,10 +415,8 @@ describe('SimpleAgentTemplate', () => {
         version: '1.0.0',
       });
 
-      expect(result).toHaveProperty('agent');
-      expect(result).toHaveProperty('config');
-      expect(result.agent).toBe(mockSimpleAgent);
-      expect(typeof result.config).toBe('object');
+      expect(result).toBe(mockSimpleAgent);
+      expect(result).toBeInstanceOf(Object);
     });
   });
 });

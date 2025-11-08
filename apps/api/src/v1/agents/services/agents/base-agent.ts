@@ -98,9 +98,15 @@ export abstract class BaseAgent<TSchema = unknown> {
   public abstract run(
     threadId: string,
     messages: BaseMessage[],
-    config: z.infer<TSchema>,
+    config?: z.infer<TSchema>,
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput>;
 
   public abstract stop(): Promise<void>;
+
+  /**
+   * Update the agent's configuration without destroying the instance.
+   * This allows tools that hold references to the agent to continue working with the updated config.
+   */
+  public abstract setConfig(config: z.infer<TSchema>): void;
 }

@@ -11,10 +11,8 @@ import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
 import {
   NodeBaseTemplateMetadata,
-  SimpleAgentTemplateResult,
   TriggerNodeBaseTemplate,
 } from '../base-node.template';
 
@@ -61,9 +59,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
     // Search for agent nodes in output nodes
     const agentNodes = Array.from(outputNodes.values()).filter(
       (node) => node.type === NodeKind.SimpleAgent,
-    ) as CompiledGraphNode<
-      SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
-    >[];
+    ) as CompiledGraphNode<SimpleAgent>[];
 
     if (agentNodes.length === 0) {
       throw new NotFoundException(
@@ -74,8 +70,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
 
     // Use the first agent node found
     const agentNode = agentNodes[0]!;
-    const agent = agentNode.instance.agent as SimpleAgent;
-    const agentConfig = agentNode.instance.config;
+    const agent = agentNode.instance;
 
     // Create a new ManualTrigger instance
     const manualTrigger = await this.moduleRef.resolve(
@@ -115,7 +110,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
         const promise = agent.run(
           threadId,
           messages,
-          agentConfig,
+          undefined,
           enrichedConfig,
         );
 

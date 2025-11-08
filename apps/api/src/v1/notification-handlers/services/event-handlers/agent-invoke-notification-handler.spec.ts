@@ -92,8 +92,8 @@ describe('AgentInvokeNotificationHandler', () => {
         name: thread.name ?? null,
         source: thread.source ?? null,
         metadata: thread.metadata ?? {},
-        createdAt: thread.createdAt.toISOString(),
-        updatedAt: thread.updatedAt.toISOString(),
+        createdAt: new Date(thread.createdAt).toISOString(),
+        updatedAt: new Date(thread.updatedAt).toISOString(),
       })),
     };
 

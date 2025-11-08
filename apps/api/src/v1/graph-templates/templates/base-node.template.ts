@@ -58,14 +58,9 @@ export abstract class ResourceNodeBaseTemplate<
   readonly kind: NodeKind = NodeKind.Resource;
 }
 
-export interface SimpleAgentTemplateResult<TConfig> {
-  agent: SimpleAgent;
-  config: TConfig;
-}
-
 export abstract class SimpleAgentNodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
-  TResult = SimpleAgentTemplateResult<z.infer<TConfig>>,
+  TResult = SimpleAgent,
 > extends NodeBaseTemplate<TConfig, TResult> {
   readonly kind: NodeKind = NodeKind.SimpleAgent;
 }

@@ -98,6 +98,14 @@ export const runGraph = (id: string, headers = reqHeaders) => {
   });
 };
 
+export const stopGraph = (id: string, headers = reqHeaders) =>
+  cy.request({
+    url: `/api/v1/graphs/${id}/run`,
+    method: 'DELETE',
+    headers,
+    failOnStatusCode: false,
+  });
+
 export const destroyGraph = (id: string, headers = reqHeaders) =>
   cy
     .request<GraphDto>({
@@ -133,12 +141,72 @@ export const validateGraph = (data: GraphDto) => {
   cy.validateSchema(data, GraphDtoSchema);
 };
 
+export const waitForGraphToBeRunning = (
+  id: string,
+  headers = reqHeaders,
+  timeoutMs = 60000,
+) => {
+  const startedAt = Date.now();
+
+  const poll = (): Cypress.Chainable =>
+    getGraphById(id, headers).then((response) => {
+      expect(response.status).to.equal(200);
+
+      if (response.body.status === 'running') {
+        return undefined;
+      }
+
+      if (Date.now() - startedAt > timeoutMs) {
+        throw new Error(
+          `Graph ${id} did not reach running status within ${timeoutMs}ms (current status: ${response.body.status})`,
+        );
+      }
+
+      return cy.wait(1000).then(() => poll());
+    });
+
+  return poll();
+};
+
+export const waitForGraphStatus = (
+  id: string,
+  expectedStatus: GraphDto['status'],
+  headers = reqHeaders,
+  timeoutMs = 60000,
+) => {
+  const startedAt = Date.now();
+
+  const poll = (): Cypress.Chainable =>
+    getGraphById(id, headers).then((response) => {
+      expect(response.status).to.equal(200);
+
+      if (response.body.status === expectedStatus) {
+        return undefined;
+      }
+
+      if (Date.now() - startedAt > timeoutMs) {
+        throw new Error(
+          `Graph ${id} did not reach status ${expectedStatus} within ${timeoutMs}ms (current status: ${response.body.status})`,
+        );
+      }
+
+      return cy.wait(1000).then(() => poll());
+    });
+
+  return poll();
+};
+
+export const waitForGraphToBeStopped = (
+  id: string,
+  headers = reqHeaders,
+  timeoutMs = 60000,
+) => waitForGraphStatus(id, 'stopped', headers, timeoutMs);
+
 export const createMockGraphData = (
   overrides: Partial<CreateGraphDto> = {},
 ): CreateGraphDto => ({
   name: `Test Graph ${generateRandomUUID().slice(0, 8)}`,
   description: 'Test graph for e2e testing',
-  version: '1.0.0',
   temporary: true, // E2E test graphs are temporary by default
   schema: {
     nodes: [
@@ -168,9 +236,11 @@ export const createMockGraphData = (
 });
 
 export const createMockUpdateData = (
+  currentVersion: string,
   overrides: Partial<UpdateGraphDto> = {},
 ): UpdateGraphDto => ({
   name: `Updated Test Graph ${generateRandomUUID().slice(0, 8)}`,
   description: 'Updated test graph for e2e testing',
+  currentVersion,
   ...overrides,
 });

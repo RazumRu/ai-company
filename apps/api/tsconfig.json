@@ -3,7 +3,7 @@
   "include": ["src/**/*"],
   "compilerOptions": {
     "plugins": [
-      { "transform": "@packages/http-server/dist/swagger-plugin.js" }
+      { "transform": "@packages/http-server/swagger-plugin.js" }
     ],
   }
 }

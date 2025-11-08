@@ -6,14 +6,12 @@ import { AgentFactoryService } from '../../../agents/services/agent-factory.serv
 import {
   SimpleAgent,
   SimpleAgentSchema,
-  SimpleAgentSchemaType,
 } from '../../../agents/services/agents/simple-agent';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
   NodeBaseTemplateMetadata,
   SimpleAgentNodeBaseTemplate,
-  SimpleAgentTemplateResult,
 } from '../base-node.template';
 
 export const SimpleAgentTemplateSchema = SimpleAgentSchema;
@@ -26,7 +24,7 @@ export type SimpleAgentTemplateSchemaType = z.infer<
 @RegisterTemplate()
 export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   typeof SimpleAgentTemplateSchema,
-  SimpleAgentTemplateResult<SimpleAgentSchemaType>
+  SimpleAgent
 > {
   readonly name = 'simple-agent';
   readonly description =
@@ -63,9 +61,12 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     _inputNodes: Map<string, CompiledGraphNode>,
     outputNodes: Map<string, CompiledGraphNode>,
     _metadata: NodeBaseTemplateMetadata,
-  ): Promise<SimpleAgentTemplateResult<SimpleAgentSchemaType>> {
+  ): Promise<SimpleAgent> {
     const agent = await this.agentFactoryService.create(SimpleAgent);
     const { ...agentConfig } = config;
+
+    // Set initial configuration
+    agent.setConfig(agentConfig);
 
     for (const [_nodeId, node] of outputNodes) {
       if (node.type === NodeKind.Tool) {
@@ -75,9 +76,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       }
     }
 
-    return {
-      agent,
-      config: agentConfig,
-    };
+    return agent;
   }
 }

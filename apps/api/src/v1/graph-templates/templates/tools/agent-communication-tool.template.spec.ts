@@ -11,7 +11,6 @@ import {
   GraphNodeStatus,
   NodeKind,
 } from '../../../graphs/graphs.types';
-import { SimpleAgentTemplateResult } from '../base-node.template';
 import { AgentCommunicationToolTemplate } from './agent-communication-tool.template';
 
 const buildCompiledNode = <TInstance>(options: {
@@ -100,19 +99,16 @@ describe('AgentCommunicationToolTemplate', () => {
 
   describe('create', () => {
     it('should create tool with custom description when provided', async () => {
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'Test instructions',
-            invokeModelName: 'gpt-5-mini',
-          },
+        config: {
+          name: 'Test Agent',
+          instructions: 'Test instructions',
+          invokeModelName: 'gpt-5-mini',
         },
+        instance: mockAgent,
       });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
@@ -133,19 +129,16 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should use default description when no custom description provided', async () => {
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'Test instructions',
-            invokeModelName: 'gpt-5-mini',
-          },
+        config: {
+          name: 'Test Agent',
+          instructions: 'Test instructions',
+          invokeModelName: 'gpt-5-mini',
         },
+        instance: mockAgent,
       });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
@@ -163,19 +156,16 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should create tool with consistent thread ID behavior', async () => {
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'Test instructions',
-            invokeModelName: 'gpt-5-mini',
-          },
+        config: {
+          name: 'Test Agent',
+          instructions: 'Test instructions',
+          invokeModelName: 'gpt-5-mini',
         },
+        instance: mockAgent,
       });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
@@ -209,7 +199,7 @@ describe('AgentCommunicationToolTemplate', () => {
       expect(mockAgent.run).toHaveBeenCalledWith(
         'root-thread-456__comm-tool', // Uses parent + tool node id
         [new HumanMessage('Hello from Agent A')],
-        agentNode.instance.config,
+        undefined,
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: 'root-thread-456__comm-tool',
@@ -222,19 +212,16 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should maintain thread consistency for Agent A -> Agent B -> Agent C chain', async () => {
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'Test instructions',
-            invokeModelName: 'gpt-5-mini',
-          },
+        config: {
+          name: 'Test Agent',
+          instructions: 'Test instructions',
+          invokeModelName: 'gpt-5-mini',
         },
+        instance: mockAgent,
       });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
@@ -267,7 +254,7 @@ describe('AgentCommunicationToolTemplate', () => {
       expect(mockAgent.run).toHaveBeenCalledWith(
         'root-thread-456__comm-tool', // parent + tool id
         [new HumanMessage('Message from A to B')],
-        agentNode.instance.config,
+        undefined,
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: 'root-thread-456__comm-tool',
@@ -296,7 +283,7 @@ describe('AgentCommunicationToolTemplate', () => {
       expect(mockAgent.run).toHaveBeenCalledWith(
         'root-thread-456__comm-tool',
         [new HumanMessage('Message from B to C')],
-        agentNode.instance.config,
+        undefined,
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: 'root-thread-456__comm-tool',
@@ -307,19 +294,16 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should fallback to current thread_id when no parent_thread_id is provided', async () => {
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'Test instructions',
-            invokeModelName: 'gpt-5-mini',
-          },
+        config: {
+          name: 'Test Agent',
+          instructions: 'Test instructions',
+          invokeModelName: 'gpt-5-mini',
         },
+        instance: mockAgent,
       });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
@@ -351,7 +335,7 @@ describe('AgentCommunicationToolTemplate', () => {
       expect(mockAgent.run).toHaveBeenCalledWith(
         'current-thread-123__comm-tool',
         [new HumanMessage('Test message')],
-        agentNode.instance.config,
+        undefined,
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: 'current-thread-123__comm-tool',
@@ -362,19 +346,16 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     it('should return message instead of all messages', async () => {
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'Test instructions',
-            invokeModelName: 'gpt-5-mini',
-          },
+        config: {
+          name: 'Test Agent',
+          instructions: 'Test instructions',
+          invokeModelName: 'gpt-5-mini',
         },
+        instance: mockAgent,
       });
 
       const outputNodes = new Map([['agent-2', agentNode]]);
@@ -423,19 +404,16 @@ describe('AgentCommunicationToolTemplate', () => {
         }),
       } as RunnableConfig<BaseAgentConfigurable>;
 
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockAgentEmptyMessages as unknown as SimpleAgent,
-          config: {
-            name: 'Test Agent',
-            instructions: 'Test instructions',
-            invokeModelName: 'gpt-5-mini',
-          },
+        config: {
+          name: 'Test Agent',
+          instructions: 'Test instructions',
+          invokeModelName: 'gpt-5-mini',
         },
+        instance: mockAgentEmptyMessages as unknown as SimpleAgent,
       });
 
       const outputNodes = new Map([['agent-2', agentNode]]);

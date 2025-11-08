@@ -24,4 +24,8 @@ export enum EnrichedNotificationEvent {
   ThreadUpdate = 'thread.update',
   ThreadDelete = 'thread.delete',
   GraphNodeUpdate = 'graph.node.update',
+  GraphRevisionCreate = 'graph.revision.create',
+  GraphRevisionApplying = 'graph.revision.applying',
+  GraphRevisionApplied = 'graph.revision.applied',
+  GraphRevisionFailed = 'graph.revision.failed',
 }

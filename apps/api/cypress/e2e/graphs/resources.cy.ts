@@ -28,7 +28,6 @@ describe('Resource System E2E', () => {
       const graphData: CreateGraphDto = {
         name: `GitHub Resource Test ${Date.now()}`,
         description: 'Test graph with GitHub resource and shell tool',
-        version: '1.0.0',
         temporary: true,
         schema: {
           nodes: [
@@ -168,7 +167,6 @@ describe('Resource System E2E', () => {
       const invalidGraphData: CreateGraphDto = {
         name: `Invalid Resource Test ${Date.now()}`,
         description: 'Test graph with invalid resource connection',
-        version: '1.0.0',
         temporary: true,
         schema: {
           nodes: [

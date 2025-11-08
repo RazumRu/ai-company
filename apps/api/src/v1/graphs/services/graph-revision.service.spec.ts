@@ -1,0 +1,398 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { DefaultLogger, NotFoundException } from '@packages/common';
+import { AuthContextService } from '@packages/http-server';
+import { TypeormService } from '@packages/typeorm';
+import { EntityManager } from 'typeorm';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { NotificationEvent } from '../../notifications/notifications.types';
+import { NotificationsService } from '../../notifications/services/notifications.service';
+import { GraphDao } from '../dao/graph.dao';
+import { GraphRevisionDao } from '../dao/graph-revision.dao';
+import { GraphEntity } from '../entity/graph.entity';
+import { GraphRevisionEntity } from '../entity/graph-revision.entity';
+import { GraphRevisionStatus, GraphStatus } from '../graphs.types';
+import { GraphCompiler } from './graph-compiler';
+import { GraphRegistry } from './graph-registry';
+import { GraphRevisionService } from './graph-revision.service';
+import { GraphRevisionQueueService } from './graph-revision-queue.service';
+
+describe('GraphRevisionService', () => {
+  let service: GraphRevisionService;
+  let graphUpdateDao: GraphRevisionDao;
+  let graphDao: GraphDao;
+  let graphUpdateQueue: GraphRevisionQueueService;
+  let graphCompiler: GraphCompiler;
+  let typeorm: TypeormService;
+  let notificationsService: NotificationsService;
+  let authContext: AuthContextService;
+
+  const mockUserId = 'user-123';
+  const mockGraphId = 'graph-456';
+  const mockUpdateId = 'update-789';
+
+  const createMockGraphEntity = (
+    overrides: Partial<GraphEntity> = {},
+  ): GraphEntity => ({
+    id: mockGraphId,
+    name: 'Test Graph',
+    description: 'A test graph',
+    version: '1.0.0',
+    schema: {
+      nodes: [
+        {
+          id: 'node-1',
+          template: 'docker-runtime',
+          config: { image: 'python:3.11' },
+        },
+      ],
+      edges: [],
+    },
+    status: GraphStatus.Running,
+    createdBy: mockUserId,
+    temporary: false,
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+    updatedAt: new Date('2024-01-01T00:00:00Z'),
+    deletedAt: null,
+    ...overrides,
+  });
+
+  const createMockUpdateEntity = (
+    overrides: Partial<GraphRevisionEntity> = {},
+  ): GraphRevisionEntity => ({
+    id: mockUpdateId,
+    graphId: mockGraphId,
+    fromVersion: '1.0.0',
+    toVersion: '1.0.1',
+    configurationDiff: [],
+    newSchema: {
+      nodes: [
+        {
+          id: 'node-1',
+          template: 'docker-runtime',
+          config: { image: 'python:3.12' },
+        },
+      ],
+      edges: [],
+    },
+    status: GraphRevisionStatus.Pending,
+    createdBy: mockUserId,
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+    updatedAt: new Date('2024-01-01T00:00:00Z'),
+    deletedAt: null,
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        GraphRevisionService,
+        {
+          provide: GraphRevisionDao,
+          useValue: {
+            create: vi.fn(),
+            getOne: vi.fn(),
+            getAll: vi.fn(),
+            updateById: vi.fn(),
+            getById: vi.fn(),
+          },
+        },
+        {
+          provide: GraphDao,
+          useValue: {
+            getOne: vi.fn(),
+            getById: vi.fn(),
+            updateById: vi.fn(),
+          },
+        },
+        {
+          provide: GraphRevisionQueueService,
+          useValue: {
+            addRevision: vi.fn(),
+            setProcessor: vi.fn(),
+          },
+        },
+        {
+          provide: GraphRegistry,
+          useValue: {
+            get: vi.fn(),
+          },
+        },
+        {
+          provide: GraphCompiler,
+          useValue: {
+            validateSchema: vi.fn(),
+            templateRegistry: {
+              getTemplate: vi.fn(),
+            },
+          },
+        },
+        {
+          provide: TypeormService,
+          useValue: {
+            trx: vi.fn(),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: {
+            emit: vi.fn(),
+          },
+        },
+        {
+          provide: AuthContextService,
+          useValue: {
+            checkSub: vi.fn(),
+          },
+        },
+        {
+          provide: DefaultLogger,
+          useValue: {
+            log: vi.fn(),
+            error: vi.fn(),
+            warn: vi.fn(),
+          },
+        },
+        {
+          provide: TemplateRegistry,
+          useValue: {
+            validateTemplateConfig: vi.fn(),
+            getTemplate: vi.fn(),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get<GraphRevisionService>(GraphRevisionService);
+    graphUpdateDao = module.get<GraphRevisionDao>(GraphRevisionDao);
+    graphDao = module.get<GraphDao>(GraphDao);
+    graphUpdateQueue = module.get<GraphRevisionQueueService>(
+      GraphRevisionQueueService,
+    );
+    graphCompiler = module.get<GraphCompiler>(GraphCompiler);
+    typeorm = module.get<TypeormService>(TypeormService);
+    notificationsService =
+      module.get<NotificationsService>(NotificationsService);
+    authContext = module.get<AuthContextService>(AuthContextService);
+  });
+
+  describe('queueRevision', () => {
+    it('should queue a graph update successfully', async () => {
+      const mockGraph = createMockGraphEntity();
+      const mockUpdate = createMockUpdateEntity();
+      const newSchema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'docker-runtime',
+            config: { image: 'python:3.12' },
+          },
+        ],
+        edges: [],
+      };
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphUpdateDao.create).mockResolvedValue(mockUpdate);
+      vi.mocked(graphUpdateQueue.addRevision).mockResolvedValue(undefined);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      const result = await service.queueRevision(mockGraph, newSchema);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: mockUpdateId,
+          graphId: mockGraphId,
+          fromVersion: '1.0.0',
+          toVersion: '1.0.1',
+          status: GraphRevisionStatus.Pending,
+        }),
+      );
+
+      expect(graphCompiler.validateSchema).toHaveBeenCalledWith(newSchema);
+      expect(graphUpdateDao.create).toHaveBeenCalled();
+      expect(graphUpdateQueue.addRevision).toHaveBeenCalledWith(mockUpdate);
+      expect(notificationsService.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.GraphRevisionCreate,
+          graphId: mockGraphId,
+        }),
+      );
+    });
+
+    it('should validate schema before queuing', async () => {
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+
+      const mockGraph = createMockGraphEntity();
+      const newSchema = { nodes: [], edges: [] };
+
+      vi.mocked(graphCompiler.validateSchema).mockImplementation(() => {
+        throw new Error('Invalid schema');
+      });
+
+      await expect(service.queueRevision(mockGraph, newSchema)).rejects.toThrow(
+        'Invalid schema',
+      );
+
+      expect(graphCompiler.validateSchema).toHaveBeenCalledWith(newSchema);
+    });
+
+    it('should calculate diff when schemas are different', async () => {
+      const mockGraph = createMockGraphEntity({
+        schema: {
+          nodes: [{ id: 'node-1', template: 'test', config: {} }],
+          edges: [],
+        },
+      });
+
+      const newSchema = {
+        nodes: [
+          { id: 'node-1', template: 'test', config: {} },
+          { id: 'node-2', template: 'test', config: {} },
+        ],
+        edges: [],
+      };
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+
+      const mockUpdate = createMockUpdateEntity({
+        configurationDiff: [
+          { op: 'add', path: '/nodes/1', value: newSchema.nodes[1] },
+        ],
+      });
+
+      vi.mocked(graphUpdateDao.create).mockResolvedValue(mockUpdate);
+
+      await service.queueRevision(mockGraph, newSchema);
+
+      expect(graphUpdateDao.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          configurationDiff: expect.anything(),
+        }),
+        expect.any(Object),
+      );
+    });
+  });
+
+  describe('getRevisions', () => {
+    it('should return all revisions for a graph', async () => {
+      const mockRevisions = [
+        createMockUpdateEntity(),
+        createMockUpdateEntity({ id: 'update-2' }),
+      ];
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(graphUpdateDao.getAll).mockResolvedValue(mockRevisions);
+
+      const result = await service.getRevisions(mockGraphId, {});
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual(
+        expect.objectContaining({
+          id: mockUpdateId,
+          graphId: mockGraphId,
+        }),
+      );
+
+      expect(graphUpdateDao.getAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          orderBy: 'createdAt',
+          sortOrder: 'DESC',
+        }),
+      );
+
+      const callArgs = vi.mocked(graphUpdateDao.getAll).mock.calls[0]?.[0];
+      expect(callArgs?.limit).toBeUndefined();
+    });
+
+    it('should filter revisions by status if provided', async () => {
+      const mockRevisions = [
+        createMockUpdateEntity({ status: GraphRevisionStatus.Applied }),
+      ];
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(graphUpdateDao.getAll).mockResolvedValue(mockRevisions);
+
+      await service.getRevisions(mockGraphId, {
+        status: GraphRevisionStatus.Applied,
+      });
+
+      expect(graphUpdateDao.getAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          status: GraphRevisionStatus.Applied,
+          orderBy: 'createdAt',
+          sortOrder: 'DESC',
+        }),
+      );
+    });
+
+    it('should apply limit when provided', async () => {
+      const mockRevisions = [createMockUpdateEntity()];
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(graphUpdateDao.getAll).mockResolvedValue(mockRevisions);
+
+      await service.getRevisions(mockGraphId, { limit: 1 } as any);
+
+      expect(graphUpdateDao.getAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          limit: 1,
+          orderBy: 'createdAt',
+          sortOrder: 'DESC',
+        }),
+      );
+    });
+  });
+
+  describe('getRevisionById', () => {
+    it('should return a specific revision', async () => {
+      const mockRevision = createMockUpdateEntity();
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(graphUpdateDao.getOne).mockResolvedValue(mockRevision);
+
+      const result = await service.getRevisionById(mockGraphId, mockUpdateId);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: mockUpdateId,
+          graphId: mockGraphId,
+        }),
+      );
+
+      expect(graphUpdateDao.getOne).toHaveBeenCalledWith({
+        id: mockUpdateId,
+        graphId: mockGraphId,
+        createdBy: mockUserId,
+      });
+    });
+
+    it('should throw NotFoundException when revision does not exist', async () => {
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(graphUpdateDao.getOne).mockResolvedValue(null);
+
+      await expect(
+        service.getRevisionById(mockGraphId, mockUpdateId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+});

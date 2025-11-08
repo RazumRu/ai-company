@@ -16,9 +16,6 @@ export const CreateGraphDtoSchema = {
         },
       ],
     },
-    version: {
-      type: 'string',
-    },
     schema: {
       type: 'object',
       properties: {
@@ -120,7 +117,7 @@ export const CreateGraphDtoSchema = {
       ],
     },
   },
-  required: ['name', 'version', 'schema'],
+  required: ['name', 'schema'],
 } as const;
 
 export const GraphDtoSchema = {
@@ -351,9 +348,6 @@ export const UpdateGraphDtoSchema = {
         },
       ],
     },
-    version: {
-      type: 'string',
-    },
     schema: {
       type: 'object',
       properties: {
@@ -454,7 +448,12 @@ export const UpdateGraphDtoSchema = {
         },
       ],
     },
+    currentVersion: {
+      type: 'string',
+    },
   },
+  required: ['currentVersion'],
+  additionalProperties: false,
 } as const;
 
 export const ExecuteTriggerDtoSchema = {
@@ -488,6 +487,200 @@ export const ExecuteTriggerResponseDtoSchema = {
     },
   },
   required: ['threadId'],
+} as const;
+
+export const GraphRevisionDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    graphId: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    fromVersion: {
+      type: 'string',
+    },
+    toVersion: {
+      type: 'string',
+    },
+    configurationDiff: {
+      type: 'array',
+      items: {
+        anyOf: [
+          {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                const: 'add',
+              },
+              path: {
+                type: 'string',
+              },
+              value: {},
+            },
+            required: ['op', 'path', 'value'],
+          },
+          {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                const: 'remove',
+              },
+              path: {
+                type: 'string',
+              },
+            },
+            required: ['op', 'path'],
+          },
+          {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                const: 'replace',
+              },
+              path: {
+                type: 'string',
+              },
+              value: {},
+            },
+            required: ['op', 'path', 'value'],
+          },
+          {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                const: 'move',
+              },
+              from: {
+                type: 'string',
+              },
+              path: {
+                type: 'string',
+              },
+            },
+            required: ['op', 'from', 'path'],
+          },
+          {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                const: 'copy',
+              },
+              from: {
+                type: 'string',
+              },
+              path: {
+                type: 'string',
+              },
+            },
+            required: ['op', 'from', 'path'],
+          },
+          {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                const: 'test',
+              },
+              path: {
+                type: 'string',
+              },
+              value: {},
+            },
+            required: ['op', 'path', 'value'],
+          },
+        ],
+      },
+    },
+    newSchema: {
+      type: 'object',
+      properties: {
+        nodes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+              },
+              template: {
+                type: 'string',
+              },
+              config: {
+                type: 'object',
+                propertyNames: {
+                  type: 'string',
+                },
+                additionalProperties: {},
+              },
+            },
+            required: ['id', 'template', 'config'],
+          },
+        },
+        edges: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              from: {
+                type: 'string',
+              },
+              to: {
+                type: 'string',
+              },
+              label: {
+                type: 'string',
+              },
+            },
+            required: ['from', 'to'],
+          },
+        },
+      },
+      required: ['nodes'],
+    },
+    status: {
+      type: 'string',
+      enum: ['pending', 'applying', 'applied', 'failed'],
+    },
+    error: {
+      type: 'string',
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+  },
+  required: [
+    'id',
+    'graphId',
+    'fromVersion',
+    'toVersion',
+    'configurationDiff',
+    'newSchema',
+    'status',
+    'createdAt',
+    'updatedAt',
+  ],
 } as const;
 
 export const TemplateDtoSchema = {

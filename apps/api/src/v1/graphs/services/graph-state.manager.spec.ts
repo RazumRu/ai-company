@@ -210,7 +210,7 @@ describe('GraphStateManager', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
-        instance: { agent },
+        instance: agent,
       } as unknown as CompiledGraphNode;
 
       manager.registerNode('agent-1');
@@ -309,7 +309,7 @@ describe('GraphStateManager', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
-        instance: { agent },
+        instance: agent,
       } as unknown as CompiledGraphNode;
 
       manager.registerNode('agent-1');
@@ -394,7 +394,7 @@ describe('GraphStateManager', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
-        instance: { agent },
+        instance: agent,
       } as unknown as CompiledGraphNode;
 
       manager.registerNode('agent-1');
@@ -552,7 +552,7 @@ describe('GraphStateManager', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
-        instance: { agent },
+        instance: agent,
       } as unknown as CompiledGraphNode;
 
       manager.registerNode('agent-1');

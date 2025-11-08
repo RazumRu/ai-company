@@ -77,6 +77,7 @@ export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
 @RegisterAgent()
 export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private graph?: CompiledStateGraph<BaseAgentState, Record<string, unknown>>;
+  private currentConfig?: SimpleAgentSchemaType;
   private activeRuns = new Map<
     string,
     {
@@ -387,10 +388,15 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   public async run(
     threadId: string,
     messages: BaseMessage[],
-    config: SimpleAgentSchemaType,
+    _config?: SimpleAgentSchemaType,
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
     const runId = runnableConfig?.configurable?.run_id || v4();
+    const config = _config || this.currentConfig;
+
+    if (!config) {
+      throw new Error('Agent configuration is required for execution');
+    }
 
     const mergedConfig: RunnableConfig<BaseAgentConfigurable> = {
       ...(runnableConfig ?? {}),
@@ -562,5 +568,21 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
       this.activeRuns.delete(runId);
     }
+
+    this.graph = undefined;
+    this.currentConfig = undefined;
+  }
+
+  /**
+   * Update the agent's configuration without destroying the instance.
+   * The graph will be rebuilt on the next run() call with the new config.
+   */
+  public setConfig(config: SimpleAgentSchemaType): void {
+    // Validate the config against the schema
+    this.schema.parse(config);
+
+    // Clear the graph so it will be rebuilt with new config
+    this.graph = undefined;
+    this.currentConfig = config;
   }
 }

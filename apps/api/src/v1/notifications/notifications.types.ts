@@ -1,5 +1,6 @@
 import { BaseMessage } from '@langchain/core/messages';
 
+import { GraphRevisionEntity } from '../graphs/entity/graph-revision.entity';
 import {
   GraphExecutionMetadata,
   GraphNodeStatus,
@@ -19,6 +20,10 @@ export enum NotificationEvent {
   ThreadUpdate = 'thread.update',
   ThreadDelete = 'thread.delete',
   GraphNodeUpdate = 'graph.node.update',
+  GraphRevisionCreate = 'graph.revision.create',
+  GraphRevisionApplying = 'graph.revision.applying',
+  GraphRevisionApplied = 'graph.revision.applied',
+  GraphRevisionFailed = 'graph.revision.failed',
 }
 
 export interface INotification<T> {
@@ -121,6 +126,15 @@ export interface IGraphNodeUpdateNotification
   nodeId: string;
 }
 
+export interface IGraphRevisionNotification
+  extends INotification<GraphRevisionEntity> {
+  type:
+    | NotificationEvent.GraphRevisionCreate
+    | NotificationEvent.GraphRevisionApplying
+    | NotificationEvent.GraphRevisionApplied
+    | NotificationEvent.GraphRevisionFailed;
+}
+
 export type Notification =
   | IGraphNotification
   | IAgentMessageNotification
@@ -129,4 +143,5 @@ export type Notification =
   | IThreadCreateNotification
   | IThreadUpdateNotification
   | IThreadDeleteNotification
-  | IGraphNodeUpdateNotification;
+  | IGraphNodeUpdateNotification
+  | IGraphRevisionNotification;

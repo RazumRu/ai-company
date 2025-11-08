@@ -250,7 +250,7 @@ describe('SimpleAgent', () => {
 
       const result = await agent.run(threadId, messages, config);
 
-      expect(agent['buildGraph']).toHaveBeenCalledWith(config);
+      expect(agent['buildGraph']).toHaveBeenCalled();
       expect(mockGraph.stream).toHaveBeenCalledWith(
         expect.objectContaining({
           messages: {
@@ -377,6 +377,12 @@ describe('SimpleAgent', () => {
       await expect(agent.stop()).resolves.not.toThrow();
     });
 
+    it('should dispose compiled graph and reset cache on stop', async () => {
+      await agent.stop();
+
+      expect(agent['graph']).toBeUndefined();
+    });
+
     it('should handle abort errors gracefully during stream processing', async () => {
       const mockGraph = {
         stream: vi.fn(),
@@ -425,6 +431,64 @@ describe('SimpleAgent', () => {
 
       expect(result).toBeDefined();
       expect(agent['activeRuns'].size).toBe(0);
+    });
+  });
+
+  describe('setConfig', () => {
+    it('should update configuration and clear graph', () => {
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        name: 'Test Agent',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      // Simulate a graph being built
+      agent['graph'] = {} as any;
+      agent['currentConfig'] = config;
+
+      const newConfig = {
+        ...config,
+        instructions: 'Updated instructions',
+      };
+
+      // Call setConfig
+      agent.setConfig(newConfig);
+
+      // Graph should be cleared for rebuild
+      expect(agent['graph']).toBeUndefined();
+      // New config should be stored
+      expect(agent['currentConfig']).toEqual(newConfig);
+    });
+
+    it('should validate config before setting', () => {
+      const invalidConfig = {
+        summarizeMaxTokens: 'invalid', // should be number
+      };
+
+      expect(() => agent.setConfig(invalidConfig as any)).toThrow();
+    });
+
+    it('should clear graph even when no graph exists', () => {
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        name: 'Test Agent',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      // Ensure no graph exists
+      agent['graph'] = undefined;
+
+      // Call setConfig
+      agent.setConfig(config);
+
+      // Graph should remain undefined
+      expect(agent['graph']).toBeUndefined();
+      // Config should be stored
+      expect(agent['currentConfig']).toEqual(config);
     });
   });
 });

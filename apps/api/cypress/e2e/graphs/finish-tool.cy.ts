@@ -25,7 +25,6 @@ describe('Finish Tool E2E Tests', () => {
       const graphData: CreateGraphDto = {
         name: `Finish Tool Test ${Date.now()}`,
         description: 'Test graph with simple agent and finish tool',
-        version: '1.0.0',
         temporary: true,
         schema: {
           nodes: [
@@ -148,7 +147,6 @@ describe('Finish Tool E2E Tests', () => {
       const graphData: CreateGraphDto = {
         name: `Finish Tool Needs Info Test ${Date.now()}`,
         description: 'Test graph with simple agent asking for more info',
-        version: '1.0.0',
         temporary: true,
         schema: {
           nodes: [
@@ -276,7 +274,6 @@ describe('Finish Tool E2E Tests', () => {
         name: `Finish Tool No System Message Test ${Date.now()}`,
         description:
           'Test that agent calls finish tool without additional system prompts',
-        version: '1.0.0',
         temporary: true,
         schema: {
           nodes: [

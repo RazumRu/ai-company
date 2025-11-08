@@ -7,12 +7,17 @@ import { AgentsModule } from '../agents/agents.module';
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ThreadsModule } from '../threads/threads.module';
+import { GraphRevisionsController } from './controllers/graph-revisions.controller';
 import { GraphsController } from './controllers/graphs.controller';
 import { GraphDao } from './dao/graph.dao';
+import { GraphRevisionDao } from './dao/graph-revision.dao';
 import { GraphEntity } from './entity/graph.entity';
+import { GraphRevisionEntity } from './entity/graph-revision.entity';
 import { GraphCompiler } from './services/graph-compiler';
 import { GraphRegistry } from './services/graph-registry';
 import { GraphRestorationService } from './services/graph-restoration.service';
+import { GraphRevisionService } from './services/graph-revision.service';
+import { GraphRevisionQueueService } from './services/graph-revision-queue.service';
 import { GraphStateFactory } from './services/graph-state.factory';
 import { GraphStateManager } from './services/graph-state.manager';
 import { GraphsService } from './services/graphs.service';
@@ -20,16 +25,19 @@ import { MessageTransformerService } from './services/message-transformer.servic
 
 @Module({
   imports: [
-    registerEntities([GraphEntity]),
+    registerEntities([GraphEntity, GraphRevisionEntity]),
     GraphTemplatesModule,
     NotificationsModule,
     AgentsModule,
     forwardRef(() => ThreadsModule),
   ],
-  controllers: [GraphsController],
+  controllers: [GraphsController, GraphRevisionsController],
   providers: [
     GraphDao,
+    GraphRevisionDao,
     GraphsService,
+    GraphRevisionService,
+    GraphRevisionQueueService,
     GraphCompiler,
     GraphRegistry,
     GraphRestorationService,
@@ -38,9 +46,13 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphStateFactory,
   ],
   exports: [
+    GraphTemplatesModule,
     GraphDao,
+    GraphRevisionDao,
     GraphCompiler,
     GraphsService,
+    GraphRevisionService,
+    GraphRevisionQueueService,
     GraphRegistry,
     GraphRestorationService,
     MessageTransformerService,
@@ -53,6 +65,6 @@ export class GraphsModule implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    this.graphRestorationService.restoreRunningGraphs().catch(console.error);
+    await this.graphRestorationService.restoreRunningGraphs();
   }
 }

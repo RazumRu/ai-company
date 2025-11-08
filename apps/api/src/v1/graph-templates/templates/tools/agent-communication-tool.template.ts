@@ -12,13 +12,12 @@ import {
   AgentCommunicationToolOptions,
 } from '../../../agent-tools/tools/agent-communication.tool';
 import { AgentOutput } from '../../../agents/services/agents/base-agent';
+import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import { SimpleAgentTemplateSchemaType } from '../agents/simple-agent.template';
 import {
   NodeBaseTemplateMetadata,
-  SimpleAgentTemplateResult,
   ToolNodeBaseTemplate,
 } from '../base-node.template';
 
@@ -76,9 +75,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       // Search for agent nodes in output nodes
       const agentNodes = Array.from(outputNodes.values()).filter(
         (node) => node.type === NodeKind.SimpleAgent,
-      ) as CompiledGraphNode<
-        SimpleAgentTemplateResult<SimpleAgentTemplateSchemaType>
-      >[];
+      ) as CompiledGraphNode<SimpleAgent>[];
 
       if (agentNodes.length === 0) {
         throw new NotFoundException(
@@ -97,8 +94,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
         );
       }
 
-      const agent = agentNode.instance.agent;
-      const agentConfig = agentNode.instance.config;
+      const agent = agentNode.instance;
 
       const preparedMessages = messages.map((msg) => new HumanMessage(msg));
 
@@ -130,7 +126,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       const response = await agent.run(
         effectiveThreadId,
         preparedMessages,
-        agentConfig,
+        undefined,
         enrichedConfig,
       );
 

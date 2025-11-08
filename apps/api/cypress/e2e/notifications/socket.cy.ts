@@ -1,5 +1,6 @@
 import { Socket } from 'socket.io-client';
 
+import { GraphDto, GraphRevisionDto } from '../../api-definitions';
 import { mockUserId, reqHeaders } from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
@@ -7,7 +8,10 @@ import {
   createMockGraphData,
   destroyGraph,
   executeTrigger,
+  getGraphById,
   runGraph,
+  updateGraph,
+  waitForGraphToBeRunning,
 } from '../graphs/graphs.helper';
 import { deleteThread } from '../threads/threads.helper';
 import {
@@ -16,6 +20,107 @@ import {
   waitForSocketConnection,
   waitForSocketEvent,
 } from './socket.helper';
+
+const cloneSchema = <T>(schema: T): T => Cypress._.cloneDeep(schema);
+
+const incrementVersion = (version: string): string => {
+  const parts = version.split('.');
+  const lastIndex = parts.length - 1;
+  const lastValue = parseInt(parts[lastIndex] ?? '0', 10) || 0;
+  parts[lastIndex] = String(lastValue + 1);
+  return parts.join('.');
+};
+
+const buildUpdatedSchema = (
+  schema: GraphDto['schema'],
+  instructions: string,
+): GraphDto['schema'] => ({
+  ...schema,
+  nodes: schema.nodes.map((node) =>
+    node.id === 'agent-1'
+      ? {
+          ...node,
+          config: {
+            ...node.config,
+            instructions,
+          },
+        }
+      : node,
+  ),
+});
+
+type RevisionNotificationRecord = {
+  type: string;
+  payload: Record<string, unknown>;
+};
+
+const waitForRevisionEvents = (
+  client: Socket,
+  graphId: string,
+  expectedTypes: string[],
+  timeoutMs = 60000,
+): Promise<RevisionNotificationRecord[]> => {
+  return new Promise((resolve, reject) => {
+    const events: RevisionNotificationRecord[] = [];
+    const seen = new Set<string>();
+
+    const handleServerError = (error: unknown) => {
+      cleanup();
+      reject(
+        error instanceof Error
+          ? error
+          : new Error(
+              `Received server_error while waiting for revision events: ${JSON.stringify(error)}`,
+            ),
+      );
+    };
+
+    const handlers = expectedTypes.map((type) => {
+      const handler = (payload: Record<string, unknown>) => {
+        const payloadGraphId = (payload as { graphId?: string }).graphId;
+
+        if (payloadGraphId !== graphId) {
+          return;
+        }
+
+        events.push({ type, payload });
+        seen.add(type);
+
+        if (expectedTypes.every((expected) => seen.has(expected))) {
+          cleanup();
+          resolve(events);
+        }
+      };
+
+      client.on(type, handler);
+      return { type, handler };
+    });
+
+    client.on('server_error', handleServerError);
+
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      handlers.forEach(({ type, handler }) => client.off(type, handler));
+      client.off('server_error', handleServerError);
+    };
+
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      const receivedTypes =
+        events.length > 0
+          ? events.map((event) => event.type).join(', ')
+          : 'none';
+
+      reject(
+        new Error(
+          `Timeout waiting for revision events. Expected: ${expectedTypes.join(
+            ', ',
+          )}. Received: ${receivedTypes}`,
+        ),
+      );
+    }, timeoutMs);
+  });
+};
 
 describe('Socket Gateway E2E', () => {
   let socket: Socket;
@@ -376,6 +481,209 @@ describe('Socket Gateway E2E', () => {
             return cy.wrap(notificationPromise, { timeout: 90000 });
           });
         });
+    });
+
+    describe('Graph revision notifications', () => {
+      it('should receive revision lifecycle notifications when revision is applied', function () {
+        this.timeout(120000);
+
+        const graphData = createMockGraphData();
+        let graphId: string;
+        let baseSchema: GraphDto['schema'];
+        let currentVersion: string;
+        let expectedVersion: string;
+
+        return createGraph(graphData, reqHeaders)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            graphId = response.body.id;
+            baseSchema = cloneSchema(response.body.schema);
+            currentVersion = response.body.version;
+            expectedVersion = incrementVersion(currentVersion);
+            return cy.task(
+              'log',
+              `[Test] Created graph: ${graphId}, version: ${currentVersion}`,
+            );
+          })
+          .then(() => {
+            cy.task('log', `[Test] Running graph ${graphId}`);
+            return runGraph(graphId, reqHeaders);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            return cy.task('log', `[Test] Graph started successfully`);
+          })
+          .then(() => {
+            cy.task('log', `[Test] Waiting for graph to be running...`);
+            return waitForGraphToBeRunning(graphId);
+          })
+          .then(() => {
+            cy.task('log', `[Test] Graph is running, subscribing to socket...`);
+            socket.emit('subscribe_graph', { graphId });
+            cy.task('log', `[Test] Subscribed to graph ${graphId}`);
+            return cy.wait(500);
+          })
+          .then(() => {
+            cy.task('log', `[Test] Setting up event listeners...`);
+
+            const expectedEvents = [
+              'graph.revision.create',
+              'graph.revision.applying',
+              'graph.revision.applied',
+            ];
+
+            const eventsPromise = waitForRevisionEvents(
+              socket,
+              graphId,
+              expectedEvents,
+              120000,
+            );
+
+            cy.task('log', `[Test] Waiting for handlers to be registered...`);
+            // Wait a bit to ensure handlers are fully registered before triggering events
+            return cy.wait(1000).then(() => {
+              const updatedSchema = buildUpdatedSchema(
+                baseSchema,
+                'Socket test applied revision instructions',
+              );
+
+              cy.task('log', `[Test] Updating graph with new schema...`);
+              return updateGraph(graphId, {
+                schema: updatedSchema,
+                currentVersion,
+              }).then((updateResponse) => {
+                expect(updateResponse.status).to.equal(200);
+                cy.task(
+                  'log',
+                  `[Test] Graph update successful, waiting for events...`,
+                );
+                return cy
+                  .wrap(eventsPromise, { timeout: 120000 })
+                  .then((events) => ({
+                    events,
+                    expectedEvents,
+                  }));
+              });
+            });
+          })
+          .then(({ events, expectedEvents }) => {
+            const typedEvents = events as {
+              type: string;
+              payload: unknown;
+            }[];
+
+            // Get unique event types (there might be duplicates if subscribed to multiple rooms)
+            const uniqueEventTypes = Array.from(
+              new Set(typedEvents.map((event) => event.type)),
+            );
+
+            expect(uniqueEventTypes).to.deep.equal(expectedEvents);
+
+            const appliedEvent = typedEvents.find(
+              (event) => event.type === 'graph.revision.applied',
+            );
+            expect(appliedEvent).to.not.be.undefined;
+
+            const appliedPayload = (
+              appliedEvent!.payload as { data: GraphRevisionDto }
+            ).data;
+            expect(appliedPayload?.status).to.equal('applied');
+            expect(appliedPayload?.toVersion).to.equal(expectedVersion);
+          });
+      });
+
+      it('should receive multiple revision notifications', function () {
+        this.timeout(120000);
+
+        const graphData = createMockGraphData();
+        let graphId: string;
+        let baseSchema: GraphDto['schema'];
+        let currentVersion: string;
+
+        return createGraph(graphData, reqHeaders)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            graphId = response.body.id;
+            baseSchema = cloneSchema(response.body.schema);
+            currentVersion = response.body.version;
+          })
+          .then(() => runGraph(graphId, reqHeaders))
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+          })
+          .then(() => waitForGraphToBeRunning(graphId))
+          .then(() => {
+            socket.emit('subscribe_graph', { graphId });
+            return cy.wait(500);
+          })
+          .then(() => {
+            const expectedEvents = [
+              'graph.revision.create',
+              'graph.revision.applying',
+              'graph.revision.applied',
+              'graph.revision.create',
+              'graph.revision.applying',
+              'graph.revision.applied',
+            ];
+
+            const eventsPromise = waitForRevisionEvents(
+              socket,
+              graphId,
+              expectedEvents,
+              120000,
+            );
+
+            const firstSchema = buildUpdatedSchema(
+              baseSchema,
+              'First socket revision',
+            );
+
+            return updateGraph(graphId, {
+              schema: firstSchema,
+              currentVersion,
+            })
+              .then((firstUpdateResponse) => {
+                expect(firstUpdateResponse.status).to.equal(200);
+                // Wait for first revision to be applied
+                return cy.wait(3000);
+              })
+              .then(() => getGraphById(graphId))
+              .then((graphResponse) => {
+                const secondSchema = buildUpdatedSchema(
+                  baseSchema,
+                  'Second socket revision',
+                );
+                return updateGraph(graphId, {
+                  schema: secondSchema,
+                  currentVersion: graphResponse.body.version,
+                });
+              })
+              .then((secondUpdateResponse) => {
+                expect(secondUpdateResponse.status).to.equal(200);
+                return cy
+                  .wrap(eventsPromise, { timeout: 120000 })
+                  .then((events) => ({
+                    events,
+                    expectedEvents,
+                  }));
+              });
+          })
+          .then(({ events, expectedEvents }) => {
+            const typedEvents = events as {
+              type: string;
+              payload: unknown;
+            }[];
+
+            // Get unique event types (there might be duplicates if subscribed to multiple rooms)
+            const eventTypes = typedEvents.map((event) => event.type);
+            const uniqueEventTypes = Array.from(new Set(eventTypes));
+
+            // Verify we received all expected unique event types (in order)
+            expect(uniqueEventTypes).to.deep.equal(
+              Array.from(new Set(expectedEvents)),
+            );
+          });
+      });
     });
 
     it('should receive multiple message notifications during graph execution', () => {

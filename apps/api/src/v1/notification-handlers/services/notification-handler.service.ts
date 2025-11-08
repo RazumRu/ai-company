@@ -28,13 +28,17 @@ export class NotificationHandler extends EventEmitter {
    * Register an event handler
    */
   registerHandler(handler: BaseNotificationHandler): void {
-    const type = handler.pattern;
+    const patterns = Array.isArray(handler.pattern)
+      ? handler.pattern
+      : [handler.pattern];
 
-    if (!this.handlers.has(type)) {
-      this.handlers.set(type, []);
+    for (const type of patterns) {
+      if (!this.handlers.has(type)) {
+        this.handlers.set(type, []);
+      }
+
+      this.handlers.get(type)!.push(handler);
     }
-
-    this.handlers.get(type)!.push(handler);
   }
 
   async init() {

@@ -12,7 +12,6 @@ import {
   NodeKind,
 } from '../../../graphs/graphs.types';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
-import { SimpleAgentTemplateResult } from '../base-node.template';
 import {
   ManualTriggerTemplate,
   ManualTriggerTemplateSchema,
@@ -150,15 +149,12 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockSimpleAgent,
-          config: agentConfig,
-        },
+        config: agentConfig,
+        instance: mockSimpleAgent,
       });
 
       const outputNodes = new Map([['agent-1', agentNode]]);
@@ -194,15 +190,12 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockSimpleAgent,
-          config: agentConfig,
-        },
+        config: agentConfig,
+        instance: mockSimpleAgent,
       });
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
@@ -242,7 +235,7 @@ describe('ManualTriggerTemplate', () => {
 
       expect(actualThreadId).toBe(expectedFullThreadId);
       expect(actualMessages).toEqual(messages);
-      expect(actualConfig).toEqual(agentConfig);
+      expect(actualConfig).toBeUndefined();
       expect(actualRunnableConfig!.configurable).toMatchObject({
         thread_id: expectedFullThreadId,
         graph_id: 'test-graph',
@@ -264,15 +257,12 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockSimpleAgent,
-          config: agentConfig,
-        },
+        config: agentConfig,
+        instance: mockSimpleAgent,
       });
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
@@ -309,7 +299,7 @@ describe('ManualTriggerTemplate', () => {
       // thread_id should be auto-generated as graphId:uuid when not provided
       expect(actualThreadId).toMatch(/^test-graph:[a-f0-9-]{36}$/);
       expect(actualMessages).toEqual(messages);
-      expect(actualConfig).toEqual(agentConfig);
+      expect(actualConfig).toBeUndefined();
       expect(actualRunnableConfig!.configurable!.graph_id).toBe('test-graph');
       expect(actualRunnableConfig!.configurable!.node_id).toBe('agent-1');
 
@@ -331,15 +321,12 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode = buildCompiledNode<SimpleAgentTemplateResult<unknown>>({
+      const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {},
-        instance: {
-          agent: mockSimpleAgent,
-          config: agentConfig,
-        },
+        config: agentConfig,
+        instance: mockSimpleAgent,
       });
 
       const compiledNodes = new Map([['agent-1', agentNode]]);
@@ -382,7 +369,7 @@ describe('ManualTriggerTemplate', () => {
       // Verify that existing properties are preserved and new ones override
       expect(actualThreadId).toBe(expectedFullThreadId);
       expect(actualMessages).toEqual(messages);
-      expect(actualConfig).toEqual(agentConfig);
+      expect(actualConfig).toBeUndefined();
       expect(actualRunnableConfig!.configurable!.thread_id).toBe(
         expectedFullThreadId,
       );

@@ -25,6 +25,10 @@ import type {
   GetAllTemplatesResponses,
   GetCompiledNodesData,
   GetCompiledNodesResponses,
+  GetGraphRevisionData,
+  GetGraphRevisionResponses,
+  GetGraphRevisionsData,
+  GetGraphRevisionsResponses,
   GetThreadByExternalIdData,
   GetThreadByExternalIdResponses,
   GetThreadByIdData,
@@ -244,6 +248,46 @@ export const executeTrigger = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options.headers,
     },
+  });
+};
+
+export const getGraphRevisions = <ThrowOnError extends boolean = false>(
+  options: Options<GetGraphRevisionsData, ThrowOnError>,
+) => {
+  return (options.client ?? client).get<
+    GetGraphRevisionsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/graphs/{graphId}/revisions',
+    ...options,
+  });
+};
+
+export const getGraphRevision = <ThrowOnError extends boolean = false>(
+  options: Options<GetGraphRevisionData, ThrowOnError>,
+) => {
+  return (options.client ?? client).get<
+    GetGraphRevisionResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/api/v1/graphs/{graphId}/revisions/{id}',
+    ...options,
   });
 };
 

@@ -28,6 +28,14 @@ export type AdditionalParams<T extends ObjectLiteral = ObjectLiteral> =
     relations: string[];
     withDeleted: boolean;
     rawData: boolean;
+    lock?:
+      | 'pessimistic_read'
+      | 'pessimistic_write'
+      | 'dirty_read'
+      | 'pessimistic_partial_write'
+      | 'pessimistic_write_or_fail'
+      | 'for_no_key_update'
+      | 'for_key_share';
     updateSelectBuilder: (
       builder: SelectQueryBuilder<T>,
     ) => SelectQueryBuilder<T>;
@@ -169,6 +177,10 @@ export abstract class BaseDao<
 
     if (params?.updateSelectBuilder) {
       params.updateSelectBuilder(builder);
+    }
+
+    if (params?.lock) {
+      builder.setLock(params.lock);
     }
   }
 

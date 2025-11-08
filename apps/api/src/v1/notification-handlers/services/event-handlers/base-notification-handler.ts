@@ -5,7 +5,7 @@ import { IEnrichedNotification } from '../../notification-handlers.types';
 export abstract class BaseNotificationHandler<
   T extends IEnrichedNotification<unknown> = IEnrichedNotification<unknown>,
 > {
-  abstract readonly pattern: NotificationEvent;
+  abstract readonly pattern: NotificationEvent | NotificationEvent[];
 
   abstract handle(event: Notification): Promise<T[]>;
 }

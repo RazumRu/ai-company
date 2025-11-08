@@ -9,6 +9,7 @@ import { AgentMessageNotificationHandler } from './services/event-handlers/agent
 import { AgentStateUpdateNotificationHandler } from './services/event-handlers/agent-state-update-notification-handler';
 import { GraphNodeUpdateNotificationHandler } from './services/event-handlers/graph-node-update-notification-handler';
 import { GraphNotificationHandler } from './services/event-handlers/graph-notification-handler';
+import { GraphRevisionNotificationHandler } from './services/event-handlers/graph-revision-notification-handler';
 import { ThreadCreateNotificationHandler } from './services/event-handlers/thread-create-notification-handler';
 import { ThreadDeleteNotificationHandler } from './services/event-handlers/thread-delete-notification-handler';
 import { ThreadUpdateNotificationHandler } from './services/event-handlers/thread-update-notification-handler';
@@ -18,6 +19,7 @@ import { NotificationHandler } from './services/notification-handler.service';
   imports: [GraphsModule, NotificationsModule, ThreadsModule],
   providers: [
     GraphNotificationHandler,
+    GraphRevisionNotificationHandler,
     AgentMessageNotificationHandler,
     AgentInvokeNotificationHandler,
     AgentStateUpdateNotificationHandler,
@@ -34,6 +36,7 @@ export class NotificationHandlersModule implements OnModuleInit {
   constructor(
     private readonly eventsHandlerService: NotificationHandler,
     private readonly graphEventHandler: GraphNotificationHandler,
+    private readonly graphUpdateEventHandler: GraphRevisionNotificationHandler,
     private readonly agentMessageEventHandler: AgentMessageNotificationHandler,
     private readonly agentInvokeEventHandler: AgentInvokeNotificationHandler,
     private readonly agentStateUpdateEventHandler: AgentStateUpdateNotificationHandler,
@@ -45,6 +48,7 @@ export class NotificationHandlersModule implements OnModuleInit {
 
   async onModuleInit() {
     this.eventsHandlerService.registerHandler(this.graphEventHandler);
+    this.eventsHandlerService.registerHandler(this.graphUpdateEventHandler);
     this.eventsHandlerService.registerHandler(this.agentMessageEventHandler);
     this.eventsHandlerService.registerHandler(this.agentInvokeEventHandler);
     this.eventsHandlerService.registerHandler(

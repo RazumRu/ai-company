@@ -27,6 +27,7 @@ import {
 } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
+import { GraphRevisionService } from './graph-revision.service';
 import { GraphsService } from './graphs.service';
 import { MessageTransformerService } from './message-transformer.service';
 
@@ -41,6 +42,7 @@ describe('GraphsService', () => {
   let _pgCheckpointSaver: PgCheckpointSaver;
   let messageTransformer: MessageTransformerService;
   let notificationsService: NotificationsService;
+  let graphRevisionService: GraphRevisionService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -200,6 +202,14 @@ describe('GraphsService', () => {
             emit: vi.fn(),
           },
         },
+        {
+          provide: GraphRevisionService,
+          useValue: {
+            queueRevision: vi.fn(),
+            getRevisions: vi.fn(),
+            generateNextVersion: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -216,12 +226,49 @@ describe('GraphsService', () => {
     );
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
+    graphRevisionService =
+      module.get<GraphRevisionService>(GraphRevisionService);
     vi.mocked(notificationsService.emit).mockResolvedValue(void 0 as any);
+    vi.mocked(graphRevisionService.queueRevision).mockResolvedValue({
+      id: 'revision-1',
+      graphId: mockGraphId,
+      fromVersion: '1.0.0',
+      toVersion: '1.0.1',
+      status: 'pending',
+      configurationDiff: [],
+      newSchema: {} as any,
+      createdBy: mockUserId,
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+    } as any);
+    vi.mocked(graphRevisionService.getRevisions).mockResolvedValue([]);
+    vi.mocked(graphRevisionService.generateNextVersion).mockImplementation(
+      (version) => {
+        const parts = version.split('.');
+        const lastIndex = parts.length - 1;
+        const lastValue = parseInt(parts[lastIndex] ?? '0', 10) || 0;
+        parts[lastIndex] = String(lastValue + 1);
+        return parts.join('.');
+      },
+    );
 
     // Setup default mocks
     vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
     vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-      const mockEntityManager = {} as EntityManager;
+      const mockEntityManager = {
+        createQueryBuilder: vi.fn().mockReturnValue({
+          setLock: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          andWhere: vi.fn().mockReturnThis(),
+          getOne: vi.fn().mockImplementation(() => {
+            // Return the mocked graph from graphDao.getOne
+            return vi.mocked(graphDao.getOne).getMockImplementation()?.({
+              id: mockGraphId,
+              createdBy: mockUserId,
+            });
+          }),
+        }),
+      } as unknown as EntityManager;
       return callback(mockEntityManager);
     });
 
@@ -267,7 +314,6 @@ describe('GraphsService', () => {
       const createData: CreateGraphDto = {
         name: 'New Graph',
         description: 'A new test graph',
-        version: '1.0.0',
         schema: {
           nodes: [
             {
@@ -311,6 +357,7 @@ describe('GraphsService', () => {
           status: GraphStatus.Created,
           createdBy: mockUserId,
           temporary: false,
+          version: '1.0.0',
         },
         expect.any(Object), // EntityManager
       );
@@ -320,7 +367,6 @@ describe('GraphsService', () => {
     it('should handle creation errors', async () => {
       const createData: CreateGraphDto = {
         name: 'New Graph',
-        version: '1.0.0',
         schema: {
           nodes: [],
           edges: [],
@@ -342,7 +388,6 @@ describe('GraphsService', () => {
     it('should validate schema before creating graph', async () => {
       const createData: CreateGraphDto = {
         name: 'New Graph',
-        version: '1.0.0',
         schema: {
           nodes: [
             {
@@ -379,7 +424,6 @@ describe('GraphsService', () => {
     it('should throw BadRequestException for invalid schema', async () => {
       const createData: CreateGraphDto = {
         name: 'New Graph',
-        version: '1.0.0',
         schema: {
           nodes: [
             {
@@ -410,7 +454,6 @@ describe('GraphsService', () => {
     it('should throw BadRequestException for duplicate node IDs', async () => {
       const createData: CreateGraphDto = {
         name: 'New Graph',
-        version: '1.0.0',
         schema: {
           nodes: [
             {
@@ -446,7 +489,6 @@ describe('GraphsService', () => {
     it('should throw BadRequestException for invalid edge references', async () => {
       const createData: CreateGraphDto = {
         name: 'New Graph',
-        version: '1.0.0',
         schema: {
           nodes: [
             {
@@ -638,7 +680,12 @@ describe('GraphsService', () => {
       const updateData: UpdateGraphDto = {
         name: 'Updated Graph',
         description: 'Updated description',
+        currentVersion: '1.0.0',
       };
+
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Created,
+      });
 
       const updatedEntity = createMockGraphEntity({
         name: 'Updated Graph',
@@ -650,6 +697,7 @@ describe('GraphsService', () => {
         description: 'Updated description',
       });
 
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       const result = await service.update(mockGraphId, updateData);
@@ -657,9 +705,9 @@ describe('GraphsService', () => {
       expect(result).toMatchObject(updatedGraph);
       expect(graphDao.updateById).toHaveBeenCalledWith(
         mockGraphId,
-        updateData,
         {
-          createdBy: mockUserId,
+          name: 'Updated Graph',
+          description: 'Updated description',
         },
         expect.any(Object), // EntityManager
       );
@@ -669,14 +717,16 @@ describe('GraphsService', () => {
       const updateData: UpdateGraphDto = {
         name: 'Updated Graph',
         description: undefined,
-        version: '2.0.0',
+        currentVersion: '1.0.0',
       };
 
-      const updatedEntity = createMockGraphEntity({
-        name: 'Updated Graph',
-        version: '2.0.0',
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Created,
       });
 
+      const updatedEntity = createMockGraphEntity({ name: 'Updated Graph' });
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       await service.update(mockGraphId, updateData);
@@ -685,22 +735,236 @@ describe('GraphsService', () => {
         mockGraphId,
         {
           name: 'Updated Graph',
-          version: '2.0.0',
-        },
-        {
-          createdBy: mockUserId,
         },
         expect.any(Object), // EntityManager
       );
     });
 
     it('should throw NotFoundException when graph not found', async () => {
-      const updateData: UpdateGraphDto = { name: 'Updated Graph' };
+      const updateData: UpdateGraphDto = {
+        name: 'Updated Graph',
+        currentVersion: '1.0.0',
+      };
       vi.mocked(graphDao.updateById).mockResolvedValue(null);
 
       await expect(service.update(mockGraphId, updateData)).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('should throw BadRequestException when currentVersion is missing', async () => {
+      const updateData = {
+        name: 'Updated Graph',
+      } as unknown as UpdateGraphDto;
+
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+
+      await expect(service.update(mockGraphId, updateData)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw BadRequestException when currentVersion mismatches', async () => {
+      const updateData: UpdateGraphDto = {
+        name: 'Updated Graph',
+        currentVersion: '0.9.0',
+      };
+
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+
+      await expect(service.update(mockGraphId, updateData)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should queue revision when updating running graph schema', async () => {
+      const updateData: UpdateGraphDto = {
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'docker-runtime',
+              config: { image: 'python:3.12' },
+            },
+          ],
+          edges: [],
+        },
+        currentVersion: '1.0.0',
+      };
+
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Running });
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+
+      const result = await service.update(mockGraphId, updateData);
+
+      expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockGraph,
+        updateData.schema,
+      );
+      // Should return current graph state (version unchanged)
+      expect(result.version).toBe('1.0.0');
+      expect(graphDao.updateById).not.toHaveBeenCalled();
+    });
+
+    it('should not queue revision when running graph schema is unchanged', async () => {
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Running });
+      const updateData: UpdateGraphDto = {
+        schema: mockGraph.schema,
+        currentVersion: mockGraph.version,
+      };
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+
+      const result = await service.update(mockGraphId, updateData);
+
+      expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
+      expect(graphDao.updateById).not.toHaveBeenCalled();
+      expect(result.version).toBe(mockGraph.version);
+    });
+
+    it('should update other fields when running graph schema is unchanged', async () => {
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Running });
+      const updateData: UpdateGraphDto = {
+        schema: mockGraph.schema,
+        name: 'Updated Graph',
+        currentVersion: mockGraph.version,
+      };
+
+      const updatedEntity = createMockGraphEntity({
+        status: GraphStatus.Running,
+        name: 'Updated Graph',
+      });
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
+
+      const result = await service.update(mockGraphId, updateData);
+
+      expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        {
+          name: 'Updated Graph',
+        },
+        expect.any(Object),
+      );
+      expect(result.name).toBe('Updated Graph');
+      expect(result.version).toBe(mockGraph.version);
+    });
+
+    it('should queue revision when updating compiling graph schema', async () => {
+      const updateData: UpdateGraphDto = {
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'docker-runtime',
+              config: { image: 'python:3.12' },
+            },
+          ],
+          edges: [],
+        },
+        currentVersion: '1.0.0',
+      };
+
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Compiling,
+      });
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+
+      const result = await service.update(mockGraphId, updateData);
+
+      expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockGraph,
+        updateData.schema,
+      );
+      // Should return current graph state (version unchanged)
+      expect(result.version).toBe('1.0.0');
+      expect(graphDao.updateById).not.toHaveBeenCalled();
+    });
+
+    it('should update non-running graph schema directly and increment version', async () => {
+      const updateData: UpdateGraphDto = {
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'docker-runtime',
+              config: { image: 'python:3.12' },
+            },
+          ],
+          edges: [],
+        },
+        currentVersion: '1.0.0',
+      };
+
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
+      const updatedEntity = createMockGraphEntity({
+        status: GraphStatus.Created,
+        version: '1.0.1',
+        schema: updateData.schema,
+      });
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
+
+      const result = await service.update(mockGraphId, updateData);
+
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        {
+          schema: updateData.schema,
+          version: '1.0.1',
+        },
+        expect.any(Object),
+      );
+      expect(result.version).toEqual('1.0.1');
+    });
+
+    it('should not increment version when non-running graph schema is unchanged', async () => {
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
+      const updateData: UpdateGraphDto = {
+        schema: mockGraph.schema,
+        currentVersion: mockGraph.version,
+      };
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+
+      const result = await service.update(mockGraphId, updateData);
+
+      expect(graphDao.updateById).not.toHaveBeenCalled();
+      expect(result.version).toBe(mockGraph.version);
+    });
+
+    it('should preserve version when schema unchanged but other fields updated', async () => {
+      const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
+      const updateData: UpdateGraphDto = {
+        schema: mockGraph.schema,
+        name: 'Updated Graph',
+        currentVersion: mockGraph.version,
+      };
+
+      const updatedEntity = createMockGraphEntity({
+        status: GraphStatus.Created,
+        name: 'Updated Graph',
+      });
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
+
+      const result = await service.update(mockGraphId, updateData);
+
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        {
+          name: 'Updated Graph',
+        },
+        expect.any(Object),
+      );
+      expect(result.version).toBe(mockGraph.version);
+      expect(result.name).toBe('Updated Graph');
     });
   });
 
@@ -1389,7 +1653,6 @@ describe('GraphsService', () => {
     it('should handle complete graph lifecycle', async () => {
       const createData: CreateGraphDto = {
         name: 'Lifecycle Graph',
-        version: '1.0.0',
         schema: {
           nodes: [
             {
