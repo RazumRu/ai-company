@@ -69,6 +69,16 @@ export const SimpleAgentSchema = z.object({
     .describe(
       'If true, enforces that the agent must call a tool before finishing. Uses tool_usage_guard node to inject system messages requiring tool calls.',
     ),
+  maxIterations: z
+    .number()
+    .int()
+    .min(1)
+    .max(2500)
+    .default(2500)
+    .describe(
+      'Maximum number of iterations the agent can execute during a single run.',
+    )
+    .meta({ 'x-ui:show-on-node': true }),
 });
 
 export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
@@ -392,11 +402,18 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
     const runId = runnableConfig?.configurable?.run_id || v4();
-    const config = _config || this.currentConfig;
+    const config = _config ? this.schema.parse(_config) : this.currentConfig;
 
     if (!config) {
       throw new Error('Agent configuration is required for execution');
     }
+
+    const configuredIterations = config.maxIterations ?? 25;
+    const requestedRecursionLimit = runnableConfig?.recursionLimit;
+    const recursionLimit =
+      typeof requestedRecursionLimit === 'number'
+        ? Math.min(requestedRecursionLimit, configuredIterations)
+        : configuredIterations;
 
     const mergedConfig: RunnableConfig<BaseAgentConfigurable> = {
       ...(runnableConfig ?? {}),
@@ -406,7 +423,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         caller_agent: this,
         run_id: runId,
       },
-      recursionLimit: runnableConfig?.recursionLimit ?? 2500,
+      recursionLimit,
     };
 
     const updateMessages = updateMessagesListWithMetadata(
@@ -579,10 +596,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
    */
   public setConfig(config: SimpleAgentSchemaType): void {
     // Validate the config against the schema
-    this.schema.parse(config);
+    const parsedConfig = this.schema.parse(config);
 
     // Clear the graph so it will be rebuilt with new config
     this.graph = undefined;
-    this.currentConfig = config;
+    this.currentConfig = parsedConfig;
   }
 }

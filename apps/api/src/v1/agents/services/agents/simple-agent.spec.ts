@@ -243,6 +243,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       const messages = [new HumanMessage('Hello')];
@@ -251,34 +252,29 @@ describe('SimpleAgent', () => {
       const result = await agent.run(threadId, messages, config);
 
       expect(agent['buildGraph']).toHaveBeenCalled();
-      expect(mockGraph.stream).toHaveBeenCalledWith(
-        expect.objectContaining({
-          messages: {
-            mode: 'append',
-            items: expect.arrayContaining([
-              expect.objectContaining({
-                content: 'Hello',
-                additional_kwargs: expect.objectContaining({
-                  run_id: expect.any(String),
-                }),
-              }),
-            ]),
-          },
-          done: false,
-          needsMoreInfo: false,
-          toolUsageGuardActivated: false,
-          toolUsageGuardActivatedCount: 0,
-        }),
-        expect.objectContaining({
-          configurable: expect.objectContaining({
-            thread_id: threadId,
-            caller_agent: agent,
-            run_id: expect.any(String),
-          }),
-          recursionLimit: 2500,
-          streamMode: 'updates',
-        }),
-      );
+      expect(mockGraph.stream).toHaveBeenCalledTimes(1);
+      const [initialState, runnable] = mockGraph.stream.mock.calls[0]!;
+
+      expect(initialState).toMatchObject({
+        messages: {
+          mode: 'append',
+        },
+        done: false,
+        needsMoreInfo: false,
+        toolUsageGuardActivated: false,
+        toolUsageGuardActivatedCount: 0,
+      });
+      expect(Array.isArray(initialState.messages.items)).toBe(true);
+      expect(initialState.messages.items[0]).toBeInstanceOf(HumanMessage);
+
+      expect(runnable.configurable).toMatchObject({
+        thread_id: threadId,
+        caller_agent: agent,
+      });
+      expect(typeof runnable.configurable.run_id).toBe('string');
+      expect(runnable.recursionLimit).toBe(config.maxIterations);
+      expect(runnable.streamMode).toBe('updates');
+      expect(runnable.signal).toBeInstanceOf(AbortSignal);
       expect(result).toEqual({
         messages: mockMessages,
         threadId: 'test-thread',
@@ -311,6 +307,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       const customRunnableConfig = {
@@ -320,17 +317,16 @@ describe('SimpleAgent', () => {
 
       await agent.run('test-thread', [], config, customRunnableConfig);
 
-      expect(mockGraph.stream).toHaveBeenCalledWith(
-        expect.any(Object),
-        expect.objectContaining({
-          recursionLimit: 1000,
-          configurable: expect.objectContaining({
-            thread_id: 'test-thread',
-            caller_agent: agent,
-            custom: 'value',
-          }),
-        }),
+      expect(mockGraph.stream).toHaveBeenCalledTimes(1);
+      const [, runnable] = mockGraph.stream.mock.calls[0]!;
+      expect(runnable.recursionLimit).toBe(
+        Math.min(customRunnableConfig.recursionLimit, config.maxIterations),
       );
+      expect(runnable.configurable).toMatchObject({
+        thread_id: 'test-thread',
+        caller_agent: agent,
+        custom: 'value',
+      });
     });
 
     it('should handle errors during execution', async () => {
@@ -353,6 +349,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       await expect(agent.run('test-thread', [], config)).rejects.toThrow(
@@ -420,6 +417,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       // Run should complete without throwing (abort error is swallowed)
@@ -442,6 +440,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       // Simulate a graph being built
@@ -459,7 +458,8 @@ describe('SimpleAgent', () => {
       // Graph should be cleared for rebuild
       expect(agent['graph']).toBeUndefined();
       // New config should be stored
-      expect(agent['currentConfig']).toEqual(newConfig);
+      const { name: _ignored, ...expectedConfig } = newConfig;
+      expect(agent['currentConfig']).toEqual(expectedConfig);
     });
 
     it('should validate config before setting', () => {
@@ -477,6 +477,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       // Ensure no graph exists
@@ -488,7 +489,8 @@ describe('SimpleAgent', () => {
       // Graph should remain undefined
       expect(agent['graph']).toBeUndefined();
       // Config should be stored
-      expect(agent['currentConfig']).toEqual(config);
+      const { name: _unusedName, ...expectedConfig } = config;
+      expect(agent['currentConfig']).toEqual(expectedConfig);
     });
   });
 });

@@ -60,6 +60,7 @@ describe('Resource System E2E', () => {
                 instructions:
                   'You are a helpful agent with access to GitHub CLI. Use the shell tool to interact with GitHub.',
                 invokeModelName: 'gpt-5-mini',
+                maxIterations: 10,
               },
             },
             {

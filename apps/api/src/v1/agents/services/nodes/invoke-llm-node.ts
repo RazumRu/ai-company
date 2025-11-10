@@ -62,7 +62,7 @@ export class InvokeLlmNode extends BaseNode<
       cfg,
     );
 
-    const res = await runner.invoke(messages, { recursionLimit: 2500 });
+    const res = await runner.invoke(messages);
     const out: BaseMessage[] = updateMessagesListWithMetadata(
       Array.isArray(res) ? res : [res as BaseMessage],
       cfg,

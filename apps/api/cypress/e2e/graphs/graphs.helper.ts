@@ -127,6 +127,7 @@ export const executeTrigger = (
   triggerId: string,
   body: ExecuteTriggerDto,
   headers = reqHeaders,
+  timeoutMs = 180000,
 ) =>
   cy.request<ExecuteTriggerResponseDto>({
     url: `/api/v1/graphs/${graphId}/triggers/${triggerId}/execute`,
@@ -134,7 +135,7 @@ export const executeTrigger = (
     headers,
     body,
     failOnStatusCode: false,
-    timeout: 180000,
+    timeout: timeoutMs,
   });
 
 export const validateGraph = (data: GraphDto) => {
@@ -217,6 +218,7 @@ export const createMockGraphData = (
           name: 'Test Agent',
           instructions: 'You are a helpful test agent.',
           invokeModelName: 'gpt-5-mini',
+          maxIterations: 10,
         },
       },
       {

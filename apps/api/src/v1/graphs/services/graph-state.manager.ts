@@ -289,17 +289,53 @@ export class GraphStateManager {
             parentThreadId,
             data: event.data.stateChange,
           });
+
+          // Handle thread name updates (generatedTitle)
+          // Centralized place for all thread updates
+          const stateChange = event.data.stateChange as Record<string, unknown>;
+          if (stateChange.generatedTitle && typeof stateChange.generatedTitle === 'string') {
+            const threadId = event.data.threadId;
+            const externalThreadKey = parentThreadId ?? threadId;
+
+            await this.notificationsService.emit({
+              type: NotificationEvent.ThreadUpdate,
+              graphId,
+              nodeId,
+              threadId: externalThreadKey,
+              parentThreadId,
+              data: { name: stateChange.generatedTitle },
+            });
+          }
         }
 
         if (event.type === 'run') {
           const threadId = event.data.threadId;
           const runId = cfg?.run_id;
 
-          // Handle errors
-          if (event.data.error) {
-            this.setError(state, event.data.error);
-          } else {
-            this.clearError(state);
+          // Emit thread update notification with final status
+          // Centralized place for all thread status updates on completion
+          if (threadId) {
+            let finalStatus: ThreadStatus;
+
+            if (event.data.error) {
+              this.setError(state, event.data.error);
+              finalStatus = ThreadStatus.Stopped;
+            } else {
+              this.clearError(state);
+              // Determine final status based on result
+              finalStatus = event.data.result?.needsMoreInfo
+                ? ThreadStatus.NeedMoreInfo
+                : ThreadStatus.Done;
+            }
+
+            await this.notificationsService.emit({
+              type: NotificationEvent.ThreadUpdate,
+              graphId: this.graphId,
+              nodeId: state.nodeId,
+              threadId,
+              parentThreadId,
+              data: { status: finalStatus },
+            });
           }
 
           // Clean up thread and run statuses

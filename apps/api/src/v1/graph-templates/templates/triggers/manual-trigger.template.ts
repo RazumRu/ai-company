@@ -10,6 +10,7 @@ import { ManualTrigger } from '../../../agent-triggers/services/manual-trigger';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
   NodeBaseTemplateMetadata,
@@ -46,6 +47,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
   constructor(
     private readonly moduleRef: ModuleRef,
     private readonly logger: DefaultLogger,
+    private readonly graphRegistry: GraphRegistry,
   ) {
     super();
   }
@@ -70,7 +72,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
 
     // Use the first agent node found
     const agentNode = agentNodes[0]!;
-    const agent = agentNode.instance;
+    const agentNodeId = agentNode.id;
 
     // Create a new ManualTrigger instance
     const manualTrigger = await this.moduleRef.resolve(
@@ -87,8 +89,23 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
         messages: HumanMessage[],
         runnableConfig: RunnableConfig<BaseAgentConfigurable>,
       ) => {
+        // Look up the agent from the registry at runtime to get the current instance
+        const currentAgentNode = this.graphRegistry.getNode<SimpleAgent>(
+          metadata.graphId,
+          agentNodeId,
+        );
+
+        if (!currentAgentNode) {
+          throw new NotFoundException(
+            'AGENT_NOT_FOUND',
+            `Agent node ${agentNodeId} not found in graph ${metadata.graphId}`,
+          );
+        }
+
+        const agent = currentAgentNode.instance;
+
         const threadId = `${metadata.graphId}:${runnableConfig.configurable?.thread_id || v4()}`;
-        const checkpointNs = `${threadId}:${agentNode.id}`;
+        const checkpointNs = `${threadId}:${agentNodeId}`;
 
         // The threadId at trigger level becomes the parent_thread_id for all agents in this execution
         const parentThreadId = threadId;
@@ -99,7 +116,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
           configurable: {
             ...runnableConfig.configurable,
             graph_id: metadata.graphId,
-            node_id: agentNode.id,
+            node_id: agentNodeId,
             thread_id: threadId,
             checkpoint_ns: checkpointNs,
             parent_thread_id: parentThreadId,

@@ -37,6 +37,7 @@ describe('Finish Tool E2E Tests', () => {
                   'You are a helpful assistant. When you need more information from the user, call the finish tool with needsMoreInfo set to true.',
                 invokeModelName: 'gpt-5-mini',
                 enforceToolUsage: true,
+                maxIterations: 10,
               },
             },
             {
@@ -159,6 +160,7 @@ describe('Finish Tool E2E Tests', () => {
                   'You are a helpful assistant. When you need more information from the user, call the finish tool with needsMoreInfo set to true and include your question in the message.',
                 invokeModelName: 'gpt-5-mini',
                 enforceToolUsage: true,
+                maxIterations: 10,
               },
             },
             {
@@ -286,6 +288,7 @@ describe('Finish Tool E2E Tests', () => {
                   'You are a helpful assistant. Always call the finish tool to end your response.',
                 invokeModelName: 'gpt-5-mini',
                 enforceToolUsage: true,
+                maxIterations: 10,
               },
             },
             {

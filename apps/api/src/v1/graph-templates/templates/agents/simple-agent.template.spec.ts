@@ -200,6 +200,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       // Use empty connected nodes map
@@ -228,6 +229,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       // Create empty connected nodes map
@@ -255,6 +257,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       const result = await template.create(config, new Map(), connectedNodes, {
@@ -276,6 +279,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       const _result = await template.create(config, new Map(), connectedNodes, {
@@ -302,6 +306,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       const _result = await template.create(
@@ -347,6 +352,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       await expect(
@@ -370,6 +376,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       await expect(
@@ -388,6 +395,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Custom instructions',
         name: 'Custom Agent',
         invokeModelName: 'gpt-3.5-turbo',
+        maxIterations: 10,
       };
 
       const result = await template.create(config, new Map(), connectedNodes, {
@@ -407,6 +415,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        maxIterations: 10,
       };
 
       const result = await template.create(config, new Map(), connectedNodes, {

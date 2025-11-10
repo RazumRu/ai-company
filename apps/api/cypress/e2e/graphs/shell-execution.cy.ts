@@ -542,6 +542,7 @@ function createMockGraphDataWithShellTool(options?: {
             instructions:
               'You are a shell command executor agent. When the user asks you to execute a shell command, you MUST use the shell tool to execute it. Always respond with the output from the shell tool.',
             invokeModelName: 'gpt-5-mini',
+            maxIterations: 10,
           },
         },
         {

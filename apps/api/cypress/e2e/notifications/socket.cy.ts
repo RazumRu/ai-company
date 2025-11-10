@@ -1000,6 +1000,7 @@ describe('Socket Gateway E2E', () => {
               invokeModelName: 'gpt-5-mini',
               summarizeMaxTokens: 272000,
               summarizeKeepTokens: 30000,
+              maxIterations: 10,
             },
           },
           {

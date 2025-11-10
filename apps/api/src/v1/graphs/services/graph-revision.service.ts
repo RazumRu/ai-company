@@ -356,39 +356,18 @@ export class GraphRevisionService {
         );
       }
 
-      // If updating an existing agent node and ONLY config changed (not edges),
-      // use setConfig instead of recreating
-      if (
-        existingNode &&
-        existingNode.type === NodeKind.SimpleAgent &&
-        !edgesChanged
-      ) {
-        this.logger.log(
-          `Updating agent configuration in-place for node ${nodeSchema.id}`,
-        );
-
-        // Validate the new config
-        const validatedConfig = this.templateRegistry.validateTemplateConfig(
-          nodeSchema.template,
-          nodeSchema.config,
-        ) as SimpleAgentSchemaType;
-
-        // Call setConfig on the existing agent instance
-        const instance = existingNode.instance;
-        instance.setConfig(validatedConfig);
-
-        // Update the stored config in the compiled node
-        existingNode.config = nodeSchema.config;
-
-        continue;
-      }
-
       // If edges changed, we need to recreate the node to rebuild connections
       if (edgesChanged && existingNode) {
         this.logger.log(
           `Edges changed for node ${nodeSchema.id}, recreating to rebuild connections`,
         );
       }
+
+      // Validate the config before recreating/creating the node
+      const validatedConfig = this.templateRegistry.validateTemplateConfig(
+        nodeSchema.template,
+        nodeSchema.config,
+      );
 
       // For non-agent nodes or new nodes, use the original create/destroy flow
       // If updating, remove old instance first
@@ -420,7 +399,7 @@ export class GraphRevisionService {
       }
 
       const instance = await template.create(
-        nodeSchema.config,
+        validatedConfig,
         inputNodes,
         outputNodes,
         {
@@ -429,12 +408,12 @@ export class GraphRevisionService {
         },
       );
 
-      const compiledNode = {
+      const compiledNode: CompiledGraphNode = {
         id: nodeSchema.id,
         type: template.kind,
         template: nodeSchema.template,
         instance,
-        config: nodeSchema.config,
+        config: validatedConfig,
       };
 
       compiledGraph.nodes.set(nodeSchema.id, compiledNode);
