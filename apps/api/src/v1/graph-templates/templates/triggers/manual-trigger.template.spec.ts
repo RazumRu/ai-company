@@ -11,6 +11,7 @@ import {
   GraphNodeStatus,
   NodeKind,
 } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import {
   ManualTriggerTemplate,
@@ -35,11 +36,20 @@ describe('ManualTriggerTemplate', () => {
   let mockModuleRef: ModuleRef;
   let mockManualTrigger: ManualTrigger;
   let mockSimpleAgent: SimpleAgent;
+  let mockGraphRegistry: GraphRegistry;
+  let mockAgentNode: CompiledGraphNode<SimpleAgent>;
 
   beforeEach(async () => {
     mockSimpleAgent = {
       run: vi.fn(),
     } as unknown as SimpleAgent;
+
+    mockAgentNode = buildCompiledNode({
+      id: 'agent-1',
+      type: NodeKind.SimpleAgent,
+      template: 'simple-agent',
+      instance: mockSimpleAgent,
+    });
 
     mockManualTrigger = {
       setInvokeAgent: vi.fn(),
@@ -50,6 +60,14 @@ describe('ManualTriggerTemplate', () => {
     mockModuleRef = {
       resolve: vi.fn().mockResolvedValue(mockManualTrigger),
     } as unknown as ModuleRef;
+
+    mockGraphRegistry = {
+      register: vi.fn(),
+      unregister: vi.fn(),
+      get: vi.fn(),
+      getNode: vi.fn().mockReturnValue(mockAgentNode),
+      destroy: vi.fn(),
+    } as unknown as GraphRegistry;
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [
@@ -66,6 +84,10 @@ describe('ManualTriggerTemplate', () => {
         {
           provide: ModuleRef,
           useValue: mockModuleRef,
+        },
+        {
+          provide: GraphRegistry,
+          useValue: mockGraphRegistry,
         },
         {
           provide: ThreadsDao,
@@ -118,7 +140,7 @@ describe('ManualTriggerTemplate', () => {
       const config = {};
 
       await expect(
-        template.create(config, new Map(), new Map(), {
+        template.create(config, new Set(), new Set(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -130,14 +152,12 @@ describe('ManualTriggerTemplate', () => {
       const config = {};
 
       await expect(
-        template.create(config, new Map(), new Map(), {
+        template.create(config, new Set(), new Set(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
         }),
-      ).rejects.toThrow(
-        'No agent nodes found in output connections for trigger',
-      );
+      ).rejects.toThrow('No output connections found for trigger');
     });
 
     it('should create manual trigger with valid agent node', async () => {
@@ -157,11 +177,11 @@ describe('ManualTriggerTemplate', () => {
         instance: mockSimpleAgent,
       });
 
-      const outputNodes = new Map([['agent-1', agentNode]]);
+      const outputNodeIds = new Set(['agent-1']);
 
       const config = {};
 
-      const result = await template.create(config, new Map(), outputNodes, {
+      const result = await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -198,11 +218,11 @@ describe('ManualTriggerTemplate', () => {
         instance: mockSimpleAgent,
       });
 
-      const compiledNodes = new Map([['agent-1', agentNode]]);
+      const outputNodeIds = new Set(['agent-1']);
 
       const config = {};
 
-      await template.create(config, new Map(), compiledNodes, {
+      await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -265,11 +285,11 @@ describe('ManualTriggerTemplate', () => {
         instance: mockSimpleAgent,
       });
 
-      const compiledNodes = new Map([['agent-1', agentNode]]);
+      const outputNodeIds = new Set(['agent-1']);
 
       const config = {};
 
-      await template.create(config, new Map(), compiledNodes, {
+      await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -329,11 +349,11 @@ describe('ManualTriggerTemplate', () => {
         instance: mockSimpleAgent,
       });
 
-      const compiledNodes = new Map([['agent-1', agentNode]]);
+      const outputNodeIds = new Set(['agent-1']);
 
       const config = {};
 
-      await template.create(config, new Map(), compiledNodes, {
+      await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

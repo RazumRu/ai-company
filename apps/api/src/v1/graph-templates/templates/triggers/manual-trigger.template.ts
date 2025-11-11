@@ -54,25 +54,20 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
 
   async create(
     config: ManualTriggerTemplateSchemaType,
-    _inputNodes: Map<string, CompiledGraphNode>,
-    outputNodes: Map<string, CompiledGraphNode>,
+    _inputNodeIds: Set<string>,
+    outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<ManualTrigger> {
-    // Search for agent nodes in output nodes
-    const agentNodes = Array.from(outputNodes.values()).filter(
-      (node) => node.type === NodeKind.SimpleAgent,
-    ) as CompiledGraphNode<SimpleAgent>[];
-
-    if (agentNodes.length === 0) {
+    // Find agent node IDs from output connections
+    if (outputNodeIds.size === 0) {
       throw new NotFoundException(
         'AGENT_NOT_FOUND',
-        `No agent nodes found in output connections for trigger`,
+        `No output connections found for trigger`,
       );
     }
 
-    // Use the first agent node found
-    const agentNode = agentNodes[0]!;
-    const agentNodeId = agentNode.id;
+    // Get the first output node ID (should be an agent)
+    const agentNodeId = Array.from(outputNodeIds)[0]!;
 
     // Create a new ManualTrigger instance
     const manualTrigger = await this.moduleRef.resolve(

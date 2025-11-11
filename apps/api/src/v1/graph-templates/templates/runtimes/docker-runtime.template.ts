@@ -74,8 +74,8 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof DockerRuntimeTemplateSchema>,
-    _inputNodes: Map<string, CompiledGraphNode>,
-    _outputNodes: Map<string, CompiledGraphNode>,
+    _inputNodeIds: Set<string>,
+    _outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<BaseRuntime> {
     // Automatically add graph_id and node_id labels for container management

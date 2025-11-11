@@ -218,7 +218,7 @@ export const createMockGraphData = (
           name: 'Test Agent',
           instructions: 'You are a helpful test agent.',
           invokeModelName: 'gpt-5-mini',
-          maxIterations: 10,
+          maxIterations: 50,
         },
       },
       {

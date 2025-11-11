@@ -399,10 +399,6 @@ describe('Graph Revisions E2E', () => {
           graphCleanup.unregisterGraph(graphId);
         }),
       )
-      .then(() => {
-        // Wait a bit for the revision to be processed
-        return cy.wait(5000);
-      })
       .then(() => getGraphRevisionById(graphId, revisionId))
       .then((revisionResponse) => {
         expect(revisionResponse.status).to.equal(200);
@@ -864,16 +860,13 @@ describe('Graph Revisions E2E', () => {
         })
         .then((failedRevision) => {
           expect(failedRevision.status).to.equal('failed');
-          expect(failedRevision.error).to.include('No agent nodes found');
-
-          cy.task(
-            'log',
-            'Revision correctly failed when removing required edge',
+          expect(failedRevision.error).to.include(
+            'No output connections found',
           );
         });
     });
 
-    it('applies revision when re-adding the edge after removal', () => {
+    it('handles failed revision when removing required edge then applies valid revision', () => {
       const graphData = createMockGraphData();
 
       let graphId: string;
@@ -897,9 +890,7 @@ describe('Graph Revisions E2E', () => {
           return waitForGraphToBeRunning(graphId);
         })
         .then(() => {
-          cy.task('log', 'First removing the edge, then will re-add it');
-
-          // First, remove the edge
+          // First, remove the trigger->agent edge (this creates an invalid graph)
           const updatedSchema = cloneSchema(baseSchema);
           if (updatedSchema.edges) {
             updatedSchema.edges = [];
@@ -919,19 +910,34 @@ describe('Graph Revisions E2E', () => {
           if (!firstRevision) {
             throw new Error('Expected first revision to be created');
           }
-          return waitForRevisionStatus(graphId, firstRevision.id, 'applied', {
+          // This revision should FAIL because trigger requires an agent connection
+          return waitForRevisionStatus(graphId, firstRevision.id, 'failed', {
             timeout: 30000,
           });
         })
-        .then(() => getGraphById(graphId))
+        .then((failedRevision) => {
+          expect(failedRevision.status).to.equal('failed');
+          expect(failedRevision.error).to.include(
+            'No output connections found',
+          );
+
+          return getGraphById(graphId);
+        })
         .then((graphResponse) => {
+          // Version should NOT have changed because revision failed
+          expect(graphResponse.body.version).to.equal(currentVersion);
+
+          // Graph should still have the original edge (failed revision doesn't apply)
+          expect(graphResponse.body.schema.edges).to.have.length(1);
+
           currentVersion = graphResponse.body.version;
           expectedVersion = incrementVersion(currentVersion);
 
-          cy.task('log', 'Now re-adding the edge');
-
-          // Re-add the original edge
-          const updatedSchema = cloneSchema(baseSchema);
+          // Apply a valid change (e.g., updating agent instructions)
+          const updatedSchema = buildUpdatedSchema(
+            baseSchema,
+            'Updated instructions after failed revision',
+          );
 
           return updateGraph(graphId, {
             schema: updatedSchema,
@@ -965,10 +971,16 @@ describe('Graph Revisions E2E', () => {
           expect(graphResponse.status).to.equal(200);
           expect(graphResponse.body.version).to.equal(expectedVersion);
 
-          // Verify the edge is back
+          // Verify the edge is still there (was never removed)
           expect(graphResponse.body.schema.edges).to.have.length(1);
 
-          cy.task('log', 'Edge re-addition revision applied successfully');
+          const agentNode = graphResponse.body.schema.nodes.find(
+            (node) => node.id === 'agent-1',
+          );
+          expect(agentNode?.config).to.have.property(
+            'instructions',
+            'Updated instructions after failed revision',
+          );
         });
     });
 
@@ -996,8 +1008,6 @@ describe('Graph Revisions E2E', () => {
           return waitForGraphToBeRunning(graphId);
         })
         .then(() => {
-          cy.task('log', 'Changing agent model');
-
           const updatedSchema = cloneSchema(baseSchema);
 
           // Find and modify agent's model
@@ -1054,8 +1064,6 @@ describe('Graph Revisions E2E', () => {
             'invokeModelName',
             'gpt-4o',
           );
-
-          cy.task('log', 'Agent model change applied successfully');
         });
     });
   });
@@ -1080,7 +1088,7 @@ describe('Graph Revisions E2E', () => {
               instructions: COMMAND_AGENT_INSTRUCTIONS,
               invokeModelName: 'gpt-5-mini',
               enforceToolUsage: false,
-              maxIterations: 10,
+              maxIterations: 50,
             },
           },
           {
@@ -1235,7 +1243,7 @@ describe('Graph Revisions E2E', () => {
   });
 
   describe('Live Revision Scenarios', () => {
-    it.only('removes runtime node and agent can no longer use runtime commands', () => {
+    it('removes runtime node and agent can no longer use runtime commands', () => {
       const graphData: CreateGraphDto = {
         name: `Remove Runtime Test ${Date.now()}`,
         description: 'Test removing runtime during live revision',
@@ -1254,8 +1262,8 @@ describe('Graph Revisions E2E', () => {
                 name: 'Shell Agent',
                 instructions: COMMAND_AGENT_INSTRUCTIONS,
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: false,
-                maxIterations: 10,
+                enforceToolUsage: true,
+                maxIterations: 50,
               },
             },
             {
@@ -1387,13 +1395,11 @@ describe('Graph Revisions E2E', () => {
           expect(shellNode).to.not.exist;
         })
         .then(() => {
-          // Now try to execute a shell command WITHOUT runtime
-          // The agent should fail since shell tool requires runtime
           return executeTrigger(
             graphId,
             'trigger-1',
             {
-              messages: ['Run this command: echo "test without runtime"'],
+              messages: ['Run this command: echo "test without shell"'],
               async: false,
             },
             reqHeaders,
@@ -1403,7 +1409,6 @@ describe('Graph Revisions E2E', () => {
           expect(triggerResponse.status).to.equal(201);
           const threadId2 = triggerResponse.body.threadId;
 
-          // Wait for thread to complete (should finish with stopped status due to errors)
           return waitForThreadStatus(
             threadId2,
             terminalThreadStatuses,
@@ -1412,28 +1417,42 @@ describe('Graph Revisions E2E', () => {
           );
         })
         .then((threadResponse) => {
-          // Thread should be marked as stopped when execution encounters errors
-          expect(threadResponse.body.status).to.equal('stopped');
+          expect(threadResponse.body.status).to.equal('done');
 
           const internalThreadId2 = threadResponse.body.id;
 
-          // Check messages to verify agent couldn't use shell tool
           return getThreadMessages(internalThreadId2);
         })
         .then((messagesResponse) => {
           expect(messagesResponse.status).to.equal(200);
           const messages = messagesResponse.body as ThreadMessageDto[];
 
-          // The agent should have attempted to execute but failed because:
-          // 1. Shell tool is no longer available (removed with runtime), OR
-          // 2. Agent reached max iterations trying to complete without the tool
-          // The thread should have stopped with an error status
           const aiMessages = messages
             .map((m: ThreadMessageDto) => m.message)
             .filter(isAiMessage);
 
-          // Verify the agent made at least some attempt
           expect(aiMessages.length).to.be.greaterThan(0);
+
+          // Verify no shell tool calls were made (tool was removed)
+          const shellToolCalls = aiMessages.flatMap((msg) => {
+            if (!msg.toolCalls) return [];
+            return msg.toolCalls.filter((call) => call.name === 'shell');
+          });
+
+          expect(
+            shellToolCalls.length,
+            'Agent should not call removed shell tool',
+          ).to.equal(0);
+
+          // Verify no shell tool results exist
+          const shellMessages = messages
+            .map((m: ThreadMessageDto) => m.message)
+            .filter(isShellToolMessage);
+
+          expect(
+            shellMessages.length,
+            'No shell tool results should exist',
+          ).to.equal(0);
         });
     });
 
@@ -1457,7 +1476,7 @@ describe('Graph Revisions E2E', () => {
                 instructions:
                   'You are a helpful agent. Always respond with "OLD CONFIG"',
                 invokeModelName: 'gpt-5-mini',
-                maxIterations: 10,
+                maxIterations: 50,
               },
             },
           ],
@@ -1480,11 +1499,6 @@ describe('Graph Revisions E2E', () => {
           expect(runResponse.status).to.equal(201);
           return waitForGraphToBeRunning(graphId);
         })
-        .then(() =>
-          cy.wrap(new Promise((resolve) => setTimeout(resolve, 3000)), {
-            timeout: 5000,
-          }),
-        )
         .then(() => {
           // Execute trigger with old config
           return executeTrigger(
@@ -1527,11 +1541,6 @@ describe('Graph Revisions E2E', () => {
           expect(revision).to.exist;
 
           return waitForRevisionStatus(graphId, revision!.id, 'applied');
-        })
-        .then(() => {
-          return cy.wrap(new Promise((resolve) => setTimeout(resolve, 3000)), {
-            timeout: 5000,
-          });
         })
         .then(() => {
           // Verify agent node still exists
@@ -1581,8 +1590,8 @@ describe('Graph Revisions E2E', () => {
                 name: 'Test Agent',
                 instructions: COMMAND_AGENT_INSTRUCTIONS,
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: false,
-                maxIterations: 10,
+                enforceToolUsage: true,
+                maxIterations: 50,
               },
             },
           ],
@@ -1608,62 +1617,37 @@ describe('Graph Revisions E2E', () => {
           return waitForGraphToBeRunning(graphId);
         })
         .then(() => {
-          return cy.wrap(new Promise((resolve) => setTimeout(resolve, 3000)), {
-            timeout: 5000,
+          // Add both shell tool and runtime in ONE revision (build order should handle dependencies)
+          const updatedSchema = cloneSchema(graphData.schema);
+          updatedSchema.nodes.push({
+            id: 'shell-1',
+            template: 'shell-tool',
+            config: {},
+          });
+          updatedSchema.nodes.push({
+            id: 'runtime-1',
+            template: 'docker-runtime',
+            config: {
+              runtimeType: 'Docker',
+              image: 'python:3.11-slim',
+              env: {},
+            },
+          });
+          updatedSchema.edges!.push({
+            from: 'agent-1',
+            to: 'shell-1',
+          });
+          updatedSchema.edges!.push({
+            from: 'shell-1',
+            to: 'runtime-1',
+          });
+
+          return updateGraph(graphId, {
+            schema: updatedSchema,
+            currentVersion,
           });
         })
-        .then(() => {
-          // Add both shell tool and runtime in ONE revision (build order should handle dependencies)
-          return cy
-            .task(
-              'log',
-              `[Add Tool Test] Adding shell-1 and runtime-1 nodes to graph ${graphId}`,
-            )
-            .then(() => {
-              const updatedSchema = cloneSchema(graphData.schema);
-              updatedSchema.nodes.push({
-                id: 'shell-1',
-                template: 'shell-tool',
-                config: {},
-              });
-              updatedSchema.nodes.push({
-                id: 'runtime-1',
-                template: 'docker-runtime',
-                config: {
-                  runtimeType: 'Docker',
-                  image: 'python:3.11-slim',
-                  env: {},
-                },
-              });
-              updatedSchema.edges!.push({
-                from: 'agent-1',
-                to: 'shell-1',
-              });
-              updatedSchema.edges!.push({
-                from: 'shell-1',
-                to: 'runtime-1',
-              });
-
-              return updateGraph(graphId, {
-                schema: updatedSchema,
-                currentVersion,
-              });
-            });
-        })
         .then((updateResponse) => {
-          cy.task(
-            'log',
-            `[Add Tool Test] Update response status: ${updateResponse.status}`,
-          );
-
-          if (updateResponse.status !== 200) {
-            cy.task(
-              'log',
-              `[Add Tool Test] Update error: ${JSON.stringify(updateResponse.body)}`,
-            );
-            expect(updateResponse.status).to.equal(200);
-          }
-
           expect(updateResponse.status).to.equal(200);
           return getGraphRevisions(graphId);
         })
@@ -1678,134 +1662,64 @@ describe('Graph Revisions E2E', () => {
               '[Add Tool Test] Expected a revision to be returned after update',
             );
           }
-          cy.task(
-            'log',
-            `[Add Tool Test] Revision created: ${revision.id}, status: ${revision.status}`,
-          );
           return waitForRevisionStatus(graphId, revision.id, 'applied');
         })
         .then(() => {
-          return cy.wrap(new Promise((resolve) => setTimeout(resolve, 5000)), {
-            timeout: 7000,
-          });
-        })
-        .then(() => {
           // Verify both tools were added
-          return cy
-            .task('log', `[Add Tool Test] Getting compiled nodes`)
-            .then(() => getCompiledNodes(graphId));
+          return getCompiledNodes(graphId);
         })
         .then((nodesResponse) => {
           expect(nodesResponse.status).to.equal(200);
-          return cy
-            .task(
-              'log',
-              `[Add Tool Test] Compiled nodes: ${JSON.stringify(
-                nodesResponse.body.map((node: GraphNodeWithStatusDto) => ({
-                  id: node.id,
-                  status: node.status,
-                })),
-              )}`,
-            )
-            .then(() => {
-              const shellNode = nodesResponse.body.find(
-                (n: GraphNodeWithStatusDto) => n.id === 'shell-1',
-              );
-              const runtimeNode = nodesResponse.body.find(
-                (n: GraphNodeWithStatusDto) => n.id === 'runtime-1',
-              );
-              expect(shellNode).to.exist;
-              expect(runtimeNode).to.exist;
-            });
+          const shellNode = nodesResponse.body.find(
+            (n: GraphNodeWithStatusDto) => n.id === 'shell-1',
+          );
+          const runtimeNode = nodesResponse.body.find(
+            (n: GraphNodeWithStatusDto) => n.id === 'runtime-1',
+          );
+          expect(shellNode).to.exist;
+          expect(runtimeNode).to.exist;
         })
         .then(() => {
           // Execute trigger to verify agent can use the tool
-          return cy.task('log', `[Add Tool Test] Executing trigger`).then(() =>
-            executeTrigger(
-              graphId,
-              'trigger-1',
-              {
-                messages: ['Run this command: echo "hello from new tool"'],
-                async: true,
-              },
-              reqHeaders,
-              60000,
-            ),
+          return executeTrigger(
+            graphId,
+            'trigger-1',
+            {
+              messages: ['Run this command: echo "hello from new tool"'],
+              async: true,
+            },
+            reqHeaders,
+            60000,
           );
         })
         .then((triggerResponse) => {
-          return cy
-            .task(
-              'log',
-              `[Add Tool Test] Trigger response status: ${triggerResponse.status}`,
-            )
-            .then(() => {
-              if (triggerResponse.status !== 201) {
-                cy.task(
-                  'log',
-                  `[Add Tool Test] Trigger error: ${JSON.stringify(triggerResponse.body)}`,
-                );
-                throw new Error(
-                  `[Add Tool Test] Expected trigger status 201 but received ${triggerResponse.status}`,
-                );
-              }
-              expect(triggerResponse.status).to.equal(201);
-              threadId = triggerResponse.body.threadId;
-              cy.task('log', `[Add Tool Test] Thread ID: ${threadId}`);
-              // Wait for thread to complete (accepting any terminal status)
-              return waitForThreadStatus(
-                threadId,
-                terminalThreadStatuses,
-                45,
-                2000,
-              );
-            });
+          expect(triggerResponse.status).to.equal(201);
+          threadId = triggerResponse.body.threadId;
+
+          // Wait for thread to complete (accepting any terminal status)
+          return waitForThreadStatus(
+            threadId,
+            terminalThreadStatuses,
+            45,
+            2000,
+          );
         })
         .then((threadResponse) => {
           internalThreadId = threadResponse.body.id;
-          cy.task(
-            'log',
-            `[Add Tool Test] Thread status after waiting: ${JSON.stringify(threadResponse.body)}`,
-          );
           return threadResponse;
         })
         .then(() => {
           // Verify the shell tool was used by checking messages (use internal UUID, not externalThreadId)
-          cy.task(
-            'log',
-            `[Add Tool Test] Getting messages for thread: ${internalThreadId}`,
-          );
           return getThreadMessages(internalThreadId);
         })
         .then((messagesResponse) => {
-          cy.task(
-            'log',
-            `[Add Tool Test] Messages response status: ${messagesResponse.status}`,
-          );
-          if (messagesResponse.status !== 200) {
-            cy.task(
-              'log',
-              `[Add Tool Test] Messages error: ${JSON.stringify(messagesResponse.body)}`,
-            );
-            throw new Error(
-              `[Add Tool Test] Expected messages response status 200 but received ${messagesResponse.status}`,
-            );
-          }
           expect(messagesResponse.status).to.equal(200);
           const messages = messagesResponse.body as ThreadMessageDto[];
-          cy.task(
-            'log',
-            `[Add Tool Test] Messages payload: ${JSON.stringify(messages, null, 2)}`,
-          );
 
           // Check that shell tool was called and succeeded
           const shellResults = messages
             .map((message: ThreadMessageDto) => message.message)
             .filter(isShellToolMessage);
-          cy.task(
-            'log',
-            `[Add Tool Test] Shell result count: ${shellResults.length}`,
-          );
           expect(shellResults.length).to.be.greaterThan(0);
 
           const successfulShell = shellResults.find(
@@ -1856,8 +1770,8 @@ describe('Graph Revisions E2E', () => {
                 name: 'Test Agent',
                 instructions: COMMAND_AGENT_INSTRUCTIONS,
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: false,
-                maxIterations: 10,
+                enforceToolUsage: true,
+                maxIterations: 50,
               },
             },
             {
@@ -1901,11 +1815,6 @@ describe('Graph Revisions E2E', () => {
           return waitForGraphToBeRunning(graphId);
         })
         .then(() => {
-          return cy.wrap(new Promise((resolve) => setTimeout(resolve, 5000)), {
-            timeout: 7000,
-          });
-        })
-        .then(() => {
           // Update runtime env vars (since shell-tool has empty config)
           const updatedSchema = cloneSchema(graphData.schema);
           const runtimeNode = updatedSchema.nodes.find(
@@ -1935,11 +1844,6 @@ describe('Graph Revisions E2E', () => {
           expect(revision).to.exist;
 
           return waitForRevisionStatus(graphId, revision!.id, 'applied');
-        })
-        .then(() => {
-          return cy.wrap(new Promise((resolve) => setTimeout(resolve, 3000)), {
-            timeout: 5000,
-          });
         })
         .then(() => {
           // Verify tool still exists
@@ -1978,49 +1882,20 @@ describe('Graph Revisions E2E', () => {
         })
         .then((threadResponse) => {
           internalThreadId = threadResponse.body.id;
-          cy.task(
-            'log',
-            `[Tool Config Test] Thread status: ${JSON.stringify(threadResponse.body)}`,
-          );
           return threadResponse;
         })
         .then(() => {
           // Verify the tool still works by checking messages (use internal UUID, not externalThreadId)
-          cy.task(
-            'log',
-            `[Tool Config Test] Getting messages for thread: ${internalThreadId}`,
-          );
           return getThreadMessages(internalThreadId);
         })
         .then((messagesResponse) => {
-          cy.task(
-            'log',
-            `[Tool Config Test] Messages response status: ${messagesResponse.status}`,
-          );
-          if (messagesResponse.status !== 200) {
-            cy.task(
-              'log',
-              `[Tool Config Test] Messages error: ${JSON.stringify(messagesResponse.body)}`,
-            );
-            throw new Error(
-              `[Tool Config Test] Expected messages response status 200 but received ${messagesResponse.status}`,
-            );
-          }
           expect(messagesResponse.status).to.equal(200);
           const messages = messagesResponse.body as ThreadMessageDto[];
-          cy.task(
-            'log',
-            `[Tool Config Test] Messages payload: ${JSON.stringify(messages, null, 2)}`,
-          );
 
           // Check that shell tool was called and succeeded
           const shellResults = messages
             .map((message: ThreadMessageDto) => message.message)
             .filter(isShellToolMessage);
-          cy.task(
-            'log',
-            `[Tool Config Test] Shell result count: ${shellResults.length}`,
-          );
           expect(shellResults.length).to.be.greaterThan(0);
 
           const successfulShell = shellResults.find(
@@ -2072,8 +1947,8 @@ describe('Graph Revisions E2E', () => {
                 name: 'Test Agent',
                 instructions: COMMAND_AGENT_INSTRUCTIONS,
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: false,
-                maxIterations: 10,
+                enforceToolUsage: true,
+                maxIterations: 50,
               },
             },
             {
@@ -2119,11 +1994,6 @@ describe('Graph Revisions E2E', () => {
           return waitForGraphToBeRunning(graphId);
         })
         .then(() => {
-          return cy.wrap(new Promise((resolve) => setTimeout(resolve, 5000)), {
-            timeout: 7000,
-          });
-        })
-        .then(() => {
           // Update runtime env vars (resource configuration)
           const updatedSchema = cloneSchema(graphData.schema);
           const runtimeNode = updatedSchema.nodes.find(
@@ -2156,11 +2026,6 @@ describe('Graph Revisions E2E', () => {
           return waitForRevisionStatus(graphId, revision!.id, 'applied');
         })
         .then(() => {
-          return cy.wrap(new Promise((resolve) => setTimeout(resolve, 3000)), {
-            timeout: 5000,
-          });
-        })
-        .then(() => {
           // Verify runtime still exists and is idle
           return getCompiledNodes(graphId);
         })
@@ -2172,12 +2037,6 @@ describe('Graph Revisions E2E', () => {
           expect(runtimeNode).to.exist;
           expect(runtimeNode?.status).to.equal('idle');
         })
-        .then(() =>
-          // Give runtime extra time to settle before executing command
-          cy.wrap(new Promise((resolve) => setTimeout(resolve, 5000)), {
-            timeout: 7000,
-          }),
-        )
         .then(() =>
           executeTrigger(
             graphId,
@@ -2204,19 +2063,54 @@ describe('Graph Revisions E2E', () => {
         })
         .then((threadResponse) => {
           internalThreadId = threadResponse.body.id;
-          cy.task(
-            'log',
-            `[Resource Config Test] Thread status: ${JSON.stringify(threadResponse.body)}`,
-          );
           return threadResponse;
         })
         .then(() => {
           // Verify everything still works by checking messages (use internal UUID, not externalThreadId)
-          cy.task(
-            'log',
-            `[Resource Config Test] Getting messages for thread: ${internalThreadId}`,
-          );
           return getThreadMessages(internalThreadId);
+        })
+        .then((messagesResponse) => {
+          expect(messagesResponse.status).to.equal(200);
+          const messages = messagesResponse.body as ThreadMessageDto[];
+
+          // Check that shell tool was called and succeeded
+          const shellResults = messages
+            .map((message: ThreadMessageDto) => message.message)
+            .filter(isShellToolMessage);
+          expect(
+            shellResults.length,
+            'Expected at least one shell tool result',
+          ).to.be.greaterThan(0);
+
+          const successfulShell = shellResults.find(
+            (message: ShellToolMessage) => message.content.exitCode === 0,
+          );
+          expect(
+            successfulShell,
+            'Expected shell command to succeed after resource config change',
+          ).to.exist;
+
+          const correspondingCall = messages.find(
+            (message: ThreadMessageDto) => {
+              if (!isAiMessage(message.message)) {
+                return false;
+              }
+
+              const toolCalls = (message.message.toolCalls ??
+                []) as AiToolCall[];
+              return toolCalls.some((call) =>
+                matchesShellCommand(call, 'test after resource change'),
+              );
+            },
+          );
+          expect(
+            correspondingCall,
+            'Expected shell tool call with the requested command',
+          ).to.exist;
+
+          // Check that we got output from the command
+          const stdout = successfulShell?.content.stdout ?? '';
+          expect(stdout).to.include('test after resource change');
         });
     });
   });

@@ -10,6 +10,7 @@ import {
   ResourceKind,
 } from '../../../graph-resources/graph-resources.types';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
@@ -51,46 +52,56 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     },
   ] as const;
 
-  constructor(private readonly shellTool: ShellTool) {
+  constructor(
+    private readonly shellTool: ShellTool,
+    private readonly graphRegistry: GraphRegistry,
+  ) {
     super();
   }
 
   async create(
     config: z.infer<typeof ShellToolTemplateSchema>,
-    _inputNodes: Map<string, CompiledGraphNode>,
-    outputNodes: Map<string, CompiledGraphNode>,
+    _inputNodeIds: Set<string>,
+    outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     // Find runtime node from output nodes
-    let runtimeNode: CompiledGraphNode<BaseRuntime> | undefined;
+    const runtimeNodeIds = this.graphRegistry.filterNodesByType(
+      metadata.graphId,
+      outputNodeIds,
+      NodeKind.Runtime,
+    );
 
-    for (const [_nodeId, node] of outputNodes) {
-      if (node.type === NodeKind.Runtime) {
-        runtimeNode = node as CompiledGraphNode<BaseRuntime>;
-        break;
-      }
-    }
-
-    if (!runtimeNode) {
+    if (runtimeNodeIds.length === 0) {
       throw new NotFoundException(
         'NODE_NOT_FOUND',
         `Runtime node not found in output nodes`,
       );
     }
 
-    // Collect resource nodes from output nodes
-    const resourceNodeIds: string[] = [];
+    const runtimeNode = this.graphRegistry.getNode<BaseRuntime>(
+      metadata.graphId,
+      runtimeNodeIds[0]!,
+    );
 
-    for (const [nodeId, node] of outputNodes) {
-      if (node.type === NodeKind.Resource) {
-        resourceNodeIds.push(nodeId);
-      }
+    if (!runtimeNode) {
+      throw new NotFoundException(
+        'NODE_NOT_FOUND',
+        `Runtime node ${runtimeNodeIds[0]} not found`,
+      );
     }
+
+    // Collect resource node IDs from output nodes
+    const resourceNodeIds = this.graphRegistry.filterNodesByType(
+      metadata.graphId,
+      outputNodeIds,
+      NodeKind.Resource,
+    );
 
     // Discover and collect environment variables and information from resources
     const { env, information, initScripts } = this.collectResourceData(
       resourceNodeIds,
-      outputNodes,
+      metadata.graphId,
     );
 
     // Execute init scripts on the runtime
@@ -131,8 +142,27 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     }
     const combinedInfo = allInformationParts.join('\n');
 
+    // Store the runtime node ID to fetch fresh instance on each invocation
+    const runtimeNodeId = runtimeNodeIds[0]!;
+    const graphId = metadata.graphId;
+
     return this.shellTool.build({
-      runtime: runtimeNode.instance,
+      runtime: () => {
+        // Get fresh runtime instance from registry on each invocation
+        const currentRuntimeNode = this.graphRegistry.getNode<BaseRuntime>(
+          graphId,
+          runtimeNodeId,
+        );
+
+        if (!currentRuntimeNode) {
+          throw new NotFoundException(
+            'RUNTIME_NOT_FOUND',
+            `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
+          );
+        }
+
+        return currentRuntimeNode.instance;
+      },
       env,
       additionalInfo: combinedInfo,
     });
@@ -167,7 +197,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
 
   private collectResourceData(
     resourceNodeIds: string[],
-    connectedNodes: Map<string, CompiledGraphNode>,
+    graphId: string,
   ): {
     env: Record<string, string>;
     information: string;
@@ -178,7 +208,11 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     const initScripts: { cmd: string[] | string; timeout?: number }[] = [];
 
     for (const nodeId of resourceNodeIds) {
-      const node = connectedNodes.get(nodeId);
+      const node = this.graphRegistry.getNode<IShellResourceOutput>(
+        graphId,
+        nodeId,
+      );
+
       if (node && node.type === NodeKind.Resource) {
         if ((<IBaseResourceOutput>node.instance)?.kind != ResourceKind.Shell) {
           continue;

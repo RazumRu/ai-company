@@ -251,7 +251,7 @@ describe('GraphStateManager', () => {
       });
 
       // First thread completes
-      subscribeFn?.({
+      await subscribeFn?.({
         type: 'run',
         data: {
           threadId: 'thread-1',
@@ -285,16 +285,19 @@ describe('GraphStateManager', () => {
         }),
       );
 
-      // Should NOT emit ThreadUpdate for thread-1 (already completed)
+      // Thread-1 should have received exactly ONE ThreadUpdate when it completed (Done status)
+      // But should NOT receive another ThreadUpdate on stop since it already finished
       const thread1Calls = (notifications.emit as any).mock.calls.filter(
         (call: any) =>
           call[0]?.type === NotificationEvent.ThreadUpdate &&
           call[0]?.threadId === 'thread-1',
       );
-      expect(thread1Calls.length).toBe(0);
+      // Should have exactly 1 ThreadUpdate with Done status
+      expect(thread1Calls.length).toBe(1);
+      expect(thread1Calls[0][0].data.status).toBe('done');
     });
 
-    it('should track node status as Running when at least one thread is active', () => {
+    it('should track node status as Running when at least one thread is active', async () => {
       let subscribeFn: ((event: any) => void) | undefined;
 
       const agent = {
@@ -349,8 +352,8 @@ describe('GraphStateManager', () => {
         },
       });
 
-      // First run completes
-      subscribeFn?.({
+      // First run completes - await this since it's async
+      await subscribeFn?.({
         type: 'run',
         data: {
           threadId: 'thread-1',
@@ -371,9 +374,9 @@ describe('GraphStateManager', () => {
       const status = manager.getNodeStatus('agent-1');
       expect(status).toBe(GraphNodeStatus.Running);
 
-      // Check thread status - thread-1 should be removed, thread-2 should still be there
+      // Check thread status - thread-1 should be removed after completion, thread-2 should still be there
       const thread1Status = manager.getNodeThreadStatus('agent-1', 'thread-1');
-      expect(thread1Status).toBeUndefined();
+      expect(thread1Status).toBeUndefined(); // Cleaned up after run completion
 
       const thread2Status = manager.getNodeThreadStatus('agent-1', 'thread-2');
       expect(thread2Status).toBe(GraphNodeStatus.Running);
@@ -532,9 +535,22 @@ describe('GraphStateManager', () => {
         }),
       );
 
-      // Verify no duplicate notifications were sent
+      // Should also emit ThreadUpdate with final status
+      expect(notifications.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.ThreadUpdate,
+          graphId: 'graph-1',
+          nodeId: 'agent-1',
+          threadId: 'thread-1',
+          data: {
+            status: 'done',
+          },
+        }),
+      );
+
+      // Verify we have both notifications
       const allCalls = (notifications.emit as any).mock.calls;
-      expect(allCalls.length).toBe(1); // Only GraphNodeUpdate after run
+      expect(allCalls.length).toBe(2); // GraphNodeUpdate and ThreadUpdate after run
     });
 
     it('should not emit duplicate GraphNodeUpdate notifications', async () => {

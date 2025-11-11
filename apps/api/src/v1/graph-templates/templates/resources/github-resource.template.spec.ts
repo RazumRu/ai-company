@@ -171,7 +171,7 @@ describe('GithubResourceTemplate', () => {
         mockResourceOutput,
       );
 
-      const compiledNodes = new Map<string, CompiledGraphNode>();
+      const outputNodeIds = new Set<string>();
       const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
@@ -180,8 +180,8 @@ describe('GithubResourceTemplate', () => {
 
       const result = await template.create(
         config,
-        new Map(),
-        compiledNodes,
+        new Set(),
+        outputNodeIds,
         metadata,
       );
 
@@ -213,7 +213,7 @@ describe('GithubResourceTemplate', () => {
         mockResourceOutput,
       );
 
-      const compiledNodes = new Map<string, CompiledGraphNode>();
+      const outputNodeIds = new Set<string>();
       const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
@@ -222,8 +222,8 @@ describe('GithubResourceTemplate', () => {
 
       const result = await template.create(
         config,
-        new Map(),
-        compiledNodes,
+        new Set(),
+        outputNodeIds,
         metadata,
       );
 
@@ -240,7 +240,7 @@ describe('GithubResourceTemplate', () => {
       const setupError = new Error('Setup failed');
       vi.mocked(mockGithubResource.setup!).mockRejectedValue(setupError);
 
-      const compiledNodes = new Map<string, CompiledGraphNode>();
+      const outputNodeIds = new Set<string>();
       const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
@@ -248,7 +248,7 @@ describe('GithubResourceTemplate', () => {
       };
 
       await expect(
-        template.create(config, new Map(), compiledNodes, metadata),
+        template.create(config, new Set(), outputNodeIds, metadata),
       ).rejects.toThrow('Setup failed');
     });
 
@@ -262,7 +262,7 @@ describe('GithubResourceTemplate', () => {
       vi.mocked(mockGithubResource.setup!).mockResolvedValue(undefined);
       vi.mocked(mockGithubResource.getData).mockRejectedValue(getDataError);
 
-      const compiledNodes = new Map<string, CompiledGraphNode>();
+      const outputNodeIds = new Set<string>();
       const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
@@ -270,7 +270,7 @@ describe('GithubResourceTemplate', () => {
       };
 
       await expect(
-        template.create(config, new Map(), compiledNodes, metadata),
+        template.create(config, new Set(), outputNodeIds, metadata),
       ).rejects.toThrow('GetData failed');
     });
 
@@ -296,14 +296,14 @@ describe('GithubResourceTemplate', () => {
         mockResourceOutput,
       );
 
-      const compiledNodes = new Map<string, CompiledGraphNode>();
+      const outputNodeIds = new Set<string>();
       const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
       };
 
-      await template.create(config, new Map(), compiledNodes, metadata);
+      await template.create(config, new Set(), outputNodeIds, metadata);
 
       expect(mockGithubResource.setup).toHaveBeenCalledWith(config);
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);

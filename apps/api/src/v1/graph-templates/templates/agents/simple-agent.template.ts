@@ -8,6 +8,7 @@ import {
   SimpleAgentSchema,
 } from '../../../agents/services/agents/simple-agent';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
   NodeBaseTemplateMetadata,
@@ -52,15 +53,18 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     },
   ] as const;
 
-  constructor(private readonly agentFactoryService: AgentFactoryService) {
+  constructor(
+    private readonly agentFactoryService: AgentFactoryService,
+    private readonly graphRegistry: GraphRegistry,
+  ) {
     super();
   }
 
   async create(
     config: SimpleAgentTemplateSchemaType,
-    _inputNodes: Map<string, CompiledGraphNode>,
-    outputNodes: Map<string, CompiledGraphNode>,
-    _metadata: NodeBaseTemplateMetadata,
+    _inputNodeIds: Set<string>,
+    outputNodeIds: Set<string>,
+    metadata: NodeBaseTemplateMetadata,
   ): Promise<SimpleAgent> {
     const agent = await this.agentFactoryService.create(SimpleAgent);
     const { ...agentConfig } = config;
@@ -68,11 +72,15 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     // Set initial configuration
     agent.setConfig(agentConfig);
 
-    for (const [_nodeId, node] of outputNodes) {
-      if (node.type === NodeKind.Tool) {
-        agent.addTool(
-          (node as CompiledGraphNode<DynamicStructuredTool>).instance,
-        );
+    // Look up tool nodes from the registry and add them to the agent
+    for (const nodeId of outputNodeIds) {
+      const node = this.graphRegistry.getNode<DynamicStructuredTool>(
+        metadata.graphId,
+        nodeId,
+      );
+
+      if (node && node.type === NodeKind.Tool) {
+        agent.addTool(node.instance);
       }
     }
 

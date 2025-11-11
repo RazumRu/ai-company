@@ -46,7 +46,9 @@ export class InvokeLlmNode extends BaseNode<
 
     const runner = this.llm.bindTools(this.tools, {
       tool_choice: this.tools.length ? this.opts?.toolChoice : undefined,
-      parallel_tool_calls: this.opts?.parallelToolCalls,
+      parallel_tool_calls: this.tools.length
+        ? this.opts?.parallelToolCalls
+        : undefined,
     });
 
     const messages: BaseMessage[] = updateMessagesListWithMetadata(

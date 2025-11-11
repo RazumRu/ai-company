@@ -77,9 +77,9 @@ describe('WebSearchToolTemplate', () => {
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = { apiKey: 'test-api-key' };
-      const compiledNodes = new Map<string, CompiledGraphNode>();
+      const outputNodeIds = new Set<string>();
 
-      const result = await template.create(config, new Map(), compiledNodes, {
+      const result = await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -97,7 +97,7 @@ describe('WebSearchToolTemplate', () => {
         apiKey: 'test-api-key',
       };
 
-      const result = await template.create(config, new Map(), new Map(), {
+      const result = await template.create(config, new Set(), new Set(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -116,7 +116,7 @@ describe('WebSearchToolTemplate', () => {
       const config = { apiKey: 'test-api-key' };
 
       await expect(
-        template.create(config, new Map(), new Map(), {
+        template.create(config, new Set(), new Set(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -129,20 +129,9 @@ describe('WebSearchToolTemplate', () => {
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = { apiKey: 'test-api-key' };
-      const compiledNodes = new Map([
-        [
-          'some-node',
-          {
-            id: 'some-node',
-            type: NodeKind.Runtime,
-            template: 'some-template',
-            config: {},
-            instance: {},
-          },
-        ],
-      ]);
+      const outputNodeIds = new Set(['some-node']);
 
-      const result = await template.create(config, new Map(), compiledNodes, {
+      const result = await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -165,7 +154,7 @@ describe('WebSearchToolTemplate', () => {
         customHeaders: { 'User-Agent': 'test-agent' },
       };
 
-      await template.create(config, new Map(), new Map(), {
+      await template.create(config, new Set(), new Set(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -180,7 +169,7 @@ describe('WebSearchToolTemplate', () => {
 
       const config = { apiKey: 'test-api-key' };
 
-      const result = await template.create(config, new Map(), new Map(), {
+      const result = await template.create(config, new Set(), new Set(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -201,12 +190,12 @@ describe('WebSearchToolTemplate', () => {
       const config1 = { apiKey: 'test-key-1' };
       const config2 = { apiKey: 'test-key-2' };
 
-      const result1 = await template.create(config1, new Map(), new Map(), {
+      const result1 = await template.create(config1, new Set(), new Set(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
       });
-      const result2 = await template.create(config2, new Map(), new Map(), {
+      const result2 = await template.create(config2, new Set(), new Set(), {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

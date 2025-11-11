@@ -18,6 +18,7 @@ import {
   GraphSchemaType,
   NodeKind,
 } from '../graphs.types';
+import { GraphRegistry } from './graph-registry';
 import { GraphStateFactory } from './graph-state.factory';
 import { GraphStateManager } from './graph-state.manager';
 
@@ -27,6 +28,7 @@ export class GraphCompiler {
     private readonly templateRegistry: TemplateRegistry,
     private readonly logger: DefaultLogger,
     private readonly graphStateFactory: GraphStateFactory,
+    private readonly graphRegistry: GraphRegistry,
   ) {}
 
   validateSchema(schema: GraphSchemaType): void {
@@ -243,21 +245,9 @@ export class GraphCompiler {
     const stateManager = await this.graphStateFactory.create(graphId);
     const edges = schema.edges || [];
 
-    const buildOrder = this.getBuildOrder(schema);
-
-    for (const node of buildOrder) {
-      const compiledNode = await this.compileNode(
-        node,
-        compiledNodes,
-        metadata,
-        edges,
-        stateManager,
-      );
-      compiledNodes.set(node.id, compiledNode);
-      stateManager.attachGraphNode(node.id, compiledNode);
-    }
-
-    return {
+    // Create the compiled graph structure early and register it
+    // This allows templates to look up nodes via GraphRegistry during compilation
+    const compiledGraph: CompiledGraph = {
       nodes: compiledNodes,
       edges: schema.edges || [],
       state: stateManager,
@@ -266,6 +256,33 @@ export class GraphCompiler {
         stateManager.destroy();
       },
     };
+
+    // Register the graph before compiling nodes so templates can access it
+    this.graphRegistry.register(graphId, compiledGraph);
+
+    try {
+      const buildOrder = this.getBuildOrder(schema);
+
+      for (const node of buildOrder) {
+        const compiledNode = await this.compileNode(
+          node,
+          compiledNodes,
+          metadata,
+          edges,
+          stateManager,
+        );
+        compiledNodes.set(node.id, compiledNode);
+        stateManager.attachGraphNode(node.id, compiledNode);
+
+        // Node is now available in the registry for other templates to reference
+      }
+
+      return compiledGraph;
+    } catch (error) {
+      // If compilation fails, unregister the graph
+      this.graphRegistry.unregister(graphId);
+      throw error;
+    }
   }
 
   /**
@@ -363,36 +380,39 @@ export class GraphCompiler {
       );
     }
 
-    // Create input and output nodes maps based on edge direction
-    const inputNodes = new Map<string, CompiledGraphNode>();
-    const outputNodes = new Map<string, CompiledGraphNode>();
+    // Create input and output node ID sets based on edge direction
+    const inputNodeIds = new Set<string>();
+    const outputNodeIds = new Set<string>();
 
     // Find edges where this node is the source (outputs) or target (inputs)
     const outgoingEdges = edges.filter((edge) => edge.from === node.id);
     const incomingEdges = edges.filter((edge) => edge.to === node.id);
 
-    // Add nodes that this node connects to (its inputs)
+    // Add node IDs that connect to this node (its inputs)
     for (const edge of incomingEdges) {
-      const inputNode = compiledNodes.get(edge.from);
-      if (inputNode) {
-        inputNodes.set(edge.from, inputNode);
+      if (compiledNodes.has(edge.from)) {
+        inputNodeIds.add(edge.from);
       }
     }
 
-    // Add nodes that this node provides for (its outputs)
+    // Add node IDs that this node connects to (its outputs)
     for (const edge of outgoingEdges) {
-      const outputNode = compiledNodes.get(edge.to);
-      if (outputNode) {
-        outputNodes.set(edge.to, outputNode);
+      if (compiledNodes.has(edge.to)) {
+        outputNodeIds.add(edge.to);
       }
     }
 
     stateManager.registerNode(node.id);
 
-    const instance = await template.create(config, inputNodes, outputNodes, {
-      ...metadata,
-      nodeId: node.id,
-    });
+    const instance = await template.create(
+      config,
+      inputNodeIds,
+      outputNodeIds,
+      {
+        ...metadata,
+        nodeId: node.id,
+      },
+    );
 
     return {
       id: node.id,
@@ -407,7 +427,7 @@ export class GraphCompiler {
    * Returns the build order for the graph nodes using a dependency-based topological sort.
    * Throws if there are cycles.
    */
-  private getBuildOrder(schema: GraphSchemaType): GraphNodeSchemaType[] {
+  public getBuildOrder(schema: GraphSchemaType): GraphNodeSchemaType[] {
     const edges = schema.edges || [];
 
     const dependsOn = new Map<string, Set<string>>();

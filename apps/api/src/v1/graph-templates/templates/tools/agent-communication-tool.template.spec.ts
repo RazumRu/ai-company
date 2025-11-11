@@ -11,6 +11,7 @@ import {
   GraphNodeStatus,
   NodeKind,
 } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { AgentCommunicationToolTemplate } from './agent-communication-tool.template';
 
 const buildCompiledNode = <TInstance>(options: {
@@ -30,6 +31,8 @@ describe('AgentCommunicationToolTemplate', () => {
   let template: AgentCommunicationToolTemplate;
   let mockAgentCommunicationTool: AgentCommunicationTool;
   let mockAgent: SimpleAgent;
+  let mockGraphRegistry: GraphRegistry;
+  let mockAgentNode: CompiledGraphNode<SimpleAgent>;
 
   beforeEach(async () => {
     mockAgent = {
@@ -47,6 +50,13 @@ describe('AgentCommunicationToolTemplate', () => {
       schema: {} as any,
     } as unknown as SimpleAgent;
 
+    mockAgentNode = buildCompiledNode({
+      id: 'agent-1',
+      type: NodeKind.SimpleAgent,
+      template: 'simple-agent',
+      instance: mockAgent,
+    });
+
     mockAgentCommunicationTool = {
       description:
         'Request assistance from another registered agent by providing target agent id, context messages, and optional payload.',
@@ -58,12 +68,25 @@ describe('AgentCommunicationToolTemplate', () => {
       })),
     } as unknown as AgentCommunicationTool;
 
+    mockGraphRegistry = {
+      register: vi.fn(),
+      unregister: vi.fn(),
+      get: vi.fn(),
+      getNode: vi.fn().mockReturnValue(mockAgentNode),
+      filterNodesByType: vi.fn().mockReturnValue(['agent-1']),
+      destroy: vi.fn(),
+    } as unknown as GraphRegistry;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AgentCommunicationToolTemplate,
         {
           provide: AgentCommunicationTool,
           useValue: mockAgentCommunicationTool,
+        },
+        {
+          provide: GraphRegistry,
+          useValue: mockGraphRegistry,
         },
       ],
     }).compile();
@@ -111,17 +134,27 @@ describe('AgentCommunicationToolTemplate', () => {
         instance: mockAgent,
       });
 
-      const outputNodes = new Map([['agent-2', agentNode]]);
+      mockGraphRegistry.filterNodesByType = vi
+        .fn()
+        .mockReturnValue(['agent-2']);
+      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
+
       const config = {
         description:
           'Use this tool to communicate with the customer service agent for handling support requests',
       };
+      const outputNodeIds = new Set(['agent-2']);
 
-      const builtTool = await template.create(config, new Map(), outputNodes, {
-        graphId: 'test-graph',
-        nodeId: 'comm-tool',
-        version: '1.0.0',
-      });
+      const builtTool = await template.create(
+        config,
+        new Set(),
+        outputNodeIds,
+        {
+          graphId: 'test-graph',
+          nodeId: 'comm-tool',
+          version: '1.0.0',
+        },
+      );
 
       expect(builtTool.description).toBe(
         'Use this tool to communicate with the customer service agent for handling support requests',
@@ -141,14 +174,24 @@ describe('AgentCommunicationToolTemplate', () => {
         instance: mockAgent,
       });
 
-      const outputNodes = new Map([['agent-2', agentNode]]);
-      const config = {};
+      mockGraphRegistry.filterNodesByType = vi
+        .fn()
+        .mockReturnValue(['agent-2']);
+      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
 
-      const builtTool = await template.create(config, new Map(), outputNodes, {
-        graphId: 'test-graph',
-        nodeId: 'comm-tool',
-        version: '1.0.0',
-      });
+      const config = {};
+      const outputNodeIds = new Set(['agent-2']);
+
+      const builtTool = await template.create(
+        config,
+        new Set(),
+        outputNodeIds,
+        {
+          graphId: 'test-graph',
+          nodeId: 'comm-tool',
+          version: '1.0.0',
+        },
+      );
 
       expect(builtTool.description).toBe(
         'Request assistance from another registered agent by providing target agent id, context messages, and optional payload.',
@@ -168,10 +211,15 @@ describe('AgentCommunicationToolTemplate', () => {
         instance: mockAgent,
       });
 
-      const outputNodes = new Map([['agent-2', agentNode]]);
-      const config = {};
+      mockGraphRegistry.filterNodesByType = vi
+        .fn()
+        .mockReturnValue(['agent-2']);
+      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
 
-      await template.create(config, new Map(), outputNodes, {
+      const config = {};
+      const outputNodeIds = new Set(['agent-2']);
+
+      await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'comm-tool',
         version: '1.0.0',
@@ -224,10 +272,15 @@ describe('AgentCommunicationToolTemplate', () => {
         instance: mockAgent,
       });
 
-      const outputNodes = new Map([['agent-2', agentNode]]);
-      const config = {};
+      mockGraphRegistry.filterNodesByType = vi
+        .fn()
+        .mockReturnValue(['agent-2']);
+      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
 
-      await template.create(config, new Map(), outputNodes, {
+      const config = {};
+      const outputNodeIds = new Set(['agent-2']);
+
+      await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'comm-tool',
         version: '1.0.0',
@@ -306,10 +359,15 @@ describe('AgentCommunicationToolTemplate', () => {
         instance: mockAgent,
       });
 
-      const outputNodes = new Map([['agent-2', agentNode]]);
-      const config = {};
+      mockGraphRegistry.filterNodesByType = vi
+        .fn()
+        .mockReturnValue(['agent-2']);
+      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
 
-      await template.create(config, new Map(), outputNodes, {
+      const config = {};
+      const outputNodeIds = new Set(['agent-2']);
+
+      await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'comm-tool',
         version: '1.0.0',
@@ -358,10 +416,15 @@ describe('AgentCommunicationToolTemplate', () => {
         instance: mockAgent,
       });
 
-      const outputNodes = new Map([['agent-2', agentNode]]);
-      const config = {};
+      mockGraphRegistry.filterNodesByType = vi
+        .fn()
+        .mockReturnValue(['agent-2']);
+      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
 
-      await template.create(config, new Map(), outputNodes, {
+      const config = {};
+      const outputNodeIds = new Set(['agent-2']);
+
+      await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'comm-tool',
         version: '1.0.0',
@@ -416,10 +479,15 @@ describe('AgentCommunicationToolTemplate', () => {
         instance: mockAgentEmptyMessages as unknown as SimpleAgent,
       });
 
-      const outputNodes = new Map([['agent-2', agentNode]]);
-      const config = {};
+      mockGraphRegistry.filterNodesByType = vi
+        .fn()
+        .mockReturnValue(['agent-2']);
+      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
 
-      await template.create(config, new Map(), outputNodes, {
+      const config = {};
+      const outputNodeIds = new Set(['agent-2']);
+
+      await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'comm-tool',
         version: '1.0.0',

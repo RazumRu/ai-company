@@ -53,8 +53,12 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
       }
 
       // Convert entity to DTO
-      const graphRevisionService =
-        await this.moduleRef.create(GraphRevisionService);
+      // Use resolve instead of create to look up from entire application context
+      const graphRevisionService = await this.moduleRef.resolve(
+        GraphRevisionService,
+        undefined,
+        { strict: false },
+      );
       const revisionDto = graphRevisionService.prepareResponse(data);
 
       // Map NotificationEvent to EnrichedNotificationEvent

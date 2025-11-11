@@ -9,6 +9,7 @@ import {
   GraphNodeStatus,
   NodeKind,
 } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import {
   SimpleAgentTemplate,
   SimpleAgentTemplateSchema,
@@ -31,6 +32,7 @@ describe('SimpleAgentTemplate', () => {
   let template: SimpleAgentTemplate;
   let mockSimpleAgent: SimpleAgent;
   let mockAgentFactoryService: AgentFactoryService;
+  let mockGraphRegistry: GraphRegistry;
 
   beforeEach(async () => {
     mockSimpleAgent = {
@@ -46,12 +48,24 @@ describe('SimpleAgentTemplate', () => {
       register: vi.fn(),
     } as unknown as AgentFactoryService;
 
+    mockGraphRegistry = {
+      register: vi.fn(),
+      unregister: vi.fn(),
+      get: vi.fn(),
+      getNode: vi.fn(),
+      destroy: vi.fn(),
+    } as unknown as GraphRegistry;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SimpleAgentTemplate,
         {
           provide: AgentFactoryService,
           useValue: mockAgentFactoryService,
+        },
+        {
+          provide: GraphRegistry,
+          useValue: mockGraphRegistry,
         },
       ],
     }).compile();
@@ -191,6 +205,15 @@ describe('SimpleAgentTemplate', () => {
         ['tool-1', mockToolNode1],
         ['tool-2', mockToolNode2],
       ]);
+
+      // Configure mockGraphRegistry to return nodes
+      mockGraphRegistry.getNode = vi
+        .fn()
+        .mockImplementation((graphId, nodeId) => {
+          if (nodeId === 'tool-1') return mockToolNode1;
+          if (nodeId === 'tool-2') return mockToolNode2;
+          return undefined;
+        });
     });
 
     it('should create simple agent without tools', async () => {
@@ -200,16 +223,17 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
-      // Use empty connected nodes map
-      const emptyConnectedNodes = new Map<string, CompiledGraphNode>();
+      // Use empty node ID sets
+      const emptyInputNodeIds = new Set<string>();
+      const emptyOutputNodeIds = new Set<string>();
 
       const result = await template.create(
         config,
-        emptyConnectedNodes,
-        new Map(),
+        emptyInputNodeIds,
+        emptyOutputNodeIds,
         {
           graphId: 'test-graph',
           nodeId: 'test-node',
@@ -229,16 +253,17 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
-      // Create empty connected nodes map
-      const emptyConnectedNodes = new Map<string, CompiledGraphNode>();
+      // Create empty node ID sets
+      const emptyInputNodeIds = new Set<string>();
+      const emptyOutputNodeIds = new Set<string>();
 
       const result = await template.create(
         config,
-        emptyConnectedNodes,
-        new Map(),
+        emptyInputNodeIds,
+        emptyOutputNodeIds,
         {
           graphId: 'test-graph',
           nodeId: 'test-node',
@@ -257,10 +282,12 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
-      const result = await template.create(config, new Map(), connectedNodes, {
+      const outputNodeIds = new Set(['tool-1', 'tool-2']);
+
+      const result = await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -279,10 +306,12 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
-      const _result = await template.create(config, new Map(), connectedNodes, {
+      const outputNodeIds = new Set(['tool-1', 'tool-2']);
+
+      const _result = await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -295,30 +324,30 @@ describe('SimpleAgentTemplate', () => {
     });
 
     it('should handle partial tool availability', async () => {
-      const partialConnectedNodes = new Map([
-        ['tool-1', mockToolNode1],
-        // tool-2 is missing
-      ]);
-
       const config = {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
-      const _result = await template.create(
-        config,
-        new Map(),
-        partialConnectedNodes,
-        {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        },
-      );
+      // Only tool-1 is available, tool-2 is not in registry
+      mockGraphRegistry.getNode = vi
+        .fn()
+        .mockImplementation((graphId, nodeId) => {
+          if (nodeId === 'tool-1') return mockToolNode1;
+          return undefined; // tool-2 is missing
+        });
+
+      const outputNodeIds = new Set(['tool-1', 'tool-2']);
+
+      const _result = await template.create(config, new Set(), outputNodeIds, {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
 
       // Should only add available tools
       expect(mockSimpleAgent.addTool).toHaveBeenCalledTimes(1);
@@ -340,6 +369,10 @@ describe('SimpleAgentTemplate', () => {
             provide: AgentFactoryService,
             useValue: failingAgentFactoryService,
           },
+          {
+            provide: GraphRegistry,
+            useValue: mockGraphRegistry,
+          },
         ],
       }).compile();
 
@@ -352,11 +385,11 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
       await expect(
-        failingTemplate.create(config, connectedNodes, new Map(), {
+        failingTemplate.create(config, new Set(), new Set(), {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -376,11 +409,13 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
+      const outputNodeIds = new Set(['tool-1', 'tool-2']);
+
       await expect(
-        template.create(config, new Map(), connectedNodes, {
+        template.create(config, new Set(), outputNodeIds, {
           graphId: 'test-graph',
           nodeId: 'test-node',
           version: '1.0.0',
@@ -395,10 +430,12 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Custom instructions',
         name: 'Custom Agent',
         invokeModelName: 'gpt-3.5-turbo',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
-      const result = await template.create(config, new Map(), connectedNodes, {
+      const outputNodeIds = new Set(['tool-1', 'tool-2']);
+
+      const result = await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
@@ -415,10 +452,12 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
-      const result = await template.create(config, new Map(), connectedNodes, {
+      const outputNodeIds = new Set(['tool-1', 'tool-2']);
+
+      const result = await template.create(config, new Set(), outputNodeIds, {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',

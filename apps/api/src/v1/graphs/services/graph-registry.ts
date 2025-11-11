@@ -34,6 +34,35 @@ export class GraphRegistry {
   }
 
   /**
+   * Adds a node to an existing registered graph.
+   * Useful during compilation to make nodes available incrementally.
+   */
+  addNode(graphId: string, nodeId: string, node: CompiledGraphNode): void {
+    const graph = this.graphs.get(graphId);
+    if (!graph) {
+      throw new BadRequestException(
+        'GRAPH_NOT_FOUND',
+        `Cannot add node to graph ${graphId}: graph not registered.`,
+      );
+    }
+    graph.nodes.set(nodeId, node);
+  }
+
+  /**
+   * Removes a node from a registered graph.
+   */
+  deleteNode(graphId: string, nodeId: string): void {
+    const graph = this.graphs.get(graphId);
+    if (!graph) {
+      throw new BadRequestException(
+        'GRAPH_NOT_FOUND',
+        `Cannot delete node from graph ${graphId}: graph not registered.`,
+      );
+    }
+    graph.nodes.delete(nodeId);
+  }
+
+  /**
    * Retrieves a compiled graph by ID
    */
   get(graphId: string): CompiledGraph | undefined {
@@ -53,6 +82,105 @@ export class GraphRegistry {
     }
 
     return graph.nodes.get(nodeId) as CompiledGraphNode<TInstance> | undefined;
+  }
+
+  /**
+   * Gets multiple nodes from a graph by their IDs
+   */
+  getNodes<TInstance>(
+    graphId: string,
+    nodeIds: Set<string> | string[],
+  ): Map<string, CompiledGraphNode<TInstance>> {
+    const graph = this.graphs.get(graphId);
+    const result = new Map<string, CompiledGraphNode<TInstance>>();
+
+    if (!graph) {
+      return result;
+    }
+
+    const nodeIdsArray = Array.isArray(nodeIds) ? nodeIds : Array.from(nodeIds);
+    for (const nodeId of nodeIdsArray) {
+      const node = graph.nodes.get(nodeId);
+      if (node) {
+        result.set(nodeId, node as CompiledGraphNode<TInstance>);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Filters node IDs by their type
+   */
+  filterNodesByType(
+    graphId: string,
+    nodeIds: Set<string> | string[],
+    type: CompiledGraphNode['type'],
+  ): string[] {
+    const graph = this.graphs.get(graphId);
+    if (!graph) {
+      return [];
+    }
+
+    const nodeIdsArray = Array.isArray(nodeIds) ? nodeIds : Array.from(nodeIds);
+    return nodeIdsArray.filter((nodeId) => {
+      const node = graph.nodes.get(nodeId);
+      return node?.type === type;
+    });
+  }
+
+  /**
+   * Filters node IDs by their template name
+   */
+  filterNodesByTemplate(
+    graphId: string,
+    nodeIds: Set<string> | string[],
+    template: string,
+  ): string[] {
+    const graph = this.graphs.get(graphId);
+    if (!graph) {
+      return [];
+    }
+
+    const nodeIdsArray = Array.isArray(nodeIds) ? nodeIds : Array.from(nodeIds);
+    return nodeIdsArray.filter((nodeId) => {
+      const node = graph.nodes.get(nodeId);
+      return node?.template === template;
+    });
+  }
+
+  /**
+   * Gets all nodes of a specific type from a graph
+   */
+  getNodesByType<TInstance>(
+    graphId: string,
+    type: CompiledGraphNode['type'],
+  ): CompiledGraphNode<TInstance>[] {
+    const graph = this.graphs.get(graphId);
+    if (!graph) {
+      return [];
+    }
+
+    return Array.from(graph.nodes.values()).filter(
+      (node) => node.type === type,
+    ) as CompiledGraphNode<TInstance>[];
+  }
+
+  /**
+   * Gets all nodes matching a specific template from a graph
+   */
+  getNodesByTemplate<TInstance>(
+    graphId: string,
+    template: string,
+  ): CompiledGraphNode<TInstance>[] {
+    const graph = this.graphs.get(graphId);
+    if (!graph) {
+      return [];
+    }
+
+    return Array.from(graph.nodes.values()).filter(
+      (node) => node.template === template,
+    ) as CompiledGraphNode<TInstance>[];
   }
 
   /**

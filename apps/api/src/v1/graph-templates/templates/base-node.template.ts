@@ -31,10 +31,17 @@ export abstract class NodeBaseTemplate<
   readonly inputs: readonly NodeConnection[] = [];
   readonly outputs: readonly NodeConnection[] = [];
 
+  /**
+   * Create a node instance.
+   * @param config - Validated configuration for the node
+   * @param inputNodeIds - Set of input node IDs (nodes that connect TO this node)
+   * @param outputNodeIds - Set of output node IDs (nodes that this node connects TO)
+   * @param metadata - Graph metadata including graphId for looking up nodes dynamically
+   */
   abstract create(
     config: z.infer<TConfig>,
-    inputNodes: Map<string, CompiledGraphNode>,
-    outputNodes: Map<string, CompiledGraphNode>,
+    inputNodeIds: Set<string>,
+    outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<TOutput>;
 }

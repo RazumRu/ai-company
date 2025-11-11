@@ -11,7 +11,7 @@ import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { BaseTool } from './base-tool';
 
 export interface ShellToolOptions {
-  runtime: BaseRuntime;
+  runtime: BaseRuntime | (() => BaseRuntime);
   env?: Record<string, string>;
   additionalInfo?: string;
 }
@@ -85,6 +85,11 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       );
     }
 
+    // Get runtime instance (either directly or via getter function)
+    const runtime = typeof config.runtime === 'function'
+      ? config.runtime()
+      : config.runtime;
+
     // Get environment variables from config
     const configEnv = config.env || {};
 
@@ -114,7 +119,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     const runId = cfg.configurable?.run_id;
 
     try {
-      const res = await config.runtime.exec({
+      const res = await runtime.exec({
         ...execData,
         env: mergedEnv,
         childWorkdir: `${threadId}`,

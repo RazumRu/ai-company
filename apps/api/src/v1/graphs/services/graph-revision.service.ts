@@ -314,8 +314,11 @@ export class GraphRevisionService {
     // Step 2: Update edges
     compiledGraph.edges = revision.newSchema.edges || [];
 
-    // Step 3: Add or revision nodes
-    for (const nodeSchema of revision.newSchema.nodes) {
+    // Step 3: Add or revision nodes in topological order
+    // This ensures dependencies are created before nodes that depend on them
+    const buildOrder = this.graphCompiler.getBuildOrder(revision.newSchema);
+
+    for (const nodeSchema of buildOrder) {
       const existingNode = compiledGraph.nodes.get(
         nodeSchema.id,
       ) as CompiledGraphNode<SimpleAgent>;
@@ -375,9 +378,9 @@ export class GraphRevisionService {
         await this.graphCompiler.destroyNode(existingNode);
       }
 
-      // Build input/output node maps
-      const inputNodes = new Map();
-      const outputNodes = new Map();
+      // Build input/output node ID sets
+      const inputNodeIds = new Set<string>();
+      const outputNodeIds = new Set<string>();
 
       const incomingEdges =
         revision.newSchema.edges?.filter((e) => e.to === nodeSchema.id) || [];
@@ -385,13 +388,15 @@ export class GraphRevisionService {
         revision.newSchema.edges?.filter((e) => e.from === nodeSchema.id) || [];
 
       for (const edge of incomingEdges) {
-        const inputNode = compiledGraph.nodes.get(edge.from);
-        if (inputNode) inputNodes.set(edge.from, inputNode);
+        if (compiledGraph.nodes.has(edge.from)) {
+          inputNodeIds.add(edge.from);
+        }
       }
 
       for (const edge of outgoingEdges) {
-        const outputNode = compiledGraph.nodes.get(edge.to);
-        if (outputNode) outputNodes.set(edge.to, outputNode);
+        if (compiledGraph.nodes.has(edge.to)) {
+          outputNodeIds.add(edge.to);
+        }
       }
 
       if (!existingNode) {
@@ -400,8 +405,8 @@ export class GraphRevisionService {
 
       const instance = await template.create(
         validatedConfig,
-        inputNodes,
-        outputNodes,
+        inputNodeIds,
+        outputNodeIds,
         {
           ...metadata,
           nodeId: nodeSchema.id,

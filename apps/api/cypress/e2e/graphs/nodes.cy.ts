@@ -139,16 +139,13 @@ describe('Graph Nodes API E2E', () => {
             'Please summarize this message concisely and confirm completion.',
           ],
           threadSubId: 'node-status-thread',
-          async: true,
+          async: false,
         });
       })
       .then((triggerResponse) => {
         expect(triggerResponse.status).to.equal(201);
         threadId = triggerResponse.body.threadId;
         expect(threadId).to.be.a('string').and.not.to.be.empty;
-
-        // Allow execution to process
-        return cy.wait(4000);
       })
       .then(() => getThreadByExternalId(threadId))
       .then((threadResponse) => {

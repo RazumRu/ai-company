@@ -26,7 +26,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
 @Module({
   imports: [
     registerEntities([GraphEntity, GraphRevisionEntity]),
-    GraphTemplatesModule,
+    forwardRef(() => GraphTemplatesModule),
     NotificationsModule,
     AgentsModule,
     forwardRef(() => ThreadsModule),
@@ -46,7 +46,6 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphStateFactory,
   ],
   exports: [
-    GraphTemplatesModule,
     GraphDao,
     GraphRevisionDao,
     GraphCompiler,

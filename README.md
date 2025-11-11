@@ -5,16 +5,20 @@ An open-source platform to build, run, and manage AI agent graphs using LangGrap
 ## Overview
 Build, run, and manage AI agent graphs. A graph is a set of nodes (triggers, agents, tools, resources, runtimes) connected by edges. Graphs are validated, compiled, and executed with LangGraph. You can invoke triggers to start agent runs, track progress via notifications, and destroy graphs safely.
 
+![img.png](assets/readme_1.png)
+![img_3.png](assets/readme_2.png)
+
 ## Features
-- Graph schema with Zod validation and a template-based node system
-- SimpleAgent powered by LangGraph StateGraph (summarization, tool execution, title generation, usage guards)
-- Pluggable tools (web search via Tavily, shell) and resources (GitHub)
-- Triggers (manual) to invoke agents with messages
-- Runtime execution via Docker (optional Docker-in-Docker)
-- Threads and checkpointing with Postgres using LangGraph Checkpoint
-- REST API: create/update/run/destroy graphs and execute triggers
-- Swagger/OpenAPI; E2E tests (Cypress) and unit tests (Vitest)
-- Metrics, logging, and auth-ready HTTP server
+- **Graph schema with Zod validation and a template-based node system** — Build graphs using different node types (agents, tools, resources, runtimes, triggers)
+- **SimpleAgent powered by LangGraph StateGraph** — Summarization, tool execution, title generation, usage guards, and configurable max iterations
+- **Pluggable node templates** — Agents (simple-agent), tools (web-search, shell, agent-communication), resources (GitHub), runtimes (Docker), and triggers (manual)
+- **Real-time WebSocket notifications** — Subscribe to graph-specific or user-specific events via Socket.IO; broadcast agent state updates, thread changes, and graph lifecycle events
+- **Graph versioning with revisions** — Track schema changes as revisions with JSON patch diffs; apply/rollback revisions with automatic semver versioning and queue-based processing
+- **Threads with statuses** — Each graph execution runs in a thread with statuses (running, done, need_more_info, stopped); threads are persisted per graph with message history
+- **Runtime execution via Docker** — Isolated containers for tool execution with optional Docker-in-Docker support; configurable resource limits
+- **REST API** — Create/update/run/destroy graphs, execute triggers, manage threads, and handle revisions
+- **Swagger/OpenAPI** — Full API documentation with E2E tests (Cypress) and unit tests (Vitest)
+- **Metrics, logging, and auth-ready HTTP server** — Prometheus metrics, structured logging, and configurable authentication
 
 ## Monorepo structure
 - apps/

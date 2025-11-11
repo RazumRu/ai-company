@@ -243,7 +243,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
       const messages = [new HumanMessage('Hello')];
@@ -307,7 +307,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
       const customRunnableConfig = {
@@ -349,7 +349,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
       await expect(agent.run('test-thread', [], config)).rejects.toThrow(
@@ -417,7 +417,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
       // Run should complete without throwing (abort error is swallowed)
@@ -440,7 +440,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
       // Simulate a graph being built
@@ -477,7 +477,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
-        maxIterations: 10,
+        maxIterations: 50,
       };
 
       // Ensure no graph exists

@@ -81,6 +81,8 @@ export class GraphStateManager {
         );
         break;
     }
+
+    this.emitNodeUpdate(state);
   }
 
   getNodeStatus(nodeId: string) {
@@ -293,7 +295,10 @@ export class GraphStateManager {
           // Handle thread name updates (generatedTitle)
           // Centralized place for all thread updates
           const stateChange = event.data.stateChange as Record<string, unknown>;
-          if (stateChange.generatedTitle && typeof stateChange.generatedTitle === 'string') {
+          if (
+            stateChange.generatedTitle &&
+            typeof stateChange.generatedTitle === 'string'
+          ) {
             const threadId = event.data.threadId;
             const externalThreadKey = parentThreadId ?? threadId;
 

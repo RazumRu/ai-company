@@ -1035,10 +1035,7 @@ describe('GraphsService', () => {
         name: graph.name,
         version: graph.version,
       });
-      expect(graphRegistry.register).toHaveBeenCalledWith(
-        mockGraphId,
-        compiledGraph,
-      );
+      // GraphRegistry.register is now called by GraphCompiler, not by service
       expect(graphDao.updateById).toHaveBeenNthCalledWith(
         1,
         mockGraphId,
@@ -1159,10 +1156,7 @@ describe('GraphsService', () => {
 
       await expect(service.run(mockGraphId)).rejects.toThrow(NotFoundException);
 
-      expect(graphRegistry.register).toHaveBeenCalledWith(
-        mockGraphId,
-        compiledGraph,
-      );
+      // GraphRegistry.register is now called by GraphCompiler, not by service
       expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
       expect(graphDao.updateById).toHaveBeenNthCalledWith(
         1,

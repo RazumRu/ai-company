@@ -420,4 +420,539 @@ describe('GraphRegistry', () => {
       );
     });
   });
+
+  describe('getNodes', () => {
+    it('should return multiple nodes by their IDs using Set', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(5);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = new Set(['node-1', 'node-3', 'node-5']);
+      const result = registry.getNodes(graphId, nodeIds);
+
+      expect(result.size).toBe(3);
+      expect(result.has('node-1')).toBe(true);
+      expect(result.has('node-3')).toBe(true);
+      expect(result.has('node-5')).toBe(true);
+      expect(result.get('node-1')?.id).toBe('node-1');
+    });
+
+    it('should return multiple nodes by their IDs using Array', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(5);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = ['node-2', 'node-4'];
+      const result = registry.getNodes(graphId, nodeIds);
+
+      expect(result.size).toBe(2);
+      expect(result.has('node-2')).toBe(true);
+      expect(result.has('node-4')).toBe(true);
+    });
+
+    it('should return empty map for non-existent graph', () => {
+      const result = registry.getNodes('non-existent-graph', ['node-1']);
+      expect(result.size).toBe(0);
+    });
+
+    it('should skip non-existent nodes', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = new Set(['node-1', 'non-existent', 'node-3']);
+      const result = registry.getNodes(graphId, nodeIds);
+
+      expect(result.size).toBe(2);
+      expect(result.has('node-1')).toBe(true);
+      expect(result.has('node-3')).toBe(true);
+      expect(result.has('non-existent')).toBe(false);
+    });
+
+    it('should handle empty node IDs list', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      const result = registry.getNodes(graphId, []);
+      expect(result.size).toBe(0);
+    });
+  });
+
+  describe('filterNodesByType', () => {
+    it('should filter nodes by type from Set of IDs', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(6);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = new Set([
+        'node-1',
+        'node-2',
+        'node-3',
+        'node-4',
+        'node-5',
+      ]);
+      const result = registry.filterNodesByType(
+        graphId,
+        nodeIds,
+        NodeKind.Runtime,
+      );
+
+      // Even-numbered nodes are Runtime (see createMockCompiledGraph)
+      expect(result).toEqual(['node-2', 'node-4']);
+    });
+
+    it('should filter nodes by type from Array of IDs', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(6);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = ['node-1', 'node-2', 'node-3', 'node-4', 'node-5'];
+      const result = registry.filterNodesByType(
+        graphId,
+        nodeIds,
+        NodeKind.Tool,
+      );
+
+      // Odd-numbered nodes are Tool (see createMockCompiledGraph)
+      expect(result).toEqual(['node-1', 'node-3', 'node-5']);
+    });
+
+    it('should return empty array for non-existent graph', () => {
+      const result = registry.filterNodesByType(
+        'non-existent-graph',
+        ['node-1'],
+        NodeKind.Tool,
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when no nodes match type', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = ['node-1', 'node-3']; // Both are Tool
+      const result = registry.filterNodesByType(
+        graphId,
+        nodeIds,
+        NodeKind.SimpleAgent,
+      );
+
+      expect(result).toEqual([]);
+    });
+
+    it('should skip non-existent nodes during filtering', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(4);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = ['node-1', 'non-existent', 'node-2', 'node-4'];
+      const result = registry.filterNodesByType(
+        graphId,
+        nodeIds,
+        NodeKind.Runtime,
+      );
+
+      expect(result).toEqual(['node-2', 'node-4']);
+    });
+  });
+
+  describe('filterNodesByTemplate', () => {
+    it('should filter nodes by template from Set of IDs', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(6);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = new Set([
+        'node-1',
+        'node-2',
+        'node-3',
+        'node-4',
+        'node-5',
+      ]);
+      const result = registry.filterNodesByTemplate(
+        graphId,
+        nodeIds,
+        'docker-runtime',
+      );
+
+      expect(result).toEqual(['node-2', 'node-4']);
+    });
+
+    it('should filter nodes by template from Array of IDs', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(6);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = ['node-1', 'node-2', 'node-3', 'node-4', 'node-5'];
+      const result = registry.filterNodesByTemplate(
+        graphId,
+        nodeIds,
+        'web-search-tool',
+      );
+
+      expect(result).toEqual(['node-1', 'node-3', 'node-5']);
+    });
+
+    it('should return empty array for non-existent graph', () => {
+      const result = registry.filterNodesByTemplate(
+        'non-existent-graph',
+        ['node-1'],
+        'web-search-tool',
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when no nodes match template', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      const nodeIds = ['node-1', 'node-2', 'node-3'];
+      const result = registry.filterNodesByTemplate(
+        graphId,
+        nodeIds,
+        'non-existent-template',
+      );
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getNodesByType', () => {
+    it('should return all nodes of a specific type', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(6);
+
+      registry.register(graphId, compiledGraph);
+
+      const result = registry.getNodesByType(graphId, NodeKind.Runtime);
+
+      expect(result.length).toBe(3); // node-2, node-4, node-6
+      expect(result.every((node) => node.type === NodeKind.Runtime)).toBe(true);
+      expect(result.map((n) => n.id).sort()).toEqual([
+        'node-2',
+        'node-4',
+        'node-6',
+      ]);
+    });
+
+    it('should return all Tool nodes', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(5);
+
+      registry.register(graphId, compiledGraph);
+
+      const result = registry.getNodesByType(graphId, NodeKind.Tool);
+
+      expect(result.length).toBe(3); // node-1, node-3, node-5
+      expect(result.every((node) => node.type === NodeKind.Tool)).toBe(true);
+    });
+
+    it('should return empty array for non-existent graph', () => {
+      const result = registry.getNodesByType(
+        'non-existent-graph',
+        NodeKind.Tool,
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when no nodes match type', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      const result = registry.getNodesByType(graphId, NodeKind.Trigger);
+
+      expect(result).toEqual([]);
+    });
+
+    it('should work with complex node types', () => {
+      const graphId = 'complex-graph';
+      const complexGraph: CompiledGraph = {
+        nodes: new Map([
+          [
+            'agent-1',
+            {
+              id: 'agent-1',
+              type: NodeKind.SimpleAgent,
+              template: 'simple-agent',
+              config: {},
+              instance: { agent: 'agent-1' },
+            },
+          ],
+          [
+            'agent-2',
+            {
+              id: 'agent-2',
+              type: NodeKind.SimpleAgent,
+              template: 'simple-agent',
+              config: {},
+              instance: { agent: 'agent-2' },
+            },
+          ],
+          [
+            'tool-1',
+            {
+              id: 'tool-1',
+              type: NodeKind.Tool,
+              template: 'shell-tool',
+              config: {},
+              instance: { tool: 'tool-1' },
+            },
+          ],
+        ]),
+        edges: [],
+        state: {
+          getSnapshots: vi.fn().mockReturnValue([]),
+          handleGraphDestroyed: vi.fn(),
+        } as unknown as CompiledGraph['state'],
+        destroy: vi.fn().mockResolvedValue(undefined),
+      };
+
+      registry.register(graphId, complexGraph);
+
+      const agents = registry.getNodesByType(graphId, NodeKind.SimpleAgent);
+      expect(agents.length).toBe(2);
+      expect(agents.map((n) => n.id).sort()).toEqual(['agent-1', 'agent-2']);
+    });
+  });
+
+  describe('getNodesByTemplate', () => {
+    it('should return all nodes matching a template', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(6);
+
+      registry.register(graphId, compiledGraph);
+
+      const result = registry.getNodesByTemplate(graphId, 'docker-runtime');
+
+      expect(result.length).toBe(3); // node-2, node-4, node-6
+      expect(result.every((node) => node.template === 'docker-runtime')).toBe(
+        true,
+      );
+    });
+
+    it('should return all web-search-tool nodes', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(5);
+
+      registry.register(graphId, compiledGraph);
+
+      const result = registry.getNodesByTemplate(graphId, 'web-search-tool');
+
+      expect(result.length).toBe(3); // node-1, node-3, node-5
+      expect(result.every((node) => node.template === 'web-search-tool')).toBe(
+        true,
+      );
+    });
+
+    it('should return empty array for non-existent graph', () => {
+      const result = registry.getNodesByTemplate(
+        'non-existent-graph',
+        'web-search-tool',
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when no nodes match template', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      const result = registry.getNodesByTemplate(
+        graphId,
+        'non-existent-template',
+      );
+
+      expect(result).toEqual([]);
+    });
+
+    it('should work with mixed templates', () => {
+      const graphId = 'mixed-graph';
+      const mixedGraph: CompiledGraph = {
+        nodes: new Map([
+          [
+            'shell-1',
+            {
+              id: 'shell-1',
+              type: NodeKind.Tool,
+              template: 'shell-tool',
+              config: {},
+              instance: { tool: 'shell-1' },
+            },
+          ],
+          [
+            'shell-2',
+            {
+              id: 'shell-2',
+              type: NodeKind.Tool,
+              template: 'shell-tool',
+              config: {},
+              instance: { tool: 'shell-2' },
+            },
+          ],
+          [
+            'web-search-1',
+            {
+              id: 'web-search-1',
+              type: NodeKind.Tool,
+              template: 'web-search-tool',
+              config: {},
+              instance: { tool: 'web-search-1' },
+            },
+          ],
+        ]),
+        edges: [],
+        state: {
+          getSnapshots: vi.fn().mockReturnValue([]),
+          handleGraphDestroyed: vi.fn(),
+        } as unknown as CompiledGraph['state'],
+        destroy: vi.fn().mockResolvedValue(undefined),
+      };
+
+      registry.register(graphId, mixedGraph);
+
+      const shellTools = registry.getNodesByTemplate(graphId, 'shell-tool');
+      expect(shellTools.length).toBe(2);
+      expect(shellTools.map((n) => n.id).sort()).toEqual([
+        'shell-1',
+        'shell-2',
+      ]);
+
+      const webSearchTools = registry.getNodesByTemplate(
+        graphId,
+        'web-search-tool',
+      );
+      expect(webSearchTools.length).toBe(1);
+      expect(webSearchTools[0]?.id).toBe('web-search-1');
+    });
+  });
+
+  describe('addNode', () => {
+    it('should add a node to an existing graph', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(2);
+
+      registry.register(graphId, compiledGraph);
+
+      const newNode = {
+        id: 'new-node',
+        type: NodeKind.Tool,
+        template: 'test-tool',
+        instance: {},
+        config: {},
+      } as CompiledGraphNode;
+
+      registry.addNode(graphId, 'new-node', newNode);
+
+      const retrievedNode = registry.getNode(graphId, 'new-node');
+      expect(retrievedNode).toBe(newNode);
+      expect(compiledGraph.nodes.size).toBe(3); // 2 original + 1 new
+    });
+
+    it('should throw error when adding node to non-existent graph', () => {
+      const newNode = {
+        id: 'new-node',
+        type: NodeKind.Tool,
+        template: 'test-tool',
+        instance: {},
+        config: {},
+      } as CompiledGraphNode;
+
+      expect(() =>
+        registry.addNode('non-existent', 'new-node', newNode),
+      ).toThrow(BadRequestException);
+    });
+
+    it('should overwrite existing node with same ID', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(2);
+
+      registry.register(graphId, compiledGraph);
+
+      const originalNode = registry.getNode(graphId, 'node-1');
+      expect(originalNode).toBeDefined();
+
+      const replacementNode = {
+        id: 'node-1',
+        type: NodeKind.Runtime,
+        template: 'different-template',
+        instance: {},
+        config: {},
+      } as CompiledGraphNode;
+
+      registry.addNode(graphId, 'node-1', replacementNode);
+
+      const retrievedNode = registry.getNode(graphId, 'node-1');
+      expect(retrievedNode).toBe(replacementNode);
+      expect(retrievedNode?.template).toBe('different-template');
+      expect(compiledGraph.nodes.size).toBe(2); // Still 2 nodes
+    });
+  });
+
+  describe('deleteNode', () => {
+    it('should delete a node from an existing graph', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      expect(registry.getNode(graphId, 'node-2')).toBeDefined();
+
+      registry.deleteNode(graphId, 'node-2');
+
+      expect(registry.getNode(graphId, 'node-2')).toBeUndefined();
+      expect(compiledGraph.nodes.size).toBe(2); // 3 - 1 = 2
+    });
+
+    it('should throw error when deleting node from non-existent graph', () => {
+      expect(() => registry.deleteNode('non-existent', 'node-1')).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should handle deleting non-existent node gracefully', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      // Deleting non-existent node should not throw
+      expect(() =>
+        registry.deleteNode(graphId, 'non-existent-node'),
+      ).not.toThrow();
+      expect(compiledGraph.nodes.size).toBe(3); // Still 3 nodes
+    });
+
+    it('should be able to delete all nodes from a graph', () => {
+      const graphId = 'test-graph';
+      const compiledGraph = createMockCompiledGraph(3);
+
+      registry.register(graphId, compiledGraph);
+
+      registry.deleteNode(graphId, 'node-1');
+      registry.deleteNode(graphId, 'node-2');
+      registry.deleteNode(graphId, 'node-3');
+
+      expect(compiledGraph.nodes.size).toBe(0);
+      expect(registry.getNode(graphId, 'node-1')).toBeUndefined();
+      expect(registry.getNode(graphId, 'node-2')).toBeUndefined();
+      expect(registry.getNode(graphId, 'node-3')).toBeUndefined();
+    });
+  });
 });

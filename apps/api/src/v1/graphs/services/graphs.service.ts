@@ -235,15 +235,14 @@ export class GraphsService {
     });
 
     try {
-      // Compile the graph
+      // Compile the graph (it will be registered automatically during compilation)
       const compiledGraph = await this.graphCompiler.compile(graph, {
         graphId: graph.id,
         name: graph.name,
         version: graph.version,
       });
 
-      // Register the compiled graph in the registry
-      this.graphRegistry.register(id, compiledGraph);
+      // Graph is already registered by compiler, no need to register again
 
       // Update status to running
       const updated = await this.graphDao.updateById(id, {

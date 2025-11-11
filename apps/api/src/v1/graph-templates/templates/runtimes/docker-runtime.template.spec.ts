@@ -54,8 +54,8 @@ describe('DockerRuntimeTemplate', () => {
 
       const result = await template.create(
         config,
-        new Map(),
-        new Map(),
+        new Set(),
+        new Set(),
         metadata,
       );
 
@@ -82,7 +82,7 @@ describe('DockerRuntimeTemplate', () => {
         version: '1.0.0',
       };
 
-      await template.create(config, new Map(), new Map(), metadata);
+      await template.create(config, new Set(), new Set(), metadata);
 
       const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
       expect(callArgs.recreate).toBe(true);
@@ -100,7 +100,7 @@ describe('DockerRuntimeTemplate', () => {
         version: '1.0.0',
       };
 
-      await template.create(config, new Map(), new Map(), metadata);
+      await template.create(config, new Set(), new Set(), metadata);
 
       const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
       expect(callArgs.labels['ai-company/graph_id']).toBe('my-graph');
@@ -120,7 +120,7 @@ describe('DockerRuntimeTemplate', () => {
         temporary: true,
       };
 
-      await template.create(config, new Map(), new Map(), metadata);
+      await template.create(config, new Set(), new Set(), metadata);
 
       const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
       expect(callArgs.labels['ai-company/temporary']).toBe('true');
@@ -138,7 +138,7 @@ describe('DockerRuntimeTemplate', () => {
         version: '1.0.0',
       };
 
-      await template.create(config, new Map(), new Map(), metadata);
+      await template.create(config, new Set(), new Set(), metadata);
 
       const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
       expect(callArgs.network).toBe('ai-company-my-unique-graph-id');
@@ -156,7 +156,7 @@ describe('DockerRuntimeTemplate', () => {
         version: '1.0.0',
       };
 
-      await template.create(config, new Map(), new Map(), metadata);
+      await template.create(config, new Set(), new Set(), metadata);
 
       const callArgs = (runtimeProvider.provide as any).mock.calls[0][0];
       expect(callArgs.containerName).toBe('rt-graph-abc-node-xyz');

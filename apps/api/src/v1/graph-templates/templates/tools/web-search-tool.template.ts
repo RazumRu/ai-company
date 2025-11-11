@@ -40,8 +40,8 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
 
   async create(
     config: z.infer<typeof WebSearchToolTemplateSchema>,
-    _inputNodes: Map<string, CompiledGraphNode>,
-    _outputNodes: Map<string, CompiledGraphNode>,
+    _inputNodeIds: Set<string>,
+    _outputNodeIds: Set<string>,
     _metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
     return this.webSearchTool.build(config);

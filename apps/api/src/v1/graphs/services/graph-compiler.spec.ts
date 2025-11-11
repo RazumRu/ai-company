@@ -9,6 +9,7 @@ import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphSchemaType, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
+import { GraphRegistry } from './graph-registry';
 import { GraphStateFactory } from './graph-state.factory';
 
 // Mock DockerRuntime
@@ -21,6 +22,7 @@ vi.mock('../../runtime/services/docker-runtime', () => ({
 describe('GraphCompiler', () => {
   let compiler: GraphCompiler;
   let templateRegistry: TemplateRegistry;
+  let mockGraphRegistry: GraphRegistry;
   let mockGraphStateManager: {
     registerNode: ReturnType<typeof vi.fn>;
     attachGraphNode: ReturnType<typeof vi.fn>;
@@ -105,11 +107,23 @@ describe('GraphCompiler', () => {
             create: vi.fn().mockResolvedValue(mockGraphStateManager),
           },
         },
+        {
+          provide: GraphRegistry,
+          useValue: {
+            register: vi.fn(),
+            unregister: vi.fn(),
+            get: vi.fn(),
+            getNode: vi.fn(),
+            addNode: vi.fn(),
+            deleteNode: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
     compiler = module.get<GraphCompiler>(GraphCompiler);
     templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
+    mockGraphRegistry = module.get<GraphRegistry>(GraphRegistry);
     vi.clearAllMocks();
   });
 
@@ -151,8 +165,8 @@ describe('GraphCompiler', () => {
       expect(result.edges).toEqual([]);
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         expect.objectContaining({
           name: 'Test Graph',
           version: '1.0.0',
@@ -543,8 +557,8 @@ describe('GraphCompiler', () => {
 
       expect(runtimeTemplate.create).toHaveBeenCalledWith(
         expect.objectContaining({ image: 'python:3.11' }),
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         expect.objectContaining({
           nodeId: 'runtime-1',
         }),
@@ -1291,8 +1305,8 @@ describe('GraphCompiler', () => {
 
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
@@ -1379,8 +1393,8 @@ describe('GraphCompiler', () => {
 
       expect(mockTemplate1.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
@@ -1392,8 +1406,8 @@ describe('GraphCompiler', () => {
 
       expect(mockTemplate2.create).toHaveBeenCalledWith(
         schema.nodes[1]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
@@ -1452,8 +1466,8 @@ describe('GraphCompiler', () => {
 
       expect(mockTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         {
           name: 'Test Graph',
           ...extendedMetadata,
@@ -1558,8 +1572,8 @@ describe('GraphCompiler', () => {
 
       expect(mockAgentTemplate.create).toHaveBeenCalledWith(
         schema.nodes[0]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
@@ -1571,8 +1585,8 @@ describe('GraphCompiler', () => {
 
       expect(mockToolTemplate.create).toHaveBeenCalledWith(
         schema.nodes[1]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
@@ -1584,8 +1598,8 @@ describe('GraphCompiler', () => {
 
       expect(mockRuntimeTemplate.create).toHaveBeenCalledWith(
         schema.nodes[2]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',
@@ -1597,8 +1611,8 @@ describe('GraphCompiler', () => {
 
       expect(mockTriggerTemplate.create).toHaveBeenCalledWith(
         schema.nodes[3]!.config,
-        expect.any(Map), // inputNodes
-        expect.any(Map), // outputNodes
+        expect.any(Set), // inputNodeIds
+        expect.any(Set), // outputNodeIds
         {
           name: 'Test Graph',
           graphId: 'test-graph-123',

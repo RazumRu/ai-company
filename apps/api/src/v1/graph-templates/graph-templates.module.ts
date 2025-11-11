@@ -1,10 +1,11 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
 import { AgentTriggersModule } from '../agent-triggers/agent-triggers.module';
 import { AgentsModule } from '../agents/agents.module';
 import { GraphResourcesModule } from '../graph-resources/graph-resources.module';
+import { GraphsModule } from '../graphs/graphs.module';
 import { RuntimeModule } from '../runtime/runtime.module';
 import { TemplatesController } from './controllers/templates.controller';
 import { REGISTER_TEMPLATE_KEY } from './decorators/register-template.decorator';
@@ -25,6 +26,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     AgentsModule,
     AgentTriggersModule,
     GraphResourcesModule,
+    forwardRef(() => GraphsModule),
     DiscoveryModule,
   ],
   controllers: [TemplatesController],

@@ -14,7 +14,8 @@ import {
 import { AgentOutput } from '../../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { NodeKind } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
   NodeBaseTemplateMetadata,
@@ -56,41 +57,52 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
     },
   ] as const;
 
-  constructor(private readonly agentCommunicationTool: AgentCommunicationTool) {
+  constructor(
+    private readonly agentCommunicationTool: AgentCommunicationTool,
+    private readonly graphRegistry: GraphRegistry,
+  ) {
     super();
   }
 
   async create(
     config: z.infer<typeof AgentCommunicationToolTemplateSchema>,
-    _inputNodes: Map<string, CompiledGraphNode>,
-    outputNodes: Map<string, CompiledGraphNode>,
+    _inputNodeIds: Set<string>,
+    outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<DynamicStructuredTool> {
+    // Get agent node IDs from output nodes
+    const agentNodeIds = this.graphRegistry.filterNodesByType(
+      metadata.graphId,
+      outputNodeIds,
+      NodeKind.SimpleAgent,
+    );
+
+    if (agentNodeIds.length === 0) {
+      throw new NotFoundException(
+        'TARGET_AGENT_NOT_FOUND',
+        'No agent nodes found in output nodes for communication',
+      );
+    }
+
+    // Store the first agent node ID
+    const agentNodeId = agentNodeIds[0]!;
+
     const invokeAgent: AgentCommunicationToolOptions['invokeAgent'] = async <
       T = AgentOutput,
     >(
       messages: string[],
       runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
     ): Promise<T> => {
-      // Search for agent nodes in output nodes
-      const agentNodes = Array.from(outputNodes.values()).filter(
-        (node) => node.type === NodeKind.SimpleAgent,
-      ) as CompiledGraphNode<SimpleAgent>[];
-
-      if (agentNodes.length === 0) {
-        throw new NotFoundException(
-          'TARGET_AGENT_NOT_FOUND',
-          'No agent nodes found in output nodes for communication',
-        );
-      }
-
-      // Use the first available agent (in the future, this could be made configurable)
-      const agentNode = agentNodes[0];
+      // Look up the agent from the registry at runtime to get the current instance
+      const agentNode = this.graphRegistry.getNode<SimpleAgent>(
+        metadata.graphId,
+        agentNodeId,
+      );
 
       if (!agentNode) {
         throw new NotFoundException(
           'TARGET_AGENT_NOT_FOUND',
-          'No valid agent node found for communication',
+          `Agent node ${agentNodeId} not found in graph ${metadata.graphId}`,
         );
       }
 
