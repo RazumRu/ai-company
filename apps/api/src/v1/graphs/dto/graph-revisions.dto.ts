@@ -45,10 +45,11 @@ export const ConfigurationDiffSchema = z
 export const GraphRevisionSchema = z.object({
   id: z.uuid(),
   graphId: z.uuid(),
-  fromVersion: z.string(),
-  toVersion: z.string(),
+  baseVersion: z.string().describe('Version the client changes were based on'),
+  toVersion: z.string().describe('New head version after this revision'),
   configurationDiff: ConfigurationDiffSchema,
   newSchema: RealGraphSchema,
+  schemaSnapshot: RealGraphSchema.describe('Full schema snapshot at toVersion'),
   status: z.enum(GraphRevisionStatus),
   error: z.string().optional(),
   createdAt: z.iso.datetime(),

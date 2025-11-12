@@ -69,7 +69,7 @@ const config = defineConfig([
     },
   },
   {
-    files: ['**/*.spec.ts', '**/*.test.ts'],
+    files: ['**/*.spec.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },

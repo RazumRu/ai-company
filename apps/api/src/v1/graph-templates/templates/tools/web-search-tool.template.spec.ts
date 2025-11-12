@@ -3,7 +3,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WebSearchTool } from '../../../agent-tools/tools/web-search.tool';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode as _CompiledGraphNode,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import {
   WebSearchToolTemplate,
   WebSearchToolTemplateSchema,

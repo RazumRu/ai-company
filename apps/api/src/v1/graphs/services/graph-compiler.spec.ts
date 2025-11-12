@@ -22,7 +22,7 @@ vi.mock('../../runtime/services/docker-runtime', () => ({
 describe('GraphCompiler', () => {
   let compiler: GraphCompiler;
   let templateRegistry: TemplateRegistry;
-  let mockGraphRegistry: GraphRegistry;
+  let _mockGraphRegistry: GraphRegistry;
   let mockGraphStateManager: {
     registerNode: ReturnType<typeof vi.fn>;
     attachGraphNode: ReturnType<typeof vi.fn>;
@@ -64,6 +64,7 @@ describe('GraphCompiler', () => {
     id,
     name,
     version,
+    targetVersion: version,
     description: 'Test Description',
     schema,
     status: GraphStatus.Created,
@@ -123,7 +124,7 @@ describe('GraphCompiler', () => {
 
     compiler = module.get<GraphCompiler>(GraphCompiler);
     templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
-    mockGraphRegistry = module.get<GraphRegistry>(GraphRegistry);
+    _mockGraphRegistry = module.get<GraphRegistry>(GraphRegistry);
     vi.clearAllMocks();
   });
 

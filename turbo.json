@@ -26,6 +26,9 @@
     "test:unit": {
       "inputs": ["src/**"]
     },
+    "test:integration": {
+      "inputs": ["src/**"]
+    },
     "test:cov": {
       "inputs": ["src/**"]
     },

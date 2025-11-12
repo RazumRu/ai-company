@@ -71,6 +71,7 @@ describe('ThreadUpdateNotificationHandler', () => {
       name: 'Graph',
       description: 'Desc',
       version: '1.0.0',
+      targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
       status: GraphStatus.Created,
       temporary: false,

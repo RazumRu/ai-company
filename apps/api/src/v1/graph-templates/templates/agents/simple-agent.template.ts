@@ -7,7 +7,10 @@ import {
   SimpleAgent,
   SimpleAgentSchema,
 } from '../../../agents/services/agents/simple-agent';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode as _CompiledGraphNode,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {

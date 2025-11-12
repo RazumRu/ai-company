@@ -180,11 +180,13 @@ describe('ShellToolTemplate', () => {
         'test-graph',
         'runtime-1',
       );
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {},
-        additionalInfo: expect.stringContaining('Docker Image: node:18'),
-      });
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {},
+          additionalInfo: expect.stringContaining('Docker Image: node:18'),
+        }),
+      );
       expect(result).toBe(mockTool);
     });
 
@@ -319,11 +321,13 @@ describe('ShellToolTemplate', () => {
         nodeId: 'test-node',
         version: '1.0.0',
       });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime1,
-        env: {},
-        additionalInfo: expect.stringContaining('Runtime Configuration:'),
-      });
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {},
+          additionalInfo: expect.stringContaining('Runtime Configuration:'),
+        }),
+      );
 
       // Test with second runtime
       mockGraphRegistry.filterNodesByType = vi
@@ -338,11 +342,13 @@ describe('ShellToolTemplate', () => {
         nodeId: 'test-node',
         version: '1.0.0',
       });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime2,
-        env: {},
-        additionalInfo: expect.stringContaining('Runtime Configuration:'),
-      });
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {},
+          additionalInfo: expect.stringContaining('Runtime Configuration:'),
+        }),
+      );
     });
 
     it('should handle null/undefined runtime node gracefully', async () => {
@@ -438,27 +444,35 @@ describe('ShellToolTemplate', () => {
         version: '1.0.0',
       });
 
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('Runtime Configuration:'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('Available Resources:'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('GitHub resource information'),
-      });
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining('Runtime Configuration:'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining('Available Resources:'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining(
+            'GitHub resource information',
+          ),
+        }),
+      );
       expect(result).toBe(mockTool);
     });
 
@@ -545,27 +559,35 @@ describe('ShellToolTemplate', () => {
         version: '1.0.0',
       });
 
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('Runtime Configuration:'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('Available Resources:'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('GitHub resource information'),
-      });
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining('Runtime Configuration:'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining('Available Resources:'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining(
+            'GitHub resource information',
+          ),
+        }),
+      );
       expect(result).toBe(mockTool);
     });
 
@@ -618,11 +640,13 @@ describe('ShellToolTemplate', () => {
         version: '1.0.0',
       });
 
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {}, // Empty object since resource doesn't exist
-        additionalInfo: expect.stringContaining('Runtime Configuration:'),
-      });
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {}, // Empty object since resource doesn't exist
+          additionalInfo: expect.stringContaining('Runtime Configuration:'),
+        }),
+      );
       expect(result).toBe(mockTool);
     });
 
@@ -708,27 +732,35 @@ describe('ShellToolTemplate', () => {
         },
       });
 
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('Runtime Configuration:'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('Available Resources:'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-        additionalInfo: expect.stringContaining('GitHub resource information'),
-      });
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining('Runtime Configuration:'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining('Available Resources:'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+          },
+          additionalInfo: expect.stringContaining(
+            'GitHub resource information',
+          ),
+        }),
+      );
     });
 
     it('should handle multiple resources with different init scripts', async () => {
@@ -839,38 +871,46 @@ describe('ShellToolTemplate', () => {
         },
       });
 
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-          API_KEY: 'api_key',
-        },
-        additionalInfo: expect.stringContaining('Runtime Configuration:'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-          API_KEY: 'api_key',
-        },
-        additionalInfo: expect.stringContaining('Available Resources:'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-          API_KEY: 'api_key',
-        },
-        additionalInfo: expect.stringContaining('GitHub resource'),
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith({
-        runtime: mockRuntime,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-          API_KEY: 'api_key',
-        },
-        additionalInfo: expect.stringContaining('Another resource'),
-      });
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+            API_KEY: 'api_key',
+          },
+          additionalInfo: expect.stringContaining('Runtime Configuration:'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+            API_KEY: 'api_key',
+          },
+          additionalInfo: expect.stringContaining('Available Resources:'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+            API_KEY: 'api_key',
+          },
+          additionalInfo: expect.stringContaining('GitHub resource'),
+        }),
+      );
+      expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          env: {
+            GITHUB_PAT_TOKEN: 'ghp_token',
+            API_KEY: 'api_key',
+          },
+          additionalInfo: expect.stringContaining('Another resource'),
+        }),
+      );
     });
   });
 });

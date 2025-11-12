@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { IShellResourceOutput } from '../../../graph-resources/graph-resources.types';
 import { GithubResource } from '../../../graph-resources/services/github-resource';
-import { CompiledGraphNode } from '../../../graphs/graphs.types';
+import { CompiledGraphNode as _CompiledGraphNode } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
   NodeBaseTemplateMetadata,

@@ -54,6 +54,7 @@ describe('GraphsService', () => {
     name: 'Test Graph',
     description: 'A test graph',
     version: '1.0.0',
+    targetVersion: '1.0.0',
     schema: {
       nodes: [
         {
@@ -78,6 +79,7 @@ describe('GraphsService', () => {
     name: 'Test Graph',
     description: 'A test graph',
     version: '1.0.0',
+    targetVersion: '1.0.0',
     schema: {
       nodes: [
         {
@@ -232,11 +234,12 @@ describe('GraphsService', () => {
     vi.mocked(graphRevisionService.queueRevision).mockResolvedValue({
       id: 'revision-1',
       graphId: mockGraphId,
-      fromVersion: '1.0.0',
+      baseVersion: '1.0.0',
       toVersion: '1.0.1',
       status: 'pending',
       configurationDiff: [],
       newSchema: {} as any,
+      schemaSnapshot: {} as any,
       createdBy: mockUserId,
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
@@ -358,6 +361,7 @@ describe('GraphsService', () => {
           createdBy: mockUserId,
           temporary: false,
           version: '1.0.0',
+          targetVersion: '1.0.0',
         },
         expect.any(Object), // EntityManager
       );
@@ -802,7 +806,9 @@ describe('GraphsService', () => {
 
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
         mockGraph,
+        '1.0.0',
         updateData.schema,
+        expect.any(Object),
       );
       // Should return current graph state with the created revision
       expect(result.graph.version).toBe('1.0.0');
@@ -882,7 +888,9 @@ describe('GraphsService', () => {
 
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
         mockGraph,
+        '1.0.0',
         updateData.schema,
+        expect.any(Object),
       );
       // Should return current graph state with created revision
       expect(result.graph.version).toBe('1.0.0');
@@ -922,6 +930,7 @@ describe('GraphsService', () => {
         {
           schema: updateData.schema,
           version: '1.0.1',
+          targetVersion: '1.0.1',
         },
         expect.any(Object),
       );

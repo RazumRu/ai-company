@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
-import { CompiledGraphNode } from '../../../graphs/graphs.types';
+import { CompiledGraphNode as _CompiledGraphNode } from '../../../graphs/graphs.types';
 import { RuntimeType } from '../../../runtime/runtime.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';

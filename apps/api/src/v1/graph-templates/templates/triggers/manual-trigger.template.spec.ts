@@ -169,7 +169,7 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode = buildCompiledNode<SimpleAgent>({
+      const _agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -210,7 +210,7 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode = buildCompiledNode<SimpleAgent>({
+      const _agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -277,7 +277,7 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode = buildCompiledNode<SimpleAgent>({
+      const _agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
@@ -341,7 +341,7 @@ describe('ManualTriggerTemplate', () => {
         summarizeKeepTokens: 500,
       };
 
-      const agentNode = buildCompiledNode<SimpleAgent>({
+      const _agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',

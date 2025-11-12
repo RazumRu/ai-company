@@ -20,8 +20,8 @@ import { AgentStateUpdateNotificationHandler } from './agent-state-update-notifi
 
 describe('AgentStateUpdateNotificationHandler', () => {
   let handler: AgentStateUpdateNotificationHandler;
-  let threadsDao: ThreadsDao;
-  let notificationsService: NotificationsService;
+  let _threadsDao: ThreadsDao;
+  let _notificationsService: NotificationsService;
 
   const mockGraphId = 'graph-456';
   const mockNodeId = 'node-789';
@@ -29,7 +29,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
   const mockParentThreadId = 'parent-thread-def';
   const mockOwnerId = 'user-123';
 
-  const createMockThreadEntity = (
+  const _createMockThreadEntity = (
     overrides: Partial<ThreadEntity> = {},
   ): ThreadEntity => ({
     id: 'thread-internal-123',
@@ -67,6 +67,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       name: 'Test Graph',
       description: 'Test Description',
       version: '1.0.0',
+      targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
       status: GraphStatus.Created,
       error: undefined,
@@ -103,8 +104,8 @@ describe('AgentStateUpdateNotificationHandler', () => {
     handler = module.get<AgentStateUpdateNotificationHandler>(
       AgentStateUpdateNotificationHandler,
     );
-    threadsDao = module.get<ThreadsDao>(ThreadsDao);
-    notificationsService =
+    _threadsDao = module.get<ThreadsDao>(ThreadsDao);
+    _notificationsService =
       module.get<NotificationsService>(NotificationsService);
   });
 

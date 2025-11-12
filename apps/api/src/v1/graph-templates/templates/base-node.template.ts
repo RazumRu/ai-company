@@ -5,7 +5,7 @@ import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { IBaseResourceOutput } from '../../graph-resources/graph-resources.types';
 import {
-  CompiledGraphNode,
+  CompiledGraphNode as _CompiledGraphNode,
   GraphMetadataSchemaType,
   NodeKind,
 } from '../../graphs/graphs.types';

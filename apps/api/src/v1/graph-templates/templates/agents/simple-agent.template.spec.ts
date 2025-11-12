@@ -173,7 +173,7 @@ describe('SimpleAgentTemplate', () => {
     let mockTool2: DynamicStructuredTool;
     let mockToolNode1: CompiledGraphNode<DynamicStructuredTool>;
     let mockToolNode2: CompiledGraphNode<DynamicStructuredTool>;
-    let connectedNodes: Map<string, CompiledGraphNode>;
+    let _connectedNodes: Map<string, CompiledGraphNode>;
 
     beforeEach(() => {
       mockTool1 = {
@@ -201,7 +201,7 @@ describe('SimpleAgentTemplate', () => {
         instance: mockTool2,
       });
 
-      connectedNodes = new Map([
+      _connectedNodes = new Map([
         ['tool-1', mockToolNode1],
         ['tool-2', mockToolNode2],
       ]);

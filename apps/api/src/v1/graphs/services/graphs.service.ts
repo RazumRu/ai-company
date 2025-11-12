@@ -164,10 +164,12 @@ export class GraphsService {
             Object.assign(graph, refreshedGraph);
           }
 
-          // Queue the schema update for live application
+          // Queue the schema update for live application with 3-way merge
           // Note: Version will be incremented when the revision is applied, not now
+          // currentVersion is used both for validation (above) and as the base for the 3-way merge
           const revision = await this.graphRevisionService.queueRevision(
             graph,
+            currentVersion,
             schema,
             entityManager,
           );
@@ -264,7 +266,7 @@ export class GraphsService {
 
     try {
       // Compile the graph (it will be registered automatically during compilation)
-      const compiledGraph = await this.graphCompiler.compile(graph, {
+      const _compiledGraph = await this.graphCompiler.compile(graph, {
         graphId: graph.id,
         name: graph.name,
         version: graph.version,

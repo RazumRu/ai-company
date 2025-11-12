@@ -14,6 +14,7 @@ import { GraphEntity } from '../entity/graph.entity';
 import { GraphRevisionEntity } from '../entity/graph-revision.entity';
 import { GraphRevisionStatus, GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
+import { GraphMergeService } from './graph-merge.service';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
 import { GraphRevisionQueueService } from './graph-revision-queue.service';
@@ -24,6 +25,7 @@ describe('GraphRevisionService', () => {
   let graphDao: GraphDao;
   let graphUpdateQueue: GraphRevisionQueueService;
   let graphCompiler: GraphCompiler;
+  let graphMergeService: GraphMergeService;
   let typeorm: TypeormService;
   let notificationsService: NotificationsService;
   let authContext: AuthContextService;
@@ -39,6 +41,7 @@ describe('GraphRevisionService', () => {
     name: 'Test Graph',
     description: 'A test graph',
     version: '1.0.0',
+    targetVersion: '1.0.0',
     schema: {
       nodes: [
         {
@@ -63,10 +66,20 @@ describe('GraphRevisionService', () => {
   ): GraphRevisionEntity => ({
     id: mockUpdateId,
     graphId: mockGraphId,
-    fromVersion: '1.0.0',
+    baseVersion: '1.0.0',
     toVersion: '1.0.1',
     configurationDiff: [],
     newSchema: {
+      nodes: [
+        {
+          id: 'node-1',
+          template: 'docker-runtime',
+          config: { image: 'python:3.12' },
+        },
+      ],
+      edges: [],
+    },
+    schemaSnapshot: {
       nodes: [
         {
           id: 'node-1',
@@ -129,6 +142,12 @@ describe('GraphRevisionService', () => {
           },
         },
         {
+          provide: GraphMergeService,
+          useValue: {
+            mergeSchemas: vi.fn(),
+          },
+        },
+        {
           provide: TypeormService,
           useValue: {
             trx: vi.fn(),
@@ -171,6 +190,7 @@ describe('GraphRevisionService', () => {
       GraphRevisionQueueService,
     );
     graphCompiler = module.get<GraphCompiler>(GraphCompiler);
+    graphMergeService = module.get<GraphMergeService>(GraphMergeService);
     typeorm = module.get<TypeormService>(TypeormService);
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
@@ -178,10 +198,11 @@ describe('GraphRevisionService', () => {
   });
 
   describe('queueRevision', () => {
-    it('should queue a graph update successfully', async () => {
+    it('should queue a graph update successfully with 3-way merge', async () => {
       const mockGraph = createMockGraphEntity();
       const mockUpdate = createMockUpdateEntity();
-      const newSchema = {
+      const baseVersion = '1.0.0';
+      const clientSchema = {
         nodes: [
           {
             id: 'node-1',
@@ -198,23 +219,32 @@ describe('GraphRevisionService', () => {
       });
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
+        success: true,
+        mergedSchema: clientSchema,
+        conflicts: [],
+      });
       vi.mocked(graphUpdateDao.create).mockResolvedValue(mockUpdate);
       vi.mocked(graphUpdateQueue.addRevision).mockResolvedValue(undefined);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
-      const result = await service.queueRevision(mockGraph, newSchema);
+      const result = await service.queueRevision(
+        mockGraph,
+        baseVersion,
+        clientSchema,
+      );
 
       expect(result).toEqual(
         expect.objectContaining({
           id: mockUpdateId,
           graphId: mockGraphId,
-          fromVersion: '1.0.0',
           toVersion: '1.0.1',
           status: GraphRevisionStatus.Pending,
         }),
       );
 
-      expect(graphCompiler.validateSchema).toHaveBeenCalledWith(newSchema);
+      expect(graphCompiler.validateSchema).toHaveBeenCalledWith(clientSchema);
+      expect(graphMergeService.mergeSchemas).toHaveBeenCalled();
       expect(graphUpdateDao.create).toHaveBeenCalled();
       expect(graphUpdateQueue.addRevision).toHaveBeenCalledWith(mockUpdate);
       expect(notificationsService.emit).toHaveBeenCalledWith(
@@ -232,17 +262,18 @@ describe('GraphRevisionService', () => {
       });
 
       const mockGraph = createMockGraphEntity();
-      const newSchema = { nodes: [], edges: [] };
+      const baseVersion = '1.0.0';
+      const clientSchema = { nodes: [], edges: [] };
 
       vi.mocked(graphCompiler.validateSchema).mockImplementation(() => {
         throw new Error('Invalid schema');
       });
 
-      await expect(service.queueRevision(mockGraph, newSchema)).rejects.toThrow(
-        'Invalid schema',
-      );
+      await expect(
+        service.queueRevision(mockGraph, baseVersion, clientSchema),
+      ).rejects.toThrow('Invalid schema');
 
-      expect(graphCompiler.validateSchema).toHaveBeenCalledWith(newSchema);
+      expect(graphCompiler.validateSchema).toHaveBeenCalledWith(clientSchema);
     });
 
     it('should calculate diff when schemas are different', async () => {
@@ -253,7 +284,8 @@ describe('GraphRevisionService', () => {
         },
       });
 
-      const newSchema = {
+      const baseVersion = '1.0.0';
+      const clientSchema = {
         nodes: [
           { id: 'node-1', template: 'test', config: {} },
           { id: 'node-2', template: 'test', config: {} },
@@ -267,16 +299,23 @@ describe('GraphRevisionService', () => {
       });
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
+        success: true,
+        mergedSchema: clientSchema,
+        conflicts: [],
+      });
 
       const mockUpdate = createMockUpdateEntity({
         configurationDiff: [
-          { op: 'add', path: '/nodes/1', value: newSchema.nodes[1] },
+          { op: 'add', path: '/nodes/1', value: clientSchema.nodes[1] },
         ],
       });
 
       vi.mocked(graphUpdateDao.create).mockResolvedValue(mockUpdate);
+      vi.mocked(graphUpdateQueue.addRevision).mockResolvedValue(undefined);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
-      await service.queueRevision(mockGraph, newSchema);
+      await service.queueRevision(mockGraph, baseVersion, clientSchema);
 
       expect(graphUpdateDao.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -284,6 +323,35 @@ describe('GraphRevisionService', () => {
         }),
         expect.any(Object),
       );
+    });
+
+    it('should throw MERGE_CONFLICT when merge fails', async () => {
+      const mockGraph = createMockGraphEntity();
+      const baseVersion = '1.0.0';
+      const clientSchema = { nodes: [], edges: [] };
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
+        success: false,
+        conflicts: [
+          {
+            path: '/nodes/0/config/image',
+            baseValue: 'python:3.11',
+            headValue: 'python:3.12',
+            clientValue: 'python:3.13',
+            type: 'concurrent_modification',
+            description: 'Concurrent modification detected',
+          },
+        ],
+      });
+
+      await expect(
+        service.queueRevision(mockGraph, baseVersion, clientSchema),
+      ).rejects.toThrow('Cannot merge changes due to conflicts');
     });
   });
 

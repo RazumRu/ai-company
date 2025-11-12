@@ -36,7 +36,9 @@ export const GraphSchema = z.object({
   description: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
   version: z.string(),
-  targetVersion: z.string().describe('Target version after all queued revisions are applied'),
+  targetVersion: z
+    .string()
+    .describe('Target version after all queued revisions are applied'),
   schema: RealGraphSchema,
   status: z.enum(GraphStatus),
   metadata: GraphMetadataSchema.optional().nullable(),
@@ -205,7 +207,11 @@ export class GraphDto extends createZodDto(GraphSchema) {}
 export class CreateGraphDto extends createZodDto(GraphEditableSchema) {}
 const UpdateGraphSchema = GraphEditableSchema.partial()
   .extend({
-    currentVersion: z.string(),
+    currentVersion: z
+      .string()
+      .describe(
+        'Current version of the graph (for optimistic locking and 3-way merge base)',
+      ),
   })
   .strict();
 

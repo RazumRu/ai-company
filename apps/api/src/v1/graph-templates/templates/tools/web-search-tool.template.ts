@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { WebSearchTool } from '../../../agent-tools/tools/web-search.tool';
-import { CompiledGraphNode } from '../../../graphs/graphs.types';
+import { CompiledGraphNode as _CompiledGraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {

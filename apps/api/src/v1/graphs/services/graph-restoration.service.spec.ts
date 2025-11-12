@@ -44,6 +44,7 @@ describe('GraphRestorationService', () => {
     name: 'Test Graph',
     description: 'Test Description',
     version: '1.0.0',
+    targetVersion: '1.0.0',
     schema: {
       nodes: [
         {

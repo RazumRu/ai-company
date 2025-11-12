@@ -9,7 +9,10 @@ import { z } from 'zod';
 import { ManualTrigger } from '../../../agent-triggers/services/manual-trigger';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode as _CompiledGraphNode,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {

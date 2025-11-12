@@ -148,47 +148,38 @@ src/__tests__/
 **Basic structure example**:
 ```typescript
 import { INestApplication } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { AppModule } from '../../../app.module';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
-import { AuthContextService } from '@packages/http-server';
+import { GraphRevisionService } from '../../../v1/graphs/services/graph-revision.service';
+import { createMockGraphData } from '../helpers/graph-helpers';
+import { createTestModule } from '../setup';
 
-const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
-const TEST_ORG_ID = '00000000-0000-0000-0000-000000000001';
-
-describe('Graph Lifecycle Integration Tests', () => {
+describe('Graph Revisions Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
+  let revisionsService: GraphRevisionService;
   const createdGraphIds: string[] = [];
 
   beforeAll(async () => {
-    const moduleRef: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    })
-      .overrideProvider(AuthContextService)
-      .useValue({
-        checkSub: () => TEST_USER_ID,
-        getSub: () => TEST_USER_ID,
-        getOrganizationId: () => TEST_ORG_ID,
-      })
-      .compile();
+    app = await createTestModule();
 
-    app = moduleRef.createNestApplication();
-    await app.init();
-
-    graphsService = moduleRef.get<GraphsService>(GraphsService);
+    graphsService = app.get<GraphsService>(GraphsService);
+    revisionsService = app.get<GraphRevisionService>(GraphRevisionService);
   });
 
   afterEach(async () => {
-    // Cleanup created resources
+    // Cleanup all created graphs
     for (const graphId of createdGraphIds) {
       try {
         await graphsService.destroy(graphId);
+      } catch {
+        // Graph might not be running
+      }
+      try {
         await graphsService.delete(graphId);
       } catch {
-        // Resource might already be deleted
+        // Graph might already be deleted
       }
     }
     createdGraphIds.length = 0;
@@ -198,16 +189,15 @@ describe('Graph Lifecycle Integration Tests', () => {
     await app.close();
   });
 
-  it('should create and run a graph', async () => {
+  it('applies a revision to a running graph', { timeout: 40000 }, async () => {
     const graphData = createMockGraphData();
 
-    const result = await graphsService.create(graphData);
-    createdGraphIds.push(result.id);
+    const createResponse = await graphsService.create(graphData);
+    createdGraphIds.push(createResponse.id);
 
-    expect(result.status).toBe('created');
+    await graphsService.run(createResponse.id);
 
-    const runResult = await graphsService.run(result.id);
-    expect(runResult.status).toBe('running');
+    // Test logic here...
   });
 });
 ```
@@ -379,6 +369,41 @@ apps/api/cypress/
 - **Mock external dependencies**: Isolate the unit being tested
 - **Test edge cases**: Include tests for error conditions and boundary values
 
+**Example of a good test** (verifies business logic):
+```typescript
+it('should merge non-conflicting changes successfully', () => {
+  const baseSchema = { nodes: [{ id: 'node-1', config: { value: 'original' } }], edges: [] };
+  const headSchema = { nodes: [{ id: 'node-1', config: { value: 'head-changed' } }], edges: [] };
+  const clientSchema = {
+    nodes: [
+      { id: 'node-1', config: { value: 'original' } },
+      { id: 'node-2', config: { value: 'client-new' } }
+    ],
+    edges: []
+  };
+
+  const result = service.mergeSchemas(baseSchema, headSchema, clientSchema);
+
+  expect(result.success).toBe(true);
+  expect(result.mergedSchema!.nodes).toHaveLength(2);
+  expect(result.mergedSchema?.nodes[0]?.config).toEqual({ value: 'head-changed' });
+  expect(result.conflicts).toHaveLength(0);
+});
+```
+
+**Example of a bad test** (just checks mocks work, doesn't verify logic):
+```typescript
+// BAD: This doesn't test merge logic, just that mocks return expected values
+it('should call merge function', () => {
+  const mockMerge = vi.fn().mockReturnValue({ success: true });
+  service.merge = mockMerge;
+
+  service.merge(base, head, client);
+
+  expect(mockMerge).toHaveBeenCalled(); // So what? This tests nothing about correctness
+});
+```
+
 ### E2E Tests
 
 - **Test user flows**: Simulate real user interactions
@@ -386,6 +411,48 @@ apps/api/cypress/
 - **Clean up after tests**: Delete test data created during tests
 - **Independent tests**: Each test should be able to run independently
 - **Avoid hardcoded waits**: Use Cypress commands that wait for elements
+
+**Example of a good E2E test** (verifies API endpoint behavior):
+```typescript
+describe('POST /v1/graphs', () => {
+  it('should create a new graph', () => {
+    const graphData = createMockGraphData();
+
+    createGraph(graphData).then((response) => {
+      expect(response.status).to.equal(201);
+      validateGraph(response.body);
+      createdGraphId = response.body.id;
+    });
+  });
+
+  it('should return 400 for duplicate node IDs', () => {
+    const invalidGraphData = createMockGraphData({
+      schema: {
+        nodes: [
+          { id: 'duplicate-id', template: 'docker-runtime', config: { image: 'python:3.11' } },
+          { id: 'duplicate-id', template: 'docker-runtime', config: { image: 'python:3.11' } },
+        ],
+        edges: [],
+      },
+    });
+
+    createGraph(invalidGraphData).then((response) => {
+      expect(response.status).to.equal(400);
+      expect(response.body.message).to.include('Duplicate node IDs found in graph schema');
+    });
+  });
+});
+```
+
+**Example of a bad E2E test** (tests implementation details, not behavior):
+```typescript
+// BAD: E2E tests should not verify internal implementation
+it('should call validateSchema method', () => {
+  cy.spy(graphService, 'validateSchema'); // Don't spy on internals in E2E
+  createGraph(graphData);
+  expect(graphService.validateSchema).to.have.been.called;
+});
+```
 
 ### Integration Tests
 
@@ -396,12 +463,71 @@ apps/api/cypress/
 - **Edge cases and business logic**: Go deep into all aspects of business logic
 - **Independent tests**: Each test should be able to run independently
 
+**Example of a good integration test** (verifies complete business workflow):
+```typescript
+it('applies a revision to a running graph', { timeout: 40000 }, async () => {
+  const graphData = createMockGraphData();
+  const newInstructions = 'Updated instructions for live revision';
+
+  // Create and run graph
+  const createResponse = await graphsService.create(graphData);
+  const graphId = createResponse.id;
+  createdGraphIds.push(graphId);
+  await graphsService.run(graphId);
+  await waitForGraphToBeRunning(graphId);
+
+  // Update schema to create a revision
+  const updatedSchema = cloneDeep(createResponse.schema);
+  updatedSchema.nodes = updatedSchema.nodes.map((node) =>
+    node.id === 'agent-1'
+      ? { ...node, config: { ...node.config, instructions: newInstructions } }
+      : node
+  );
+
+  const updateResponse = await graphsService.update(graphId, {
+    schema: updatedSchema,
+    currentVersion: createResponse.version,
+  });
+
+  // Wait for revision to be applied
+  const revision = await waitForRevisionStatus(
+    graphId,
+    updateResponse.revision!.id,
+    GraphRevisionStatus.Applied
+  );
+
+  // Verify the business logic: version incremented and schema updated
+  expect(compare(createResponse.version, revision.toVersion)).toBe(-1);
+  expect(revision.error).toBeUndefined();
+
+  const updatedGraph = await graphsService.findById(graphId);
+  expect(updatedGraph.version).toBe(revision.toVersion);
+  const agentNode = updatedGraph.schema.nodes.find(n => n.id === 'agent-1');
+  expect(agentNode?.config.instructions).toBe(newInstructions);
+});
+```
+
+**Example of a bad integration test** (just checks CRUD operations work):
+```typescript
+// BAD: This doesn't test any real business logic, just basic DB operations
+it('should create and retrieve a graph', async () => {
+  const graph = await graphsService.create(graphData);
+  createdGraphIds.push(graph.id);
+
+  const retrieved = await graphsService.findById(graph.id);
+
+  expect(retrieved.id).toBe(graph.id); // So what? This just tests TypeORM works
+  expect(retrieved.name).toBe(graph.name); // Not testing any business rules
+});
+```
+
 ### General
 
 - **Keep tests fast**: Unit tests should run in milliseconds
 - **Maintain tests**: Update tests when code changes
 - **Fix failing tests immediately**: Don't ignore or skip failing tests
 - **Use descriptive assertions**: Make it clear what is expected
+- **Always review tests critically**: Make sure they verify real logic, not just match broken behavior. Avoid cargo-cult, brittle, or bug-preserving tests that only keep the suite green instead of keeping the product correct
 
 ### No Conditional Testing or Skips (Must-Fail Policy)
 

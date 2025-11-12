@@ -1,3 +1,4 @@
+import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 
 // Helper to create mock graph data for tests
@@ -14,12 +15,11 @@ export const createMockGraphData = (
           id: 'agent-1',
           template: 'simple-agent',
           config: {
-            name: 'Test Agent',
             instructions: 'You are a helpful test agent. Answer briefly.',
             invokeModelName: 'gpt-5-mini',
             summarizeMaxTokens: 272000,
             summarizeKeepTokens: 30000,
-          },
+          } satisfies SimpleAgentSchemaType,
         },
         {
           id: 'trigger-1',
@@ -49,3 +49,39 @@ export const createMockGraphData = (
       : defaultData.schema,
   };
 };
+
+/**
+ * Poll for a condition to be met with exponential backoff
+ */
+export async function waitForCondition<T>(
+  fn: () => Promise<T>,
+  condition: (result: T) => boolean,
+  options: {
+    timeout?: number;
+    interval?: number;
+    maxInterval?: number;
+  } = {},
+): Promise<T> {
+  const { timeout = 10000, interval = 100, maxInterval = 1000 } = options;
+  const start = Date.now();
+  let currentInterval = interval;
+
+  while (Date.now() - start < timeout) {
+    try {
+      const result = await fn();
+      if (condition(result)) {
+        return result;
+      }
+    } catch (_error) {
+      // Condition not met yet, continue polling
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, currentInterval));
+    // Exponential backoff
+    currentInterval = Math.min(currentInterval * 1.5, maxInterval);
+  }
+
+  throw new Error(
+    `Condition not met after ${timeout}ms. Last check at ${Date.now() - start}ms`,
+  );
+}

@@ -6,6 +6,7 @@ import type { GraphSchemaType } from '../graphs.types';
 import { GraphRevisionStatus } from '../graphs.types';
 
 @Entity('graph_revisions')
+@Index(['graphId', 'toVersion']) // For finding revisions by version
 export class GraphRevisionEntity extends TimestampsEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -15,7 +16,7 @@ export class GraphRevisionEntity extends TimestampsEntity {
   graphId!: string;
 
   @Column({ type: 'varchar', length: 50 })
-  fromVersion!: string;
+  baseVersion!: string;
 
   @Column({ type: 'varchar', length: 50 })
   toVersion!: string;
@@ -25,6 +26,9 @@ export class GraphRevisionEntity extends TimestampsEntity {
 
   @Column({ type: 'jsonb' })
   newSchema!: GraphSchemaType;
+
+  @Column({ type: 'jsonb' })
+  schemaSnapshot!: GraphSchemaType;
 
   @Column({
     type: 'enum',

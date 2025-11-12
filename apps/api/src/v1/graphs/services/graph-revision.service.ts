@@ -8,7 +8,7 @@ import { AuthContextService } from '@packages/http-server';
 import type { AdditionalParams } from '@packages/typeorm';
 import { TypeormService } from '@packages/typeorm';
 import { compare, type Operation } from 'fast-json-patch';
-import { coerce, compare as semverCompare, inc } from 'semver';
+import { coerce, inc } from 'semver';
 import { EntityManager } from 'typeorm';
 
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
@@ -31,9 +31,9 @@ import {
   GraphRevisionStatus,
   GraphSchemaType,
   GraphStatus,
-  NodeKind,
 } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
+import { GraphMergeService } from './graph-merge.service';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionQueueService } from './graph-revision-queue.service';
 
@@ -45,6 +45,7 @@ export class GraphRevisionService {
     private readonly graphRevisionQueue: GraphRevisionQueueService,
     private readonly graphRegistry: GraphRegistry,
     private readonly graphCompiler: GraphCompiler,
+    private readonly graphMergeService: GraphMergeService,
     private readonly typeorm: TypeormService,
     private readonly notificationsService: NotificationsService,
     private readonly authContext: AuthContextService,
@@ -66,46 +67,117 @@ export class GraphRevisionService {
   }
 
   /**
-   * Queue a graph revision
+   * Accept and queue a graph revision with 3-way merge
+   *
+   * @param graph - Current graph entity
+   * @param baseVersion - Version client's changes are based on
+   * @param clientSchema - Schema client is submitting
+   * @param entityManager - Optional transaction manager
+   * @returns Created revision or throws with conflicts
    */
   async queueRevision(
     graph: GraphEntity,
-    newSchema: GraphSchemaType,
+    baseVersion: string,
+    clientSchema: GraphSchemaType,
     entityManager?: EntityManager,
   ): Promise<GraphRevisionDto> {
     const userId = this.authContext.checkSub();
 
-    return this.typeorm.trx(async (entityManager: EntityManager) => {
-      // Validate new schema
-      this.graphCompiler.validateSchema(newSchema);
+    return this.typeorm.trx(async (em: EntityManager) => {
+      // Validate client schema
+      this.graphCompiler.validateSchema(clientSchema);
 
-      // Use targetVersion as the base for generating the next version
-      // This represents the version after all currently queued revisions are applied
-      const baseVersion = graph.targetVersion;
+      // Get head schema (current targetVersion)
+      const headVersion = graph.targetVersion;
+      let headSchema: GraphSchemaType;
 
-      // Calculate diff
-      const configurationDiff = this.calculateDiff(graph.schema, newSchema);
-      const newVersion = this.generateNextVersion(baseVersion);
+      // If there are pending revisions (targetVersion > version),
+      // we need to use the latest pending revision's schema as head
+      if (headVersion !== graph.version) {
+        const headRevision = await this.getSchemaAtVersion(
+          graph.id,
+          headVersion,
+          em,
+        );
+        if (!headRevision) {
+          // This shouldn't happen, but fallback to current schema
+          this.logger.warn(
+            `Could not find revision at targetVersion ${headVersion}, using current schema`,
+          );
+          headSchema = graph.schema;
+        } else {
+          headSchema = headRevision.schemaSnapshot;
+        }
+      } else {
+        // No pending revisions, head is the current schema
+        headSchema = graph.schema;
+      }
+
+      // Get base schema (what client started from)
+      let baseSchema: GraphSchemaType;
+      if (baseVersion === graph.version) {
+        // Client is up to date
+        baseSchema = graph.schema;
+      } else {
+        // Client is behind - need to fetch base schema from revision history
+        const baseRevision = await this.getSchemaAtVersion(
+          graph.id,
+          baseVersion,
+          em,
+        );
+        if (!baseRevision) {
+          throw new BadRequestException(
+            'VERSION_NOT_FOUND',
+            `Base version ${baseVersion} not found. Please refresh and retry.`,
+          );
+        }
+        baseSchema = baseRevision.schemaSnapshot;
+      }
+
+      // Perform 3-way merge
+      const mergeResult = this.graphMergeService.mergeSchemas(
+        baseSchema,
+        headSchema,
+        clientSchema,
+      );
+
+      if (!mergeResult.success) {
+        throw new BadRequestException(
+          'MERGE_CONFLICT',
+          'Cannot merge changes due to conflicts',
+          {
+            conflicts: mergeResult.conflicts,
+            headVersion,
+          },
+        );
+      }
+
+      const mergedSchema = mergeResult.mergedSchema!;
+
+      // Calculate diff from head to merged
+      const configurationDiff = this.calculateDiff(headSchema, mergedSchema);
+      const newVersion = this.generateNextVersion(headVersion);
 
       // Create revision entity
       const revision = await this.graphRevisionDao.create(
         {
           graphId: graph.id,
-          fromVersion: graph.version,
+          baseVersion,
           toVersion: newVersion,
           configurationDiff,
-          newSchema,
+          newSchema: mergedSchema,
+          schemaSnapshot: mergedSchema,
           status: GraphRevisionStatus.Pending,
           createdBy: userId,
         },
-        entityManager,
+        em,
       );
 
       // Update graph's targetVersion to the new revision's toVersion
       await this.graphDao.updateById(
         graph.id,
         { targetVersion: newVersion },
-        entityManager,
+        em,
       );
 
       // Emit notification
@@ -115,11 +187,34 @@ export class GraphRevisionService {
         data: revision,
       });
 
-      // Add to queue
+      // Add to queue for immediate processing
       await this.graphRevisionQueue.addRevision(revision);
+
+      this.logger.log(
+        `Queued revision ${revision.id} for graph ${graph.id}: ${baseVersion} → ${newVersion}`,
+      );
 
       return this.prepareResponse(revision);
     }, entityManager);
+  }
+
+  /**
+   * Get schema at a specific version from revision history
+   */
+  private async getSchemaAtVersion(
+    graphId: string,
+    version: string,
+    entityManager?: EntityManager,
+  ): Promise<GraphRevisionEntity | null> {
+    const revision = await this.graphRevisionDao.getOne(
+      {
+        graphId,
+        toVersion: version,
+      },
+      entityManager,
+    );
+
+    return revision || null;
   }
 
   /**
@@ -158,14 +253,6 @@ export class GraphRevisionService {
 
         if (!graph) {
           throw new NotFoundException('GRAPH_NOT_FOUND');
-        }
-
-        // Check if graph version still matches the revision's fromVersion
-        if (graph.version !== revision.fromVersion) {
-          throw new BadRequestException(
-            'VERSION_CONFLICT',
-            `Expected version ${revision.fromVersion} but graph is at ${graph.version}`,
-          );
         }
 
         const compiledGraph = this.graphRegistry.get(revision.graphId);

@@ -75,6 +75,7 @@ export const SimpleAgentSchema = z.object({
     .min(1)
     .max(2500)
     .default(2500)
+    .optional()
     .describe(
       'Maximum number of iterations the agent can execute during a single run.',
     )

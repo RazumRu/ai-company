@@ -6,7 +6,10 @@ import {
   ResourceKind,
 } from '../../../graph-resources/graph-resources.types';
 import { GithubResource } from '../../../graph-resources/services/github-resource';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode as _CompiledGraphNode,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import {
   GithubResourceTemplate,
   GithubResourceTemplateSchema,

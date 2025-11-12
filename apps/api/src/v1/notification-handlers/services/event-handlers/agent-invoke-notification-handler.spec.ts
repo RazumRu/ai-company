@@ -40,6 +40,7 @@ describe('AgentInvokeNotificationHandler', () => {
     name: 'Test Graph',
     description: 'A test graph',
     version: '1.0.0',
+    targetVersion: '1.0.0',
     schema: {
       nodes: [],
       edges: [],

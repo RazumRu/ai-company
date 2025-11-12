@@ -11,6 +11,7 @@ export type SearchTerms = Partial<{
   createdBy: string;
   status: GraphRevisionStatus;
   statuses: GraphRevisionStatus[];
+  toVersion: string;
 }>;
 
 @Injectable()
@@ -60,6 +61,12 @@ export class GraphRevisionDao extends BaseDao<
     } else if (params?.status) {
       builder.andWhere({
         status: params.status,
+      });
+    }
+
+    if (params?.toVersion) {
+      builder.andWhere({
+        toVersion: params.toVersion,
       });
     }
   }
