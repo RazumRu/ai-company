@@ -99,6 +99,7 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
       // Automatically join user's personal room
       const userRoom = this.getUserRoomName(userId);
       await client.join(userRoom);
+      client.emit('socket_connected');
     } catch (err) {
       this.logger.error(<Error>err, 'Socket connection error');
       this.emitError(<Error>err, client, true);

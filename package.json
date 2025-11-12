@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "full-check": "pnpm -s build && pnpm -s build:tests && pnpm -s lint:fix && pnpm -s test",
+    "full-check": "pnpm -s build && pnpm -s build:tests && pnpm -s lint:fix && pnpm -s test:unit",
     "build": "turbo run build",
     "build:tests": "turbo run build:tests",
     "build:packages": "turbo run build --filter='./packages/*'",
@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "test": "turbo run test",
+    "test:unit": "turbo run test:unit",
     "test:packages": "turbo run test --filter='./packages/*'",
     "test:packages:cov": "turbo run test:cov --filter='./packages/*'",
     "test:cov": "turbo run test:cov",

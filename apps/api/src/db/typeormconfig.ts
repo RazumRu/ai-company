@@ -11,7 +11,9 @@ export default new DataSource({
   database: environment.postgresDatabase || undefined,
   password: environment.postgresPassword || undefined,
   entities: [`${__dirname}/../**/*.entity{.ts,.js}`],
-  migrations: [`${__dirname}/migrations/**/*{.ts,.js}`],
+  migrations: environment.postgresRunMigrations
+    ? [`${__dirname}/migrations/**/*{.ts,.js}`]
+    : undefined,
   synchronize: false,
   dropSchema: false,
   logging: environment.lodDbQueries,

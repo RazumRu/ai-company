@@ -20,6 +20,7 @@ import {
   GraphNodesQueryDto,
   GraphNodeWithStatusDto,
   UpdateGraphDto,
+  UpdateGraphResponseDto,
 } from '../dto/graphs.dto';
 import { GraphsService } from '../services/graphs.service';
 
@@ -57,7 +58,7 @@ export class GraphsController {
   async updateGraph(
     @Param() params: EntityUUIDDto,
     @Body() dto: UpdateGraphDto,
-  ): Promise<GraphDto> {
+  ): Promise<UpdateGraphResponseDto> {
     return await this.graphsService.update(params.id, dto);
   }
 

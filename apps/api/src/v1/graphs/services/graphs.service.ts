@@ -18,6 +18,7 @@ import {
   GraphNodesQueryDto,
   GraphNodeWithStatusDto,
   UpdateGraphDto,
+  UpdateGraphResponseDto,
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus, NodeKind } from '../graphs.types';
@@ -50,13 +51,15 @@ export class GraphsService {
     this.graphCompiler.validateSchema(data.schema);
 
     return this.typeorm.trx(async (entityManager: EntityManager) => {
+      const initialVersion = '1.0.0';
       const row = await this.graphDao.create(
         {
           ...data,
           status: GraphStatus.Created,
           createdBy: this.authContext.checkSub(),
           temporary: data.temporary ?? false,
-          version: '1.0.0',
+          version: initialVersion,
+          targetVersion: initialVersion,
         },
         entityManager,
       );
@@ -109,7 +112,10 @@ export class GraphsService {
     return compiledGraph.state.getSnapshots(data.threadId, data.runId);
   }
 
-  async update(id: string, data: UpdateGraphDto): Promise<GraphDto> {
+  async update(
+    id: string,
+    data: UpdateGraphDto,
+  ): Promise<UpdateGraphResponseDto> {
     const { currentVersion, schema, ...rest } = data;
 
     // Use transaction with row-level locking to prevent simultaneous updates
@@ -146,24 +152,46 @@ export class GraphsService {
         this.graphCompiler.validateSchema(schema);
 
         if (schemaChanged) {
-          // Queue the update for live application
-          // Note: Version will be incremented when the revision is applied, not now
-          await this.graphRevisionService.queueRevision(graph, schema);
+          // Apply non-schema updates immediately (e.g., name, description)
+          const nonSchemaUpdates = omitBy({ ...rest }, isUndefined);
+          if (Object.keys(nonSchemaUpdates).length > 0) {
+            await this.graphDao.updateById(id, nonSchemaUpdates, entityManager);
+            // Refresh graph entity with updated fields
+            const refreshedGraph = await this.graphDao.getById(id);
+            if (!refreshedGraph) {
+              throw new NotFoundException('GRAPH_NOT_FOUND');
+            }
+            Object.assign(graph, refreshedGraph);
+          }
 
-          // Return current graph state (update is queued, version unchanged)
-          return this.prepareResponse(graph);
+          // Queue the schema update for live application
+          // Note: Version will be incremented when the revision is applied, not now
+          const revision = await this.graphRevisionService.queueRevision(
+            graph,
+            schema,
+            entityManager,
+          );
+
+          // Return updated graph state with the created revision
+          return {
+            graph: this.prepareResponse(graph),
+            revision,
+          };
         }
       }
+
+      const newVersion = schemaChanged
+        ? this.graphRevisionService.generateNextVersion(graph.version)
+        : undefined;
 
       const updatePayload = omitBy(
         {
           ...rest,
-          ...(schemaChanged
+          ...(schemaChanged && newVersion
             ? {
                 schema,
-                version: this.graphRevisionService.generateNextVersion(
-                  graph.version,
-                ),
+                version: newVersion,
+                targetVersion: newVersion,
               }
             : {}),
         },
@@ -171,7 +199,7 @@ export class GraphsService {
       );
 
       if (Object.keys(updatePayload).length === 0) {
-        return this.prepareResponse(graph);
+        return { graph: this.prepareResponse(graph) };
       }
 
       const updated = await this.graphDao.updateById(
@@ -184,7 +212,7 @@ export class GraphsService {
         throw new NotFoundException('GRAPH_NOT_FOUND');
       }
 
-      return this.prepareResponse(updated);
+      return { graph: this.prepareResponse(updated) };
     });
   }
 

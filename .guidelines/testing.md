@@ -5,7 +5,7 @@ This document explains how to run and write tests for the Ai company API project
 ## Overview
 
 The project uses two testing frameworks:
-- **Vitest** for unit tests
+- **Vitest** for unit tests and integration tests
 - **Cypress** for E2E (end-to-end) tests
 
 ## Full project check (mandatory)
@@ -61,6 +61,158 @@ When adding new tests for a feature/module/API that already has test coverage:
 Examples:
 - Unit tests: if src/v1/users/users.service.spec.ts exists and you add more service methods, add new `describe/it` blocks there rather than creating another users.service.more.spec.ts.
 - E2E tests: if apps/api/cypress/e2e/users/users.cy.ts exists and you add new user flows, extend that file (or its existing suites) instead of creating users-new.cy.ts.
+
+## Integration Testing
+
+### Overview
+
+Integration tests are deep, comprehensive tests that verify the detailed behavior of business logic by calling services directly. They differ from E2E tests in purpose and scope:
+
+**E2E Tests (Cypress)** - `cypress/e2e/*.cy.ts`
+- Test basic endpoint functionality and reachability
+- Verify HTTP request/response flows work correctly
+- Check basic validation and error handling
+- Test that endpoints are accessible and return expected status codes
+- **Purpose**: Smoke testing to ensure general functionality works
+
+**Integration Tests (Vitest)** - `src/__tests__/integration/*.int.ts`
+- Deep dive into business logic and edge cases
+- Test complex workflows and state transitions
+- Verify detailed behavior of services and their interactions
+- Test asynchronous operations and side effects
+- **Purpose**: Comprehensive testing of all aspects of business logic
+
+| Aspect | Integration Tests | E2E Tests |
+|--------|------------------|-----------|
+| **Location** | `src/__tests__/integration/` | `cypress/e2e/` |
+| **Purpose** | Detailed business logic testing | Basic endpoint validation |
+| **Execution** | Direct service calls | HTTP requests |
+| **Speed** | Fast | Slower |
+| **Coverage** | Comprehensive scenarios, edge cases, state transitions | Smoke tests, endpoint reachability, basic validation |
+| **When to use** | Complex workflows, business logic validation, async operations | Verify endpoints work, basic CRUD operations, general validation |
+| **Example** | Testing revision status transitions through multiple states | Testing that POST /graphs returns 201 and validates required fields |
+
+### Running Integration Tests
+
+```bash
+# Run all tests (unit + integration)
+pnpm test
+
+# Run only unit tests (excluding integration tests)
+pnpm test:unit
+
+# Run only integration tests (excluding unit tests)
+pnpm test:integration
+
+# Run with coverage
+pnpm test:cov
+
+# Run specific integration test file
+pnpm vitest src/__tests__/integration/graphs/graph-lifecycle.int.ts
+
+# Run integration tests in watch mode
+pnpm vitest --watch src/__tests__/integration/
+```
+
+### Writing Integration Tests
+
+Integration tests should be placed in `src/__tests__/integration/` with the `.int.ts` extension.
+
+**File naming**: Create test files with `.int.ts` extension (e.g., `graph-lifecycle.int.ts`)
+
+**Location structure**:
+```
+src/__tests__/
+├── integration/
+│   ├── helpers/
+│   │   └── graph-helpers.ts     # Helper utilities for test data
+│   ├── graphs/
+│   │   ├── graph-lifecycle.int.ts
+│   │   ├── graph-validation.int.ts
+│   │   └── graph-revisions.int.ts
+│   ├── threads/
+│   │   └── thread-management.int.ts
+│   └── notifications/
+│       └── socket-notifications.int.ts
+└── README.md
+```
+
+**Key principles**:
+1. Each test file sets up its own `TestingModule` and `NestApplication` instance
+2. Get service instances directly from the test module using `moduleRef.get<ServiceType>(ServiceClass)`
+3. Call service methods directly instead of making HTTP requests
+4. Always clean up created resources in `afterEach` or `afterAll`
+5. Override `AuthContextService` to provide test user credentials
+6. Use existing DTOs and types from the codebase
+
+**Basic structure example**:
+```typescript
+import { INestApplication } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+
+import { AppModule } from '../../../app.module';
+import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { AuthContextService } from '@packages/http-server';
+
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
+const TEST_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
+describe('Graph Lifecycle Integration Tests', () => {
+  let app: INestApplication;
+  let graphsService: GraphsService;
+  const createdGraphIds: string[] = [];
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(AuthContextService)
+      .useValue({
+        checkSub: () => TEST_USER_ID,
+        getSub: () => TEST_USER_ID,
+        getOrganizationId: () => TEST_ORG_ID,
+      })
+      .compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+
+    graphsService = moduleRef.get<GraphsService>(GraphsService);
+  });
+
+  afterEach(async () => {
+    // Cleanup created resources
+    for (const graphId of createdGraphIds) {
+      try {
+        await graphsService.destroy(graphId);
+        await graphsService.delete(graphId);
+      } catch {
+        // Resource might already be deleted
+      }
+    }
+    createdGraphIds.length = 0;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('should create and run a graph', async () => {
+    const graphData = createMockGraphData();
+
+    const result = await graphsService.create(graphData);
+    createdGraphIds.push(result.id);
+
+    expect(result.status).toBe('created');
+
+    const runResult = await graphsService.run(result.id);
+    expect(runResult.status).toBe('running');
+  });
+});
+```
+
+For more detailed examples and patterns, see `src/__tests__/README.md`.
 
 ## E2E Testing
 
@@ -234,6 +386,15 @@ apps/api/cypress/
 - **Clean up after tests**: Delete test data created during tests
 - **Independent tests**: Each test should be able to run independently
 - **Avoid hardcoded waits**: Use Cypress commands that wait for elements
+
+### Integration Tests
+
+- **Test real scenarios**: Focus on actual use cases and workflows, not isolated units
+- **Direct service calls**: Use services directly rather than HTTP requests
+- **Clean up resources**: Always clean up created resources to avoid test pollution
+- **Test state transitions**: Verify complex state changes and async operations
+- **Edge cases and business logic**: Go deep into all aspects of business logic
+- **Independent tests**: Each test should be able to run independently
 
 ### General
 

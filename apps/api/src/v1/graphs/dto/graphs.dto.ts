@@ -7,6 +7,7 @@ import {
   GraphStatus,
   NodeKind,
 } from '../graphs.types';
+import { GraphRevisionSchema } from './graph-revisions.dto';
 
 // Node coordinates schema for UI positioning
 export const NodeMetadataSchema = z.object({
@@ -35,6 +36,7 @@ export const GraphSchema = z.object({
   description: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
   version: z.string(),
+  targetVersion: z.string().describe('Target version after all queued revisions are applied'),
   schema: RealGraphSchema,
   status: z.enum(GraphStatus),
   metadata: GraphMetadataSchema.optional().nullable(),
@@ -57,6 +59,7 @@ export const GraphEditableSchema = GraphSchema.omit({
   createdAt: true,
   updatedAt: true,
   version: true,
+  targetVersion: true,
 });
 
 export const ExecuteTriggerSchema = z.object({
@@ -207,6 +210,18 @@ const UpdateGraphSchema = GraphEditableSchema.partial()
   .strict();
 
 export class UpdateGraphDto extends createZodDto(UpdateGraphSchema) {}
+
+// Response schema for update operation
+export const UpdateGraphResponseSchema = z.object({
+  graph: GraphSchema.describe('Updated graph'),
+  revision: GraphRevisionSchema.optional()
+    .nullable()
+    .describe('Created revision if graph was running/compiling'),
+});
+
+export class UpdateGraphResponseDto extends createZodDto(
+  UpdateGraphResponseSchema,
+) {}
 export class ExecuteTriggerDto extends createZodDto(ExecuteTriggerSchema) {}
 export class ExecuteTriggerResponseDto extends createZodDto(
   ExecuteTriggerResponseSchema,

@@ -86,9 +86,8 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     }
 
     // Get runtime instance (either directly or via getter function)
-    const runtime = typeof config.runtime === 'function'
-      ? config.runtime()
-      : config.runtime;
+    const runtime =
+      typeof config.runtime === 'function' ? config.runtime() : config.runtime;
 
     // Get environment variables from config
     const configEnv = config.env || {};

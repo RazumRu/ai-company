@@ -9,7 +9,7 @@ export default mergeConfig(
     test: {
       name: pkg.name,
       disableConsoleIntercept: true,
-      include: ['src/**/*.spec.ts'],
+      include: ['src/**/*.spec.ts', 'src/**/*.int.ts'],
     },
   }),
 );

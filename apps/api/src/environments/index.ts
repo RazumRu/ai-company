@@ -4,9 +4,10 @@ dotenv.config();
 
 import { environment as dev } from './environment.dev';
 import { environment as prod } from './environment.prod';
+import { environment as test } from './environment.test';
 
 const ENV_MAP = {
-  test: dev(),
+  test: test(),
   development: dev(),
   production: prod(),
 };

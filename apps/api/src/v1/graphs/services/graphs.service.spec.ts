@@ -702,7 +702,8 @@ describe('GraphsService', () => {
 
       const result = await service.update(mockGraphId, updateData);
 
-      expect(result).toMatchObject(updatedGraph);
+      expect(result.graph).toMatchObject(updatedGraph);
+      expect(result.revision).toBeUndefined();
       expect(graphDao.updateById).toHaveBeenCalledWith(
         mockGraphId,
         {
@@ -803,8 +804,9 @@ describe('GraphsService', () => {
         mockGraph,
         updateData.schema,
       );
-      // Should return current graph state (version unchanged)
-      expect(result.version).toBe('1.0.0');
+      // Should return current graph state with the created revision
+      expect(result.graph.version).toBe('1.0.0');
+      expect(result.revision).toBeDefined();
       expect(graphDao.updateById).not.toHaveBeenCalled();
     });
 
@@ -821,7 +823,8 @@ describe('GraphsService', () => {
 
       expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
       expect(graphDao.updateById).not.toHaveBeenCalled();
-      expect(result.version).toBe(mockGraph.version);
+      expect(result.graph.version).toBe(mockGraph.version);
+      expect(result.revision).toBeUndefined();
     });
 
     it('should update other fields when running graph schema is unchanged', async () => {
@@ -850,8 +853,9 @@ describe('GraphsService', () => {
         },
         expect.any(Object),
       );
-      expect(result.name).toBe('Updated Graph');
-      expect(result.version).toBe(mockGraph.version);
+      expect(result.graph.name).toBe('Updated Graph');
+      expect(result.graph.version).toBe(mockGraph.version);
+      expect(result.revision).toBeUndefined();
     });
 
     it('should queue revision when updating compiling graph schema', async () => {
@@ -880,8 +884,9 @@ describe('GraphsService', () => {
         mockGraph,
         updateData.schema,
       );
-      // Should return current graph state (version unchanged)
-      expect(result.version).toBe('1.0.0');
+      // Should return current graph state with created revision
+      expect(result.graph.version).toBe('1.0.0');
+      expect(result.revision).toBeDefined();
       expect(graphDao.updateById).not.toHaveBeenCalled();
     });
 
@@ -920,7 +925,8 @@ describe('GraphsService', () => {
         },
         expect.any(Object),
       );
-      expect(result.version).toEqual('1.0.1');
+      expect(result.graph.version).toEqual('1.0.1');
+      expect(result.revision).toBeUndefined();
     });
 
     it('should not increment version when non-running graph schema is unchanged', async () => {
@@ -935,7 +941,8 @@ describe('GraphsService', () => {
       const result = await service.update(mockGraphId, updateData);
 
       expect(graphDao.updateById).not.toHaveBeenCalled();
-      expect(result.version).toBe(mockGraph.version);
+      expect(result.graph.version).toBe(mockGraph.version);
+      expect(result.revision).toBeUndefined();
     });
 
     it('should preserve version when schema unchanged but other fields updated', async () => {
@@ -963,8 +970,9 @@ describe('GraphsService', () => {
         },
         expect.any(Object),
       );
-      expect(result.version).toBe(mockGraph.version);
-      expect(result.name).toBe('Updated Graph');
+      expect(result.graph.version).toBe(mockGraph.version);
+      expect(result.graph.name).toBe('Updated Graph');
+      expect(result.revision).toBeUndefined();
     });
   });
 

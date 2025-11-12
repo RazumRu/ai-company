@@ -8,13 +8,10 @@ import { AuthContextService } from '@packages/http-server';
 import type { AdditionalParams } from '@packages/typeorm';
 import { TypeormService } from '@packages/typeorm';
 import { compare, type Operation } from 'fast-json-patch';
-import { coerce, inc } from 'semver';
+import { coerce, compare as semverCompare, inc } from 'semver';
 import { EntityManager } from 'typeorm';
 
-import {
-  SimpleAgent,
-  SimpleAgentSchemaType,
-} from '../../agents/services/agents/simple-agent';
+import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
@@ -74,6 +71,7 @@ export class GraphRevisionService {
   async queueRevision(
     graph: GraphEntity,
     newSchema: GraphSchemaType,
+    entityManager?: EntityManager,
   ): Promise<GraphRevisionDto> {
     const userId = this.authContext.checkSub();
 
@@ -81,9 +79,13 @@ export class GraphRevisionService {
       // Validate new schema
       this.graphCompiler.validateSchema(newSchema);
 
+      // Use targetVersion as the base for generating the next version
+      // This represents the version after all currently queued revisions are applied
+      const baseVersion = graph.targetVersion;
+
       // Calculate diff
       const configurationDiff = this.calculateDiff(graph.schema, newSchema);
-      const newVersion = this.generateNextVersion(graph.version);
+      const newVersion = this.generateNextVersion(baseVersion);
 
       // Create revision entity
       const revision = await this.graphRevisionDao.create(
@@ -99,6 +101,13 @@ export class GraphRevisionService {
         entityManager,
       );
 
+      // Update graph's targetVersion to the new revision's toVersion
+      await this.graphDao.updateById(
+        graph.id,
+        { targetVersion: newVersion },
+        entityManager,
+      );
+
       // Emit notification
       await this.notificationsService.emit({
         type: NotificationEvent.GraphRevisionCreate,
@@ -110,7 +119,7 @@ export class GraphRevisionService {
       await this.graphRevisionQueue.addRevision(revision);
 
       return this.prepareResponse(revision);
-    });
+    }, entityManager);
   }
 
   /**

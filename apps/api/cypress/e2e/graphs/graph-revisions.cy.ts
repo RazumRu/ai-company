@@ -10,7 +10,6 @@ import {
 } from '../../api-definitions';
 import { reqHeaders } from '../common.helper';
 import {
-  getThreadByExternalId,
   getThreadMessages,
   waitForThreadStatus,
 } from '../threads/threads.helper';

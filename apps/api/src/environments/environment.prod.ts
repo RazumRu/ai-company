@@ -36,4 +36,5 @@ export const environment = () =>
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),
     dockerRuntimeImage: getEnv('DOCKER_RUNTIME_IMAGE', 'node:22-alpine'),
     tavilyApiKey: getEnv('TAVILY_API_KEY'),
+    restoreGraphs: getEnv('RESTORE_GRAPHS', true),
   }) as const satisfies Record<string, string | number | boolean>;

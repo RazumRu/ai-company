@@ -20,6 +20,9 @@ export class GraphEntity extends TimestampsEntity {
   @Column({ type: 'varchar', length: 50 })
   version!: string;
 
+  @Column({ type: 'varchar', length: 50 })
+  targetVersion!: string;
+
   @Column({ type: 'jsonb' })
   schema!: GraphSchemaType;
 

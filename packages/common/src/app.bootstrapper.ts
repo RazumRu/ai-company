@@ -1,4 +1,4 @@
-import { Type } from '@nestjs/common';
+import { DynamicModule, Type } from '@nestjs/common';
 import { ModuleMetadata } from '@nestjs/common/interfaces/modules/module-metadata.interface';
 import { NestFactory } from '@nestjs/core';
 import { compact, flatten } from 'lodash';
@@ -62,15 +62,26 @@ export class AppBootstrapper {
     );
   }
 
-  public async init() {
-    const appBootstrapperModule = AppBootstrapperModule.forRoot(
+  /**
+   * Returns module configuration for testing purposes.
+   * This includes all modules from extensions and the bootstrap modules.
+   * Use this with NestJS Testing utilities to create a test module.
+   */
+
+  public buildModule(modules?: NonNullable<ModuleMetadata['imports']>) {
+    return AppBootstrapperModule.forRoot(
       compact([
         ...this.bootstrapModules,
         this.buildLoggerModule(),
         ...flatten(this.extensions.map((e) => e.modules)),
+        ...(modules || []),
       ]),
       this.params,
     );
+  }
+
+  public async init(module?: DynamicModule) {
+    const appBootstrapperModule = module || this.buildModule();
 
     const customBootstrapperList = compact(
       this.extensions.map((e) => e.customBootstrapper),
