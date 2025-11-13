@@ -5,8 +5,8 @@ import {
   NotFoundException,
 } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
-import type { AdditionalParams } from '@packages/typeorm';
-import { TypeormService } from '@packages/typeorm';
+import { AdditionalParams, TypeormService } from '@packages/typeorm';
+import { UnrecoverableError } from 'bullmq';
 import { compare, type Operation } from 'fast-json-patch';
 import { coerce, inc } from 'semver';
 import { EntityManager } from 'typeorm';
@@ -16,10 +16,7 @@ import { TemplateRegistry } from '../../graph-templates/services/template-regist
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { GraphDao } from '../dao/graph.dao';
-import {
-  GraphRevisionDao,
-  SearchTerms as GraphRevisionSearchTerms,
-} from '../dao/graph-revision.dao';
+import { GraphRevisionDao, SearchTerms } from '../dao/graph-revision.dao';
 import {
   GraphRevisionDto,
   GraphRevisionQueryDto,
@@ -35,7 +32,10 @@ import {
 import { GraphCompiler } from './graph-compiler';
 import { GraphMergeService } from './graph-merge.service';
 import { GraphRegistry } from './graph-registry';
-import { GraphRevisionQueueService } from './graph-revision-queue.service';
+import {
+  GraphRevisionJobData,
+  GraphRevisionQueueService,
+} from './graph-revision-queue.service';
 
 @Injectable()
 export class GraphRevisionService {
@@ -52,29 +52,9 @@ export class GraphRevisionService {
     private readonly logger: DefaultLogger,
     private readonly templateRegistry: TemplateRegistry,
   ) {
-    // Set the processor for the queue
     this.graphRevisionQueue.setProcessor(this.applyRevision.bind(this));
   }
 
-  /**
-   * Calculate the diff between two schemas using fast-json-patch library
-   */
-  private calculateDiff(
-    oldSchema: GraphSchemaType,
-    newSchema: GraphSchemaType,
-  ): Operation[] {
-    return compare(oldSchema, newSchema);
-  }
-
-  /**
-   * Accept and queue a graph revision with 3-way merge
-   *
-   * @param graph - Current graph entity
-   * @param baseVersion - Version client's changes are based on
-   * @param clientSchema - Schema client is submitting
-   * @param entityManager - Optional transaction manager
-   * @returns Created revision or throws with conflicts
-   */
   async queueRevision(
     graph: GraphEntity,
     baseVersion: string,
@@ -84,57 +64,14 @@ export class GraphRevisionService {
     const userId = this.authContext.checkSub();
 
     return this.typeorm.trx(async (em: EntityManager) => {
-      // Validate client schema
       this.graphCompiler.validateSchema(clientSchema);
 
-      // Get head schema (current targetVersion)
-      const headVersion = graph.targetVersion;
-      let headSchema: GraphSchemaType;
+      const { headVersion, headSchema } = await this.resolveHeadSchema(
+        graph,
+        em,
+      );
+      const baseSchema = await this.resolveBaseSchema(graph, baseVersion, em);
 
-      // If there are pending revisions (targetVersion > version),
-      // we need to use the latest pending revision's schema as head
-      if (headVersion !== graph.version) {
-        const headRevision = await this.getSchemaAtVersion(
-          graph.id,
-          headVersion,
-          em,
-        );
-        if (!headRevision) {
-          // This shouldn't happen, but fallback to current schema
-          this.logger.warn(
-            `Could not find revision at targetVersion ${headVersion}, using current schema`,
-          );
-          headSchema = graph.schema;
-        } else {
-          headSchema = headRevision.schemaSnapshot;
-        }
-      } else {
-        // No pending revisions, head is the current schema
-        headSchema = graph.schema;
-      }
-
-      // Get base schema (what client started from)
-      let baseSchema: GraphSchemaType;
-      if (baseVersion === graph.version) {
-        // Client is up to date
-        baseSchema = graph.schema;
-      } else {
-        // Client is behind - need to fetch base schema from revision history
-        const baseRevision = await this.getSchemaAtVersion(
-          graph.id,
-          baseVersion,
-          em,
-        );
-        if (!baseRevision) {
-          throw new BadRequestException(
-            'VERSION_NOT_FOUND',
-            `Base version ${baseVersion} not found. Please refresh and retry.`,
-          );
-        }
-        baseSchema = baseRevision.schemaSnapshot;
-      }
-
-      // Perform 3-way merge
       const mergeResult = this.graphMergeService.mergeSchemas(
         baseSchema,
         headSchema,
@@ -153,54 +90,92 @@ export class GraphRevisionService {
       }
 
       const mergedSchema = mergeResult.mergedSchema!;
-
-      // Calculate diff from head to merged
-      const configurationDiff = this.calculateDiff(headSchema, mergedSchema);
+      const configurationDiff = compare(headSchema, mergedSchema);
       const newVersion = this.generateNextVersion(headVersion);
 
-      // Create revision entity
       const revision = await this.graphRevisionDao.create(
         {
           graphId: graph.id,
           baseVersion,
           toVersion: newVersion,
           configurationDiff,
+          clientSchema,
           newSchema: mergedSchema,
-          schemaSnapshot: mergedSchema,
           status: GraphRevisionStatus.Pending,
           createdBy: userId,
         },
         em,
       );
 
-      // Update graph's targetVersion to the new revision's toVersion
       await this.graphDao.updateById(
         graph.id,
         { targetVersion: newVersion },
         em,
       );
 
-      // Emit notification
       await this.notificationsService.emit({
         type: NotificationEvent.GraphRevisionCreate,
         graphId: graph.id,
         data: revision,
       });
 
-      // Add to queue for immediate processing
       await this.graphRevisionQueue.addRevision(revision);
-
-      this.logger.log(
-        `Queued revision ${revision.id} for graph ${graph.id}: ${baseVersion} → ${newVersion}`,
-      );
 
       return this.prepareResponse(revision);
     }, entityManager);
   }
 
-  /**
-   * Get schema at a specific version from revision history
-   */
+  private async resolveHeadSchema(
+    graph: GraphEntity,
+    entityManager: EntityManager,
+  ): Promise<{ headVersion: string; headSchema: GraphSchemaType }> {
+    const headVersion = graph.targetVersion;
+
+    if (headVersion === graph.version) {
+      return { headVersion, headSchema: graph.schema };
+    }
+
+    const headRevision = await this.getSchemaAtVersion(
+      graph.id,
+      headVersion,
+      entityManager,
+    );
+
+    if (!headRevision) {
+      this.logger.warn(
+        `Could not find revision at targetVersion ${headVersion}, using current schema`,
+      );
+      return { headVersion, headSchema: graph.schema };
+    }
+
+    return { headVersion, headSchema: headRevision.newSchema };
+  }
+
+  private async resolveBaseSchema(
+    graph: GraphEntity,
+    baseVersion: string,
+    entityManager: EntityManager,
+  ): Promise<GraphSchemaType> {
+    if (baseVersion === graph.version) {
+      return graph.schema;
+    }
+
+    const baseRevision = await this.getSchemaAtVersion(
+      graph.id,
+      baseVersion,
+      entityManager,
+    );
+
+    if (!baseRevision) {
+      throw new BadRequestException(
+        'VERSION_NOT_FOUND',
+        `Base version ${baseVersion} not found. Please refresh and retry.`,
+      );
+    }
+
+    return baseRevision.newSchema;
+  }
+
   private async getSchemaAtVersion(
     graphId: string,
     version: string,
@@ -217,20 +192,141 @@ export class GraphRevisionService {
     return revision || null;
   }
 
-  /**
-   * Apply a queued revision
-   */
-  private async applyRevision(jobData: GraphRevisionEntity): Promise<void> {
-    // Load full revision entity
-    const revision = await this.graphRevisionDao.getById(jobData.id);
+  private async ensureRevisionSchemaUpToDate(
+    revision: GraphRevisionEntity,
+    graph: GraphEntity,
+    baseSchemaCache: GraphSchemaType | null,
+    entityManager: EntityManager,
+  ): Promise<void> {
+    const currentHead = graph.schema;
+    const headChangedSinceQueue = graph.version !== revision.baseVersion;
+
+    if (!headChangedSinceQueue) {
+      this.graphCompiler.validateSchema(revision.newSchema);
+      await this.syncRevisionSchema(
+        revision,
+        revision.newSchema,
+        currentHead,
+        entityManager,
+      );
+      return;
+    }
+
+    if (!baseSchemaCache) {
+      this.logger.warn(
+        `[APPLY-REMERGE-SKIP] Base schema not found for initial version ${revision.baseVersion}. Using cached merge.`,
+      );
+      this.graphCompiler.validateSchema(revision.newSchema);
+      await this.syncRevisionSchema(
+        revision,
+        revision.newSchema,
+        currentHead,
+        entityManager,
+      );
+      return;
+    }
+
+    const reMergeResult = this.graphMergeService.mergeSchemas(
+      baseSchemaCache,
+      currentHead,
+      revision.clientSchema,
+    );
+
+    if (!reMergeResult.success) {
+      throw new BadRequestException(
+        'MERGE_CONFLICT_ON_APPLY',
+        'Cannot apply revision: client changes conflict with current head',
+        {
+          conflicts: reMergeResult.conflicts,
+          currentVersion: graph.version,
+        },
+      );
+    }
+
+    const reMergedSchema = reMergeResult.mergedSchema!;
+    this.graphCompiler.validateSchema(reMergedSchema);
+
+    await this.syncRevisionSchema(
+      revision,
+      reMergedSchema,
+      currentHead,
+      entityManager,
+    );
+  }
+
+  private async syncRevisionSchema(
+    revision: GraphRevisionEntity,
+    schemaToPersist: GraphSchemaType,
+    headSchema: GraphSchemaType,
+    entityManager: EntityManager,
+  ): Promise<void> {
+    const diff = compare(headSchema, schemaToPersist);
+
+    const updated = await this.graphRevisionDao.updateById(
+      revision.id,
+      {
+        newSchema: schemaToPersist,
+        configurationDiff: diff,
+      },
+      {},
+      entityManager,
+    );
+
+    revision.newSchema = updated?.newSchema ?? schemaToPersist;
+    revision.configurationDiff =
+      (updated?.configurationDiff as Operation[]) ?? diff;
+  }
+
+  private async finalizeAppliedRevision(
+    graph: GraphEntity,
+    revision: GraphRevisionEntity,
+    entityManager: EntityManager,
+  ): Promise<void> {
+    await this.graphDao.updateById(
+      revision.graphId,
+      {
+        schema: revision.newSchema,
+        version: revision.toVersion,
+      },
+      entityManager,
+    );
+
+    await this.graphRevisionDao.updateById(
+      revision.id,
+      {
+        status: GraphRevisionStatus.Applied,
+      },
+      {},
+      entityManager,
+    );
+
+    await this.notificationsService.emit({
+      type: NotificationEvent.GraphRevisionApplied,
+      graphId: revision.graphId,
+      data: {
+        ...revision,
+        status: GraphRevisionStatus.Applied,
+      },
+    });
+  }
+
+  private async applyRevision(job: GraphRevisionJobData): Promise<void> {
+    const revision = await this.graphRevisionDao.getById(job.revisionId);
     if (!revision) {
       throw new NotFoundException('GRAPH_REVISION_NOT_FOUND');
     }
 
+    let baseSchemaCache: GraphSchemaType | null = null;
+    const baseRevision = await this.getSchemaAtVersion(
+      revision.graphId,
+      revision.baseVersion,
+    );
+    if (baseRevision) {
+      baseSchemaCache = baseRevision.newSchema;
+    }
+
     try {
-      // Re-validate version before applying (CRITICAL: prevents race conditions)
       await this.typeorm.trx(async (entityManager) => {
-        // Update status to applying inside the transaction
         await this.graphRevisionDao.updateById(
           revision.id,
           {
@@ -255,83 +351,27 @@ export class GraphRevisionService {
           throw new NotFoundException('GRAPH_NOT_FOUND');
         }
 
+        await this.ensureRevisionSchemaUpToDate(
+          revision,
+          graph,
+          baseSchemaCache,
+          entityManager,
+        );
+
         const compiledGraph = this.graphRegistry.get(revision.graphId);
         const isRunning =
           !!compiledGraph && graph.status === GraphStatus.Running;
 
-        // Handle non-running graphs
-        if (!isRunning) {
+        if (!isRunning || !compiledGraph) {
           this.logger.warn(
-            `Graph ${revision.graphId} is not running. Skipping live update but marking revision as applied.`,
+            `Graph ${revision.graphId} is not running. Applying revision only to persisted schema.`,
           );
-
-          // Update graph entity with new schema and version
-          await this.graphDao.updateById(
-            revision.graphId,
-            {
-              schema: revision.newSchema,
-              version: revision.toVersion,
-            },
-            entityManager,
-          );
-
-          // Mark revision as applied
-          await this.graphRevisionDao.updateById(
-            revision.id,
-            {
-              status: GraphRevisionStatus.Applied,
-            },
-            {},
-            entityManager,
-          );
-
-          await this.notificationsService.emit({
-            type: NotificationEvent.GraphRevisionApplied,
-            graphId: revision.graphId,
-            data: {
-              ...revision,
-              status: GraphRevisionStatus.Applied,
-            },
-          });
-
+          await this.finalizeAppliedRevision(graph, revision, entityManager);
           return;
         }
 
-        if (compiledGraph) {
-          // Apply live revision
-          await this.applyLiveUpdate(graph, revision, compiledGraph);
-
-          // Update graph entity with new schema and version
-          await this.graphDao.updateById(
-            revision.graphId,
-            {
-              schema: revision.newSchema,
-              version: revision.toVersion,
-            },
-            entityManager,
-          );
-
-          // Mark revision as applied
-          await this.graphRevisionDao.updateById(
-            revision.id,
-            {
-              status: GraphRevisionStatus.Applied,
-            },
-            {},
-            entityManager,
-          );
-
-          await this.notificationsService.emit({
-            type: NotificationEvent.GraphRevisionApplied,
-            graphId: revision.graphId,
-            data: {
-              ...revision,
-              status: GraphRevisionStatus.Applied,
-            },
-          });
-
-          this.logger.log(`Successfully applied graph revision ${revision.id}`);
-        }
+        await this.applyLiveUpdate(graph, revision, compiledGraph);
+        await this.finalizeAppliedRevision(graph, revision, entityManager);
       });
     } catch (error) {
       this.logger.error(
@@ -339,9 +379,31 @@ export class GraphRevisionService {
         `Failed to apply graph revision ${revision.id}`,
       );
 
-      await this.graphRevisionDao.updateById(revision.id, {
-        status: GraphRevisionStatus.Failed,
-        error: (error as Error).message,
+      // Reset targetVersion to current version when revision fails
+      // This ensures subsequent revisions don't merge against the failed revision's schema
+      await this.typeorm.trx(async (entityManager) => {
+        const graph = await this.graphDao.getOne(
+          { id: revision.graphId },
+          entityManager,
+        );
+
+        if (graph && graph.targetVersion === revision.toVersion) {
+          await this.graphDao.updateById(
+            graph.id,
+            { targetVersion: graph.version },
+            entityManager,
+          );
+        }
+
+        await this.graphRevisionDao.updateById(
+          revision.id,
+          {
+            status: GraphRevisionStatus.Failed,
+            error: (error as Error).message,
+          },
+          {},
+          entityManager,
+        );
       });
 
       await this.notificationsService.emit({
@@ -354,29 +416,25 @@ export class GraphRevisionService {
         },
       });
 
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw new UnrecoverableError(
+          `Graph revision ${revision.id} failed with unrecoverable error: ${(error as Error).message}`,
+        );
+      }
+
       throw error;
     }
   }
 
-  /**
-   * Apply revision to a running graph without stopping it
-   * This replaces the entire compiled graph with the new schema
-   */
   private async applyLiveUpdate(
     graph: GraphEntity,
     revision: GraphRevisionEntity,
     compiledGraph: ReturnType<typeof this.graphRegistry.get>,
   ): Promise<void> {
     if (!compiledGraph) return;
-
-    this.logger.log(`Applying live revision to graph ${graph.id}`);
-    this.logger.log(
-      `Configuration diff: ${JSON.stringify(revision.configurationDiff)}`,
-    );
-
-    // For now, we recompile the entire graph with the new schema
-    // The diff is stored for auditing purposes
-    // Future optimization: Apply incremental changes based on the diff
 
     const metadata = {
       graphId: graph.id,
@@ -385,19 +443,15 @@ export class GraphRevisionService {
       temporary: graph.temporary,
     };
 
-    // Get old node IDs for cleanup
     const oldNodeIds = new Set(compiledGraph.nodes.keys());
     const newNodeIds = new Set(
       revision.newSchema.nodes.map((n: { id: string }) => n.id),
     );
 
-    // Store old edges before updating them
     const oldEdges = compiledGraph.edges || [];
 
-    // Step 1: Remove nodes that are no longer in the schema
     for (const nodeId of oldNodeIds) {
       if (!newNodeIds.has(nodeId)) {
-        this.logger.log(`Removing node ${nodeId} from graph ${graph.id}`);
         const node = compiledGraph.nodes.get(nodeId);
         if (node) {
           await this.graphCompiler.destroyNode(node);
@@ -407,11 +461,8 @@ export class GraphRevisionService {
       }
     }
 
-    // Step 2: Update edges
     compiledGraph.edges = revision.newSchema.edges || [];
 
-    // Step 3: Add or revision nodes in topological order
-    // This ensures dependencies are created before nodes that depend on them
     const buildOrder = this.graphCompiler.getBuildOrder(revision.newSchema);
 
     for (const nodeSchema of buildOrder) {
@@ -419,7 +470,6 @@ export class GraphRevisionService {
         nodeSchema.id,
       ) as CompiledGraphNode<SimpleAgent>;
 
-      // Check if edges (connections) have changed for this node
       const oldIncomingEdges = oldEdges.filter((e) => e.to === nodeSchema.id);
       const oldOutgoingEdges = oldEdges.filter((e) => e.from === nodeSchema.id);
       const newIncomingEdges =
@@ -428,12 +478,9 @@ export class GraphRevisionService {
         revision.newSchema.edges?.filter((e) => e.from === nodeSchema.id) || [];
 
       const edgesChanged =
-        JSON.stringify(oldIncomingEdges.sort()) !==
-          JSON.stringify(newIncomingEdges.sort()) ||
-        JSON.stringify(oldOutgoingEdges.sort()) !==
-          JSON.stringify(newOutgoingEdges.sort());
+        JSON.stringify(oldIncomingEdges) !== JSON.stringify(newIncomingEdges) ||
+        JSON.stringify(oldOutgoingEdges) !== JSON.stringify(newOutgoingEdges);
 
-      // If node exists and neither config nor edges have changed, skip
       if (
         existingNode &&
         JSON.stringify(existingNode.config) ===
@@ -443,10 +490,6 @@ export class GraphRevisionService {
         continue;
       }
 
-      this.logger.log(
-        `${existingNode ? 'Updating' : 'Adding'} node ${nodeSchema.id} in graph ${graph.id}`,
-      );
-
       const template = this.templateRegistry.getTemplate(nodeSchema.template);
       if (!template) {
         throw new BadRequestException(
@@ -455,26 +498,15 @@ export class GraphRevisionService {
         );
       }
 
-      // If edges changed, we need to recreate the node to rebuild connections
-      if (edgesChanged && existingNode) {
-        this.logger.log(
-          `Edges changed for node ${nodeSchema.id}, recreating to rebuild connections`,
-        );
-      }
-
-      // Validate the config before recreating/creating the node
       const validatedConfig = this.templateRegistry.validateTemplateConfig(
         nodeSchema.template,
         nodeSchema.config,
       );
 
-      // For non-agent nodes or new nodes, use the original create/destroy flow
-      // If updating, remove old instance first
       if (existingNode) {
         await this.graphCompiler.destroyNode(existingNode);
       }
 
-      // Build input/output node ID sets
       const inputNodeIds = new Set<string>();
       const outputNodeIds = new Set<string>();
 
@@ -520,59 +552,6 @@ export class GraphRevisionService {
       compiledGraph.nodes.set(nodeSchema.id, compiledNode);
       compiledGraph.state.attachGraphNode(nodeSchema.id, compiledNode);
     }
-
-    this.logger.log(`Live revision applied successfully to graph ${graph.id}`);
-  }
-
-  /**
-   * Get all revisions for a graph
-   */
-  async getRevisions(
-    graphId: string,
-    query: GraphRevisionQueryDto,
-  ): Promise<GraphRevisionDto[]> {
-    const searchTerms: GraphRevisionSearchTerms = {
-      graphId,
-      createdBy: this.authContext.checkSub(),
-    };
-
-    if (query.status) {
-      searchTerms.status = query.status;
-    }
-
-    const params: GraphRevisionSearchTerms & AdditionalParams = {
-      ...searchTerms,
-      orderBy: 'createdAt',
-      sortOrder: 'DESC',
-    };
-
-    if (typeof query.limit === 'number') {
-      params.limit = query.limit;
-    }
-
-    const revisions = await this.graphRevisionDao.getAll(params);
-
-    return revisions.map(this.prepareResponse.bind(this));
-  }
-
-  /**
-   * Get a specific revision by ID for a graph
-   */
-  async getRevisionById(
-    graphId: string,
-    revisionId: string,
-  ): Promise<GraphRevisionDto> {
-    const revision = await this.graphRevisionDao.getOne({
-      id: revisionId,
-      graphId,
-      createdBy: this.authContext.checkSub(),
-    });
-
-    if (!revision) {
-      throw new NotFoundException('GRAPH_REVISION_NOT_FOUND');
-    }
-
-    return this.prepareResponse(revision);
   }
 
   public prepareResponse(entity: GraphRevisionEntity): GraphRevisionDto {
@@ -606,5 +585,56 @@ export class GraphRevisionService {
     const lastIndex = Math.max(parts.length - 1, 0);
     parts[lastIndex] = (parts[lastIndex] ?? 0) + 1;
     return parts.join('.');
+  }
+
+  /**
+   * Get all revisions for a graph
+   */
+  async getRevisions(
+    graphId: string,
+    query: GraphRevisionQueryDto,
+  ): Promise<GraphRevisionDto[]> {
+    const searchTerms: SearchTerms = {
+      graphId,
+      createdBy: this.authContext.checkSub(),
+    };
+
+    if (query.status) {
+      searchTerms.status = query.status;
+    }
+
+    const params: SearchTerms & AdditionalParams = {
+      ...searchTerms,
+      orderBy: 'createdAt',
+      sortOrder: 'DESC',
+    };
+
+    if (typeof query.limit === 'number') {
+      params.limit = query.limit;
+    }
+
+    const revisions = await this.graphRevisionDao.getAll(params);
+
+    return revisions.map(this.prepareResponse.bind(this));
+  }
+
+  /**
+   * Get a specific revision by ID for a graph
+   */
+  async getRevisionById(
+    graphId: string,
+    revisionId: string,
+  ): Promise<GraphRevisionDto> {
+    const revision = await this.graphRevisionDao.getOne({
+      id: revisionId,
+      graphId,
+      createdBy: this.authContext.checkSub(),
+    });
+
+    if (!revision) {
+      throw new NotFoundException('GRAPH_REVISION_NOT_FOUND');
+    }
+
+    return this.prepareResponse(revision);
   }
 }

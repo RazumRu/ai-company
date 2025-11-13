@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
+import { compare } from 'fast-json-patch';
 import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,7 +18,10 @@ import { GraphCompiler } from './graph-compiler';
 import { GraphMergeService } from './graph-merge.service';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
-import { GraphRevisionQueueService } from './graph-revision-queue.service';
+import {
+  GraphRevisionJobData,
+  GraphRevisionQueueService,
+} from './graph-revision-queue.service';
 
 describe('GraphRevisionService', () => {
   let service: GraphRevisionService;
@@ -26,6 +30,7 @@ describe('GraphRevisionService', () => {
   let graphUpdateQueue: GraphRevisionQueueService;
   let graphCompiler: GraphCompiler;
   let graphMergeService: GraphMergeService;
+  let graphRegistry: GraphRegistry;
   let typeorm: TypeormService;
   let notificationsService: NotificationsService;
   let authContext: AuthContextService;
@@ -69,7 +74,7 @@ describe('GraphRevisionService', () => {
     baseVersion: '1.0.0',
     toVersion: '1.0.1',
     configurationDiff: [],
-    newSchema: {
+    clientSchema: {
       nodes: [
         {
           id: 'node-1',
@@ -79,7 +84,7 @@ describe('GraphRevisionService', () => {
       ],
       edges: [],
     },
-    schemaSnapshot: {
+    newSchema: {
       nodes: [
         {
           id: 'node-1',
@@ -191,6 +196,7 @@ describe('GraphRevisionService', () => {
     );
     graphCompiler = module.get<GraphCompiler>(GraphCompiler);
     graphMergeService = module.get<GraphMergeService>(GraphMergeService);
+    graphRegistry = module.get<GraphRegistry>(GraphRegistry);
     typeorm = module.get<TypeormService>(TypeormService);
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
@@ -461,6 +467,146 @@ describe('GraphRevisionService', () => {
       await expect(
         service.getRevisionById(mockGraphId, mockUpdateId),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('applyRevision', () => {
+    it('re-merges revision when head changes and persists updated schema and diff', async () => {
+      const baseVersion = '1.0.0';
+      const toVersion = '1.0.2';
+
+      const baseSchema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'docker-runtime',
+            config: { image: 'python:3.11' },
+          },
+        ],
+        edges: [],
+      };
+
+      const headSchema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'docker-runtime',
+            config: { image: 'python:3.12' },
+          },
+        ],
+        edges: [],
+      };
+
+      const clientSchema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'docker-runtime',
+            config: { image: 'python:3.13' },
+          },
+        ],
+        edges: [],
+      };
+
+      const mergedSchema = {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'docker-runtime',
+            config: { image: 'python:3.13', restartPolicy: 'always' },
+          },
+        ],
+        edges: [],
+      };
+
+      const revision = createMockUpdateEntity({
+        baseVersion,
+        toVersion,
+        clientSchema,
+        newSchema: clientSchema,
+        configurationDiff: [],
+      });
+
+      const graph = createMockGraphEntity({
+        version: '1.0.1',
+        targetVersion: toVersion,
+        schema: headSchema,
+        status: GraphStatus.Stopped,
+      });
+
+      const baseRevision = createMockUpdateEntity({
+        toVersion: baseVersion,
+        newSchema: baseSchema,
+      });
+
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphUpdateDao.getById).mockResolvedValue(revision);
+      vi.mocked(graphUpdateDao.getOne).mockImplementation(async (params) => {
+        if (params?.toVersion === baseVersion) {
+          return baseRevision;
+        }
+        return null;
+      });
+      vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
+        success: true,
+        mergedSchema,
+        conflicts: [],
+      });
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.updateById).mockResolvedValue({
+        ...graph,
+        schema: mergedSchema,
+        version: toVersion,
+      });
+      vi.mocked(graphUpdateDao.updateById).mockImplementation(
+        async (_id: string, data: any) =>
+          ({
+            ...revision,
+            ...(data || {}),
+          }) as GraphRevisionEntity,
+      );
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      await (
+        service as unknown as {
+          applyRevision(job: GraphRevisionJobData): Promise<void>;
+        }
+      ).applyRevision({
+        revisionId: revision.id,
+        graphId: revision.graphId,
+      });
+
+      expect(graphMergeService.mergeSchemas).toHaveBeenCalledWith(
+        baseSchema,
+        headSchema,
+        clientSchema,
+      );
+
+      const expectedDiff = compare(headSchema, mergedSchema);
+
+      expect(revision.newSchema).toEqual(mergedSchema);
+      expect(revision.configurationDiff).toEqual(expectedDiff);
+
+      const schemaUpdateCall = vi
+        .mocked(graphUpdateDao.updateById)
+        .mock.calls.find(
+          (call) =>
+            call[0] === revision.id &&
+            call[1] &&
+            'newSchema' in call[1] &&
+            'configurationDiff' in call[1],
+        );
+
+      expect(schemaUpdateCall?.[1]).toEqual(
+        expect.objectContaining({
+          newSchema: mergedSchema,
+          configurationDiff: expectedDiff,
+        }),
+      );
     });
   });
 });

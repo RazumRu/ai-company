@@ -25,10 +25,10 @@ export class GraphRevisionEntity extends TimestampsEntity {
   configurationDiff!: Operation[];
 
   @Column({ type: 'jsonb' })
-  newSchema!: GraphSchemaType;
+  clientSchema!: GraphSchemaType;
 
   @Column({ type: 'jsonb' })
-  schemaSnapshot!: GraphSchemaType;
+  newSchema!: GraphSchemaType;
 
   @Column({
     type: 'enum',

@@ -68,7 +68,7 @@ export class ThreadsService {
 
   async getThreadMessages(
     threadId: string,
-    query: GetMessagesQueryDto,
+    query?: GetMessagesQueryDto,
   ): Promise<ThreadMessageDto[]> {
     const userId = this.authContext.checkSub();
 
@@ -84,7 +84,7 @@ export class ThreadsService {
 
     const messages = await this.messagesDao.getAll({
       threadId,
-      ...query,
+      ...(query || {}),
       order: { createdAt: 'DESC' },
     });
 

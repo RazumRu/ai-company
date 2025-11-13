@@ -18,7 +18,7 @@ export class GraphRevisionQueueService
   private queue!: Queue<GraphRevisionJobData>;
   private worker!: Worker<GraphRevisionJobData>;
   private redis!: IORedis;
-  private processor?: (revision: GraphRevisionEntity) => Promise<void>;
+  private processor?: (job: GraphRevisionJobData) => Promise<void>;
 
   constructor(private readonly logger: DefaultLogger) {}
 
@@ -45,7 +45,7 @@ export class GraphRevisionQueueService
       this.processJob.bind(this),
       {
         connection: this.redis,
-        concurrency: 1, // Only one revision at a time per graph
+        concurrency: 1,
       },
     );
 
@@ -68,19 +68,10 @@ export class GraphRevisionQueueService
     this.logger.log('Graph revision queue service initialized');
   }
 
-  /**
-   * Set the processor function that will handle the actual revision logic
-   */
-  setProcessor(
-    processor: (revision: GraphRevisionEntity) => Promise<void>,
-  ): void {
+  setProcessor(processor: (job: GraphRevisionJobData) => Promise<void>): void {
     this.processor = processor;
   }
 
-  /**
-   * Add a graph update to the queue
-   * Uses unique jobId to ensure FIFO ordering per graph
-   */
   async addRevision(revision: GraphRevisionEntity): Promise<void> {
     await this.queue.add(
       'apply-revision',
@@ -90,17 +81,12 @@ export class GraphRevisionQueueService
       },
       {
         jobId: revision.id,
-        // Process jobs for the same graph sequentially
-        // BullMQ will process jobs in the order they are added
       },
     );
 
     this.logger.log(`Added graph revision ${revision.id} to queue`);
   }
 
-  /**
-   * Get queue status for a specific graph
-   */
   async getQueueStatus(graphId: string): Promise<{
     pending: number;
     active: number;
@@ -109,6 +95,7 @@ export class GraphRevisionQueueService
   }> {
     const jobs = await this.queue.getJobs([
       'waiting',
+      'delayed',
       'active',
       'completed',
       'failed',
@@ -116,17 +103,25 @@ export class GraphRevisionQueueService
 
     const graphJobs = jobs.filter((job) => job.data.graphId === graphId);
 
+    const jobStates = await Promise.all(
+      graphJobs.map(async (job) => ({
+        state: await job.getState(),
+      })),
+    );
+
+    const stateCounts = jobStates.reduce<Record<string, number>>((acc, job) => {
+      acc[job.state] = (acc[job.state] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    const countStates = (...states: string[]) =>
+      states.reduce((sum, state) => sum + (stateCounts[state] ?? 0), 0);
+
     return {
-      pending: graphJobs.filter((j) =>
-        j.getState().then((s) => s === 'waiting'),
-      ).length,
-      active: graphJobs.filter((j) => j.getState().then((s) => s === 'active'))
-        .length,
-      completed: graphJobs.filter((j) =>
-        j.getState().then((s) => s === 'completed'),
-      ).length,
-      failed: graphJobs.filter((j) => j.getState().then((s) => s === 'failed'))
-        .length,
+      pending: countStates('waiting', 'delayed'),
+      active: countStates('active'),
+      completed: countStates('completed'),
+      failed: countStates('failed'),
     };
   }
 
@@ -139,12 +134,7 @@ export class GraphRevisionQueueService
       `Processing graph revision job ${job.id} for graph ${job.data.graphId}`,
     );
 
-    // The processor will load the revision entity and apply it
-    // We pass a minimal job data to avoid storing large objects in Redis
-    await this.processor({
-      id: job.data.revisionId,
-      graphId: job.data.graphId,
-    } as GraphRevisionEntity);
+    await this.processor(job.data);
   }
 
   async onModuleDestroy(): Promise<void> {
