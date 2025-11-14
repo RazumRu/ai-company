@@ -32,7 +32,7 @@ The project uses Vitest for unit testing:
 
 - Run all unit tests:
   ```bash
-  pnpm test
+  pnpm test:unit
   ```
 
 ### Writing Unit Tests
@@ -104,14 +104,12 @@ pnpm test:unit
 # Run only integration tests (excluding unit tests)
 pnpm test:integration
 
-# Run with coverage
-pnpm test:cov
-
 # Run specific integration test file
-pnpm vitest src/__tests__/integration/graphs/graph-lifecycle.int.ts
+pnpm test:integration src/__tests__/integration/graphs/graph-lifecycle.int.ts
 
-# Run integration tests in watch mode
-pnpm vitest --watch src/__tests__/integration/
+# Run specific case in integration test file
+pnpm test:integration src/__tests__/integration/graphs/graph-lifecycle.int.ts -t "specific test"
+
 ```
 
 ### Writing Integration Tests
@@ -218,6 +216,8 @@ The project uses Cypress for E2E testing.
    ```bash
    # if using docker
    docker-compose up -d
+   # if using podman
+   podman compose up -d
    # or
    pnpm run deps:up
    ```
@@ -240,9 +240,7 @@ The project uses Cypress for E2E testing.
 
 4. **Wait for server to be ready**:
    ```bash
-   # wait-until-healthy helper (times out after ~30s)
-   until [ "$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health/check)" = "200" ]; do
-     echo "Waiting for API to be ready..."; sleep 2; done
+   sleep 10 && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5000/health/check
    ```
 
 5. **Run E2E tests**:
@@ -289,16 +287,6 @@ When iterating locally, prefer running specs one-by-one to get fast feedback, fi
   ```bash
   cd apps/api
   find cypress/e2e -type f \( -name "*.cy.ts" -o -name "*.cy.js" \) | sort
-  ```
-
-- Run all specs sequentially, stopping on first failure (Bash/Zsh):
-  ```bash
-  cd apps/api
-  find cypress/e2e -type f \( -name "*.cy.ts" -o -name "*.cy.js" \) | sort | \
-  while IFS= read -r spec; do
-    echo "Running $spec"
-    pnpm test:e2e:local --spec "$spec" || { echo "Failed: $spec"; break; }
-  done
   ```
 
 Workflow suggestion:

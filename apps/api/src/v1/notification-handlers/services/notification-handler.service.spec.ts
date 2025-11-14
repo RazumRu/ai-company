@@ -526,26 +526,6 @@ describe('NotificationHandler', () => {
       expect(graphEventHandler.handle).toHaveBeenCalledWith(mockNotification);
       expect(emittedEvents).toHaveLength(0);
     });
-
-    it('should handle errors from event handler', async () => {
-      const error = new Error('Processing error');
-      graphEventHandler.handle.mockRejectedValue(error);
-
-      const mockNotification: IGraphNotification = {
-        type: NotificationEvent.Graph,
-        graphId: mockGraphId,
-        data: { status: GraphStatus.Running, schema: mockGraphSchema },
-      };
-
-      // Get the subscribe callback and call it
-      const subscribeCallback =
-        notificationsService.subscribe.mock.calls[0]?.[0];
-      if (subscribeCallback) {
-        await expect(subscribeCallback(mockNotification)).rejects.toThrow(
-          'Processing error',
-        );
-      }
-    });
   });
 
   describe('subscribeEvents', () => {

@@ -102,6 +102,10 @@ export type GraphDto = {
   description?: string | null;
   error?: string | null;
   version: string;
+  /**
+   * Target version after all queued revisions are applied
+   */
+  targetVersion: string;
   schema: {
     nodes: Array<{
       /**
@@ -320,7 +324,240 @@ export type UpdateGraphDto = {
    * If true, graph will be deleted instead of restored after server restart
    */
   temporary?: boolean | null;
+  /**
+   * Current version of the graph (for optimistic locking and 3-way merge base)
+   */
   currentVersion: string;
+};
+
+export type UpdateGraphResponseDto = {
+  /**
+   * Updated graph
+   */
+  graph: {
+    id: string;
+    name: string;
+    description?: string | null;
+    error?: string | null;
+    version: string;
+    /**
+     * Target version after all queued revisions are applied
+     */
+    targetVersion: string;
+    schema: {
+      nodes: Array<{
+        /**
+         * Unique identifier for this node
+         */
+        id: string;
+        /**
+         * Template name registered in TemplateRegistry
+         */
+        template: string;
+        /**
+         * Template-specific configuration
+         */
+        config: {
+          [key: string]: unknown;
+        };
+      }>;
+      edges?: Array<{
+        /**
+         * Source node ID
+         */
+        from: string;
+        /**
+         * Target node ID
+         */
+        to: string;
+        /**
+         * Optional edge label
+         */
+        label?: string;
+      }>;
+    };
+    status: 'created' | 'compiling' | 'running' | 'stopped' | 'error';
+    metadata?: {
+      /**
+       * Node coordinates and names by node ID
+       */
+      nodes?: Array<{
+        id: string;
+        /**
+         * X coordinate of the node
+         */
+        x?: number;
+        /**
+         * Y coordinate of the node
+         */
+        y?: number;
+        /**
+         * Optional display name for the node
+         */
+        name?: string;
+      }>;
+      /**
+       * Zoom level for graph display
+       */
+      zoom?: number;
+      /**
+       * X coordinate
+       */
+      x?: number;
+      /**
+       * Y coordinate
+       */
+      y?: number;
+      [key: string]:
+        | unknown
+        | Array<{
+            id: string;
+            /**
+             * X coordinate of the node
+             */
+            x?: number;
+            /**
+             * Y coordinate of the node
+             */
+            y?: number;
+            /**
+             * Optional display name for the node
+             */
+            name?: string;
+          }>
+        | number
+        | undefined;
+    } | null;
+    createdAt: string;
+    updatedAt: string;
+    /**
+     * If true, graph will be deleted instead of restored after server restart
+     */
+    temporary?: boolean | null;
+  };
+  /**
+   * Created revision if graph was running/compiling
+   */
+  revision?: {
+    id: string;
+    graphId: string;
+    /**
+     * Version the client changes were based on
+     */
+    baseVersion: string;
+    /**
+     * New head version after this revision
+     */
+    toVersion: string;
+    /**
+     * JSON Patch (RFC 6902) operations between old and new schemas
+     */
+    configurationDiff: Array<
+      | {
+          op: 'add';
+          path: string;
+          value: unknown;
+        }
+      | {
+          op: 'remove';
+          path: string;
+        }
+      | {
+          op: 'replace';
+          path: string;
+          value: unknown;
+        }
+      | {
+          op: 'move';
+          from: string;
+          path: string;
+        }
+      | {
+          op: 'copy';
+          from: string;
+          path: string;
+        }
+      | {
+          op: 'test';
+          path: string;
+          value: unknown;
+        }
+    >;
+    /**
+     * Schema submitted by the client
+     */
+    clientSchema: {
+      nodes: Array<{
+        /**
+         * Unique identifier for this node
+         */
+        id: string;
+        /**
+         * Template name registered in TemplateRegistry
+         */
+        template: string;
+        /**
+         * Template-specific configuration
+         */
+        config: {
+          [key: string]: unknown;
+        };
+      }>;
+      edges?: Array<{
+        /**
+         * Source node ID
+         */
+        from: string;
+        /**
+         * Target node ID
+         */
+        to: string;
+        /**
+         * Optional edge label
+         */
+        label?: string;
+      }>;
+    };
+    /**
+     * Merged schema result
+     */
+    newSchema: {
+      nodes: Array<{
+        /**
+         * Unique identifier for this node
+         */
+        id: string;
+        /**
+         * Template name registered in TemplateRegistry
+         */
+        template: string;
+        /**
+         * Template-specific configuration
+         */
+        config: {
+          [key: string]: unknown;
+        };
+      }>;
+      edges?: Array<{
+        /**
+         * Source node ID
+         */
+        from: string;
+        /**
+         * Target node ID
+         */
+        to: string;
+        /**
+         * Optional edge label
+         */
+        label?: string;
+      }>;
+    };
+    status: 'pending' | 'applying' | 'applied' | 'failed';
+    error?: string;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
 };
 
 export type ExecuteTriggerDto = {
@@ -352,7 +589,13 @@ export type ExecuteTriggerResponseDto = {
 export type GraphRevisionDto = {
   id: string;
   graphId: string;
-  fromVersion: string;
+  /**
+   * Version the client changes were based on
+   */
+  baseVersion: string;
+  /**
+   * New head version after this revision
+   */
   toVersion: string;
   /**
    * JSON Patch (RFC 6902) operations between old and new schemas
@@ -388,6 +631,44 @@ export type GraphRevisionDto = {
         value: unknown;
       }
   >;
+  /**
+   * Schema submitted by the client
+   */
+  clientSchema: {
+    nodes: Array<{
+      /**
+       * Unique identifier for this node
+       */
+      id: string;
+      /**
+       * Template name registered in TemplateRegistry
+       */
+      template: string;
+      /**
+       * Template-specific configuration
+       */
+      config: {
+        [key: string]: unknown;
+      };
+    }>;
+    edges?: Array<{
+      /**
+       * Source node ID
+       */
+      from: string;
+      /**
+       * Target node ID
+       */
+      to: string;
+      /**
+       * Optional edge label
+       */
+      label?: string;
+    }>;
+  };
+  /**
+   * Merged schema result
+   */
   newSchema: {
     nodes: Array<{
       /**
@@ -713,7 +994,7 @@ export type UpdateGraphData = {
 };
 
 export type UpdateGraphResponses = {
-  200: GraphDto;
+  200: UpdateGraphResponseDto;
 };
 
 export type UpdateGraphResponse =

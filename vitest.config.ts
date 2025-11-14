@@ -19,6 +19,9 @@ export default mergeConfig(
       silent: false,
       disableConsoleIntercept: true,
       projects: ['packages/*', 'apps/*'],
+      fileParallelism: false,
+      maxWorkers: 2,
+      minWorkers: 1,
       coverage: {
         enabled: false,
         provider: 'v8',

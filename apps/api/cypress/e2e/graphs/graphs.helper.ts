@@ -5,6 +5,7 @@ import {
   GraphDto,
   GraphNodeWithStatusDto,
   UpdateGraphDto,
+  UpdateGraphResponseDto,
 } from '../../api-definitions';
 import { GraphDtoSchema } from '../../api-definitions/schemas.gen';
 import { generateRandomUUID, reqHeaders } from '../common.helper';
@@ -61,7 +62,7 @@ export const updateGraph = (
   data: UpdateGraphDto,
   headers = reqHeaders,
 ) =>
-  cy.request<GraphDto>({
+  cy.request<UpdateGraphResponseDto>({
     url: `/api/v1/graphs/${id}`,
     method: 'PUT',
     headers,

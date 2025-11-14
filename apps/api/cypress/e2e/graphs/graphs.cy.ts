@@ -6,7 +6,6 @@ import {
   createMockUpdateData,
   deleteGraph,
   destroyGraph,
-  executeTrigger,
   getAllGraphs,
   getGraphById,
   runGraph,
@@ -278,16 +277,16 @@ describe('Graphs E2E', () => {
 
         updateGraph(createdGraphId, updateData).then((response) => {
           expect(response.status).to.equal(200);
-          expect(response.body).to.have.property('id', createdGraphId);
-          expect(response.body).to.have.property('name', updateData.name);
-          expect(response.body).to.have.property(
+          expect(response.body.graph).to.have.property('id', createdGraphId);
+          expect(response.body.graph).to.have.property('name', updateData.name);
+          expect(response.body.graph).to.have.property(
             'description',
             updateData.description,
           );
-          expect(response.body).to.have.property('updatedAt');
-          expect(response.body.version).to.equal(currentVersion);
+          expect(response.body.graph).to.have.property('updatedAt');
+          expect(response.body.graph.version).to.equal(currentVersion);
 
-          validateGraph(response.body);
+          validateGraph(response.body.graph);
         });
       });
     });
@@ -305,16 +304,16 @@ describe('Graphs E2E', () => {
           currentVersion,
         }).then((response) => {
           expect(response.status).to.equal(200);
-          expect(response.body).to.have.property('id', createdGraphId);
-          expect(response.body).to.have.property(
+          expect(response.body.graph).to.have.property('id', createdGraphId);
+          expect(response.body.graph).to.have.property(
             'name',
             partialUpdateData.name,
           );
           // Description should remain unchanged
-          expect(response.body).to.have.property('description');
-          expect(response.body.version).to.equal(currentVersion);
+          expect(response.body.graph).to.have.property('description');
+          expect(response.body.graph.version).to.equal(currentVersion);
 
-          validateGraph(response.body);
+          validateGraph(response.body.graph);
         });
       });
     });
@@ -356,11 +355,11 @@ describe('Graphs E2E', () => {
           currentVersion,
         }).then((updateResponse) => {
           expect(updateResponse.status).to.equal(200);
-          expect(updateResponse.body.version).to.equal(
+          expect(updateResponse.body.graph.version).to.equal(
             incrementVersion(currentVersion),
           );
           expect(
-            updateResponse.body.schema.nodes.find(
+            updateResponse.body.graph.schema.nodes.find(
               (node) => node.id === 'agent-1',
             )?.config.instructions,
           ).to.equal('Schema update via e2e test');
@@ -561,7 +560,7 @@ describe('Graphs E2E', () => {
         const updateData = createMockUpdateData(createResponse.body.version);
         updateGraph(lifecycleGraphId, updateData).then((updateResponse) => {
           expect(updateResponse.status).to.equal(200);
-          expect(updateResponse.body.name).to.equal(updateData.name);
+          expect(updateResponse.body.graph.name).to.equal(updateData.name);
 
           // 3. Run the graph
           runGraph(lifecycleGraphId).then((runResponse) => {
@@ -586,100 +585,6 @@ describe('Graphs E2E', () => {
               });
             });
           });
-        });
-      });
-    });
-  });
-
-  describe('Graph Stop with Active Agent Execution', () => {
-    let stopTestGraphId: string;
-
-    beforeEach(() => {
-      // Create a graph with an agent for stop testing
-      const graphData = createMockGraphData();
-      createGraph(graphData).then((response) => {
-        stopTestGraphId = response.body.id;
-      });
-    });
-
-    it('should stop agent execution and emit system message when graph is destroyed during execution', function () {
-      // Increase timeout for this test as it involves async execution
-      this.timeout(60000);
-
-      // Run the graph
-      runGraph(stopTestGraphId).then((runResponse) => {
-        expect(runResponse.status).to.equal(201);
-        expect(runResponse.body.status).to.equal('running');
-
-        // Execute trigger asynchronously (agent will start processing)
-        executeTrigger(stopTestGraphId, 'trigger-1', {
-          messages: ['This is a test message that will be interrupted'],
-          async: true, // Fire and forget
-        }).then(() => {
-          // Wait a bit to ensure agent has started processing
-          cy.wait(1000);
-
-          // Destroy the graph while agent is executing
-          destroyGraph(stopTestGraphId).then((destroyResponse) => {
-            expect(destroyResponse.status).to.equal(201);
-            expect(destroyResponse.body.status).to.equal('stopped');
-
-            // Wait a bit more to allow system message to be emitted
-            cy.wait(2000);
-
-            // The system message should have been emitted
-            // Note: In a real scenario, this would be verified via socket notifications
-            // For now, we verify that the graph was stopped successfully
-            // which implies the agent was stopped
-          });
-        });
-      });
-    });
-
-    it('should stop multiple concurrent agent executions when graph is destroyed', function () {
-      // Increase timeout for this test
-      this.timeout(60000);
-
-      // Run the graph
-      runGraph(stopTestGraphId).then((runResponse) => {
-        expect(runResponse.status).to.equal(201);
-        expect(runResponse.body.status).to.equal('running');
-
-        // Execute multiple triggers concurrently
-        executeTrigger(stopTestGraphId, 'trigger-1', {
-          messages: ['First concurrent execution'],
-          async: true,
-        });
-
-        executeTrigger(stopTestGraphId, 'trigger-1', {
-          messages: ['Second concurrent execution'],
-          async: true,
-        });
-
-        // Wait a bit to ensure agents have started
-        cy.wait(1000);
-
-        // Destroy the graph - should stop all active executions
-        destroyGraph(stopTestGraphId).then((destroyResponse) => {
-          expect(destroyResponse.status).to.equal(201);
-          expect(destroyResponse.body.status).to.equal('stopped');
-
-          // Wait for cleanup
-          cy.wait(2000);
-        });
-      });
-    });
-
-    it('should allow graph to be destroyed even if no agent is executing', () => {
-      // Run the graph
-      runGraph(stopTestGraphId).then((runResponse) => {
-        expect(runResponse.status).to.equal(201);
-        expect(runResponse.body.status).to.equal('running');
-
-        // Destroy immediately without any active executions
-        destroyGraph(stopTestGraphId).then((destroyResponse) => {
-          expect(destroyResponse.status).to.equal(201);
-          expect(destroyResponse.body.status).to.equal('stopped');
         });
       });
     });

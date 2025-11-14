@@ -60,7 +60,7 @@ export const SimpleAgentSchema = z.object({
     .meta({ 'x-ui:textarea': true }),
   invokeModelName: z
     .string()
-    .default('gpt-5')
+    .default('gpt-5.1')
     .describe('Chat model used for the main reasoning/tool-call step.')
     .meta({ 'x-ui:show-on-node': true }),
   enforceToolUsage: z

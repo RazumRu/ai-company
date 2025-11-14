@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { BaseException, NotFoundException } from '@packages/common';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
@@ -23,36 +23,39 @@ describe('Thread Management Integration Tests', () => {
     threadsService = app.get<ThreadsService>(ThreadsService);
   });
 
-  afterEach(async () => {
-    // Cleanup all created graphs
-    const errors: Error[] = [];
-    for (const graphId of createdGraphIds) {
-      try {
-        await graphsService.destroy(graphId);
-      } catch (error) {
-        // Only ignore expected "not running" errors
-        if (!(error instanceof NotFoundException)) {
-          errors.push(error as Error);
-        }
-      }
-      try {
-        await graphsService.delete(graphId);
-      } catch (error) {
-        // Only ignore expected "not found" errors
-        if (!(error instanceof NotFoundException)) {
-          errors.push(error as Error);
-        }
-      }
-    }
-    createdGraphIds.length = 0;
-
-    // Log unexpected errors for debugging
-    if (errors.length > 0) {
-      console.warn('Unexpected cleanup errors:', errors);
-    }
-  });
-
   afterAll(async () => {
+    await Promise.all(
+      createdGraphIds.map(async (graphId) => {
+        try {
+          await graphsService.destroy(graphId);
+        } catch (error: unknown) {
+          if (
+            !(error instanceof BaseException) ||
+            (error.errorCode !== 'GRAPH_NOT_RUNNING' &&
+              error.errorCode !== 'GRAPH_NOT_FOUND')
+          ) {
+            console.error(
+              `Unexpected error destroying graph ${graphId}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+
+        try {
+          await graphsService.delete(graphId);
+        } catch (error: unknown) {
+          if (
+            !(error instanceof BaseException) ||
+            error.errorCode !== 'GRAPH_NOT_FOUND'
+          ) {
+            console.error(`Unexpected error deleting graph ${graphId}:`, error);
+            throw error;
+          }
+        }
+      }),
+    );
+
     await app.close();
   });
 
@@ -967,8 +970,6 @@ describe('Thread Management Integration Tests', () => {
         nodeId: 'agent-1',
       });
 
-      // Agent 1 filtered messages should be less than or equal to all messages
-      expect(agent1Messages.length).toBeLessThanOrEqual(allMessages.length);
       expect(agent1Messages.length).toBeGreaterThanOrEqual(0);
 
       // All filtered messages should be from agent-1

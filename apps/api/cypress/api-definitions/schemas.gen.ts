@@ -155,6 +155,9 @@ export const GraphDtoSchema = {
     version: {
       type: 'string',
     },
+    targetVersion: {
+      type: 'string',
+    },
     schema: {
       type: 'object',
       properties: {
@@ -276,6 +279,7 @@ export const GraphDtoSchema = {
     'id',
     'name',
     'version',
+    'targetVersion',
     'schema',
     'status',
     'createdAt',
@@ -456,6 +460,426 @@ export const UpdateGraphDtoSchema = {
   additionalProperties: false,
 } as const;
 
+export const UpdateGraphResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    graph: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          format: 'uuid',
+          pattern:
+            '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+        },
+        name: {
+          type: 'string',
+        },
+        description: {
+          anyOf: [
+            {
+              type: 'string',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        error: {
+          anyOf: [
+            {
+              type: 'string',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        version: {
+          type: 'string',
+        },
+        targetVersion: {
+          type: 'string',
+        },
+        schema: {
+          type: 'object',
+          properties: {
+            nodes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                  },
+                  template: {
+                    type: 'string',
+                  },
+                  config: {
+                    type: 'object',
+                    propertyNames: {
+                      type: 'string',
+                    },
+                    additionalProperties: {},
+                  },
+                },
+                required: ['id', 'template', 'config'],
+              },
+            },
+            edges: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  from: {
+                    type: 'string',
+                  },
+                  to: {
+                    type: 'string',
+                  },
+                  label: {
+                    type: 'string',
+                  },
+                },
+                required: ['from', 'to'],
+              },
+            },
+          },
+          required: ['nodes'],
+        },
+        status: {
+          type: 'string',
+          enum: ['created', 'compiling', 'running', 'stopped', 'error'],
+        },
+        metadata: {
+          anyOf: [
+            {
+              type: 'object',
+              properties: {
+                nodes: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: {
+                        type: 'string',
+                      },
+                      x: {
+                        type: 'number',
+                      },
+                      y: {
+                        type: 'number',
+                      },
+                      name: {
+                        type: 'string',
+                      },
+                    },
+                    required: ['id'],
+                  },
+                },
+                zoom: {
+                  type: 'number',
+                },
+                x: {
+                  type: 'number',
+                },
+                y: {
+                  type: 'number',
+                },
+              },
+              additionalProperties: {},
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        createdAt: {
+          type: 'string',
+          format: 'date-time',
+          pattern:
+            '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+        },
+        updatedAt: {
+          type: 'string',
+          format: 'date-time',
+          pattern:
+            '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+        },
+        temporary: {
+          anyOf: [
+            {
+              default: false,
+              type: 'boolean',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+      },
+      required: [
+        'id',
+        'name',
+        'version',
+        'targetVersion',
+        'schema',
+        'status',
+        'createdAt',
+        'updatedAt',
+      ],
+    },
+    revision: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              pattern:
+                '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+            },
+            graphId: {
+              type: 'string',
+              format: 'uuid',
+              pattern:
+                '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+            },
+            baseVersion: {
+              type: 'string',
+            },
+            toVersion: {
+              type: 'string',
+            },
+            configurationDiff: {
+              type: 'array',
+              items: {
+                anyOf: [
+                  {
+                    type: 'object',
+                    properties: {
+                      op: {
+                        type: 'string',
+                        const: 'add',
+                      },
+                      path: {
+                        type: 'string',
+                      },
+                      value: {},
+                    },
+                    required: ['op', 'path', 'value'],
+                  },
+                  {
+                    type: 'object',
+                    properties: {
+                      op: {
+                        type: 'string',
+                        const: 'remove',
+                      },
+                      path: {
+                        type: 'string',
+                      },
+                    },
+                    required: ['op', 'path'],
+                  },
+                  {
+                    type: 'object',
+                    properties: {
+                      op: {
+                        type: 'string',
+                        const: 'replace',
+                      },
+                      path: {
+                        type: 'string',
+                      },
+                      value: {},
+                    },
+                    required: ['op', 'path', 'value'],
+                  },
+                  {
+                    type: 'object',
+                    properties: {
+                      op: {
+                        type: 'string',
+                        const: 'move',
+                      },
+                      from: {
+                        type: 'string',
+                      },
+                      path: {
+                        type: 'string',
+                      },
+                    },
+                    required: ['op', 'from', 'path'],
+                  },
+                  {
+                    type: 'object',
+                    properties: {
+                      op: {
+                        type: 'string',
+                        const: 'copy',
+                      },
+                      from: {
+                        type: 'string',
+                      },
+                      path: {
+                        type: 'string',
+                      },
+                    },
+                    required: ['op', 'from', 'path'],
+                  },
+                  {
+                    type: 'object',
+                    properties: {
+                      op: {
+                        type: 'string',
+                        const: 'test',
+                      },
+                      path: {
+                        type: 'string',
+                      },
+                      value: {},
+                    },
+                    required: ['op', 'path', 'value'],
+                  },
+                ],
+              },
+            },
+            clientSchema: {
+              type: 'object',
+              properties: {
+                nodes: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: {
+                        type: 'string',
+                      },
+                      template: {
+                        type: 'string',
+                      },
+                      config: {
+                        type: 'object',
+                        propertyNames: {
+                          type: 'string',
+                        },
+                        additionalProperties: {},
+                      },
+                    },
+                    required: ['id', 'template', 'config'],
+                  },
+                },
+                edges: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      from: {
+                        type: 'string',
+                      },
+                      to: {
+                        type: 'string',
+                      },
+                      label: {
+                        type: 'string',
+                      },
+                    },
+                    required: ['from', 'to'],
+                  },
+                },
+              },
+              required: ['nodes'],
+            },
+            newSchema: {
+              type: 'object',
+              properties: {
+                nodes: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: {
+                        type: 'string',
+                      },
+                      template: {
+                        type: 'string',
+                      },
+                      config: {
+                        type: 'object',
+                        propertyNames: {
+                          type: 'string',
+                        },
+                        additionalProperties: {},
+                      },
+                    },
+                    required: ['id', 'template', 'config'],
+                  },
+                },
+                edges: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      from: {
+                        type: 'string',
+                      },
+                      to: {
+                        type: 'string',
+                      },
+                      label: {
+                        type: 'string',
+                      },
+                    },
+                    required: ['from', 'to'],
+                  },
+                },
+              },
+              required: ['nodes'],
+            },
+            status: {
+              type: 'string',
+              enum: ['pending', 'applying', 'applied', 'failed'],
+            },
+            error: {
+              type: 'string',
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              pattern:
+                '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time',
+              pattern:
+                '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+            },
+          },
+          required: [
+            'id',
+            'graphId',
+            'baseVersion',
+            'toVersion',
+            'configurationDiff',
+            'clientSchema',
+            'newSchema',
+            'status',
+            'createdAt',
+            'updatedAt',
+          ],
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+  },
+  required: ['graph'],
+} as const;
+
 export const ExecuteTriggerDtoSchema = {
   type: 'object',
   properties: {
@@ -504,7 +928,7 @@ export const GraphRevisionDtoSchema = {
       pattern:
         '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
     },
-    fromVersion: {
+    baseVersion: {
       type: 'string',
     },
     toVersion: {
@@ -604,6 +1028,52 @@ export const GraphRevisionDtoSchema = {
         ],
       },
     },
+    clientSchema: {
+      type: 'object',
+      properties: {
+        nodes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+              },
+              template: {
+                type: 'string',
+              },
+              config: {
+                type: 'object',
+                propertyNames: {
+                  type: 'string',
+                },
+                additionalProperties: {},
+              },
+            },
+            required: ['id', 'template', 'config'],
+          },
+        },
+        edges: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              from: {
+                type: 'string',
+              },
+              to: {
+                type: 'string',
+              },
+              label: {
+                type: 'string',
+              },
+            },
+            required: ['from', 'to'],
+          },
+        },
+      },
+      required: ['nodes'],
+    },
     newSchema: {
       type: 'object',
       properties: {
@@ -673,9 +1143,10 @@ export const GraphRevisionDtoSchema = {
   required: [
     'id',
     'graphId',
-    'fromVersion',
+    'baseVersion',
     'toVersion',
     'configurationDiff',
+    'clientSchema',
     'newSchema',
     'status',
     'createdAt',
