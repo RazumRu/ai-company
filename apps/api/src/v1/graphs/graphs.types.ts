@@ -56,6 +56,7 @@ export interface GraphNodeStateSnapshot {
   error?: string | null;
   threadId?: string;
   runId?: string;
+  additionalNodeMetadata?: Record<string, unknown>;
 }
 
 export interface CompiledGraph {

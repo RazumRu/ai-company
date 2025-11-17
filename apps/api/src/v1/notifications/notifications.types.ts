@@ -118,6 +118,7 @@ export interface IGraphNodeUpdateData {
   status: GraphNodeStatus;
   error?: string | null;
   metadata?: GraphExecutionMetadata;
+  additionalNodeMetadata?: Record<string, unknown>;
 }
 
 export interface IGraphNodeUpdateNotification

@@ -18,6 +18,7 @@ import { v4 } from 'uuid';
 import { z } from 'zod';
 
 import { FinishTool } from '../../../agent-tools/tools/finish.tool';
+import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import {
   BaseAgentState,
   BaseAgentStateChange,
@@ -29,7 +30,7 @@ import {
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { RegisterAgent } from '../../decorators/register-agent.decorator';
-import { GraphThreadState } from '../graph-thread-state';
+import { GraphThreadState, IGraphThreadStateData } from '../graph-thread-state';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InjectPendingNode } from '../nodes/inject-pending-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
@@ -106,6 +107,7 @@ type ActiveRunEntry = {
 export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private graph?: CompiledStateGraph<BaseAgentState, Record<string, unknown>>;
   private graphThreadState?: GraphThreadState;
+  private graphThreadStateUnsubscribe?: () => void;
   private currentConfig?: SimpleAgentSchemaType;
   private activeRuns = new Map<string, ActiveRunEntry>();
 
@@ -173,6 +175,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   protected buildGraph(config: SimpleAgentSchemaType) {
     if (!this.graph) {
       const graphThreadState = new GraphThreadState();
+      this.graphThreadStateUnsubscribe?.();
+      this.graphThreadStateUnsubscribe = graphThreadState.subscribe(
+        this.handleThreadStateChange,
+      );
 
       // Apply defaults for optional fields
       const enforceToolUsage = config.enforceToolUsage ?? true;
@@ -477,6 +483,68 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
   }
 
+  private emitNodeAdditionalMetadataUpdate(meta: GraphExecutionMetadata) {
+    if (!meta.threadId) {
+      return;
+    }
+
+    const additionalMetadata = this.getGraphNodeMetadata(meta);
+    this.emit({
+      type: 'nodeAdditionalMetadataUpdate',
+      data: {
+        metadata: meta,
+        additionalMetadata,
+      },
+    });
+  }
+
+  private readonly handleThreadStateChange = (
+    threadId: string,
+    nextState: IGraphThreadStateData,
+    prevState?: IGraphThreadStateData,
+  ) => {
+    if (!threadId) {
+      return;
+    }
+
+    const prevPending = prevState?.pendingMessages ?? [];
+    const nextPending = nextState.pendingMessages;
+    const pendingLengthChanged = prevPending.length !== nextPending.length;
+    const pendingContentChanged =
+      !pendingLengthChanged &&
+      prevPending.some((message, index) => message !== nextPending[index]);
+    const modeChanged = prevState?.newMessageMode !== nextState.newMessageMode;
+
+    if (!pendingLengthChanged && !pendingContentChanged && !modeChanged) {
+      return;
+    }
+
+    const activeRun = this.getActiveRunByThread(threadId);
+    const runId = activeRun?.runnableConfig.configurable?.run_id;
+
+    this.emitNodeAdditionalMetadataUpdate({
+      threadId,
+      ...(runId ? { runId } : {}),
+    });
+  };
+
+  public override getGraphNodeMetadata(
+    meta: GraphExecutionMetadata,
+  ): Record<string, unknown> | undefined {
+    if (!meta?.threadId || !this.graphThreadState) {
+      return undefined;
+    }
+
+    const threadState = this.graphThreadState.getByThread(meta.threadId);
+    if (!threadState.pendingMessages.length) {
+      return undefined;
+    }
+
+    return {
+      pendingMessages: threadState.pendingMessages,
+    };
+  }
+
   public async runOrAppend(
     threadId: string,
     messages: BaseMessage[],
@@ -708,6 +776,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     this.graph = undefined;
     this.currentConfig = undefined;
+    this.graphThreadStateUnsubscribe?.();
+    this.graphThreadStateUnsubscribe = undefined;
+    this.graphThreadState = undefined;
   }
 
   /**
@@ -721,5 +792,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     // Clear the graph so it will be rebuilt with new config
     this.graph = undefined;
     this.currentConfig = parsedConfig;
+    this.graphThreadStateUnsubscribe?.();
+    this.graphThreadStateUnsubscribe = undefined;
+    this.graphThreadState = undefined;
   }
 }

@@ -8,7 +8,12 @@ import {
   RuntimeExecResult,
 } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { CompiledGraphNode, GraphNodeStatus, NodeKind } from '../graphs.types';
+import {
+  CompiledGraphNode,
+  GraphExecutionMetadata,
+  GraphNodeStatus,
+  NodeKind,
+} from '../graphs.types';
 import { GraphStateManager } from './graph-state.manager';
 
 class TestRuntime extends BaseRuntime {
@@ -44,6 +49,15 @@ class TestRuntime extends BaseRuntime {
     });
 
     return result;
+  }
+
+  public override getGraphNodeMetadata(
+    context?: GraphExecutionMetadata,
+  ): Record<string, unknown> | undefined {
+    if (!context?.threadId) {
+      return undefined;
+    }
+    return { threadId: context.threadId };
   }
 }
 
@@ -192,6 +206,25 @@ describe('GraphStateManager', () => {
       const status = manager.getNodeStatus('runtime-1');
       expect(status).toBe(GraphNodeStatus.Stopped);
     });
+
+    it('should include additional node metadata when available', () => {
+      const runtime = new TestRuntime();
+      const node: CompiledGraphNode<TestRuntime> = {
+        id: 'runtime-1',
+        type: NodeKind.Runtime,
+        template: 'docker-runtime',
+        config: {},
+        instance: runtime,
+      };
+
+      manager.registerNode('runtime-1');
+      manager.attachGraphNode('runtime-1', node);
+
+      const snapshot = manager.getSnapshots('thread-42')[0];
+      expect(snapshot?.additionalNodeMetadata).toEqual({
+        threadId: 'thread-42',
+      });
+    });
   });
 
   describe('Agent events', () => {
@@ -203,6 +236,7 @@ describe('GraphStateManager', () => {
           subscribeFn = callback;
           return vi.fn(); // unsubscribe
         }),
+        getGraphNodeMetadata: vi.fn(),
       };
 
       const node = {
@@ -305,6 +339,7 @@ describe('GraphStateManager', () => {
           subscribeFn = callback;
           return vi.fn(); // unsubscribe
         }),
+        getGraphNodeMetadata: vi.fn(),
       };
 
       const node = {
@@ -390,6 +425,7 @@ describe('GraphStateManager', () => {
           subscribeFn = callback;
           return vi.fn();
         }),
+        getGraphNodeMetadata: vi.fn(),
       };
 
       const node = {
@@ -561,6 +597,7 @@ describe('GraphStateManager', () => {
           subscribeFn = callback;
           return vi.fn();
         }),
+        getGraphNodeMetadata: vi.fn(),
       };
 
       const node = {
@@ -638,6 +675,54 @@ describe('GraphStateManager', () => {
 
       // Should NOT emit GraphNodeUpdate for messages
       expect(messageUpdateCalls.length).toBe(0);
+    });
+
+    it('should update additional metadata when agent emits nodeAdditionalMetadataUpdate', async () => {
+      let subscribeFn: ((event: any) => void) | undefined;
+
+      const agent = {
+        subscribe: vi.fn((callback) => {
+          subscribeFn = callback;
+          return vi.fn();
+        }),
+        getGraphNodeMetadata: vi.fn(),
+      };
+
+      const node = {
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        config: {},
+        instance: agent,
+      } as unknown as CompiledGraphNode;
+
+      manager.registerNode('agent-1');
+      manager.attachGraphNode('agent-1', node);
+
+      await subscribeFn?.({
+        type: 'nodeAdditionalMetadataUpdate',
+        data: {
+          metadata: { threadId: 'thread-1' },
+          additionalMetadata: { pendingMessages: [] },
+        },
+      });
+
+      const snapshot = manager.getSnapshots('thread-1')[0];
+      expect(snapshot?.additionalNodeMetadata).toEqual({
+        pendingMessages: [],
+      });
+
+      expect(notifications.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.GraphNodeUpdate,
+          nodeId: 'agent-1',
+          threadId: 'thread-1',
+          data: expect.objectContaining({
+            additionalNodeMetadata: { pendingMessages: [] },
+            metadata: { threadId: 'thread-1' },
+          }),
+        }),
+      );
     });
   });
 

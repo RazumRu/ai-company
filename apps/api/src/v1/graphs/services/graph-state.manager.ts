@@ -25,6 +25,9 @@ interface NodeState {
   runStatuses: Map<string, GraphNodeStatus>;
   error?: string | null;
   activeExecs: Map<string, ExecInfo>;
+  additionalNodeMetadata?: Record<string, unknown>;
+  additionalNodeMetadataByThread: Map<string, Record<string, unknown>>;
+  additionalNodeMetadataByRun: Map<string, Record<string, unknown>>;
 }
 
 @Injectable({ scope: Scope.TRANSIENT })
@@ -51,6 +54,9 @@ export class GraphStateManager {
       runStatuses: new Map(),
       error: null,
       activeExecs: new Map(),
+      additionalNodeMetadata: undefined,
+      additionalNodeMetadataByThread: new Map(),
+      additionalNodeMetadataByRun: new Map(),
     });
   }
 
@@ -116,6 +122,11 @@ export class GraphStateManager {
         const r = runId ? s.runStatuses.get(runId) : undefined;
         const status = t ?? r ?? s.baseStatus;
         const metadata = this.buildSnapshotMetadata(s, threadId, runId);
+        const additionalNodeMetadata = this.buildNodeAdditionalMetadata(
+          s,
+          threadId,
+          runId,
+        );
         return {
           id: n.id,
           name: n.id,
@@ -125,6 +136,7 @@ export class GraphStateManager {
           config: n.config,
           error: s.error ?? null,
           ...(metadata ? { metadata } : {}),
+          ...(additionalNodeMetadata ? { additionalNodeMetadata } : {}),
         };
       });
   }
@@ -134,6 +146,9 @@ export class GraphStateManager {
       s.threadStatuses.clear();
       s.runStatuses.clear();
       s.activeExecs.clear();
+      s.additionalNodeMetadataByThread.clear();
+      s.additionalNodeMetadataByRun.clear();
+      s.additionalNodeMetadata = undefined;
       s.baseStatus = GraphNodeStatus.Stopped;
       this.clearError(s);
     }
@@ -231,12 +246,11 @@ export class GraphStateManager {
 
     const unsub = agent.subscribe(async (event) => {
       try {
-        const cfg = event.data.config?.configurable;
-        const graphId = cfg?.graph_id || 'unknown';
-        const nodeId = cfg?.node_id || 'unknown';
-        const parentThreadId = cfg?.parent_thread_id || 'unknown';
-
         if (event.type === 'invoke') {
+          const cfg = event.data.config?.configurable;
+          const graphId = cfg?.graph_id || 'unknown';
+          const nodeId = cfg?.node_id || 'unknown';
+          const parentThreadId = cfg?.parent_thread_id || 'unknown';
           const threadId = event.data.threadId;
           const runId = cfg?.run_id;
 
@@ -268,6 +282,10 @@ export class GraphStateManager {
         }
 
         if (event.type === 'message') {
+          const cfg = event.data.config?.configurable;
+          const graphId = cfg?.graph_id || 'unknown';
+          const nodeId = cfg?.node_id || 'unknown';
+          const parentThreadId = cfg?.parent_thread_id || 'unknown';
           // Emit AgentMessage notification
           await this.notificationsService.emit({
             type: NotificationEvent.AgentMessage,
@@ -282,6 +300,10 @@ export class GraphStateManager {
         }
 
         if (event.type === 'stateUpdate') {
+          const cfg = event.data.config?.configurable;
+          const graphId = cfg?.graph_id || 'unknown';
+          const nodeId = cfg?.node_id || 'unknown';
+          const parentThreadId = cfg?.parent_thread_id || 'unknown';
           // Emit AgentStateUpdate notification
           await this.notificationsService.emit({
             type: NotificationEvent.AgentStateUpdate,
@@ -314,6 +336,8 @@ export class GraphStateManager {
         }
 
         if (event.type === 'run') {
+          const cfg = event.data.config?.configurable;
+          const parentThreadId = cfg?.parent_thread_id || 'unknown';
           const threadId = event.data.threadId;
           const runId = cfg?.run_id;
 
@@ -361,6 +385,8 @@ export class GraphStateManager {
         }
 
         if (event.type === 'stop') {
+          const cfg = event.data.config?.configurable;
+          const parentThreadId = cfg?.parent_thread_id || 'unknown';
           // Get active threads from threadStatuses
           const activeThreadIds = Array.from(state.threadStatuses.keys());
 
@@ -388,6 +414,20 @@ export class GraphStateManager {
           }
 
           this.emitNodeUpdate(state);
+        }
+
+        if (event.type === 'nodeAdditionalMetadataUpdate') {
+          this.updateAdditionalNodeMetadata(
+            state,
+            event.data.metadata,
+            event.data.additionalMetadata,
+          );
+          this.emitNodeUpdate(
+            state,
+            undefined,
+            event.data.metadata.threadId,
+            event.data.metadata.runId,
+          );
         }
       } catch (e) {
         this.logger.error(e as Error, 'Error handling agent event');
@@ -508,6 +548,44 @@ export class GraphStateManager {
     return this.hasMeta(meta) ? meta : undefined;
   }
 
+  private buildNodeAdditionalMetadata(
+    state: NodeState,
+    threadId?: string,
+    runId?: string,
+  ): Record<string, unknown> | undefined {
+    const stored = this.getAdditionalNodeMetadata(state, {
+      threadId,
+      runId,
+    });
+    if (stored) {
+      return stored;
+    }
+
+    const node = state.node;
+    if (!node) {
+      return undefined;
+    }
+
+    const meta: GraphExecutionMetadata = {
+      threadId,
+      runId,
+    };
+
+    if (node.type === NodeKind.SimpleAgent) {
+      return (node.instance as SimpleAgent).getGraphNodeMetadata(meta);
+    }
+
+    if (node.type === NodeKind.Runtime) {
+      return (node.instance as BaseRuntime).getGraphNodeMetadata(meta);
+    }
+
+    if (node.type === NodeKind.Trigger) {
+      return (node.instance as BaseTrigger).getGraphNodeMetadata(meta);
+    }
+
+    return undefined;
+  }
+
   private hasMeta(meta?: GraphExecutionMetadata) {
     return !!(
       meta &&
@@ -531,6 +609,13 @@ export class GraphStateManager {
     threadId?: string,
     runId?: string,
   ) {
+    const metadata = this.buildSnapshotMetadata(state, threadId, runId);
+    const additionalNodeMetadata = this.buildNodeAdditionalMetadata(
+      state,
+      threadId,
+      runId,
+    );
+
     void this.notificationsService.emit({
       type: NotificationEvent.GraphNodeUpdate,
       graphId: this.graphId,
@@ -540,8 +625,60 @@ export class GraphStateManager {
       data: {
         status: status || state.baseStatus,
         error: state.error ?? undefined,
+        ...(metadata ? { metadata } : {}),
+        ...(additionalNodeMetadata ? { additionalNodeMetadata } : {}),
       },
     });
+  }
+
+  private updateAdditionalNodeMetadata(
+    state: NodeState,
+    meta: GraphExecutionMetadata,
+    data?: Record<string, unknown>,
+  ) {
+    const { threadId, runId } = meta;
+    if (threadId) {
+      if (data) {
+        state.additionalNodeMetadataByThread.set(threadId, data);
+      } else {
+        state.additionalNodeMetadataByThread.delete(threadId);
+      }
+      return;
+    }
+
+    if (runId) {
+      if (data) {
+        state.additionalNodeMetadataByRun.set(runId, data);
+      } else {
+        state.additionalNodeMetadataByRun.delete(runId);
+      }
+      return;
+    }
+
+    state.additionalNodeMetadata = data;
+  }
+
+  private getAdditionalNodeMetadata(
+    state: NodeState,
+    meta: GraphExecutionMetadata,
+  ): Record<string, unknown> | undefined {
+    if (meta.threadId) {
+      const fromThread = state.additionalNodeMetadataByThread.get(
+        meta.threadId,
+      );
+      if (fromThread) {
+        return fromThread;
+      }
+    }
+
+    if (meta.runId) {
+      const fromRun = state.additionalNodeMetadataByRun.get(meta.runId);
+      if (fromRun) {
+        return fromRun;
+      }
+    }
+
+    return state.additionalNodeMetadata;
   }
 
   private toErrorMessage(error: unknown): string {

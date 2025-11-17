@@ -201,6 +201,10 @@ export const GraphNodeWithStatusSchema = z.object({
       parentThreadId: z.string().optional(),
     })
     .optional(),
+  additionalNodeMetadata: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe('Additional metadata exposed by the node implementation'),
 });
 
 export class GraphDto extends createZodDto(GraphSchema) {}

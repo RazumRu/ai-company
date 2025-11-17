@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { isArray } from 'lodash';
 
+import { GraphExecutionMetadata } from '../../graphs/graphs.types';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
@@ -69,4 +70,10 @@ export abstract class BaseRuntime {
   abstract start(params: RuntimeStartParams): Promise<void>;
   abstract stop(): Promise<void>;
   abstract exec(params: RuntimeExecParams): Promise<RuntimeExecResult>;
+
+  public getGraphNodeMetadata(
+    _meta: GraphExecutionMetadata,
+  ): Record<string, unknown> | undefined {
+    return undefined;
+  }
 }

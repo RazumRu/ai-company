@@ -7,9 +7,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { NewMessageMode } from '../../agents.types';
-import { GraphThreadState } from '../graph-thread-state';
+import { GraphThreadState, IGraphThreadStateData } from '../graph-thread-state';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
+import { AgentEventType } from './base-agent';
 import { SimpleAgent } from './simple-agent';
 
 // Mock dependencies
@@ -36,6 +37,26 @@ describe('SimpleAgent', () => {
   const _mockNotificationsService = {
     emit: vi.fn(),
   } as unknown as NotificationsService;
+  const setGraphThreadState = (state: GraphThreadState) => {
+    const agentRef = agent as unknown as {
+      graphThreadState?: GraphThreadState;
+      graphThreadStateUnsubscribe?: () => void;
+      handleThreadStateChange?: (
+        threadId: string,
+        nextState: IGraphThreadStateData,
+        prevState?: IGraphThreadStateData,
+      ) => void;
+    };
+
+    agentRef.graphThreadStateUnsubscribe?.();
+    agentRef.graphThreadState = state;
+
+    if (typeof agentRef.handleThreadStateChange === 'function') {
+      agentRef.graphThreadStateUnsubscribe = state.subscribe(
+        agentRef.handleThreadStateChange,
+      );
+    }
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -406,12 +427,6 @@ describe('SimpleAgent', () => {
       generatedTitle: undefined,
     });
 
-    const setGraphThreadState = (state: GraphThreadState) => {
-      (
-        agent as unknown as { graphThreadState?: GraphThreadState }
-      ).graphThreadState = state;
-    };
-
     beforeEach(() => {
       agent.setConfig(baseConfig);
       agent['activeRuns'].clear();
@@ -495,6 +510,62 @@ describe('SimpleAgent', () => {
       const threadState = graphThreadState.getByThread('thread-1');
       expect(threadState.pendingMessages).toHaveLength(1);
       expect(threadState.newMessageMode).toBe(NewMessageMode.WaitForCompletion);
+    });
+
+    it('should emit nodeAdditionalMetadataUpdate when pending messages change', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const runnableConfig = {
+        configurable: { run_id: 'run-1', graph_id: 'graph-1' },
+      };
+
+      const lastState = buildState();
+      agent['activeRuns'].set('run-1', {
+        abortController: new AbortController(),
+        runnableConfig: runnableConfig as RunnableConfig<BaseAgentConfigurable>,
+        threadId: 'thread-1',
+        lastState,
+      });
+
+      const emitSpy = vi.spyOn(agent as any, 'emit');
+
+      await agent.runOrAppend('thread-1', [new HumanMessage('Follow-up')]);
+
+      const nodeMetadataEvent = emitSpy.mock.calls
+        .map((call) => call[0] as AgentEventType)
+        .find(
+          (
+            event,
+          ): event is Extract<
+            AgentEventType,
+            { type: 'nodeAdditionalMetadataUpdate' }
+          > => event?.type === 'nodeAdditionalMetadataUpdate',
+        );
+
+      expect(nodeMetadataEvent).toBeDefined();
+
+      if (!nodeMetadataEvent) {
+        throw new Error('nodeAdditionalMetadataUpdate event not emitted');
+      }
+
+      const additionalMetadata = nodeMetadataEvent.data.additionalMetadata as
+        | { pendingMessages?: { content?: string }[] }
+        | undefined;
+
+      expect(nodeMetadataEvent).toEqual(
+        expect.objectContaining({
+          type: 'nodeAdditionalMetadataUpdate',
+          data: expect.objectContaining({
+            metadata: { threadId: 'thread-1', runId: 'run-1' },
+          }),
+        }),
+      );
+
+      expect(additionalMetadata?.pendingMessages).toBeDefined();
+      expect(additionalMetadata?.pendingMessages?.[0]?.content).toBe(
+        'Follow-up',
+      );
     });
   });
 
@@ -637,6 +708,66 @@ describe('SimpleAgent', () => {
         ...expectedConfig,
         newMessageMode: NewMessageMode.InjectAfterToolCall,
       });
+    });
+  });
+
+  describe('getGraphNodeMetadata', () => {
+    it('should return undefined when no graph thread state is set', () => {
+      expect(
+        agent.getGraphNodeMetadata({ threadId: 'thread-1' }),
+      ).toBeUndefined();
+    });
+
+    it('should return undefined when there are no pending messages', () => {
+      const threadState = new GraphThreadState();
+      setGraphThreadState(threadState);
+
+      const metadata = agent.getGraphNodeMetadata({ threadId: 'thread-1' });
+      expect(metadata).toBeUndefined();
+    });
+
+    it('should return pending messages for a thread', () => {
+      const threadState = new GraphThreadState();
+      setGraphThreadState(threadState);
+
+      const message = new HumanMessage('pending');
+      threadState.applyForThread('thread-1', { pendingMessages: [message] });
+
+      const metadata = agent.getGraphNodeMetadata({ threadId: 'thread-1' });
+
+      expect(metadata).toEqual({
+        pendingMessages: [message],
+      });
+    });
+  });
+
+  describe('nodeAdditionalMetadataUpdate events', () => {
+    beforeEach(() => {
+      agent.setConfig({
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      });
+    });
+
+    it('should emit event even when no pending metadata exists', () => {
+      const emitSpy = vi.spyOn(agent as any, 'emit');
+      setGraphThreadState(new GraphThreadState());
+
+      (agent as any).emitNodeAdditionalMetadataUpdate({
+        threadId: 'thread-1',
+      });
+
+      expect(emitSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'nodeAdditionalMetadataUpdate',
+          data: {
+            metadata: { threadId: 'thread-1' },
+            additionalMetadata: undefined,
+          },
+        }),
+      );
     });
   });
 });

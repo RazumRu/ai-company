@@ -5,6 +5,7 @@ import { EventEmitter } from 'events';
 
 import { AgentOutput } from '../../agents/services/agents/base-agent';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import { GraphExecutionMetadata } from '../../graphs/graphs.types';
 import { TriggerEvent, TriggerStatus } from '../agent-triggers.types';
 
 export type TriggerStartEvent = {
@@ -143,4 +144,10 @@ export abstract class BaseTrigger<TConfig = unknown, TPayload = unknown> {
   protected abstract convertPayloadToMessages(
     payload: TPayload,
   ): HumanMessage[];
+
+  public getGraphNodeMetadata(
+    _meta: GraphExecutionMetadata,
+  ): Record<string, unknown> | undefined {
+    return undefined;
+  }
 }

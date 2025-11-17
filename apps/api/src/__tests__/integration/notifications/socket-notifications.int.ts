@@ -16,7 +16,10 @@ import {
 } from '../../../v1/notifications/notifications.types';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadEntity } from '../../../v1/threads/entity/thread.entity';
-import { createMockGraphData } from '../helpers/graph-helpers';
+import {
+  createMockGraphData,
+  waitForCondition,
+} from '../helpers/graph-helpers';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 // Type aliases for socket notifications (using business logic interfaces)
@@ -102,6 +105,36 @@ describe('Socket Notifications Integration Tests', () => {
       socket.on('server_error', (error) => reject(error));
       setTimeout(() => reject(new Error('Socket connection timeout')), 10000);
     });
+  };
+
+  const extractPendingMessageContent = (
+    message: unknown,
+  ): string | undefined => {
+    if (!message || typeof message !== 'object') {
+      return undefined;
+    }
+
+    if (typeof (message as { content?: unknown }).content === 'string') {
+      return (message as { content?: string }).content;
+    }
+
+    const lcKwargs = (
+      message as {
+        lc_kwargs?: { content?: unknown };
+        kwargs?: { content?: unknown };
+      }
+    ).lc_kwargs;
+
+    if (typeof lcKwargs?.content === 'string') {
+      return lcKwargs.content;
+    }
+
+    const kwargs = (message as { kwargs?: { content?: unknown } }).kwargs;
+    if (typeof kwargs?.content === 'string') {
+      return kwargs.content;
+    }
+
+    return undefined;
   };
 
   describe('Connection', () => {
@@ -646,6 +679,97 @@ describe('Socket Notifications Integration Tests', () => {
         expect(runningEvents[0]!.type).toBe('graph.node.update');
         expect(runningEvents[0]!.graphId).toBeTruthy();
         expect(runningEvents[0]!.data.status).toBe('running');
+      },
+    );
+
+    it(
+      'should include pending message metadata in node update notifications',
+      { timeout: 60000 },
+      async () => {
+        socket = createSocketConnection(TEST_USER_ID);
+        await waitForSocketConnection(socket);
+
+        const graphData = createMockGraphData();
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        socket.emit('subscribe_graph', { graphId });
+
+        await graphsService.run(graphId);
+
+        const threadSubId = 'socket-pending-metadata';
+        const firstExecution = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Initial socket request'],
+            threadSubId,
+            async: true,
+          },
+        );
+        const threadId = firstExecution.threadId;
+
+        await waitForCondition(
+          () =>
+            graphsService.getCompiledNodes(graphId, {
+              threadId,
+            }),
+          (snapshots) =>
+            snapshots.some(
+              (node) => node.id === 'agent-1' && node.status === 'running',
+            ),
+          { timeout: 120_000, interval: 1_000 },
+        );
+
+        const metadataNotificationPromise = new Promise<NodeUpdateNotification>(
+          (resolve, reject) => {
+            function handleMetadata(notification: NodeUpdateNotification) {
+              const metadata = notification.data?.additionalNodeMetadata as
+                | { pendingMessages?: unknown[] }
+                | undefined;
+
+              if (
+                notification.graphId === graphId &&
+                notification.nodeId === 'agent-1' &&
+                Array.isArray(metadata?.pendingMessages) &&
+                metadata.pendingMessages.length > 0
+              ) {
+                clearTimeout(timeout);
+                socket.off('graph.node.update', handleMetadata);
+                resolve(notification);
+              }
+            }
+
+            const timeout = setTimeout(() => {
+              socket.off('graph.node.update', handleMetadata);
+              reject(new Error('Timeout waiting for metadata update'));
+            }, 30000);
+
+            socket.on('graph.node.update', handleMetadata);
+          },
+        );
+
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['Follow-up to enqueue pending message'],
+          threadSubId,
+          async: true,
+        });
+
+        const metadataNotification = await metadataNotificationPromise;
+        const metadata = metadataNotification.data.additionalNodeMetadata as
+          | { pendingMessages?: { content?: string }[] }
+          | undefined;
+
+        expect(metadata?.pendingMessages).toBeDefined();
+
+        const pendingMessageContent = extractPendingMessageContent(
+          metadata?.pendingMessages?.[0],
+        );
+
+        expect(pendingMessageContent).toBe(
+          'Follow-up to enqueue pending message',
+        );
       },
     );
   });

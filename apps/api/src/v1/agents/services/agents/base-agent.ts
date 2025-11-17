@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 import { z } from 'zod';
 
 import { environment } from '../../../../environments';
+import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 
 export type AgentOutput = {
@@ -47,12 +48,21 @@ export type AgentStateUpdateEvent = {
   config: RunnableConfig<BaseAgentConfigurable>;
 };
 
+export type AgentNodeAdditionalMetadataUpdateEvent = {
+  metadata: GraphExecutionMetadata;
+  additionalMetadata?: Record<string, unknown>;
+};
+
 export type AgentEventType =
   | { type: 'run'; data: AgentRunEvent }
   | { type: 'stop'; data: AgentStopEvent }
   | { type: 'invoke'; data: AgentInvokeEvent }
   | { type: 'message'; data: AgentMessageEvent }
-  | { type: 'stateUpdate'; data: AgentStateUpdateEvent };
+  | { type: 'stateUpdate'; data: AgentStateUpdateEvent }
+  | {
+      type: 'nodeAdditionalMetadataUpdate';
+      data: AgentNodeAdditionalMetadataUpdateEvent;
+    };
 
 export abstract class BaseAgent<TSchema = unknown> {
   protected tools: DynamicStructuredTool[] = [];
@@ -93,6 +103,12 @@ export abstract class BaseAgent<TSchema = unknown> {
     });
 
     return llm;
+  }
+
+  public getGraphNodeMetadata(
+    _meta: GraphExecutionMetadata,
+  ): Record<string, unknown> | undefined {
+    return undefined;
   }
 
   public abstract run(

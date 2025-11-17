@@ -140,6 +140,36 @@ describe('Graph Nodes Integration Tests', () => {
     return undefined;
   };
 
+  const extractPendingMessageContent = (
+    message: unknown,
+  ): string | undefined => {
+    if (!message || typeof message !== 'object') {
+      return undefined;
+    }
+
+    if (typeof (message as { content?: unknown }).content === 'string') {
+      return (message as { content?: string }).content;
+    }
+
+    const lcKwargs = (
+      message as {
+        lc_kwargs?: { content?: unknown };
+        kwargs?: { content?: unknown };
+      }
+    ).lc_kwargs;
+
+    if (typeof lcKwargs?.content === 'string') {
+      return lcKwargs.content;
+    }
+
+    const kwargs = (message as { kwargs?: { content?: unknown } }).kwargs;
+    if (typeof kwargs?.content === 'string') {
+      return kwargs.content;
+    }
+
+    return undefined;
+  };
+
   const waitForSnapshots = async (
     graphId: string,
     query: Partial<GraphNodesQueryDto>,
@@ -292,6 +322,104 @@ describe('Graph Nodes Integration Tests', () => {
         errorCode: 'GRAPH_NOT_RUNNING',
         statusCode: 400,
       });
+    },
+  );
+
+  it(
+    'exposes agent pending messages through additional node metadata',
+    { timeout: 240_000 },
+    async () => {
+      const graph = await graphsService.create(createMockGraphData());
+      registerGraph(graph.id);
+
+      await graphsService.run(graph.id);
+      await waitForGraphToBeRunning(graph.id);
+
+      const threadSubId = 'pending-metadata-thread';
+      const firstExecution = await graphsService.executeTrigger(
+        graph.id,
+        TRIGGER_NODE_ID,
+        {
+          messages: ['Start long running task'],
+          threadSubId,
+          async: true,
+        },
+      );
+      const threadId = firstExecution.threadId;
+
+      await waitForSnapshots(graph.id, { threadId }, (snapshots) =>
+        snapshots.some(
+          (node) =>
+            node.id === AGENT_NODE_ID &&
+            node.status === GraphNodeStatus.Running,
+        ),
+      );
+
+      await graphsService.executeTrigger(graph.id, TRIGGER_NODE_ID, {
+        messages: ['Follow-up while running'],
+        threadSubId,
+        async: true,
+      });
+
+      const nodesWithPending = await waitForSnapshots(
+        graph.id,
+        { threadId },
+        (snapshots) =>
+          snapshots.some((node) => {
+            if (node.id !== AGENT_NODE_ID) {
+              return false;
+            }
+            const metadata = node.additionalNodeMetadata as
+              | { pendingMessages?: unknown[] }
+              | undefined;
+            return Array.isArray(metadata?.pendingMessages);
+          }),
+      );
+
+      const agentNode = nodesWithPending.find(
+        (node) => node.id === AGENT_NODE_ID,
+      );
+      const pendingMetadata = agentNode?.additionalNodeMetadata as
+        | { pendingMessages?: { content?: string }[] }
+        | undefined;
+
+      expect(pendingMetadata?.pendingMessages).toBeDefined();
+      expect(pendingMetadata?.pendingMessages?.length).toBeGreaterThan(0);
+      const pendingMessageContent = extractPendingMessageContent(
+        pendingMetadata?.pendingMessages?.[0],
+      );
+
+      expect(pendingMessageContent).toBe('Follow-up while running');
+
+      await waitForThreadCompletion(threadId);
+
+      const nodesAfterCompletion = await waitForSnapshots(
+        graph.id,
+        { threadId },
+        (snapshots) =>
+          snapshots.some(
+            (node) =>
+              node.id === AGENT_NODE_ID &&
+              !(
+                (
+                  node.additionalNodeMetadata as {
+                    pendingMessages?: unknown[];
+                  }
+                )?.pendingMessages?.length ?? 0
+              ),
+          ),
+      );
+
+      const clearedNode = nodesAfterCompletion.find(
+        (node) => node.id === AGENT_NODE_ID,
+      );
+      expect(
+        (
+          clearedNode?.additionalNodeMetadata as {
+            pendingMessages?: unknown[];
+          }
+        )?.pendingMessages,
+      ).toBeUndefined();
     },
   );
 });
