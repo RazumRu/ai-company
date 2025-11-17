@@ -36,7 +36,7 @@ describe('AgentCommunicationToolTemplate', () => {
 
   beforeEach(async () => {
     mockAgent = {
-      run: vi.fn().mockResolvedValue({
+      runOrAppend: vi.fn().mockResolvedValue({
         messages: [new HumanMessage('Agent response')],
         threadId: 'test-thread',
       }),
@@ -244,7 +244,7 @@ describe('AgentCommunicationToolTemplate', () => {
       await invokeAgent(messages, mockRunnableConfig);
 
       // Verify the agent was called with the correct thread ID
-      expect(mockAgent.run).toHaveBeenCalledWith(
+      expect(mockAgent.runOrAppend).toHaveBeenCalledWith(
         'root-thread-456__comm-tool', // Uses parent + tool node id
         [new HumanMessage('Hello from Agent A')],
         undefined,
@@ -304,7 +304,7 @@ describe('AgentCommunicationToolTemplate', () => {
       await invokeAgent(['Message from A to B'], agentAConfig);
 
       // Verify Agent B gets consistent thread ID based on parent
-      expect(mockAgent.run).toHaveBeenCalledWith(
+      expect(mockAgent.runOrAppend).toHaveBeenCalledWith(
         'root-thread-456__comm-tool', // parent + tool id
         [new HumanMessage('Message from A to B')],
         undefined,
@@ -317,7 +317,7 @@ describe('AgentCommunicationToolTemplate', () => {
       );
 
       // Reset mock for next call
-      vi.mocked(mockAgent.run).mockClear();
+      vi.mocked(mockAgent.runOrAppend).mockClear();
 
       // Simulate Agent B -> Agent C call (using same parent thread)
       const agentBConfig = {
@@ -333,7 +333,7 @@ describe('AgentCommunicationToolTemplate', () => {
       await invokeAgent(['Message from B to C'], agentBConfig);
 
       // Verify Agent C also gets consistent thread ID
-      expect(mockAgent.run).toHaveBeenCalledWith(
+      expect(mockAgent.runOrAppend).toHaveBeenCalledWith(
         'root-thread-456__comm-tool',
         [new HumanMessage('Message from B to C')],
         undefined,
@@ -390,7 +390,7 @@ describe('AgentCommunicationToolTemplate', () => {
       await invokeAgent(['Test message'], mockRunnableConfig);
 
       // Should fallback to current thread_id
-      expect(mockAgent.run).toHaveBeenCalledWith(
+      expect(mockAgent.runOrAppend).toHaveBeenCalledWith(
         'current-thread-123__comm-tool',
         [new HumanMessage('Test message')],
         undefined,
@@ -461,11 +461,11 @@ describe('AgentCommunicationToolTemplate', () => {
     it('should handle empty messages gracefully', async () => {
       // Mock agent that returns empty messages
       const mockAgentEmptyMessages = {
-        run: vi.fn().mockResolvedValue({
+        runOrAppend: vi.fn().mockResolvedValue({
           messages: [],
           threadId: 'test-thread',
         }),
-      } as RunnableConfig<BaseAgentConfigurable>;
+      } as unknown as SimpleAgent;
 
       const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
@@ -476,7 +476,7 @@ describe('AgentCommunicationToolTemplate', () => {
           instructions: 'Test instructions',
           invokeModelName: 'gpt-5-mini',
         },
-        instance: mockAgentEmptyMessages as unknown as SimpleAgent,
+        instance: mockAgentEmptyMessages,
       });
 
       mockGraphRegistry.filterNodesByType = vi

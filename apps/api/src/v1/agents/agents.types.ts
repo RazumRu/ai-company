@@ -1,13 +1,5 @@
 import { BaseMessage } from '@langchain/core/messages';
 
-import { RuntimeType } from '../runtime/runtime.types';
-
-export interface PrepareRuntimeParams {
-  runtimeType?: RuntimeType;
-  runtimeImage?: string;
-  workdir?: string;
-}
-
 export type BaseAgentStateMessagesUpdateValue = {
   mode: 'append' | 'replace';
   items: BaseMessage[];
@@ -26,4 +18,9 @@ export interface BaseAgentState {
 export interface BaseAgentStateChange
   extends Partial<Omit<BaseAgentState, 'messages'>> {
   messages?: BaseAgentStateMessagesUpdateValue;
+}
+
+export enum NewMessageMode {
+  InjectAfterToolCall = 'inject_after_tool_call',
+  WaitForCompletion = 'wait_for_completion',
 }

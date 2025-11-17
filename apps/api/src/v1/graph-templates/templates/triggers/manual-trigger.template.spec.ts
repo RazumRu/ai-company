@@ -41,7 +41,7 @@ describe('ManualTriggerTemplate', () => {
 
   beforeEach(async () => {
     mockSimpleAgent = {
-      run: vi.fn(),
+      runOrAppend: vi.fn(),
     } as unknown as SimpleAgent;
 
     mockAgentNode = buildCompiledNode({
@@ -245,7 +245,7 @@ describe('ManualTriggerTemplate', () => {
 
       await invokeAgentFn!(messages, runnableConfig);
 
-      const runCall = vi.mocked(mockSimpleAgent.run).mock.calls[0];
+      const runCall = vi.mocked(mockSimpleAgent.runOrAppend).mock.calls[0];
       const [
         actualThreadId,
         actualMessages,
@@ -308,7 +308,7 @@ describe('ManualTriggerTemplate', () => {
 
       await invokeAgentFn!(messages, runnableConfig);
 
-      const runCall = vi.mocked(mockSimpleAgent.run).mock.calls[0];
+      const runCall = vi.mocked(mockSimpleAgent.runOrAppend).mock.calls[0];
       const [
         actualThreadId,
         actualMessages,
@@ -378,7 +378,7 @@ describe('ManualTriggerTemplate', () => {
 
       await invokeAgentFn!(messages, runnableConfig);
 
-      const runCall = vi.mocked(mockSimpleAgent.run).mock.calls[0];
+      const runCall = vi.mocked(mockSimpleAgent.runOrAppend).mock.calls[0];
       const [
         actualThreadId,
         actualMessages,

@@ -13,6 +13,7 @@ export type BaseAgentConfigurable = {
   source?: string;
   async?: boolean;
   run_id?: string;
+  [key: string]: unknown;
 };
 
 export abstract class BaseNode<

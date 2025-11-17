@@ -1,10 +1,14 @@
 import { HumanMessage } from '@langchain/core/messages';
+import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NotificationsService } from '../../../notifications/services/notifications.service';
+import { NewMessageMode } from '../../agents.types';
+import { GraphThreadState } from '../graph-thread-state';
+import { BaseAgentConfigurable } from '../nodes/base-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { SimpleAgent } from './simple-agent';
 
@@ -157,6 +161,32 @@ describe('SimpleAgent', () => {
       };
 
       expect(() => schema.parse(invalidConfig)).toThrow();
+    });
+
+    it('should default newMessageMode to inject_after_tool_call', () => {
+      const schema = agent.schema;
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+      };
+
+      const parsed = schema.parse(config);
+      expect(parsed.newMessageMode).toBe('inject_after_tool_call');
+    });
+
+    it('should accept newMessageMode values', () => {
+      const schema = agent.schema;
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        invokeModelName: 'gpt-5-mini',
+        newMessageMode: 'wait_for_completion',
+      };
+
+      expect(() => schema.parse(config)).not.toThrow();
     });
   });
 
@@ -358,6 +388,116 @@ describe('SimpleAgent', () => {
     });
   });
 
+  describe('runOrAppend', () => {
+    const baseConfig = {
+      summarizeMaxTokens: 1000,
+      summarizeKeepTokens: 500,
+      instructions: 'Test instructions',
+      invokeModelName: 'gpt-5-mini',
+    };
+
+    const buildState = () => ({
+      messages: [],
+      summary: '',
+      done: false,
+      needsMoreInfo: false,
+      toolUsageGuardActivated: false,
+      toolUsageGuardActivatedCount: 0,
+      generatedTitle: undefined,
+    });
+
+    const setGraphThreadState = (state: GraphThreadState) => {
+      (
+        agent as unknown as { graphThreadState?: GraphThreadState }
+      ).graphThreadState = state;
+    };
+
+    beforeEach(() => {
+      agent.setConfig(baseConfig);
+      agent['activeRuns'].clear();
+    });
+
+    it('should throw when configuration is not set', async () => {
+      agent['currentConfig'] = undefined;
+      await expect(
+        agent.runOrAppend('thread-1', [new HumanMessage('hi')]),
+      ).rejects.toThrow('Agent configuration is required for execution');
+    });
+
+    it('should start a new run when no active run exists', async () => {
+      const runSpy = vi
+        .spyOn(agent, 'run')
+        .mockResolvedValue(
+          {} as unknown as Awaited<ReturnType<SimpleAgent['run']>>,
+        );
+
+      await agent.runOrAppend('thread-1', [new HumanMessage('hi')]);
+
+      expect(runSpy).toHaveBeenCalled();
+      runSpy.mockRestore();
+    });
+
+    it('should append pending messages when inject_after_tool_call', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const runnableConfig = {
+        configurable: { run_id: 'run-1', graph_id: 'graph-1' },
+      };
+
+      const lastState = buildState();
+      agent['activeRuns'].set('run-1', {
+        abortController: new AbortController(),
+        runnableConfig: runnableConfig as RunnableConfig<BaseAgentConfigurable>,
+        threadId: 'thread-1',
+        lastState,
+      });
+
+      const message = new HumanMessage('Follow-up');
+      const result = await agent.runOrAppend('thread-1', [message]);
+
+      const threadState = graphThreadState.getByThread('thread-1');
+      expect(threadState.pendingMessages).toHaveLength(1);
+      expect(threadState.pendingMessages[0]?.additional_kwargs?.run_id).toBe(
+        'run-1',
+      );
+
+      expect(result).toEqual({
+        messages: lastState.messages,
+        threadId: 'thread-1',
+        checkpointNs: undefined,
+        needsMoreInfo: lastState.needsMoreInfo,
+      });
+    });
+
+    it('should keep newMessageMode when mode is wait_for_completion', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      graphThreadState.applyForThread('thread-1', {
+        pendingMessages: [],
+        newMessageMode: NewMessageMode.WaitForCompletion,
+      });
+
+      const runnableConfig = {
+        configurable: { run_id: 'run-1', graph_id: 'graph-1' },
+      };
+
+      agent['activeRuns'].set('run-1', {
+        abortController: new AbortController(),
+        runnableConfig: runnableConfig as RunnableConfig<BaseAgentConfigurable>,
+        threadId: 'thread-1',
+        lastState: buildState(),
+      });
+
+      await agent.runOrAppend('thread-1', [new HumanMessage('hi')]);
+
+      const threadState = graphThreadState.getByThread('thread-1');
+      expect(threadState.pendingMessages).toHaveLength(1);
+      expect(threadState.newMessageMode).toBe(NewMessageMode.WaitForCompletion);
+    });
+  });
+
   describe('buildGraph', () => {
     it('should have buildGraph method available', () => {
       // buildGraph is a private method, just test that the agent has the method
@@ -459,7 +599,10 @@ describe('SimpleAgent', () => {
       expect(agent['graph']).toBeUndefined();
       // New config should be stored
       const { name: _ignored, ...expectedConfig } = newConfig;
-      expect(agent['currentConfig']).toEqual(expectedConfig);
+      expect(agent['currentConfig']).toEqual({
+        ...expectedConfig,
+        newMessageMode: NewMessageMode.InjectAfterToolCall,
+      });
     });
 
     it('should validate config before setting', () => {
@@ -490,7 +633,10 @@ describe('SimpleAgent', () => {
       expect(agent['graph']).toBeUndefined();
       // Config should be stored
       const { name: _unusedName, ...expectedConfig } = config;
-      expect(agent['currentConfig']).toEqual(expectedConfig);
+      expect(agent['currentConfig']).toEqual({
+        ...expectedConfig,
+        newMessageMode: NewMessageMode.InjectAfterToolCall,
+      });
     });
   });
 });

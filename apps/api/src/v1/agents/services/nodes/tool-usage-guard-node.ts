@@ -28,11 +28,7 @@ export class ToolUsageGuardNode extends BaseNode<
     cfg: LangGraphRunnableConfig<BaseAgentConfigurable>,
   ): Promise<BaseAgentStateChange> {
     if (!this.g.getRestrictOutput()) {
-      return {
-        messages: { mode: 'append', items: [] },
-        summary: state.summary,
-        done: state.done,
-      };
+      return {};
     }
 
     const last = state.messages[state.messages.length - 1];
@@ -40,11 +36,7 @@ export class ToolUsageGuardNode extends BaseNode<
     const hasToolCalls = (lastAI?.tool_calls?.length || 0) > 0;
 
     if (hasToolCalls) {
-      return {
-        messages: { mode: 'append', items: [] },
-        summary: state.summary,
-        done: state.done,
-      };
+      return {};
     }
 
     const max = this.g.getRestrictionMaxInjections();
@@ -52,11 +44,7 @@ export class ToolUsageGuardNode extends BaseNode<
     const canInject = max === 0 || injectedSoFar < max;
 
     if (!canInject) {
-      return {
-        messages: { mode: 'append', items: [] },
-        summary: state.summary,
-        done: state.done,
-      };
+      return {};
     }
 
     const restrictionMessage = this.g.getRestrictionMessage();

@@ -122,7 +122,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
           },
         };
 
-        const promise = agent.run(
+        const promise = agent.runOrAppend(
           threadId,
           messages,
           undefined,

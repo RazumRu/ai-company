@@ -1,9 +1,14 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException, NotFoundException } from '@packages/common';
+import { NonEmptyObject } from 'type-fest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { NewMessageMode } from '../../../v1/agents/agents.types';
+import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
+import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
+import { ThreadStatus } from '../../../v1/threads/threads.types';
 import {
   createMockGraphData,
   waitForCondition,
@@ -14,6 +19,7 @@ describe('Thread Management Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
+  let graphRegistry: GraphRegistry;
   const createdGraphIds: string[] = [];
 
   beforeAll(async () => {
@@ -21,6 +27,7 @@ describe('Thread Management Integration Tests', () => {
 
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
+    graphRegistry = app.get<GraphRegistry>(GraphRegistry);
   });
 
   afterAll(async () => {
@@ -55,9 +62,80 @@ describe('Thread Management Integration Tests', () => {
         }
       }),
     );
-
     await app.close();
   });
+
+  const waitForHumanMessageContents = async (
+    externalThreadId: string,
+    expectedCount: number,
+  ) => {
+    const thread = await waitForCondition(
+      () => threadsService.getThreadByExternalId(externalThreadId),
+      (thread) => !!thread,
+      { timeout: 60000 },
+    );
+
+    const messages = await waitForCondition(
+      () =>
+        threadsService.getThreadMessages(thread.id, {
+          limit: 100,
+          offset: 0,
+        }),
+      (messages) =>
+        messages.filter((m) => m.message.role === 'human').length >=
+        expectedCount,
+      { timeout: 60000 },
+    );
+
+    return messages.filter((m) => m.message.role === 'human');
+  };
+
+  const createAndRunGraphWithMessageMode = async (
+    mode: NewMessageMode,
+    agentId = 'agent-1',
+  ) => {
+    const graphData = createMockGraphData({
+      schema: {
+        nodes: [
+          {
+            id: agentId,
+            template: 'simple-agent',
+            config: {
+              instructions: 'You are a helpful test agent. Answer briefly.',
+              invokeModelName: 'gpt-5-mini',
+              summarizeMaxTokens: 272000,
+              summarizeKeepTokens: 30000,
+              newMessageMode: mode,
+            },
+          },
+          {
+            id: 'trigger-1',
+            template: 'manual-trigger',
+            config: {},
+          },
+        ],
+        edges: [
+          {
+            from: 'trigger-1',
+            to: agentId,
+          },
+        ],
+      },
+    });
+
+    const createResult = await graphsService.create(graphData);
+    const graphId = createResult.id;
+    createdGraphIds.push(graphId);
+
+    await graphsService.run(graphId);
+
+    const agentNode = graphRegistry.getNode<SimpleAgent>(graphId, agentId);
+    if (!agentNode) {
+      throw new Error(`Agent node ${agentId} not found for graph ${graphId}`);
+    }
+
+    return { graphId, agent: agentNode.instance };
+  };
 
   describe('Thread Creation and Isolation', () => {
     it(
@@ -752,6 +830,294 @@ describe('Thread Management Integration Tests', () => {
     );
   });
 
+  describe('New Message Modes', () => {
+    it(
+      'should append messages sequentially when no active run (inject_after_tool_call)',
+      { timeout: 60000 },
+      async () => {
+        const { graphId } = await createAndRunGraphWithMessageMode(
+          NewMessageMode.InjectAfterToolCall,
+          'agent-1',
+        );
+
+        const threadSubId = 'inject-no-active';
+        const firstResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Inject mode no active - first'],
+            threadSubId,
+          },
+        );
+
+        const secondResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Inject mode no active - second'],
+            threadSubId,
+          },
+        );
+
+        await waitForCondition(
+          () => threadsService.getThreadByExternalId(secondResult.threadId),
+          (entry) =>
+            entry.status === ThreadStatus.Done ||
+            entry.status === ThreadStatus.NeedMoreInfo,
+          { timeout: 60000 },
+        );
+
+        expect(secondResult.threadId).toEqual(firstResult.threadId);
+
+        const humanMessages = await waitForHumanMessageContents(
+          secondResult.threadId,
+          2,
+        );
+
+        expect(humanMessages).toHaveLength(2);
+        expect(humanMessages.map((m) => m.message.content)).toEqual(
+          expect.arrayContaining([
+            'Inject mode no active - first',
+            'Inject mode no active - second',
+          ]),
+        );
+
+        const firstMessage = humanMessages.find(
+          (m) => m.message.content === 'Inject mode no active - first',
+        );
+
+        const secondMessage = humanMessages.find(
+          (m) => m.message.content === 'Inject mode no active - second',
+        );
+
+        expect(firstMessage).toBeDefined();
+        expect(secondMessage).toBeDefined();
+        // make sure first we got first message
+        expect(new Date(firstMessage!.createdAt).getTime()).toBeLessThan(
+          new Date(secondMessage!.createdAt).getTime(),
+        );
+      },
+    );
+
+    it(
+      'should inject messages into an active run when mode is inject_after_tool_call',
+      { timeout: 60000 },
+      async () => {
+        const { graphId } = await createAndRunGraphWithMessageMode(
+          NewMessageMode.InjectAfterToolCall,
+          'agent-1',
+        );
+
+        const threadSubId = 'inject-active';
+        const firstResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Tell me what is the 2+2?'],
+            threadSubId,
+            async: true,
+          },
+        );
+
+        const secondResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Oh not, 2+3, sorry'],
+            threadSubId,
+          },
+        );
+
+        expect(secondResult.threadId).toEqual(firstResult.threadId);
+
+        const humanMessages = await waitForHumanMessageContents(
+          secondResult.threadId,
+          2,
+        );
+
+        const firstMessage = humanMessages.find(
+          (m) => m.message.content === 'Tell me what is the 2+2?',
+        );
+
+        const secondMessage = humanMessages.find(
+          (m) => m.message.content === 'Oh not, 2+3, sorry',
+        );
+
+        expect(firstMessage).toBeDefined();
+        expect(secondMessage).toBeDefined();
+        // make sure first we got first message
+        expect(new Date(firstMessage!.createdAt).getTime()).toBeLessThan(
+          new Date(secondMessage!.createdAt).getTime(),
+        );
+
+        const thread = await waitForCondition(
+          () => threadsService.getThreadByExternalId(secondResult.threadId),
+          (entry) =>
+            entry.status === ThreadStatus.Done ||
+            entry.status === ThreadStatus.NeedMoreInfo,
+          { timeout: 60000 },
+        );
+
+        const threadMessages = await threadsService.getThreadMessages(
+          thread.id,
+        );
+
+        expect(threadMessages[0]?.message.role).to.be.not.eq('human');
+        expect(
+          (
+            threadMessages[0]?.message.content as NonEmptyObject<{
+              message: string;
+            }>
+          ).message,
+        ).includes('5');
+      },
+    );
+
+    it(
+      'should append messages sequentially when no active run (wait_for_completion)',
+      { timeout: 60000 },
+      async () => {
+        const { graphId } = await createAndRunGraphWithMessageMode(
+          NewMessageMode.WaitForCompletion,
+          'agent-1',
+        );
+
+        const threadSubId = 'wait-mode-no-active';
+        const firstMessage = 'Wait mode no active - first';
+        const secondMessage = 'Wait mode no active - second';
+
+        const firstResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: [firstMessage],
+            threadSubId,
+          },
+        );
+
+        const secondResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: [secondMessage],
+            threadSubId,
+          },
+        );
+
+        const thread = await waitForCondition(
+          () => threadsService.getThreadByExternalId(secondResult.threadId),
+          (entry) =>
+            entry.status === ThreadStatus.Done ||
+            entry.status === ThreadStatus.NeedMoreInfo,
+          { timeout: 60000 },
+        );
+
+        expect(secondResult.threadId).toEqual(firstResult.threadId);
+
+        const humanMessages = await waitForHumanMessageContents(
+          secondResult.threadId,
+          2,
+        );
+
+        expect(humanMessages).toHaveLength(2);
+        expect(humanMessages.map((m) => m.message.content)).toEqual(
+          expect.arrayContaining([firstMessage, secondMessage]),
+        );
+
+        const firstStored = humanMessages.find(
+          (m) => m.message.content === firstMessage,
+        );
+        const secondStored = humanMessages.find(
+          (m) => m.message.content === secondMessage,
+        );
+
+        expect(firstStored).toBeDefined();
+        expect(secondStored).toBeDefined();
+        expect(new Date(firstStored!.createdAt).getTime()).toBeLessThan(
+          new Date(secondStored!.createdAt).getTime(),
+        );
+
+        const threadMessages = await threadsService.getThreadMessages(
+          thread.id,
+        );
+        expect(threadMessages[0]?.message.role).to.be.not.eq('human');
+      },
+    );
+
+    it(
+      'should queue new messages until completion when mode is wait_for_completion',
+      { timeout: 60000 },
+      async () => {
+        const { graphId } = await createAndRunGraphWithMessageMode(
+          NewMessageMode.WaitForCompletion,
+          'agent-1',
+        );
+
+        const threadSubId = 'wait-mode-queue';
+        const firstMessage =
+          'Start a long running reasoning task and share your thoughts.';
+        const secondMessage = 'Also list some mitigation strategies.';
+
+        const firstResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: [firstMessage],
+            threadSubId,
+            async: true,
+          },
+        );
+
+        const secondResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: [secondMessage],
+            threadSubId,
+            async: true,
+          },
+        );
+
+        expect(secondResult.threadId).toEqual(firstResult.threadId);
+
+        const completedThread = await waitForCondition(
+          () => threadsService.getThreadByExternalId(secondResult.threadId),
+          (thread) =>
+            thread.status === ThreadStatus.Done ||
+            thread.status === ThreadStatus.NeedMoreInfo,
+          { timeout: 60000 },
+        );
+
+        const humanMessages = await waitForHumanMessageContents(
+          completedThread.externalThreadId,
+          2,
+        );
+
+        expect(humanMessages.map((m) => m.message.content)).toEqual(
+          expect.arrayContaining([firstMessage, secondMessage]),
+        );
+
+        const firstStored = humanMessages.find(
+          (m) => m.message.content === firstMessage,
+        );
+        const secondStored = humanMessages.find(
+          (m) => m.message.content === secondMessage,
+        );
+
+        expect(firstStored).toBeDefined();
+        expect(secondStored).toBeDefined();
+        expect(new Date(firstStored!.createdAt).getTime()).toBeLessThan(
+          new Date(secondStored!.createdAt).getTime(),
+        );
+
+        const threadMessages = await threadsService.getThreadMessages(
+          completedThread.id,
+        );
+        expect(threadMessages[0]?.message.role).to.be.not.eq('human');
+      },
+    );
+  });
+
   describe('Thread Deletion', () => {
     it(
       'should delete a thread and its messages',
@@ -953,7 +1319,7 @@ describe('Thread Management Integration Tests', () => {
       );
 
       // Wait for messages to be available
-      const allMessages = await waitForCondition(
+      await waitForCondition(
         () =>
           threadsService.getThreadMessages(thread.id, {
             limit: 100,

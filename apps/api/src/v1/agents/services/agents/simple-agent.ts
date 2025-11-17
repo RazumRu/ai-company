@@ -22,13 +22,16 @@ import {
   BaseAgentState,
   BaseAgentStateChange,
   BaseAgentStateMessagesUpdateValue,
+  NewMessageMode,
 } from '../../agents.types';
 import {
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { RegisterAgent } from '../../decorators/register-agent.decorator';
+import { GraphThreadState } from '../graph-thread-state';
 import { BaseAgentConfigurable } from '../nodes/base-node';
+import { InjectPendingNode } from '../nodes/inject-pending-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { SummarizeNode } from '../nodes/summarize-node';
 import { TitleGenerationNode } from '../nodes/title-generation-node';
@@ -80,30 +83,46 @@ export const SimpleAgentSchema = z.object({
       'Maximum number of iterations the agent can execute during a single run.',
     )
     .meta({ 'x-ui:show-on-node': true }),
+  newMessageMode: z
+    .enum(NewMessageMode)
+    .default(NewMessageMode.InjectAfterToolCall)
+    .optional()
+    .describe(
+      'Controls how to handle new messages when the agent thread is already running. Inject after tool call adds the new input immediately after the next tool execution completes; wait for completion queues the message until the current run finishes.',
+    ),
 });
 
 export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
+
+type ActiveRunEntry = {
+  abortController: AbortController;
+  runnableConfig: RunnableConfig<BaseAgentConfigurable>;
+  threadId: string;
+  lastState: BaseAgentState;
+};
 
 @Injectable({ scope: Scope.TRANSIENT })
 @RegisterAgent()
 export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private graph?: CompiledStateGraph<BaseAgentState, Record<string, unknown>>;
+  private graphThreadState?: GraphThreadState;
   private currentConfig?: SimpleAgentSchemaType;
-  private activeRuns = new Map<
-    string,
-    {
-      abortController: AbortController;
-      runnableConfig: RunnableConfig<BaseAgentConfigurable>;
-      threadId: string;
-      lastState: BaseAgentState;
-    }
-  >();
+  private activeRuns = new Map<string, ActiveRunEntry>();
 
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
     private readonly logger: DefaultLogger,
   ) {
     super();
+  }
+
+  private getActiveRunByThread(threadId: string) {
+    for (const run of this.activeRuns.values()) {
+      if (run.threadId === threadId) {
+        return run;
+      }
+    }
+    return undefined;
   }
 
   public get schema() {
@@ -153,6 +172,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
   protected buildGraph(config: SimpleAgentSchemaType) {
     if (!this.graph) {
+      const graphThreadState = new GraphThreadState();
+
       // Apply defaults for optional fields
       const enforceToolUsage = config.enforceToolUsage ?? true;
 
@@ -190,6 +211,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         this.logger,
       );
 
+      // ---- message injection ----
+      const injectPendingNode = new InjectPendingNode(
+        graphThreadState,
+        this.logger,
+      );
+
       // ---- title generation ----
       const titleGenerationNode = new TitleGenerationNode(
         this.buildLLM('gpt-5-mini'),
@@ -207,6 +234,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         )
         .addNode('invoke_llm', invokeLlmNode.invoke.bind(invokeLlmNode))
         .addNode('tools', toolExecutorNode.invoke.bind(toolExecutorNode))
+        .addNode(
+          'inject_pending',
+          injectPendingNode.invoke.bind(injectPendingNode),
+        )
         // ---- routing ----
         .addEdge(START, 'generate_title')
         .addEdge('generate_title', 'summarize')
@@ -220,7 +251,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             getRestrictOutput: () => true,
             getRestrictionMessage: () =>
               "You must call a tool before finishing. If you have completed the task or have a final answer, call the 'finish' tool. If you need more information from the user, call the 'finish' tool with needsMoreInfo set to true and include your question in the message. Never provide a direct text response without calling a tool first.",
-            getRestrictionMaxInjections: () => 2,
+            getRestrictionMaxInjections: () => 3,
           },
           this.logger,
         );
@@ -243,42 +274,70 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             { invoke_llm: 'invoke_llm', [END]: END },
           );
       } else {
-        // Without tool usage guard, go directly to tools or END
         g.addConditionalEdges(
           'invoke_llm',
-          (s) =>
-            ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ?? 0) > 0
-              ? 'tools'
-              : END,
-          { tools: 'tools', [END]: END },
+          (s, cfg) => {
+            const last = s.messages.at(-1) as AIMessage | undefined;
+            const hasTools = (last?.tool_calls?.length ?? 0) > 0;
+
+            if (hasTools) {
+              return 'tools';
+            }
+
+            const threadId = String(cfg.configurable?.thread_id ?? '');
+            const { pendingMessages } = graphThreadState.getByThread(threadId);
+            const hasPending = pendingMessages.length > 0;
+
+            if (hasPending) {
+              return 'inject_pending';
+            }
+
+            return END;
+          },
+          {
+            tools: 'tools',
+            inject_pending: 'inject_pending',
+            [END]: END,
+          },
         );
       }
 
       g.addConditionalEdges(
         'tools',
-        (s) => {
-          // If done is explicitly set, end
-          if (s.done) {
-            return END;
+        (s, cfg) => {
+          const threadId = String(cfg.configurable?.thread_id ?? '');
+          const { pendingMessages, newMessageMode } =
+            graphThreadState.getByThread(threadId);
+
+          const hasPending = pendingMessages.length > 0;
+          const mode = newMessageMode ?? NewMessageMode.InjectAfterToolCall;
+          const isComplete = s.done || s.needsMoreInfo;
+
+          if (!isComplete) {
+            if (mode === NewMessageMode.InjectAfterToolCall && hasPending) {
+              return 'inject_pending';
+            }
+
+            return 'summarize';
           }
 
-          // If needsMoreInfo is set, stop execution and wait for user input
-          if (s.needsMoreInfo) {
-            return END;
+          if (hasPending) {
+            return 'inject_pending';
           }
 
-          // Otherwise, continue to summarize
-          return 'summarize';
+          return END;
         },
         {
+          inject_pending: 'inject_pending',
           summarize: 'summarize',
           [END]: END,
         },
-      );
+      ).addEdge('inject_pending', 'summarize');
 
       this.graph = g.compile({
         checkpointer: this.checkpointer,
       }) as CompiledStateGraph<BaseAgentState, Record<string, unknown>>;
+      this.graphThreadState = graphThreadState;
     }
 
     return this.graph;
@@ -396,6 +455,56 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     });
   }
 
+  private async appendMessages(
+    messages: BaseMessage[],
+    activeRun: ActiveRunEntry,
+  ): Promise<void> {
+    if (!messages.length) return;
+    const threadId = activeRun.threadId;
+
+    const updatedMessages = updateMessagesListWithMetadata(
+      messages,
+      activeRun.runnableConfig,
+    );
+
+    if (this.graphThreadState) {
+      this.graphThreadState.applyForThread(threadId, {
+        pendingMessages: [
+          ...this.graphThreadState.getByThread(threadId).pendingMessages,
+          ...updatedMessages,
+        ],
+      });
+    }
+  }
+
+  public async runOrAppend(
+    threadId: string,
+    messages: BaseMessage[],
+    _config?: SimpleAgentSchemaType,
+    runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
+  ): Promise<AgentOutput> {
+    const config = _config ? this.schema.parse(_config) : this.currentConfig;
+
+    if (!config) {
+      throw new Error('Agent configuration is required for execution');
+    }
+
+    const activeRun = this.getActiveRunByThread(threadId);
+
+    if (!activeRun) {
+      return this.run(threadId, messages, config, runnableConfig);
+    }
+
+    await this.appendMessages(messages, activeRun);
+
+    return {
+      messages: activeRun.lastState.messages,
+      threadId,
+      checkpointNs: activeRun.runnableConfig?.configurable?.checkpoint_ns,
+      needsMoreInfo: activeRun.lastState.needsMoreInfo,
+    };
+  }
+
   public async run(
     threadId: string,
     messages: BaseMessage[],
@@ -407,6 +516,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     if (!config) {
       throw new Error('Agent configuration is required for execution');
+    }
+
+    const activeRun = this.getActiveRunByThread(threadId);
+
+    if (activeRun) {
+      throw new Error('Thread is currently running');
     }
 
     const configuredIterations = config.maxIterations ?? 25;
@@ -444,6 +559,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     const g = this.buildGraph(config);
 
+    this.graphThreadState?.applyForThread(threadId, {
+      newMessageMode: config.newMessageMode,
+    });
+
     const abortController = new AbortController();
 
     let finalState: BaseAgentState = this.buildInitialState();
@@ -468,7 +587,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         needsMoreInfo: false,
         toolUsageGuardActivated: false,
         toolUsageGuardActivatedCount: 0,
-      },
+      } satisfies BaseAgentStateChange,
       {
         ...mergedConfig,
         streamMode: 'updates',

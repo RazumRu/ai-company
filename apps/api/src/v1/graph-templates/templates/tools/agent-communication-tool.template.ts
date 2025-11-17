@@ -135,7 +135,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
         },
       };
 
-      const response = await agent.run(
+      const response = await agent.runOrAppend(
         effectiveThreadId,
         preparedMessages,
         undefined,
