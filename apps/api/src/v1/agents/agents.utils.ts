@@ -20,6 +20,7 @@ export function updateMessageWithMetadata(
   clone.additional_kwargs = {
     ...prev,
     run_id: runnableConfig?.configurable?.run_id,
+    created_at: prev.created_at || new Date().toISOString(),
   };
 
   return clone;

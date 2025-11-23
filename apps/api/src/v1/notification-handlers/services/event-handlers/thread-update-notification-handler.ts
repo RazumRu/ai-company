@@ -63,7 +63,8 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       updates.status = data.status;
     }
 
-    if (data.name !== undefined) {
+    // Only update thread name if it doesn't already exist (set once)
+    if (data.name !== undefined && !thread.name) {
       updates.name = data.name ?? null;
     }
 

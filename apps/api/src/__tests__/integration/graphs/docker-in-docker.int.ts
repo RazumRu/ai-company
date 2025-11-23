@@ -277,9 +277,9 @@ describe('Docker-in-Docker Integration', () => {
         },
       );
 
-      expect(execution.threadId).toBeDefined();
+      expect(execution.externalThreadId).toBeDefined();
 
-      const thread = await waitForThreadCompletion(execution.threadId);
+      const thread = await waitForThreadCompletion(execution.externalThreadId);
       expect(
         [
           ThreadStatus.Done,
@@ -289,7 +289,7 @@ describe('Docker-in-Docker Integration', () => {
       ).toBe(true);
 
       const messages = await waitForCondition(
-        () => getThreadMessages(execution.threadId),
+        () => getThreadMessages(execution.externalThreadId),
         (msgs) => Boolean(findShellExecution(msgs)?.result),
         { timeout: 60000, interval: 1000 },
       );

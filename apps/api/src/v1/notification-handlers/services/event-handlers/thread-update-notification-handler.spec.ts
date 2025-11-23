@@ -194,8 +194,8 @@ describe('ThreadUpdateNotificationHandler', () => {
       expectFullThreadPayload(result, updatedThread);
     });
 
-    it('updates name and emits full thread info', async () => {
-      const thread = createMockThreadEntity({ name: 'Old Name' });
+    it('sets name when thread has no name yet', async () => {
+      const thread = createMockThreadEntity({ name: undefined });
       const updatedThread = {
         ...thread,
         name: 'New Name',
@@ -225,6 +225,23 @@ describe('ThreadUpdateNotificationHandler', () => {
         graphId: mockGraphId,
       });
       expectFullThreadPayload(result, updatedThread);
+    });
+
+    it('does not update name when thread already has a name', async () => {
+      const thread = createMockThreadEntity({ name: 'Existing Name' });
+      const notification = createMockNotification({
+        data: { name: 'New Name Attempt' },
+      });
+
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(thread)
+        .mockResolvedValueOnce(thread);
+      const updateSpy = vi.spyOn(threadsDao, 'updateById');
+
+      const result = await handler.handle(notification);
+
+      expect(updateSpy).not.toHaveBeenCalled();
+      expectFullThreadPayload(result, thread);
     });
 
     it('emits full thread when no fields provided', async () => {

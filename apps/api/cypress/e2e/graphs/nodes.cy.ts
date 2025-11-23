@@ -144,7 +144,7 @@ describe('Graph Nodes API E2E', () => {
       })
       .then((triggerResponse) => {
         expect(triggerResponse.status).to.equal(201);
-        threadId = triggerResponse.body.threadId;
+        threadId = triggerResponse.body.externalThreadId;
         expect(threadId).to.be.a('string').and.not.to.be.empty;
       })
       .then(() => getThreadByExternalId(threadId))

@@ -1382,7 +1382,7 @@ describe('GraphsService', () => {
       });
 
       expect(result).toEqual({
-        threadId: expectedThreadId,
+        externalThreadId: expectedThreadId,
         checkpointNs: `${expectedThreadId}:${agentId}`,
       });
 
@@ -1438,7 +1438,7 @@ describe('GraphsService', () => {
         async: true,
       });
 
-      expect(result.threadId).toMatch(new RegExp(`^${mockGraphId}:`));
+      expect(result.externalThreadId).toMatch(new RegExp(`^${mockGraphId}:`));
       expect(result).toHaveProperty('checkpointNs');
 
       expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
@@ -1495,7 +1495,7 @@ describe('GraphsService', () => {
       });
 
       expect(result).toEqual({
-        threadId: expectedThreadId,
+        externalThreadId: expectedThreadId,
         checkpointNs: expectedCheckpointNs,
       });
 
@@ -1559,8 +1559,8 @@ describe('GraphsService', () => {
         messages: ['Test message'],
       });
 
-      // Verify threadId format is graphId:generated or similar
-      expect(result.threadId).toMatch(new RegExp(`^${mockGraphId}:`));
+      // Verify externalThreadId format is graphId:generated or similar
+      expect(result.externalThreadId).toMatch(new RegExp(`^${mockGraphId}:`));
       // Verify checkpointNs format includes agentId
       expect(result.checkpointNs).toContain(agentId);
 

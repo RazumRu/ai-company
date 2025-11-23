@@ -187,10 +187,10 @@ describe('Finish Tool Integration Tests', () => {
         },
       );
 
-      const thread = await waitForThreadCompletion(execution.threadId);
+      const thread = await waitForThreadCompletion(execution.externalThreadId);
       expect(thread.status).toBe(ThreadStatus.Done);
 
-      const messages = await getThreadMessages(execution.threadId);
+      const messages = await getThreadMessages(execution.externalThreadId);
       const finishMessage = findFinishToolMessage(messages);
 
       expect(finishMessage).toBeDefined();
@@ -228,10 +228,10 @@ describe('Finish Tool Integration Tests', () => {
         },
       );
 
-      const thread = await waitForThreadCompletion(execution.threadId);
+      const thread = await waitForThreadCompletion(execution.externalThreadId);
       expect(thread.status).toBe(ThreadStatus.NeedMoreInfo);
 
-      const messages = await getThreadMessages(execution.threadId);
+      const messages = await getThreadMessages(execution.externalThreadId);
       const finishMessage = findFinishToolMessage(messages);
       expect(finishMessage).toBeDefined();
 
@@ -265,10 +265,10 @@ describe('Finish Tool Integration Tests', () => {
         },
       );
 
-      const thread = await waitForThreadCompletion(execution.threadId);
+      const thread = await waitForThreadCompletion(execution.externalThreadId);
       expect(thread.status).toBe(ThreadStatus.Done);
 
-      const messages = await getThreadMessages(execution.threadId);
+      const messages = await getThreadMessages(execution.externalThreadId);
       const guardMessages = messages.filter(
         (msg) =>
           msg.message.role === 'system' &&

@@ -268,27 +268,29 @@ describe('Graph Nodes Integration Tests', () => {
           async: false,
         },
       );
-      expect(execution.threadId).toBeDefined();
+      expect(execution.externalThreadId).toBeDefined();
 
-      await waitForThreadCompletion(execution.threadId);
+      await waitForThreadCompletion(execution.externalThreadId);
 
       const threadFiltered = await waitForSnapshots(
         graph.id,
-        { threadId: execution.threadId },
+        { threadId: execution.externalThreadId },
         (snapshots) =>
           snapshots.some(
             (node) =>
               node.id === AGENT_NODE_ID &&
-              node.metadata?.threadId === execution.threadId,
+              node.metadata?.threadId === execution.externalThreadId,
           ),
       );
 
       const agentThreadNode = threadFiltered.find(
         (node) => node.id === AGENT_NODE_ID,
       );
-      expect(agentThreadNode?.metadata?.threadId).toBe(execution.threadId);
+      expect(agentThreadNode?.metadata?.threadId).toBe(
+        execution.externalThreadId,
+      );
 
-      const messages = await getThreadMessages(execution.threadId);
+      const messages = await getThreadMessages(execution.externalThreadId);
       const runIdFromMessages = extractRunId(messages);
       const runIdFromMetadata = agentThreadNode?.metadata?.runId;
       const effectiveRunId = runIdFromMetadata ?? runIdFromMessages;
@@ -345,7 +347,7 @@ describe('Graph Nodes Integration Tests', () => {
           async: true,
         },
       );
-      const threadId = firstExecution.threadId;
+      const threadId = firstExecution.externalThreadId;
 
       await waitForSnapshots(graph.id, { threadId }, (snapshots) =>
         snapshots.some(

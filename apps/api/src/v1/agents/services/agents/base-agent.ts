@@ -64,7 +64,10 @@ export type AgentEventType =
       data: AgentNodeAdditionalMetadataUpdateEvent;
     };
 
-export abstract class BaseAgent<TSchema = unknown> {
+export abstract class BaseAgent<
+  TSchema = unknown,
+  TNodeMetadata = Record<string, unknown>,
+> {
   protected tools: DynamicStructuredTool[] = [];
   protected eventEmitter = new EventEmitter();
 
@@ -107,7 +110,7 @@ export abstract class BaseAgent<TSchema = unknown> {
 
   public getGraphNodeMetadata(
     _meta: GraphExecutionMetadata,
-  ): Record<string, unknown> | undefined {
+  ): TNodeMetadata | undefined {
     return undefined;
   }
 

@@ -84,7 +84,9 @@ export const ExecuteTriggerSchema = z.object({
 });
 
 export const ExecuteTriggerResponseSchema = z.object({
-  threadId: z.string().describe('The thread ID used for this execution'),
+  externalThreadId: z
+    .string()
+    .describe('The thread ID used for this execution'),
   checkpointNs: z
     .string()
     .optional()

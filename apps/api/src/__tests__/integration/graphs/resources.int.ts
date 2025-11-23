@@ -259,13 +259,15 @@ describe('Graph Resources Integration Tests', () => {
           },
         );
 
-        expect(execution.threadId).toBeDefined();
+        expect(execution.externalThreadId).toBeDefined();
 
-        const thread = await waitForThreadCompletion(execution.threadId);
+        const thread = await waitForThreadCompletion(
+          execution.externalThreadId,
+        );
         expect(THREAD_COMPLETION_STATUSES).toContain(thread.status);
 
         const messages = await waitForCondition(
-          () => getThreadMessages(execution.threadId),
+          () => getThreadMessages(execution.externalThreadId),
           (threadMessages) =>
             Boolean(findShellExecution(threadMessages).result),
           { timeout: 120_000, interval: 2_000 },

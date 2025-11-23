@@ -159,8 +159,8 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        expect(trigger1Result.threadId).toBeDefined();
-        const firstThreadId = trigger1Result.threadId;
+        expect(trigger1Result.externalThreadId).toBeDefined();
+        const firstThreadId = trigger1Result.externalThreadId;
 
         // Second invocation without threadSubId
         const trigger2Result = await graphsService.executeTrigger(
@@ -171,8 +171,8 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        expect(trigger2Result.threadId).toBeDefined();
-        const secondThreadId = trigger2Result.threadId;
+        expect(trigger2Result.externalThreadId).toBeDefined();
+        const secondThreadId = trigger2Result.externalThreadId;
 
         // Thread IDs should be different
         expect(firstThreadId).not.toBe(secondThreadId);
@@ -221,8 +221,8 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        expect(trigger1Result.threadId).toBeDefined();
-        const threadId = trigger1Result.threadId;
+        expect(trigger1Result.externalThreadId).toBeDefined();
+        const threadId = trigger1Result.externalThreadId;
 
         // Second invocation with same threadSubId
         const trigger2Result = await graphsService.executeTrigger(
@@ -234,10 +234,10 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        expect(trigger2Result.threadId).toBeDefined();
+        expect(trigger2Result.externalThreadId).toBeDefined();
 
         // Should get the same thread ID
-        expect(trigger2Result.threadId).toBe(threadId);
+        expect(trigger2Result.externalThreadId).toBe(threadId);
 
         // Wait for thread to be persisted
         const threads = await waitForCondition(
@@ -279,8 +279,8 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        expect(triggerResult.threadId).toBeDefined();
-        const externalThreadId = triggerResult.threadId;
+        expect(triggerResult.externalThreadId).toBeDefined();
+        const externalThreadId = triggerResult.externalThreadId;
 
         // Wait for thread to be created in database
         const thread = await waitForCondition(
@@ -322,7 +322,7 @@ describe('Thread Management Integration Tests', () => {
         },
       );
 
-      expect(execResult.threadId).toBeDefined();
+      expect(execResult.externalThreadId).toBeDefined();
       expect(execResult.checkpointNs).toBeDefined();
     });
   });
@@ -401,7 +401,9 @@ describe('Thread Management Integration Tests', () => {
         );
 
         expect(threads).toHaveLength(1);
-        expect(threads[0]?.externalThreadId).toBe(triggerResult.threadId);
+        expect(threads[0]?.externalThreadId).toBe(
+          triggerResult.externalThreadId,
+        );
       },
     );
   });
@@ -436,7 +438,7 @@ describe('Thread Management Integration Tests', () => {
           threads.some(
             (t) =>
               (t as { externalThreadId: string }).externalThreadId ===
-              triggerResult.threadId,
+              triggerResult.externalThreadId,
           ),
         { timeout: 10000 },
       );
@@ -444,11 +446,11 @@ describe('Thread Management Integration Tests', () => {
       const thread = threads.find(
         (t) =>
           (t as { externalThreadId: string }).externalThreadId ===
-          triggerResult.threadId,
+          triggerResult.externalThreadId,
       );
       expect(thread).toBeDefined();
       expect((thread as { externalThreadId: string }).externalThreadId).toBe(
-        triggerResult.threadId,
+        triggerResult.externalThreadId,
       );
     });
 
@@ -475,7 +477,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(triggerResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 10000 },
         );
@@ -531,7 +536,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(triggerResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 10000 },
         );
@@ -579,7 +587,8 @@ describe('Thread Management Integration Tests', () => {
 
       // Wait for thread to be created
       const thread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(triggerResult.threadId),
+        () =>
+          threadsService.getThreadByExternalId(triggerResult.externalThreadId),
         (thread) => !!thread,
         { timeout: 10000 },
       );
@@ -685,7 +694,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread and messages to be created
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(triggerResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 10000 },
         );
@@ -762,13 +774,19 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for both threads to be created
         const thread1 = await waitForCondition(
-          () => threadsService.getThreadByExternalId(thread1Result.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              thread1Result.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 10000 },
         );
 
         const thread2 = await waitForCondition(
-          () => threadsService.getThreadByExternalId(thread2Result.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              thread2Result.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 10000 },
         );
@@ -860,17 +878,20 @@ describe('Thread Management Integration Tests', () => {
         );
 
         await waitForCondition(
-          () => threadsService.getThreadByExternalId(secondResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(secondResult.externalThreadId),
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
           { timeout: 60000 },
         );
 
-        expect(secondResult.threadId).toEqual(firstResult.threadId);
+        expect(secondResult.externalThreadId).toEqual(
+          firstResult.externalThreadId,
+        );
 
         const humanMessages = await waitForHumanMessageContents(
-          secondResult.threadId,
+          secondResult.externalThreadId,
           2,
         );
 
@@ -928,10 +949,12 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        expect(secondResult.threadId).toEqual(firstResult.threadId);
+        expect(secondResult.externalThreadId).toEqual(
+          firstResult.externalThreadId,
+        );
 
         const humanMessages = await waitForHumanMessageContents(
-          secondResult.threadId,
+          secondResult.externalThreadId,
           2,
         );
 
@@ -951,7 +974,8 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(secondResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(secondResult.externalThreadId),
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
@@ -1005,17 +1029,20 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(secondResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(secondResult.externalThreadId),
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
           { timeout: 60000 },
         );
 
-        expect(secondResult.threadId).toEqual(firstResult.threadId);
+        expect(secondResult.externalThreadId).toEqual(
+          firstResult.externalThreadId,
+        );
 
         const humanMessages = await waitForHumanMessageContents(
-          secondResult.threadId,
+          secondResult.externalThreadId,
           2,
         );
 
@@ -1078,10 +1105,13 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        expect(secondResult.threadId).toEqual(firstResult.threadId);
+        expect(secondResult.externalThreadId).toEqual(
+          firstResult.externalThreadId,
+        );
 
         const completedThread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(secondResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(secondResult.externalThreadId),
           (thread) =>
             thread.status === ThreadStatus.Done ||
             thread.status === ThreadStatus.NeedMoreInfo,
@@ -1141,7 +1171,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(triggerResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 10000 },
         );
@@ -1151,7 +1184,7 @@ describe('Thread Management Integration Tests', () => {
 
         // Thread should no longer exist
         await expect(
-          threadsService.getThreadByExternalId(triggerResult.threadId),
+          threadsService.getThreadByExternalId(triggerResult.externalThreadId),
         ).rejects.toThrow(NotFoundException);
       },
     );
@@ -1225,7 +1258,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(triggerResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 10000 },
         );
@@ -1248,7 +1284,7 @@ describe('Thread Management Integration Tests', () => {
 
         // Thread and all messages should be deleted
         await expect(
-          threadsService.getThreadByExternalId(triggerResult.threadId),
+          threadsService.getThreadByExternalId(triggerResult.externalThreadId),
         ).rejects.toThrow(NotFoundException);
       },
     );
@@ -1313,7 +1349,8 @@ describe('Thread Management Integration Tests', () => {
 
       // Wait for thread to be created
       const thread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(triggerResult.threadId),
+        () =>
+          threadsService.getThreadByExternalId(triggerResult.externalThreadId),
         (thread) => !!thread,
         { timeout: 10000 },
       );
@@ -1366,7 +1403,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(triggerResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 10000 },
         );
@@ -1416,7 +1456,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created and name to be generated
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(triggerResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
           (thread) => {
             const name = (thread as { name?: string }).name;
             return !!thread && !!name && name !== '';
@@ -1453,7 +1496,8 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created and name to be generated
         const threadAfterFirst = await waitForCondition(
-          () => threadsService.getThreadByExternalId(firstResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(firstResult.externalThreadId),
           (thread) => {
             const name = (thread as { name?: string }).name;
             return !!thread && !!name && name !== '';
@@ -1471,13 +1515,14 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait a bit for potential name update (which shouldn't happen)
         await waitForCondition(
-          () => threadsService.getThreadByExternalId(firstResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(firstResult.externalThreadId),
           (thread) => !!thread,
           { timeout: 5000 },
         );
 
         const threadAfterSecond = await threadsService.getThreadByExternalId(
-          firstResult.threadId,
+          firstResult.externalThreadId,
         );
         const secondName = (threadAfterSecond as { name?: string }).name;
 
@@ -1510,7 +1555,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created and execution to reach a final state
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(triggerResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
           (thread) => {
             const status = (thread as { status: string }).status;
             // Wait until status is not 'running' or 'pending'
@@ -1556,7 +1604,8 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for thread to be created
         await waitForCondition(
-          () => threadsService.getThreadByExternalId(execResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(execResult.externalThreadId),
           (thread) => !!thread,
           { timeout: 5000 },
         );
@@ -1566,13 +1615,14 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for status update
         await waitForCondition(
-          () => threadsService.getThreadByExternalId(execResult.threadId),
+          () =>
+            threadsService.getThreadByExternalId(execResult.externalThreadId),
           (thread) => !!thread,
           { timeout: 5000 },
         );
 
         const thread = await threadsService.getThreadByExternalId(
-          execResult.threadId,
+          execResult.externalThreadId,
         );
 
         // Thread status should be defined
@@ -1637,7 +1687,9 @@ describe('Thread Management Integration Tests', () => {
         );
 
         // Verify threads are separate
-        expect(thread1Result.threadId).not.toBe(thread2Result.threadId);
+        expect(thread1Result.externalThreadId).not.toBe(
+          thread2Result.externalThreadId,
+        );
 
         // Wait for both threads to be persisted
         const threads = await waitForCondition(
@@ -1655,8 +1707,8 @@ describe('Thread Management Integration Tests', () => {
           (t) => (t as { externalThreadId: string }).externalThreadId,
         );
 
-        expect(threadIds).toContain(thread1Result.threadId);
-        expect(threadIds).toContain(thread2Result.threadId);
+        expect(threadIds).toContain(thread1Result.externalThreadId);
+        expect(threadIds).toContain(thread2Result.externalThreadId);
       },
     );
 
@@ -1748,6 +1800,230 @@ describe('Thread Management Integration Tests', () => {
 
         // With conservative summarization, messages should be preserved
         expect(messages.length).toBeGreaterThanOrEqual(1);
+      },
+    );
+  });
+
+  describe('Parallel Thread State Isolation', () => {
+    it(
+      'should maintain separate thread states when running 2 threads in parallel',
+      { timeout: 120000 },
+      async () => {
+        // Create and start graph
+        const graphData = createMockGraphData();
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        await graphsService.run(graphId);
+
+        // Start two threads in parallel with async=true
+        const [exec1, exec2] = await Promise.all([
+          graphsService.executeTrigger(graphId, 'trigger-1', {
+            messages: ['Thread 1: Tell me about cats'],
+            threadSubId: 'parallel-test-1',
+            async: true,
+          }),
+          graphsService.executeTrigger(graphId, 'trigger-1', {
+            messages: ['Thread 2: Tell me about dogs'],
+            threadSubId: 'parallel-test-2',
+            async: true,
+          }),
+        ]);
+
+        expect(exec1.externalThreadId).toBeDefined();
+        expect(exec2.externalThreadId).toBeDefined();
+        expect(exec1.externalThreadId).not.toBe(exec2.externalThreadId);
+
+        // Wait for both threads to be created in the database
+        const thread1 = await waitForCondition(
+          () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+          (thread) => !!thread,
+          { timeout: 15000 },
+        );
+
+        const thread2 = await waitForCondition(
+          () => threadsService.getThreadByExternalId(exec2.externalThreadId),
+          (thread) => !!thread,
+          { timeout: 15000 },
+        );
+
+        expect(thread1.id).toBeDefined();
+        expect(thread2.id).toBeDefined();
+        expect(thread1.id).not.toBe(thread2.id);
+        expect(thread1.externalThreadId).toBe(exec1.externalThreadId);
+        expect(thread2.externalThreadId).toBe(exec2.externalThreadId);
+
+        // Both threads should initially be Running
+        expect(thread1.status).toBe(ThreadStatus.Running);
+        expect(thread2.status).toBe(ThreadStatus.Running);
+
+        // Wait for both threads to complete
+        const completedThread1 = await waitForCondition(
+          () => threadsService.getThreadById(thread1.id),
+          (t) =>
+            t.status === ThreadStatus.Done ||
+            t.status === ThreadStatus.NeedMoreInfo,
+          { timeout: 60000 },
+        );
+
+        const completedThread2 = await waitForCondition(
+          () => threadsService.getThreadById(thread2.id),
+          (t) =>
+            t.status === ThreadStatus.Done ||
+            t.status === ThreadStatus.NeedMoreInfo,
+          { timeout: 60000 },
+        );
+
+        // Verify final states
+        expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
+          completedThread1.status,
+        );
+        expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
+          completedThread2.status,
+        );
+
+        // Get messages for both threads
+        const messages1 = await waitForCondition(
+          () =>
+            threadsService.getThreadMessages(thread1.id, {
+              limit: 100,
+              offset: 0,
+            }),
+          (messages) => messages.length >= 2, // At least user + AI message
+          { timeout: 15000 },
+        );
+
+        const messages2 = await waitForCondition(
+          () =>
+            threadsService.getThreadMessages(thread2.id, {
+              limit: 100,
+              offset: 0,
+            }),
+          (messages) => messages.length >= 2, // At least user + AI message
+          { timeout: 15000 },
+        );
+
+        // Verify messages are isolated
+        expect(messages1.length).toBeGreaterThanOrEqual(2);
+        expect(messages2.length).toBeGreaterThanOrEqual(2);
+
+        // Extract user messages
+        const thread1UserMsg = messages1.find(
+          (m: { message: { role: string; content: string | unknown[] } }) =>
+            m.message.role === 'human',
+        );
+        const thread2UserMsg = messages2.find(
+          (m: { message: { role: string; content: string | unknown[] } }) =>
+            m.message.role === 'human',
+        );
+
+        expect(thread1UserMsg).toBeDefined();
+        expect(thread2UserMsg).toBeDefined();
+
+        const content1 =
+          typeof thread1UserMsg!.message.content === 'string'
+            ? thread1UserMsg!.message.content
+            : JSON.stringify(thread1UserMsg!.message.content);
+        const content2 =
+          typeof thread2UserMsg!.message.content === 'string'
+            ? thread2UserMsg!.message.content
+            : JSON.stringify(thread2UserMsg!.message.content);
+
+        // Verify correct messages went to correct threads
+        expect(content1).toContain('cats');
+        expect(content1).not.toContain('dogs');
+        expect(content2).toContain('dogs');
+        expect(content2).not.toContain('cats');
+
+        // Verify thread names are set independently (if generated)
+        const finalThread1 = await threadsService.getThreadById(thread1.id);
+        const finalThread2 = await threadsService.getThreadById(thread2.id);
+
+        // If names were generated, they should be different
+        if (finalThread1.name && finalThread2.name) {
+          expect(finalThread1.name).not.toBe(finalThread2.name);
+        }
+      },
+    );
+
+    it(
+      'should isolate thread statuses between concurrent executions',
+      { timeout: 60000 },
+      async () => {
+        const graphData = createMockGraphData();
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        await graphsService.run(graphId);
+
+        // Start two threads in parallel
+        const [exec1, exec2] = await Promise.all([
+          graphsService.executeTrigger(graphId, 'trigger-1', {
+            messages: ['Quick message for thread 1'],
+            threadSubId: 'status-test-1',
+            async: true,
+          }),
+          graphsService.executeTrigger(graphId, 'trigger-1', {
+            messages: ['Quick message for thread 2'],
+            threadSubId: 'status-test-2',
+            async: true,
+          }),
+        ]);
+
+        // Wait for both threads to be created
+        const thread1 = await waitForCondition(
+          () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+          (thread) => !!thread,
+          { timeout: 15000 },
+        );
+
+        const thread2 = await waitForCondition(
+          () => threadsService.getThreadByExternalId(exec2.externalThreadId),
+          (thread) => !!thread,
+          { timeout: 15000 },
+        );
+
+        // Both should be Running initially
+        expect(thread1.status).toBe(ThreadStatus.Running);
+        expect(thread2.status).toBe(ThreadStatus.Running);
+
+        // Wait for both to complete
+        await Promise.all([
+          waitForCondition(
+            () => threadsService.getThreadById(thread1.id),
+            (t) =>
+              t.status === ThreadStatus.Done ||
+              t.status === ThreadStatus.NeedMoreInfo,
+            { timeout: 60000 },
+          ),
+          waitForCondition(
+            () => threadsService.getThreadById(thread2.id),
+            (t) =>
+              t.status === ThreadStatus.Done ||
+              t.status === ThreadStatus.NeedMoreInfo,
+            { timeout: 60000 },
+          ),
+        ]);
+
+        // Verify final states are independently set
+        const finalThread1 = await threadsService.getThreadById(thread1.id);
+        const finalThread2 = await threadsService.getThreadById(thread2.id);
+
+        // Both should have valid completion statuses
+        expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
+          finalThread1.status,
+        );
+        expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
+          finalThread2.status,
+        );
+
+        // Thread IDs should remain different
+        expect(finalThread1.id).not.toBe(finalThread2.id);
+        expect(finalThread1.externalThreadId).not.toBe(
+          finalThread2.externalThreadId,
+        );
       },
     );
   });

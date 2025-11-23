@@ -1269,7 +1269,7 @@ describe('Graph Revisions Integration Tests', () => {
         );
 
         const firstThread = await waitForThreadCompletion(
-          firstExecutionResult.threadId,
+          firstExecutionResult.externalThreadId,
         );
         expect(firstThread.status).toBe(ThreadStatus.Done);
 
@@ -1321,7 +1321,7 @@ describe('Graph Revisions Integration Tests', () => {
         );
 
         const secondThread = await waitForThreadCompletion(
-          secondExecutionResult.threadId,
+          secondExecutionResult.externalThreadId,
         );
         expect(secondThread.status).toBe(ThreadStatus.Done);
         expect(secondThread.id).not.toBe(firstThread.id);
@@ -1350,7 +1350,9 @@ describe('Graph Revisions Integration Tests', () => {
           },
         );
 
-        const firstThread = await waitForThreadCompletion(firstResult.threadId);
+        const firstThread = await waitForThreadCompletion(
+          firstResult.externalThreadId,
+        );
         expect(firstThread.status).toBe(ThreadStatus.Done);
 
         const updatedSchema = cloneDeep(createResponse.schema);
@@ -1403,7 +1405,7 @@ describe('Graph Revisions Integration Tests', () => {
         );
 
         const secondThread = await waitForThreadCompletion(
-          secondResult.threadId,
+          secondResult.externalThreadId,
         );
         expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
           secondThread.status,
@@ -1481,10 +1483,14 @@ describe('Graph Revisions Integration Tests', () => {
           },
         );
 
-        const firstThread = await waitForThreadCompletion(firstResult.threadId);
+        const firstThread = await waitForThreadCompletion(
+          firstResult.externalThreadId,
+        );
         expect(firstThread.status).toBe(ThreadStatus.Done);
 
-        const firstMessages = await getThreadMessages(firstResult.threadId);
+        const firstMessages = await getThreadMessages(
+          firstResult.externalThreadId,
+        );
         const firstShell = findShellExecution(firstMessages);
         expect(firstShell.toolCallId).toBeDefined();
         expect(firstShell.toolName).toBe('shell');
@@ -1539,12 +1545,14 @@ describe('Graph Revisions Integration Tests', () => {
         );
 
         const secondThread = await waitForThreadCompletion(
-          secondResult.threadId,
+          secondResult.externalThreadId,
         );
         expect(secondThread.status).toBe(ThreadStatus.Done);
         expect(secondThread.id).not.toBe(firstThread.id);
 
-        const secondMessages = await getThreadMessages(secondResult.threadId);
+        const secondMessages = await getThreadMessages(
+          secondResult.externalThreadId,
+        );
         const secondShell = findShellExecution(secondMessages);
         expect(secondShell.toolCallId).toBeDefined();
         expect(secondShell.toolName).toBe('shell');
@@ -1621,10 +1629,14 @@ describe('Graph Revisions Integration Tests', () => {
           },
         );
 
-        const firstThread = await waitForThreadCompletion(firstResult.threadId);
+        const firstThread = await waitForThreadCompletion(
+          firstResult.externalThreadId,
+        );
         expect(firstThread.status).toBe(ThreadStatus.Done);
 
-        const firstMessages = await getThreadMessages(firstResult.threadId);
+        const firstMessages = await getThreadMessages(
+          firstResult.externalThreadId,
+        );
         const firstShell = findShellExecution(firstMessages);
         expect(firstShell.toolCallId).toBeDefined();
         expect(firstShell.toolName).toBe('shell');
@@ -1676,8 +1688,8 @@ describe('Graph Revisions Integration Tests', () => {
             },
           );
 
-          const thread = await waitForThreadCompletion(result.threadId);
-          const messages = await getThreadMessages(result.threadId);
+          const thread = await waitForThreadCompletion(result.externalThreadId);
+          const messages = await getThreadMessages(result.externalThreadId);
 
           return {
             thread,
@@ -1802,12 +1814,12 @@ describe('Graph Revisions Integration Tests', () => {
           },
         );
 
-        const thread = await waitForThreadCompletion(result.threadId);
+        const thread = await waitForThreadCompletion(result.externalThreadId);
         expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
           thread.status,
         );
 
-        const messages = await getThreadMessages(result.threadId);
+        const messages = await getThreadMessages(result.externalThreadId);
         const shellExecution = findShellExecution(messages);
         expect(shellExecution.toolCallId).toBeDefined();
         expect(shellExecution.toolName).toBe('shell');
@@ -1923,10 +1935,10 @@ describe('Graph Revisions Integration Tests', () => {
           },
         );
 
-        const thread = await waitForThreadCompletion(result.threadId);
+        const thread = await waitForThreadCompletion(result.externalThreadId);
         expect(thread.status).toBe(ThreadStatus.Done);
 
-        const messages = await getThreadMessages(result.threadId);
+        const messages = await getThreadMessages(result.externalThreadId);
         const shellExecution = findShellExecution(messages);
         expect(shellExecution.toolCallId).toBeDefined();
         expect(shellExecution.toolName).toBe('shell');
@@ -2045,10 +2057,10 @@ describe('Graph Revisions Integration Tests', () => {
           },
         );
 
-        const thread = await waitForThreadCompletion(result.threadId);
+        const thread = await waitForThreadCompletion(result.externalThreadId);
         expect(thread.status).toBe(ThreadStatus.Done);
 
-        const messages = await getThreadMessages(result.threadId);
+        const messages = await getThreadMessages(result.externalThreadId);
         const shellExecution = findShellExecution(messages);
         expect(shellExecution.toolCallId).toBeDefined();
         expect(shellExecution.toolName).toBe('shell');

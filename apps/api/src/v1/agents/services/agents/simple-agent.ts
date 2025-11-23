@@ -536,12 +536,16 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
 
     const threadState = this.graphThreadState.getByThread(meta.threadId);
-    if (!threadState.pendingMessages.length) {
-      return undefined;
-    }
-
+    
+    // Always return pending messages array (empty or populated) to notify subscribers
     return {
-      pendingMessages: threadState.pendingMessages,
+      pendingMessages: threadState.pendingMessages.map((msg) => ({
+        content: msg.content,
+        role: msg.type,
+        additionalKwargs: msg.additional_kwargs,
+        createdAt:
+          msg.additional_kwargs?.created_at || new Date().toISOString(),
+      })),
     };
   }
 

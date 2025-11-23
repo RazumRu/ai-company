@@ -708,7 +708,7 @@ describe('Socket Notifications Integration Tests', () => {
             async: true,
           },
         );
-        const threadId = firstExecution.threadId;
+        const threadId = firstExecution.externalThreadId;
 
         await waitForCondition(
           () =>
@@ -770,6 +770,252 @@ describe('Socket Notifications Integration Tests', () => {
         expect(pendingMessageContent).toBe(
           'Follow-up to enqueue pending message',
         );
+      },
+    );
+
+    it(
+      'should receive notification when pending messages are processed and removed',
+      { timeout: 60000 },
+      async () => {
+        const graph = await graphsService.create(createMockGraphData());
+        const graphId = graph.id;
+        createdGraphIds.push(graphId);
+
+        await graphsService.run(graphId);
+
+        const socket = createSocketConnection(TEST_USER_ID);
+        await new Promise<void>((resolve) =>
+          socket.once('connect', () => resolve()),
+        );
+
+        socket.emit('subscribe_graph', { graphId });
+
+        const threadSubId = 'pending-removal-thread';
+
+        // Start first execution
+        const firstExecution = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Start task'],
+            threadSubId,
+            async: true,
+          },
+        );
+
+        const threadId = firstExecution.externalThreadId;
+
+        // Wait for agent to start running
+        await waitForCondition(
+          () => graphsService.getCompiledNodes(graphId, { threadId }),
+          (snapshots) =>
+            snapshots.some(
+              (node) =>
+                node.id === 'agent-1' &&
+                node.status === GraphNodeStatus.Running,
+            ),
+          { timeout: 120_000, interval: 1_000 },
+        );
+
+        // Send follow-up to create pending messages
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['Follow-up message'],
+          threadSubId,
+          async: true,
+        });
+
+        // Wait for pending messages to appear in metadata
+        const hasPendingNotification = new Promise<NodeUpdateNotification>(
+          (resolve, reject) => {
+            function handleMetadata(notification: NodeUpdateNotification) {
+              const metadata = notification.data?.additionalNodeMetadata as
+                | { pendingMessages?: unknown[] }
+                | undefined;
+
+              if (
+                notification.graphId === graphId &&
+                notification.nodeId === 'agent-1' &&
+                Array.isArray(metadata?.pendingMessages) &&
+                metadata.pendingMessages.length > 0
+              ) {
+                clearTimeout(timeout);
+                socket.off('graph.node.update', handleMetadata);
+                resolve(notification);
+              }
+            }
+
+            const timeout = setTimeout(() => {
+              socket.off('graph.node.update', handleMetadata);
+              reject(new Error('Timeout waiting for pending messages'));
+            }, 30000);
+
+            socket.on('graph.node.update', handleMetadata);
+          },
+        );
+
+        await hasPendingNotification;
+
+        // Now wait for pending messages to be cleared (processed and removed)
+        const pendingClearedNotification = new Promise<NodeUpdateNotification>(
+          (resolve, reject) => {
+            function handleMetadata(notification: NodeUpdateNotification) {
+              const metadata = notification.data?.additionalNodeMetadata as
+                | { pendingMessages?: unknown[] }
+                | undefined;
+
+              if (
+                notification.graphId === graphId &&
+                notification.nodeId === 'agent-1' &&
+                Array.isArray(metadata?.pendingMessages) &&
+                metadata.pendingMessages.length === 0
+              ) {
+                clearTimeout(timeout);
+                socket.off('graph.node.update', handleMetadata);
+                resolve(notification);
+              }
+            }
+
+            const timeout = setTimeout(() => {
+              socket.off('graph.node.update', handleMetadata);
+              reject(
+                new Error('Timeout waiting for pending messages to be cleared'),
+              );
+            }, 30000);
+
+            socket.on('graph.node.update', handleMetadata);
+          },
+        );
+
+        const clearedNotification = await pendingClearedNotification;
+
+        // Verify the notification contains empty pending messages array
+        const clearedMetadata = clearedNotification.data
+          .additionalNodeMetadata as
+          | { pendingMessages?: unknown[] }
+          | undefined;
+
+        expect(clearedMetadata?.pendingMessages).toBeDefined();
+        expect(clearedMetadata?.pendingMessages).toEqual([]);
+
+        socket.disconnect();
+      },
+    );
+
+    it(
+      'should receive sequential notifications as pending messages are added and removed',
+      { timeout: 90000 },
+      async () => {
+        const graph = await graphsService.create(createMockGraphData());
+        const graphId = graph.id;
+        createdGraphIds.push(graphId);
+
+        await graphsService.run(graphId);
+
+        const socket = createSocketConnection(TEST_USER_ID);
+        await new Promise<void>((resolve) =>
+          socket.once('connect', () => resolve()),
+        );
+
+        socket.emit('subscribe_graph', { graphId });
+
+        const threadSubId = 'sequential-pending-thread';
+        const metadataUpdates: Array<{
+          pendingCount: number;
+          timestamp: number;
+        }> = [];
+
+        // Track all metadata updates
+        socket.on('graph.node.update', (notification: NodeUpdateNotification) => {
+          const metadata = notification.data?.additionalNodeMetadata as
+            | { pendingMessages?: unknown[] }
+            | undefined;
+
+          if (
+            notification.graphId === graphId &&
+            notification.nodeId === 'agent-1' &&
+            Array.isArray(metadata?.pendingMessages)
+          ) {
+            metadataUpdates.push({
+              pendingCount: metadata.pendingMessages.length,
+              timestamp: Date.now(),
+            });
+          }
+        });
+
+        // Start first execution
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['Start task'],
+          threadSubId,
+          async: true,
+        });
+
+        const threadId = `${graphId}:${threadSubId}`;
+
+        // Wait for running status
+        await waitForCondition(
+          () => graphsService.getCompiledNodes(graphId, { threadId }),
+          (snapshots) =>
+            snapshots.some(
+              (node) =>
+                node.id === 'agent-1' &&
+                node.status === GraphNodeStatus.Running,
+            ),
+          { timeout: 120_000, interval: 1_000 },
+        );
+
+        // Send multiple follow-ups
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['Follow-up 1'],
+          threadSubId,
+          async: true,
+        });
+
+        // Wait a bit for the first pending to register
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['Follow-up 2'],
+          threadSubId,
+          async: true,
+        });
+
+        // Wait for execution to complete (pending messages cleared)
+        await waitForCondition(
+          () => graphsService.getCompiledNodes(graphId, { threadId }),
+          (snapshots) =>
+            snapshots.some(
+              (node) =>
+                node.id === 'agent-1' &&
+                (node.status === GraphNodeStatus.Idle ||
+                  node.status === GraphNodeStatus.Done),
+            ),
+          { timeout: 60_000, interval: 1_000 },
+        );
+
+        // Give time for final notifications
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        socket.disconnect();
+
+        // Verify we received notifications with different pending counts
+        expect(metadataUpdates.length).toBeGreaterThan(0);
+
+        // Should have notifications with pending messages
+        const withPending = metadataUpdates.filter((u) => u.pendingCount > 0);
+        expect(withPending.length).toBeGreaterThan(0);
+
+        // Should have notification(s) with cleared pending messages
+        const withoutPending = metadataUpdates.filter((u) => u.pendingCount === 0);
+        expect(withoutPending.length).toBeGreaterThan(0);
+
+        // Verify chronological order (at least one increase followed by decrease)
+        const hasClearingSequence = metadataUpdates.some((update, index) => {
+          if (index === 0) return false;
+          const prev = metadataUpdates[index - 1];
+          return prev.pendingCount > 0 && update.pendingCount === 0;
+        });
+
+        expect(hasClearingSequence).toBe(true);
       },
     );
   });

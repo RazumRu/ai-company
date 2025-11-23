@@ -17,14 +17,24 @@ import { SimpleAgent } from './simple-agent';
 vi.mock('@langchain/core/messages', () => ({
   HumanMessage: class MockHumanMessage {
     content: string;
+    type: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    additional_kwargs: Record<string, unknown>;
     constructor(content: string) {
       this.content = content;
+      this.type = 'human';
+      this.additional_kwargs = {};
     }
   },
   SystemMessage: class MockSystemMessage {
     content: string;
+    type: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    additional_kwargs: Record<string, unknown>;
     constructor(content: string) {
       this.content = content;
+      this.type = 'system';
+      this.additional_kwargs = {};
     }
   },
 }));
@@ -736,7 +746,14 @@ describe('SimpleAgent', () => {
       const metadata = agent.getGraphNodeMetadata({ threadId: 'thread-1' });
 
       expect(metadata).toEqual({
-        pendingMessages: [message],
+        pendingMessages: [
+          {
+            content: 'pending',
+            role: 'human',
+            additionalKwargs: {},
+            createdAt: expect.any(String),
+          },
+        ],
       });
     });
   });

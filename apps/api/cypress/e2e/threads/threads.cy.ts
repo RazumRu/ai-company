@@ -69,7 +69,7 @@ describe('Threads E2E', () => {
         })
         .then((triggerResponse) => {
           expect(triggerResponse.status).to.equal(201);
-          const threadId = triggerResponse.body.threadId;
+          const threadId = triggerResponse.body.externalThreadId;
 
           return getThreadByExternalId(threadId);
         })
@@ -138,7 +138,7 @@ describe('Threads E2E', () => {
         })
         .then((triggerResponse) => {
           expect(triggerResponse.status).to.equal(201);
-          externalThreadId = triggerResponse.body.threadId;
+          externalThreadId = triggerResponse.body.externalThreadId;
           cy.wait(2000);
 
           // Test retrieving thread by external ID
@@ -225,7 +225,7 @@ describe('Threads E2E', () => {
           })
             .then((triggerResponse) => {
               expect(triggerResponse.status).to.equal(201);
-              const threadId = triggerResponse.body.threadId;
+              const threadId = triggerResponse.body.externalThreadId;
               cy.wait(5000);
 
               // Get thread by external ID
@@ -292,7 +292,7 @@ describe('Threads E2E', () => {
           })
           .then((triggerResponse) => {
             expect(triggerResponse.status).to.equal(201);
-            expect(triggerResponse.body).to.have.property('threadId');
+            expect(triggerResponse.body).to.have.property('externalThreadId');
             expect(triggerResponse.body).to.have.property('checkpointNs');
 
             // Get messages using thread API
@@ -388,7 +388,7 @@ describe('Threads E2E', () => {
           })
           .then((execResponse) => {
             expect(execResponse.status).to.equal(201);
-            expect(execResponse.body).to.have.property('threadId');
+            expect(execResponse.body).to.have.property('externalThreadId');
             expect(execResponse.body).to.have.property('checkpointNs');
           })
           .then(() => {
@@ -424,7 +424,8 @@ describe('Threads E2E', () => {
           })
           .then((response1) => {
             expect(response1.status).to.equal(201);
-            const thread1Component = response1.body.threadId.split(':')[1];
+            const thread1Component =
+              response1.body.externalThreadId.split(':')[1];
 
             // Execute trigger for thread 2
             return executeTrigger(testGraphId, 'trigger-1', {
@@ -432,7 +433,8 @@ describe('Threads E2E', () => {
               threadSubId: 'thread-2',
             }).then((response2) => {
               expect(response2.status).to.equal(201);
-              const thread2Component = response2.body.threadId.split(':')[1];
+              const thread2Component =
+                response2.body.externalThreadId.split(':')[1];
 
               // Get messages for thread 1
               return getThreads({ graphId: testGraphId })
@@ -564,8 +566,8 @@ describe('Threads E2E', () => {
               threadSubId: 'isolation-thread-1',
             }).then((response1) => {
               expect(response1.status).to.equal(201);
-              expect(response1.body).to.have.property('threadId');
-              const thread1Id = response1.body.threadId;
+              expect(response1.body).to.have.property('externalThreadId');
+              const thread1Id = response1.body.externalThreadId;
 
               // Execute trigger for thread 2 with multiple messages to trigger summarization
               executeTrigger(testGraphId, 'trigger-1', {
@@ -578,8 +580,8 @@ describe('Threads E2E', () => {
                 threadSubId: 'isolation-thread-2',
               }).then((response2) => {
                 expect(response2.status).to.equal(201);
-                expect(response2.body).to.have.property('threadId');
-                const thread2Id = response2.body.threadId;
+                expect(response2.body).to.have.property('externalThreadId');
+                const thread2Id = response2.body.externalThreadId;
 
                 // Verify thread IDs are different
                 expect(thread1Id).to.not.equal(thread2Id);
@@ -722,7 +724,7 @@ describe('Threads E2E', () => {
             expect(triggerResponse.status).to.equal(201);
 
             // Get thread by external ID
-            return getThreadByExternalId(triggerResponse.body.threadId);
+            return getThreadByExternalId(triggerResponse.body.externalThreadId);
           })
           .then((threadResponse) => {
             expect(threadResponse.status).to.equal(200);
@@ -824,7 +826,7 @@ describe('Threads E2E', () => {
           .then((triggerResponse) => {
             expect(triggerResponse.status).to.equal(201);
 
-            return getThreadByExternalId(triggerResponse.body.threadId);
+            return getThreadByExternalId(triggerResponse.body.externalThreadId);
           })
           .then((threadResponse) => {
             expect(threadResponse.status).to.equal(200);

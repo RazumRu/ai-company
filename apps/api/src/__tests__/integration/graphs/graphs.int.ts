@@ -661,7 +661,7 @@ describe('Graphs Integration Tests', () => {
         expect(destroyResponse.status).toBe(GraphStatus.Stopped);
 
         const thread = await waitForThreadStatus(
-          execution.threadId,
+          execution.externalThreadId,
           [ThreadStatus.Stopped, ThreadStatus.NeedMoreInfo],
           60000,
         );
@@ -693,7 +693,7 @@ describe('Graphs Integration Tests', () => {
         await graphsService.destroy(graph.id);
 
         for (const execution of executions) {
-          const thread = await waitForThreadStatus(execution.threadId, [
+          const thread = await waitForThreadStatus(execution.externalThreadId, [
             ThreadStatus.Stopped,
             ThreadStatus.NeedMoreInfo,
           ]);

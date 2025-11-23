@@ -413,7 +413,7 @@ export class GraphsService {
     });
 
     return {
-      threadId: res.threadId,
+      externalThreadId: res.threadId,
       checkpointNs: res.checkpointNs,
     };
   }

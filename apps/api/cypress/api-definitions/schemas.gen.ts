@@ -910,14 +910,14 @@ export const ExecuteTriggerDtoSchema = {
 export const ExecuteTriggerResponseDtoSchema = {
   type: 'object',
   properties: {
-    threadId: {
+    externalThreadId: {
       type: 'string',
     },
     checkpointNs: {
       type: 'string',
     },
   },
-  required: ['threadId'],
+  required: ['externalThreadId'],
 } as const;
 
 export const GraphRevisionDtoSchema = {

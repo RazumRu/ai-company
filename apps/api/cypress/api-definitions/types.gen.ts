@@ -585,7 +585,7 @@ export type ExecuteTriggerResponseDto = {
   /**
    * The thread ID used for this execution
    */
-  threadId: string;
+  externalThreadId: string;
   /**
    * The checkpoint namespace for this execution
    */
