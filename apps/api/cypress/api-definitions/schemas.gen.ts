@@ -332,6 +332,13 @@ export const GraphNodeWithStatusDtoSchema = {
         },
       },
     },
+    additionalNodeMetadata: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
   },
   required: ['id', 'name', 'template', 'type', 'status', 'config'],
 } as const;

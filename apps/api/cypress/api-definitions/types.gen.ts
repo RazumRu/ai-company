@@ -232,6 +232,12 @@ export type GraphNodeWithStatusDto = {
     runId?: string;
     parentThreadId?: string;
   };
+  /**
+   * Additional metadata exposed by the node implementation
+   */
+  additionalNodeMetadata?: {
+    [key: string]: unknown;
+  };
 };
 
 export type UpdateGraphDto = {

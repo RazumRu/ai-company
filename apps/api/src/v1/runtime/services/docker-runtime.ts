@@ -246,6 +246,39 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   /**
+   * Creates a Docker container with automatic retry on name conflicts
+   * If creation fails due to a name conflict, it cleans up the existing container and retries once
+   */
+  private async createContainerWithRetry(
+    containerName: string,
+    createFn: () => Promise<Docker.Container>,
+  ): Promise<Docker.Container> {
+    try {
+      return await createFn();
+    } catch (error) {
+      // If container creation fails due to name conflict, try cleanup and retry once
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (
+        errorMessage.includes('already in use') ||
+        errorMessage.includes('name is already')
+      ) {
+        // Force cleanup any leftover container with this name
+        const conflictContainer = await this.getByName(containerName);
+        if (conflictContainer) {
+          await DockerRuntime.stopByInstance(conflictContainer);
+        }
+
+        // Retry container creation
+        return await createFn();
+      }
+
+      // Re-throw if it's not a name conflict error
+      throw error;
+    }
+  }
+
+  /**
    * Start a separate DIND (Docker-in-Docker) container
    */
   private async startDindContainer(
@@ -278,25 +311,30 @@ export class DockerRuntime extends BaseRuntime {
       'ai-company/dind-for': containerName,
     };
 
-    // Create DIND container with proper configuration
-    const dindContainer = await this.docker.createContainer({
-      Image: dindImage,
-      name: containerName,
-      Labels: dindLabels,
-      Env: [
-        'DOCKER_TLS_CERTDIR=', // Disable TLS
-      ],
-      Cmd: [
-        'dockerd',
-        '--host=tcp://0.0.0.0:2375',
-        '--host=unix:///var/run/docker.sock',
-      ],
-      HostConfig: {
-        Privileged: true, // Required for DIND
-        NetworkMode: network,
+    // Create DIND container with automatic retry on name conflicts
+    const dindContainer = await this.createContainerWithRetry(
+      containerName,
+      async () => {
+        return await this.docker.createContainer({
+          Image: dindImage,
+          name: containerName,
+          Labels: dindLabels,
+          Env: [
+            'DOCKER_TLS_CERTDIR=', // Disable TLS
+          ],
+          Cmd: [
+            'dockerd',
+            '--host=tcp://0.0.0.0:2375',
+            '--host=unix:///var/run/docker.sock',
+          ],
+          HostConfig: {
+            Privileged: true, // Required for DIND
+            NetworkMode: network,
+          },
+          Tty: false,
+        });
       },
-      Tty: false,
-    });
+    );
 
     await dindContainer.start();
 
@@ -364,20 +402,26 @@ export class DockerRuntime extends BaseRuntime {
     };
 
     try {
-      const container = await this.docker.createContainer({
-        Image: imageName,
-        name: containerName,
-        Env: env,
-        WorkingDir: this.getWorkdir(params?.workdir),
-        Cmd: cmd,
-        Labels: params?.labels,
-        Tty: false,
-        AttachStdin: false,
-        AttachStdout: false,
-        AttachStderr: false,
-        OpenStdin: false,
-        HostConfig: hostConfig,
-      });
+      // Create container with automatic retry on name conflicts
+      const container = await this.createContainerWithRetry(
+        containerName,
+        async () => {
+          return await this.docker.createContainer({
+            Image: imageName,
+            name: containerName,
+            Env: env,
+            WorkingDir: this.getWorkdir(params?.workdir),
+            Cmd: cmd,
+            Labels: params?.labels,
+            Tty: false,
+            AttachStdin: false,
+            AttachStdout: false,
+            AttachStderr: false,
+            OpenStdin: false,
+            HostConfig: hostConfig,
+          });
+        },
+      );
 
       await container.start();
       this.container = container;
