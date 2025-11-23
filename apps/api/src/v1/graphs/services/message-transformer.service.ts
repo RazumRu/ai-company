@@ -9,6 +9,7 @@ import { Injectable } from '@nestjs/common';
 import { isObject, isString } from 'lodash';
 
 import { extractTextFromResponseContent } from '../../agents/agents.utils';
+import { ReasoningMessage } from '../../agents/messages/reasoning-message';
 import { MessageDto } from '../dto/graphs.dto';
 
 /**
@@ -68,6 +69,14 @@ export class MessageTransformerService {
 
     if (msg instanceof SystemMessage) {
       return { role: 'system', content: contentStr, additionalKwargs };
+    }
+
+    if (msg instanceof ReasoningMessage) {
+      return {
+        role: 'reasoning',
+        content: contentStr,
+        additionalKwargs,
+      };
     }
 
     if (msg instanceof AIMessage) {
@@ -233,6 +242,14 @@ export class MessageTransformerService {
 
       case 'SystemMessage':
         return { role: 'system', content: contentStr, additionalKwargs };
+
+      case 'ReasoningMessage':
+        return {
+          role: 'reasoning',
+          content: contentStr,
+          additionalKwargs,
+        };
+        break;
 
       case 'AIMessage': {
         const toolCalls = this.mapToolCalls(

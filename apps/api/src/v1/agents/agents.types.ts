@@ -24,3 +24,10 @@ export enum NewMessageMode {
   InjectAfterToolCall = 'inject_after_tool_call',
   WaitForCompletion = 'wait_for_completion',
 }
+
+export enum ReasoningEffort {
+  None = 'none',
+  Low = 'low',
+  Medium = 'medium',
+  High = 'high',
+}

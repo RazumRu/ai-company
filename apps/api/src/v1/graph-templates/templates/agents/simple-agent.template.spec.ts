@@ -2,6 +2,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ReasoningEffort } from '../../../agents/agents.types';
 import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import {
@@ -101,6 +102,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
       };
 
       expect(() => SimpleAgentTemplateSchema.parse(validConfig)).not.toThrow();
@@ -113,6 +115,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
       };
 
       expect(() => SimpleAgentTemplateSchema.parse(validConfig)).not.toThrow();
@@ -125,6 +128,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         enforceToolUsage: true,
       };
 
@@ -141,6 +145,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
       };
 
       const parsed = SimpleAgentTemplateSchema.parse(configWithoutEnforce);
@@ -162,6 +167,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
       };
 
       expect(() => SimpleAgentTemplateSchema.parse(validConfig)).not.toThrow();
@@ -223,6 +229,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -253,6 +260,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -282,6 +290,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -306,6 +315,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -330,6 +340,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -385,6 +396,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -409,6 +421,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -430,6 +443,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Custom instructions',
         name: 'Custom Agent',
         invokeModelName: 'gpt-3.5-turbo',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -452,6 +466,7 @@ describe('SimpleAgentTemplate', () => {
         instructions: 'Test agent instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 

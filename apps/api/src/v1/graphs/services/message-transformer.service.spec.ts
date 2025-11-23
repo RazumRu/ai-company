@@ -6,9 +6,11 @@ import {
 } from '@langchain/core/messages';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { ReasoningMessage } from '../../agents/messages/reasoning-message';
 import {
   AIMessageDto,
   HumanMessageDto,
+  ReasoningMessageDto,
   ShellToolMessageDto,
   SystemMessageDto,
   ToolMessageDto,
@@ -99,6 +101,18 @@ describe('MessageTransformerService', () => {
         ],
         additionalKwargs: undefined,
       } as AIMessageDto);
+    });
+
+    it('should transform reasoning chat message', () => {
+      const msg = new ReasoningMessage('Detailed reasoning steps');
+
+      const result = service.transformMessageToDto(msg);
+
+      expect(result).toEqual({
+        role: 'reasoning',
+        content: 'Detailed reasoning steps',
+        additionalKwargs: undefined,
+      } as ReasoningMessageDto);
     });
 
     it('should transform tool message', () => {
@@ -252,6 +266,27 @@ describe('MessageTransformerService', () => {
         ],
         additionalKwargs: undefined,
       } as AIMessageDto);
+    });
+
+    it('should treat unknown chat roles as system messages', () => {
+      const serializedMsg = {
+        lc: 1,
+        type: 'constructor',
+        id: ['langchain_core', 'messages', 'ChatMessage'],
+        kwargs: {
+          content: 'Serialized reasoning trace',
+          role: 'reasoning',
+          additional_kwargs: {},
+        },
+      };
+
+      const result = service.transformMessageToDto(serializedMsg);
+
+      expect(result).toEqual({
+        role: 'system',
+        content: 'Serialized reasoning trace',
+        additionalKwargs: undefined,
+      } as SystemMessageDto);
     });
 
     it('should handle the exact serialized message format from the user issue', () => {

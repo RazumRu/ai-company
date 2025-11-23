@@ -1,7 +1,11 @@
 import { BaseMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
-import { ChatOpenAI, OpenAIChatModelId } from '@langchain/openai';
+import {
+  ChatOpenAI,
+  ChatOpenAIFields,
+  OpenAIChatModelId,
+} from '@langchain/openai';
 import { EventEmitter } from 'events';
 import { z } from 'zod';
 
@@ -98,12 +102,16 @@ export abstract class BaseAgent<
 
   public abstract get schema(): z.ZodType<TSchema>;
 
-  public buildLLM(model: OpenAIChatModelId): ChatOpenAI {
+  public buildLLM(
+    model: OpenAIChatModelId,
+    params?: ChatOpenAIFields,
+  ): ChatOpenAI {
     const llm = new ChatOpenAI({
       model,
       apiKey: environment.litellmMasterKey,
       configuration: { baseURL: environment.llmBaseUrl },
       useResponsesApi: true,
+      ...params,
     });
 
     return llm;

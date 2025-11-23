@@ -3,6 +3,7 @@ import { BaseException } from '@packages/common';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import {
@@ -1437,6 +1438,7 @@ describe('Graph Revisions Integration Tests', () => {
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
                   enforceToolUsage: false,
                   maxIterations: 50,
                 } satisfies SimpleAgentSchemaType,
@@ -1585,6 +1587,7 @@ describe('Graph Revisions Integration Tests', () => {
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
                   enforceToolUsage: true,
                   maxIterations: 50,
                 } satisfies SimpleAgentSchemaType,
@@ -1740,6 +1743,7 @@ describe('Graph Revisions Integration Tests', () => {
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
                   enforceToolUsage: true,
                   maxIterations: 50,
                 } satisfies SimpleAgentSchemaType,
@@ -1852,6 +1856,7 @@ describe('Graph Revisions Integration Tests', () => {
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
                   enforceToolUsage: true,
                   maxIterations: 50,
                 } satisfies SimpleAgentSchemaType,
@@ -1972,6 +1977,7 @@ describe('Graph Revisions Integration Tests', () => {
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
                   enforceToolUsage: true,
                   maxIterations: 50,
                 } satisfies SimpleAgentSchemaType,

@@ -11,8 +11,10 @@ import { DefaultLogger } from '@packages/common';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
   filterMessagesForLlm,
+  markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
+import { ReasoningMessage } from '../../messages/reasoning-message';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 type InvokeLlmNodeOpts = {
@@ -70,8 +72,19 @@ export class InvokeLlmNode extends BaseNode<
       cfg,
     );
 
+    const reasoningMessages = updateMessagesListWithMetadata(
+      res.contentBlocks
+        .filter((m) => m.type === 'reasoning' && m.reasoning !== '')
+        .map((block) => {
+          return markMessageHideForLlm(
+            new ReasoningMessage(String(block.reasoning)),
+          );
+        }),
+      cfg,
+    );
+
     return {
-      messages: { mode: 'append', items: out },
+      messages: { mode: 'append', items: [...reasoningMessages, ...out] },
       ...(shouldResetNeedsMoreInfo ? { needsMoreInfo: false } : {}),
     };
   }

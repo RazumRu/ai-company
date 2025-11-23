@@ -1,3 +1,4 @@
+import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 
@@ -17,6 +18,7 @@ export const createMockGraphData = (
           config: {
             instructions: 'You are a helpful test agent. Answer briefly.',
             invokeModelName: 'gpt-5-mini',
+            invokeModelReasoningEffort: ReasoningEffort.None,
             summarizeMaxTokens: 272000,
             summarizeKeepTokens: 30000,
           } satisfies SimpleAgentSchemaType,

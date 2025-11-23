@@ -130,6 +130,16 @@ export const AIMessageSchema = z.object({
     .describe('Additional message metadata'),
 });
 
+// Reasoning message schema
+export const ReasoningMessageSchema = z.object({
+  role: z.literal('reasoning').describe('Message role'),
+  content: z.string().describe('Reasoning trace emitted by the model'),
+  additionalKwargs: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe('Additional message metadata'),
+});
+
 // System message schema
 export const SystemMessageSchema = z.object({
   role: z.literal('system').describe('Message role'),
@@ -177,6 +187,7 @@ export const ToolMessageSchema = z.object({
 export const MessageSchema = z.discriminatedUnion('role', [
   HumanMessageSchema,
   AIMessageSchema,
+  ReasoningMessageSchema,
   SystemMessageSchema,
   ShellToolMessageSchema,
   ToolMessageSchema,
@@ -250,12 +261,14 @@ export class GraphNodeWithStatusDto extends createZodDto(
 // Export message types
 export type HumanMessageDto = z.infer<typeof HumanMessageSchema>;
 export type AIMessageDto = z.infer<typeof AIMessageSchema>;
+export type ReasoningMessageDto = z.infer<typeof ReasoningMessageSchema>;
 export type SystemMessageDto = z.infer<typeof SystemMessageSchema>;
 export type ShellToolMessageDto = z.infer<typeof ShellToolMessageSchema>;
 export type ToolMessageDto = z.infer<typeof ToolMessageSchema>;
 export type MessageDto =
   | HumanMessageDto
   | AIMessageDto
+  | ReasoningMessageDto
   | SystemMessageDto
   | ShellToolMessageDto
   | ToolMessageDto;

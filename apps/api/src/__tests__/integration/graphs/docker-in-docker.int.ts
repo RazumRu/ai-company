@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import {
@@ -167,6 +168,7 @@ describe('Docker-in-Docker Integration', () => {
             instructions:
               'You are a shell command executor agent. When the user asks you to execute a command, you MUST use the shell tool to execute it. Always respond with the stdout from the shell tool.',
             invokeModelName: 'gpt-5-mini',
+            invokeModelReasoningEffort: ReasoningEffort.None,
             enforceToolUsage: true,
             maxIterations: 50,
             summarizeMaxTokens: 272000,

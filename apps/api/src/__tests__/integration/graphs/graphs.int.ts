@@ -4,6 +4,7 @@ import { cloneDeep } from 'lodash';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { EntityUUIDSchema } from '../../../utils/dto/misc.dto';
+import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import {
   CreateGraphDto,
@@ -121,6 +122,7 @@ describe('Graphs Integration Tests', () => {
             summarizeMaxTokens: 272000,
             summarizeKeepTokens: 30000,
             invokeModelName: 'gpt-5-mini',
+            invokeModelReasoningEffort: ReasoningEffort.None,
             enforceToolUsage: true,
             maxIterations: 50,
           } satisfies SimpleAgentSchemaType,
@@ -210,6 +212,7 @@ describe('Graphs Integration Tests', () => {
               config: {
                 instructions: 'Duplicate test',
                 invokeModelName: 'gpt-5-mini',
+                invokeModelReasoningEffort: ReasoningEffort.None,
                 summarizeMaxTokens: 1000,
                 summarizeKeepTokens: 100,
               },

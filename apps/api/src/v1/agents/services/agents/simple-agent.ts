@@ -24,6 +24,7 @@ import {
   BaseAgentStateChange,
   BaseAgentStateMessagesUpdateValue,
   NewMessageMode,
+  ReasoningEffort,
 } from '../../agents.types';
 import {
   markMessageHideForLlm,
@@ -66,6 +67,12 @@ export const SimpleAgentSchema = z.object({
     .string()
     .default('gpt-5.1')
     .describe('Chat model used for the main reasoning/tool-call step.')
+    .meta({ 'x-ui:show-on-node': true }),
+  invokeModelReasoningEffort: z
+    .enum(ReasoningEffort)
+    .optional()
+    .default(ReasoningEffort.None)
+    .describe('Reasoning effort')
     .meta({ 'x-ui:show-on-node': true }),
   enforceToolUsage: z
     .boolean()
@@ -200,7 +207,15 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       // ---- invoke ----
       const tools = this.tools;
       const invokeLlmNode = new InvokeLlmNode(
-        this.buildLLM(config.invokeModelName),
+        this.buildLLM(config.invokeModelName, {
+          reasoning:
+            config.invokeModelReasoningEffort !== ReasoningEffort.None
+              ? {
+                  effort: config.invokeModelReasoningEffort,
+                  summary: 'detailed',
+                }
+              : undefined,
+        }),
         tools,
         {
           systemPrompt: config.instructions,

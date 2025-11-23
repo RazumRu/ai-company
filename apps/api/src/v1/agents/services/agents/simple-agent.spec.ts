@@ -7,7 +7,7 @@ import { LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NotificationsService } from '../../../notifications/services/notifications.service';
-import { NewMessageMode } from '../../agents.types';
+import { NewMessageMode, ReasoningEffort } from '../../agents.types';
 import { GraphThreadState, IGraphThreadStateData } from '../graph-thread-state';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
@@ -24,6 +24,19 @@ vi.mock('@langchain/core/messages', () => ({
     constructor(content: string) {
       this.content = content;
       this.type = 'human';
+      this.additional_kwargs = {};
+    }
+  },
+  ChatMessage: class MockChatMessage {
+    content: string;
+    type: string;
+    role: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    additional_kwargs: Record<string, unknown>;
+    constructor(content: string, role: string) {
+      this.content = content;
+      this.role = role;
+      this.type = role;
       this.additional_kwargs = {};
     }
   },
@@ -109,6 +122,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
       };
 
       expect(() => schema.parse(validConfig)).not.toThrow();
@@ -147,6 +161,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
       };
 
       const parsed = schema.parse(configWithoutEnforce);
@@ -162,6 +177,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         enforceToolUsage: true,
       };
 
@@ -189,6 +205,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         enforceToolUsage: 'invalid', // should be boolean
       };
 
@@ -202,6 +219,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
       };
 
       const parsed = schema.parse(config);
@@ -215,6 +233,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         newMessageMode: 'wait_for_completion',
       };
 
@@ -311,6 +330,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -375,6 +395,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -417,6 +438,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -432,6 +454,7 @@ describe('SimpleAgent', () => {
       summarizeKeepTokens: 500,
       instructions: 'Test instructions',
       invokeModelName: 'gpt-5-mini',
+      invokeModelReasoningEffort: ReasoningEffort.None,
     };
 
     const buildState = () => ({
@@ -645,6 +668,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -668,6 +692,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -708,6 +733,7 @@ describe('SimpleAgent', () => {
         instructions: 'Test instructions',
         name: 'Test Agent',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
       };
 
@@ -772,6 +798,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
       });
     });
 
