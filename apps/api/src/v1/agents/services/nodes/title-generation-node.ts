@@ -8,6 +8,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
+import { extractTextFromResponseContent } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 export class TitleGenerationNode extends BaseNode<
@@ -63,10 +64,8 @@ export class TitleGenerationNode extends BaseNode<
         humanMessage,
       ])) as AIMessage;
 
-      const generatedTitle =
-        typeof res.content === 'string'
-          ? res.content.trim().slice(0, 100)
-          : JSON.stringify(res.content).trim().slice(0, 100);
+      const extracted = extractTextFromResponseContent(res.content);
+      const generatedTitle = (extracted ?? '').trim().slice(0, 100);
 
       if (generatedTitle) {
         return {

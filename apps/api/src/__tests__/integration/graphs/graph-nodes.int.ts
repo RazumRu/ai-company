@@ -421,7 +421,7 @@ describe('Graph Nodes Integration Tests', () => {
             pendingMessages?: unknown[];
           }
         )?.pendingMessages,
-      ).toBeUndefined();
+      ).toEqual([]);
     },
   );
 });

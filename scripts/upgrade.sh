@@ -1,5 +1,5 @@
 #!/bin/bash
 
 #pnpm update --latest --recursive
-ncu -u
+ncu -u --reject "/^@packages\//"
 pnpm install

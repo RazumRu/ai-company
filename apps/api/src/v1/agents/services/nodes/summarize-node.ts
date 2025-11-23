@@ -12,6 +12,7 @@ import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
+  extractTextFromResponseContent,
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
@@ -173,6 +174,10 @@ export class SummarizeNode extends BaseNode<
       `Previous summary:\n${prev ?? '(none)'}\n\nFold in the following messages:\n${lines}\n\nReturn only the updated summary.`,
     );
     const res = (await this.llm!.invoke([sys, human])) as AIMessage;
+    const extracted = extractTextFromResponseContent(res.content);
+    if (extracted !== undefined) {
+      return extracted;
+    }
     return typeof res.content === 'string'
       ? res.content
       : JSON.stringify(res.content);

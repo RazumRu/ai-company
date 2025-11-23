@@ -23,9 +23,6 @@ describe('AgentInvokeNotificationHandler', () => {
   let graphDao: GraphDao;
   let notificationsService: NotificationsService;
   let moduleRefMock: { create: ReturnType<typeof vi.fn> };
-  let threadsServiceMock: {
-    prepareThreadResponse: ReturnType<typeof vi.fn>;
-  };
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -83,19 +80,29 @@ describe('AgentInvokeNotificationHandler', () => {
     ...overrides,
   });
 
+  const buildThreadResponseDto = (thread: ThreadEntity) => ({
+    id: thread.id,
+    graphId: thread.graphId,
+    externalThreadId: thread.externalThreadId,
+    status: thread.status,
+    name: thread.name ?? null,
+    source: thread.source ?? null,
+    metadata: thread.metadata ?? {},
+    createdAt: new Date(thread.createdAt).toISOString(),
+    updatedAt: new Date(thread.updatedAt).toISOString(),
+  });
+
+  type ThreadResponseDto = ReturnType<typeof buildThreadResponseDto>;
+  type ThreadResponseMock = ReturnType<typeof vi.fn> &
+    ((thread: ThreadEntity) => ThreadResponseDto);
+
+  let threadsServiceMock: {
+    prepareThreadResponse: ThreadResponseMock;
+  };
+
   beforeEach(async () => {
     threadsServiceMock = {
-      prepareThreadResponse: vi.fn((thread: ThreadEntity) => ({
-        id: thread.id,
-        graphId: thread.graphId,
-        externalThreadId: thread.externalThreadId,
-        status: thread.status,
-        name: thread.name ?? null,
-        source: thread.source ?? null,
-        metadata: thread.metadata ?? {},
-        createdAt: new Date(thread.createdAt).toISOString(),
-        updatedAt: new Date(thread.updatedAt).toISOString(),
-      })),
+      prepareThreadResponse: vi.fn(buildThreadResponseDto),
     };
 
     moduleRefMock = {

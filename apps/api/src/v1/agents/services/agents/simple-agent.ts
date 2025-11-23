@@ -536,8 +536,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
 
     const threadState = this.graphThreadState.getByThread(meta.threadId);
-    
-    // Always return pending messages array (empty or populated) to notify subscribers
+
     return {
       pendingMessages: threadState.pendingMessages.map((msg) => ({
         content: msg.content,

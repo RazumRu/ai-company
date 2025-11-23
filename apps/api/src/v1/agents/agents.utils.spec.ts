@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import {
+  extractTextFromResponseContent,
   filterMessagesForLlm,
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
@@ -111,6 +112,31 @@ describe('agents.utils', () => {
       const updated = updateMessageWithMetadata(message, config as any);
 
       expect(updated.additional_kwargs?.run_id).toBe('existing-run');
+    });
+  });
+
+  describe('extractTextFromResponseContent', () => {
+    it('should flatten structured content arrays', () => {
+      const result = extractTextFromResponseContent([
+        { type: 'text', text: 'Hello' },
+        { type: 'text', text: 'World' },
+      ]);
+      expect(result).toBe('Hello\nWorld');
+    });
+
+    it('should flatten stringified structured content', () => {
+      const payload = JSON.stringify([{ type: 'text', text: 'Structured' }]);
+      const result = extractTextFromResponseContent(payload);
+      expect(result).toBe('Structured');
+    });
+
+    it('should trim plain string content', () => {
+      const result = extractTextFromResponseContent('  plain text ');
+      expect(result).toBe('plain text');
+    });
+
+    it('should return undefined when parsing fails', () => {
+      expect(extractTextFromResponseContent({})).toBeUndefined();
     });
   });
 

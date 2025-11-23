@@ -61,6 +61,7 @@ describe('MessageTransformerService', () => {
       expect(result).toEqual({
         role: 'ai',
         content: 'AI response',
+        rawContent: 'AI response',
         id: 'msg-123',
         toolCalls: undefined,
         additionalKwargs: undefined,
@@ -86,6 +87,7 @@ describe('MessageTransformerService', () => {
       expect(result).toEqual({
         role: 'ai',
         content: 'Calling tools',
+        rawContent: 'Calling tools',
         id: 'msg-456',
         toolCalls: [
           {
@@ -238,6 +240,7 @@ describe('MessageTransformerService', () => {
       expect(result).toEqual({
         role: 'ai',
         content: 'I will call a tool',
+        rawContent: 'I will call a tool',
         id: 'msg-123',
         toolCalls: [
           {

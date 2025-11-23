@@ -1,6 +1,7 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
+import { ChatOpenAI } from '@langchain/openai';
 import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerModule } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -264,6 +265,12 @@ describe('SimpleAgent', () => {
       const llm = agent.buildLLM('gpt-5-mini');
       expect(llm).toBeDefined();
       expect(typeof llm).toBe('object');
+      expect(ChatOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5-mini',
+          useResponsesApi: true,
+        }),
+      );
     });
   });
 
@@ -728,12 +735,12 @@ describe('SimpleAgent', () => {
       ).toBeUndefined();
     });
 
-    it('should return undefined when there are no pending messages', () => {
+    it('should return empty pending messages when there are no pending messages', () => {
       const threadState = new GraphThreadState();
       setGraphThreadState(threadState);
 
       const metadata = agent.getGraphNodeMetadata({ threadId: 'thread-1' });
-      expect(metadata).toBeUndefined();
+      expect(metadata).toEqual({ pendingMessages: [] });
     });
 
     it('should return pending messages for a thread', () => {
@@ -768,7 +775,7 @@ describe('SimpleAgent', () => {
       });
     });
 
-    it('should emit event even when no pending metadata exists', () => {
+    it('should emit event even when pending metadata is empty', () => {
       const emitSpy = vi.spyOn(agent as any, 'emit');
       setGraphThreadState(new GraphThreadState());
 
@@ -781,7 +788,7 @@ describe('SimpleAgent', () => {
           type: 'nodeAdditionalMetadataUpdate',
           data: {
             metadata: { threadId: 'thread-1' },
-            additionalMetadata: undefined,
+            additionalMetadata: { pendingMessages: [] },
           },
         }),
       );

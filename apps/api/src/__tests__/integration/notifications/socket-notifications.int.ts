@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   GraphNodeSchemaType,
+  GraphNodeStatus,
   GraphSchemaType,
 } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
@@ -919,28 +920,31 @@ describe('Socket Notifications Integration Tests', () => {
         socket.emit('subscribe_graph', { graphId });
 
         const threadSubId = 'sequential-pending-thread';
-        const metadataUpdates: Array<{
+        const metadataUpdates: {
           pendingCount: number;
           timestamp: number;
-        }> = [];
+        }[] = [];
 
         // Track all metadata updates
-        socket.on('graph.node.update', (notification: NodeUpdateNotification) => {
-          const metadata = notification.data?.additionalNodeMetadata as
-            | { pendingMessages?: unknown[] }
-            | undefined;
+        socket.on(
+          'graph.node.update',
+          (notification: NodeUpdateNotification) => {
+            const metadata = notification.data?.additionalNodeMetadata as
+              | { pendingMessages?: unknown[] }
+              | undefined;
 
-          if (
-            notification.graphId === graphId &&
-            notification.nodeId === 'agent-1' &&
-            Array.isArray(metadata?.pendingMessages)
-          ) {
-            metadataUpdates.push({
-              pendingCount: metadata.pendingMessages.length,
-              timestamp: Date.now(),
-            });
-          }
-        });
+            if (
+              notification.graphId === graphId &&
+              notification.nodeId === 'agent-1' &&
+              Array.isArray(metadata?.pendingMessages)
+            ) {
+              metadataUpdates.push({
+                pendingCount: metadata.pendingMessages.length,
+                timestamp: Date.now(),
+              });
+            }
+          },
+        );
 
         // Start first execution
         await graphsService.executeTrigger(graphId, 'trigger-1', {
@@ -987,7 +991,7 @@ describe('Socket Notifications Integration Tests', () => {
               (node) =>
                 node.id === 'agent-1' &&
                 (node.status === GraphNodeStatus.Idle ||
-                  node.status === GraphNodeStatus.Done),
+                  node.status === GraphNodeStatus.Stopped),
             ),
           { timeout: 60_000, interval: 1_000 },
         );
@@ -1005,13 +1009,18 @@ describe('Socket Notifications Integration Tests', () => {
         expect(withPending.length).toBeGreaterThan(0);
 
         // Should have notification(s) with cleared pending messages
-        const withoutPending = metadataUpdates.filter((u) => u.pendingCount === 0);
+        const withoutPending = metadataUpdates.filter(
+          (u) => u.pendingCount === 0,
+        );
         expect(withoutPending.length).toBeGreaterThan(0);
 
         // Verify chronological order (at least one increase followed by decrease)
         const hasClearingSequence = metadataUpdates.some((update, index) => {
           if (index === 0) return false;
           const prev = metadataUpdates[index - 1];
+          if (!prev) {
+            return false;
+          }
           return prev.pendingCount > 0 && update.pendingCount === 0;
         });
 

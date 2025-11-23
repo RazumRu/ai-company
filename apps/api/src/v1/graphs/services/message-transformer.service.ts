@@ -8,6 +8,7 @@ import {
 import { Injectable } from '@nestjs/common';
 import { isObject, isString } from 'lodash';
 
+import { extractTextFromResponseContent } from '../../agents/agents.utils';
 import { MessageDto } from '../dto/graphs.dto';
 
 /**
@@ -74,6 +75,7 @@ export class MessageTransformerService {
       return {
         role: 'ai',
         content: contentStr,
+        rawContent: msg.content,
         id: msg.id,
         toolCalls: toolCalls.length ? toolCalls : undefined,
         additionalKwargs,
@@ -115,6 +117,10 @@ export class MessageTransformerService {
   }
 
   private normalizeContent(input: unknown): string {
+    const flattened = extractTextFromResponseContent(input);
+    if (flattened !== undefined) {
+      return flattened;
+    }
     return typeof input === 'string' ? input : JSON.stringify(input);
   }
 
@@ -235,6 +241,7 @@ export class MessageTransformerService {
         return {
           role: 'ai',
           content: contentStr,
+          rawContent: kwargs.content,
           id: kwargs.id as string,
           toolCalls: toolCalls.length ? toolCalls : undefined,
           additionalKwargs,

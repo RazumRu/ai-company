@@ -116,6 +116,10 @@ export const AIMessageSchema = z.object({
   role: z.literal('ai').describe('Message role'),
   content: z.string().describe('Message content'),
   id: z.string().optional().describe('Message ID'),
+  rawContent: z
+    .unknown()
+    .optional()
+    .describe('Original raw content as received from the provider'),
   toolCalls: z
     .array(ToolCallSchema)
     .optional()

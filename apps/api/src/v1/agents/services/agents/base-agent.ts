@@ -103,6 +103,7 @@ export abstract class BaseAgent<
       model,
       apiKey: environment.litellmMasterKey,
       configuration: { baseURL: environment.llmBaseUrl },
+      useResponsesApi: true,
     });
 
     return llm;

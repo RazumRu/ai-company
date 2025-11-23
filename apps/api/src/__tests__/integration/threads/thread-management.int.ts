@@ -1910,12 +1910,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Extract user messages
         const thread1UserMsg = messages1.find(
-          (m: { message: { role: string; content: string | unknown[] } }) =>
-            m.message.role === 'human',
+          (m) => m.message.role === 'human',
         );
         const thread2UserMsg = messages2.find(
-          (m: { message: { role: string; content: string | unknown[] } }) =>
-            m.message.role === 'human',
+          (m) => m.message.role === 'human',
         );
 
         expect(thread1UserMsg).toBeDefined();

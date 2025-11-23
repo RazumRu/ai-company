@@ -2,7 +2,6 @@
   "upgrade": true,
   "workspaces": true,
   "root": true,
-  "peer": true,
-  "dep": "prod,dev,peer,optional",
+  "dep": "prod,dev,optional",
   "packageManager": "pnpm"
 }
