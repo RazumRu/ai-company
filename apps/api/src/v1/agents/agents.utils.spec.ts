@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildReasoningMessage,
   extractTextFromResponseContent,
   filterMessagesForLlm,
   markMessageHideForLlm,
@@ -195,6 +196,17 @@ describe('agents.utils', () => {
 
       expect(filtered).toHaveLength(1);
       expect(filtered[0]?.content).toBe('User message');
+    });
+  });
+
+  describe('buildReasoningMessage', () => {
+    it('should prefix id with reasoning namespace when parent id provided', () => {
+      const msg = buildReasoningMessage('reasoning text', 'parent-123');
+
+      expect(msg.role).toBe('reasoning');
+      expect(msg.id).toBe('reasoning:parent-123');
+      expect(msg.additional_kwargs?.hideForLlm).toBe(true);
+      expect(msg.additional_kwargs?.reasoningId).toBe('reasoning:parent-123');
     });
   });
 });

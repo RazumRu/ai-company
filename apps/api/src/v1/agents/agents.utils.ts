@@ -1,4 +1,9 @@
-import type { ContentBlock } from '@langchain/core/messages';
+import {
+  AIMessage,
+  AIMessageChunk,
+  ChatMessage,
+  ContentBlock,
+} from '@langchain/core/messages';
 import { BaseMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 
@@ -71,7 +76,7 @@ export function updateMessagesListWithMetadata(
   return messages.map((msg) => updateMessageWithMetadata(msg, runnableConfig));
 }
 
-export function markMessageHideForLlm(message: BaseMessage): BaseMessage {
+export function markMessageHideForLlm<T extends BaseMessage>(message: T): T {
   const clone = Object.assign(
     Object.create(Object.getPrototypeOf(message)),
     message,
@@ -88,4 +93,34 @@ export function markMessageHideForLlm(message: BaseMessage): BaseMessage {
 
 export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
   return messages.filter((msg) => !msg.additional_kwargs?.hideForLlm);
+}
+
+export function convertChunkToMessage(chunk: AIMessageChunk): AIMessage {
+  return new AIMessage({
+    id: chunk.id,
+    name: chunk.name,
+    content: chunk.content,
+    contentBlocks: chunk.contentBlocks,
+    response_metadata: chunk.response_metadata ?? {},
+    tool_calls: chunk.tool_calls ?? [],
+    invalid_tool_calls: chunk.invalid_tool_calls,
+    usage_metadata: chunk.usage_metadata,
+  });
+}
+
+export function buildReasoningMessage(
+  content: string,
+  parentMessageId?: string,
+): ChatMessage {
+  const msg = new ChatMessage(content, 'reasoning');
+  if (parentMessageId) {
+    const reasoningId = `reasoning:${parentMessageId}`;
+    msg.id = reasoningId;
+    msg.additional_kwargs = {
+      ...(msg.additional_kwargs ?? {}),
+      reasoningId,
+    };
+  }
+
+  return markMessageHideForLlm(msg);
 }

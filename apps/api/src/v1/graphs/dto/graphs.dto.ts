@@ -132,6 +132,7 @@ export const AIMessageSchema = z.object({
 
 // Reasoning message schema
 export const ReasoningMessageSchema = z.object({
+  id: z.string().optional().describe('Message ID'),
   role: z.literal('reasoning').describe('Message role'),
   content: z.string().describe('Reasoning trace emitted by the model'),
   additionalKwargs: z

@@ -10,11 +10,11 @@ import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
+  buildReasoningMessage,
+  convertChunkToMessage,
   filterMessagesForLlm,
-  markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
-import { ReasoningMessage } from '../../messages/reasoning-message';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 type InvokeLlmNodeOpts = {
@@ -67,8 +67,9 @@ export class InvokeLlmNode extends BaseNode<
     );
 
     const res = await runner.invoke(messages);
+    const preparedRes = convertChunkToMessage(res);
     const out: BaseMessage[] = updateMessagesListWithMetadata(
-      Array.isArray(res) ? res : [res as BaseMessage],
+      [preparedRes],
       cfg,
     );
 
@@ -76,9 +77,7 @@ export class InvokeLlmNode extends BaseNode<
       res.contentBlocks
         .filter((m) => m.type === 'reasoning' && m.reasoning !== '')
         .map((block) => {
-          return markMessageHideForLlm(
-            new ReasoningMessage(String(block.reasoning)),
-          );
+          return buildReasoningMessage(String(block.reasoning), res.id);
         }),
       cfg,
     );

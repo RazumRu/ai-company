@@ -1,5 +1,6 @@
 import {
   AIMessage,
+  AIMessageChunk,
   BaseMessage,
   SystemMessage,
 } from '@langchain/core/messages';
@@ -27,11 +28,12 @@ import {
   ReasoningEffort,
 } from '../../agents.types';
 import {
+  buildReasoningMessage,
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { RegisterAgent } from '../../decorators/register-agent.decorator';
-import { GraphThreadState, IGraphThreadStateData } from '../graph-thread-state';
+import { GraphThreadState } from '../graph-thread-state';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InjectPendingNode } from '../nodes/inject-pending-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
@@ -283,10 +285,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         )
           .addConditionalEdges(
             'invoke_llm',
-            (s) =>
-              ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ?? 0) > 0
+            (s) => {
+              return ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ??
+                0) > 0
                 ? 'tools'
-                : 'tool_usage_guard',
+                : 'tool_usage_guard';
+            },
             { tools: 'tools', tool_usage_guard: 'tool_usage_guard' },
           )
           .addConditionalEdges(
@@ -513,24 +517,57 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     });
   }
 
-  private readonly handleThreadStateChange = (
-    threadId: string,
-    nextState: IGraphThreadStateData,
-    prevState?: IGraphThreadStateData,
-  ) => {
-    if (!threadId) {
+  private handleReasoningChunk(threadId: string, messageChunk: AIMessageChunk) {
+    if (!this.graphThreadState) {
       return;
     }
 
-    const prevPending = prevState?.pendingMessages ?? [];
-    const nextPending = nextState.pendingMessages;
-    const pendingLengthChanged = prevPending.length !== nextPending.length;
-    const pendingContentChanged =
-      !pendingLengthChanged &&
-      prevPending.some((message, index) => message !== nextPending[index]);
-    const modeChanged = prevState?.newMessageMode !== nextState.newMessageMode;
+    const reasoningText = this.extractReasoningFromChunk(messageChunk);
+    const reasoningId = messageChunk.id
+      ? `reasoning:${messageChunk.id}`
+      : undefined;
 
-    if (!pendingLengthChanged && !pendingContentChanged && !modeChanged) {
+    if (!reasoningText || !reasoningId) {
+      return;
+    }
+
+    const { reasoningChunks } = this.graphThreadState.getByThread(threadId);
+    const nextReasoningChunks = reasoningChunks;
+    const currentReasoningMessage = nextReasoningChunks.get(reasoningId);
+
+    if (currentReasoningMessage) {
+      currentReasoningMessage.content =
+        (currentReasoningMessage.content || '') + reasoningText;
+    } else {
+      nextReasoningChunks.set(
+        reasoningId,
+        buildReasoningMessage(reasoningText, messageChunk.id),
+      );
+    }
+
+    this.graphThreadState.applyForThread(threadId, {
+      reasoningChunks: nextReasoningChunks,
+    });
+  }
+
+  private clearReasoningState(threadId: string) {
+    if (!this.graphThreadState) {
+      return;
+    }
+
+    const { reasoningChunks } = this.graphThreadState.getByThread(threadId);
+
+    if (!reasoningChunks.size) {
+      return;
+    }
+
+    this.graphThreadState.applyForThread(threadId, {
+      reasoningChunks: new Map(),
+    });
+  }
+
+  private readonly handleThreadStateChange = (threadId: string) => {
+    if (!threadId) {
       return;
     }
 
@@ -560,6 +597,17 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         createdAt:
           msg.additional_kwargs?.created_at || new Date().toISOString(),
       })),
+      reasoningChunks: Array.from(threadState.reasoningChunks.entries()).reduce(
+        (res, [id, msg]) => {
+          res[id] = {
+            content: msg.content,
+            id: msg.id,
+            role: msg.role,
+          };
+          return res;
+        },
+        {} as Record<string, unknown>,
+      ),
     };
   }
 
@@ -589,6 +637,29 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       checkpointNs: activeRun.runnableConfig?.configurable?.checkpoint_ns,
       needsMoreInfo: activeRun.lastState.needsMoreInfo,
     };
+  }
+
+  private extractReasoningFromChunk(chunk: AIMessageChunk): string | null {
+    const blocks =
+      chunk?.contentBlocks ?? chunk?.response_metadata?.output ?? [];
+
+    if (!Array.isArray(blocks)) {
+      return null;
+    }
+
+    const reasoningBlocks = blocks.filter(
+      (b) =>
+        b &&
+        b.type === 'reasoning' &&
+        typeof b.reasoning === 'string' &&
+        b.reasoning.length > 0,
+    );
+
+    if (!reasoningBlocks.length) {
+      return null;
+    }
+
+    return reasoningBlocks.map((b) => b.reasoning).join('\n');
   }
 
   public async run(
@@ -661,8 +732,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       lastState: finalState,
     });
 
-    // Use stream instead of invoke to capture messages
-    // Reset flags from previous run to ensure fresh execution
     const stream = await g.stream(
       {
         messages: {
@@ -676,50 +745,66 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       } satisfies BaseAgentStateChange,
       {
         ...mergedConfig,
-        streamMode: 'updates',
+        streamMode: ['updates', 'messages'],
         signal: abortController.signal,
       },
     );
 
     try {
-      // Process stream chunks and emit message notifications
-      for await (const chunk of stream) {
-        // chunk is a record of node outputs: { [nodeName]: nodeState }
-        for (const [_nodeName, nodeState] of Object.entries(chunk)) {
-          // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
-          const stateChange = nodeState as BaseAgentStateChange;
-          if (!stateChange || typeof stateChange !== 'object') continue;
+      for await (const event of stream) {
+        const [mode, value] = event as ['updates' | 'messages', unknown];
 
-          const beforeLen = finalState.messages.length;
-          const prevState = { ...finalState };
+        if (mode === 'updates') {
+          const chunk = value as Record<string, BaseAgentStateChange>;
 
-          // Convert state change to final state for tracking
-          finalState = this.applyChange(finalState, stateChange);
+          for (const [_nodeName, nodeState] of Object.entries(chunk)) {
+            // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
+            const stateChange = nodeState as BaseAgentStateChange;
+            if (!stateChange || typeof stateChange !== 'object') continue;
 
-          // Persist latest state for potential stop handling
-          const runRef = this.activeRuns.get(runId);
-          if (runRef) {
-            runRef.lastState = finalState;
+            const beforeLen = finalState.messages.length;
+            const prevState = { ...finalState };
+
+            // Convert state change to final state for tracking
+            finalState = this.applyChange(finalState, stateChange);
+
+            // Persist latest state for potential stop handling
+            const runRef = this.activeRuns.get(runId);
+            if (runRef) {
+              runRef.lastState = finalState;
+            }
+
+            // Emit notification for new messages
+            await this.emitNewMessages(
+              finalState.messages.slice(beforeLen),
+              mergedConfig,
+              threadId,
+            );
+
+            // Emit state update notification (only changed fields)
+            await this.emitStateUpdate(
+              prevState,
+              finalState,
+              mergedConfig,
+              threadId,
+            );
+
+            if (_nodeName === 'invoke_llm') {
+              this.clearReasoningState(threadId);
+            }
           }
+        } else if (mode === 'messages') {
+          const [messageChunk, metadata] = value as [
+            AIMessageChunk,
+            Record<string, unknown>,
+          ];
 
-          // Emit notification for new messages
-          await this.emitNewMessages(
-            finalState.messages.slice(beforeLen),
-            mergedConfig,
-            threadId,
-          );
-
-          // Emit state update notification (only changed fields)
-          await this.emitStateUpdate(
-            prevState,
-            finalState,
-            mergedConfig,
-            threadId,
-          );
+          if (metadata.langgraph_node === 'invoke_llm') {
+            this.handleReasoningChunk(threadId, messageChunk);
+          }
         }
       }
     } catch (err) {
-      // Swallow abort-related errors to allow graceful stop
       const name = (err as unknown as { name?: string })?.name;
       const msg = (err as unknown as { message?: string })?.message || '';
       const aborted = abortController.signal.aborted;
@@ -730,7 +815,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         const error = err as Error;
         this.activeRuns.delete(runId);
 
-        // Emit run event with error
         this.emit({
           type: 'run',
           data: { threadId, messages, config: mergedConfig, error },
@@ -740,6 +824,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       }
     } finally {
       this.activeRuns.delete(runId);
+      this.clearReasoningState(threadId);
     }
 
     const result = {

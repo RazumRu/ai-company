@@ -1,13 +1,14 @@
-import { HumanMessage } from '@langchain/core/messages';
+import { type AIMessageChunk, HumanMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { ChatOpenAI } from '@langchain/openai';
 import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerModule } from '@packages/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { NewMessageMode, ReasoningEffort } from '../../agents.types';
+import { buildReasoningMessage } from '../../agents.utils';
 import { GraphThreadState, IGraphThreadStateData } from '../graph-thread-state';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
@@ -81,6 +82,9 @@ describe('SimpleAgent', () => {
       );
     }
   };
+
+  const waitForMicrotasks = () =>
+    new Promise((resolve) => setTimeout(resolve, 0));
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -306,14 +310,17 @@ describe('SimpleAgent', () => {
 
       // Mock async generator for stream
       async function* mockStream() {
-        yield {
-          'agent-1': {
-            messages: {
-              mode: 'append',
-              items: mockMessages,
+        yield [
+          'updates',
+          {
+            'agent-1': {
+              messages: {
+                mode: 'append',
+                items: mockMessages,
+              },
             },
           },
-        };
+        ] as const;
       }
 
       // Mock the graph compilation and execution
@@ -361,7 +368,7 @@ describe('SimpleAgent', () => {
       });
       expect(typeof runnable.configurable.run_id).toBe('string');
       expect(runnable.recursionLimit).toBe(config.maxIterations);
-      expect(runnable.streamMode).toBe('updates');
+      expect(runnable.streamMode).toEqual(['updates', 'messages']);
       expect(runnable.signal).toBeInstanceOf(AbortSignal);
       expect(result).toEqual({
         messages: mockMessages,
@@ -373,14 +380,17 @@ describe('SimpleAgent', () => {
 
     it('should handle custom runnable config', async () => {
       async function* mockStream() {
-        yield {
-          node1: {
-            messages: {
-              mode: 'append',
-              items: [],
+        yield [
+          'updates',
+          {
+            node1: {
+              messages: {
+                mode: 'append',
+                items: [],
+              },
             },
           },
-        };
+        ] as const;
       }
 
       const mockGraph = {
@@ -422,7 +432,10 @@ describe('SimpleAgent', () => {
       const mockError = new Error('Graph execution failed');
 
       async function* mockStream() {
-        yield { 'agent-1': { messages: { mode: 'append', items: [] } } };
+        yield [
+          'updates',
+          { 'agent-1': { messages: { mode: 'append', items: [] } } },
+        ] as const;
         throw mockError;
       }
 
@@ -637,11 +650,14 @@ describe('SimpleAgent', () => {
       } as unknown as { stream: any };
 
       async function* mockStream() {
-        yield {
-          node1: {
-            messages: { mode: 'append', items: [] },
+        yield [
+          'updates',
+          {
+            node1: {
+              messages: { mode: 'append', items: [] },
+            },
           },
-        };
+        ] as const;
         await new Promise((resolve) => setTimeout(resolve, 50));
         // Simulate abort error
         const error = new Error('The operation was aborted');
@@ -766,7 +782,7 @@ describe('SimpleAgent', () => {
       setGraphThreadState(threadState);
 
       const metadata = agent.getGraphNodeMetadata({ threadId: 'thread-1' });
-      expect(metadata).toEqual({ pendingMessages: [] });
+      expect(metadata).toEqual({ pendingMessages: [], reasoningChunks: {} });
     });
 
     it('should return pending messages for a thread', () => {
@@ -787,7 +803,168 @@ describe('SimpleAgent', () => {
             createdAt: expect.any(String),
           },
         ],
+        reasoningChunks: {},
       });
+    });
+  });
+
+  describe('reasoning metadata handling', () => {
+    const threadId = 'thread-reasoning';
+    const runId = 'run-reasoning';
+
+    const buildLastState = () => ({
+      messages: [],
+      summary: '',
+      done: false,
+      needsMoreInfo: false,
+      toolUsageGuardActivated: false,
+      toolUsageGuardActivatedCount: 0,
+      generatedTitle: undefined,
+    });
+
+    const registerActiveRun = () => {
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig: {
+          configurable: { run_id: runId, graph_id: 'graph-1' },
+        } as RunnableConfig<BaseAgentConfigurable>,
+        threadId,
+        lastState: buildLastState(),
+      });
+    };
+
+    afterEach(() => {
+      agent['activeRuns'].clear();
+    });
+
+    it('should emit node metadata updates when reasoning chunks change', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+      registerActiveRun();
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      const reasoningMessage = buildReasoningMessage(
+        'planning step',
+        'message-1',
+      );
+
+      if (!reasoningMessage.id) {
+        throw new Error('Reasoning message id missing');
+      }
+
+      graphThreadState.applyForThread(threadId, {
+        reasoningChunks: new Map([[reasoningMessage.id, reasoningMessage]]),
+      });
+
+      await waitForMicrotasks();
+
+      const metadataEvent = events
+        .filter(
+          (
+            event,
+          ): event is Extract<
+            AgentEventType,
+            { type: 'nodeAdditionalMetadataUpdate' }
+          > => event.type === 'nodeAdditionalMetadataUpdate',
+        )
+        .at(-1);
+
+      expect(metadataEvent).toBeDefined();
+      expect(metadataEvent?.data.additionalMetadata?.reasoningChunks).toEqual(
+        expect.objectContaining({
+          [reasoningMessage.id]: expect.objectContaining({
+            id: reasoningMessage.id,
+            content: reasoningMessage.content,
+          }),
+        }),
+      );
+
+      unsubscribe();
+    });
+
+    it('should clear reasoning state and notify subscribers', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+      registerActiveRun();
+
+      const reasoningMessage = buildReasoningMessage(
+        'cleanup step',
+        'message-2',
+      );
+
+      if (!reasoningMessage.id) {
+        throw new Error('Reasoning message id missing');
+      }
+
+      graphThreadState.applyForThread(threadId, {
+        reasoningChunks: new Map([[reasoningMessage.id, reasoningMessage]]),
+      });
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      events.length = 0;
+
+      (agent as any).clearReasoningState(threadId);
+
+      await waitForMicrotasks();
+
+      const state = graphThreadState.getByThread(threadId);
+      expect(state.reasoningChunks.size).toBe(0);
+
+      const metadataEvent = events
+        .filter(
+          (
+            event,
+          ): event is Extract<
+            AgentEventType,
+            { type: 'nodeAdditionalMetadataUpdate' }
+          > => event.type === 'nodeAdditionalMetadataUpdate',
+        )
+        .at(-1);
+
+      expect(metadataEvent).toBeDefined();
+      expect(metadataEvent?.data.additionalMetadata?.reasoningChunks).toEqual(
+        {},
+      );
+
+      unsubscribe();
+    });
+
+    it('should align reasoning message ids between notifications and message stream', () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const reasoningChunk = {
+        id: 'chunk-123',
+        contentBlocks: [
+          {
+            type: 'reasoning',
+            reasoning: 'step 1',
+          },
+        ],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, reasoningChunk);
+
+      const metadata = agent.getGraphNodeMetadata({ threadId });
+      const reasoningMetadata = metadata?.reasoningChunks as
+        | Record<string, { id: string }>
+        | undefined;
+
+      const metadataEntry = reasoningMetadata?.['reasoning:chunk-123'];
+      expect(metadataEntry).toBeDefined();
+
+      const reasoningMessage = buildReasoningMessage('step 1', 'chunk-123');
+      expect(metadataEntry?.id).toBe(reasoningMessage.id);
+      expect(reasoningMessage.id).toBe('reasoning:chunk-123');
     });
   });
 
@@ -815,7 +992,7 @@ describe('SimpleAgent', () => {
           type: 'nodeAdditionalMetadataUpdate',
           data: {
             metadata: { threadId: 'thread-1' },
-            additionalMetadata: { pendingMessages: [] },
+            additionalMetadata: { pendingMessages: [], reasoningChunks: {} },
           },
         }),
       );

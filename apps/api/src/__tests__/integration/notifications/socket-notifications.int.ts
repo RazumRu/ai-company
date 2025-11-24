@@ -1,22 +1,42 @@
+import { AIMessageChunk } from '@langchain/core/messages';
 import { INestApplication } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { BaseException } from '@packages/common';
 import { io, Socket } from 'socket.io-client';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
+import { buildReasoningMessage } from '../../../v1/agents/agents.utils';
+import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
+import { GraphThreadState } from '../../../v1/agents/services/graph-thread-state';
 import {
   GraphNodeSchemaType,
   GraphNodeStatus,
   GraphSchemaType,
 } from '../../../v1/graphs/graphs.types';
+import { MessageTransformerService } from '../../../v1/graphs/services/message-transformer.service';
+import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { IEnrichedNotification } from '../../../v1/notification-handlers/notification-handlers.types';
 import {
   IAgentStateUpdateData,
   IGraphNodeUpdateData,
+  Notification,
+  NotificationEvent,
 } from '../../../v1/notifications/notifications.types';
+import { NotificationsService } from '../../../v1/notifications/services/notifications.service';
+import { ReasoningMessageDto } from '../../../v1/graphs/dto/graphs.dto';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadEntity } from '../../../v1/threads/entity/thread.entity';
+import { ThreadsService } from '../../../v1/threads/services/threads.service';
+import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import {
   createMockGraphData,
   waitForCondition,
@@ -32,6 +52,11 @@ type StateUpdateNotification = IEnrichedNotification<IAgentStateUpdateData>;
 describe('Socket Notifications Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
+  let graphRegistry: GraphRegistry;
+  let notificationsService: NotificationsService;
+  let threadsService: ThreadsService;
+  let messagesDao: MessagesDao;
+  let messageTransformer: MessageTransformerService;
   let socket: Socket;
   let ioAdapter: IoAdapter;
   let baseUrl: string;
@@ -46,6 +71,13 @@ describe('Socket Notifications Integration Tests', () => {
     await app.listen(5050, '127.0.0.1');
 
     graphsService = app.get<GraphsService>(GraphsService);
+    graphRegistry = app.get<GraphRegistry>(GraphRegistry);
+    notificationsService = app.get<NotificationsService>(NotificationsService);
+    threadsService = app.get<ThreadsService>(ThreadsService);
+    messagesDao = app.get<MessagesDao>(MessagesDao);
+    messageTransformer = app.get<MessageTransformerService>(
+      MessageTransformerService,
+    );
     baseUrl = 'http://localhost:5050';
   });
 
@@ -245,6 +277,7 @@ describe('Socket Notifications Integration Tests', () => {
 
         // Subscribe to graph
         socket.emit('subscribe_graph', { graphId });
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
         const receivedMessages: unknown[] = [];
 
@@ -1025,6 +1058,239 @@ describe('Socket Notifications Integration Tests', () => {
         });
 
         expect(hasClearingSequence).toBe(true);
+      },
+    );
+  });
+
+  describe('Reasoning Metadata Notifications', () => {
+    it(
+      'should emit reasoning metadata updates and clear them when reasoning state resets',
+      { timeout: 90000 },
+      async () => {
+        const graphData = createMockGraphData();
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        await graphsService.run(graphId);
+
+        const triggerResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Start reasoning metadata test'],
+            threadSubId: 'reasoning-metadata-thread',
+            async: true,
+          },
+        );
+
+        const threadId = triggerResult.externalThreadId;
+        expect(threadId).toBeDefined();
+
+        const persistedThread = await waitForCondition(
+          () =>
+            threadsService
+              .getThreadByExternalId(threadId)
+              .catch(() => undefined),
+          (thread): thread is { id: string } => !!thread,
+          { timeout: 60000, interval: 250 },
+        );
+
+        await waitForCondition(
+          () =>
+            graphsService.getCompiledNodes(graphId, {
+              threadId,
+            }),
+          (snapshots) =>
+            snapshots.some(
+              (node) =>
+                node.id === 'agent-1' &&
+                node.status === GraphNodeStatus.Running,
+            ),
+          { timeout: 120_000, interval: 1_000 },
+        );
+
+        const agentNode = graphRegistry.getNode<SimpleAgent>(
+          graphId,
+          'agent-1',
+        );
+        if (!agentNode) {
+          throw new Error('Agent node agent-1 not found');
+        }
+
+        const agentInstance = agentNode.instance;
+        const agentInternals = agentInstance as unknown as {
+          handleReasoningChunk?: (tid: string, chunk: AIMessageChunk) => void;
+          clearReasoningState?: (tid: string) => void;
+          graphThreadState?: GraphThreadState;
+        };
+
+        const graphThreadStateMaybe = await waitForCondition(
+          () => Promise.resolve(agentInternals.graphThreadState),
+          (state) => !!state,
+          { timeout: 10000, interval: 100 },
+        );
+        const graphThreadState = graphThreadStateMaybe!;
+
+        const handleReasoningChunk =
+          agentInternals.handleReasoningChunk?.bind(agentInstance);
+
+        if (!handleReasoningChunk) {
+          throw new Error('handleReasoningChunk is not available on agent');
+        }
+
+        const reasoningChunk = {
+          id: 'chunk-integration',
+          content: '',
+          contentBlocks: [
+            {
+              type: 'reasoning' as const,
+              reasoning: 'integration reasoning step',
+            },
+          ],
+          response_metadata: {},
+        } as AIMessageChunk;
+
+        const emitSpy = vi.spyOn(notificationsService, 'emit');
+        let processedCallIndex = 0;
+        const waitForNotification = async (
+          predicate: (event: Notification) => boolean,
+        ): Promise<Notification> => {
+          const timeoutAt = Date.now() + 10000;
+          while (Date.now() < timeoutAt) {
+            for (
+              let i = processedCallIndex;
+              i < emitSpy.mock.calls.length;
+              i++
+            ) {
+              const [event] = emitSpy.mock.calls[i] as [Notification];
+              if (predicate(event)) {
+                processedCallIndex = i + 1;
+                return event;
+              }
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error('Timeout waiting for notification');
+        };
+
+        try {
+          handleReasoningChunk(threadId, reasoningChunk);
+
+          const reasoningNotification = await waitForNotification(
+            (event) =>
+              event.type === NotificationEvent.GraphNodeUpdate &&
+              event.graphId === graphId &&
+              event.nodeId === 'agent-1' &&
+              !!(
+                event.data as {
+                  additionalNodeMetadata?: Record<string, { id: string }>;
+                }
+              )?.additionalNodeMetadata?.reasoningChunks,
+          );
+
+          const reasoningMetadata =
+            (
+              reasoningNotification.data as {
+                additionalNodeMetadata?: {
+                  reasoningChunks?: Record<
+                    string,
+                    { id: string; content: string }
+                  >;
+                };
+              }
+            )?.additionalNodeMetadata ?? {};
+
+          const reasoningChunks =
+            reasoningMetadata.reasoningChunks ??
+            ({} as Record<string, { id: string; content: string }>);
+          const reasoningEntry = reasoningChunks['reasoning:chunk-integration'];
+          expect(reasoningEntry).toBeDefined();
+          expect(reasoningEntry?.id).toBe('reasoning:chunk-integration');
+          expect(reasoningEntry?.content).toBe('integration reasoning step');
+
+          const stateEntry = graphThreadState
+            .getByThread(threadId)
+            .reasoningChunks.get('reasoning:chunk-integration');
+          expect(stateEntry?.id).toBe('reasoning:chunk-integration');
+
+          const clearReasoningState =
+            agentInternals.clearReasoningState?.bind(agentInstance);
+
+          if (!clearReasoningState) {
+            throw new Error('clearReasoningState is not available on agent');
+          }
+
+          clearReasoningState(threadId);
+
+          const clearedNotification = await waitForNotification((event) => {
+            if (
+              event.type !== NotificationEvent.GraphNodeUpdate ||
+              event.graphId !== graphId ||
+              event.nodeId !== 'agent-1'
+            ) {
+              return false;
+            }
+
+            const metadata = (
+              event.data as {
+                additionalNodeMetadata?: Record<string, { id: string }>;
+              }
+            )?.additionalNodeMetadata;
+
+            return (
+              !!metadata &&
+              (!metadata.reasoningChunks ||
+                Object.keys(metadata.reasoningChunks).length === 0)
+            );
+          });
+
+          const clearedMetadata =
+            (
+              clearedNotification.data as {
+                additionalNodeMetadata?: {
+                  reasoningChunks?: Record<
+                    string,
+                    { id: string; content: string }
+                  >;
+                };
+              }
+            )?.additionalNodeMetadata ?? {};
+
+          expect(clearedMetadata.reasoningChunks).toEqual({});
+
+          const finalStateCount =
+            graphThreadState.getByThread(threadId).reasoningChunks.size;
+          expect(finalStateCount).toBe(0);
+
+          const reasoningMessageDto =
+            messageTransformer.transformMessageToDto(
+              buildReasoningMessage('integration reasoning step', 'chunk-integration'),
+            );
+
+          await messagesDao.create({
+            threadId: persistedThread.id,
+            externalThreadId: threadId,
+            nodeId: 'agent-1',
+            message: reasoningMessageDto,
+          });
+
+          const storedMessages = await threadsService.getThreadMessages(
+            persistedThread.id,
+          );
+
+          const storedReasoning = storedMessages.find(
+            (msg) =>
+              msg.message.role === 'reasoning' &&
+              (msg.message as ReasoningMessageDto).id ===
+                'reasoning:chunk-integration',
+          ) as ThreadMessageDto & { message: ReasoningMessageDto } | undefined;
+
+          expect(storedReasoning).toBeDefined();
+          expect(storedReasoning?.message.id).toBe('reasoning:chunk-integration');
+        } finally {
+          emitSpy.mockRestore();
+        }
       },
     );
   });

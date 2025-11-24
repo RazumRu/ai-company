@@ -1,10 +1,11 @@
-import { BaseMessage } from '@langchain/core/messages';
+import { BaseMessage, ChatMessage } from '@langchain/core/messages';
 
 import { NewMessageMode } from '../agents.types';
 
 export interface IGraphThreadStateData {
   pendingMessages: BaseMessage[];
   newMessageMode: NewMessageMode;
+  reasoningChunks: Map<string, ChatMessage>;
 }
 
 type GraphThreadStateSubscriber = (
@@ -21,11 +22,31 @@ export class GraphThreadState {
     return {
       pendingMessages: [],
       newMessageMode: NewMessageMode.InjectAfterToolCall,
+      reasoningChunks: new Map(),
+    };
+  }
+
+  private cloneState(state: IGraphThreadStateData): IGraphThreadStateData {
+    const reasoningChunksCopy = new Map<string, ChatMessage>();
+
+    for (const [key, value] of state.reasoningChunks) {
+      const msgClone = Object.assign(
+        Object.create(Object.getPrototypeOf(value)),
+        value,
+      );
+      reasoningChunksCopy.set(key, msgClone);
+    }
+
+    return {
+      pendingMessages: [...state.pendingMessages],
+      newMessageMode: state.newMessageMode,
+      reasoningChunks: reasoningChunksCopy,
     };
   }
 
   public getByThread(threadId: string): IGraphThreadStateData {
-    return this.stateByThread.get(threadId) || this.getDefaultState();
+    const state = this.stateByThread.get(threadId) ?? this.getDefaultState();
+    return this.cloneState(state);
   }
 
   public subscribe(subscriber: GraphThreadStateSubscriber): () => void {
@@ -37,18 +58,40 @@ export class GraphThreadState {
 
   public applyForThread(
     threadId: string,
-    state: Partial<IGraphThreadStateData>,
+    patch: Partial<IGraphThreadStateData>,
   ): IGraphThreadStateData {
-    const prevState = this.stateByThread.get(threadId);
-    const newState = {
-      ...this.getByThread(threadId),
-      ...state,
+    const prevState =
+      this.stateByThread.get(threadId) ?? this.getDefaultState();
+
+    const nextState: IGraphThreadStateData = {
+      pendingMessages: patch.pendingMessages ?? prevState.pendingMessages,
+      newMessageMode: patch.newMessageMode ?? prevState.newMessageMode,
+      reasoningChunks: patch.reasoningChunks ?? prevState.reasoningChunks,
     };
-    this.stateByThread.set(threadId, newState);
 
-    this.notifySubscribers(threadId, newState, prevState);
+    if (!this.hasStateChanged(prevState, nextState)) {
+      return prevState;
+    }
 
-    return newState;
+    this.stateByThread.set(threadId, nextState);
+
+    const safePrev = this.cloneState(prevState);
+    const safeNext = this.cloneState(nextState);
+
+    this.notifySubscribers(threadId, safeNext, safePrev);
+
+    return nextState;
+  }
+
+  private hasStateChanged(
+    prev: IGraphThreadStateData,
+    next: IGraphThreadStateData,
+  ): boolean {
+    return (
+      prev.newMessageMode !== next.newMessageMode ||
+      prev.pendingMessages !== next.pendingMessages ||
+      prev.reasoningChunks !== next.reasoningChunks
+    );
   }
 
   private notifySubscribers(
@@ -60,7 +103,7 @@ export class GraphThreadState {
       try {
         subscriber(threadId, nextState, prevState);
       } catch {
-        // Ignore subscriber errors to avoid breaking state updates
+        //
       }
     }
   }

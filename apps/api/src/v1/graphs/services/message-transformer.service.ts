@@ -1,15 +1,13 @@
 import {
   AIMessage,
   BaseMessage,
-  HumanMessage,
-  SystemMessage,
+  ChatMessage,
   ToolMessage,
 } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
 import { isObject, isString } from 'lodash';
 
 import { extractTextFromResponseContent } from '../../agents/agents.utils';
-import { ReasoningMessage } from '../../agents/messages/reasoning-message';
 import { MessageDto } from '../dto/graphs.dto';
 
 /**
@@ -53,76 +51,100 @@ export class MessageTransformerService {
    */
   transformMessageToDto(msg: BaseMessage | SerializedMessage): MessageDto {
     // Handle serialized LangChain messages (with lc, type, id, kwargs structure)
-    if (this.isSerializedMessage(msg)) {
-      return this.transformSerializedMessage(msg as SerializedMessage);
-    }
+    const isInstance = !this.isSerializedMessage(msg);
+    const messageType = isInstance
+      ? (msg as BaseMessage).constructor.name
+      : msg.id[2];
+    const msgBody = isInstance ? msg : msg.kwargs;
+    const rawAdditionalKwargs = (msgBody as {
+      additional_kwargs?: Record<string, unknown>;
+    }).additional_kwargs;
+    const additionalKwargs =
+      this.normalizeAdditionalKwargs(rawAdditionalKwargs);
+    const contentStr = this.normalizeContent(msgBody.content);
 
-    // Handle actual LangChain message instances
-    const additionalKwargs = this.normalizeAdditionalKwargs(
-      msg.additional_kwargs,
-    );
-    const contentStr = this.normalizeContent(msg.content);
+    switch (messageType) {
+      case 'HumanMessage':
+        return { role: 'human', content: contentStr, additionalKwargs };
 
-    if (msg instanceof HumanMessage) {
-      return { role: 'human', content: contentStr, additionalKwargs };
-    }
+      case 'SystemMessage':
+        return { role: 'system', content: contentStr, additionalKwargs };
 
-    if (msg instanceof SystemMessage) {
-      return { role: 'system', content: contentStr, additionalKwargs };
-    }
+      case 'ChatMessage': {
+        const m = <ChatMessage>(<unknown>msgBody);
+        const reasoningId =
+          (m.id as string | undefined) ||
+          ((rawAdditionalKwargs?.reasoningId as string) || undefined);
 
-    if (msg instanceof ReasoningMessage) {
-      return {
-        role: 'reasoning',
-        content: contentStr,
-        additionalKwargs,
-      };
-    }
+        if (m.role === 'reasoning') {
+          return {
+            id: reasoningId,
+            role: 'reasoning',
+            content: contentStr,
+            additionalKwargs,
+          };
+        }
 
-    if (msg instanceof AIMessage) {
-      const toolCalls = this.mapToolCalls(msg.tool_calls || []);
-      return {
-        role: 'ai',
-        content: contentStr,
-        rawContent: msg.content,
-        id: msg.id,
-        toolCalls: toolCalls.length ? toolCalls : undefined,
-        additionalKwargs,
-      };
-    }
-
-    if (msg instanceof ToolMessage) {
-      const toolName = msg.name || 'unknown';
-      const toolCallId = msg.tool_call_id || '';
-      const parsed = this.parseToolContent(msg.content);
-
-      if (toolName === 'shell') {
         return {
-          role: 'tool-shell',
+          role: 'ai',
+          content: contentStr,
+          rawContent: m.content,
+          id: (m.id as string | undefined) || undefined,
+          additionalKwargs,
+        };
+      }
+
+      case 'AIMessageChunk':
+      case 'AIMessage': {
+        const m = <AIMessage>(<unknown>msgBody);
+        const toolCalls = this.mapToolCalls(
+          (m.tool_calls as RawToolCall[]) || [],
+        );
+        return {
+          role: 'ai',
+          content: contentStr,
+          rawContent: m.content,
+          id: m.id as string,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          additionalKwargs,
+        };
+      }
+
+      case 'ToolMessage': {
+        const m = <ToolMessage>(<unknown>msgBody);
+        const toolName = (m.name as string) || 'unknown';
+        const toolCallId = (m.tool_call_id as string) || '';
+        const parsed = this.parseToolContent(m.content);
+
+        if (toolName === 'shell') {
+          return {
+            role: 'tool-shell',
+            name: toolName,
+            content: parsed as {
+              exitCode: number;
+              stdout: string;
+              stderr: string;
+              cmd: string;
+              fail?: boolean;
+            },
+            toolCallId,
+            additionalKwargs,
+          };
+        }
+
+        return {
+          role: 'tool',
           name: toolName,
-          content: parsed as {
-            exitCode: number;
-            stdout: string;
-            stderr: string;
-            cmd: string;
-            fail?: boolean;
-          },
+          content: parsed,
           toolCallId,
           additionalKwargs,
         };
       }
 
-      return {
-        role: 'tool',
-        name: toolName,
-        content: parsed,
-        toolCallId,
-        additionalKwargs,
-      };
+      default:
+        // Fallback for unknown message types - treat as system message
+        return { role: 'system', content: contentStr, additionalKwargs };
     }
-
-    // Fallback for unknown message types - treat as system message
-    return { role: 'system', content: contentStr, additionalKwargs };
   }
 
   private normalizeContent(input: unknown): string {
@@ -223,81 +245,5 @@ export class MessageTransformerService {
       'kwargs' in msg &&
       isObject(msg.kwargs)
     );
-  }
-
-  /**
-   * Transform a serialized LangChain message to MessageDto
-   */
-  private transformSerializedMessage(msg: SerializedMessage): MessageDto {
-    const messageType = msg.id[2]; // e.g., 'ToolMessage', 'AIMessage', etc.
-    const kwargs = msg.kwargs;
-    const additionalKwargs = this.normalizeAdditionalKwargs(
-      kwargs.additional_kwargs,
-    );
-    const contentStr = this.normalizeContent(kwargs.content);
-
-    switch (messageType) {
-      case 'HumanMessage':
-        return { role: 'human', content: contentStr, additionalKwargs };
-
-      case 'SystemMessage':
-        return { role: 'system', content: contentStr, additionalKwargs };
-
-      case 'ReasoningMessage':
-        return {
-          role: 'reasoning',
-          content: contentStr,
-          additionalKwargs,
-        };
-        break;
-
-      case 'AIMessage': {
-        const toolCalls = this.mapToolCalls(
-          (kwargs.tool_calls as RawToolCall[]) || [],
-        );
-        return {
-          role: 'ai',
-          content: contentStr,
-          rawContent: kwargs.content,
-          id: kwargs.id as string,
-          toolCalls: toolCalls.length ? toolCalls : undefined,
-          additionalKwargs,
-        };
-      }
-
-      case 'ToolMessage': {
-        const toolName = (kwargs.name as string) || 'unknown';
-        const toolCallId = (kwargs.tool_call_id as string) || '';
-        const parsed = this.parseToolContent(kwargs.content);
-
-        if (toolName === 'shell') {
-          return {
-            role: 'tool-shell',
-            name: toolName,
-            content: parsed as {
-              exitCode: number;
-              stdout: string;
-              stderr: string;
-              cmd: string;
-              fail?: boolean;
-            },
-            toolCallId,
-            additionalKwargs,
-          };
-        }
-
-        return {
-          role: 'tool',
-          name: toolName,
-          content: parsed,
-          toolCallId,
-          additionalKwargs,
-        };
-      }
-
-      default:
-        // Fallback for unknown message types - treat as system message
-        return { role: 'system', content: contentStr, additionalKwargs };
-    }
   }
 }

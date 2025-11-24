@@ -1,6 +1,5 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException, NotFoundException } from '@packages/common';
-import { NonEmptyObject } from 'type-fest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -1191,12 +1190,12 @@ describe('Thread Management Integration Tests', () => {
           'agent-thinking',
         );
         expect(agentNode).toBeDefined();
-        const agentInstance = agentNode!.instance as SimpleAgent & {
+        const agentInternals = agentNode!.instance as unknown as {
           currentConfig?: Record<string, unknown>;
         };
 
         expect(
-          agentInstance.currentConfig?.['invokeModelReasoningEffort'],
+          agentInternals.currentConfig?.['invokeModelReasoningEffort'],
         ).toBe(ReasoningEffort.High);
       },
     );
@@ -1270,7 +1269,7 @@ describe('Thread Management Integration Tests', () => {
           'agent-wait-mode',
         );
         expect(agentNode).toBeDefined();
-        const agentInstance = agentNode!.instance as SimpleAgent & {
+        const agentInternals = agentNode!.instance as unknown as {
           graphThreadState?: {
             getByThread: (threadId: string) => {
               pendingMessages: unknown[];
@@ -1281,13 +1280,16 @@ describe('Thread Management Integration Tests', () => {
         const pendingState = await waitForCondition(
           () =>
             Promise.resolve(
-              agentInstance.graphThreadState?.getByThread(
+              agentInternals.graphThreadState?.getByThread(
                 runningThread.externalThreadId,
               ),
             ),
           (state) => !!state && state.pendingMessages.length === 1,
           { timeout: 10000 },
         );
+        if (!pendingState) {
+          throw new Error('Pending state not available');
+        }
         expect(pendingState.pendingMessages).toHaveLength(1);
 
         const completedThread = await waitForCondition(
@@ -1301,7 +1303,7 @@ describe('Thread Management Integration Tests', () => {
           { timeout: 60000 },
         );
 
-        const finalState = agentInstance.graphThreadState?.getByThread(
+        const finalState = agentInternals.graphThreadState?.getByThread(
           completedThread.externalThreadId,
         );
         expect(finalState?.pendingMessages ?? []).toHaveLength(0);

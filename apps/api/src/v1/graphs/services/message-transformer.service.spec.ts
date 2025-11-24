@@ -6,7 +6,7 @@ import {
 } from '@langchain/core/messages';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { ReasoningMessage } from '../../agents/messages/reasoning-message';
+import { buildReasoningMessage } from '../../agents/agents.utils';
 import {
   AIMessageDto,
   HumanMessageDto,
@@ -104,14 +104,31 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform reasoning chat message', () => {
-      const msg = new ReasoningMessage('Detailed reasoning steps');
+      const msg = buildReasoningMessage('Detailed reasoning steps');
 
       const result = service.transformMessageToDto(msg);
 
       expect(result).toEqual({
         role: 'reasoning',
         content: 'Detailed reasoning steps',
-        additionalKwargs: undefined,
+        additionalKwargs: { hideForLlm: true },
+      } as ReasoningMessageDto);
+    });
+
+    it('should preserve reasoning id for serialized reasoning message', () => {
+      const msg = buildReasoningMessage('Serialized reasoning', 'parent-42');
+      const serialized = msg.toJSON();
+
+      const result = service.transformMessageToDto(serialized as never);
+
+      expect(result).toEqual({
+        role: 'reasoning',
+        content: 'Serialized reasoning',
+        id: 'reasoning:parent-42',
+        additionalKwargs: {
+          hideForLlm: true,
+          reasoningId: 'reasoning:parent-42',
+        },
       } as ReasoningMessageDto);
     });
 
@@ -283,10 +300,11 @@ describe('MessageTransformerService', () => {
       const result = service.transformMessageToDto(serializedMsg);
 
       expect(result).toEqual({
-        role: 'system',
+        role: 'reasoning',
         content: 'Serialized reasoning trace',
+        id: undefined,
         additionalKwargs: undefined,
-      } as SystemMessageDto);
+      } as ReasoningMessageDto);
     });
 
     it('should handle the exact serialized message format from the user issue', () => {
