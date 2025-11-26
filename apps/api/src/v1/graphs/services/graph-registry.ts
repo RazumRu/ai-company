@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
 
-import { CompiledGraph, CompiledGraphNode } from '../graphs.types';
+import { CompiledGraph, CompiledGraphNode, GraphStatus } from '../graphs.types';
 
 /**
  * GraphRegistry maintains a registry of all compiled and running graphs.
@@ -67,6 +67,23 @@ export class GraphRegistry {
    */
   get(graphId: string): CompiledGraph | undefined {
     return this.graphs.get(graphId);
+  }
+
+  setStatus(graphId: string, status: GraphStatus) {
+    const g = this.graphs.get(graphId);
+
+    if (g) {
+      g.status = status;
+    }
+  }
+
+  isStop(graphId: string): boolean {
+    const g = this.graphs.get(graphId);
+    return (
+      !g ||
+      g.status === GraphStatus.Compiling ||
+      g.status === GraphStatus.Running
+    );
   }
 
   /**

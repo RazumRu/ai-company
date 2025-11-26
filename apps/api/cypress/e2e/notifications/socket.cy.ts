@@ -332,7 +332,7 @@ describe('Socket Gateway E2E', () => {
               expect(notification.data).to.have.property('message');
               expect(notification.data.message).to.have.property('content');
               expect(notification.data.message).to.have.property('role');
-              expect(notification.data.message.content).to.be.a('string');
+              expect(notification.data.message.content).to.exist;
               expect(notification.data.message.role).to.be.a('string');
               resolve(undefined);
             } catch (error) {

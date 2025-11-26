@@ -56,9 +56,11 @@ export class MessageTransformerService {
       ? (msg as BaseMessage).constructor.name
       : msg.id[2];
     const msgBody = isInstance ? msg : msg.kwargs;
-    const rawAdditionalKwargs = (msgBody as {
-      additional_kwargs?: Record<string, unknown>;
-    }).additional_kwargs;
+    const rawAdditionalKwargs = (
+      msgBody as {
+        additional_kwargs?: Record<string, unknown>;
+      }
+    ).additional_kwargs;
     const additionalKwargs =
       this.normalizeAdditionalKwargs(rawAdditionalKwargs);
     const contentStr = this.normalizeContent(msgBody.content);
@@ -74,7 +76,8 @@ export class MessageTransformerService {
         const m = <ChatMessage>(<unknown>msgBody);
         const reasoningId =
           (m.id as string | undefined) ||
-          ((rawAdditionalKwargs?.reasoningId as string) || undefined);
+          (rawAdditionalKwargs?.reasoningId as string) ||
+          undefined;
 
         if (m.role === 'reasoning') {
           return {

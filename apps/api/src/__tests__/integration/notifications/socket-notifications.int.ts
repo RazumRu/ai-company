@@ -16,14 +16,15 @@ import {
 import { buildReasoningMessage } from '../../../v1/agents/agents.utils';
 import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
 import { GraphThreadState } from '../../../v1/agents/services/graph-thread-state';
+import { ReasoningMessageDto } from '../../../v1/graphs/dto/graphs.dto';
 import {
   GraphNodeSchemaType,
   GraphNodeStatus,
   GraphSchemaType,
 } from '../../../v1/graphs/graphs.types';
-import { MessageTransformerService } from '../../../v1/graphs/services/message-transformer.service';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { MessageTransformerService } from '../../../v1/graphs/services/message-transformer.service';
 import { IEnrichedNotification } from '../../../v1/notification-handlers/notification-handlers.types';
 import {
   IAgentStateUpdateData,
@@ -32,11 +33,13 @@ import {
   NotificationEvent,
 } from '../../../v1/notifications/notifications.types';
 import { NotificationsService } from '../../../v1/notifications/services/notifications.service';
-import { ReasoningMessageDto } from '../../../v1/graphs/dto/graphs.dto';
-import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
+import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
+import {
+  ThreadDto,
+  ThreadMessageDto,
+} from '../../../v1/threads/dto/threads.dto';
 import { ThreadEntity } from '../../../v1/threads/entity/thread.entity';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
-import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import {
   createMockGraphData,
   waitForCondition,
@@ -1092,9 +1095,13 @@ describe('Socket Notifications Integration Tests', () => {
             threadsService
               .getThreadByExternalId(threadId)
               .catch(() => undefined),
-          (thread): thread is { id: string } => !!thread,
+          (thread): thread is ThreadDto => !!thread,
           { timeout: 60000, interval: 250 },
         );
+
+        if (!persistedThread) {
+          throw new Error('Thread was not persisted');
+        }
 
         await waitForCondition(
           () =>
@@ -1263,10 +1270,12 @@ describe('Socket Notifications Integration Tests', () => {
             graphThreadState.getByThread(threadId).reasoningChunks.size;
           expect(finalStateCount).toBe(0);
 
-          const reasoningMessageDto =
-            messageTransformer.transformMessageToDto(
-              buildReasoningMessage('integration reasoning step', 'chunk-integration'),
-            );
+          const reasoningMessageDto = messageTransformer.transformMessageToDto(
+            buildReasoningMessage(
+              'integration reasoning step',
+              'chunk-integration',
+            ),
+          );
 
           await messagesDao.create({
             threadId: persistedThread.id,
@@ -1284,10 +1293,14 @@ describe('Socket Notifications Integration Tests', () => {
               msg.message.role === 'reasoning' &&
               (msg.message as ReasoningMessageDto).id ===
                 'reasoning:chunk-integration',
-          ) as ThreadMessageDto & { message: ReasoningMessageDto } | undefined;
+          ) as
+            | (ThreadMessageDto & { message: ReasoningMessageDto })
+            | undefined;
 
           expect(storedReasoning).toBeDefined();
-          expect(storedReasoning?.message.id).toBe('reasoning:chunk-integration');
+          expect(storedReasoning?.message.id).toBe(
+            'reasoning:chunk-integration',
+          );
         } finally {
           emitSpy.mockRestore();
         }

@@ -238,8 +238,7 @@ export class GraphsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    // Check if graph is already running
-    if (this.graphRegistry.get(id)) {
+    if (!this.graphRegistry.isStop(id)) {
       throw new BadRequestException('GRAPH_ALREADY_RUNNING');
     }
 

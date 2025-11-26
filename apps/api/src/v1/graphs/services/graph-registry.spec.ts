@@ -6,6 +6,7 @@ import {
   CompiledGraph,
   CompiledGraphNode,
   GraphNodeStatus,
+  GraphStatus,
   NodeKind,
 } from '../graphs.types';
 import { GraphRegistry } from './graph-registry';
@@ -13,7 +14,10 @@ import { GraphRegistry } from './graph-registry';
 describe('GraphRegistry', () => {
   let registry: GraphRegistry;
 
-  const createMockCompiledGraph = (nodeCount = 2): CompiledGraph => {
+  const createMockCompiledGraph = (
+    nodeCount = 2,
+    status: GraphStatus = GraphStatus.Running,
+  ): CompiledGraph => {
     const nodes = new Map<string, CompiledGraphNode>();
 
     for (let i = 1; i <= nodeCount; i++) {
@@ -45,6 +49,7 @@ describe('GraphRegistry', () => {
       nodes,
       edges: [{ from: 'node-1', to: 'node-2' }],
       state,
+      status,
       destroy: vi.fn().mockResolvedValue(undefined),
     };
   };
@@ -225,6 +230,7 @@ describe('GraphRegistry', () => {
           getSnapshots: vi.fn().mockReturnValue([]),
           handleGraphDestroyed: vi.fn(),
         } as unknown as CompiledGraph['state'],
+        status: GraphStatus.Created,
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -253,6 +259,7 @@ describe('GraphRegistry', () => {
           getSnapshots: vi.fn().mockReturnValue([]),
           handleGraphDestroyed: vi.fn(),
         } as unknown as CompiledGraph['state'],
+        status: GraphStatus.Running,
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -402,6 +409,7 @@ describe('GraphRegistry', () => {
           getSnapshots: vi.fn().mockReturnValue([]),
           handleGraphDestroyed: vi.fn(),
         } as unknown as CompiledGraph['state'],
+        status: GraphStatus.Running,
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -720,6 +728,7 @@ describe('GraphRegistry', () => {
           getSnapshots: vi.fn().mockReturnValue([]),
           handleGraphDestroyed: vi.fn(),
         } as unknown as CompiledGraph['state'],
+        status: GraphStatus.Running,
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -822,6 +831,7 @@ describe('GraphRegistry', () => {
           getSnapshots: vi.fn().mockReturnValue([]),
           handleGraphDestroyed: vi.fn(),
         } as unknown as CompiledGraph['state'],
+        status: GraphStatus.Running,
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 

@@ -3,6 +3,7 @@ import { DefaultLogger, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { compare } from 'fast-json-patch';
+import * as timers from 'timers/promises';
 import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +24,10 @@ import {
   GraphRevisionQueueService,
 } from './graph-revision-queue.service';
 
+vi.mock('timers/promises', () => ({
+  setTimeout: vi.fn(),
+}));
+
 describe('GraphRevisionService', () => {
   let service: GraphRevisionService;
   let graphUpdateDao: GraphRevisionDao;
@@ -34,6 +39,7 @@ describe('GraphRevisionService', () => {
   let typeorm: TypeormService;
   let notificationsService: NotificationsService;
   let authContext: AuthContextService;
+  let templateRegistry: TemplateRegistry;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -201,6 +207,7 @@ describe('GraphRevisionService', () => {
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
     authContext = module.get<AuthContextService>(AuthContextService);
+    templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
   });
 
   describe('queueRevision', () => {
@@ -607,6 +614,179 @@ describe('GraphRevisionService', () => {
           configurationDiff: expectedDiff,
         }),
       );
+    });
+  });
+
+  describe('applyRevision - waiting for graph during restoration', () => {
+    it('should wait for graph to become available when being restored', async () => {
+      const revision = createMockUpdateEntity({
+        status: GraphRevisionStatus.Pending,
+      });
+
+      const graph = createMockGraphEntity({
+        status: GraphStatus.Compiling, // Graph is compiling and not yet in registry
+      });
+
+      const mockCompiledGraph = {
+        nodes: new Map([
+          [
+            'node-1',
+            {
+              id: 'node-1',
+              type: 'runtime',
+              template: 'docker-runtime',
+              config: { image: 'python:3.11' },
+              instance: {},
+            },
+          ],
+        ]),
+        edges: [],
+        state: {
+          registerNode: vi.fn(),
+          unregisterNode: vi.fn(),
+          attachGraphNode: vi.fn(),
+        },
+        status: GraphStatus.Compiling,
+      };
+
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphUpdateDao.getById).mockResolvedValue(revision);
+      vi.mocked(graphUpdateDao.getOne).mockResolvedValue(null);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+
+      const setTimeoutMock = vi.mocked(timers.setTimeout);
+      setTimeoutMock.mockImplementation(async () => {
+        mockCompiledGraph.status = GraphStatus.Running;
+      });
+
+      vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph as any);
+
+      // Mock getById for the waitForGraphInRegistry check
+      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      // Mock template registry for applyLiveUpdate
+      const mockTemplate = {
+        kind: 'runtime',
+        create: vi.fn().mockResolvedValue({}),
+      };
+      vi.mocked(templateRegistry.getTemplate).mockReturnValue(
+        mockTemplate as any,
+      );
+      vi.mocked(templateRegistry.validateTemplateConfig).mockReturnValue(
+        revision.newSchema.nodes[0]?.config,
+      );
+      (graphCompiler as any).getBuildOrder = vi
+        .fn()
+        .mockReturnValue(revision.newSchema.nodes);
+      (graphCompiler as any).destroyNode = vi.fn().mockResolvedValue(undefined);
+
+      await (
+        service as unknown as {
+          applyRevision(job: GraphRevisionJobData): Promise<void>;
+        }
+      ).applyRevision({
+        revisionId: revision.id,
+        graphId: revision.graphId,
+      });
+
+      // Should have waited for compiling graph to reach running status
+      expect(graphRegistry.get).toHaveBeenCalledWith(revision.graphId);
+      expect(setTimeoutMock).toHaveBeenCalled();
+      expect(mockCompiledGraph.status).toBe(GraphStatus.Running);
+
+      setTimeoutMock.mockReset();
+    });
+
+    it('should apply revision only to persisted schema when graph is stopped', async () => {
+      const revision = createMockUpdateEntity({
+        status: GraphRevisionStatus.Pending,
+      });
+
+      const graph = createMockGraphEntity({
+        status: GraphStatus.Stopped, // Graph is stopped, not being restored
+      });
+
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphUpdateDao.getById).mockResolvedValue(revision);
+      vi.mocked(graphUpdateDao.getOne).mockResolvedValue(null);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      await (
+        service as unknown as {
+          applyRevision(job: GraphRevisionJobData): Promise<void>;
+        }
+      ).applyRevision({
+        revisionId: revision.id,
+        graphId: revision.graphId,
+      });
+
+      // Should only call registry.get once since graph is stopped (not being restored)
+      expect(graphRegistry.get).toHaveBeenCalledTimes(1);
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        revision.graphId,
+        expect.objectContaining({
+          schema: revision.newSchema,
+          version: revision.toVersion,
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('should stop waiting when graph status changes to non-running state', async () => {
+      const revision = createMockUpdateEntity({
+        status: GraphRevisionStatus.Pending,
+      });
+
+      const runningGraph = createMockGraphEntity({
+        status: GraphStatus.Running,
+      });
+
+      const stoppedGraph = createMockGraphEntity({
+        status: GraphStatus.Stopped, // Status changed during wait
+      });
+
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphUpdateDao.getById).mockResolvedValue(revision);
+      vi.mocked(graphUpdateDao.getOne).mockResolvedValue(null);
+      vi.mocked(graphDao.getOne).mockResolvedValue(runningGraph);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphDao.updateById).mockResolvedValue(stoppedGraph);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      // Return stopped graph on subsequent getById calls (simulating status change)
+      vi.mocked(graphDao.getById).mockResolvedValue(stoppedGraph);
+
+      await (
+        service as unknown as {
+          applyRevision(job: GraphRevisionJobData): Promise<void>;
+        }
+      ).applyRevision({
+        revisionId: revision.id,
+        graphId: revision.graphId,
+      });
+
+      // Should have stopped waiting early due to status change
+      expect(graphRegistry.get).toHaveBeenCalled();
+      // Revision should still be finalized to persisted schema
+      expect(graphDao.updateById).toHaveBeenCalled();
     });
   });
 });

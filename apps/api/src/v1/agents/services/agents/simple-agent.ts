@@ -42,7 +42,7 @@ import { TitleGenerationNode } from '../nodes/title-generation-node';
 import { ToolExecutorNode } from '../nodes/tool-executor-node';
 import { ToolUsageGuardNode } from '../nodes/tool-usage-guard-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
-import { AgentOutput, BaseAgent } from './base-agent';
+import { AgentOutput, AgentRunEvent, BaseAgent } from './base-agent';
 
 export const SimpleAgentSchema = z.object({
   summarizeMaxTokens: z
@@ -109,6 +109,8 @@ type ActiveRunEntry = {
   runnableConfig: RunnableConfig<BaseAgentConfigurable>;
   threadId: string;
   lastState: BaseAgentState;
+  stopped?: boolean;
+  stopReason?: string;
 };
 
 @Injectable({ scope: Scope.TRANSIENT })
@@ -208,16 +210,23 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
       // ---- invoke ----
       const tools = this.tools;
+      const shouldUseResponsesApi =
+        config.invokeModelReasoningEffort !== ReasoningEffort.None;
       const invokeLlmNode = new InvokeLlmNode(
-        this.buildLLM(config.invokeModelName, {
-          reasoning:
-            config.invokeModelReasoningEffort !== ReasoningEffort.None
-              ? {
+        this.buildLLM(
+          config.invokeModelName,
+          shouldUseResponsesApi
+            ? {
+                useResponsesApi: true,
+                reasoning: {
                   effort: config.invokeModelReasoningEffort,
                   summary: 'detailed',
-                }
-              : undefined,
-        }),
+                },
+              }
+            : {
+                useResponsesApi: false,
+              },
+        ),
         tools,
         {
           systemPrompt: config.instructions,
@@ -725,12 +734,15 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     let finalState: BaseAgentState = this.buildInitialState();
 
     // Track active run for cancellation and status updates
-    this.activeRuns.set(runId, {
+    const runEntry: ActiveRunEntry = {
       abortController,
       runnableConfig: mergedConfig,
       threadId,
       lastState: finalState,
-    });
+      stopped: false,
+    };
+
+    this.activeRuns.set(runId, runEntry);
 
     const stream = await g.stream(
       {
@@ -834,10 +846,27 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       needsMoreInfo: finalState.needsMoreInfo,
     };
 
-    // Emit run event with result
+    const wasStopped = Boolean(runEntry.stopped) && !finalState.done;
+    const stopError = wasStopped
+      ? new Error(runEntry.stopReason ?? 'Graph execution was stopped')
+      : undefined;
+
+    // Emit run event with result or stop error so thread status can be updated
+    const runEvent: AgentRunEvent = {
+      threadId,
+      messages,
+      config: mergedConfig,
+    };
+
+    if (stopError) {
+      runEvent.error = stopError;
+    } else {
+      runEvent.result = result;
+    }
+
     this.emit({
       type: 'run',
-      data: { threadId, messages, config: mergedConfig, result },
+      data: runEvent,
     });
 
     return result;
@@ -867,6 +896,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           data: { config: run.runnableConfig, threadId: run.threadId },
         });
       }
+
+      run.stopped = true;
+      run.stopReason ??= 'Graph execution was stopped';
 
       try {
         run.abortController.abort();

@@ -129,6 +129,7 @@ describe('GraphsService', () => {
       nodes,
       edges: [],
       state,
+      status: GraphStatus.Running,
       destroy: vi.fn().mockResolvedValue(undefined),
     } as CompiledGraph;
   };
@@ -162,6 +163,8 @@ describe('GraphsService', () => {
             get: vi.fn(),
             getNode: vi.fn(),
             destroy: vi.fn(),
+            setStatus: vi.fn(),
+            isStop: vi.fn().mockReturnValue(true),
           },
         },
         {
@@ -257,6 +260,7 @@ describe('GraphsService', () => {
 
     // Setup default mocks
     vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+    vi.mocked(graphRegistry.isStop).mockReturnValue(true);
     vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
       const mockEntityManager = {
         createQueryBuilder: vi.fn().mockReturnValue({
@@ -1091,6 +1095,7 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getById).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
+      vi.mocked(graphRegistry.isStop).mockReturnValue(false);
 
       await expect(service.run(mockGraphId)).rejects.toThrow(
         BadRequestException,
@@ -1203,9 +1208,7 @@ describe('GraphsService', () => {
       });
 
       vi.mocked(graphDao.getById).mockResolvedValue(graph);
-      vi.mocked(graphRegistry.get)
-        .mockReturnValueOnce(undefined) // First call - not running
-        .mockReturnValueOnce(compiledGraph); // Second call - was registered
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphCompiler.compile).mockRejectedValue(compilationError);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
       vi.mocked(graphDao.updateById)
@@ -1732,9 +1735,7 @@ describe('GraphsService', () => {
 
       // Simulate compilation error with registry cleanup
       vi.mocked(graphDao.getById).mockResolvedValue(graph);
-      vi.mocked(graphRegistry.get)
-        .mockReturnValueOnce(undefined) // Not running initially
-        .mockReturnValueOnce(compiledGraph); // Was registered during error
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphCompiler.compile).mockRejectedValue(
         new Error('Compilation failed'),
       );

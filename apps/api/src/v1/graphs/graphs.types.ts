@@ -67,6 +67,7 @@ export interface CompiledGraph {
     label?: string;
   }[];
   state: GraphStateManager;
+  status: GraphStatus;
   /**
    * Destroys the graph and cleans up all resources
    * - Stops all triggers

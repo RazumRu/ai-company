@@ -49,12 +49,6 @@ export class GraphRevisionQueueService
       },
     );
 
-    this.worker.on('completed', (job: Job<GraphRevisionJobData>) => {
-      this.logger.log(
-        `Graph revision job ${job.id} completed for graph ${job.data.graphId}`,
-      );
-    });
-
     this.worker.on(
       'failed',
       (job: Job<GraphRevisionJobData> | undefined, err: Error) => {
@@ -64,8 +58,6 @@ export class GraphRevisionQueueService
         );
       },
     );
-
-    this.logger.log('Graph revision queue service initialized');
   }
 
   setProcessor(processor: (job: GraphRevisionJobData) => Promise<void>): void {
@@ -83,8 +75,6 @@ export class GraphRevisionQueueService
         jobId: revision.id,
       },
     );
-
-    this.logger.log(`Added graph revision ${revision.id} to queue`);
   }
 
   async getQueueStatus(graphId: string): Promise<{
@@ -129,10 +119,6 @@ export class GraphRevisionQueueService
     if (!this.processor) {
       throw new Error('Graph revision processor not set');
     }
-
-    this.logger.log(
-      `Processing graph revision job ${job.id} for graph ${job.data.graphId}`,
-    );
 
     await this.processor(job.data);
   }

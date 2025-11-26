@@ -9,6 +9,7 @@ import { AdditionalParams, TypeormService } from '@packages/typeorm';
 import { UnrecoverableError } from 'bullmq';
 import { compare, type Operation } from 'fast-json-patch';
 import { coerce, inc } from 'semver';
+import { setTimeout } from 'timers/promises';
 import { EntityManager } from 'typeorm';
 
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
@@ -359,10 +360,24 @@ export class GraphRevisionService {
         );
 
         const compiledGraph = this.graphRegistry.get(revision.graphId);
-        const isRunning =
-          !!compiledGraph && graph.status === GraphStatus.Running;
 
-        if (!isRunning || !compiledGraph) {
+        // If the graph is compiling
+        // wait for it to become available before applying the live update
+        if (compiledGraph?.status === GraphStatus.Compiling) {
+          const startTime = Date.now();
+          const timeout = 180000;
+
+          while (Date.now() - startTime < timeout) {
+            if (compiledGraph.status !== GraphStatus.Compiling) {
+              break;
+            }
+
+            await setTimeout(5000);
+          }
+        }
+
+        const isRunning = compiledGraph?.status === GraphStatus.Running;
+        if (!isRunning) {
           this.logger.warn(
             `Graph ${revision.graphId} is not running. Applying revision only to persisted schema.`,
           );

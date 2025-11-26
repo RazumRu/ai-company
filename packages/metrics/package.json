@@ -16,7 +16,7 @@
     "@types/node": "^24.10.1",
     "eslint": "^9.39.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.13"
+    "vitest": "^4.0.14"
   },
   "license": "ISC",
   "main": "dist/index.js",
@@ -31,6 +31,7 @@
     "build": "tsc -p tsconfig.build.json",
     "prebuild": "rm -rf ./dist || true",
     "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
     "test:cov": "vitest run --coverage --passWithNoTests"
   },
   "types": "dist/index.d.ts"

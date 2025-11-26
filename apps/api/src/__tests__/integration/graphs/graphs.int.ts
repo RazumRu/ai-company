@@ -654,21 +654,57 @@ describe('Graphs Integration Tests', () => {
           graph.id,
           TEST_TRIGGER_NODE_ID,
           {
-            messages: ['Run this command: sleep 1 && echo "interrupt me"'],
+            messages: ['Run this command: sleep 100 && echo "interrupt me"'],
             async: true,
           },
         );
 
-        await wait(1000);
+        await waitForThreadStatus(
+          execution.externalThreadId,
+          [ThreadStatus.Running],
+          60000,
+        );
+
         const destroyResponse = await graphsService.destroy(graph.id);
         expect(destroyResponse.status).toBe(GraphStatus.Stopped);
 
         const thread = await waitForThreadStatus(
           execution.externalThreadId,
-          [ThreadStatus.Stopped, ThreadStatus.NeedMoreInfo],
+          [ThreadStatus.Stopped],
           60000,
         );
         expect(thread.status).toBe(ThreadStatus.Stopped);
+
+        const persistedThread = await threadsService.getThreadByExternalId(
+          execution.externalThreadId,
+        );
+
+        const messages = await waitForCondition(
+          () =>
+            threadsService.getThreadMessages(persistedThread.id, {
+              limit: 50,
+              offset: 0,
+            }),
+          (msgs) =>
+            msgs.some(
+              (entry) =>
+                entry.message.role === 'system' &&
+                typeof entry.message.content === 'string' &&
+                entry.message.content.includes('Graph execution was stopped'),
+            ),
+          { timeout: 60000, interval: 1000 },
+        );
+
+        const stopMessage = messages.find(
+          (entry) =>
+            entry.message.role === 'system' &&
+            typeof entry.message.content === 'string' &&
+            entry.message.content.includes('Graph execution was stopped'),
+        );
+
+        expect(stopMessage?.message.content).toContain(
+          'Graph execution was stopped',
+        );
       },
     );
 

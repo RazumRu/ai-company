@@ -192,6 +192,24 @@ class UserDao {
 - Log errors appropriately
 - Don't swallow errors silently
 
+## Script Execution
+
+### Never Use `--` with npm/pnpm Commands
+
+When running npm or pnpm scripts, do not use `--` to pass parameters:
+
+```bash
+# ❌ Bad
+pnpm run build -- --example_param=1
+npm run test -- --watch
+
+# ✅ Good
+pnpm run build --example_param=1
+npm run test --watch
+```
+
+The `--` separator is unnecessary and should be avoided in all script executions.
+
 ## Commit Guidelines
 
 - The project uses conventional commits

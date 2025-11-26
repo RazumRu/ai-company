@@ -599,9 +599,6 @@ describe('GraphRestorationService', () => {
         graphId: 'test-graph-id',
         status: ThreadStatus.Running,
       });
-      expect(logger.log).toHaveBeenCalledWith(
-        expect.stringContaining('No interrupted threads'),
-      );
     });
 
     it('should extract node ID from thread ID with node suffix', async () => {

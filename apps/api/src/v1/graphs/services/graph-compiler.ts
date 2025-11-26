@@ -16,6 +16,7 @@ import {
   GraphMetadataSchemaType,
   GraphNodeSchemaType,
   GraphSchemaType,
+  GraphStatus,
   NodeKind,
 } from '../graphs.types';
 import { GraphRegistry } from './graph-registry';
@@ -255,6 +256,7 @@ export class GraphCompiler {
         await this.destroyGraph(compiledNodes);
         stateManager.destroy();
       },
+      status: GraphStatus.Compiling,
     };
 
     // Register the graph before compiling nodes so templates can access it
@@ -276,6 +278,8 @@ export class GraphCompiler {
 
         // Node is now available in the registry for other templates to reference
       }
+
+      this.graphRegistry.setStatus(graphId, GraphStatus.Running);
 
       return compiledGraph;
     } catch (error) {
@@ -349,10 +353,6 @@ export class GraphCompiler {
       (node) => node.template === 'docker-runtime',
     );
     if (runtimeNodes.length === 0) return;
-
-    this.logger.log(
-      `Destroying ${runtimeNodes.length} runtime containers for graph ${graph.id} without compilation`,
-    );
 
     await DockerRuntime.cleanupByLabels(
       { 'ai-company/graph_id': graph.id },

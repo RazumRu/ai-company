@@ -189,16 +189,8 @@ export class GraphRestorationService {
       });
 
       if (runningThreads.length === 0) {
-        this.logger.log(
-          `No interrupted threads to resume for graph ${graphId}`,
-        );
         return;
       }
-
-      this.logger.log(
-        `Found ${runningThreads.length} interrupted threads to resume for graph ${graphId}`,
-        { threadIds: runningThreads.map((t) => t.externalThreadId) },
-      );
 
       const compiledGraph = this.graphRegistry.get(graphId);
       if (!compiledGraph) {

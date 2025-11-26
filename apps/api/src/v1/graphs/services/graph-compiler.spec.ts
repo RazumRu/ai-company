@@ -117,6 +117,7 @@ describe('GraphCompiler', () => {
             getNode: vi.fn(),
             addNode: vi.fn(),
             deleteNode: vi.fn(),
+            setStatus: vi.fn(),
           },
         },
       ],
