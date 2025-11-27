@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { DefaultLogger, NotFoundException } from '@packages/common';
+import {
+  BadRequestException,
+  DefaultLogger,
+  NotFoundException,
+} from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { compare } from 'fast-json-patch';
@@ -368,6 +372,30 @@ describe('GraphRevisionService', () => {
         }),
         expect.any(Object),
       );
+    });
+
+    it('should throw when no schema changes are detected', async () => {
+      const mockGraph = createMockGraphEntity();
+      const baseVersion = mockGraph.version;
+      const clientSchema = JSON.parse(JSON.stringify(mockGraph.schema));
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
+        success: true,
+        mergedSchema: clientSchema,
+        conflicts: [],
+      });
+
+      await expect(
+        service.queueRevision(mockGraph, baseVersion, clientSchema),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(graphUpdateDao.create).not.toHaveBeenCalled();
+      expect(graphDao.updateById).not.toHaveBeenCalled();
     });
 
     it('should throw MERGE_CONFLICT when merge fails', async () => {

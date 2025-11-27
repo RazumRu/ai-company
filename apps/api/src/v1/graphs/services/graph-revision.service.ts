@@ -93,6 +93,16 @@ export class GraphRevisionService {
 
       const mergedSchema = mergeResult.mergedSchema!;
       const configurationDiff = compare(headSchema, mergedSchema);
+      if (configurationDiff.length === 0) {
+        throw new BadRequestException(
+          'REVISION_WITHOUT_CHANGES',
+          'Submitted schema has no changes compared to current graph version',
+          {
+            baseVersion,
+            headVersion,
+          },
+        );
+      }
       const newVersion = this.generateNextVersion(headVersion);
 
       const revision = await this.graphRevisionDao.create(
