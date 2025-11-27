@@ -259,13 +259,45 @@ describe('GraphRevisionService', () => {
       expect(graphCompiler.validateSchema).toHaveBeenCalledWith(clientSchema);
       expect(graphMergeService.mergeSchemas).toHaveBeenCalled();
       expect(graphUpdateDao.create).toHaveBeenCalled();
-      expect(graphUpdateQueue.addRevision).toHaveBeenCalledWith(mockUpdate);
+      expect(graphUpdateQueue.addRevision).toHaveBeenCalledWith({
+        id: mockUpdateId,
+        graphId: mockGraphId,
+      });
       expect(notificationsService.emit).toHaveBeenCalledWith(
         expect.objectContaining({
           type: NotificationEvent.GraphRevisionCreate,
           graphId: mockGraphId,
         }),
       );
+    });
+
+    it('should allow deferring queue scheduling', async () => {
+      const mockGraph = createMockGraphEntity();
+      const mockUpdate = createMockUpdateEntity();
+
+      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+      vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
+        success: true,
+        mergedSchema: mockUpdate.newSchema,
+        conflicts: [],
+      });
+      vi.mocked(graphUpdateDao.create).mockResolvedValue(mockUpdate);
+      vi.mocked(graphDao.updateById).mockResolvedValue(mockGraph);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      await service.queueRevision(
+        mockGraph,
+        mockGraph.version,
+        mockUpdate.newSchema,
+        undefined,
+        { enqueueImmediately: false },
+      );
+
+      expect(graphUpdateQueue.addRevision).not.toHaveBeenCalled();
     });
 
     it('should validate schema before queuing', async () => {

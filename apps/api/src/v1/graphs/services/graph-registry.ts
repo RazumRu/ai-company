@@ -77,13 +77,8 @@ export class GraphRegistry {
     }
   }
 
-  isStop(graphId: string): boolean {
-    const g = this.graphs.get(graphId);
-    return (
-      !g ||
-      g.status === GraphStatus.Compiling ||
-      g.status === GraphStatus.Running
-    );
+  getStatus(graphId: string): GraphStatus | undefined {
+    return this.graphs.get(graphId)?.status;
   }
 
   /**

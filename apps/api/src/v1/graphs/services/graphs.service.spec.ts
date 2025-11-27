@@ -164,7 +164,7 @@ describe('GraphsService', () => {
             getNode: vi.fn(),
             destroy: vi.fn(),
             setStatus: vi.fn(),
-            isStop: vi.fn().mockReturnValue(true),
+            getStatus: vi.fn().mockReturnValue(undefined),
           },
         },
         {
@@ -213,6 +213,7 @@ describe('GraphsService', () => {
             queueRevision: vi.fn(),
             getRevisions: vi.fn(),
             generateNextVersion: vi.fn(),
+            enqueueRevisionProcessing: vi.fn(),
           },
         },
       ],
@@ -233,6 +234,7 @@ describe('GraphsService', () => {
       module.get<NotificationsService>(NotificationsService);
     graphRevisionService =
       module.get<GraphRevisionService>(GraphRevisionService);
+    vi.mocked(graphRegistry.getStatus).mockReturnValue(undefined);
     vi.mocked(notificationsService.emit).mockResolvedValue(void 0 as any);
     vi.mocked(graphRevisionService.queueRevision).mockResolvedValue({
       id: 'revision-1',
@@ -247,6 +249,9 @@ describe('GraphsService', () => {
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
     } as any);
+    vi.mocked(graphRevisionService.enqueueRevisionProcessing).mockResolvedValue(
+      undefined,
+    );
     vi.mocked(graphRevisionService.getRevisions).mockResolvedValue([]);
     vi.mocked(graphRevisionService.generateNextVersion).mockImplementation(
       (version) => {
@@ -260,7 +265,6 @@ describe('GraphsService', () => {
 
     // Setup default mocks
     vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
-    vi.mocked(graphRegistry.isStop).mockReturnValue(true);
     vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
       const mockEntityManager = {
         createQueryBuilder: vi.fn().mockReturnValue({
@@ -813,7 +817,14 @@ describe('GraphsService', () => {
         '1.0.0',
         updateData.schema,
         expect.any(Object),
+        { enqueueImmediately: false },
       );
+      expect(
+        graphRevisionService.enqueueRevisionProcessing,
+      ).toHaveBeenCalledWith({
+        id: 'revision-1',
+        graphId: mockGraphId,
+      });
       // Should return current graph state with the created revision
       expect(result.graph.version).toBe('1.0.0');
       expect(result.revision).toBeDefined();
@@ -832,6 +843,9 @@ describe('GraphsService', () => {
       const result = await service.update(mockGraphId, updateData);
 
       expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
+      expect(
+        graphRevisionService.enqueueRevisionProcessing,
+      ).not.toHaveBeenCalled();
       expect(graphDao.updateById).not.toHaveBeenCalled();
       expect(result.graph.version).toBe(mockGraph.version);
       expect(result.revision).toBeUndefined();
@@ -856,6 +870,9 @@ describe('GraphsService', () => {
       const result = await service.update(mockGraphId, updateData);
 
       expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
+      expect(
+        graphRevisionService.enqueueRevisionProcessing,
+      ).not.toHaveBeenCalled();
       expect(graphDao.updateById).toHaveBeenCalledWith(
         mockGraphId,
         {
@@ -895,7 +912,14 @@ describe('GraphsService', () => {
         '1.0.0',
         updateData.schema,
         expect.any(Object),
+        { enqueueImmediately: false },
       );
+      expect(
+        graphRevisionService.enqueueRevisionProcessing,
+      ).toHaveBeenCalledWith({
+        id: 'revision-1',
+        graphId: mockGraphId,
+      });
       // Should return current graph state with created revision
       expect(result.graph.version).toBe('1.0.0');
       expect(result.revision).toBeDefined();
@@ -1091,11 +1115,10 @@ describe('GraphsService', () => {
 
     it('should throw BadRequestException when graph is already running', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Created });
-      const compiledGraph = createMockCompiledGraph();
-
       vi.mocked(graphDao.getById).mockResolvedValue(graph);
-      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
-      vi.mocked(graphRegistry.isStop).mockReturnValue(false);
+      vi.mocked(graphRegistry.getStatus).mockReturnValueOnce(
+        GraphStatus.Running,
+      );
 
       await expect(service.run(mockGraphId)).rejects.toThrow(
         BadRequestException,

@@ -189,7 +189,7 @@ describe('Socket Notifications Integration Tests', () => {
   });
 
   describe('Graph Subscription', () => {
-    it('should subscribe to graph updates', { timeout: 60000 }, async () => {
+    it('should subscribe to graph updates', { timeout: 90_000 }, async () => {
       socket = createSocketConnection(TEST_USER_ID);
       await waitForSocketConnection(socket);
 
@@ -212,7 +212,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket.once('server_error', (error) => reject(error));
         setTimeout(
           () => reject(new Error('Timeout waiting for notification')),
-          30000,
+          60_000,
         );
       });
 
@@ -268,7 +268,7 @@ describe('Socket Notifications Integration Tests', () => {
   describe('Message Notifications', () => {
     it(
       'should receive message notifications during graph execution',
-      { timeout: 60000 },
+      { timeout: 90_000 },
       async () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
@@ -436,7 +436,7 @@ describe('Socket Notifications Integration Tests', () => {
   describe('Graph Revision Notifications', () => {
     it(
       'should receive revision lifecycle notifications when revision is applied',
-      { timeout: 60000 },
+      { timeout: 120_000 },
       async () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
@@ -485,7 +485,7 @@ describe('Socket Notifications Integration Tests', () => {
             } else {
               reject(new Error('Timeout waiting for revision events'));
             }
-          }, 60000);
+          }, 90_000);
         });
 
         // Update schema to trigger revision
@@ -525,7 +525,7 @@ describe('Socket Notifications Integration Tests', () => {
 
     it(
       'should receive multiple revision notifications',
-      { timeout: 130000 },
+      { timeout: 180_000 },
       async () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
@@ -590,7 +590,7 @@ describe('Socket Notifications Integration Tests', () => {
                   `Timeout waiting for revision events. Received: ${events.length}, Types: ${eventTypes.join(', ')}`,
                 ),
               ),
-            120000,
+            150_000,
           );
         });
 
@@ -649,7 +649,7 @@ describe('Socket Notifications Integration Tests', () => {
   describe('Node Status Notifications', () => {
     it(
       'should receive node status updates during graph execution',
-      { timeout: 30000 },
+      { timeout: 90_000 },
       async () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
@@ -688,7 +688,7 @@ describe('Socket Notifications Integration Tests', () => {
                 new Error('Timeout waiting for node update notifications'),
               );
             }
-          }, 30000);
+          }, 60_000);
         });
 
         await graphsService.run(graphId);

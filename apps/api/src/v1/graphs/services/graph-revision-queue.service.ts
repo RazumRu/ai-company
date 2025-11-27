@@ -64,7 +64,9 @@ export class GraphRevisionQueueService
     this.processor = processor;
   }
 
-  async addRevision(revision: GraphRevisionEntity): Promise<void> {
+  async addRevision(
+    revision: Pick<GraphRevisionEntity, 'id' | 'graphId'>,
+  ): Promise<void> {
     await this.queue.add(
       'apply-revision',
       {

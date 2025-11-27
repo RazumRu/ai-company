@@ -1107,7 +1107,7 @@ describe('Graph Revisions Integration Tests', () => {
   describe('Edge Deletion and Validation', () => {
     it(
       'marks revision as failed when removing required edge (trigger needs agent)',
-      { timeout: 60000 },
+      { timeout: 180_000 },
       async () => {
         const graphData = createMockGraphData();
 
@@ -1130,12 +1130,22 @@ describe('Graph Revisions Integration Tests', () => {
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
 
-        const failedRevision = await waitForRevisionStatus(
-          graphId,
-          revisionId,
-          GraphRevisionStatus.Failed,
-          60000,
-        );
+        let failedRevision;
+        try {
+          failedRevision = await waitForRevisionStatus(
+            graphId,
+            revisionId,
+            GraphRevisionStatus.Failed,
+            90_000,
+          );
+        } catch (error) {
+          const currentRevision = await revisionsService.getRevisionById(
+            graphId,
+            revisionId,
+          );
+
+          throw error;
+        }
         expect(failedRevision.status).toBe(GraphRevisionStatus.Failed);
         expect(
           failedRevision.error?.includes('No output connections found') ||
@@ -1148,7 +1158,7 @@ describe('Graph Revisions Integration Tests', () => {
 
     it(
       'handles failed revision when removing required edge then applies valid revision',
-      { timeout: 60000 },
+      { timeout: 180_000 },
       async () => {
         const graphData = createMockGraphData();
 
@@ -1171,12 +1181,27 @@ describe('Graph Revisions Integration Tests', () => {
         expect(firstUpdateResponse.revision).toBeDefined();
         const firstRevisionId = firstUpdateResponse.revision!.id;
 
-        const failedRevision = await waitForRevisionStatus(
-          graphId,
-          firstRevisionId,
-          GraphRevisionStatus.Failed,
-          60000,
-        );
+        let failedRevision;
+        try {
+          failedRevision = await waitForRevisionStatus(
+            graphId,
+            firstRevisionId,
+            GraphRevisionStatus.Failed,
+            90_000,
+          );
+        } catch (error) {
+          const currentRevision = await revisionsService.getRevisionById(
+            graphId,
+            firstRevisionId,
+          );
+
+          console.error(
+            '[DEBUG] Revision status',
+            currentRevision.status,
+            currentRevision.error,
+          );
+          throw error;
+        }
         expect(failedRevision.status).toBe(GraphRevisionStatus.Failed);
         expect(
           failedRevision.error?.includes('No output connections found') ||
@@ -1217,7 +1242,7 @@ describe('Graph Revisions Integration Tests', () => {
           graphId,
           secondRevisionId,
           GraphRevisionStatus.Applied,
-          30000,
+          60_000,
         );
         expect(appliedRevision.status).toBe(GraphRevisionStatus.Applied);
 

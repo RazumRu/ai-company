@@ -133,6 +133,23 @@ describe('GraphRegistry', () => {
     });
   });
 
+  describe('getStatus', () => {
+    it('should return undefined for non-existent graph', () => {
+      expect(registry.getStatus('missing')).toBeUndefined();
+    });
+
+    it('should return current status for registered graph', () => {
+      const graphId = 'status-graph';
+      const compiledGraph = createMockCompiledGraph(2, GraphStatus.Created);
+
+      registry.register(graphId, compiledGraph);
+      expect(registry.getStatus(graphId)).toBe(GraphStatus.Created);
+
+      registry.setStatus(graphId, GraphStatus.Running);
+      expect(registry.getStatus(graphId)).toBe(GraphStatus.Running);
+    });
+  });
+
   describe('getNode', () => {
     it('should return specific node from registered graph', () => {
       const graphId = 'test-graph-1';

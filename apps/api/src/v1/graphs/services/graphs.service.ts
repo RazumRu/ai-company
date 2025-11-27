@@ -10,6 +10,7 @@ import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { GraphDao } from '../dao/graph.dao';
+import { GraphRevisionDto } from '../dto/graph-revisions.dto';
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
@@ -119,103 +120,126 @@ export class GraphsService {
     const { currentVersion, schema, ...rest } = data;
 
     // Use transaction with row-level locking to prevent simultaneous updates
-    return this.typeorm.trx(async (entityManager: EntityManager) => {
-      // Lock the graph row for update (prevents race conditions)
-      const graph = await this.graphDao.getOne(
-        {
-          id: id,
-          createdBy: this.authContext.checkSub(),
-          lock: 'pessimistic_write',
-        },
-        entityManager,
-      );
+    let revisionToEnqueue: Pick<GraphRevisionDto, 'id' | 'graphId'> | null =
+      null;
 
-      if (!graph) {
-        throw new NotFoundException('GRAPH_NOT_FOUND');
-      }
-
-      if (graph.version !== currentVersion) {
-        throw new BadRequestException(
-          'VERSION_CONFLICT',
-          `Graph version mismatch. Expected ${currentVersion} but found ${graph.version}`,
+    const response = await this.typeorm.trx(
+      async (entityManager: EntityManager) => {
+        // Lock the graph row for update (prevents race conditions)
+        const graph = await this.graphDao.getOne(
+          {
+            id: id,
+            createdBy: this.authContext.checkSub(),
+            lock: 'pessimistic_write',
+          },
+          entityManager,
         );
-      }
 
-      // If schema is being updated and graph is running or compiling, queue the update
-      const schemaChanged = schema ? !isEqual(schema, graph.schema) : false;
-
-      if (
-        schema &&
-        (graph.status === GraphStatus.Running ||
-          graph.status === GraphStatus.Compiling)
-      ) {
-        this.graphCompiler.validateSchema(schema);
-
-        if (schemaChanged) {
-          // Apply non-schema updates immediately (e.g., name, description)
-          const nonSchemaUpdates = omitBy({ ...rest }, isUndefined);
-          if (Object.keys(nonSchemaUpdates).length > 0) {
-            await this.graphDao.updateById(id, nonSchemaUpdates, entityManager);
-            // Refresh graph entity with updated fields
-            const refreshedGraph = await this.graphDao.getById(id);
-            if (!refreshedGraph) {
-              throw new NotFoundException('GRAPH_NOT_FOUND');
-            }
-            Object.assign(graph, refreshedGraph);
-          }
-
-          // Queue the schema update for live application with 3-way merge
-          // Note: Version will be incremented when the revision is applied, not now
-          // currentVersion is used both for validation (above) and as the base for the 3-way merge
-          const revision = await this.graphRevisionService.queueRevision(
-            graph,
-            currentVersion,
-            schema,
-            entityManager,
-          );
-
-          // Return updated graph state with the created revision
-          return {
-            graph: this.prepareResponse(graph),
-            revision,
-          };
+        if (!graph) {
+          throw new NotFoundException('GRAPH_NOT_FOUND');
         }
-      }
 
-      const newVersion = schemaChanged
-        ? this.graphRevisionService.generateNextVersion(graph.version)
-        : undefined;
+        if (graph.version !== currentVersion) {
+          throw new BadRequestException(
+            'VERSION_CONFLICT',
+            `Graph version mismatch. Expected ${currentVersion} but found ${graph.version}`,
+          );
+        }
 
-      const updatePayload = omitBy(
-        {
-          ...rest,
-          ...(schemaChanged && newVersion
-            ? {
-                schema,
-                version: newVersion,
-                targetVersion: newVersion,
+        // If schema is being updated and graph is running or compiling, queue the update
+        const schemaChanged = schema ? !isEqual(schema, graph.schema) : false;
+
+        if (
+          schema &&
+          (graph.status === GraphStatus.Running ||
+            graph.status === GraphStatus.Compiling)
+        ) {
+          this.graphCompiler.validateSchema(schema);
+
+          if (schemaChanged) {
+            // Apply non-schema updates immediately (e.g., name, description)
+            const nonSchemaUpdates = omitBy({ ...rest }, isUndefined);
+            if (Object.keys(nonSchemaUpdates).length > 0) {
+              await this.graphDao.updateById(
+                id,
+                nonSchemaUpdates,
+                entityManager,
+              );
+              // Refresh graph entity with updated fields
+              const refreshedGraph = await this.graphDao.getById(id);
+              if (!refreshedGraph) {
+                throw new NotFoundException('GRAPH_NOT_FOUND');
               }
-            : {}),
-        },
-        isUndefined,
+              Object.assign(graph, refreshedGraph);
+            }
+
+            // Queue the schema update for live application with 3-way merge
+            // Note: Version will be incremented when the revision is applied, not now
+            // currentVersion is used both for validation (above) and as the base for the 3-way merge
+            const revision = await this.graphRevisionService.queueRevision(
+              graph,
+              currentVersion,
+              schema,
+              entityManager,
+              { enqueueImmediately: false },
+            );
+
+            revisionToEnqueue = {
+              id: revision.id,
+              graphId: revision.graphId,
+            };
+
+            // Return updated graph state with the created revision
+            return {
+              graph: this.prepareResponse(graph),
+              revision,
+            };
+          }
+        }
+
+        const newVersion = schemaChanged
+          ? this.graphRevisionService.generateNextVersion(graph.version)
+          : undefined;
+
+        const updatePayload = omitBy(
+          {
+            ...rest,
+            ...(schemaChanged && newVersion
+              ? {
+                  schema,
+                  version: newVersion,
+                  targetVersion: newVersion,
+                }
+              : {}),
+          },
+          isUndefined,
+        );
+
+        if (Object.keys(updatePayload).length === 0) {
+          return { graph: this.prepareResponse(graph) };
+        }
+
+        const updated = await this.graphDao.updateById(
+          id,
+          updatePayload,
+          entityManager,
+        );
+
+        if (!updated) {
+          throw new NotFoundException('GRAPH_NOT_FOUND');
+        }
+
+        return { graph: this.prepareResponse(updated) };
+      },
+    );
+
+    if (revisionToEnqueue) {
+      await this.graphRevisionService.enqueueRevisionProcessing(
+        revisionToEnqueue,
       );
+    }
 
-      if (Object.keys(updatePayload).length === 0) {
-        return { graph: this.prepareResponse(graph) };
-      }
-
-      const updated = await this.graphDao.updateById(
-        id,
-        updatePayload,
-        entityManager,
-      );
-
-      if (!updated) {
-        throw new NotFoundException('GRAPH_NOT_FOUND');
-      }
-
-      return { graph: this.prepareResponse(updated) };
-    });
+    return response;
   }
 
   async delete(id: string): Promise<void> {
@@ -238,7 +262,12 @@ export class GraphsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    if (!this.graphRegistry.isStop(id)) {
+    const registryStatus = this.graphRegistry.getStatus(id);
+    const isGraphActive =
+      registryStatus === GraphStatus.Running ||
+      registryStatus === GraphStatus.Compiling;
+
+    if (isGraphActive) {
       throw new BadRequestException('GRAPH_ALREADY_RUNNING');
     }
 

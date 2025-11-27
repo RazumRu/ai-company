@@ -61,10 +61,11 @@ export class GraphRevisionService {
     baseVersion: string,
     clientSchema: GraphSchemaType,
     entityManager?: EntityManager,
+    options?: { enqueueImmediately?: boolean },
   ): Promise<GraphRevisionDto> {
     const userId = this.authContext.checkSub();
 
-    return this.typeorm.trx(async (em: EntityManager) => {
+    const revision = await this.typeorm.trx(async (em: EntityManager) => {
       this.graphCompiler.validateSchema(clientSchema);
 
       const { headVersion, headSchema } = await this.resolveHeadSchema(
@@ -120,10 +121,25 @@ export class GraphRevisionService {
         data: revision,
       });
 
-      await this.graphRevisionQueue.addRevision(revision);
-
-      return this.prepareResponse(revision);
+      return revision;
     }, entityManager);
+
+    const response = this.prepareResponse(revision);
+
+    if (options?.enqueueImmediately ?? true) {
+      await this.graphRevisionQueue.addRevision({
+        id: revision.id,
+        graphId: revision.graphId,
+      });
+    }
+
+    return response;
+  }
+
+  async enqueueRevisionProcessing(
+    revision: Pick<GraphRevisionDto, 'id' | 'graphId'>,
+  ): Promise<void> {
+    await this.graphRevisionQueue.addRevision(revision);
   }
 
   private async resolveHeadSchema(
@@ -378,9 +394,6 @@ export class GraphRevisionService {
 
         const isRunning = compiledGraph?.status === GraphStatus.Running;
         if (!isRunning) {
-          this.logger.warn(
-            `Graph ${revision.graphId} is not running. Applying revision only to persisted schema.`,
-          );
           await this.finalizeAppliedRevision(graph, revision, entityManager);
           return;
         }
