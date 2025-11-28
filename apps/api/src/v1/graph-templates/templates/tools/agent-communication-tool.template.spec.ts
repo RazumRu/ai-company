@@ -27,6 +27,15 @@ const buildCompiledNode = <TInstance>(options: {
     getStatus: () => GraphNodeStatus.Idle,
   }) as unknown as CompiledGraphNode<TInstance>;
 
+const expectAgentInstructionMessage = (
+  message: HumanMessage,
+  expectedContent: string,
+) => {
+  expect(message).toBeInstanceOf(HumanMessage);
+  expect(message.content).toBe(expectedContent);
+  expect(message.additional_kwargs?.isAgentInstructionMessage).toBe(true);
+};
+
 describe('AgentCommunicationToolTemplate', () => {
   let template: AgentCommunicationToolTemplate;
   let mockAgentCommunicationTool: AgentCommunicationTool;
@@ -243,11 +252,14 @@ describe('AgentCommunicationToolTemplate', () => {
       const messages = ['Hello from Agent A'];
       await invokeAgent(messages, mockRunnableConfig);
 
-      // Verify the agent was called with the correct thread ID
-      expect(mockAgent.runOrAppend).toHaveBeenCalledWith(
-        'root-thread-456__comm-tool', // Uses parent + tool node id
-        [new HumanMessage('Hello from Agent A')],
-        undefined,
+      // Verify the agent was called with the correct thread ID and metadata
+      expect(mockAgent.runOrAppend).toHaveBeenCalledTimes(1);
+      const [threadId, preparedMessages, configArg, runnableConfigArg] =
+        vi.mocked(mockAgent.runOrAppend).mock.calls[0]!;
+
+      expect(threadId).toBe('root-thread-456__comm-tool');
+      expect(configArg).toBeUndefined();
+      expect(runnableConfigArg).toEqual(
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: 'root-thread-456__comm-tool',
@@ -256,6 +268,12 @@ describe('AgentCommunicationToolTemplate', () => {
             node_id: 'agent-2',
           }),
         }),
+      );
+
+      expect(preparedMessages).toHaveLength(1);
+      expectAgentInstructionMessage(
+        preparedMessages[0] as HumanMessage,
+        'Hello from Agent A',
       );
     });
 
@@ -304,16 +322,28 @@ describe('AgentCommunicationToolTemplate', () => {
       await invokeAgent(['Message from A to B'], agentAConfig);
 
       // Verify Agent B gets consistent thread ID based on parent
-      expect(mockAgent.runOrAppend).toHaveBeenCalledWith(
-        'root-thread-456__comm-tool', // parent + tool id
-        [new HumanMessage('Message from A to B')],
-        undefined,
+      expect(mockAgent.runOrAppend).toHaveBeenCalledTimes(1);
+      const [
+        firstThreadId,
+        firstMessages,
+        firstConfigArg,
+        firstRunnableConfig,
+      ] = vi.mocked(mockAgent.runOrAppend).mock.calls[0]!;
+
+      expect(firstThreadId).toBe('root-thread-456__comm-tool');
+      expect(firstConfigArg).toBeUndefined();
+      expect(firstRunnableConfig).toEqual(
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: 'root-thread-456__comm-tool',
-            parent_thread_id: 'root-thread-456', // Same parent
+            parent_thread_id: 'root-thread-456',
           }),
         }),
+      );
+      expect(firstMessages).toHaveLength(1);
+      expectAgentInstructionMessage(
+        firstMessages[0] as HumanMessage,
+        'Message from A to B',
       );
 
       // Reset mock for next call
@@ -333,16 +363,28 @@ describe('AgentCommunicationToolTemplate', () => {
       await invokeAgent(['Message from B to C'], agentBConfig);
 
       // Verify Agent C also gets consistent thread ID
-      expect(mockAgent.runOrAppend).toHaveBeenCalledWith(
-        'root-thread-456__comm-tool',
-        [new HumanMessage('Message from B to C')],
-        undefined,
+      expect(mockAgent.runOrAppend).toHaveBeenCalledTimes(1);
+      const [
+        secondThreadId,
+        secondMessages,
+        secondConfigArg,
+        secondRunnableConfig,
+      ] = vi.mocked(mockAgent.runOrAppend).mock.calls[0]!;
+
+      expect(secondThreadId).toBe('root-thread-456__comm-tool');
+      expect(secondConfigArg).toBeUndefined();
+      expect(secondRunnableConfig).toEqual(
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: 'root-thread-456__comm-tool',
-            parent_thread_id: 'root-thread-456', // Same parent
+            parent_thread_id: 'root-thread-456',
           }),
         }),
+      );
+      expect(secondMessages).toHaveLength(1);
+      expectAgentInstructionMessage(
+        secondMessages[0] as HumanMessage,
+        'Message from B to C',
       );
     });
 
@@ -390,16 +432,24 @@ describe('AgentCommunicationToolTemplate', () => {
       await invokeAgent(['Test message'], mockRunnableConfig);
 
       // Should fallback to current thread_id
-      expect(mockAgent.runOrAppend).toHaveBeenCalledWith(
-        'current-thread-123__comm-tool',
-        [new HumanMessage('Test message')],
-        undefined,
+      expect(mockAgent.runOrAppend).toHaveBeenCalledTimes(1);
+      const [threadId, injectedMessages, configArg, runnableConfigArg] =
+        vi.mocked(mockAgent.runOrAppend).mock.calls[0]!;
+
+      expect(threadId).toBe('current-thread-123__comm-tool');
+      expect(configArg).toBeUndefined();
+      expect(runnableConfigArg).toEqual(
         expect.objectContaining({
           configurable: expect.objectContaining({
             thread_id: 'current-thread-123__comm-tool',
             parent_thread_id: 'current-thread-123',
           }),
         }),
+      );
+      expect(injectedMessages).toHaveLength(1);
+      expectAgentInstructionMessage(
+        injectedMessages[0] as HumanMessage,
+        'Test message',
       );
     });
 

@@ -37,6 +37,28 @@ describe('MessageTransformerService', () => {
       } as HumanMessageDto);
     });
 
+    it('should convert agent instruction human messages into ai responses', () => {
+      const msg = new HumanMessage({
+        content: 'Please help the user with the deployment.',
+        additional_kwargs: {
+          isAgentInstructionMessage: true,
+        },
+      });
+
+      const result = service.transformMessageToDto(msg);
+
+      expect(result).toEqual({
+        role: 'ai',
+        content: 'Please help the user with the deployment.',
+        rawContent: 'Please help the user with the deployment.',
+        id: undefined,
+        toolCalls: undefined,
+        additionalKwargs: expect.objectContaining({
+          isAgentInstructionMessage: true,
+        }),
+      } as AIMessageDto);
+    });
+
     it('should transform system message', () => {
       const msg = new SystemMessage({
         content: 'System instruction',

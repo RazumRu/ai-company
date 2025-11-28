@@ -63,10 +63,19 @@ export class MessageTransformerService {
     ).additional_kwargs;
     const additionalKwargs =
       this.normalizeAdditionalKwargs(rawAdditionalKwargs);
+    const isAgentInstruction = !!additionalKwargs?.isAgentInstructionMessage;
     const contentStr = this.normalizeContent(msgBody.content);
 
     switch (messageType) {
       case 'HumanMessage':
+        if (isAgentInstruction) {
+          return {
+            role: 'ai',
+            content: contentStr,
+            rawContent: (msgBody as { content?: unknown }).content,
+            additionalKwargs,
+          };
+        }
         return { role: 'human', content: contentStr, additionalKwargs };
 
       case 'SystemMessage':

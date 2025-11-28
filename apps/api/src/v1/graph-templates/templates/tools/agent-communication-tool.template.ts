@@ -108,8 +108,6 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
 
       const agent = agentNode.instance;
 
-      const preparedMessages = messages.map((msg) => new HumanMessage(msg));
-
       // Get parent thread ID from runnableConfig - this should be the root thread ID from the trigger
       // If not present, use the current thread_id as fallback
       const rootParentThreadId =
@@ -121,6 +119,16 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       // This ensures that Agent A -> Agent B -> Agent C all share the same conversation context
       // Only create a new thread ID if we don't have a parent thread ID
       const effectiveThreadId = `${rootParentThreadId}__${metadata.nodeId}`;
+
+      const preparedMessages = messages.map(
+        (msg) =>
+          new HumanMessage({
+            content: msg,
+            additional_kwargs: {
+              isAgentInstructionMessage: true,
+            },
+          }),
+      );
 
       // Enrich runnableConfig with graph and node metadata
       // Pass the same parent_thread_id so all agents share the same internal thread
