@@ -823,6 +823,10 @@ export type ThreadMessageDto = {
          */
         id?: string;
         /**
+         * Original raw content as received from the provider
+         */
+        rawContent?: unknown;
+        /**
          * Tool calls in the message
          */
         toolCalls?: Array<{
@@ -845,6 +849,26 @@ export type ThreadMessageDto = {
            */
           id: string;
         }>;
+        /**
+         * Additional message metadata
+         */
+        additionalKwargs?: {
+          [key: string]: unknown;
+        };
+      }
+    | {
+        /**
+         * Message ID
+         */
+        id?: string;
+        /**
+         * Message role
+         */
+        role: 'reasoning';
+        /**
+         * Reasoning trace emitted by the model
+         */
+        content: string;
         /**
          * Additional message metadata
          */
@@ -1129,11 +1153,11 @@ export type GetAllTemplatesResponse =
 export type GetThreadsData = {
   body?: never;
   path?: never;
-  query: {
+  query?: {
     /**
      * Filter by graph ID
      */
-    graphId: string;
+    graphId?: string;
     /**
      * Maximum number of threads to return
      */

@@ -18,7 +18,7 @@ export const getThreadMessages = (
   });
 
 export const getThreads = (
-  query: { graphId: string; limit?: number; offset?: number },
+  query?: { graphId?: string; limit?: number; offset?: number },
   headers = reqHeaders,
 ) =>
   cy.request<ThreadDto[]>({

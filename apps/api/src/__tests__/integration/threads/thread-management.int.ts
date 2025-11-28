@@ -296,6 +296,60 @@ describe('Thread Management Integration Tests', () => {
       },
     );
 
+    it(
+      'should list threads without specifying graphId',
+      { timeout: 60000 },
+      async () => {
+        const graphData = createMockGraphData();
+        const createResult = await graphsService.create(graphData);
+
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        await graphsService.run(graphId);
+
+        const triggerResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['List this thread without filters'],
+            threadSubId: 'thread-list-all',
+          },
+        );
+
+        expect(triggerResult.externalThreadId).toBeDefined();
+
+        const threads = await waitForCondition(
+          () =>
+            threadsService.getThreads({
+              limit: 100,
+              offset: 0,
+            }),
+          (result) =>
+            result.some(
+              (thread) => (thread as { graphId: string }).graphId === graphId,
+            ),
+          { timeout: 10000 },
+        );
+
+        const matchingThread = threads.find((thread) => {
+          const current = thread as {
+            graphId: string;
+            externalThreadId: string;
+          };
+          return (
+            current.graphId === graphId &&
+            current.externalThreadId === triggerResult.externalThreadId
+          );
+        });
+
+        expect(matchingThread).toBeDefined();
+        expect(
+          (matchingThread as { externalThreadId: string }).externalThreadId,
+        ).toBe(triggerResult.externalThreadId);
+      },
+    );
+
     it('should return 404 for non-existent thread', async () => {
       const nonExistentThreadId = 'non-existent-graph-id:thread-id';
 

@@ -62,39 +62,22 @@ export type Options<
 
 export const getAllGraphs = <ThrowOnError extends boolean = false>(
   options?: Options<GetAllGraphsData, ThrowOnError>,
-) => {
-  return (options?.client ?? client).get<
-    GetAllGraphsResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
-    url: '/api/v1/graphs',
-    ...options,
-  });
-};
+) =>
+  (options?.client ?? client).get<GetAllGraphsResponses, unknown, ThrowOnError>(
+    {
+      responseType: 'json',
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/graphs',
+      ...options,
+    },
+  );
 
 export const createGraph = <ThrowOnError extends boolean = false>(
   options: Options<CreateGraphData, ThrowOnError>,
-) => {
-  return (options.client ?? client).post<
-    CreateGraphResponses,
-    unknown,
-    ThrowOnError
-  >({
+) =>
+  (options.client ?? client).post<CreateGraphResponses, unknown, ThrowOnError>({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs',
     ...options,
     headers: {
@@ -102,62 +85,38 @@ export const createGraph = <ThrowOnError extends boolean = false>(
       ...options.headers,
     },
   });
-};
 
 export const deleteGraph = <ThrowOnError extends boolean = false>(
   options: Options<DeleteGraphData, ThrowOnError>,
-) => {
-  return (options.client ?? client).delete<
+) =>
+  (options.client ?? client).delete<
     DeleteGraphResponses,
     unknown,
     ThrowOnError
   >({
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{id}',
     ...options,
   });
-};
 
 export const findGraphById = <ThrowOnError extends boolean = false>(
   options: Options<FindGraphByIdData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
-    FindGraphByIdResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
-    url: '/api/v1/graphs/{id}',
-    ...options,
-  });
-};
+) =>
+  (options.client ?? client).get<FindGraphByIdResponses, unknown, ThrowOnError>(
+    {
+      responseType: 'json',
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/graphs/{id}',
+      ...options,
+    },
+  );
 
 export const updateGraph = <ThrowOnError extends boolean = false>(
   options: Options<UpdateGraphData, ThrowOnError>,
-) => {
-  return (options.client ?? client).put<
-    UpdateGraphResponses,
-    unknown,
-    ThrowOnError
-  >({
+) =>
+  (options.client ?? client).put<UpdateGraphResponses, unknown, ThrowOnError>({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{id}',
     ...options,
     headers: {
@@ -165,83 +124,53 @@ export const updateGraph = <ThrowOnError extends boolean = false>(
       ...options.headers,
     },
   });
-};
 
 export const getCompiledNodes = <ThrowOnError extends boolean = false>(
   options: Options<GetCompiledNodesData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
+) =>
+  (options.client ?? client).get<
     GetCompiledNodesResponses,
     unknown,
     ThrowOnError
   >({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{id}/nodes',
     ...options,
   });
-};
 
 export const runGraph = <ThrowOnError extends boolean = false>(
   options: Options<RunGraphData, ThrowOnError>,
-) => {
-  return (options.client ?? client).post<
-    RunGraphResponses,
-    unknown,
-    ThrowOnError
-  >({
+) =>
+  (options.client ?? client).post<RunGraphResponses, unknown, ThrowOnError>({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{id}/run',
     ...options,
   });
-};
 
 export const destroyGraph = <ThrowOnError extends boolean = false>(
   options: Options<DestroyGraphData, ThrowOnError>,
-) => {
-  return (options.client ?? client).post<
-    DestroyGraphResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
-    url: '/api/v1/graphs/{id}/destroy',
-    ...options,
-  });
-};
+) =>
+  (options.client ?? client).post<DestroyGraphResponses, unknown, ThrowOnError>(
+    {
+      responseType: 'json',
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/graphs/{id}/destroy',
+      ...options,
+    },
+  );
 
 export const executeTrigger = <ThrowOnError extends boolean = false>(
   options: Options<ExecuteTriggerData, ThrowOnError>,
-) => {
-  return (options.client ?? client).post<
+) =>
+  (options.client ?? client).post<
     ExecuteTriggerResponses,
     unknown,
     ThrowOnError
   >({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/triggers/{triggerId}/execute',
     ...options,
     headers: {
@@ -249,163 +178,108 @@ export const executeTrigger = <ThrowOnError extends boolean = false>(
       ...options.headers,
     },
   });
-};
 
 export const getGraphRevisions = <ThrowOnError extends boolean = false>(
   options: Options<GetGraphRevisionsData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
+) =>
+  (options.client ?? client).get<
     GetGraphRevisionsResponses,
     unknown,
     ThrowOnError
   >({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/revisions',
     ...options,
   });
-};
 
 export const getGraphRevision = <ThrowOnError extends boolean = false>(
   options: Options<GetGraphRevisionData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
+) =>
+  (options.client ?? client).get<
     GetGraphRevisionResponses,
     unknown,
     ThrowOnError
   >({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/revisions/{id}',
     ...options,
   });
-};
 
 export const getAllTemplates = <ThrowOnError extends boolean = false>(
   options?: Options<GetAllTemplatesData, ThrowOnError>,
-) => {
-  return (options?.client ?? client).get<
+) =>
+  (options?.client ?? client).get<
     GetAllTemplatesResponses,
     unknown,
     ThrowOnError
   >({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/templates',
     ...options,
   });
-};
 
 export const getThreads = <ThrowOnError extends boolean = false>(
-  options: Options<GetThreadsData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
-    GetThreadsResponses,
-    unknown,
-    ThrowOnError
-  >({
+  options?: Options<GetThreadsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetThreadsResponses, unknown, ThrowOnError>({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads',
     ...options,
   });
-};
 
 export const deleteThread = <ThrowOnError extends boolean = false>(
   options: Options<DeleteThreadData, ThrowOnError>,
-) => {
-  return (options.client ?? client).delete<
+) =>
+  (options.client ?? client).delete<
     DeleteThreadResponses,
     unknown,
     ThrowOnError
   >({
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}',
     ...options,
   });
-};
 
 export const getThreadById = <ThrowOnError extends boolean = false>(
   options: Options<GetThreadByIdData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
-    GetThreadByIdResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
-    url: '/api/v1/threads/{threadId}',
-    ...options,
-  });
-};
+) =>
+  (options.client ?? client).get<GetThreadByIdResponses, unknown, ThrowOnError>(
+    {
+      responseType: 'json',
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/threads/{threadId}',
+      ...options,
+    },
+  );
 
 export const getThreadByExternalId = <ThrowOnError extends boolean = false>(
   options: Options<GetThreadByExternalIdData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
+) =>
+  (options.client ?? client).get<
     GetThreadByExternalIdResponses,
     unknown,
     ThrowOnError
   >({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/external/{externalThreadId}',
     ...options,
   });
-};
 
 export const getThreadMessages = <ThrowOnError extends boolean = false>(
   options: Options<GetThreadMessagesData, ThrowOnError>,
-) => {
-  return (options.client ?? client).get<
+) =>
+  (options.client ?? client).get<
     GetThreadMessagesResponses,
     unknown,
     ThrowOnError
   >({
     responseType: 'json',
-    security: [
-      {
-        scheme: 'bearer',
-        type: 'http',
-      },
-    ],
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/messages',
     ...options,
   });
-};

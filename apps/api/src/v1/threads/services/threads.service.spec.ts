@@ -136,6 +136,31 @@ describe('ThreadsService', () => {
         status: ThreadStatus.Running,
       });
     });
+
+    it('should return threads across all graphs when graphId is omitted', async () => {
+      const mockThreads = [
+        createMockThreadEntity(),
+        createMockThreadEntity({ id: 'thread-2', graphId: 'graph-789' }),
+      ];
+
+      vi.spyOn(threadsDao, 'getAll').mockResolvedValue(mockThreads);
+
+      const query: GetThreadsQueryDto = {
+        limit: 25,
+        offset: 5,
+      };
+
+      const result = await service.getThreads(query);
+
+      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(threadsDao.getAll).toHaveBeenCalledWith({
+        createdBy: mockUserId,
+        limit: 25,
+        offset: 5,
+        order: { createdAt: 'DESC' },
+      });
+      expect(result).toHaveLength(2);
+    });
   });
 
   describe('getThreadById', () => {

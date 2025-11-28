@@ -159,6 +159,46 @@ describe('Threads E2E', () => {
         });
     });
 
+    it('should list threads without specifying graphId', () => {
+      let testGraphId: string;
+
+      const graphData = createMockGraphData();
+
+      createGraph(graphData)
+        .then((response) => {
+          expect(response.status).to.equal(201);
+          testGraphId = response.body.id;
+          return runGraph(testGraphId);
+        })
+        .then((runResponse) => {
+          expect(runResponse.status).to.equal(201);
+          cy.wait(2000);
+
+          return executeTrigger(testGraphId, 'trigger-1', {
+            messages: ['List all threads'],
+          });
+        })
+        .then((triggerResponse) => {
+          expect(triggerResponse.status).to.equal(201);
+          cy.wait(2000);
+
+          return getThreads();
+        })
+        .then((threadsResponse) => {
+          expect(threadsResponse.status).to.equal(200);
+          expect(threadsResponse.body).to.be.an('array');
+          const matchingThread = threadsResponse.body.find(
+            (thread) => thread.graphId === testGraphId,
+          );
+          expect(matchingThread).to.exist;
+          expect(matchingThread?.externalThreadId).to.be.a('string');
+
+          destroyGraph(testGraphId).then(() => {
+            deleteGraph(testGraphId);
+          });
+        });
+    });
+
     it('should filter messages by nodeId', () => {
       let testGraphId: string;
       let internalThreadId: string;

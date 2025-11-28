@@ -1130,22 +1130,13 @@ describe('Graph Revisions Integration Tests', () => {
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
 
-        let failedRevision;
-        try {
-          failedRevision = await waitForRevisionStatus(
-            graphId,
-            revisionId,
-            GraphRevisionStatus.Failed,
-            90_000,
-          );
-        } catch (error) {
-          const currentRevision = await revisionsService.getRevisionById(
-            graphId,
-            revisionId,
-          );
+        const failedRevision = await waitForRevisionStatus(
+          graphId,
+          revisionId,
+          GraphRevisionStatus.Failed,
+          90_000,
+        );
 
-          throw error;
-        }
         expect(failedRevision.status).toBe(GraphRevisionStatus.Failed);
         expect(
           failedRevision.error?.includes('No output connections found') ||
