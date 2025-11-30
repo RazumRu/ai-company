@@ -30,7 +30,7 @@ export class ThreadsService {
     const threads = await this.threadDao.getAll({
       createdBy: userId,
       ...query,
-      order: { createdAt: 'DESC' },
+      order: { updatedAt: 'DESC' },
     });
 
     return threads.map(this.prepareThreadResponse);

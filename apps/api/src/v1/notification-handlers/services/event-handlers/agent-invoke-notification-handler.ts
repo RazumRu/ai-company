@@ -72,9 +72,15 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         updates.source = source;
       }
 
-      if (Object.keys(updates).length > 0) {
-        await this.threadDao.updateById(existingInternalThread.id, updates);
+      const hasUpdates = Object.keys(updates).length > 0;
 
+      if (hasUpdates) {
+        await this.threadDao.updateById(existingInternalThread.id, updates);
+      } else {
+        await this.threadDao.touchById(existingInternalThread.id);
+      }
+
+      if (hasUpdates) {
         const refreshedThread = await this.threadDao.getOne({
           id: existingInternalThread.id,
           graphId,

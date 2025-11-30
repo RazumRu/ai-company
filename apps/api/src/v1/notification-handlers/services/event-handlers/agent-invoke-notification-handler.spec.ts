@@ -118,6 +118,7 @@ describe('AgentInvokeNotificationHandler', () => {
             getOne: vi.fn(),
             create: vi.fn(),
             updateById: vi.fn(),
+            touchById: vi.fn(),
           },
         },
         {
@@ -219,7 +220,7 @@ describe('AgentInvokeNotificationHandler', () => {
       });
     });
 
-    it('should not create thread if internal thread already exists', async () => {
+    it('should touch existing thread when internal thread already exists', async () => {
       const mockGraph = createMockGraphEntity();
       const existingThread = createMockThreadEntity();
       const notification = createMockNotification();
@@ -228,6 +229,7 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(existingThread);
       vi.spyOn(threadsDao, 'create');
       vi.spyOn(threadsDao, 'updateById');
+      const touchSpy = vi.spyOn(threadsDao, 'touchById');
 
       await handler.handle(notification);
 
@@ -237,6 +239,7 @@ describe('AgentInvokeNotificationHandler', () => {
       });
       expect(threadsDao.create).not.toHaveBeenCalled();
       expect(threadsDao.updateById).not.toHaveBeenCalled();
+      expect(touchSpy).toHaveBeenCalledWith(existingThread.id);
       expect(moduleRefMock.create).not.toHaveBeenCalled();
       expect(notificationsService.emit).not.toHaveBeenCalled();
     });
@@ -279,6 +282,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(threadsServiceMock.prepareThreadResponse).toHaveBeenCalledWith(
         updatedThread,
       );
+      expect(threadsDao.touchById).not.toHaveBeenCalled();
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadUpdate,
         graphId: mockGraphId,

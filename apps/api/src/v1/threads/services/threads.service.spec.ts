@@ -124,7 +124,7 @@ describe('ThreadsService', () => {
         graphId: mockGraphId,
         limit: 50,
         offset: 0,
-        order: { createdAt: 'DESC' },
+        order: { updatedAt: 'DESC' },
       });
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
@@ -157,7 +157,7 @@ describe('ThreadsService', () => {
         createdBy: mockUserId,
         limit: 25,
         offset: 5,
-        order: { createdAt: 'DESC' },
+        order: { updatedAt: 'DESC' },
       });
       expect(result).toHaveLength(2);
     });

@@ -1,12 +1,17 @@
 # Ai company
 
-An open-source platform to build, run, and manage AI agent graphs using LangGraph and a pluggable node templating system. Define graphs of triggers → agents → tools/resources → runtimes; compile, run, and interact via REST and notifications. Built with Turbo and pnpm; unit tests via Vitest and E2E via Cypress.
+Ai company is an open-source platform for designing and operating AI agent workflows. Compose triggers, agents, tools, and runtimes into reusable graphs, run them with real-time visibility, and collaborate through threads and notifications.
+
+This is only the backend part. You can check [web repo](https://github.com/RazumRu/ai-company-web)
+
+## Technical Details
+- Graph execution is powered by LangGraph and a pluggable node templating system that links triggers → agents → tools/resources → runtimes.
+- Graphs expose REST endpoints and WebSocket notifications so clients can compile, run, and observe executions programmatically.
+- The monorepo is orchestrated with Turbo and pnpm, centering on a NestJS API in `apps/api`.
+- Quality is enforced with Vitest unit tests, Cypress E2E tests, and shared utilities under `packages/`.
 
 ## Overview
 Build, run, and manage AI agent graphs. A graph is a set of nodes (triggers, agents, tools, resources, runtimes) connected by edges. Graphs are validated, compiled, and executed with LangGraph. You can invoke triggers to start agent runs, track progress via notifications, and destroy graphs safely.
-
-![img.png](assets/readme_1.png)
-![img_3.png](assets/readme_2.png)
 
 ## Features
 - **Graph schema with Zod validation and a template-based node system** — Build graphs using different node types (agents, tools, resources, runtimes, triggers)

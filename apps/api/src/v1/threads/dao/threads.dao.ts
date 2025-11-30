@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
 import { DataSource, In } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { ThreadEntity } from '../entity/thread.entity';
 import { ThreadStatus } from '../threads.types';
@@ -74,5 +75,15 @@ export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms, string> {
         status: In(params.statuses),
       });
     }
+  }
+
+  async touchById(id: string): Promise<void> {
+    await this.getQueryBuilder()
+      .update()
+      .set({
+        updatedAt: () => 'CURRENT_TIMESTAMP',
+      } as QueryDeepPartialEntity<ThreadEntity>)
+      .where({ id })
+      .execute();
   }
 }
