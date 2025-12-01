@@ -16,15 +16,15 @@ export class LiteLlmClient {
   }
 
   async listModels() {
-    const response = await this.request<
-      {
+    const response = await this.request<{
+      data: {
         id: string;
         object: string;
         created: number;
         owned_by: string;
-      }[]
-    >('/v1/models');
+      }[];
+    }>('/v1/models');
 
-    return response.data;
+    return response.data.data;
   }
 }
