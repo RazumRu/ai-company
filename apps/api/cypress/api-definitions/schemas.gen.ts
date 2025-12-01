@@ -1585,3 +1585,16 @@ export const ThreadMessageDtoSchema = {
     'message',
   ],
 } as const;
+
+export const LiteLlmModelDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+    },
+    ownedBy: {
+      type: 'string',
+    },
+  },
+  required: ['id', 'ownedBy'],
+} as const;

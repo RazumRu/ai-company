@@ -37,6 +37,8 @@ import type {
   GetThreadMessagesResponses,
   GetThreadsData,
   GetThreadsResponses,
+  ListModelsData,
+  ListModelsResponses,
   RunGraphData,
   RunGraphResponses,
   UpdateGraphData,
@@ -281,5 +283,15 @@ export const getThreadMessages = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/messages',
+    ...options,
+  });
+
+export const listModels = <ThrowOnError extends boolean = false>(
+  options?: Options<ListModelsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<ListModelsResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/models',
     ...options,
   });

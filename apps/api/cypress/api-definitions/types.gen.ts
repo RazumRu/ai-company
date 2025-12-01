@@ -957,6 +957,17 @@ export type ThreadMessageDto = {
       };
 };
 
+export type LiteLlmModelDto = {
+  /**
+   * Model identifier
+   */
+  id: string;
+  /**
+   * Owner of the model
+   */
+  ownedBy: string;
+};
+
 export type GetAllGraphsData = {
   body?: never;
   path?: never;
@@ -1249,3 +1260,16 @@ export type GetThreadMessagesResponses = {
 
 export type GetThreadMessagesResponse =
   GetThreadMessagesResponses[keyof GetThreadMessagesResponses];
+
+export type ListModelsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/models';
+};
+
+export type ListModelsResponses = {
+  200: Array<LiteLlmModelDto>;
+};
+
+export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
