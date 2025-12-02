@@ -38,7 +38,7 @@ describe('GhBranchTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Create a new git branch');
+      expect(tool.description).toContain('Create a new git (GitHub) branch');
     });
   });
 

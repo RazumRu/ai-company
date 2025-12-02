@@ -70,6 +70,34 @@ export class DockerRuntime extends BaseRuntime {
     await Promise.all(cleanupPromises);
   }
 
+  /**
+   * Finds a container matching the given labels
+   * Returns the first matching container or null if none found
+   * This is useful for checking if a container already exists before creating a new one
+   */
+  static async getByLabels(
+    labels: Record<string, string>,
+    dockerOptions?: Docker.DockerOptions,
+  ): Promise<Docker.Container | null> {
+    if (!labels || !Object.keys(labels).length) {
+      return null;
+    }
+
+    const docker = new Docker(dockerOptions);
+
+    const labelFilters = Object.entries(labels).map(([k, v]) => `${k}=${v}`);
+    const list = await docker.listContainers({
+      all: true,
+      filters: { label: labelFilters },
+    });
+
+    if (!list[0]) {
+      return null;
+    }
+
+    return docker.getContainer(list[0].Id);
+  }
+
   private async ensureImage(name: string) {
     const ref = name.includes(':') ? name : `${name}:latest`;
     try {
@@ -245,10 +273,6 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
-  /**
-   * Creates a Docker container with automatic retry on name conflicts
-   * If creation fails due to a name conflict, it cleans up the existing container and retries once
-   */
   private async createContainerWithRetry(
     containerName: string,
     createFn: () => Promise<Docker.Container>,
@@ -256,62 +280,61 @@ export class DockerRuntime extends BaseRuntime {
     try {
       return await createFn();
     } catch (error) {
-      // If container creation fails due to name conflict, try cleanup and retry once
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       if (
         errorMessage.includes('already in use') ||
         errorMessage.includes('name is already')
       ) {
-        // Force cleanup any leftover container with this name
         const conflictContainer = await this.getByName(containerName);
         if (conflictContainer) {
           await DockerRuntime.stopByInstance(conflictContainer);
         }
 
-        // Retry container creation
         return await createFn();
       }
 
-      // Re-throw if it's not a name conflict error
       throw error;
     }
   }
 
-  /**
-   * Start a separate DIND (Docker-in-Docker) container
-   */
   private async startDindContainer(
     containerName: string,
     network: string,
     labels?: Record<string, string>,
+    recreate?: boolean,
   ): Promise<Docker.Container> {
-    if (this.dindContainer) {
+    if (this.dindContainer && recreate) {
       await DockerRuntime.stopByInstance(this.dindContainer);
+      this.dindContainer = null;
     }
 
     const dindImage = 'docker:27-dind';
 
-    // Check if DIND container already exists
     const existingDind = await this.getByName(containerName);
-    if (existingDind) {
+    if (existingDind && !recreate) {
+      const inspect = await existingDind.inspect();
+      if (!inspect.State.Running) {
+        await existingDind.start();
+      }
+      await this.waitForDindReady(existingDind);
+      return existingDind;
+    }
+
+    if (existingDind && recreate) {
       await DockerRuntime.stopByInstance(existingDind);
     }
 
-    // Ensure DIND image is available
     await this.ensureImage(dindImage);
 
-    // Ensure network exists
     await this.ensureNetwork(network);
 
-    // Create DIND-specific labels
     const dindLabels = {
       ...labels,
       'ai-company/dind': 'true',
       'ai-company/dind-for': containerName,
     };
 
-    // Create DIND container with automatic retry on name conflicts
     const dindContainer = await this.createContainerWithRetry(
       containerName,
       async () => {
@@ -319,16 +342,14 @@ export class DockerRuntime extends BaseRuntime {
           Image: dindImage,
           name: containerName,
           Labels: dindLabels,
-          Env: [
-            'DOCKER_TLS_CERTDIR=', // Disable TLS
-          ],
+          Env: ['DOCKER_TLS_CERTDIR='],
           Cmd: [
             'dockerd',
             '--host=tcp://0.0.0.0:2375',
             '--host=unix:///var/run/docker.sock',
           ],
           HostConfig: {
-            Privileged: true, // Required for DIND
+            Privileged: true,
             NetworkMode: network,
           },
           Tty: false,
@@ -346,7 +367,7 @@ export class DockerRuntime extends BaseRuntime {
 
   async start(params?: RuntimeStartParams): Promise<void> {
     if (this.container) {
-      await DockerRuntime.stopByInstance(this.container);
+      return;
     }
 
     const imageName =
@@ -358,26 +379,38 @@ export class DockerRuntime extends BaseRuntime {
       );
     }
 
-    // Determine container name: use provided name or generate a random one
     const containerName = params?.containerName || `rt-${randomUUID()}`;
     const existingContainer = await this.getByName(containerName);
 
-    if (existingContainer) {
+    if (existingContainer && !params?.recreate) {
+      const inspect = await existingContainer.inspect();
+      if (!inspect.State.Running) {
+        await existingContainer.start();
+      }
+
+      this.container = existingContainer;
+      this.containerWorkdir = this.getWorkdir(params?.workdir);
+
+      this.emit({
+        type: 'start',
+        data: { params: params || {} },
+      });
+
+      return;
+    }
+
+    if (existingContainer && params?.recreate) {
       await DockerRuntime.stopByInstance(existingContainer);
     }
 
-    // If no existing container found or recreate=true, create a new one
     await this.ensureImage(imageName);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
 
-    // Handle network configuration
     const networkName = params?.network || 'ai-company-runtime';
     await this.ensureNetwork(networkName);
 
-    // Prepare environment variables
     let containerEnv = params?.env || {};
 
-    // If DIND is enabled, set DOCKER_HOST to point to the DIND container
     if (params?.enableDind) {
       const dindContainerName = `dind-${containerName}`;
 
@@ -385,6 +418,7 @@ export class DockerRuntime extends BaseRuntime {
         dindContainerName,
         networkName,
         params?.labels,
+        params?.recreate,
       );
 
       containerEnv = {

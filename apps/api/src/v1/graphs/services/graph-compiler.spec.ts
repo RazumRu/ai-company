@@ -1677,10 +1677,9 @@ describe('GraphCompiler', () => {
 
       await compiler.destroyNotCompiledGraph(graphWithRuntime);
 
-      expect(vi.mocked(DockerRuntime.cleanupByLabels)).toHaveBeenCalledWith(
-        { 'ai-company/graph_id': graphWithRuntime.id },
-        expect.objectContaining({ socketPath: expect.any(String) }),
-      );
+      expect(vi.mocked(DockerRuntime.cleanupByLabels)).toHaveBeenCalledWith({
+        'ai-company/graph_id': graphWithRuntime.id,
+      });
     });
 
     it('should do nothing for graphs without docker-runtime nodes', async () => {
@@ -1737,10 +1736,9 @@ describe('GraphCompiler', () => {
 
       await compiler.destroyNotCompiledGraph(graphWithMultipleRuntimes);
 
-      expect(vi.mocked(DockerRuntime.cleanupByLabels)).toHaveBeenCalledWith(
-        { 'ai-company/graph_id': graphWithMultipleRuntimes.id },
-        expect.objectContaining({ socketPath: expect.any(String) }),
-      );
+      expect(vi.mocked(DockerRuntime.cleanupByLabels)).toHaveBeenCalledWith({
+        'ai-company/graph_id': graphWithMultipleRuntimes.id,
+      });
     });
   });
 

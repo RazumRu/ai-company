@@ -10,6 +10,7 @@ export interface RuntimeStartParams {
   containerName?: string;
   network?: string;
   enableDind?: boolean;
+  recreate?: boolean;
 }
 
 export interface RuntimeExecParams {

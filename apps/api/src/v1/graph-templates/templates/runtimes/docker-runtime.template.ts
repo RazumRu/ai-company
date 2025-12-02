@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
-import { CompiledGraphNode as _CompiledGraphNode } from '../../../graphs/graphs.types';
 import { RuntimeType } from '../../../runtime/runtime.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { DockerRuntime } from '../../../runtime/services/docker-runtime';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
@@ -84,10 +84,11 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
     _outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
   ): Promise<BaseRuntime> {
-    // Automatically add graph_id and node_id labels for container management
+    // Automatically add graph_id, node_id, and version labels for container management
     const systemLabels: Record<string, string> = {
       'ai-company/graph_id': metadata.graphId,
       'ai-company/node_id': metadata.nodeId,
+      'ai-company/graph_version': metadata.version,
     };
 
     // Add temporary label if the graph is temporary
@@ -101,8 +102,17 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       ...systemLabels,
     };
 
+    // Check if a container with matching labels already exists
+    const existingContainer = await DockerRuntime.getByLabels({
+      'ai-company/graph_id': metadata.graphId,
+      'ai-company/node_id': metadata.nodeId,
+      'ai-company/graph_version': metadata.version,
+    });
+
     // Generate network name based on graph ID if not provided
     const networkName = `ai-company-${metadata.graphId}`;
+    const containerName = `rt-${metadata.graphId}-${metadata.nodeId}`;
+    const shouldRecreate = !existingContainer;
 
     return await this.runtimeProvider.provide({
       type: config.runtimeType,
@@ -112,8 +122,8 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       initScript: config.initScript,
       initScriptTimeoutMs: config.initScriptTimeoutMs,
       autostart: true, // Always start automatically
-      recreate: true, // Always recreate the runtime
-      containerName: `rt-${metadata.graphId}-${metadata.nodeId}`, // Use graphId and nodeId for consistent container naming
+      recreate: shouldRecreate,
+      containerName, // Use graphId and nodeId for consistent container naming
       network: networkName,
       enableDind: config.enableDind,
     });

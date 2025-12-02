@@ -31,6 +31,7 @@ export class RuntimeProvider {
         containerName: opts.containerName,
         network: opts.network,
         enableDind: opts.enableDind,
+        recreate: opts.recreate,
       });
     }
 

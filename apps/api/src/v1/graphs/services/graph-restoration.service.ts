@@ -83,10 +83,7 @@ export class GraphRestorationService {
     this.logger.log('Cleaning up temporary runtime containers...');
 
     try {
-      await DockerRuntime.cleanupByLabels(
-        { 'ai-company/temporary': 'true' },
-        { socketPath: environment.dockerSocket },
-      );
+      await DockerRuntime.cleanupByLabels({ 'ai-company/temporary': 'true' });
       this.logger.log('Temporary runtime containers cleanup complete');
     } catch (error) {
       this.logger.warn('Failed to cleanup temporary runtime containers', {

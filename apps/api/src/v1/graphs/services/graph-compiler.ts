@@ -354,10 +354,7 @@ export class GraphCompiler {
     );
     if (runtimeNodes.length === 0) return;
 
-    await DockerRuntime.cleanupByLabels(
-      { 'ai-company/graph_id': graph.id },
-      { socketPath: environment.dockerSocket },
-    );
+    await DockerRuntime.cleanupByLabels({ 'ai-company/graph_id': graph.id });
   }
 
   private async compileNode(

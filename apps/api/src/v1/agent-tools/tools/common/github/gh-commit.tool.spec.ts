@@ -41,7 +41,7 @@ describe('GhCommitTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Create a git commit');
+      expect(tool.description).toContain('Create a git (GitHub) commit');
     });
   });
 
