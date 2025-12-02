@@ -3,7 +3,10 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
-import { GhToolGroup } from '../../../agent-tools/tools/common/github/gh-tool-group';
+import {
+  GhToolGroup,
+  GhToolType,
+} from '../../../agent-tools/tools/common/github/gh-tool-group';
 import { IGithubResourceResourceOutput } from '../../../graph-resources/services/github-resource';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
@@ -14,7 +17,25 @@ import {
   ToolNodeBaseTemplate,
 } from '../base-node.template';
 
-export const GhToolTemplateSchema = z.object({}).strict();
+export const GhToolTemplateSchema = z
+  .object({
+    includeClone: z
+      .boolean()
+      .default(true)
+      .optional()
+      .describe('Include gh_clone tool'),
+    includeCommit: z
+      .boolean()
+      .default(true)
+      .optional()
+      .describe('Include gh_commit tool'),
+    includeBranch: z
+      .boolean()
+      .default(true)
+      .optional()
+      .describe('Include gh_branch tool'),
+  })
+  .strict();
 
 @Injectable()
 @RegisterTemplate()
@@ -135,6 +156,21 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
     const runtimeNodeId = runtimeNodeIds[0]!;
     const graphId = metadata.graphId;
 
+    // Parse config to get defaults applied
+    const parsedConfig = GhToolTemplateSchema.parse(config);
+
+    // Convert boolean flags to array of tool enums
+    const tools: GhToolType[] = [];
+    if (parsedConfig.includeClone !== false) {
+      tools.push(GhToolType.CLONE);
+    }
+    if (parsedConfig.includeCommit !== false) {
+      tools.push(GhToolType.COMMIT);
+    }
+    if (parsedConfig.includeBranch !== false) {
+      tools.push(GhToolType.BRANCH);
+    }
+
     return this.ghToolGroup.buildTools({
       runtime: () => {
         // Get fresh runtime instance from registry on each invocation
@@ -153,6 +189,7 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         return currentRuntimeNode.instance;
       },
       patToken,
+      tools,
     });
   }
 }

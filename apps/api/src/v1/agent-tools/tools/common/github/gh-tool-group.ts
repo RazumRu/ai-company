@@ -4,13 +4,27 @@ import { Injectable } from '@nestjs/common';
 import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
 import { BaseToolGroup } from '../../base-tool-group';
 import { GhBaseToolConfig } from './gh-base.tool';
+import { GhBranchTool } from './gh-branch.tool';
 import { GhCloneTool } from './gh-clone.tool';
+import { GhCommitTool } from './gh-commit.tool';
 
-export type GhToolGroupConfig = GhBaseToolConfig;
+export enum GhToolType {
+  CLONE = 'clone',
+  COMMIT = 'commit',
+  BRANCH = 'branch',
+}
+
+export type GhToolGroupConfig = GhBaseToolConfig & {
+  tools: GhToolType[];
+};
 
 @Injectable()
 export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
-  constructor(private readonly ghCloneTool: GhCloneTool) {
+  constructor(
+    private readonly ghCloneTool: GhCloneTool,
+    private readonly ghCommitTool: GhCommitTool,
+    private readonly ghBranchTool: GhBranchTool,
+  ) {
     super();
   }
 
@@ -18,7 +32,21 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     config: GhToolGroupConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): DynamicStructuredTool[] {
-    const tools = [this.ghCloneTool.build(config, lgConfig)];
+    const tools: DynamicStructuredTool[] = [];
+
+    for (const toolType of config.tools) {
+      switch (toolType) {
+        case GhToolType.CLONE:
+          tools.push(this.ghCloneTool.build(config, lgConfig));
+          break;
+        case GhToolType.COMMIT:
+          tools.push(this.ghCommitTool.build(config, lgConfig));
+          break;
+        case GhToolType.BRANCH:
+          tools.push(this.ghBranchTool.build(config, lgConfig));
+          break;
+      }
+    }
 
     return tools;
   }

@@ -29,7 +29,7 @@ type GhCloneToolOutput = {
 export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   public name = 'gh_clone';
   public description =
-    'Clone a GitHub repository into the running container at the specified path using authenticated HTTPS.';
+    'Clone a GitHub repository into the running container using authenticated HTTPS. Optionally specify a branch or tag to checkout, and a depth for shallow cloning. Returns the path to the cloned repository.';
 
   public get schema() {
     return GhCloneToolSchema;

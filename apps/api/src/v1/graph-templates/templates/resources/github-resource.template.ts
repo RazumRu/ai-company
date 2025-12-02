@@ -21,7 +21,7 @@ export const GithubResourceTemplateSchema = z
     auth: z
       .boolean()
       .default(true)
-      .describe('Whether to authenticate with GitHub (default: true)'),
+      .describe('Whether to authenticate with GitHub'),
   })
   .strict();
 
