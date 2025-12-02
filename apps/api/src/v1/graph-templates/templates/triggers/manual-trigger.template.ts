@@ -35,7 +35,8 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
   typeof ManualTriggerTemplateSchema,
   ManualTrigger
 > {
-  readonly name = 'manual-trigger';
+  readonly id = 'manual-trigger';
+  readonly name = 'Manual';
   readonly description = 'Manual trigger for direct agent invocation';
   readonly schema = ManualTriggerTemplateSchema;
 

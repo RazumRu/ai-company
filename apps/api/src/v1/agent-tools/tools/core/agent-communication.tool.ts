@@ -6,9 +6,9 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
 import { z } from 'zod';
 
-import { AgentOutput } from '../../agents/services/agents/base-agent';
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
-import { BaseTool } from './base-tool';
+import { AgentOutput } from '../../../agents/services/agents/base-agent';
+import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { BaseTool } from '../base-tool';
 
 export interface AgentCommunicationToolOptions {
   description?: string;
@@ -37,7 +37,7 @@ export class AgentCommunicationTool extends BaseTool<
   AgentCommunicationSchemaType,
   AgentCommunicationToolOptions
 > {
-  public name = 'agent-communication';
+  public name = 'agent_communication';
   public description =
     'Request assistance from another registered agent by providing target agent id, context messages, and optional payload.';
 

@@ -76,7 +76,7 @@ describe('SimpleAgentTemplate', () => {
 
   describe('properties', () => {
     it('should have correct name', () => {
-      expect(template.name).toBe('simple-agent');
+      expect(template.name).toBe('Simple agent');
     });
 
     it('should have correct description', () => {

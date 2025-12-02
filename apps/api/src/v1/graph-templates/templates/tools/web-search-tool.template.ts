@@ -2,7 +2,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
-import { WebSearchTool } from '../../../agent-tools/tools/web-search.tool';
+import { WebSearchTool } from '../../../agent-tools/tools/common/web-search.tool';
 import { CompiledGraphNode as _CompiledGraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
@@ -22,7 +22,8 @@ export const WebSearchToolTemplateSchema = z
 export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
   typeof WebSearchToolTemplateSchema
 > {
-  readonly name = 'web-search-tool';
+  readonly id = 'web-search-tool';
+  readonly name = 'Web search';
   readonly description = 'Search the web for information';
   readonly schema = WebSearchToolTemplateSchema;
 
@@ -43,7 +44,7 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
     _inputNodeIds: Set<string>,
     _outputNodeIds: Set<string>,
     _metadata: NodeBaseTemplateMetadata,
-  ): Promise<DynamicStructuredTool> {
-    return this.webSearchTool.build(config);
+  ): Promise<DynamicStructuredTool[]> {
+    return [this.webSearchTool.build(config)];
   }
 }

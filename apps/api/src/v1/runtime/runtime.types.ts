@@ -27,6 +27,7 @@ export interface RuntimeExecResult {
   exitCode: number;
   stdout: string;
   stderr: string;
+  execPath: string;
 }
 
 export enum RuntimeType {

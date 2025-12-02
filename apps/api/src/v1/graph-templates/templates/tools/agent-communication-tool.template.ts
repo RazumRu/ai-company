@@ -10,7 +10,7 @@ import { z } from 'zod';
 import {
   AgentCommunicationTool,
   AgentCommunicationToolOptions,
-} from '../../../agent-tools/tools/agent-communication.tool';
+} from '../../../agent-tools/tools/core/agent-communication.tool';
 import { AgentOutput } from '../../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
@@ -36,7 +36,8 @@ export const AgentCommunicationToolTemplateSchema = z
 export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
   typeof AgentCommunicationToolTemplateSchema
 > {
-  readonly name = 'agent-communication-tool';
+  readonly id = 'agent-communication-tool';
+  readonly name = 'Agent communication';
   readonly description =
     'Allows an agent to initiate communication with another agent via an internal request pipeline.';
   readonly schema = AgentCommunicationToolTemplateSchema;
@@ -69,7 +70,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
     _inputNodeIds: Set<string>,
     outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
-  ): Promise<DynamicStructuredTool> {
+  ): Promise<DynamicStructuredTool[]> {
     // Get agent node IDs from output nodes
     const agentNodeIds = this.graphRegistry.filterNodesByType(
       metadata.graphId,
@@ -199,9 +200,11 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
       } as T;
     };
 
-    return this.agentCommunicationTool.build({
-      invokeAgent,
-      description: config.description,
-    });
+    return [
+      this.agentCommunicationTool.build({
+        invokeAgent,
+        description: config.description,
+      }),
+    ];
   }
 }

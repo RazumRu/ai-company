@@ -107,7 +107,7 @@ describe('ManualTriggerTemplate', () => {
 
   describe('properties', () => {
     it('should have correct name', () => {
-      expect(template.name).toBe('manual-trigger');
+      expect(template.name).toBe('Manual');
     });
 
     it('should have correct description', () => {
@@ -260,7 +260,7 @@ describe('ManualTriggerTemplate', () => {
         thread_id: expectedFullThreadId,
         graph_id: 'test-graph',
         node_id: 'agent-1', // Uses agent's nodeId
-        source: 'manual-trigger (trigger)',
+        source: 'Manual (trigger)',
       });
       // checkpoint_ns should be threadId:agentNodeId
       expect(actualRunnableConfig!.configurable!.checkpoint_ns).toBe(

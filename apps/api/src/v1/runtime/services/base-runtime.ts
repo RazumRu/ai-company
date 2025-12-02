@@ -36,7 +36,7 @@ export type RuntimeEvent =
   | { type: 'execEnd'; data: RuntimeExecEndEvent };
 
 export abstract class BaseRuntime {
-  private workdir = '/runtime-workspace';
+  protected workdir = '/runtime-workspace';
   protected eventEmitter = new EventEmitter();
 
   public getWorkdir(workdir?: string | string[], parentWorkdir?: string) {

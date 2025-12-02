@@ -3,7 +3,7 @@ import { RunnableConfig } from '@langchain/core/runnables';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AgentCommunicationTool } from '../../../agent-tools/tools/agent-communication.tool';
+import { AgentCommunicationTool } from '../../../agent-tools/tools/core/agent-communication.tool';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import {
@@ -165,7 +165,7 @@ describe('AgentCommunicationToolTemplate', () => {
         },
       );
 
-      expect(builtTool.description).toBe(
+      expect(builtTool[0]?.description).toBe(
         'Use this tool to communicate with the customer service agent for handling support requests',
       );
     });
@@ -202,7 +202,7 @@ describe('AgentCommunicationToolTemplate', () => {
         },
       );
 
-      expect(builtTool.description).toBe(
+      expect(builtTool[0]?.description).toBe(
         'Request assistance from another registered agent by providing target agent id, context messages, and optional payload.',
       );
     });

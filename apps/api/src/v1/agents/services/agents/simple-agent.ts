@@ -18,7 +18,7 @@ import { DefaultLogger } from '@packages/common';
 import { v4 } from 'uuid';
 import { z } from 'zod';
 
-import { FinishTool } from '../../../agent-tools/tools/finish.tool';
+import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import {
   BaseAgentState,

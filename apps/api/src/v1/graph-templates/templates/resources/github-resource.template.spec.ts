@@ -1,15 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ResourceKind } from '../../../graph-resources/graph-resources.types';
 import {
-  IShellResourceOutput,
-  ResourceKind,
-} from '../../../graph-resources/graph-resources.types';
-import { GithubResource } from '../../../graph-resources/services/github-resource';
-import {
-  CompiledGraphNode as _CompiledGraphNode,
-  NodeKind,
-} from '../../../graphs/graphs.types';
+  GithubResource,
+  IGithubResourceResourceOutput,
+} from '../../../graph-resources/services/github-resource';
+import { NodeKind } from '../../../graphs/graphs.types';
 import {
   GithubResourceTemplate,
   GithubResourceTemplateSchema,
@@ -41,7 +38,7 @@ describe('GithubResourceTemplate', () => {
 
   describe('properties', () => {
     it('should have correct name', () => {
-      expect(template.name).toBe('github-resource');
+      expect(template.name).toBe('GitHub');
     });
 
     it('should have correct description', () => {
@@ -158,7 +155,8 @@ describe('GithubResourceTemplate', () => {
         auth: false,
       };
 
-      const mockResourceOutput: IShellResourceOutput = {
+      const mockResourceOutput: IGithubResourceResourceOutput = {
+        patToken: 'ghp_1234567890abcdef',
         information: 'GitHub resource information',
         kind: ResourceKind.Shell,
         data: {
@@ -199,7 +197,8 @@ describe('GithubResourceTemplate', () => {
         auth: false,
       };
 
-      const mockResourceOutput: IShellResourceOutput = {
+      const mockResourceOutput: IGithubResourceResourceOutput = {
+        patToken: 'ghp_1234567890abcdef',
         information: 'GitHub resource information',
         kind: ResourceKind.Shell,
         data: {
@@ -283,7 +282,8 @@ describe('GithubResourceTemplate', () => {
         auth: false,
       };
 
-      const mockResourceOutput: IShellResourceOutput = {
+      const mockResourceOutput: IGithubResourceResourceOutput = {
+        patToken: 'ghp_test_token_123',
         information: 'GitHub resource information',
         kind: ResourceKind.Shell,
         data: {

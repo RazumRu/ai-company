@@ -22,23 +22,23 @@ export class TemplateRegistry {
   register<TConfig extends z.ZodTypeAny, TOutput>(
     template: NodeBaseTemplate<TConfig, TOutput>,
   ): void {
-    if (this.hasTemplate(template.name)) {
+    if (this.hasTemplate(template.id)) {
       throw new BadRequestException(
         undefined,
-        `Template with name '${template.name}' is already registered`,
+        `Template with id '${template.id}' is already registered`,
       );
     }
 
-    this.templates.set(template.name, template);
+    this.templates.set(template.id, template);
   }
 
   /**
-   * Get a template by name
+   * Get a template by id
    */
   getTemplate<TConfig extends z.ZodTypeAny, TOutput>(
-    name: string,
+    id: string,
   ): NodeBaseTemplate<TConfig, TOutput> | undefined {
-    return this.templates.get(name) as NodeBaseTemplate<TConfig, TOutput>;
+    return this.templates.get(id) as NodeBaseTemplate<TConfig, TOutput>;
   }
 
   /**
@@ -60,22 +60,22 @@ export class TemplateRegistry {
   /**
    * Check if a template exists
    */
-  hasTemplate(name: string): boolean {
-    return this.templates.has(name);
+  hasTemplate(id: string): boolean {
+    return this.templates.has(id);
   }
 
   /**
    * Validate a template configuration
    */
   validateTemplateConfig<TConfig extends z.ZodTypeAny, TOutput>(
-    templateName: string,
+    templateId: string,
     config: unknown,
   ): z.infer<TConfig> {
-    const template = this.getTemplate<TConfig, TOutput>(templateName);
+    const template = this.getTemplate<TConfig, TOutput>(templateId);
     if (!template) {
       throw new BadRequestException(
         undefined,
-        `Template '${templateName}' not found`,
+        `Template '${templateId}' not found`,
       );
     }
 
@@ -84,7 +84,7 @@ export class TemplateRegistry {
     } catch (error) {
       throw new BadRequestException(
         'INVALID_TEMPLATE_CONFIG',
-        `Invalid configuration for template '${templateName}': ${error}`,
+        `Invalid configuration for template '${templateId}': ${error}`,
       );
     }
   }

@@ -7,6 +7,7 @@ import {
   OpenAIChatModelId,
 } from '@langchain/openai';
 import { EventEmitter } from 'events';
+import { isArray } from 'lodash';
 import { z } from 'zod';
 
 import { environment } from '../../../../environments';
@@ -75,8 +76,9 @@ export abstract class BaseAgent<
   protected tools: DynamicStructuredTool[] = [];
   protected eventEmitter = new EventEmitter();
 
-  public addTool(tool: DynamicStructuredTool) {
-    this.tools.push(tool);
+  public addTool(tool: DynamicStructuredTool | DynamicStructuredTool[]) {
+    const tools = isArray(tool) ? tool : [tool];
+    this.tools.push(...tools);
   }
 
   /**

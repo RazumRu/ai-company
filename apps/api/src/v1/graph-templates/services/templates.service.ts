@@ -13,6 +13,7 @@ export class TemplatesService {
     const templates = this.templateRegistry.getAllTemplates();
 
     const list: TemplateDto[] = templates.map((template) => ({
+      id: template.id,
       name: template.name,
       description: template.description,
       kind: template.kind,

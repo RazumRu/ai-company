@@ -23,6 +23,7 @@ export abstract class NodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
   TOutput = unknown,
 > {
+  abstract readonly id: string;
   abstract readonly name: string;
   abstract readonly description: string;
   abstract readonly kind: NodeKind;
@@ -54,7 +55,7 @@ export abstract class RuntimeNodeBaseTemplate<
 
 export abstract class ToolNodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
-> extends NodeBaseTemplate<TConfig, DynamicStructuredTool> {
+> extends NodeBaseTemplate<TConfig, DynamicStructuredTool[]> {
   readonly kind: NodeKind = NodeKind.Tool;
 }
 

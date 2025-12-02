@@ -34,6 +34,11 @@ describe('Graph Templates Integration Tests', () => {
     return templates.find((template) => template.name === name);
   };
 
+  const getTemplateById = async (id: string) => {
+    const templates = await templatesService.getAllTemplates();
+    return templates.find((template) => template.id === id);
+  };
+
   beforeAll(async () => {
     app = await createTestModule();
     templatesService = app.get(TemplatesService);
@@ -75,7 +80,7 @@ describe('Graph Templates Integration Tests', () => {
   });
 
   it('exposes manual trigger template that targets simple agents', async () => {
-    const manualTrigger = await getTemplateByName('manual-trigger');
+    const manualTrigger = await getTemplateById('manual-trigger');
 
     expect(manualTrigger).toBeDefined();
     expect(manualTrigger?.kind).toBe(NodeKind.Trigger);
@@ -94,7 +99,7 @@ describe('Graph Templates Integration Tests', () => {
   });
 
   it('links the simple agent template with triggers, tools, and communication helper', async () => {
-    const simpleAgent = await getTemplateByName('simple-agent');
+    const simpleAgent = await getTemplateById('simple-agent');
 
     expect(simpleAgent).toBeDefined();
     expect(simpleAgent?.kind).toBe(NodeKind.SimpleAgent);

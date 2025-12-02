@@ -56,7 +56,8 @@ export const DockerRuntimeTemplateSchema = z
 export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
   typeof DockerRuntimeTemplateSchema
 > {
-  readonly name = 'docker-runtime';
+  readonly id = 'docker-runtime';
+  readonly name = 'Docker';
   readonly description = 'Docker runtime environment for executing code';
   readonly schema = DockerRuntimeTemplateSchema;
 
@@ -64,6 +65,11 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
     {
       type: 'template',
       value: 'shell-tool',
+      multiple: true,
+    },
+    {
+      type: 'template',
+      value: 'gh-tool',
       multiple: true,
     },
   ] as const;

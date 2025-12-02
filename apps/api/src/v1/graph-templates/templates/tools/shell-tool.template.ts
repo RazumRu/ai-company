@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
-import { ShellTool } from '../../../agent-tools/tools/shell.tool';
+import { ShellTool } from '../../../agent-tools/tools/core/shell.tool';
 import {
   IBaseResourceOutput,
   IShellResourceOutput,
@@ -26,7 +26,8 @@ export const ShellToolTemplateSchema = z.object({}).strict();
 export class ShellToolTemplate extends ToolNodeBaseTemplate<
   typeof ShellToolTemplateSchema
 > {
-  readonly name = 'shell-tool';
+  readonly id = 'shell-tool';
+  readonly name = 'Shell';
   readonly description = 'Execute shell commands in the selected runtime';
   readonly schema = ShellToolTemplateSchema;
 
@@ -64,7 +65,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     _inputNodeIds: Set<string>,
     outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
-  ): Promise<DynamicStructuredTool> {
+  ): Promise<DynamicStructuredTool[]> {
     // Find runtime node from output nodes
     const runtimeNodeIds = this.graphRegistry.filterNodesByType(
       metadata.graphId,
@@ -146,26 +147,28 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     const runtimeNodeId = runtimeNodeIds[0]!;
     const graphId = metadata.graphId;
 
-    return this.shellTool.build({
-      runtime: () => {
-        // Get fresh runtime instance from registry on each invocation
-        const currentRuntimeNode = this.graphRegistry.getNode<BaseRuntime>(
-          graphId,
-          runtimeNodeId,
-        );
-
-        if (!currentRuntimeNode) {
-          throw new NotFoundException(
-            'RUNTIME_NOT_FOUND',
-            `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
+    return [
+      this.shellTool.build({
+        runtime: () => {
+          // Get fresh runtime instance from registry on each invocation
+          const currentRuntimeNode = this.graphRegistry.getNode<BaseRuntime>(
+            graphId,
+            runtimeNodeId,
           );
-        }
 
-        return currentRuntimeNode.instance;
-      },
-      env,
-      additionalInfo: combinedInfo,
-    });
+          if (!currentRuntimeNode) {
+            throw new NotFoundException(
+              'RUNTIME_NOT_FOUND',
+              `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
+            );
+          }
+
+          return currentRuntimeNode.instance;
+        },
+        env,
+        additionalInfo: combinedInfo,
+      }),
+    ];
   }
 
   private collectRuntimeData(

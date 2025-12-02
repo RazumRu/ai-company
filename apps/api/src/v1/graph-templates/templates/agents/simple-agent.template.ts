@@ -7,10 +7,7 @@ import {
   SimpleAgent,
   SimpleAgentSchema,
 } from '../../../agents/services/agents/simple-agent';
-import {
-  CompiledGraphNode as _CompiledGraphNode,
-  NodeKind,
-} from '../../../graphs/graphs.types';
+import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
@@ -30,7 +27,8 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   typeof SimpleAgentTemplateSchema,
   SimpleAgent
 > {
-  readonly name = 'simple-agent';
+  readonly id = 'simple-agent';
+  readonly name = 'Simple agent';
   readonly description =
     'Configurable agent that can use connected tools and triggers';
   readonly schema = SimpleAgentTemplateSchema;
@@ -77,7 +75,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
     // Look up tool nodes from the registry and add them to the agent
     for (const nodeId of outputNodeIds) {
-      const node = this.graphRegistry.getNode<DynamicStructuredTool>(
+      const node = this.graphRegistry.getNode<DynamicStructuredTool[]>(
         metadata.graphId,
         nodeId,
       );

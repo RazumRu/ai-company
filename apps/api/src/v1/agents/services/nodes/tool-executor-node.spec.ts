@@ -2,7 +2,7 @@ import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FinishToolResponse } from '../../../agent-tools/tools/finish.tool';
+import { FinishToolResponse } from '../../../agent-tools/tools/core/finish.tool';
 import { BaseAgentState } from '../../agents.types';
 import { ToolExecutorNode } from './tool-executor-node';
 

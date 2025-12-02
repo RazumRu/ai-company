@@ -1164,6 +1164,9 @@ export const GraphRevisionDtoSchema = {
 export const TemplateDtoSchema = {
   type: 'object',
   properties: {
+    id: {
+      type: 'string',
+    },
     name: {
       type: 'string',
     },
@@ -1274,7 +1277,7 @@ export const TemplateDtoSchema = {
       },
     },
   },
-  required: ['name', 'description', 'kind', 'schema'],
+  required: ['id', 'name', 'description', 'kind', 'schema'],
 } as const;
 
 export const ThreadDtoSchema = {

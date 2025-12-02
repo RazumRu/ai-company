@@ -31,7 +31,8 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
   typeof GithubResourceTemplateSchema,
   IShellResourceOutput
 > {
-  readonly name = 'github-resource';
+  readonly id = 'github-resource';
+  readonly name = 'GitHub';
   readonly description =
     'GitHub resource providing environment for shell execution';
   readonly schema = GithubResourceTemplateSchema;
@@ -40,6 +41,11 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
     {
       type: 'template',
       value: 'shell-tool',
+      multiple: true,
+    },
+    {
+      type: 'template',
+      value: 'gh-tool',
       multiple: true,
     },
   ] as const;

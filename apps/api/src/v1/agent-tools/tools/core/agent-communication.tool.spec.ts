@@ -2,7 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { AgentCommunicationTool } from './agent-communication.tool';
 
 describe('AgentCommunicationTool', () => {
@@ -114,7 +114,7 @@ describe('AgentCommunicationTool', () => {
 
       expect(builtTool).toBeDefined();
       expect(typeof builtTool.invoke).toBe('function');
-      expect(builtTool.name).toBe('agent-communication');
+      expect(builtTool.name).toBe('agent_communication');
     });
   });
 });

@@ -142,7 +142,7 @@ export class GraphRegistry {
   }
 
   /**
-   * Filters node IDs by their template name
+   * Filters node IDs by their template id
    */
   filterNodesByTemplate(
     graphId: string,

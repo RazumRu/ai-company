@@ -43,6 +43,7 @@
     "@nestjs/swagger": "^11.2.3",
     "@nestjs/typeorm": "^11.0.0",
     "@nestjs/websockets": "^11.1.9",
+    "@octokit/rest": "^22.0.1",
     "@packages/common": "workspace:*",
     "@packages/http-server": "workspace:*",
     "@packages/metrics": "workspace:*",

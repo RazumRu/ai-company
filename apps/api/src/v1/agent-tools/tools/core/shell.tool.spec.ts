@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { ShellTool, ShellToolOptions } from './shell.tool';
 
 describe('ShellTool', () => {
@@ -267,17 +267,18 @@ describe('ShellTool', () => {
       });
     });
 
-    it('should throw error when runtime is not provided', async () => {
+    it('should return error when runtime is not provided', async () => {
       const builtTool = tool.build({
         runtime: null as unknown as BaseRuntime,
       });
 
-      await expect(
-        builtTool.invoke({
-          purpose: 'Testing error handling',
-          cmd: 'echo "hello"',
-        }),
-      ).rejects.toThrow('Runtime is required for ShellTool');
+      const result = await builtTool.invoke({
+        purpose: 'Testing error handling',
+        cmd: 'echo "hello"',
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Runtime is required for ShellTool');
     });
 
     it('should handle runtime execution errors', async () => {

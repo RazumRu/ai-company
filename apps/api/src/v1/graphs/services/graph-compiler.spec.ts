@@ -45,6 +45,7 @@ describe('GraphCompiler', () => {
     }
 
     return {
+      id: `mock-${kind}`,
       name: `mock-${kind}`,
       description: `Mock ${kind} template`,
       kind,
@@ -861,11 +862,13 @@ describe('GraphCompiler', () => {
 
       const mockToolTemplate = {
         ...createMockTemplate(NodeKind.Tool),
+        id: 'shell-tool',
         name: 'shell-tool',
       };
 
       const mockResourceTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'forbidden-resource',
         name: 'forbidden-resource',
         inputs: [
           { type: 'template', value: 'github-resource', multiple: true },
@@ -970,11 +973,13 @@ describe('GraphCompiler', () => {
 
       const mockToolTemplate = {
         ...createMockTemplate(NodeKind.Tool),
+        id: 'shell-tool',
         name: 'shell-tool',
       };
 
       const mockResourceTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'forbidden-resource',
         name: 'forbidden-resource',
         inputs: [
           { type: 'template', value: 'github-resource', multiple: true },
@@ -1021,11 +1026,13 @@ describe('GraphCompiler', () => {
 
       const mockToolTemplate = {
         ...createMockTemplate(NodeKind.Tool),
+        id: 'restricted-tool',
         name: 'restricted-tool',
       };
 
       const mockResourceTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'some-resource',
         name: 'some-resource',
         inputs: [{ type: 'kind', value: NodeKind.Resource, multiple: true }],
       };
@@ -1080,11 +1087,13 @@ describe('GraphCompiler', () => {
 
       const mockResourceTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'github-resource',
         name: 'github-resource',
       };
 
       const mockRuntimeTemplate = {
         ...createMockTemplate(NodeKind.Runtime),
+        id: 'docker-runtime',
         name: 'docker-runtime',
       };
 
@@ -1129,16 +1138,19 @@ describe('GraphCompiler', () => {
 
       const mockToolTemplate = {
         ...createMockTemplate(NodeKind.Tool),
+        id: 'unrestricted-tool',
         name: 'unrestricted-tool',
       };
 
       const mockResourceTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'any-resource',
         name: 'any-resource',
       };
 
       const mockRuntimeTemplate = {
         ...createMockTemplate(NodeKind.Runtime),
+        id: 'docker-runtime',
         name: 'docker-runtime',
       };
 
@@ -1180,6 +1192,7 @@ describe('GraphCompiler', () => {
 
       const mockSourceTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'restricted-source',
         name: 'restricted-source',
         outputs: [
           { type: 'template', value: 'allowed-target', multiple: true },
@@ -1188,6 +1201,7 @@ describe('GraphCompiler', () => {
 
       const mockTargetTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'forbidden-target',
         name: 'forbidden-target',
       };
 
@@ -1233,12 +1247,14 @@ describe('GraphCompiler', () => {
 
       const mockSourceTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'no-output-source',
         name: 'no-output-source',
         outputs: [],
       };
 
       const mockTargetTemplate = {
         ...createMockTemplate(NodeKind.Resource),
+        id: 'any-target',
         name: 'any-target',
       };
 
@@ -1264,6 +1280,7 @@ describe('GraphCompiler', () => {
   describe('Metadata Propagation', () => {
     it('should pass metadata with nodeId to template.create', async () => {
       const mockTemplate = {
+        id: 'mock-template',
         name: 'mock-template',
         description: 'Mock template',
         schema: z.object({}),
@@ -1321,6 +1338,7 @@ describe('GraphCompiler', () => {
 
     it('should pass different nodeId for different nodes', async () => {
       const mockTemplate1 = {
+        id: 'simple-agent',
         kind: NodeKind.SimpleAgent,
         name: 'simple-agent',
         description: 'Mock template 1',
@@ -1330,6 +1348,7 @@ describe('GraphCompiler', () => {
         create: vi.fn().mockResolvedValue({ instance: 'mock-instance-1' }),
       };
       const mockTemplate2 = {
+        id: 'simple-agent-2',
         kind: NodeKind.SimpleAgent,
         name: 'simple-agent-2',
         description: 'Mock template 2',
@@ -1422,6 +1441,7 @@ describe('GraphCompiler', () => {
 
     it('should preserve all metadata properties', async () => {
       const mockTemplate = {
+        id: 'mock-template',
         name: 'mock-template',
         description: 'Mock template',
         schema: z.object({}),
@@ -1481,6 +1501,7 @@ describe('GraphCompiler', () => {
 
     it('should handle different node templates', async () => {
       const mockAgentTemplate = {
+        id: 'simple-agent',
         kind: NodeKind.SimpleAgent,
         name: 'simple-agent',
         description: 'Agent template',
@@ -1490,6 +1511,7 @@ describe('GraphCompiler', () => {
         create: vi.fn().mockResolvedValue({ instance: 'agent-instance' }),
       };
       const mockToolTemplate = {
+        id: 'web-search-tool',
         kind: NodeKind.Tool,
         name: 'web-search-tool',
         description: 'Tool template',
@@ -1499,6 +1521,7 @@ describe('GraphCompiler', () => {
         create: vi.fn().mockResolvedValue({ instance: 'tool-instance' }),
       };
       const mockRuntimeTemplate = {
+        id: 'docker-runtime',
         kind: NodeKind.Runtime,
         name: 'docker-runtime',
         description: 'Runtime template',
@@ -1508,6 +1531,7 @@ describe('GraphCompiler', () => {
         create: vi.fn().mockResolvedValue({ instance: 'runtime-instance' }),
       };
       const mockTriggerTemplate = {
+        id: 'manual-trigger',
         kind: NodeKind.Trigger,
         name: 'manual-trigger',
         description: 'Trigger template',

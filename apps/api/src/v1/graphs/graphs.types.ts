@@ -79,7 +79,7 @@ export interface CompiledGraph {
 // Node configuration schema
 export const GraphNodeSchema = z.object({
   id: z.string().describe('Unique identifier for this node'),
-  template: z.string().describe('Template name registered in TemplateRegistry'),
+  template: z.string().describe('Template id registered in TemplateRegistry'),
   config: z
     .record(z.string(), z.unknown())
     .describe('Template-specific configuration'),

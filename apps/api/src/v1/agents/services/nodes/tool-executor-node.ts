@@ -7,7 +7,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { DefaultLogger } from '@packages/common';
 import { keyBy } from 'lodash';
 
-import { FinishToolResponse } from '../../../agent-tools/tools/finish.tool';
+import { FinishToolResponse } from '../../../agent-tools/tools/core/finish.tool';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';

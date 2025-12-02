@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ShellTool } from '../../../agent-tools/tools/shell.tool';
+import { ShellTool } from '../../../agent-tools/tools/core/shell.tool';
 import {
   IShellResourceOutput,
   ResourceKind,
@@ -72,7 +72,7 @@ describe('ShellToolTemplate', () => {
 
   describe('properties', () => {
     it('should have correct name', () => {
-      expect(template.name).toBe('shell-tool');
+      expect(template.name).toBe('Shell');
     });
 
     it('should have correct description', () => {
@@ -187,7 +187,7 @@ describe('ShellToolTemplate', () => {
           additionalInfo: expect.stringContaining('Docker Image: node:18'),
         }),
       );
-      expect(result).toBe(mockTool);
+      expect(result).toEqual([mockTool]);
     });
 
     it('should throw NotFoundException when runtime node not found', async () => {
@@ -473,7 +473,7 @@ describe('ShellToolTemplate', () => {
           ),
         }),
       );
-      expect(result).toBe(mockTool);
+      expect(result).toEqual([mockTool]);
     });
 
     it('should ignore non-resource nodes in resourceNodeIds', async () => {
@@ -588,7 +588,7 @@ describe('ShellToolTemplate', () => {
           ),
         }),
       );
-      expect(result).toBe(mockTool);
+      expect(result).toEqual([mockTool]);
     });
 
     it('should handle missing resource nodes gracefully', async () => {
@@ -647,7 +647,7 @@ describe('ShellToolTemplate', () => {
           additionalInfo: expect.stringContaining('Runtime Configuration:'),
         }),
       );
-      expect(result).toBe(mockTool);
+      expect(result).toEqual([mockTool]);
     });
 
     it('should execute init scripts from resources', async () => {

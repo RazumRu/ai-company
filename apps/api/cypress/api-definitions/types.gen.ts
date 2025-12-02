@@ -714,6 +714,7 @@ export type GraphRevisionDto = {
 };
 
 export type TemplateDto = {
+  id: string;
   name: string;
   description: string;
   kind: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource';

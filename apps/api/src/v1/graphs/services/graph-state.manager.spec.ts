@@ -40,6 +40,7 @@ class TestRuntime extends BaseRuntime {
       exitCode: 0,
       stdout: 'ok',
       stderr: '',
+      execPath: '/runtime-workspace/test',
     };
 
     // Emit end

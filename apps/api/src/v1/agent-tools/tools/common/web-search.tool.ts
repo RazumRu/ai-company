@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { tavily } from '@tavily/core';
 import { z } from 'zod';
 
-import { BaseTool } from './base-tool';
+import { BaseTool } from '../base-tool';
 
 export const WebSearchToolSchema = z.object({
   purpose: z
@@ -30,7 +30,7 @@ export class WebSearchTool extends BaseTool<
   WebSearchToolConfig,
   WebSearchOutput
 > {
-  public name = 'web-search';
+  public name = 'web_search';
   public description =
     'Search the web for up-to-date information and return top results. For deeper results set searchDepth="advanced".';
 

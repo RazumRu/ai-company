@@ -2,7 +2,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { WebSearchTool } from '../../../agent-tools/tools/web-search.tool';
+import { WebSearchTool } from '../../../agent-tools/tools/common/web-search.tool';
 import {
   CompiledGraphNode as _CompiledGraphNode,
   NodeKind,
@@ -36,7 +36,7 @@ describe('WebSearchToolTemplate', () => {
 
   describe('properties', () => {
     it('should have correct name', () => {
-      expect(template.name).toBe('web-search-tool');
+      expect(template.name).toBe('Web search');
     });
 
     it('should have correct description', () => {
@@ -89,7 +89,7 @@ describe('WebSearchToolTemplate', () => {
       });
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
-      expect(result).toBe(mockTool);
+      expect(result).toEqual([mockTool]);
     });
 
     it('should create web search tool with configuration properties', async () => {
@@ -107,7 +107,7 @@ describe('WebSearchToolTemplate', () => {
       });
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
-      expect(result).toBe(mockTool);
+      expect(result).toEqual([mockTool]);
     });
 
     it('should handle web search tool build errors', async () => {
@@ -142,7 +142,7 @@ describe('WebSearchToolTemplate', () => {
 
       // Should still work regardless of compiled nodes content
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
-      expect(result).toBe(mockTool);
+      expect(result).toEqual([mockTool]);
     });
 
     it('should pass through all configuration properties', async () => {
@@ -167,8 +167,8 @@ describe('WebSearchToolTemplate', () => {
     });
 
     it('should handle async build method', async () => {
-      const mockTool = { name: 'web-search' } as DynamicStructuredTool;
-      mockWebSearchTool.build = vi.fn().mockResolvedValue(mockTool);
+      const mockTool = { name: 'web_search' } as DynamicStructuredTool;
+      mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = { apiKey: 'test-api-key' };
 
@@ -178,7 +178,7 @@ describe('WebSearchToolTemplate', () => {
         version: '1.0.0',
       });
 
-      expect(result).toBe(mockTool);
+      expect(result).toEqual([mockTool]);
     });
 
     it('should maintain tool instance identity', async () => {
@@ -204,9 +204,9 @@ describe('WebSearchToolTemplate', () => {
         version: '1.0.0',
       });
 
-      expect(result1).toBe(mockTool1);
-      expect(result2).toBe(mockTool2);
-      expect(result1).not.toBe(result2);
+      expect(result1).toEqual([mockTool1]);
+      expect(result2).toEqual([mockTool2]);
+      expect(result1).not.toEqual(result2);
     });
   });
 });

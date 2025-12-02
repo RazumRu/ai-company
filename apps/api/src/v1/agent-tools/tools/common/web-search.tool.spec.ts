@@ -36,17 +36,13 @@ describe('WebSearchTool', () => {
 
   describe('properties', () => {
     it('should have correct name', () => {
-      expect(tool.name).toBe('web-search');
+      expect(tool.name).toBe('web_search');
     });
 
     it('should have correct description', () => {
       expect(tool.description).toBe(
         'Search the web for up-to-date information and return top results. For deeper results set searchDepth="advanced".',
       );
-    });
-
-    it('should not be marked as system tool', () => {
-      expect(tool.system).toBe(false);
     });
   });
 
@@ -171,7 +167,7 @@ describe('WebSearchTool', () => {
 
       expect(builtTool).toBeDefined();
       expect(typeof builtTool.invoke).toBe('function');
-      expect(builtTool.name).toBe('web-search');
+      expect(builtTool.name).toBe('web_search');
     });
 
     it('should perform basic search', async () => {

@@ -19,6 +19,7 @@ const NodeConnectionSchema = z.discriminatedUnion('type', [
 ]);
 
 export const TemplateSchema = z.object({
+  id: z.string(),
   name: z.string(),
   description: z.string(),
   kind: z.enum(NodeKind),

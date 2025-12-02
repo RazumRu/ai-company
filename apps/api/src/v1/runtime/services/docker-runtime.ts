@@ -516,6 +516,10 @@ export class DockerRuntime extends BaseRuntime {
         : this.getWorkdir(params.childWorkdir);
     }
 
+    if (!fullWorkdir) {
+      fullWorkdir = this.workdir;
+    }
+
     const cmd = Array.isArray(params.cmd)
       ? ['sh', '-lc', params.cmd.join(' && ')]
       : ['sh', '-lc', params.cmd];
@@ -636,7 +640,13 @@ export class DockerRuntime extends BaseRuntime {
       const stdout = Buffer.concat(stdoutChunks).toString('utf8');
       const stderr = Buffer.concat(stderrChunks).toString('utf8');
 
-      const result = { exitCode, stdout, stderr, fail: exitCode !== 0 };
+      const result: RuntimeExecResult = {
+        exitCode,
+        stdout,
+        stderr,
+        fail: exitCode !== 0,
+        execPath: fullWorkdir,
+      };
 
       // Emit exec finished event
       this.emit({

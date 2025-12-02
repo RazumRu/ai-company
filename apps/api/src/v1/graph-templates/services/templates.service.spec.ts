@@ -12,6 +12,7 @@ describe('TemplatesService', () => {
 
   const mockTemplates = [
     {
+      id: 'test-tool-template',
       name: 'test-tool-template',
       description: 'Test tool template',
       kind: NodeKind.Tool,
@@ -28,6 +29,7 @@ describe('TemplatesService', () => {
       outputs: [],
     },
     {
+      id: 'test-runtime-template',
       name: 'test-runtime-template',
       description: 'Test runtime template',
       kind: NodeKind.Runtime,
@@ -36,6 +38,7 @@ describe('TemplatesService', () => {
       outputs: [],
     },
     {
+      id: 'test-agent-template',
       name: 'test-agent-template',
       description: 'Test agent template',
       kind: NodeKind.SimpleAgent,
@@ -82,6 +85,7 @@ describe('TemplatesService', () => {
       expect(result).toHaveLength(3);
       // Templates are sorted by kind, so runtime comes first
       expect(result[0]).toEqual({
+        id: 'test-runtime-template',
         name: 'test-runtime-template',
         description: 'Test runtime template',
         kind: NodeKind.Runtime,
@@ -96,6 +100,7 @@ describe('TemplatesService', () => {
         outputs: [],
       });
       expect(result[1]).toEqual({
+        id: 'test-agent-template',
         name: 'test-agent-template',
         description: 'Test agent template',
         kind: NodeKind.SimpleAgent,
@@ -110,6 +115,7 @@ describe('TemplatesService', () => {
         outputs: [],
       });
       expect(result[2]).toEqual({
+        id: 'test-tool-template',
         name: 'test-tool-template',
         description: 'Test tool template',
         kind: NodeKind.Tool,

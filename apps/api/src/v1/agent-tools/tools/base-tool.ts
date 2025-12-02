@@ -9,14 +9,13 @@ import { z } from 'zod';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 
 // Extended type to support description property
-type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
+export type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
   description?: string;
 };
 
 export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
   public abstract name: string;
   public abstract description: string;
-  public system = false;
 
   public abstract get schema(): z.ZodType<TSchema>;
 
@@ -39,7 +38,7 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     config: TConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): DynamicStructuredTool {
-    return this.toolWrapper(this.invoke, config, lgConfig);
+    return this.toolWrapper(this.invoke.bind(this), config, lgConfig);
   }
 
   protected toolWrapper(

@@ -3,12 +3,12 @@ import {
   ToolRunnableConfig,
 } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
-import { BadRequestException } from '@packages/common';
 import { z } from 'zod';
 
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { BaseTool } from './base-tool';
+import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { execRuntimeWithContext } from '../../agent-tools.utils';
+import { BaseTool, ExtendedLangGraphRunnableConfig } from '../base-tool';
 
 export interface ShellToolOptions {
   runtime: BaseRuntime | (() => BaseRuntime);
@@ -61,7 +61,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
   public build(
     config: ShellToolOptions,
-    lgConfig?: Parameters<typeof this.toolWrapper>[2],
+    lgConfig?: ExtendedLangGraphRunnableConfig,
   ): DynamicStructuredTool {
     const enhancedDescription = config.additionalInfo
       ? `${this.description}\n\n${config.additionalInfo}`
@@ -78,17 +78,6 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     config: ShellToolOptions,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ShellToolOutput> {
-    if (!config?.runtime) {
-      throw new BadRequestException(
-        undefined,
-        'Runtime is required for ShellTool',
-      );
-    }
-
-    // Get runtime instance (either directly or via getter function)
-    const runtime =
-      typeof config.runtime === 'function' ? config.runtime() : config.runtime;
-
     // Get environment variables from config
     const configEnv = config.env || {};
 
@@ -111,24 +100,15 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       return output;
     };
 
-    const threadId =
-      cfg.configurable?.parent_thread_id ||
-      cfg.configurable?.thread_id ||
-      'unknown';
-    const runId = cfg.configurable?.run_id;
-
     try {
-      const res = await runtime.exec({
-        ...execData,
-        env: mergedEnv,
-        childWorkdir: `${threadId}`,
-        createChildWorkdir: true,
-        metadata: {
-          threadId,
-          runId,
-          parentThreadId: cfg.configurable?.parent_thread_id,
+      const res = await execRuntimeWithContext(
+        config.runtime,
+        {
+          ...execData,
+          env: mergedEnv,
         },
-      });
+        cfg,
+      );
 
       return {
         exitCode: res.exitCode,
