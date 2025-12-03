@@ -153,6 +153,11 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
 
         // Enrich runnableConfig with graph and node metadata
         // Pass the same parent_thread_id so all agents share the same internal thread
+        // IMPORTANT: Create a deterministic checkpoint_ns so Agent B maintains its own state
+        // across multiple calls from Agent A. Using effectiveThreadId:agentNodeId ensures
+        // each agent has its own isolated checkpoint namespace, similar to the trigger pattern.
+        const checkpointNs = `${effectiveThreadId}:${agentNodeId}`;
+
         const enrichedConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
           ...runnableConfig,
           configurable: {
@@ -161,6 +166,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
             graph_id: metadata.graphId,
             node_id: agentNode.id,
             parent_thread_id: rootParentThreadId,
+            checkpoint_ns: checkpointNs, // Use deterministic checkpoint namespace per agent
           },
         };
 
