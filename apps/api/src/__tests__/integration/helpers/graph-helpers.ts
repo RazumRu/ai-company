@@ -17,6 +17,8 @@ export const createMockGraphData = (
           template: 'simple-agent',
           config: {
             instructions: 'You are a helpful test agent. Answer briefly.',
+            name: 'Test Agent',
+            description: 'Test agent description',
             invokeModelName: 'gpt-5-mini',
             invokeModelReasoningEffort: ReasoningEffort.None,
             summarizeMaxTokens: 272000,

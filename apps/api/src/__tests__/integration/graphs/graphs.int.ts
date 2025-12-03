@@ -119,6 +119,8 @@ describe('Graphs Integration Tests', () => {
           template: 'simple-agent',
           config: {
             instructions: COMMAND_AGENT_INSTRUCTIONS,
+            name: 'Test Agent',
+            description: 'Test agent description',
             summarizeMaxTokens: 272000,
             summarizeKeepTokens: 30000,
             invokeModelName: 'gpt-5-mini',

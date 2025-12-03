@@ -167,6 +167,8 @@ describe('Docker-in-Docker Integration', () => {
           config: {
             instructions:
               'You are a shell command executor agent. When the user asks you to execute a command, you MUST use the shell tool to execute it. Always respond with the stdout from the shell tool.',
+            name: 'Test Agent',
+            description: 'Test agent description',
             invokeModelName: 'gpt-5-mini',
             invokeModelReasoningEffort: ReasoningEffort.None,
             enforceToolUsage: true,

@@ -170,6 +170,8 @@ describe('Graph Resources Integration Tests', () => {
         template: 'simple-agent',
         config: {
           instructions: COMMAND_AGENT_INSTRUCTIONS,
+          name: 'Test Agent',
+          description: 'Test agent description',
           summarizeMaxTokens: 272000,
           summarizeKeepTokens: 30000,
           invokeModelName: 'gpt-5-mini',
@@ -190,6 +192,15 @@ describe('Graph Resources Integration Tests', () => {
           runtimeType: 'Docker',
           image: 'python:3.11-slim',
           env: {},
+          initScript: [
+            'apt-get update',
+            'apt-get install -y curl git',
+            'curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg',
+            'chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg',
+            'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null',
+            'apt-get update',
+            'apt-get install -y gh',
+          ],
         },
       },
     ];
@@ -242,7 +253,7 @@ describe('Graph Resources Integration Tests', () => {
 
   describe('GitHub resource execution', () => {
     it(
-      'executes GitHub CLI commands through the shell tool when the resource is connected',
+      'installs and configures GitHub CLI when the resource is connected',
       { timeout: 240_000 },
       async () => {
         const graphData = createResourceGraphData();
@@ -256,7 +267,7 @@ describe('Graph Resources Integration Tests', () => {
           graph.id,
           TRIGGER_NODE_ID,
           {
-            messages: ['Run this command: gh version'],
+            messages: ['Run this command: gh --version'],
             async: false,
           },
         );

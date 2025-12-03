@@ -223,6 +223,8 @@ describe('Shell Execution Integration Tests', () => {
             template: 'simple-agent',
             config: {
               instructions: agentInstructions,
+              name: 'Test Agent',
+              description: 'Test agent description',
               summarizeMaxTokens: 272000,
               summarizeKeepTokens: 30000,
               invokeModelName: 'gpt-5-mini',

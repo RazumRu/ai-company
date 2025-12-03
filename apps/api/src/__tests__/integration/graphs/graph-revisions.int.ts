@@ -1164,6 +1164,9 @@ describe('Graph Revisions Integration Tests', () => {
         const invalidSchema = cloneDeep(createResponse.schema);
         invalidSchema.edges = [];
 
+        const graphBeforeUpdate = await graphsService.findById(graphId);
+        expect(graphBeforeUpdate.status).toBe(GraphStatus.Running);
+
         const firstUpdateResponse = await graphsService.update(graphId, {
           schema: invalidSchema,
           currentVersion,
@@ -1172,27 +1175,13 @@ describe('Graph Revisions Integration Tests', () => {
         expect(firstUpdateResponse.revision).toBeDefined();
         const firstRevisionId = firstUpdateResponse.revision!.id;
 
-        let failedRevision;
-        try {
-          failedRevision = await waitForRevisionStatus(
-            graphId,
-            firstRevisionId,
-            GraphRevisionStatus.Failed,
-            90_000,
-          );
-        } catch (error) {
-          const currentRevision = await revisionsService.getRevisionById(
-            graphId,
-            firstRevisionId,
-          );
+        const failedRevision = await waitForRevisionStatus(
+          graphId,
+          firstRevisionId,
+          GraphRevisionStatus.Failed,
+          90_000,
+        );
 
-          console.error(
-            '[DEBUG] Revision status',
-            currentRevision.status,
-            currentRevision.error,
-          );
-          throw error;
-        }
         expect(failedRevision.status).toBe(GraphRevisionStatus.Failed);
         expect(
           failedRevision.error?.includes('No output connections found') ||
@@ -1451,6 +1440,8 @@ describe('Graph Revisions Integration Tests', () => {
                 template: 'simple-agent',
                 config: {
                   instructions: COMMAND_AGENT_INSTRUCTIONS,
+                  name: 'Test Agent',
+                  description: 'Test agent description',
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
@@ -1600,6 +1591,8 @@ describe('Graph Revisions Integration Tests', () => {
                 template: 'simple-agent',
                 config: {
                   instructions: COMMAND_AGENT_INSTRUCTIONS,
+                  name: 'Test Agent',
+                  description: 'Test agent description',
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
@@ -1664,9 +1657,21 @@ describe('Graph Revisions Integration Tests', () => {
         expect(firstShell.result?.stdout).toContain('test with runtime');
 
         const updatedSchema = cloneDeep(graphData.schema);
-        updatedSchema.nodes = updatedSchema.nodes.filter(
-          (n) => n.id !== 'runtime-1' && n.id !== 'shell-1',
-        );
+        updatedSchema.nodes = updatedSchema.nodes
+          .filter((n) => n.id !== 'runtime-1' && n.id !== 'shell-1')
+          .map((node) =>
+            node.id === 'agent-1'
+              ? {
+                  ...node,
+                  config: {
+                    ...(node.config as SimpleAgentSchemaType),
+                    instructions:
+                      'You are a helpful assistant. Answer questions directly without using any tools.',
+                    enforceToolUsage: false,
+                  } satisfies SimpleAgentSchemaType,
+                }
+              : node,
+          );
         updatedSchema.edges = updatedSchema.edges!.filter(
           (e) => e.to !== 'runtime-1' && e.to !== 'shell-1',
         );
@@ -1756,6 +1761,8 @@ describe('Graph Revisions Integration Tests', () => {
                 template: 'simple-agent',
                 config: {
                   instructions: COMMAND_AGENT_INSTRUCTIONS,
+                  name: 'Test Agent',
+                  description: 'Test agent description',
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
@@ -1825,22 +1832,39 @@ describe('Graph Revisions Integration Tests', () => {
         expect(shellNode).toBeDefined();
         expect(runtimeNode).toBeDefined();
 
-        const result = await graphsService.executeTrigger(
-          graphId,
-          'trigger-1',
-          {
-            messages: ['Run this command: echo "hello from new tool"'],
-            async: false,
-          },
+        await wait(5000);
+
+        const executeWithNewTool = async () => {
+          const result = await graphsService.executeTrigger(
+            graphId,
+            'trigger-1',
+            {
+              messages: ['Run this command: echo "hello from new tool"'],
+              async: false,
+            },
+          );
+
+          const thread = await waitForThreadCompletion(result.externalThreadId);
+          const messages = await getThreadMessages(result.externalThreadId);
+
+          return {
+            thread,
+            shellExecution: findShellExecution(messages),
+          };
+        };
+
+        const { thread, shellExecution } = await waitForCondition(
+          executeWithNewTool,
+          ({ shellExecution }) =>
+            Boolean(shellExecution.toolCallId) &&
+            shellExecution.toolName === 'shell' &&
+            Boolean(shellExecution.result),
+          { timeout: 90000, interval: 5000 },
         );
 
-        const thread = await waitForThreadCompletion(result.externalThreadId);
         expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
           thread.status,
         );
-
-        const messages = await getThreadMessages(result.externalThreadId);
-        const shellExecution = findShellExecution(messages);
         expect(shellExecution.toolCallId).toBeDefined();
         expect(shellExecution.toolName).toBe('shell');
         expect(shellExecution.result).toBeDefined();
@@ -1869,6 +1893,8 @@ describe('Graph Revisions Integration Tests', () => {
                 template: 'simple-agent',
                 config: {
                   instructions: COMMAND_AGENT_INSTRUCTIONS,
+                  name: 'Test Agent',
+                  description: 'Test agent description',
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',
@@ -1990,6 +2016,8 @@ describe('Graph Revisions Integration Tests', () => {
                 template: 'simple-agent',
                 config: {
                   instructions: COMMAND_AGENT_INSTRUCTIONS,
+                  name: 'Test Agent',
+                  description: 'Test agent description',
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,
                   invokeModelName: 'gpt-5-mini',

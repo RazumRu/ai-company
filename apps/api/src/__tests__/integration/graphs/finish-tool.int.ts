@@ -114,6 +114,8 @@ describe('Finish Tool Integration Tests', () => {
           template: 'simple-agent',
           config: {
             instructions,
+            name: 'Test Agent',
+            description: 'Test agent description',
             invokeModelName: 'gpt-5-mini',
             invokeModelReasoningEffort: ReasoningEffort.None,
             enforceToolUsage: true,

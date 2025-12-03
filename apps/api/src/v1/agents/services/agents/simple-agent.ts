@@ -45,6 +45,12 @@ import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { AgentOutput, AgentRunEvent, BaseAgent } from './base-agent';
 
 export const SimpleAgentSchema = z.object({
+  name: z.string().min(1).describe('Unique name for this agent'),
+  description: z
+    .string()
+    .min(1)
+    .describe('Description of what this agent does')
+    .meta({ 'x-ui:textarea': true }),
   summarizeMaxTokens: z
     .number()
     .optional()
@@ -57,7 +63,7 @@ export const SimpleAgentSchema = z.object({
     .optional()
     .default(30000)
     .describe(
-      'Token budget reserved for the most recent messages kept verbatim when summarizing (the “tail”).',
+      'Token budget reserved for the most recent messages kept verbatim when summarizing (the "tail").',
     ),
   instructions: z
     .string()
@@ -92,8 +98,7 @@ export const SimpleAgentSchema = z.object({
     .optional()
     .describe(
       'Maximum number of iterations the agent can execute during a single run.',
-    )
-    .meta({ 'x-ui:show-on-node': true }),
+    ),
   newMessageMode: z
     .enum(NewMessageMode)
     .default(NewMessageMode.InjectAfterToolCall)

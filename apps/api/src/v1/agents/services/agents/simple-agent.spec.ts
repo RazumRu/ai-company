@@ -125,6 +125,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
       };
@@ -164,6 +165,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
       };
@@ -180,6 +182,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         enforceToolUsage: true,
@@ -208,6 +211,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         enforceToolUsage: 'invalid', // should be boolean
@@ -222,6 +226,8 @@ describe('SimpleAgent', () => {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
       };
@@ -236,6 +242,8 @@ describe('SimpleAgent', () => {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         newMessageMode: 'wait_for_completion',
@@ -336,6 +344,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
@@ -404,6 +413,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
@@ -450,6 +460,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
@@ -466,6 +477,8 @@ describe('SimpleAgent', () => {
       summarizeMaxTokens: 1000,
       summarizeKeepTokens: 500,
       instructions: 'Test instructions',
+      name: 'Test Agent',
+      description: 'Test agent description',
       invokeModelName: 'gpt-5-mini',
       invokeModelReasoningEffort: ReasoningEffort.None,
     };
@@ -683,6 +696,8 @@ describe('SimpleAgent', () => {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
@@ -707,6 +722,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
@@ -727,9 +743,8 @@ describe('SimpleAgent', () => {
       // Graph should be cleared for rebuild
       expect(agent['graph']).toBeUndefined();
       // New config should be stored
-      const { name: _ignored, ...expectedConfig } = newConfig;
       expect(agent['currentConfig']).toEqual({
-        ...expectedConfig,
+        ...newConfig,
         newMessageMode: NewMessageMode.InjectAfterToolCall,
       });
     });
@@ -748,6 +763,7 @@ describe('SimpleAgent', () => {
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
         name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
         maxIterations: 50,
@@ -762,9 +778,8 @@ describe('SimpleAgent', () => {
       // Graph should remain undefined
       expect(agent['graph']).toBeUndefined();
       // Config should be stored
-      const { name: _unusedName, ...expectedConfig } = config;
       expect(agent['currentConfig']).toEqual({
-        ...expectedConfig,
+        ...config,
         newMessageMode: NewMessageMode.InjectAfterToolCall,
       });
     });
@@ -974,6 +989,8 @@ describe('SimpleAgent', () => {
         summarizeMaxTokens: 1000,
         summarizeKeepTokens: 500,
         instructions: 'Test instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
         invokeModelName: 'gpt-5-mini',
         invokeModelReasoningEffort: ReasoningEffort.None,
       });
