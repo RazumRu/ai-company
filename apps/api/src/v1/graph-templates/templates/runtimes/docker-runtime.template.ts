@@ -72,6 +72,11 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       value: 'gh-tool',
       multiple: true,
     },
+    {
+      type: 'template',
+      value: 'files-tool',
+      multiple: true,
+    },
   ] as const;
 
   constructor(private readonly runtimeProvider: RuntimeProvider) {

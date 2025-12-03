@@ -15,6 +15,7 @@ import { SimpleAgentTemplate } from './templates/agents/simple-agent.template';
 import { GithubResourceTemplate } from './templates/resources/github-resource.template';
 import { DockerRuntimeTemplate } from './templates/runtimes/docker-runtime.template';
 import { AgentCommunicationToolTemplate } from './templates/tools/agent-communication-tool.template';
+import { FilesToolTemplate } from './templates/tools/files-tool.template';
 import { GhToolTemplate } from './templates/tools/gh-tool.template';
 import { ShellToolTemplate } from './templates/tools/shell-tool.template';
 import { WebSearchToolTemplate } from './templates/tools/web-search-tool.template';
@@ -42,6 +43,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     SimpleAgentTemplate,
     ManualTriggerTemplate,
     GhToolTemplate,
+    FilesToolTemplate,
     // --- resources ---
     GithubResourceTemplate,
   ],

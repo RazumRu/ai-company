@@ -17,7 +17,6 @@ export const GithubResourceTemplateSchema = z
       .min(1, 'GitHub PAT token cannot be empty')
       .describe('GitHub pat token'),
     name: z.string().optional().describe('Git user name to configure'),
-    avatar: z.string().optional().describe('Avatar URL'),
     email: z.email().optional().describe('Email'),
     auth: z
       .boolean()

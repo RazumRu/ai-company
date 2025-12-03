@@ -9,7 +9,6 @@ export interface GithubResourceConfig {
   patToken: string;
   name?: string;
   email?: string;
-  avatar?: string;
   auth?: boolean;
 }
 

@@ -98,27 +98,6 @@ describe('GithubResourceTemplate', () => {
       expect(() => GithubResourceTemplateSchema.parse(validData)).not.toThrow();
     });
 
-    it('should accept optional avatar field', () => {
-      const validData = {
-        patToken: 'ghp_1234567890abcdef',
-        avatar: 'https://example.com/avatar.png',
-        auth: false,
-      };
-
-      expect(() => GithubResourceTemplateSchema.parse(validData)).not.toThrow();
-    });
-
-    it('should accept both name and avatar fields', () => {
-      const validData = {
-        patToken: 'ghp_1234567890abcdef',
-        name: 'Test User',
-        avatar: 'https://example.com/avatar.png',
-        auth: false,
-      };
-
-      expect(() => GithubResourceTemplateSchema.parse(validData)).not.toThrow();
-    });
-
     it('should default auth to true when not specified', () => {
       const validData = {
         patToken: 'ghp_1234567890abcdef',

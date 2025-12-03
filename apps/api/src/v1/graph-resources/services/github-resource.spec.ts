@@ -80,35 +80,6 @@ describe('GithubResource', () => {
       );
     });
 
-    it('should accept optional avatar field', async () => {
-      const config: GithubResourceConfig = {
-        patToken: 'ghp_test_token',
-        avatar: 'https://example.com/avatar.png',
-        auth: false,
-      };
-
-      const result = await githubResource.getData(config);
-
-      expect(result.data.env?.GITHUB_PAT_TOKEN).toBe('ghp_test_token');
-      // Avatar is stored but not used in init script
-    });
-
-    it('should work with both name and avatar provided', async () => {
-      const config: GithubResourceConfig = {
-        patToken: 'ghp_test_token',
-        name: 'Test User',
-        avatar: 'https://example.com/avatar.png',
-        auth: false,
-      };
-
-      const result = await githubResource.getData(config);
-
-      expect(result.data.initScript).toContain(
-        'git config --global user.name "Test User"',
-      );
-      expect(result.data.env?.GITHUB_PAT_TOKEN).toBe('ghp_test_token');
-    });
-
     it('should include GitHub CLI help information', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_test_token',
@@ -202,11 +173,14 @@ describe('GithubResource', () => {
 
       expect(result.data.initScript).toContain('set -eu');
       expect(result.data.initScript).toContain(
-        'export DEBIAN_FRONTEND=noninteractive',
+        'gh config set git_protocol https',
+      );
+      expect(result.data.initScript).toContain(
+        'git config --global pull.rebase false',
       );
     });
 
-    it('should install required packages', async () => {
+    it('should configure git protocol and pull settings', async () => {
       const config: GithubResourceConfig = {
         patToken: 'ghp_test',
         auth: false,
@@ -214,9 +188,12 @@ describe('GithubResource', () => {
 
       const result = await githubResource.getData(config);
 
-      expect(result.data.initScript).toContain('command -v');
-      expect(result.data.initScript).toContain('curl');
-      expect(result.data.initScript).toContain('git');
+      expect(result.data.initScript).toContain(
+        'gh config set git_protocol https',
+      );
+      expect(result.data.initScript).toContain(
+        'git config --global pull.rebase false',
+      );
     });
   });
 
