@@ -255,7 +255,7 @@ describe('FilesListTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to/repo" && fd "src/**/*.{ts,tsx}" --type f --hidden --exclude .git',
+          cmd: 'cd "/path/to/repo" && fd --absolute-path --glob "src/**/*.{ts,tsx}" --type f --hidden --exclude .git',
         },
         mockConfig,
         mockCfg,
@@ -280,7 +280,7 @@ describe('FilesListTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to my repo" && fd --type f --hidden --exclude .git',
+          cmd: 'cd "/path/to my repo" && fd --absolute-path --type f --hidden --exclude .git',
         },
         mockConfig,
         mockCfg,

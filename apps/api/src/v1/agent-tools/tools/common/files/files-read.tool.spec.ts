@@ -172,7 +172,7 @@ describe('FilesReadTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: "sed -n '2,4p' \"/path/to/repo/src/file.ts\"",
+          cmd: 'sed -n \'2,4p\' "/path/to/repo/src/file.ts"',
         },
         mockConfig,
         mockCfg,
@@ -202,7 +202,7 @@ describe('FilesReadTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: "sed -n '5,5p' \"/path/to/repo/src/file.ts\"",
+          cmd: 'sed -n \'5,5p\' "/path/to/repo/src/file.ts"',
         },
         mockConfig,
         mockCfg,

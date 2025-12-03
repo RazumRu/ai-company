@@ -109,6 +109,33 @@ describe('GhCommitTool', () => {
       const parsed = tool.schema.parse(validData);
       expect(parsed.path).toBeUndefined();
     });
+
+    it('should validate optional push field', () => {
+      const validData = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+        push: true,
+      };
+      expect(() => tool.schema.parse(validData)).not.toThrow();
+    });
+
+    it('should work without push field', () => {
+      const validData = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+      };
+      const parsed = tool.schema.parse(validData);
+      expect(parsed.push).toBeUndefined();
+    });
+
+    it('should accept push as false', () => {
+      const validData = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+        push: false,
+      };
+      expect(() => tool.schema.parse(validData)).not.toThrow();
+    });
   });
 
   describe('invoke', () => {
@@ -489,6 +516,284 @@ describe('GhCommitTool', () => {
         mockConfig,
         mockCfg,
       );
+    });
+
+    it('should push commit when push flag is true', async () => {
+      const args: GhCommitToolSchemaType = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+        push: true,
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1, // Has staged changes
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'abc123def456',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      expect(result.commitHash).toBe('abc123def456');
+      expect((tool as any).execGhCommand).toHaveBeenCalledTimes(4);
+      expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
+        4,
+        { cmd: 'git push' },
+        mockConfig,
+        mockCfg,
+      );
+    });
+
+    it('should not push commit when push flag is false', async () => {
+      const args: GhCommitToolSchemaType = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+        push: false,
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1, // Has staged changes
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'abc123def456',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      expect(result.commitHash).toBe('abc123def456');
+      expect((tool as any).execGhCommand).toHaveBeenCalledTimes(3);
+    });
+
+    it('should not push commit when push flag is undefined', async () => {
+      const args: GhCommitToolSchemaType = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1, // Has staged changes
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'abc123def456',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      expect(result.commitHash).toBe('abc123def456');
+      expect((tool as any).execGhCommand).toHaveBeenCalledTimes(3);
+    });
+
+    it('should handle push failure', async () => {
+      const args: GhCommitToolSchemaType = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+        push: true,
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1, // Has staged changes
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'abc123def456',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Error: failed to push some refs',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Error: failed to push some refs');
+      expect(result.commitHash).toBe('abc123def456');
+    });
+
+    it('should push with path parameter when provided', async () => {
+      const args: GhCommitToolSchemaType = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+        path: '/path/to/repo',
+        push: true,
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1, // Has staged changes
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'abc123def456',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
+        4,
+        { cmd: 'cd "/path/to/repo" && git push' },
+        mockConfig,
+        mockCfg,
+      );
+    });
+
+    it('should handle push failure with stdout error', async () => {
+      const args: GhCommitToolSchemaType = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+        push: true,
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1, // Has staged changes
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'abc123def456',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: 'Error: remote rejected',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Error: remote rejected');
+      expect(result.commitHash).toBe('abc123def456');
+    });
+
+    it('should handle push failure with no error message', async () => {
+      const args: GhCommitToolSchemaType = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'Add new feature',
+        push: true,
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1, // Has staged changes
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'abc123def456',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Failed to push commit');
+      expect(result.commitHash).toBe('abc123def456');
     });
   });
 });

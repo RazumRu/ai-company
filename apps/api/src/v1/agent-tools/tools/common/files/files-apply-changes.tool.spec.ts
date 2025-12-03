@@ -80,7 +80,12 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should accept valid operation values', () => {
-      const operations = ['replace', 'replace_range', 'insert', 'delete'] as const;
+      const operations = [
+        'replace',
+        'replace_range',
+        'insert',
+        'delete',
+      ] as const;
       for (const op of operations) {
         const validData = {
           filePath: '/path/to/file.ts',
@@ -584,4 +589,3 @@ describe('FilesApplyChangesTool', () => {
     });
   });
 });
-
