@@ -3,19 +3,10 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import {
-  FilesBaseTool,
-  FilesBaseToolConfig,
-  FilesBaseToolSchema,
-} from './files-base.tool';
+import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-export const FilesReadToolSchema = FilesBaseToolSchema.extend({
-  filePath: z
-    .string()
-    .min(1)
-    .describe(
-      'Path to the file to read, relative to the repository directory.',
-    ),
+export const FilesReadToolSchema = z.object({
+  filePath: z.string().min(1).describe('Absolute path to the file to read'),
   startLine: z
     .number()
     .int()
@@ -80,15 +71,15 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       };
     }
 
-    const fullFilePath = `${args.repoDir}/${args.filePath}`;
+    const fullFilePath = `${args.filePath}`;
 
     let cmd: string;
     if (args.startLine !== undefined && args.endLine !== undefined) {
       // Use sed to read specific line range
-      cmd = `cd "${args.repoDir}" && sed -n '${args.startLine},${args.endLine}p' "${fullFilePath}"`;
+      cmd = `sed -n '${args.startLine},${args.endLine}p' "${fullFilePath}"`;
     } else {
       // Use cat to read entire file
-      cmd = `cd "${args.repoDir}" && cat "${fullFilePath}"`;
+      cmd = `cat "${fullFilePath}"`;
     }
 
     const res = await this.execCommand(

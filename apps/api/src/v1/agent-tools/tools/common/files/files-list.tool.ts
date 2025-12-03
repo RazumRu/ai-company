@@ -3,13 +3,13 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import {
-  FilesBaseTool,
-  FilesBaseToolConfig,
-  FilesBaseToolSchema,
-} from './files-base.tool';
+import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-export const FilesListToolSchema = FilesBaseToolSchema.extend({
+export const FilesListToolSchema = z.object({
+  dir: z
+    .string()
+    .min(1)
+    .describe('Path to the repository directory to search in.'),
   pattern: z
     .string()
     .optional()
@@ -38,7 +38,12 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<FilesListToolOutput> {
-    const cmdParts: string[] = [`cd "${args.repoDir}"`, '&&', 'fd'];
+    const cmdParts: string[] = [
+      `cd "${args.dir}"`,
+      '&&',
+      'fd',
+      '--absolute-path',
+    ];
 
     if (args.pattern) {
       cmdParts.push('--glob', `"${args.pattern}"`);

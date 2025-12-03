@@ -44,28 +44,28 @@ describe('FilesListTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required repoDir field', () => {
+    it('should validate required dir field', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing repoDir field', () => {
+    it('should reject missing dir field', () => {
       const invalidData = {};
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
-    it('should reject empty repoDir', () => {
+    it('should reject empty dir', () => {
       const invalidData = {
-        repoDir: '',
+        dir: '',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should accept optional pattern field', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         pattern: '*.ts',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
@@ -73,14 +73,14 @@ describe('FilesListTool', () => {
 
     it('should accept data without pattern', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
     it('should accept pattern with wildcards', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         pattern: 'src/**/*.ts',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
@@ -96,7 +96,7 @@ describe('FilesListTool', () => {
 
     it('should list files successfully without pattern', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -112,7 +112,7 @@ describe('FilesListTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to/repo" && fd --type f --hidden --exclude .git',
+          cmd: 'cd "/path/to/repo" && fd --absolute-path --type f --hidden --exclude .git',
         },
         mockConfig,
         mockCfg,
@@ -121,7 +121,7 @@ describe('FilesListTool', () => {
 
     it('should list files successfully with pattern', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         pattern: '*.ts',
       };
 
@@ -138,7 +138,7 @@ describe('FilesListTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to/repo" && fd "*.ts" --type f --hidden --exclude .git',
+          cmd: 'cd "/path/to/repo" && fd --absolute-path --glob "*.ts" --type f --hidden --exclude .git',
         },
         mockConfig,
         mockCfg,
@@ -147,7 +147,7 @@ describe('FilesListTool', () => {
 
     it('should handle empty file list', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         pattern: '*.nonexistent',
       };
 
@@ -166,7 +166,7 @@ describe('FilesListTool', () => {
 
     it('should handle files with whitespace', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -184,7 +184,7 @@ describe('FilesListTool', () => {
 
     it('should return error when command fails', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -202,7 +202,7 @@ describe('FilesListTool', () => {
 
     it('should return error message from stdout when stderr is empty', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -220,7 +220,7 @@ describe('FilesListTool', () => {
 
     it('should return default error message when both stdout and stderr are empty', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -238,7 +238,7 @@ describe('FilesListTool', () => {
 
     it('should handle pattern with special characters', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         pattern: 'src/**/*.{ts,tsx}',
       };
 
@@ -262,9 +262,9 @@ describe('FilesListTool', () => {
       );
     });
 
-    it('should handle repoDir with spaces', async () => {
+    it('should handle dir with spaces', async () => {
       const args: FilesListToolSchemaType = {
-        repoDir: '/path/to my repo',
+        dir: '/path/to my repo',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({

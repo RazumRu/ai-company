@@ -3,13 +3,13 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import {
-  FilesBaseTool,
-  FilesBaseToolConfig,
-  FilesBaseToolSchema,
-} from './files-base.tool';
+import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-export const FilesSearchTextToolSchema = FilesBaseToolSchema.extend({
+export const FilesSearchTextToolSchema = z.object({
+  dir: z
+    .string()
+    .min(1)
+    .describe('Path to the repository directory to search in.'),
   query: z
     .string()
     .min(1)
@@ -77,7 +77,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<FilesSearchTextToolOutput> {
-    const cmdParts: string[] = [`cd "${args.repoDir}"`, '&&', 'rg', '--json'];
+    const cmdParts: string[] = [`cd "${args.dir}"`, '&&', 'rg', '--json'];
 
     // If filePath is provided, use simpler command format
     if (args.filePath) {

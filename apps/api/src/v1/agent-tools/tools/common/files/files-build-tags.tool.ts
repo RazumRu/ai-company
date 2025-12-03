@@ -3,13 +3,13 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import {
-  FilesBaseTool,
-  FilesBaseToolConfig,
-  FilesBaseToolSchema,
-} from './files-base.tool';
+import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-export const FilesBuildTagsToolSchema = FilesBaseToolSchema.extend({
+export const FilesBuildTagsToolSchema = z.object({
+  dir: z
+    .string()
+    .min(1)
+    .describe('Path to the repository directory to search in.'),
   alias: z.string().min(1).describe('Alias/name for the tags index file.'),
 });
 
@@ -64,7 +64,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
     }
 
     // Build ctags index
-    const cmd = `cd "${args.repoDir}" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "${tagsFile}" .`;
+    const cmd = `cd "${args.dir}" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "${tagsFile}" .`;
 
     const res = await this.execCommand(
       {

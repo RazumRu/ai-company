@@ -3,13 +3,13 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import {
-  FilesBaseTool,
-  FilesBaseToolConfig,
-  FilesBaseToolSchema,
-} from './files-base.tool';
+import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-export const FilesSearchTagsToolSchema = FilesBaseToolSchema.extend({
+export const FilesSearchTagsToolSchema = z.object({
+  dir: z
+    .string()
+    .min(1)
+    .describe('Path to the repository directory to search in.'),
   alias: z
     .string()
     .min(1)
@@ -64,11 +64,11 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     if (args.exactMatch) {
       // Exact match: select(.name == "SYMBOL_NAME")
       const escapedQuery = args.query.replace(/"/g, '\\"');
-      cmd = `cd "${args.repoDir}" && jq -c 'select(.name == "${escapedQuery}")' "${tagsFile}"`;
+      cmd = `cd "${args.dir}" && jq -c 'select(.name == "${escapedQuery}")' "${tagsFile}"`;
     } else {
       // Regex match: select(.name | test("SYMBOL_REGEX"))
       const escapedQuery = args.query.replace(/"/g, '\\"');
-      cmd = `cd "${args.repoDir}" && jq -c 'select(.name | test("${escapedQuery}"))' "${tagsFile}"`;
+      cmd = `cd "${args.dir}" && jq -c 'select(.name | test("${escapedQuery}"))' "${tagsFile}"`;
     }
 
     const res = await this.execCommand(

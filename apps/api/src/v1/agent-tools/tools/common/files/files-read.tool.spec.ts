@@ -42,39 +42,20 @@ describe('FilesReadTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required repoDir and filePath fields', () => {
+    it('should validate required filePath field', () => {
       const validData = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing repoDir field', () => {
-      const invalidData = {
-        filePath: 'src/file.ts',
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
-
     it('should reject missing filePath field', () => {
-      const invalidData = {
-        repoDir: '/path/to/repo',
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
-
-    it('should reject empty repoDir', () => {
-      const invalidData = {
-        repoDir: '',
-        filePath: 'src/file.ts',
-      };
+      const invalidData = {};
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty filePath', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
         filePath: '',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
@@ -82,8 +63,7 @@ describe('FilesReadTool', () => {
 
     it('should accept optional startLine and endLine fields', () => {
       const validData = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 1,
         endLine: 10,
       };
@@ -92,16 +72,14 @@ describe('FilesReadTool', () => {
 
     it('should accept data without startLine and endLine', () => {
       const validData = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
     it('should reject non-positive startLine', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 0,
         endLine: 10,
       };
@@ -110,8 +88,7 @@ describe('FilesReadTool', () => {
 
     it('should reject non-positive endLine', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 1,
         endLine: 0,
       };
@@ -120,8 +97,7 @@ describe('FilesReadTool', () => {
 
     it('should reject non-integer startLine', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 1.5,
         endLine: 10,
       };
@@ -130,8 +106,7 @@ describe('FilesReadTool', () => {
 
     it('should reject non-integer endLine', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 1,
         endLine: 10.5,
       };
@@ -148,8 +123,7 @@ describe('FilesReadTool', () => {
 
     it('should read entire file successfully using cat', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
       };
 
       const fileContent = 'line 1\nline 2\nline 3\n';
@@ -168,7 +142,7 @@ describe('FilesReadTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to/repo" && cat "/path/to/repo/src/file.ts"',
+          cmd: 'cat "/path/to/repo/src/file.ts"',
         },
         mockConfig,
         mockCfg,
@@ -177,8 +151,7 @@ describe('FilesReadTool', () => {
 
     it('should read specific line range using sed', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 2,
         endLine: 4,
       };
@@ -199,7 +172,7 @@ describe('FilesReadTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to/repo" && sed -n \'2,4p\' "/path/to/repo/src/file.ts"',
+          cmd: "sed -n '2,4p' \"/path/to/repo/src/file.ts\"",
         },
         mockConfig,
         mockCfg,
@@ -208,8 +181,7 @@ describe('FilesReadTool', () => {
 
     it('should read single line using sed', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 5,
         endLine: 5,
       };
@@ -230,7 +202,7 @@ describe('FilesReadTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to/repo" && sed -n \'5,5p\' "/path/to/repo/src/file.ts"',
+          cmd: "sed -n '5,5p' \"/path/to/repo/src/file.ts\"",
         },
         mockConfig,
         mockCfg,
@@ -239,8 +211,7 @@ describe('FilesReadTool', () => {
 
     it('should return error when endLine is provided without startLine', async () => {
       const args = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         endLine: 10,
       } as FilesReadToolSchemaType;
 
@@ -254,8 +225,7 @@ describe('FilesReadTool', () => {
 
     it('should return error when startLine is provided without endLine', async () => {
       const args = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 1,
       } as FilesReadToolSchemaType;
 
@@ -269,8 +239,7 @@ describe('FilesReadTool', () => {
 
     it('should return error when startLine is greater than endLine', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         startLine: 10,
         endLine: 5,
       };
@@ -285,8 +254,7 @@ describe('FilesReadTool', () => {
 
     it('should return error when command fails', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'nonexistent.ts',
+        filePath: '/path/to/repo/nonexistent.ts',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -306,8 +274,7 @@ describe('FilesReadTool', () => {
 
     it('should return error message from stdout when stderr is empty', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -325,8 +292,7 @@ describe('FilesReadTool', () => {
 
     it('should return default error message when both stdout and stderr are empty', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -344,8 +310,7 @@ describe('FilesReadTool', () => {
 
     it('should handle file path with spaces', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to repo',
-        filePath: 'src/my file.ts',
+        filePath: '/path/to repo/src/my file.ts',
       };
 
       const fileContent = 'content\n';
@@ -363,7 +328,7 @@ describe('FilesReadTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to repo" && cat "/path/to repo/src/my file.ts"',
+          cmd: 'cat "/path/to repo/src/my file.ts"',
         },
         mockConfig,
         mockCfg,
@@ -372,8 +337,7 @@ describe('FilesReadTool', () => {
 
     it('should handle empty file', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'empty.txt',
+        filePath: '/path/to/repo/empty.txt',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -392,8 +356,7 @@ describe('FilesReadTool', () => {
 
     it('should handle file with only newline', async () => {
       const args: FilesReadToolSchemaType = {
-        repoDir: '/path/to/repo',
-        filePath: 'newline.txt',
+        filePath: '/path/to/repo/newline.txt',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({

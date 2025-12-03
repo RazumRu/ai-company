@@ -46,15 +46,15 @@ describe('FilesBuildTagsTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required repoDir and alias fields', () => {
+    it('should validate required dir and alias fields', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing repoDir field', () => {
+    it('should reject missing dir field', () => {
       const invalidData = {
         alias: 'myrepo',
       };
@@ -63,14 +63,14 @@ describe('FilesBuildTagsTool', () => {
 
     it('should reject missing alias field', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
-    it('should reject empty repoDir', () => {
+    it('should reject empty dir', () => {
       const invalidData = {
-        repoDir: '',
+        dir: '',
         alias: 'myrepo',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
@@ -78,7 +78,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should reject empty alias', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: '',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
@@ -86,7 +86,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should accept alias with special characters', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'my-repo_123',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
@@ -102,7 +102,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should build tags successfully', async () => {
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -155,7 +155,7 @@ describe('FilesBuildTagsTool', () => {
       };
 
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -195,7 +195,7 @@ describe('FilesBuildTagsTool', () => {
       };
 
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -225,7 +225,7 @@ describe('FilesBuildTagsTool', () => {
       };
 
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -251,7 +251,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should return error when mkdir fails', async () => {
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -273,7 +273,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should return error when mkdir fails with stdout message', async () => {
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -294,7 +294,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should return error when ctags command fails', async () => {
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -321,7 +321,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should return error when ctags fails with stdout message', async () => {
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -347,7 +347,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should return default error message when ctags fails with empty output', async () => {
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
 
@@ -371,9 +371,9 @@ describe('FilesBuildTagsTool', () => {
       expect(result.success).toBeUndefined();
     });
 
-    it('should handle repoDir with spaces', async () => {
+    it('should handle dir with spaces', async () => {
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to my repo',
+        dir: '/path/to my repo',
         alias: 'myrepo',
       };
 
@@ -406,7 +406,7 @@ describe('FilesBuildTagsTool', () => {
 
     it('should handle alias with special characters', async () => {
       const args: FilesBuildTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'my-repo_123',
       };
 

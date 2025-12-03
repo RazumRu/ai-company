@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 
 import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
 import { BaseToolGroup } from '../../base-tool-group';
+import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
 import { FilesBuildTagsTool } from './files-build-tags.tool';
 import { FilesListTool } from './files-list.tool';
@@ -20,6 +21,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     private readonly filesSearchTextTool: FilesSearchTextTool,
     private readonly filesBuildTagsTool: FilesBuildTagsTool,
     private readonly filesSearchTagsTool: FilesSearchTagsTool,
+    private readonly filesApplyChangesTool: FilesApplyChangesTool,
   ) {
     super();
   }
@@ -34,6 +36,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       this.filesSearchTextTool.build(config, lgConfig),
       this.filesBuildTagsTool.build(config, lgConfig),
       this.filesSearchTagsTool.build(config, lgConfig),
+      this.filesApplyChangesTool.build(config, lgConfig),
     ];
 
     return tools;

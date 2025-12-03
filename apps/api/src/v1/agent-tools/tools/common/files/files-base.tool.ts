@@ -7,15 +7,6 @@ import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { execRuntimeWithContext } from '../../../agent-tools.utils';
 import { BaseTool } from '../../base-tool';
 
-export const FilesBaseToolSchema = z.object({
-  repoDir: z
-    .string()
-    .min(1)
-    .describe('Path to the repository directory to search in.'),
-});
-
-export type FilesBaseToolSchemaType = z.infer<typeof FilesBaseToolSchema>;
-
 export type FilesBaseToolConfig = {
   runtime: BaseRuntime | (() => BaseRuntime);
 };

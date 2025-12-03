@@ -47,16 +47,16 @@ describe('FilesSearchTagsTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required repoDir, alias, and query fields', () => {
+    it('should validate required dir, alias, and query fields', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing repoDir field', () => {
+    it('should reject missing dir field', () => {
       const invalidData = {
         alias: 'myrepo',
         query: 'MyFunction',
@@ -66,7 +66,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should reject missing alias field', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'MyFunction',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
@@ -74,15 +74,15 @@ describe('FilesSearchTagsTool', () => {
 
     it('should reject missing query field', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
-    it('should reject empty repoDir', () => {
+    it('should reject empty dir', () => {
       const invalidData = {
-        repoDir: '',
+        dir: '',
         alias: 'myrepo',
         query: 'MyFunction',
       };
@@ -91,7 +91,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should reject empty alias', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: '',
         query: 'MyFunction',
       };
@@ -100,7 +100,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should reject empty query', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: '',
       };
@@ -109,7 +109,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should accept optional exactMatch field', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,
@@ -119,7 +119,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should default exactMatch to false when not provided', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
       };
@@ -137,7 +137,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should search tags with exact match successfully', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,
@@ -174,7 +174,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should search tags with regex match successfully', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'My.*Function',
         exactMatch: false,
@@ -220,7 +220,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should default to regex match when exactMatch is not provided', async () => {
       const args = tool.schema.parse({
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
       });
@@ -261,7 +261,7 @@ describe('FilesSearchTagsTool', () => {
       };
 
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,
@@ -295,7 +295,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should return empty matches when no results found', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'NonexistentFunction',
         exactMatch: true,
@@ -316,7 +316,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should parse multiple JSON match results', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'Function',
         exactMatch: false,
@@ -355,7 +355,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should handle empty lines in output', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,
@@ -389,7 +389,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should return error when command fails with stderr', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,
@@ -410,7 +410,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should return error when command fails with stdout message', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,
@@ -431,7 +431,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should return default error message when command fails with empty output', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,
@@ -452,7 +452,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should handle query with special characters in exact match', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'My"Function',
         exactMatch: true,
@@ -488,7 +488,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should handle query with special characters in regex match', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'My"Function',
         exactMatch: false,
@@ -522,9 +522,9 @@ describe('FilesSearchTagsTool', () => {
       );
     });
 
-    it('should handle repoDir with spaces', async () => {
+    it('should handle dir with spaces', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to my repo',
+        dir: '/path/to my repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,
@@ -559,7 +559,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should handle invalid JSON lines gracefully', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: false,
@@ -593,7 +593,7 @@ describe('FilesSearchTagsTool', () => {
 
     it('should handle empty output', async () => {
       const args: FilesSearchTagsToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',
         exactMatch: true,

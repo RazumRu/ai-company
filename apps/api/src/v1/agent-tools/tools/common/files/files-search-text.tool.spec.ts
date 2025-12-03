@@ -45,15 +45,15 @@ describe('FilesSearchTextTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required repoDir and query fields', () => {
+    it('should validate required dir and query fields', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing repoDir field', () => {
+    it('should reject missing dir field', () => {
       const invalidData = {
         query: 'function',
       };
@@ -62,14 +62,14 @@ describe('FilesSearchTextTool', () => {
 
     it('should reject missing query field', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
-    it('should reject empty repoDir', () => {
+    it('should reject empty dir', () => {
       const invalidData = {
-        repoDir: '',
+        dir: '',
         query: 'function',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
@@ -77,7 +77,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should reject empty query', () => {
       const invalidData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: '',
       };
       expect(() => tool.schema.parse(invalidData)).toThrow();
@@ -85,7 +85,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should accept optional filePath field', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
         filePath: 'src/file.ts',
       };
@@ -94,7 +94,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should accept optional includeGlobs field', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
         includeGlobs: ['*.ts', 'src/**'],
       };
@@ -103,7 +103,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should accept optional excludeGlobs field', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
         excludeGlobs: ['*.test.ts', 'node_modules/**'],
       };
@@ -112,7 +112,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should accept all optional fields together', () => {
       const validData = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
         filePath: 'src/file.ts',
         includeGlobs: ['*.ts'],
@@ -131,7 +131,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text successfully with basic query', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
       };
 
@@ -168,7 +168,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text with include globs', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
         includeGlobs: ['*.ts', 'src/**'],
       };
@@ -204,7 +204,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text with exclude globs', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
         excludeGlobs: ['*.test.ts', 'node_modules/**'],
       };
@@ -240,7 +240,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text with include and exclude globs', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
         includeGlobs: ['*.ts'],
         excludeGlobs: ['*.test.ts'],
@@ -277,7 +277,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text in specific file', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
         filePath: 'src/file.ts',
       };
@@ -313,7 +313,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should return empty matches when no results found', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'nonexistent',
       };
 
@@ -332,7 +332,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should parse multiple JSON match results', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
       };
 
@@ -373,7 +373,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should skip non-match JSON lines', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
       };
 
@@ -410,7 +410,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should return error when command fails with stderr', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
       };
 
@@ -429,7 +429,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should return error message from stdout when stderr is empty', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
       };
 
@@ -448,7 +448,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should return default error message when both stdout and stderr are empty', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
       };
 
@@ -467,7 +467,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should handle file path with spaces', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to repo',
+        dir: '/path/to repo',
         query: 'function',
         filePath: 'src/my file.ts',
       };
@@ -503,7 +503,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should handle invalid JSON lines gracefully', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        repoDir: '/path/to/repo',
+        dir: '/path/to/repo',
         query: 'function',
       };
 
