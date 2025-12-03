@@ -94,6 +94,7 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       'ai-company/graph_id': metadata.graphId,
       'ai-company/node_id': metadata.nodeId,
       'ai-company/graph_version': metadata.version,
+      'ai-company/dind': 'false',
     };
 
     // Add temporary label if the graph is temporary
@@ -108,11 +109,7 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
     };
 
     // Check if a container with matching labels already exists
-    const existingContainer = await DockerRuntime.getByLabels({
-      'ai-company/graph_id': metadata.graphId,
-      'ai-company/node_id': metadata.nodeId,
-      'ai-company/graph_version': metadata.version,
-    });
+    const existingContainer = await DockerRuntime.getByLabels(mergedLabels);
 
     // Generate network name based on graph ID if not provided
     const networkName = `ai-company-${metadata.graphId}`;

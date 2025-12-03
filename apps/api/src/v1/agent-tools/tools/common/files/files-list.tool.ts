@@ -41,7 +41,7 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
     const cmdParts: string[] = [`cd "${args.repoDir}"`, '&&', 'fd'];
 
     if (args.pattern) {
-      cmdParts.push(`"${args.pattern}"`);
+      cmdParts.push('--glob', `"${args.pattern}"`);
     }
 
     cmdParts.push('--type', 'f', '--hidden', '--exclude', '.git');

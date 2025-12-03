@@ -146,11 +146,15 @@ export class DockerRuntime extends BaseRuntime {
         filters: { name: [name] },
       });
 
-      if (!list[0]) {
+      const exact = list.filter((c) =>
+        c.Names?.some((n) => n.replace(/^\//, '') === name),
+      );
+
+      if (!exact[0]) {
         return null;
       }
 
-      return this.docker.getContainer(list[0].Id);
+      return this.docker.getContainer(exact[0].Id);
     } catch {
       return null;
     }
