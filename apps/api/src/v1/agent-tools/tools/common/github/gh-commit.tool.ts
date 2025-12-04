@@ -23,16 +23,7 @@ export const GhCommitToolSchema = z.object({
   semanticType: z.enum(SemanticCommitType).describe('Semantic commit type'),
   title: z.string().min(1).describe('Commit title'),
   body: z.string().optional().describe('Optional commit body'),
-  path: z
-    .string()
-    .optional()
-    .describe('Path to the git repository (default: current directory)'),
-  push: z
-    .boolean()
-    .optional()
-    .describe(
-      'Whether to push the commit to the remote repository after committing',
-    ),
+  path: z.string().describe('Path to the git repository'),
 });
 
 export type GhCommitToolSchemaType = z.infer<typeof GhCommitToolSchema>;
@@ -47,7 +38,7 @@ type GhCommitToolOutput = {
 export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   public name = 'gh_commit';
   public description =
-    'Create a git (GitHub) commit locally with a semantic commit message. The commit message will be formatted as "{semanticType}: [AI] {title}" with an optional body. Optionally push the commit to the remote repository.';
+    'Create a git (GitHub) commit locally with a semantic commit message. The commit message will be formatted as "{semanticType}: [AI] {title}" with an optional body. Use gh_push tool to push commits to the remote repository.';
 
   public get schema() {
     return GhCommitToolSchema;
@@ -120,25 +111,6 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
 
     const commitHash =
       hashRes.exitCode === 0 ? hashRes.stdout.trim() : undefined;
-
-    // Push to remote if requested
-    if (args.push === true) {
-      const pushRes = await this.execGhCommand(
-        {
-          cmd: this.buildCommand('git push', args.path),
-        },
-        config,
-        cfg,
-      );
-
-      if (pushRes.exitCode !== 0) {
-        return {
-          success: false,
-          error: pushRes.stderr || pushRes.stdout || 'Failed to push commit',
-          commitHash,
-        };
-      }
-    }
 
     return {
       success: true,

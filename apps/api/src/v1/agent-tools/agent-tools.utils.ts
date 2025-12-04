@@ -28,7 +28,7 @@ export const execRuntimeWithContext = async (
 
   return instance.exec({
     ...params,
-    childWorkdir: `${threadId}`,
+    childWorkdir: `${threadId.replace(/:/g, '_')}`,
     createChildWorkdir: true,
     metadata: {
       threadId,

@@ -58,7 +58,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
       cfg.configurable?.thread_id ||
       'unknown';
 
-    const tagsFile = `/tmp/${threadId}/${args.alias}.json`;
+    const tagsFile = `/tmp/${threadId.replace(/:/g, '_')}/${args.alias}.json`;
 
     let cmd: string;
     if (args.exactMatch) {

@@ -101,14 +101,19 @@ describe('FilesListTool', () => {
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
         exitCode: 0,
-        stdout: 'file1.ts\nfile2.ts\nfile3.js\n',
+        stdout:
+          '/path/to/repo/file1.ts\n/path/to/repo/file2.ts\n/path/to/repo/file3.js\n',
         stderr: '',
         execPath: '/runtime-workspace/test-thread-123',
       });
 
       const result = await tool.invoke(args, mockConfig, mockCfg);
 
-      expect(result.files).toEqual(['file1.ts', 'file2.ts', 'file3.js']);
+      expect(result.files).toEqual([
+        '/path/to/repo/file1.ts',
+        '/path/to/repo/file2.ts',
+        '/path/to/repo/file3.js',
+      ]);
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
@@ -127,14 +132,17 @@ describe('FilesListTool', () => {
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
         exitCode: 0,
-        stdout: 'file1.ts\nfile2.ts\n',
+        stdout: '/path/to/repo/file1.ts\n/path/to/repo/file2.ts\n',
         stderr: '',
         execPath: '/runtime-workspace/test-thread-123',
       });
 
       const result = await tool.invoke(args, mockConfig, mockCfg);
 
-      expect(result.files).toEqual(['file1.ts', 'file2.ts']);
+      expect(result.files).toEqual([
+        '/path/to/repo/file1.ts',
+        '/path/to/repo/file2.ts',
+      ]);
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
@@ -244,14 +252,17 @@ describe('FilesListTool', () => {
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
         exitCode: 0,
-        stdout: 'src/file1.ts\nsrc/file2.tsx\n',
+        stdout: '/path/to/repo/src/file1.ts\n/path/to/repo/src/file2.tsx\n',
         stderr: '',
         execPath: '/runtime-workspace/test-thread-123',
       });
 
       const result = await tool.invoke(args, mockConfig, mockCfg);
 
-      expect(result.files).toEqual(['src/file1.ts', 'src/file2.tsx']);
+      expect(result.files).toEqual([
+        '/path/to/repo/src/file1.ts',
+        '/path/to/repo/src/file2.tsx',
+      ]);
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
@@ -269,14 +280,14 @@ describe('FilesListTool', () => {
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
         exitCode: 0,
-        stdout: 'file1.ts\n',
+        stdout: '/path/to my repo/file1.ts\n',
         stderr: '',
         execPath: '/runtime-workspace/test-thread-123',
       });
 
       const result = await tool.invoke(args, mockConfig, mockCfg);
 
-      expect(result.files).toEqual(['file1.ts']);
+      expect(result.files).toEqual(['/path/to my repo/file1.ts']);
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {

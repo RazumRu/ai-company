@@ -37,7 +37,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read the contents of a file in a repository directory. Optionally read specific line ranges using startLine and endLine parameters. Returns the file content and line count.';
+    'Read the contents of a file using an absolute path. Optionally read specific line ranges using startLine and endLine parameters. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns the file content and line count.';
 
   public get schema() {
     return FilesReadToolSchema;

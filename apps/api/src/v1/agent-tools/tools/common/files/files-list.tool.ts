@@ -27,7 +27,7 @@ type FilesListToolOutput = {
 export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
   public name = 'files_list';
   public description =
-    'List files in a repository directory using fd (find). Supports optional pattern filtering. Returns an array of file paths relative to the repository directory.';
+    'List files in a repository directory using fd (find). Supports optional pattern filtering. Returns an array of absolute file paths. The paths returned can be used directly with files_read, files_apply_changes, and files_search_text.filePath.';
 
   public get schema() {
     return FilesListToolSchema;

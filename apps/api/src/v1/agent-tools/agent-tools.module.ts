@@ -10,6 +10,7 @@ import { FilesToolGroup } from './tools/common/files/files-tool-group';
 import { GhBranchTool } from './tools/common/github/gh-branch.tool';
 import { GhCloneTool } from './tools/common/github/gh-clone.tool';
 import { GhCommitTool } from './tools/common/github/gh-commit.tool';
+import { GhPushTool } from './tools/common/github/gh-push.tool';
 import { GhToolGroup } from './tools/common/github/gh-tool-group';
 import { WebSearchTool } from './tools/common/web-search.tool';
 import { CommunicationExecTool } from './tools/core/communication/communication-exec.tool';
@@ -31,6 +32,7 @@ import { ShellTool } from './tools/core/shell.tool';
     GhCloneTool,
     GhCommitTool,
     GhBranchTool,
+    GhPushTool,
     GhToolGroup,
     FilesListTool,
     FilesReadTool,
@@ -50,6 +52,7 @@ import { ShellTool } from './tools/core/shell.tool';
     GhCloneTool,
     GhCommitTool,
     GhBranchTool,
+    GhPushTool,
     GhToolGroup,
     FilesListTool,
     FilesReadTool,

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GhBranchTool } from './gh-branch.tool';
 import { GhCloneTool } from './gh-clone.tool';
 import { GhCommitTool } from './gh-commit.tool';
+import { GhPushTool } from './gh-push.tool';
 import { GhToolGroup, GhToolGroupConfig, GhToolType } from './gh-tool-group';
 
 describe('GhToolGroup', () => {
@@ -12,6 +13,7 @@ describe('GhToolGroup', () => {
   let mockGhCloneTool: GhCloneTool;
   let mockGhCommitTool: GhCommitTool;
   let mockGhBranchTool: GhBranchTool;
+  let mockGhPushTool: GhPushTool;
   let mockConfig: GhToolGroupConfig;
 
   beforeEach(async () => {
@@ -26,6 +28,10 @@ describe('GhToolGroup', () => {
     mockGhBranchTool = {
       build: vi.fn(),
     } as unknown as GhBranchTool;
+
+    mockGhPushTool = {
+      build: vi.fn(),
+    } as unknown as GhPushTool;
 
     mockConfig = {
       runtime: {} as any,
@@ -47,6 +53,10 @@ describe('GhToolGroup', () => {
         {
           provide: GhBranchTool,
           useValue: mockGhBranchTool,
+        },
+        {
+          provide: GhPushTool,
+          useValue: mockGhPushTool,
         },
       ],
     }).compile();
@@ -263,6 +273,59 @@ describe('GhToolGroup', () => {
 
       expect(result.length).toBe(3);
       expect(result).toEqual([mockBranchTool, mockCloneTool, mockCommitTool]);
+    });
+
+    it('should build PUSH tool when specified', () => {
+      const mockPushTool = { name: 'gh_push' } as DynamicStructuredTool;
+      mockGhPushTool.build = vi.fn().mockReturnValue(mockPushTool);
+
+      const config: GhToolGroupConfig = {
+        runtime: {} as any,
+        patToken: 'ghp_test_token',
+        tools: [GhToolType.PUSH],
+      };
+
+      const result = toolGroup.buildTools(config);
+
+      expect(result.length).toBe(1);
+      expect(result).toEqual([mockPushTool]);
+      expect(mockGhPushTool.build).toHaveBeenCalledWith(config, undefined);
+      expect(mockGhCloneTool.build).not.toHaveBeenCalled();
+      expect(mockGhCommitTool.build).not.toHaveBeenCalled();
+      expect(mockGhBranchTool.build).not.toHaveBeenCalled();
+    });
+
+    it('should build PUSH tool with other tools', () => {
+      const mockCloneTool = { name: 'gh_clone' } as DynamicStructuredTool;
+      const mockCommitTool = { name: 'gh_commit' } as DynamicStructuredTool;
+      const mockBranchTool = { name: 'gh_branch' } as DynamicStructuredTool;
+      const mockPushTool = { name: 'gh_push' } as DynamicStructuredTool;
+      mockGhCloneTool.build = vi.fn().mockReturnValue(mockCloneTool);
+      mockGhCommitTool.build = vi.fn().mockReturnValue(mockCommitTool);
+      mockGhBranchTool.build = vi.fn().mockReturnValue(mockBranchTool);
+      mockGhPushTool.build = vi.fn().mockReturnValue(mockPushTool);
+
+      const config: GhToolGroupConfig = {
+        runtime: {} as any,
+        patToken: 'ghp_test_token',
+        tools: [
+          GhToolType.CLONE,
+          GhToolType.COMMIT,
+          GhToolType.BRANCH,
+          GhToolType.PUSH,
+        ],
+      };
+
+      const result = toolGroup.buildTools(config);
+
+      expect(result.length).toBe(4);
+      expect(result).toEqual([
+        mockCloneTool,
+        mockCommitTool,
+        mockBranchTool,
+        mockPushTool,
+      ]);
+      expect(mockGhPushTool.build).toHaveBeenCalledWith(config, undefined);
     });
   });
 });

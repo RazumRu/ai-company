@@ -87,7 +87,7 @@ describe('FilesSearchTextTool', () => {
       const validData = {
         dir: '/path/to/repo',
         query: 'function',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
@@ -114,7 +114,7 @@ describe('FilesSearchTextTool', () => {
       const validData = {
         dir: '/path/to/repo',
         query: 'function',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
         includeGlobs: ['*.ts'],
         excludeGlobs: ['*.test.ts'],
       };
@@ -279,13 +279,13 @@ describe('FilesSearchTextTool', () => {
       const args: FilesSearchTextToolSchemaType = {
         dir: '/path/to/repo',
         query: 'function',
-        filePath: 'src/file.ts',
+        filePath: '/path/to/repo/src/file.ts',
       };
 
       const rgOutput = JSON.stringify({
         type: 'match',
         data: {
-          path: { text: 'src/file.ts' },
+          path: { text: '/path/to/repo/src/file.ts' },
           lines: { text: 'export function test() {}' },
           line_number: 10,
         },
@@ -304,7 +304,7 @@ describe('FilesSearchTextTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to/repo" && rg --json "function" "src/file.ts"',
+          cmd: 'rg --json "function" "/path/to/repo/src/file.ts"',
         },
         mockConfig,
         mockCfg,
@@ -469,13 +469,13 @@ describe('FilesSearchTextTool', () => {
       const args: FilesSearchTextToolSchemaType = {
         dir: '/path/to repo',
         query: 'function',
-        filePath: 'src/my file.ts',
+        filePath: '/path/to repo/src/my file.ts',
       };
 
       const rgOutput = JSON.stringify({
         type: 'match',
         data: {
-          path: { text: 'src/my file.ts' },
+          path: { text: '/path/to repo/src/my file.ts' },
           lines: { text: 'export function test() {}' },
           line_number: 10,
         },
@@ -494,7 +494,7 @@ describe('FilesSearchTextTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to repo" && rg --json "function" "src/my file.ts"',
+          cmd: 'rg --json "function" "/path/to repo/src/my file.ts"',
         },
         mockConfig,
         mockCfg,

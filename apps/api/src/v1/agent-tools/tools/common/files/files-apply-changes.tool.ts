@@ -50,7 +50,7 @@ type FilesApplyChangesToolOutput = {
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Apply changes to a file in a repository directory. Supports replacing entire file, replacing line ranges, inserting content at specific lines, and deleting line ranges. Returns success status and updated line count.';
+    'Apply changes to a file using an absolute path. Supports replacing entire file, replacing line ranges, inserting content at specific lines, and deleting line ranges. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns success status and updated line count.';
 
   public get schema() {
     return FilesApplyChangesToolSchema;

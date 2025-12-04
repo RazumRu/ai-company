@@ -7,11 +7,13 @@ import { GhBaseToolConfig } from './gh-base.tool';
 import { GhBranchTool } from './gh-branch.tool';
 import { GhCloneTool } from './gh-clone.tool';
 import { GhCommitTool } from './gh-commit.tool';
+import { GhPushTool } from './gh-push.tool';
 
 export enum GhToolType {
   CLONE = 'clone',
   COMMIT = 'commit',
   BRANCH = 'branch',
+  PUSH = 'push',
 }
 
 export type GhToolGroupConfig = GhBaseToolConfig & {
@@ -24,6 +26,7 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     private readonly ghCloneTool: GhCloneTool,
     private readonly ghCommitTool: GhCommitTool,
     private readonly ghBranchTool: GhBranchTool,
+    private readonly ghPushTool: GhPushTool,
   ) {
     super();
   }
@@ -44,6 +47,9 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
           break;
         case GhToolType.BRANCH:
           tools.push(this.ghBranchTool.build(config, lgConfig));
+          break;
+        case GhToolType.PUSH:
+          tools.push(this.ghPushTool.build(config, lgConfig));
           break;
       }
     }

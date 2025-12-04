@@ -18,7 +18,7 @@ export const FilesSearchTextToolSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Optional file path to search in. If provided, searches only in this specific file.',
+      'Optional absolute file path to search in. If provided, searches only in this specific file. Can be used directly with paths returned from files_list.',
     ),
   includeGlobs: z
     .array(z.string())
@@ -66,7 +66,7 @@ type FilesSearchTextToolOutput = {
 export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchemaType> {
   public name = 'files_search_text';
   public description =
-    'Search for text patterns in repository files using ripgrep (rg). Supports regex patterns, file filtering with globs, and searching in specific files. Returns JSON-formatted search results with file paths, line numbers, and matched text.';
+    'Search for text patterns in repository files using ripgrep (rg). Supports regex patterns, file filtering with globs, and searching in specific files. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns JSON-formatted search results with file paths, line numbers, and matched text.';
 
   public get schema() {
     return FilesSearchTextToolSchema;
@@ -77,12 +77,14 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<FilesSearchTextToolOutput> {
-    const cmdParts: string[] = [`cd "${args.dir}"`, '&&', 'rg', '--json'];
+    const cmdParts: string[] = ['rg', '--json'];
 
-    // If filePath is provided, use simpler command format
+    // If filePath is provided, use absolute path directly (no need to cd)
     if (args.filePath) {
       cmdParts.push(`"${args.query}"`, `"${args.filePath}"`);
     } else {
+      // When searching across directory, cd to the directory first
+      cmdParts.unshift(`cd "${args.dir}"`, '&&');
       // Add hidden flag when searching across files
       cmdParts.push('--hidden');
 

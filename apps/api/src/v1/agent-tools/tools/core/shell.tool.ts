@@ -53,7 +53,7 @@ export interface ShellToolOutput {
 export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public name = 'shell';
   public description =
-    'Executes arbitrary shell commands inside the prepared Docker runtime. Use it for files, git, tests, builds, installs, inspection. Returns stdout, stderr, exitCode.';
+    'Executes arbitrary shell commands inside the prepared Docker runtime. Use it for files, git, tests, builds, installs, inspection. Returns stdout, stderr, exitCode. If command output is expected to be large (e.g. rg, ls -R, test logs), consider constraining it with flags (-n, --max-count, specific paths) instead of dumping full repo logs.';
 
   public get schema() {
     return ShellToolSchema;

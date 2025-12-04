@@ -44,7 +44,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       'unknown';
 
     // Create the tags directory if it doesn't exist
-    const tagsDir = `/tmp/${threadId}`;
+    const tagsDir = `/tmp/${threadId.replace(/:/g, '_')}`;
     const tagsFile = `${tagsDir}/${args.alias}.json`;
 
     // First, ensure the directory exists
