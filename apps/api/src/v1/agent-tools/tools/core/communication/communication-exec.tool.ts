@@ -47,7 +47,7 @@ export class CommunicationExecTool extends BaseTool<
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
     const availableAgents = config?.agents?.length
       ? config.agents
-          .map((agent) => `- ${agent.name}: ${agent.description}`)
+          .map((agent) => `####${agent.name}\n${agent.description}\n`)
           .join('\n')
       : '- No agents configured.';
 

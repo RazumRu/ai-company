@@ -182,10 +182,19 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         cfg,
       );
 
+      const stderr =
+        res.exitCode === 124
+          ? trimOutput(
+              `${res.stderr ? `${res.stderr}\n` : ''}Command timed out after ${
+                execData.timeoutMs ?? 'the configured'
+              } ms (exit code 124).`,
+            )
+          : trimOutput(res.stderr);
+
       return {
         exitCode: res.exitCode,
         stdout: trimOutput(res.stdout),
-        stderr: trimOutput(res.stderr),
+        stderr,
       };
     } catch (error) {
       // Handle runtime errors by returning them in the expected RuntimeExecResult format

@@ -6,10 +6,6 @@ import { z } from 'zod';
 import { BaseTool, ExtendedLangGraphRunnableConfig } from '../base-tool';
 
 export const WebSearchToolSchema = z.object({
-  purpose: z
-    .string()
-    .min(1)
-    .describe('Brief reason for using this tool. Keep it short (< 120 chars).'),
   query: z
     .string()
     .describe('The search query. Be specific and include relevant keywords.')
@@ -174,8 +170,7 @@ export class WebSearchTool extends BaseTool<
     config: WebSearchToolConfig,
   ): Promise<WebSearchOutput> {
     const client = tavily({ apiKey: config.apiKey });
-    // Extract purpose from args before passing to search client
-    const { purpose: _purpose, query, ...opts } = args;
+    const { query, ...opts } = args;
 
     const res = await client.search(query, opts);
 

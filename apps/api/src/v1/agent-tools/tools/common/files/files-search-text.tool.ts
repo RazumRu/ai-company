@@ -7,6 +7,8 @@ import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-no
 import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
+const MAX_MATCHES = 30;
+
 export const FilesSearchTextToolSchema = z.object({
   dir: z
     .string()
@@ -68,7 +70,7 @@ type FilesSearchTextToolOutput = {
 export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchemaType> {
   public name = 'files_search_text';
   public description =
-    'Search for text patterns in repository files using ripgrep (rg). Supports regex patterns, file filtering with globs, and searching in specific files. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns JSON-formatted search results with file paths, line numbers, and matched text.';
+    'Search for text patterns in repository files using ripgrep (rg). Supports regex patterns, file filtering with globs, and searching in specific files. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns JSON-formatted search results with file paths, line numbers, and matched text (capped at 30 matches).';
 
   public getDetailedInstructions(
     config: FilesBaseToolConfig,
@@ -122,7 +124,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       - Search for []: {"dir": "/repo", "query": "\\\\[\\\\]"}
 
       ### Output Format
-      Returns matches as JSON array with type, path, lines, line_number, and submatches.
+      Returns matches as JSON array with type, path, lines, line_number, and submatches. Results are capped at 30 matches to prevent overwhelming output.
 
       Empty results (no matches found): {"matches": []}
 
@@ -229,6 +231,9 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       try {
         const parsed = JSON.parse(line);
         if (parsed.type === 'match') {
+          if (matches.length >= MAX_MATCHES) {
+            break;
+          }
           matches.push(parsed);
         }
       } catch (e) {

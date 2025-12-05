@@ -9,6 +9,8 @@ import { EntityManager } from 'typeorm';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { ThreadsDao } from '../../threads/dao/threads.dao';
+import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphRevisionDto } from '../dto/graph-revisions.dto';
 import {
@@ -35,6 +37,7 @@ export class GraphsService {
     private readonly graphRegistry: GraphRegistry,
     private readonly graphRevisionService: GraphRevisionService,
     private readonly typeorm: TypeormService,
+    private readonly threadsDao: ThreadsDao,
     private readonly notificationsService: NotificationsService,
     private readonly authContext: AuthContextService,
   ) {}
@@ -330,6 +333,12 @@ export class GraphsService {
         await this.graphRegistry.destroy(id);
       }
 
+      try {
+        await this.stopRunningThreads(id);
+      } catch {
+        // Best effort: keep original error as the primary failure reason
+      }
+
       await this.graphDao.updateById(id, {
         status: GraphStatus.Error,
         error: (error as Error).message,
@@ -346,6 +355,34 @@ export class GraphsService {
 
       throw error;
     }
+  }
+
+  private async stopRunningThreads(graphId: string): Promise<void> {
+    const runningThreads = await this.threadsDao.getAll({
+      graphId,
+      status: ThreadStatus.Running,
+    });
+
+    if (!runningThreads.length) {
+      return;
+    }
+
+    await Promise.allSettled(
+      runningThreads.map((thread) =>
+        (async () => {
+          await this.threadsDao.updateById(thread.id, {
+            status: ThreadStatus.Stopped,
+          });
+
+          await this.notificationsService.emit({
+            type: NotificationEvent.ThreadUpdate,
+            graphId,
+            threadId: thread.externalThreadId,
+            data: { status: ThreadStatus.Stopped },
+          });
+        })(),
+      ),
+    );
   }
 
   async destroy(id: string): Promise<GraphDto> {

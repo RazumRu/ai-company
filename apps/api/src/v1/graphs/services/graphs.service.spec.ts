@@ -10,6 +10,8 @@ import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { ThreadsDao } from '../../threads/dao/threads.dao';
+import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
@@ -43,6 +45,7 @@ describe('GraphsService', () => {
   let messageTransformer: MessageTransformerService;
   let notificationsService: NotificationsService;
   let graphRevisionService: GraphRevisionService;
+  let threadsDao: ThreadsDao;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -168,6 +171,13 @@ describe('GraphsService', () => {
           },
         },
         {
+          provide: ThreadsDao,
+          useValue: {
+            getAll: vi.fn(),
+            updateById: vi.fn(),
+          },
+        },
+        {
           provide: TypeormService,
           useValue: {
             trx: vi.fn(),
@@ -234,6 +244,9 @@ describe('GraphsService', () => {
       module.get<NotificationsService>(NotificationsService);
     graphRevisionService =
       module.get<GraphRevisionService>(GraphRevisionService);
+    threadsDao = module.get<ThreadsDao>(ThreadsDao);
+    vi.mocked(threadsDao.getAll).mockResolvedValue([]);
+    vi.mocked(threadsDao.updateById).mockResolvedValue(null as any);
     vi.mocked(graphRegistry.getStatus).mockReturnValue(undefined);
     vi.mocked(notificationsService.emit).mockResolvedValue(void 0 as any);
     vi.mocked(graphRevisionService.queueRevision).mockResolvedValue({
@@ -1180,6 +1193,53 @@ describe('GraphsService', () => {
           data: expect.objectContaining({
             status: GraphStatus.Error,
           }),
+        }),
+      );
+    });
+
+    it('should stop running threads when graph fails to start', async () => {
+      const graph = createMockGraphEntity({ status: GraphStatus.Created });
+      const compilationError = new Error('Compilation failed');
+      const compilingEntity = createMockGraphEntity({
+        status: GraphStatus.Compiling,
+      });
+
+      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphCompiler.compile).mockRejectedValue(compilationError);
+      vi.mocked(graphDao.updateById)
+        .mockResolvedValueOnce(compilingEntity)
+        .mockResolvedValueOnce(
+          createMockGraphEntity({
+            status: GraphStatus.Error,
+            error: 'Compilation failed',
+          }),
+        );
+
+      const runningThread = {
+        id: 'thread-1',
+        externalThreadId: 'external-1',
+      } as any;
+      vi.mocked(threadsDao.getAll).mockResolvedValue([runningThread]);
+      vi.mocked(threadsDao.updateById).mockResolvedValue(runningThread);
+
+      await expect(service.run(mockGraphId)).rejects.toThrow(
+        'Compilation failed',
+      );
+
+      expect(threadsDao.getAll).toHaveBeenCalledWith({
+        graphId: mockGraphId,
+        status: ThreadStatus.Running,
+      });
+      expect(threadsDao.updateById).toHaveBeenCalledWith(runningThread.id, {
+        status: ThreadStatus.Stopped,
+      });
+      expect(notificationsService.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.ThreadUpdate,
+          graphId: mockGraphId,
+          threadId: runningThread.externalThreadId,
+          data: { status: ThreadStatus.Stopped },
         }),
       );
     });

@@ -371,6 +371,38 @@ describe('FilesSearchTextTool', () => {
       expect(result.error).toBeUndefined();
     });
 
+    it('should cap matches at 30 results', async () => {
+      const args: FilesSearchTextToolSchemaType = {
+        dir: '/path/to/repo',
+        query: 'function',
+      };
+
+      const matches = Array.from({ length: 35 }).map((_, idx) =>
+        JSON.stringify({
+          type: 'match',
+          data: {
+            path: { text: `src/file${idx}.ts` },
+            lines: { text: `export function test${idx}() {}` },
+            line_number: idx + 1,
+          },
+        }),
+      );
+
+      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: matches.join('\n'),
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.matches).toBeDefined();
+      expect(result.matches!.length).toBe(30);
+      expect(result.matches![0]!.data.path?.text).toBe('src/file0.ts');
+      expect(result.matches![29]!.data.path?.text).toBe('src/file29.ts');
+    });
+
     it('should skip non-match JSON lines', async () => {
       const args: FilesSearchTextToolSchemaType = {
         dir: '/path/to/repo',
