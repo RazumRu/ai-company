@@ -52,6 +52,10 @@ class TestRuntime extends BaseRuntime {
     return result;
   }
 
+  public getRuntimeInfo(): string {
+    return 'Runtime type: TestRuntime';
+  }
+
   public override getGraphNodeMetadata(
     context?: GraphExecutionMetadata,
   ): Record<string, unknown> | undefined {

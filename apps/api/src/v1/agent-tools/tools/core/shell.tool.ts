@@ -1,8 +1,6 @@
-import {
-  DynamicStructuredTool,
-  ToolRunnableConfig,
-} from '@langchain/core/tools';
+import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
@@ -13,7 +11,7 @@ import { BaseTool, ExtendedLangGraphRunnableConfig } from '../base-tool';
 export interface ShellToolOptions {
   runtime: BaseRuntime | (() => BaseRuntime);
   env?: Record<string, string>;
-  additionalInfo?: string;
+  resourcesInformation?: string;
 }
 
 export const ShellToolSchema = z.object({
@@ -55,22 +53,96 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public description =
     'Executes arbitrary shell commands inside the prepared Docker runtime. Use it for files, git, tests, builds, installs, inspection. Returns stdout, stderr, exitCode. If command output is expected to be large (e.g. rg, ls -R, test logs), consider constraining it with flags (-n, --max-count, specific paths) instead of dumping full repo logs.';
 
-  public get schema() {
-    return ShellToolSchema;
-  }
-
-  public build(
+  public getDetailedInstructions(
     config: ShellToolOptions,
     lgConfig?: ExtendedLangGraphRunnableConfig,
-  ): DynamicStructuredTool {
-    const enhancedDescription = config.additionalInfo
-      ? `${this.description}\n\n${config.additionalInfo}`
-      : this.description;
+  ): string {
+    const parameterDocs = this.getSchemaParameterDocs(this.schema);
+    const runtimeInfo = this.buildRuntimeInfo(config.runtime);
 
-    return this.toolWrapper(this.invoke, config, {
-      ...lgConfig,
-      description: enhancedDescription,
-    });
+    return dedent`
+      ### Overview
+      The shell tool executes arbitrary shell commands inside a prepared Docker runtime environment. It provides direct access to the command line for file operations, git commands, running tests, building projects, installing dependencies, and system inspection.
+
+      ### When to Use
+      - **File operations**: Creating, moving, copying, deleting files and directories
+      - **Git operations**: Cloning repos, checking out branches, viewing diffs, committing changes
+      - **Build & test**: Running build commands, executing test suites, linting code
+      - **Package management**: Installing dependencies (npm, pip, apt, etc.)
+      - **System inspection**: Checking disk space, viewing processes, inspecting environment
+      - **Custom scripts**: Running project-specific scripts or one-off commands
+
+      ### When NOT to Use
+      - For reading file contents → prefer files_read tool (better structured output)
+      - For listing files → prefer files_list tool (structured array output)
+      - For searching text in files → prefer files_search_text tool (JSON structured results)
+      - For applying file changes → prefer files_apply_changes tool (safer, atomic operations)
+      - When a specialized tool exists for the operation (use specialized tools for better reliability)
+
+      ${parameterDocs}
+
+      ### Best Practices
+
+      **1. Use absolute paths when possible:**
+      \`\`\`bash
+      # Good
+      /repo/src/index.ts
+
+      # Risky - depends on working directory
+      src/index.ts
+      \`\`\`
+
+      **2. Quote paths with spaces:**
+      \`\`\`bash
+      cat "/path/with spaces/file.txt"
+      \`\`\`
+
+      **3. Chain commands safely with && to stop on first failure:**
+      \`\`\`bash
+      cd /repo && npm install && npm test
+      \`\`\`
+
+      **4. Use flags to constrain output:**
+      \`\`\`bash
+      # Good: Constrained
+      rg "TODO" --max-count=10 /repo/src
+
+      # Bad: Potentially huge output
+      rg "TODO" /repo
+      \`\`\`
+
+      ### Output Format
+      Returns:
+      - \`exitCode\`: 0 for success, non-zero for failure
+      - \`stdout\`: Standard output (trimmed to maxOutputLength)
+      - \`stderr\`: Standard error output
+
+      ### Error Handling
+      - Always check exitCode before assuming success
+      - Read stderr for error details when exitCode != 0
+      - Retry transient failures (network, locks) with backoff
+      - Don't ignore errors - report them and adjust strategy
+
+      ${runtimeInfo || ''}
+
+      ${config.resourcesInformation ? `### Additional information\n\n${config.resourcesInformation}` : ''}
+    `;
+  }
+
+  private buildRuntimeInfo(runtime: ShellToolOptions['runtime']) {
+    const instance = typeof runtime === 'function' ? runtime() : runtime;
+    const info = instance?.getRuntimeInfo?.();
+
+    if (info) {
+      return dedent`
+      ### Connected runtime information
+      ${info}
+    `;
+    }
+  }
+
+  public get schema() {
+    return ShellToolSchema;
   }
 
   public async invoke(

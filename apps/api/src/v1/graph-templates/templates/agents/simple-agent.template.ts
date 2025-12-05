@@ -2,6 +2,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
+import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
 import {
   SimpleAgent,
@@ -68,23 +69,64 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     metadata: NodeBaseTemplateMetadata,
   ): Promise<SimpleAgent> {
     const agent = await this.agentFactoryService.create(SimpleAgent);
-    const { ...agentConfig } = config;
 
-    // Set initial configuration
-    agent.setConfig(agentConfig);
-
-    // Look up tool nodes from the registry and add them to the agent
+    // Collect all tools from connected nodes
+    const allTools: BuiltAgentTool[] = [];
     for (const nodeId of outputNodeIds) {
-      const node = this.graphRegistry.getNode<DynamicStructuredTool[]>(
-        metadata.graphId,
-        nodeId,
-      );
+      const node = this.graphRegistry.getNode<
+        | BuiltAgentTool
+        | BuiltAgentTool[]
+        | DynamicStructuredTool
+        | DynamicStructuredTool[]
+      >(metadata.graphId, nodeId);
 
       if (node && node.type === NodeKind.Tool) {
-        agent.addTool(node.instance);
+        const tools = Array.isArray(node.instance)
+          ? node.instance
+          : [node.instance];
+
+        tools.forEach((tool) => {
+          const builtTool = tool as BuiltAgentTool;
+          allTools.push(builtTool);
+          agent.addTool(builtTool);
+        });
       }
     }
 
+    // Collect detailed instructions from all connected tools
+    const toolInstructions = this.collectToolInstructions(allTools);
+
+    // Build enhanced instructions with tool usage guidance
+    const enhancedInstructions = toolInstructions
+      ? `${config.instructions}\n\n${toolInstructions}`
+      : config.instructions;
+
+    // Set configuration with enhanced instructions
+    const agentConfig = {
+      ...config,
+      instructions: enhancedInstructions,
+    };
+
+    agent.setConfig(agentConfig);
+
     return agent;
+  }
+
+  private collectToolInstructions(tools: BuiltAgentTool[]): string | undefined {
+    const blocks = tools
+      .map((tool) => {
+        if (!tool.__instructions) {
+          return null;
+        }
+
+        return `### ${tool.name}\n${tool.__instructions}`;
+      })
+      .filter((block): block is string => Boolean(block));
+
+    if (!blocks.length) {
+      return undefined;
+    }
+
+    return ['## Tool Instructions', ...blocks].join('\n\n');
   }
 }

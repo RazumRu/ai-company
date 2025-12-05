@@ -509,21 +509,6 @@ describe('ShellTool', () => {
       );
     });
 
-    it('should enhance description with resource information', () => {
-      const config: ShellToolOptions = {
-        runtime: mockRuntime,
-        additionalInfo:
-          'Available Resources:\n- github-resource: GitHub CLI available for repository operations',
-      };
-
-      const builtTool = tool.build(config);
-
-      expect(builtTool.description).toContain('Available Resources:');
-      expect(builtTool.description).toContain(
-        '- github-resource: GitHub CLI available for repository operations',
-      );
-    });
-
     it('should use original description when no resource information provided', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
 

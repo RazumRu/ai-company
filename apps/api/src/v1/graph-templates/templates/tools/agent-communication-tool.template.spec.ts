@@ -3,8 +3,6 @@ import { RunnableConfig } from '@langchain/core/runnables';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CommunicationExecTool } from '../../../agent-tools/tools/core/communication/communication-exec.tool';
-import { CommunicationListTool } from '../../../agent-tools/tools/core/communication/communication-list.tool';
 import { CommunicationToolGroup } from '../../../agent-tools/tools/core/communication/communication-tool-group';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
@@ -75,11 +73,6 @@ describe('AgentCommunicationToolTemplate', () => {
           description: 'Send a message to a specific agent',
           invoke: vi.fn(),
         },
-        {
-          name: 'communication_list',
-          description: 'Get the list of all available agents',
-          invoke: vi.fn(),
-        },
       ]),
     } as unknown as CommunicationToolGroup;
 
@@ -131,7 +124,7 @@ describe('AgentCommunicationToolTemplate', () => {
   });
 
   describe('create', () => {
-    it('should create communication tool group with two tools', async () => {
+    it('should create communication tool group with communication_exec tool', async () => {
       const agentNode = buildCompiledNode<SimpleAgent>({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
@@ -164,9 +157,8 @@ describe('AgentCommunicationToolTemplate', () => {
         },
       );
 
-      expect(builtTools).toHaveLength(2);
+      expect(builtTools).toHaveLength(1);
       expect(builtTools[0]?.name).toBe('communication_exec');
-      expect(builtTools[1]?.name).toBe('communication_list');
     });
 
     it('should support multiple agents', async () => {
@@ -221,7 +213,7 @@ describe('AgentCommunicationToolTemplate', () => {
         },
       );
 
-      expect(builtTools).toHaveLength(2);
+      expect(builtTools).toHaveLength(1);
       expect(mockCommunicationToolGroup.buildTools).toHaveBeenCalledWith({
         agents: expect.arrayContaining([
           expect.objectContaining({

@@ -14,7 +14,7 @@ export type CreateGraphDto = {
        */
       id: string;
       /**
-       * Template name registered in TemplateRegistry
+       * Template id registered in TemplateRegistry
        */
       template: string;
       /**
@@ -113,7 +113,7 @@ export type GraphDto = {
        */
       id: string;
       /**
-       * Template name registered in TemplateRegistry
+       * Template id registered in TemplateRegistry
        */
       template: string;
       /**
@@ -250,7 +250,7 @@ export type UpdateGraphDto = {
        */
       id: string;
       /**
-       * Template name registered in TemplateRegistry
+       * Template id registered in TemplateRegistry
        */
       template: string;
       /**
@@ -357,7 +357,7 @@ export type UpdateGraphResponseDto = {
          */
         id: string;
         /**
-         * Template name registered in TemplateRegistry
+         * Template id registered in TemplateRegistry
          */
         template: string;
         /**
@@ -499,7 +499,7 @@ export type UpdateGraphResponseDto = {
          */
         id: string;
         /**
-         * Template name registered in TemplateRegistry
+         * Template id registered in TemplateRegistry
          */
         template: string;
         /**
@@ -534,7 +534,7 @@ export type UpdateGraphResponseDto = {
          */
         id: string;
         /**
-         * Template name registered in TemplateRegistry
+         * Template id registered in TemplateRegistry
          */
         template: string;
         /**
@@ -647,7 +647,7 @@ export type GraphRevisionDto = {
        */
       id: string;
       /**
-       * Template name registered in TemplateRegistry
+       * Template id registered in TemplateRegistry
        */
       template: string;
       /**
@@ -682,7 +682,7 @@ export type GraphRevisionDto = {
        */
       id: string;
       /**
-       * Template name registered in TemplateRegistry
+       * Template id registered in TemplateRegistry
        */
       template: string;
       /**

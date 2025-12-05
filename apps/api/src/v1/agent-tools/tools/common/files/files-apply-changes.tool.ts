@@ -2,9 +2,11 @@ import { Buffer } from 'node:buffer';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesApplyChangesToolSchema = z.object({
@@ -54,6 +56,193 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
   public get schema() {
     return FilesApplyChangesToolSchema;
+  }
+
+  public getDetailedInstructions(
+    config: FilesBaseToolConfig,
+    lgConfig?: ExtendedLangGraphRunnableConfig,
+  ): string {
+    const parameterDocs = this.getSchemaParameterDocs(this.schema);
+
+    return dedent`
+      ### Overview
+      Applies modifications to files with surgical precision. Supports four operations: full replacement, line range replacement, insertion, and deletion. All operations are atomic - they either fully succeed or fail without partial changes.
+
+      ### When to Use
+      - Creating new files (operation: "replace" on non-existent file)
+      - Modifying specific lines in source code
+      - Adding imports or new code sections
+      - Removing deprecated code blocks
+      - Any file modification where you need precise control
+
+      ### When NOT to Use
+      - For bulk find-and-replace across multiple files → use shell with \`sed\` or custom script
+      - For reading files → use \`files_read\`
+      - For simple appending → can use shell with \`echo >> file\`
+
+      ### Operations
+
+      #### 1. \`replace\` - Replace Entire File
+      Replaces all content. Creates file if it doesn't exist.
+
+      Example:
+      \`\`\`json
+      {
+        "filePath": "/repo/src/new-file.ts",
+        "operation": "replace",
+        "content": "export const hello = 'world';"
+      }
+      \`\`\`
+
+      **Use for:**
+      - Creating new files
+      - Complete file rewrites
+      - Small files where full replacement is simpler
+
+      #### 2. \`replace_range\` - Replace Specific Lines
+      Replaces lines from startLine to endLine (inclusive) with new content.
+
+      Example:
+      \`\`\`json
+      {
+        "filePath": "/repo/src/app.ts",
+        "operation": "replace_range",
+        "startLine": 10,
+        "endLine": 15,
+        "content": "// New implementationfunction updated() {  return 'new';}"
+      }
+      \`\`\`
+
+      **Use for:**
+      - Updating function implementations
+      - Modifying code blocks
+      - Fixing bugs in specific sections
+
+      **Important:** Content should include appropriate newlines. The number of lines in content doesn't need to match the replaced range.
+
+      #### 3. \`insert\` - Insert Content at Line
+      Inserts new content BEFORE the specified startLine.
+
+      Example:
+      \`\`\`json
+      {
+        "filePath": "/repo/src/app.ts",
+        "operation": "insert",
+        "startLine": 1,
+        "content": "import { newDep } from 'new-package';"
+      }
+      \`\`\`
+
+      **Use for:**
+      - Adding imports at the top of files
+      - Inserting new functions or classes
+      - Adding comments or documentation
+
+      **Line numbers:**
+      - startLine: 1 → Inserts at the very beginning
+      - startLine: N → Inserts before line N (line N becomes line N + newLines)
+
+      #### 4. \`delete\` - Remove Lines
+      Removes lines from startLine to endLine (inclusive).
+
+      Example:
+      \`\`\`json
+      {
+        "filePath": "/repo/src/app.ts",
+        "operation": "delete",
+        "startLine": 20,
+        "endLine": 25
+      }
+      \`\`\`
+
+      **Use for:**
+      - Removing deprecated code
+      - Cleaning up unused imports
+      - Removing debug statements
+
+      ${parameterDocs}
+
+      ### Best Practices
+
+      **1. Always read before modifying:**
+      1. files_read the file to see current content and line numbers
+      2. Identify exact lines to modify
+      3. files_apply_changes with precise line numbers
+      4. Optionally files_read again to verify
+
+      **2. Keep content format correct:**
+      - Include trailing newlines where appropriate
+      - Match the file's existing indentation style
+      - Preserve line endings (usually )
+
+      **3. Make minimal changes:**
+      Instead of replacing 100 lines, replace just the 5 lines that need changing.
+
+      **4. For new files, use replace:**
+      \`\`\`json
+      {
+        "filePath": "/repo/src/newFile.ts",
+        "operation": "replace",
+        "content": "// New file content"
+      }
+      \`\`\`
+
+      ### Output Format
+      Success:
+      \`\`\`json
+      {
+        "success": true,
+        "lineCount": 150
+      }
+      \`\`\`
+
+      Error:
+      \`\`\`json
+      {
+        "success": false,
+        "error": "startLine must be less than or equal to endLine"
+      }
+      \`\`\`
+
+      ### Common Patterns
+
+      **Adding an import:**
+      \`\`\`json
+      {
+        "filePath": "/repo/src/app.ts",
+        "operation": "insert",
+        "startLine": 1,
+        "content": "import { Something } from './something';"
+      }
+      \`\`\`
+
+      **Updating a function:**
+      First read lines 50-70, then:
+      \`\`\`json
+      {
+        "filePath": "/repo/src/utils.ts",
+        "operation": "replace_range",
+        "startLine": 50,
+        "endLine": 70,
+        "content": "function improvedFunction() {  // new implementation}"
+      }
+      \`\`\`
+
+      **Creating a new file:**
+      \`\`\`json
+      {
+        "filePath": "/repo/src/components/NewComponent.tsx",
+        "operation": "replace",
+        "content": "import React from 'react';export const NewComponent = () => {  return <div>Hello</div>;};"
+      }
+      \`\`\`
+
+      ### Error Handling
+      - Check that startLine <= endLine
+      - Verify the file exists for replace_range, insert, delete
+      - Ensure content is provided for operations that require it
+      - Use files_read to verify line numbers before modifying
+    `;
   }
 
   public async invoke(

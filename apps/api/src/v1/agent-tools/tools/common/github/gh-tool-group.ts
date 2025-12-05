@@ -1,7 +1,9 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  BuiltAgentTool,
+  ExtendedLangGraphRunnableConfig,
+} from '../../base-tool';
 import { BaseToolGroup } from '../../base-tool-group';
 import { GhBaseToolConfig } from './gh-base.tool';
 import { GhBranchTool } from './gh-branch.tool';
@@ -34,8 +36,8 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
   public buildTools(
     config: GhToolGroupConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
-  ): DynamicStructuredTool[] {
-    const tools: DynamicStructuredTool[] = [];
+  ): BuiltAgentTool[] {
+    const tools: BuiltAgentTool[] = [];
 
     for (const toolType of config.tools) {
       switch (toolType) {

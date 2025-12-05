@@ -792,15 +792,55 @@ describe('SimpleAgent', () => {
       ).toBeUndefined();
     });
 
+    it('should return instructions when configured even without thread state', () => {
+      agent.setConfig({
+        name: 'Test Agent',
+        description: 'Test agent description',
+        instructions: 'Follow these steps',
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+      });
+
+      const metadata = agent.getGraphNodeMetadata({});
+
+      expect(metadata).toEqual({ instructions: 'Follow these steps' });
+    });
+
     it('should return empty pending messages when there are no pending messages', () => {
+      agent.setConfig({
+        name: 'Test Agent',
+        description: 'Test agent description',
+        instructions: 'Agent instructions',
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+      });
+
       const threadState = new GraphThreadState();
       setGraphThreadState(threadState);
 
       const metadata = agent.getGraphNodeMetadata({ threadId: 'thread-1' });
-      expect(metadata).toEqual({ pendingMessages: [], reasoningChunks: {} });
+      expect(metadata).toEqual({
+        pendingMessages: [],
+        reasoningChunks: {},
+        instructions: 'Agent instructions',
+      });
     });
 
     it('should return pending messages for a thread', () => {
+      agent.setConfig({
+        name: 'Test Agent',
+        description: 'Test agent description',
+        instructions: 'Agent instructions',
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+      });
+
       const threadState = new GraphThreadState();
       setGraphThreadState(threadState);
 
@@ -819,6 +859,7 @@ describe('SimpleAgent', () => {
           },
         ],
         reasoningChunks: {},
+        instructions: 'Agent instructions',
       });
     });
   });
@@ -1009,7 +1050,11 @@ describe('SimpleAgent', () => {
           type: 'nodeAdditionalMetadataUpdate',
           data: {
             metadata: { threadId: 'thread-1' },
-            additionalMetadata: { pendingMessages: [], reasoningChunks: {} },
+            additionalMetadata: {
+              pendingMessages: [],
+              reasoningChunks: {},
+              instructions: 'Test instructions',
+            },
           },
         }),
       );

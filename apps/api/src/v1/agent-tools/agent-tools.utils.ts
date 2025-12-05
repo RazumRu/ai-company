@@ -1,5 +1,6 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { BadRequestException } from '@packages/common';
+import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../agents/services/nodes/base-node';
 import { RuntimeExecParams } from '../runtime/runtime.types';
@@ -36,4 +37,129 @@ export const execRuntimeWithContext = async (
       parentThreadId: cfg.configurable?.parent_thread_id,
     },
   });
+};
+
+type SchemaDef = {
+  typeName?: string;
+  innerType?: z.ZodTypeAny;
+  schema?: z.ZodTypeAny;
+  description?: string;
+};
+
+const getTypeName = (schema: z.ZodTypeAny): string | undefined =>
+  (schema as { _def?: SchemaDef })._def?.typeName;
+
+const unwrapObjectSchema = (
+  schema: z.ZodTypeAny,
+): z.ZodObject<Record<string, z.ZodTypeAny>> | null => {
+  let current: z.ZodTypeAny | undefined = schema;
+
+  while (current) {
+    const typeName = getTypeName(current);
+
+    if (typeName === 'ZodObject') {
+      return current as z.ZodObject<Record<string, z.ZodTypeAny>>;
+    }
+
+    if (typeName === 'ZodEffects') {
+      current = (current as { _def?: SchemaDef })._def?.schema;
+      continue;
+    }
+
+    if (
+      typeName === 'ZodOptional' ||
+      typeName === 'ZodNullable' ||
+      typeName === 'ZodDefault'
+    ) {
+      current = (current as { _def?: SchemaDef })._def?.innerType;
+      continue;
+    }
+
+    return null;
+  }
+
+  return null;
+};
+
+const unwrapFieldSchema = (schema: z.ZodTypeAny): z.ZodTypeAny => {
+  let current: z.ZodTypeAny | undefined = schema;
+
+  while (current) {
+    const typeName = getTypeName(current);
+
+    if (
+      typeName === 'ZodOptional' ||
+      typeName === 'ZodNullable' ||
+      typeName === 'ZodDefault'
+    ) {
+      current = (current as { _def?: SchemaDef })._def?.innerType;
+      continue;
+    }
+
+    if (typeName === 'ZodEffects') {
+      current = (current as { _def?: SchemaDef })._def?.schema;
+      continue;
+    }
+
+    return current;
+  }
+
+  return schema;
+};
+
+const isOptionalField = (schema: z.ZodTypeAny): boolean => {
+  let current: z.ZodTypeAny | undefined = schema;
+
+  while (current) {
+    const typeName = getTypeName(current);
+
+    if (
+      typeName === 'ZodOptional' ||
+      typeName === 'ZodNullable' ||
+      typeName === 'ZodDefault'
+    ) {
+      return true;
+    }
+
+    if (typeName === 'ZodEffects') {
+      current = (current as { _def?: SchemaDef })._def?.schema;
+      continue;
+    }
+
+    return false;
+  }
+
+  return false;
+};
+
+const getFieldDescription = (schema: z.ZodTypeAny): string => {
+  const baseField = unwrapFieldSchema(schema);
+  const def = (baseField as { _def?: SchemaDef })._def;
+  return def?.description ?? 'No description';
+};
+
+export const getSchemaParameterDocs = (schema: z.ZodTypeAny) => {
+  const objectSchema = unwrapObjectSchema(schema);
+
+  if (!objectSchema) {
+    return '';
+  }
+
+  const shape = objectSchema.shape as Record<string, z.ZodTypeAny>;
+  const params: string[] = [];
+
+  for (const [key, field] of Object.entries(shape)) {
+    const description = getFieldDescription(field as z.ZodTypeAny);
+    const optional = isOptionalField(field as z.ZodTypeAny);
+
+    params.push(`#### \`${key}\``);
+    params.push(`${optional ? '(optional) ' : '(required) '}${description}`);
+    params.push('');
+  }
+
+  if (params.length === 0) {
+    return '';
+  }
+
+  return `### Parameters\n\n${params.join('\n')}`;
 };

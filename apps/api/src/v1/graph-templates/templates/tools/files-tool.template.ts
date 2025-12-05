@@ -1,8 +1,8 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
+import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { FilesToolGroup } from '../../../agent-tools/tools/common/files/files-tool-group';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
@@ -54,7 +54,7 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
     _inputNodeIds: Set<string>,
     outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
-  ): Promise<DynamicStructuredTool[]> {
+  ): Promise<BuiltAgentTool[]> {
     // Find runtime node from output nodes
     const runtimeNodeIds = this.graphRegistry.filterNodesByType(
       metadata.graphId,
@@ -105,4 +105,3 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
     });
   }
 }
-

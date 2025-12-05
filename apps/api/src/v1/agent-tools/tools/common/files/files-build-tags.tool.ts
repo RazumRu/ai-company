@@ -1,15 +1,17 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesBuildTagsToolSchema = z.object({
   dir: z
     .string()
     .min(1)
-    .describe('Path to the repository directory to search in.'),
+    .describe('The directory path to search in. Use absolute paths.'),
   alias: z.string().min(1).describe('Alias/name for the tags index file.'),
 });
 
@@ -28,6 +30,94 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
   public name = 'files_build_tags';
   public description =
     'Build a ctags index for a repository directory. Creates a JSON-formatted tags file that can be used for symbol searching. Takes a directory path and an alias to name the tags file. This tool needs to be called when the repository is initialized and when files are changed to keep the index up to date.';
+
+  public getDetailedInstructions(
+    config: FilesBaseToolConfig,
+    lgConfig?: ExtendedLangGraphRunnableConfig,
+  ): string {
+    const parameterDocs = this.getSchemaParameterDocs(this.schema);
+
+    return dedent`
+      ### Overview
+      Generates a ctags index file for a codebase, enabling fast symbol-based searches. The index includes functions, classes, methods, variables, and other language constructs. This is a prerequisite for using \`files_search_tags\`.
+
+      ### When to Use
+      - At the start of working with a new repository (one-time setup)
+      - After making significant changes to the codebase structure
+      - Before using \`files_search_tags\` to search for symbols
+      - When you need to navigate a large codebase efficiently
+
+      ### When NOT to Use
+      - For simple text search → use \`files_search_text\`
+      - When the index is already built and files haven't changed
+      - For small projects where text search is sufficient
+
+      ${parameterDocs}
+
+      ### Best Practices
+
+      **1. Build once per repository:**
+      \`\`\`json
+        // At the start of your session
+        {"dir": "/repo", "alias": "project"}
+      \`\`\`
+
+      **2. Use meaningful aliases:**
+      \`\`\`json
+        // Good: Descriptive
+        {"dir": "/repo/apps/api", "alias": "api-service"}
+
+        // Avoid: Generic
+        {"dir": "/repo/apps/api", "alias": "tags"}
+      \`\`\`
+
+      **3. Rebuild after major changes:**
+      If you've added new files or restructured the codebase, rebuild:
+      \`\`\`json
+        {"dir": "/repo", "alias": "project"}  // Same alias overwrites old index
+      \`\`\`
+
+      ### Output Format
+      Success:
+      \`\`\`json
+        {
+          "success": true,
+          "tagsFile": "/tmp/thread-id/project.json"
+        }
+      \`\`\`
+
+      Error:
+      \`\`\`json
+        {
+          "error": "ctags: command not found"
+        }
+      \`\`\`
+
+      ### Supported Languages
+      Ctags supports 40+ languages including:
+      - JavaScript/TypeScript
+      - Python
+      - Java
+      - Go
+      - Rust
+      - C/C++
+      - Ruby
+      - PHP
+      - And many more
+
+      ### After Building
+      Use \`files_search_tags\` to search the index:
+      \`\`\`json
+        {"dir": "/repo", "alias": "project", "query": "handleSubmit", "exactMatch": true}
+      \`\`\`
+
+      ### Performance Notes
+      - Indexing is fast (typically seconds for medium projects)
+      - Index is stored in temp directory (persistent within session)
+      - Larger projects may take longer to index
+      - Re-running with same alias updates the existing index
+    `;
+  }
 
   public get schema() {
     return FilesBuildTagsToolSchema;

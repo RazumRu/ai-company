@@ -1,12 +1,10 @@
 import { HumanMessage } from '@langchain/core/messages';
-import {
-  DynamicStructuredTool,
-  ToolRunnableConfig,
-} from '@langchain/core/tools';
+import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
+import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { CommunicationToolGroup } from '../../../agent-tools/tools/core/communication/communication-tool-group';
 import { AgentInfo } from '../../../agent-tools/tools/core/communication/communication-tools.types';
 import { AgentOutput } from '../../../agents/services/agents/base-agent';
@@ -67,7 +65,7 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
     _inputNodeIds: Set<string>,
     outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
-  ): Promise<DynamicStructuredTool[]> {
+  ): Promise<BuiltAgentTool[]> {
     // Get agent node IDs from output nodes
     const agentNodeIds = this.graphRegistry.filterNodesByType(
       metadata.graphId,

@@ -1,15 +1,17 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesSearchTextToolSchema = z.object({
   dir: z
     .string()
     .min(1)
-    .describe('Path to the repository directory to search in.'),
+    .describe('The directory path to search in. Use absolute paths.'),
   query: z
     .string()
     .min(1)
@@ -67,6 +69,91 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   public name = 'files_search_text';
   public description =
     'Search for text patterns in repository files using ripgrep (rg). Supports regex patterns, file filtering with globs, and searching in specific files. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns JSON-formatted search results with file paths, line numbers, and matched text.';
+
+  public getDetailedInstructions(
+    config: FilesBaseToolConfig,
+    lgConfig?: ExtendedLangGraphRunnableConfig,
+  ): string {
+    const parameterDocs = this.getSchemaParameterDocs(this.schema);
+
+    return dedent`
+      ### Overview
+      Searches for text patterns across files using ripgrep (rg), one of the fastest text search tools available. Returns structured JSON results with file paths, line numbers, and matched content.
+
+      ### When to Use
+      - Finding where a function, class, or variable is defined or used
+      - Searching for specific patterns (TODO comments, error messages)
+      - Locating configuration values or constants
+      - Finding all imports of a module
+      - Investigating how a feature is implemented across the codebase
+
+      ### When NOT to Use
+      - When you know the exact file → use files_read directly
+      - For listing files without searching content → use files_list
+      - For symbol-based search (functions, classes) → consider files_search_tags if tags index exists
+
+      ${parameterDocs}
+
+      ### query examples
+      **Literal search:**
+      Example: {"dir": "/repo", "query": "getUserById"}
+
+      **Regex search:**
+      - Find async functions: {"dir": "/repo", "query": "function\\\\s+\\\\w+Async"}
+      - Find React imports: {"dir": "/repo", "query": "import.*from .* react"}
+      - Find any of these: {"dir": "/repo", "query": "TODO|FIXME|HACK"}
+
+      **Case sensitivity:**
+      - Default is case-sensitive
+      - Use (?i) prefix for case-insensitive: "(?i)error"
+
+      ### Best Practices
+
+      **1. Be specific with patterns:**
+      - Good: {"dir": "/repo", "query": "handleSubmit"}
+      - Better: {"dir": "/repo", "query": "function handleSubmit|const handleSubmit"}
+
+      **2. Use file filters to reduce noise:**
+      Example: {"dir": "/repo", "query": "useState", "includeGlobs": ["*.tsx"], "excludeGlobs": ["*.test.tsx"]}
+
+      **3. Escape special regex characters:**
+      If searching for literal special characters, escape them:
+      - Search for \${: {"dir": "/repo", "query": "\\\\$\\\\{"}
+      - Search for []: {"dir": "/repo", "query": "\\\\[\\\\]"}
+
+      ### Output Format
+      Returns matches as JSON array with type, path, lines, line_number, and submatches.
+
+      Empty results (no matches found): {"matches": []}
+
+      ### Common Patterns
+
+      **Find function definitions:**
+      {"dir": "/repo", "query": "function processData|const processData.*=.*=>"}
+
+      **Find all usages of an import:**
+      {"dir": "/repo", "query": "import.*from.*lodash"}
+
+      **Find console.log statements:**
+      {"dir": "/repo", "query": "console\\\\.(log|error|warn)"}
+
+      **Find React hooks usage:**
+      {"dir": "/repo", "query": "use(State|Effect|Memo|Callback|Ref)\\\\(", "includeGlobs": ["*.tsx", "*.jsx"]}
+
+      **Find TODO comments:**
+      {"dir": "/repo", "query": "//.*TODO|/\\\\*.*TODO"}
+
+      ### After Finding Matches
+      1. Note the file paths and line numbers from results
+      2. Use files_read with startLine/endLine to see surrounding context
+      3. Use files_apply_changes to make modifications if needed
+
+      ### Error Handling
+      - No matches returns empty matches array (not an error)
+      - Invalid regex patterns return an error message
+      - Missing directory returns an error
+    `;
+  }
 
   public get schema() {
     return FilesSearchTextToolSchema;

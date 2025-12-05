@@ -1,7 +1,9 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  BuiltAgentTool,
+  ExtendedLangGraphRunnableConfig,
+} from '../../base-tool';
 import { BaseToolGroup } from '../../base-tool-group';
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
@@ -29,8 +31,8 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
   public buildTools(
     config: FilesToolGroupConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
-  ): DynamicStructuredTool[] {
-    const tools: DynamicStructuredTool[] = [
+  ): BuiltAgentTool[] {
+    const tools: BuiltAgentTool[] = [
       this.filesListTool.build(config, lgConfig),
       this.filesReadTool.build(config, lgConfig),
       this.filesSearchTextTool.build(config, lgConfig),

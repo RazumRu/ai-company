@@ -14,7 +14,6 @@ import { GhPushTool } from './tools/common/github/gh-push.tool';
 import { GhToolGroup } from './tools/common/github/gh-tool-group';
 import { WebSearchTool } from './tools/common/web-search.tool';
 import { CommunicationExecTool } from './tools/core/communication/communication-exec.tool';
-import { CommunicationListTool } from './tools/core/communication/communication-list.tool';
 import { CommunicationToolGroup } from './tools/core/communication/communication-tool-group';
 import { FinishTool } from './tools/core/finish.tool';
 import { ShellTool } from './tools/core/shell.tool';
@@ -27,7 +26,6 @@ import { ShellTool } from './tools/core/shell.tool';
     WebSearchTool,
     FinishTool,
     CommunicationExecTool,
-    CommunicationListTool,
     CommunicationToolGroup,
     GhCloneTool,
     GhCommitTool,
@@ -47,7 +45,6 @@ import { ShellTool } from './tools/core/shell.tool';
     WebSearchTool,
     FinishTool,
     CommunicationExecTool,
-    CommunicationListTool,
     CommunicationToolGroup,
     GhCloneTool,
     GhCommitTool,

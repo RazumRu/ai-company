@@ -1,15 +1,15 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
+import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { ShellTool } from '../../../agent-tools/tools/core/shell.tool';
 import {
   IBaseResourceOutput,
   IShellResourceOutput,
   ResourceKind,
 } from '../../../graph-resources/graph-resources.types';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
@@ -17,7 +17,6 @@ import {
   NodeBaseTemplateMetadata,
   ToolNodeBaseTemplate,
 } from '../base-node.template';
-import { DockerRuntimeTemplateSchema } from '../runtimes/docker-runtime.template';
 
 export const ShellToolTemplateSchema = z.object({}).strict();
 
@@ -65,7 +64,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     _inputNodeIds: Set<string>,
     outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
-  ): Promise<DynamicStructuredTool[]> {
+  ): Promise<BuiltAgentTool[]> {
     // Find runtime node from output nodes
     const runtimeNodeIds = this.graphRegistry.filterNodesByType(
       metadata.graphId,
@@ -100,10 +99,11 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     );
 
     // Discover and collect environment variables and information from resources
-    const { env, information, initScripts } = this.collectResourceData(
-      resourceNodeIds,
-      metadata.graphId,
-    );
+    const {
+      env,
+      information: resourcesInformation,
+      initScripts,
+    } = this.collectResourceData(resourceNodeIds, metadata.graphId);
 
     // Execute init scripts on the runtime
     for (const script of initScripts) {
@@ -122,80 +122,31 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
       }
     }
 
-    // Collect runtime information from config
-    const { information: runtimeInformation } = this.collectRuntimeData(
-      runtimeNode,
-      metadata,
-    );
-
-    // Combine resource information and runtime information
-    const allInformationParts: string[] = [];
-    if (runtimeInformation) {
-      allInformationParts.push('Runtime Configuration:');
-      allInformationParts.push(runtimeInformation);
-    }
-    if (information) {
-      if (allInformationParts.length > 0) {
-        allInformationParts.push('');
-      }
-      allInformationParts.push('Available Resources:');
-      allInformationParts.push(information);
-    }
-    const combinedInfo = allInformationParts.join('\n');
-
     // Store the runtime node ID to fetch fresh instance on each invocation
     const runtimeNodeId = runtimeNodeIds[0]!;
     const graphId = metadata.graphId;
+    const builtTool = this.shellTool.build({
+      runtime: () => {
+        // Get fresh runtime instance from registry on each invocation
+        const currentRuntimeNode = this.graphRegistry.getNode<BaseRuntime>(
+          graphId,
+          runtimeNodeId,
+        );
 
-    return [
-      this.shellTool.build({
-        runtime: () => {
-          // Get fresh runtime instance from registry on each invocation
-          const currentRuntimeNode = this.graphRegistry.getNode<BaseRuntime>(
-            graphId,
-            runtimeNodeId,
+        if (!currentRuntimeNode) {
+          throw new NotFoundException(
+            'RUNTIME_NOT_FOUND',
+            `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
           );
+        }
 
-          if (!currentRuntimeNode) {
-            throw new NotFoundException(
-              'RUNTIME_NOT_FOUND',
-              `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
-            );
-          }
+        return currentRuntimeNode.instance;
+      },
+      env,
+      resourcesInformation,
+    });
 
-          return currentRuntimeNode.instance;
-        },
-        env,
-        additionalInfo: combinedInfo,
-      }),
-    ];
-  }
-
-  private collectRuntimeData(
-    runtimeNode: CompiledGraphNode<BaseRuntime>,
-    _metadata: NodeBaseTemplateMetadata,
-  ): {
-    information: string;
-  } {
-    const runtimeInfoParts: string[] = [];
-
-    // Check if runtime node has docker-runtime config
-    if (runtimeNode.template === 'docker-runtime') {
-      const runtimeConfig = runtimeNode.config as z.infer<
-        typeof DockerRuntimeTemplateSchema
-      >;
-
-      if (runtimeConfig.image) {
-        runtimeInfoParts.push(`- Docker Image: ${runtimeConfig.image}`);
-      }
-      runtimeInfoParts.push(
-        `- Docker-in-Docker (DIND): ${runtimeConfig.enableDind ? 'Enabled' : 'Disabled'}`,
-      );
-    }
-
-    return {
-      information: runtimeInfoParts.join('\n'),
-    };
+    return [builtTool];
   }
 
   private collectResourceData(

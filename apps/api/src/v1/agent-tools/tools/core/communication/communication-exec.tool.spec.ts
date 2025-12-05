@@ -166,7 +166,7 @@ describe('CommunicationExecTool', () => {
           mockRunnableConfig,
         ),
       ).rejects.toThrow(
-        'Agent "non-existent-agent" not found. Use communication_list to see available agents.',
+        'Agent "non-existent-agent" not found. Check available connected agents in tool instructions.',
       );
     });
   });
@@ -211,10 +211,7 @@ describe('CommunicationExecTool', () => {
 
       const builtTool = tool.build({ agents });
 
-      expect(builtTool.description).toContain('research-agent');
-      expect(builtTool.description).toContain('Agent for research tasks');
-      expect(builtTool.description).toContain('coding-agent');
-      expect(builtTool.description).toContain('Agent for coding tasks');
+      expect(builtTool.description).toBe(tool.description);
     });
   });
 });

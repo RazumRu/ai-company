@@ -7,15 +7,28 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import { getSchemaParameterDocs } from '../agent-tools.utils';
 
-// Extended type to support description property
 export type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
   description?: string;
+};
+
+export type BuiltAgentTool = DynamicStructuredTool & {
+  __instructions?: string;
 };
 
 export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
   public abstract name: string;
   public abstract description: string;
+
+  protected getSchemaParameterDocs(schema: z.ZodTypeAny) {
+    return getSchemaParameterDocs(schema);
+  }
+
+  public getDetailedInstructions?(
+    config: TConfig,
+    lgConfig?: ExtendedLangGraphRunnableConfig,
+  ): string;
 
   public abstract get schema(): z.ZodType<TSchema>;
 
@@ -37,8 +50,18 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
   public build(
     config: TConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
-  ): DynamicStructuredTool {
-    return this.toolWrapper(this.invoke.bind(this), config, lgConfig);
+  ): BuiltAgentTool {
+    const builtTool = this.toolWrapper(
+      this.invoke.bind(this),
+      config,
+      lgConfig,
+    );
+
+    const instructions = this.getDetailedInstructions
+      ? this.getDetailedInstructions(config, lgConfig)
+      : undefined;
+
+    return Object.assign(builtTool, { __instructions: instructions });
   }
 
   protected toolWrapper(
@@ -47,15 +70,13 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ) {
     return tool(async (args, runnableConfig) => {
-      {
-        const parsedArgs = this.schema.parse(args);
+      const parsedArgs = this.schema.parse(args);
 
-        return cb(
-          parsedArgs as TSchema,
-          config,
-          runnableConfig as ToolRunnableConfig<BaseAgentConfigurable>,
-        );
-      }
+      return cb(
+        parsedArgs as TSchema,
+        config,
+        runnableConfig as ToolRunnableConfig<BaseAgentConfigurable>,
+      );
     }, this.buildToolConfiguration(lgConfig));
   }
 }

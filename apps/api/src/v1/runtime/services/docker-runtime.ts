@@ -9,6 +9,7 @@ import {
   RuntimeExecParams,
   RuntimeExecResult,
   RuntimeStartParams,
+  RuntimeType,
 } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
 
@@ -382,6 +383,7 @@ export class DockerRuntime extends BaseRuntime {
         'Image not specified',
       );
     }
+    this.image = imageName;
 
     const containerName = params?.containerName || `rt-${randomUUID()}`;
     const existingContainer = await this.getByName(containerName);
@@ -704,5 +706,16 @@ export class DockerRuntime extends BaseRuntime {
 
       throw error;
     }
+  }
+
+  public override getRuntimeInfo(): string {
+    const runtimeImage = this.image ?? environment.dockerRuntimeImage;
+    const infoLines = [
+      `Runtime type: ${RuntimeType.Docker}`,
+      runtimeImage ? `Runtime image: ${runtimeImage}` : null,
+      `DIND available: ${this.dindContainer ? 'yes' : 'no'}`,
+    ].filter(Boolean);
+
+    return infoLines.join('\n');
   }
 }

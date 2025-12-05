@@ -2,6 +2,16 @@ import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 
+const baseSimpleAgentConfig: SimpleAgentSchemaType = {
+  instructions: 'You are a helpful test agent. Answer briefly.',
+  name: 'Test Agent',
+  description: 'Test agent description',
+  invokeModelName: 'gpt-5-mini',
+  invokeModelReasoningEffort: ReasoningEffort.None,
+  summarizeMaxTokens: 272000,
+  summarizeKeepTokens: 30000,
+};
+
 // Helper to create mock graph data for tests
 export const createMockGraphData = (
   overrides?: Partial<CreateGraphDto>,
@@ -15,15 +25,7 @@ export const createMockGraphData = (
         {
           id: 'agent-1',
           template: 'simple-agent',
-          config: {
-            instructions: 'You are a helpful test agent. Answer briefly.',
-            name: 'Test Agent',
-            description: 'Test agent description',
-            invokeModelName: 'gpt-5-mini',
-            invokeModelReasoningEffort: ReasoningEffort.None,
-            summarizeMaxTokens: 272000,
-            summarizeKeepTokens: 30000,
-          } satisfies SimpleAgentSchemaType,
+          config: baseSimpleAgentConfig,
         },
         {
           id: 'trigger-1',
@@ -40,17 +42,34 @@ export const createMockGraphData = (
     },
   };
 
+  const mergedSchema = overrides?.schema
+    ? {
+        ...defaultData.schema,
+        ...overrides.schema,
+        nodes: overrides.schema.nodes || defaultData.schema.nodes,
+        edges: overrides.schema.edges || defaultData.schema.edges,
+      }
+    : defaultData.schema;
+
+  const normalizedNodes = mergedSchema.nodes.map((node) =>
+    node.template === 'simple-agent'
+      ? {
+          ...node,
+          config: {
+            ...baseSimpleAgentConfig,
+            ...(node.config as Partial<SimpleAgentSchemaType>),
+          },
+        }
+      : node,
+  );
+
   return {
     ...defaultData,
     ...overrides,
-    schema: overrides?.schema
-      ? {
-          ...defaultData.schema,
-          ...overrides.schema,
-          nodes: overrides.schema.nodes || defaultData.schema.nodes,
-          edges: overrides.schema.edges || defaultData.schema.edges,
-        }
-      : defaultData.schema,
+    schema: {
+      ...mergedSchema,
+      nodes: normalizedNodes,
+    },
   };
 };
 

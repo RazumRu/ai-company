@@ -74,4 +74,3 @@ describe('GraphThreadState', () => {
     expect(subscriber).toHaveBeenCalledTimes(3);
   });
 });
-

@@ -598,8 +598,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   public override getGraphNodeMetadata(
     meta: GraphExecutionMetadata,
   ): Record<string, unknown> | undefined {
+    const instructions = this.currentConfig?.instructions;
+    const instructionsMeta = instructions
+      ? { instructions: instructions.trim() }
+      : undefined;
+
     if (!meta?.threadId || !this.graphThreadState) {
-      return undefined;
+      return instructionsMeta;
     }
 
     const threadState = this.graphThreadState.getByThread(meta.threadId);
@@ -623,6 +628,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         },
         {} as Record<string, unknown>,
       ),
+      ...(instructionsMeta ?? {}),
     };
   }
 

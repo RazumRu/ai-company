@@ -67,6 +67,8 @@ export abstract class BaseRuntime {
     this.eventEmitter.emit('event', event);
   }
 
+  public abstract getRuntimeInfo(): string;
+
   abstract start(params: RuntimeStartParams): Promise<void>;
   abstract stop(): Promise<void>;
   abstract exec(params: RuntimeExecParams): Promise<RuntimeExecResult>;

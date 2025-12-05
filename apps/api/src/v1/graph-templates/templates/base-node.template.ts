@@ -1,6 +1,6 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 
+import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { IBaseResourceOutput } from '../../graph-resources/graph-resources.types';
@@ -55,7 +55,7 @@ export abstract class RuntimeNodeBaseTemplate<
 
 export abstract class ToolNodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
-> extends NodeBaseTemplate<TConfig, DynamicStructuredTool[]> {
+> extends NodeBaseTemplate<TConfig, BuiltAgentTool[]> {
   readonly kind: NodeKind = NodeKind.Tool;
 }
 

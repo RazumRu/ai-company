@@ -1,8 +1,8 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
+import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import {
   GhToolGroup,
   GhToolType,
@@ -82,7 +82,7 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
     _inputNodeIds: Set<string>,
     outputNodeIds: Set<string>,
     metadata: NodeBaseTemplateMetadata,
-  ): Promise<DynamicStructuredTool[]> {
+  ): Promise<BuiltAgentTool[]> {
     // Find runtime node from output nodes
     const runtimeNodeIds = this.graphRegistry.filterNodesByType(
       metadata.graphId,
