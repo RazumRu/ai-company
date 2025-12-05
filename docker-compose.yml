@@ -1,6 +1,6 @@
 services:
   litellm:
-    image: ghcr.io/berriai/litellm:v1.80.0-stable.1
+    image: ghcr.io/berriai/litellm:v1.80.5-stable
     entrypoint: ["litellm"]
     command: ["--config=/app/config.yaml","--detailed_debug"]
     environment:

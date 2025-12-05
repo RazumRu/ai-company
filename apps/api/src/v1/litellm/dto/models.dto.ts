@@ -7,3 +7,4 @@ export const LiteLlmModelSchema = z.object({
 });
 
 export class LiteLlmModelDto extends createZodDto(LiteLlmModelSchema) {}
+
