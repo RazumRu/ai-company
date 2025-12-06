@@ -19,21 +19,13 @@ import {
 
 export const GhToolTemplateSchema = z
   .object({
-    includeClone: z
+    cloneOnly: z
       .boolean()
-      .default(true)
+      .default(false)
       .optional()
-      .describe('Include gh_clone tool'),
-    includeCommit: z
-      .boolean()
-      .default(true)
-      .optional()
-      .describe('Include gh_commit tool'),
-    includeBranch: z
-      .boolean()
-      .default(true)
-      .optional()
-      .describe('Include gh_branch tool'),
+      .describe(
+        'When true, expose only gh_clone; otherwise expose all GH tools',
+      ),
   })
   .strict();
 
@@ -159,17 +151,9 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
     // Parse config to get defaults applied
     const parsedConfig = GhToolTemplateSchema.parse(config);
 
-    // Convert boolean flags to array of tool enums
-    const tools: GhToolType[] = [];
-    if (parsedConfig.includeClone !== false) {
-      tools.push(GhToolType.CLONE);
-    }
-    if (parsedConfig.includeCommit !== false) {
-      tools.push(GhToolType.COMMIT);
-    }
-    if (parsedConfig.includeBranch !== false) {
-      tools.push(GhToolType.BRANCH);
-    }
+    const tools: GhToolType[] | undefined = parsedConfig.cloneOnly
+      ? [GhToolType.CLONE]
+      : undefined;
 
     return this.ghToolGroup.buildTools({
       runtime: () => {

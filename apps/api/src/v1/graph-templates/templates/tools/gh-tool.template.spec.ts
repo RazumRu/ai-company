@@ -115,49 +115,14 @@ describe('GhToolTemplate', () => {
       const config = {};
 
       const parsed = GhToolTemplateSchema.parse(config);
-      expect(parsed.includeClone).toBe(true);
-      expect(parsed.includeCommit).toBe(true);
-      expect(parsed.includeBranch).toBe(true);
+      expect(parsed.cloneOnly).toBe(false);
     });
 
-    it('should accept includeClone flag', () => {
-      const config = { includeClone: false };
+    it('should accept cloneOnly flag', () => {
+      const config = { cloneOnly: true };
 
       const parsed = GhToolTemplateSchema.parse(config);
-      expect(parsed.includeClone).toBe(false);
-      expect(parsed.includeCommit).toBe(true);
-      expect(parsed.includeBranch).toBe(true);
-    });
-
-    it('should accept includeCommit flag', () => {
-      const config = { includeCommit: false };
-
-      const parsed = GhToolTemplateSchema.parse(config);
-      expect(parsed.includeClone).toBe(true);
-      expect(parsed.includeCommit).toBe(false);
-      expect(parsed.includeBranch).toBe(true);
-    });
-
-    it('should accept includeBranch flag', () => {
-      const config = { includeBranch: false };
-
-      const parsed = GhToolTemplateSchema.parse(config);
-      expect(parsed.includeClone).toBe(true);
-      expect(parsed.includeCommit).toBe(true);
-      expect(parsed.includeBranch).toBe(false);
-    });
-
-    it('should accept all flags', () => {
-      const config = {
-        includeClone: false,
-        includeCommit: true,
-        includeBranch: false,
-      };
-
-      const parsed = GhToolTemplateSchema.parse(config);
-      expect(parsed.includeClone).toBe(false);
-      expect(parsed.includeCommit).toBe(true);
-      expect(parsed.includeBranch).toBe(false);
+      expect(parsed.cloneOnly).toBe(true);
     });
   });
 
@@ -250,12 +215,12 @@ describe('GhToolTemplate', () => {
       expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith({
         runtime: expect.any(Function),
         patToken: 'ghp_test_token',
-        tools: expect.arrayContaining(['clone', 'commit', 'branch']),
+        tools: undefined,
       });
       expect(result).toEqual(mockTools);
     });
 
-    it('should pass include flags to buildTools when specified', async () => {
+    it('should use cloneOnly flag to limit tools', async () => {
       const mockRuntime = {
         id: 'runtime-1',
         start: vi.fn(),
@@ -312,9 +277,7 @@ describe('GhToolTemplate', () => {
       mockGhToolGroup.buildTools = vi.fn().mockReturnValue([]);
 
       const config = {
-        includeClone: false,
-        includeCommit: true,
-        includeBranch: false,
+        cloneOnly: true,
       };
       const outputNodeIds = new Set(['runtime-1', 'github-resource-1']);
 
@@ -328,7 +291,7 @@ describe('GhToolTemplate', () => {
         expect.objectContaining({
           runtime: expect.any(Function),
           patToken: 'ghp_test_token',
-          tools: ['commit'],
+          tools: ['clone'],
         }),
       );
     });
@@ -471,11 +434,13 @@ describe('GhToolTemplate', () => {
         timeoutMs: 60000,
         env: { GITHUB_PAT_TOKEN: 'ghp_test_token' },
       });
-      expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith({
-        runtime: expect.any(Function),
-        patToken: 'ghp_test_token',
-        tools: expect.arrayContaining(['clone', 'commit', 'branch']),
-      });
+      expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          patToken: 'ghp_test_token',
+          tools: undefined,
+        }),
+      );
     });
 
     it('should throw BadRequestException when init script fails', async () => {
@@ -599,11 +564,13 @@ describe('GhToolTemplate', () => {
       });
 
       expect(mockRuntime.exec).not.toHaveBeenCalled();
-      expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith({
-        runtime: expect.any(Function),
-        patToken: 'ghp_test_token',
-        tools: expect.arrayContaining(['clone', 'commit', 'branch']),
-      });
+      expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          patToken: 'ghp_test_token',
+          tools: undefined,
+        }),
+      );
     });
 
     it('should use runtime getter function that fetches fresh instance', async () => {
@@ -677,11 +644,13 @@ describe('GhToolTemplate', () => {
       });
 
       // Verify that buildTools was called with a runtime getter function
-      expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith({
-        runtime: expect.any(Function),
-        patToken: 'ghp_test_token',
-        tools: expect.arrayContaining(['clone', 'commit', 'branch']),
-      });
+      expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime: expect.any(Function),
+          patToken: 'ghp_test_token',
+          tools: undefined,
+        }),
+      );
 
       // Verify that the runtime getter function fetches from registry
       const runtimeGetter = (mockGhToolGroup.buildTools as any).mock

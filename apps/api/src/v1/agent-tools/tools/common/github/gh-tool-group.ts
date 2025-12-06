@@ -19,7 +19,7 @@ export enum GhToolType {
 }
 
 export type GhToolGroupConfig = GhBaseToolConfig & {
-  tools: GhToolType[];
+  tools?: GhToolType[];
 };
 
 @Injectable()
@@ -37,9 +37,16 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     config: GhToolGroupConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): BuiltAgentTool[] {
+    const selectedTools = config.tools ?? [
+      GhToolType.CLONE,
+      GhToolType.COMMIT,
+      GhToolType.BRANCH,
+      GhToolType.PUSH,
+    ];
+
     const tools: BuiltAgentTool[] = [];
 
-    for (const toolType of config.tools) {
+    for (const toolType of selectedTools) {
       switch (toolType) {
         case GhToolType.CLONE:
           tools.push(this.ghCloneTool.build(config, lgConfig));
