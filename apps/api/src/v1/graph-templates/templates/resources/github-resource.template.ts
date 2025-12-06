@@ -23,7 +23,8 @@ export const GithubResourceTemplateSchema = z
       .default(true)
       .describe('Whether to authenticate with GitHub'),
   })
-  .strict();
+  // Strip legacy/unknown fields so older configs remain valid.
+  .strip();
 
 @Injectable()
 @RegisterTemplate()

@@ -28,17 +28,17 @@
     "node": ">=22"
   },
   "dependencies": {
-    "turbo": "^2.6.2"
+    "turbo": "^2.6.3"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.1.0",
-    "@commitlint/config-conventional": "^20.0.0",
+    "@commitlint/cli": "^20.2.0",
+    "@commitlint/config-conventional": "^20.2.0",
     "@eslint/js": "^9.39.1",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@swc/core": "^1.15.3",
     "@types/node": "^24.10.1",
-    "@typescript-eslint/eslint-plugin": "^8.48.0",
-    "@typescript-eslint/parser": "^8.48.0",
+    "@typescript-eslint/eslint-plugin": "^8.48.1",
+    "@typescript-eslint/parser": "^8.48.1",
     "commitizen": "^4.3.1",
     "conventional-changelog-angular": "^8.1.0",
     "cz-conventional-changelog": "^3.3.0",
@@ -50,14 +50,14 @@
     "husky": "^9.1.7",
     "jira-prepare-commit-msg": "^1.7.2",
     "npm-check-updates": "^19.1.2",
-    "prettier": "^3.6.2",
+    "prettier": "^3.7.4",
     "semantic-release": "^25.0.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.48.0",
+    "typescript-eslint": "^8.48.1",
     "unplugin-swc": "^1.5.9",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^4.0.14"
+    "vitest": "^4.0.15"
   },
   "resolutions": {
     "jose": "^5.10.0"

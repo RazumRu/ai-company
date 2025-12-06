@@ -158,7 +158,17 @@ Before committing:
 - Verify the functionality works as expected
 - Check for any console warnings or errors
 
-### 8. Commit Your Changes
+### 8. Run Full Check (mandatory before finishing)
+
+Run the full project check to validate build, lint, and tests in one go:
+
+```bash
+pnpm run full-check
+```
+
+Do this after your changes and before considering the work finished or ready for review.
+
+### 9. Commit Your Changes
 
 Use conventional commits:
 
@@ -214,7 +224,10 @@ pnpm test:e2e:generate-api
 cd apps/api
 pnpm test:e2e:local
 
-# 7. Commit (after all steps pass)
+# 7. Full check (before finishing)
+pnpm run full-check
+
+# 8. Commit (after all steps pass)
 pnpm commit
 ```
 

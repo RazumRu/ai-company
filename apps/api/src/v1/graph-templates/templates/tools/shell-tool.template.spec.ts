@@ -122,6 +122,15 @@ describe('ShellToolTemplate', () => {
 
       expect(() => ShellToolTemplateSchema.parse(config)).not.toThrow();
     });
+
+    it('should ignore legacy/unknown fields', () => {
+      const config = { extra: true, oldFlag: 'value' };
+
+      const parsed = ShellToolTemplateSchema.parse(config);
+      expect(parsed).toEqual({});
+      expect(parsed).not.toHaveProperty('extra');
+      expect(parsed).not.toHaveProperty('oldFlag');
+    });
   });
 
   describe('create', () => {

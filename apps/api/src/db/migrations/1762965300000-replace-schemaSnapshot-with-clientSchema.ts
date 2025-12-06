@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class ReplaceSchemaSnapshotWithClientSchema1762965300000
-  implements MigrationInterface
-{
+export class ReplaceSchemaSnapshotWithClientSchema1762965300000 implements MigrationInterface {
   name = 'ReplaceSchemaSnapshotWithClientSchema1762965300000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

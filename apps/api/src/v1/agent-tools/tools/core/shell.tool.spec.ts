@@ -269,7 +269,7 @@ describe('ShellTool', () => {
       });
     });
 
-    it('automatically sets sessionId based on run_id/thread', async () => {
+    it('automatically sets sessionId based on thread id (not run id)', async () => {
       const mockExecResult = {
         stdout: 'session',
         stderr: '',
@@ -295,8 +295,12 @@ describe('ShellTool', () => {
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
-          sessionId: 'run-123',
+          sessionId: 'thread-abc',
           cmd: 'echo "session"',
+          metadata: expect.objectContaining({
+            threadId: 'thread-abc',
+            runId: 'run-123',
+          }),
         }),
       );
       expect(result.exitCode).toBe(0);

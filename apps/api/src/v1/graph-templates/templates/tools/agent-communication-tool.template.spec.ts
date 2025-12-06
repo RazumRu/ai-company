@@ -121,6 +121,19 @@ describe('AgentCommunicationToolTemplate', () => {
 
       expect(() => template.schema.parse(validConfig)).not.toThrow();
     });
+
+    it('should ignore legacy/unknown fields', () => {
+      const config = {
+        metadata: { foo: 'bar' },
+        extra: 'value',
+        obsolete: true,
+      };
+
+      const parsed = template.schema.parse(config);
+      expect(parsed.metadata).toEqual({ foo: 'bar' });
+      expect(parsed).not.toHaveProperty('extra');
+      expect(parsed).not.toHaveProperty('obsolete');
+    });
   });
 
   describe('create', () => {

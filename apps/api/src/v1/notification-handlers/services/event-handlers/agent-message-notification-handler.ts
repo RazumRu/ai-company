@@ -20,8 +20,7 @@ import {
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
-export interface IAgentMessageEnrichedNotification
-  extends IEnrichedNotification<ThreadMessageDto> {
+export interface IAgentMessageEnrichedNotification extends IEnrichedNotification<ThreadMessageDto> {
   type: EnrichedNotificationEvent.AgentMessage;
   nodeId: string;
   threadId: string;

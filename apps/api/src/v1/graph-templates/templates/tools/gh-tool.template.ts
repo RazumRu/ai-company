@@ -27,7 +27,9 @@ export const GhToolTemplateSchema = z
         'When true, expose only gh_clone; otherwise expose all GH tools',
       ),
   })
-  .strict();
+  // Strip legacy/unknown fields (e.g., includeClone/includeBranch/includeCommit)
+  // so older configs remain valid without errors.
+  .strip();
 
 @Injectable()
 @RegisterTemplate()

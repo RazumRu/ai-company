@@ -6,14 +6,12 @@
     "cy-generate-api": "src/bin/generate-api.js"
   },
   "dependencies": {
-    "@hey-api/client-axios": "^0.9.1",
-    "@hey-api/client-fetch": "^0.13.1",
     "@hey-api/openapi-ts": "^0.88.0",
     "@nestjs/common": "^11.1.9",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "axios": "^1.13.2",
-    "cypress": "^15.7.0",
+    "cypress": "^15.7.1",
     "reflect-metadata": "^0.2.2"
   },
   "devDependencies": {
@@ -24,7 +22,6 @@
   "license": "ISC",
   "main": "dist/index.js",
   "peerDependencies": {
-    "@hey-api/client-axios": "^0.9.1",
     "@nestjs/common": "^11.1.8",
     "cypress": "^15.5.0"
   },

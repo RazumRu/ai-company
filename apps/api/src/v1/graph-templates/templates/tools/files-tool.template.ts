@@ -13,7 +13,10 @@ import {
   ToolNodeBaseTemplate,
 } from '../base-node.template';
 
-export const FilesToolTemplateSchema = z.object({}).strict();
+export const FilesToolTemplateSchema = z
+  .object({})
+  // Strip legacy/unknown fields so older configs remain valid.
+  .strip();
 
 @Injectable()
 @RegisterTemplate()

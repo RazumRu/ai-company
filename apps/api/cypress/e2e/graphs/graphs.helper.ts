@@ -217,6 +217,7 @@ export const createMockGraphData = (
         template: 'simple-agent',
         config: {
           name: 'Test Agent',
+          description: 'Test agent used in e2e flows',
           instructions: 'You are a helpful test agent.',
           invokeModelName: 'gpt-5-mini',
           maxIterations: 50,

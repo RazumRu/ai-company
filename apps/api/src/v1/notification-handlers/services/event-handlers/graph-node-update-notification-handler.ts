@@ -13,8 +13,9 @@ import {
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
-export interface IGraphNodeUpdateEnrichedNotification
-  extends IEnrichedNotification<IGraphNodeUpdateNotification['data']> {
+export interface IGraphNodeUpdateEnrichedNotification extends IEnrichedNotification<
+  IGraphNodeUpdateNotification['data']
+> {
   type: EnrichedNotificationEvent.GraphNodeUpdate;
   nodeId: string;
 }

@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RuntimeType } from '../../../runtime/runtime.types';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import { NodeBaseTemplateMetadata } from '../base-node.template';
-import { DockerRuntimeTemplate } from './docker-runtime.template';
+import {
+  DockerRuntimeTemplate,
+  DockerRuntimeTemplateSchema,
+} from './docker-runtime.template';
 
 describe('DockerRuntimeTemplate', () => {
   let template: DockerRuntimeTemplate;
@@ -36,6 +39,25 @@ describe('DockerRuntimeTemplate', () => {
 
     template = module.get<DockerRuntimeTemplate>(DockerRuntimeTemplate);
     runtimeProvider = module.get<RuntimeProvider>(RuntimeProvider);
+  });
+
+  describe('schema validation', () => {
+    it('should strip unknown fields while keeping required ones', () => {
+      const config = {
+        runtimeType: RuntimeType.Docker,
+        image: 'node:18',
+        unexpected: 'value',
+      };
+
+      const parsed = DockerRuntimeTemplateSchema.parse(config);
+      expect(parsed.runtimeType).toBe(RuntimeType.Docker);
+      expect(parsed.image).toBe('node:18');
+      expect(parsed).not.toHaveProperty('unexpected');
+    });
+
+    it('should require runtimeType', () => {
+      expect(() => DockerRuntimeTemplateSchema.parse({})).toThrow();
+    });
   });
 
   describe('create', () => {

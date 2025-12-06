@@ -51,6 +51,11 @@ Step-by-step workflow for making changes to the codebase, from development to co
 2. **Ready to code?** Read [Code Guidelines](./code-guidelines.md)
 3. **Making changes?** Follow [Making Changes Workflow](./making-changes.md)
 4. **Writing tests?** Check [Testing Guidelines](./testing.md)
+5. **Before finishing any work:** Run the full check:
+
+```bash
+pnpm run full-check
+```
 
 ## Essential Commands
 

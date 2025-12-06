@@ -33,8 +33,7 @@ export interface IRequestData {
 }
 
 export interface ISentryExceptionData
-  extends Partial<IRequestData>,
-    IExceptionData {
+  extends Partial<IRequestData>, IExceptionData {
   level: ISentryLogData['level'];
 }
 

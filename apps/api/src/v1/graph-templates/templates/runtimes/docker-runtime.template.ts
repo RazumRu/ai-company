@@ -49,7 +49,8 @@ export const DockerRuntimeTemplateSchema = z
       )
       .meta({ 'x-ui:show-on-node': true }),
   })
-  .strict();
+  // Strip legacy/unknown fields so older configs remain valid.
+  .strip();
 
 @Injectable()
 @RegisterTemplate()

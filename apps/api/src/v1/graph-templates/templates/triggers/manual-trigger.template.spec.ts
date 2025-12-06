@@ -133,6 +133,15 @@ describe('ManualTriggerTemplate', () => {
         ManualTriggerTemplateSchema.parse(validConfig),
       ).not.toThrow();
     });
+
+    it('should ignore legacy/unknown fields', () => {
+      const config = { legacy: true, extra: 'value' };
+
+      const parsed = ManualTriggerTemplateSchema.parse(config);
+      expect(parsed).toEqual({});
+      expect(parsed).not.toHaveProperty('legacy');
+      expect(parsed).not.toHaveProperty('extra');
+    });
   });
 
   describe('create', () => {

@@ -18,7 +18,10 @@ import {
   ToolNodeBaseTemplate,
 } from '../base-node.template';
 
-export const ShellToolTemplateSchema = z.object({}).strict();
+export const ShellToolTemplateSchema = z
+  .object({})
+  // Strip legacy/unknown fields so older configs remain valid.
+  .strip();
 
 @Injectable()
 @RegisterTemplate()

@@ -124,6 +124,20 @@ describe('GhToolTemplate', () => {
       const parsed = GhToolTemplateSchema.parse(config);
       expect(parsed.cloneOnly).toBe(true);
     });
+
+    it('should ignore legacy flags from older configs', () => {
+      const config = {
+        includeClone: true,
+        includeBranch: true,
+        includeCommit: false,
+      };
+
+      const parsed = GhToolTemplateSchema.parse(config);
+      expect(parsed.cloneOnly).toBe(false);
+      expect(parsed).not.toHaveProperty('includeClone');
+      expect(parsed).not.toHaveProperty('includeBranch');
+      expect(parsed).not.toHaveProperty('includeCommit');
+    });
   });
 
   describe('create', () => {

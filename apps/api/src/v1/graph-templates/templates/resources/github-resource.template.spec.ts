@@ -117,13 +117,15 @@ describe('GithubResourceTemplate', () => {
       expect(parsed.auth).toBe(false);
     });
 
-    it('should reject invalid fields', () => {
-      const invalidData = {
+    it('should ignore legacy/unknown fields', () => {
+      const dataWithExtra = {
         patToken: 'ghp_1234567890abcdef',
         invalidField: 'value',
       };
 
-      expect(() => GithubResourceTemplateSchema.parse(invalidData)).toThrow();
+      const parsed = GithubResourceTemplateSchema.parse(dataWithExtra);
+      expect(parsed.patToken).toBe('ghp_1234567890abcdef');
+      expect(parsed).not.toHaveProperty('invalidField');
     });
   });
 

@@ -119,6 +119,15 @@ describe('FilesToolTemplate', () => {
       const parsed = FilesToolTemplateSchema.parse(config);
       expect(parsed).toEqual({});
     });
+
+    it('should ignore legacy/unknown fields', () => {
+      const config = { includeRepo: true, extra: 'value' };
+
+      const parsed = FilesToolTemplateSchema.parse(config);
+      expect(parsed).toEqual({});
+      expect(parsed).not.toHaveProperty('includeRepo');
+      expect(parsed).not.toHaveProperty('extra');
+    });
   });
 
   describe('create', () => {

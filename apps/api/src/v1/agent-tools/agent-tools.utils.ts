@@ -26,7 +26,7 @@ export const execRuntimeWithContext = async (
     cfg.configurable?.thread_id ||
     'unknown';
   const runId = cfg.configurable?.run_id;
-  const sessionId = runId || threadId;
+  const sessionId = threadId;
 
   return instance.exec({
     ...params,

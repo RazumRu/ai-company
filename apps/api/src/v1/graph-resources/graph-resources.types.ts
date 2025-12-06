@@ -10,8 +10,7 @@ export interface IBaseResourceOutput<T = unknown> {
   data: T;
 }
 
-export interface IShellResourceOutput
-  extends IBaseResourceOutput<ShellResourceData> {}
+export interface IShellResourceOutput extends IBaseResourceOutput<ShellResourceData> {}
 
 export enum ResourceKind {
   Shell = 'Shell',

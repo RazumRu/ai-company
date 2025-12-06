@@ -23,7 +23,10 @@ import {
 /**
  * Manual trigger template schema
  */
-export const ManualTriggerTemplateSchema = z.object({}).strict();
+export const ManualTriggerTemplateSchema = z
+  .object({})
+  // Strip legacy/unknown fields so older configs remain valid.
+  .strip();
 
 export type ManualTriggerTemplateSchemaType = z.infer<
   typeof ManualTriggerTemplateSchema

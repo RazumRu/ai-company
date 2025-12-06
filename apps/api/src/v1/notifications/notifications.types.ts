@@ -36,11 +36,10 @@ export interface INotification<T> {
   runId?: string;
 }
 
-export interface IGraphNotification
-  extends INotification<{
-    status: GraphStatus;
-    schema?: GraphSchemaType;
-  }> {
+export interface IGraphNotification extends INotification<{
+  status: GraphStatus;
+  schema?: GraphSchemaType;
+}> {
   type: NotificationEvent.Graph;
 }
 
@@ -48,8 +47,7 @@ export interface IAgentMessageData {
   messages: BaseMessage[];
 }
 
-export interface IAgentMessageNotification
-  extends INotification<IAgentMessageData> {
+export interface IAgentMessageNotification extends INotification<IAgentMessageData> {
   type: NotificationEvent.AgentMessage;
   nodeId: string;
   threadId: string;
@@ -60,8 +58,7 @@ export interface IAgentInvokeData {
   messages: BaseMessage[];
 }
 
-export interface IAgentInvokeNotification
-  extends INotification<IAgentInvokeData> {
+export interface IAgentInvokeNotification extends INotification<IAgentInvokeData> {
   type: NotificationEvent.AgentInvoke;
   nodeId: string;
   threadId: string;
@@ -78,8 +75,7 @@ export interface IAgentStateUpdateData {
   toolUsageGuardActivatedCount?: number;
 }
 
-export interface IAgentStateUpdateNotification
-  extends INotification<IAgentStateUpdateData> {
+export interface IAgentStateUpdateNotification extends INotification<IAgentStateUpdateData> {
   type: NotificationEvent.AgentStateUpdate;
   nodeId: string;
   threadId: string;
@@ -100,8 +96,7 @@ export interface IThreadUpdateData {
 
 export type ThreadUpdateNotificationData = IThreadUpdateData | ThreadDto;
 
-export interface IThreadUpdateNotification
-  extends INotification<ThreadUpdateNotificationData> {
+export interface IThreadUpdateNotification extends INotification<ThreadUpdateNotificationData> {
   type: NotificationEvent.ThreadUpdate;
   nodeId?: string;
   threadId: string;
@@ -121,14 +116,12 @@ export interface IGraphNodeUpdateData {
   additionalNodeMetadata?: Record<string, unknown>;
 }
 
-export interface IGraphNodeUpdateNotification
-  extends INotification<IGraphNodeUpdateData> {
+export interface IGraphNodeUpdateNotification extends INotification<IGraphNodeUpdateData> {
   type: NotificationEvent.GraphNodeUpdate;
   nodeId: string;
 }
 
-export interface IGraphRevisionNotification
-  extends INotification<GraphRevisionEntity> {
+export interface IGraphRevisionNotification extends INotification<GraphRevisionEntity> {
   type:
     | NotificationEvent.GraphRevisionCreate
     | NotificationEvent.GraphRevisionApplying

@@ -24,7 +24,8 @@ export const AgentCommunicationToolTemplateSchema = z
       .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
       .optional(),
   })
-  .strict();
+  // Strip legacy/unknown fields so older configs remain valid.
+  .strip();
 
 @Injectable()
 @RegisterTemplate()

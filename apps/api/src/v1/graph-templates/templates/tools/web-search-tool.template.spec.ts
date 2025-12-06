@@ -61,16 +61,17 @@ describe('WebSearchToolTemplate', () => {
       ).not.toThrow();
     });
 
-    it('should reject additional properties with strict schema', () => {
+    it('should ignore additional properties', () => {
       const configWithExtra = {
+        apiKey: 'test-api-key',
         someProperty: 'value',
         anotherProperty: 123,
       };
 
-      // With strict schema, additional properties should be rejected
-      expect(() =>
-        WebSearchToolTemplateSchema.parse(configWithExtra),
-      ).toThrow();
+      const parsed = WebSearchToolTemplateSchema.parse(configWithExtra);
+      expect(parsed).toEqual({ apiKey: 'test-api-key' });
+      expect(parsed).not.toHaveProperty('someProperty');
+      expect(parsed).not.toHaveProperty('anotherProperty');
     });
   });
 

@@ -39,6 +39,7 @@ describe('Threads E2E', () => {
               template: 'simple-agent',
               config: {
                 name: 'Test Agent',
+                description: 'Test agent for thread retrieval',
                 instructions: 'You are a helpful test agent.',
                 invokeModelName: 'gpt-5-mini',
               },
@@ -107,6 +108,7 @@ describe('Threads E2E', () => {
               template: 'simple-agent',
               config: {
                 name: 'Test Agent',
+                description: 'Test agent for external thread retrieval',
                 instructions: 'You are a helpful test agent.',
                 invokeModelName: 'gpt-5-mini',
               },
@@ -216,6 +218,7 @@ describe('Threads E2E', () => {
               template: 'simple-agent',
               config: {
                 name: 'First Agent',
+                description: 'First agent in filter test',
                 instructions:
                   'You are the first agent. Use the agent-communication tool to ask the second agent a simple question.',
                 invokeModelName: 'gpt-5-mini',
@@ -226,6 +229,7 @@ describe('Threads E2E', () => {
               template: 'simple-agent',
               config: {
                 name: 'Second Agent',
+                description: 'Second agent in filter test',
                 instructions: 'You are the second agent. Answer briefly.',
                 invokeModelName: 'gpt-5-mini',
               },
@@ -457,6 +461,7 @@ describe('Threads E2E', () => {
                 template: 'simple-agent',
                 config: {
                   name: 'Test Agent',
+                description: 'Test agent for thread deletion',
                   instructions: 'You are a helpful test agent.',
                   invokeModelName: 'gpt-5-mini',
                 },
@@ -560,6 +565,7 @@ describe('Threads E2E', () => {
                 template: 'simple-agent',
                 config: {
                   name: 'Test Agent',
+                description: 'Test agent for cross-user deletion',
                   instructions: 'You are a helpful test agent.',
                   invokeModelName: 'gpt-5-mini',
                 },

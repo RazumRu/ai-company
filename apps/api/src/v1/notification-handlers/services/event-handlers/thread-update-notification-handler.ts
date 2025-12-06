@@ -18,8 +18,7 @@ import {
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
-export interface IThreadUpdateEnrichedNotification
-  extends IEnrichedNotification<ThreadDto> {
+export interface IThreadUpdateEnrichedNotification extends IEnrichedNotification<ThreadDto> {
   type: EnrichedNotificationEvent.ThreadUpdate;
   threadId: string;
   internalThreadId: string;

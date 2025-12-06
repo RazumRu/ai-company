@@ -15,8 +15,9 @@ export interface BaseAgentState {
   generatedTitle?: string;
 }
 
-export interface BaseAgentStateChange
-  extends Partial<Omit<BaseAgentState, 'messages'>> {
+export interface BaseAgentStateChange extends Partial<
+  Omit<BaseAgentState, 'messages'>
+> {
   messages?: BaseAgentStateMessagesUpdateValue;
 }
 
