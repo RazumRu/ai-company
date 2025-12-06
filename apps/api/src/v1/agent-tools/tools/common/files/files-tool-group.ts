@@ -8,6 +8,7 @@ import { BaseToolGroup } from '../../base-tool-group';
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
 import { FilesBuildTagsTool } from './files-build-tags.tool';
+import { FilesDeleteTool } from './files-delete.tool';
 import { FilesListTool } from './files-list.tool';
 import { FilesReadTool } from './files-read.tool';
 import { FilesSearchTagsTool } from './files-search-tags.tool';
@@ -24,6 +25,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     private readonly filesBuildTagsTool: FilesBuildTagsTool,
     private readonly filesSearchTagsTool: FilesSearchTagsTool,
     private readonly filesApplyChangesTool: FilesApplyChangesTool,
+    private readonly filesDeleteTool: FilesDeleteTool,
   ) {
     super();
   }
@@ -39,6 +41,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       this.filesBuildTagsTool.build(config, lgConfig),
       this.filesSearchTagsTool.build(config, lgConfig),
       this.filesApplyChangesTool.build(config, lgConfig),
+      this.filesDeleteTool.build(config, lgConfig),
     ];
 
     return tools;

@@ -108,6 +108,11 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
       {"semanticType": "fix", "title": "fix issue", "path": "/repo"}
       \`\`\`
 
+      **Current directory example (after shell cd /repo and staging):**
+      \`\`\`json
+      {"semanticType": "feat", "title": "add search filters"}
+      \`\`\`
+
       **4. Use body for context:**
       \`\`\`json
       {
@@ -174,7 +179,8 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
 
   private buildCommand(cmd: string, path?: string): string {
     if (path) {
-      return `cd ${JSON.stringify(path)} && ${cmd}`;
+      const p = JSON.stringify(path);
+      return `cd ${p} && ${cmd}`;
     }
     return cmd;
   }

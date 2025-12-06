@@ -22,11 +22,18 @@ export abstract class FilesBaseTool<
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ) {
+    const cmdWrapped =
+      typeof params.cmd === 'string'
+        ? `( ${params.cmd} )`
+        : params.cmd.map((c) => `( ${c} )`);
+
     try {
       const res = await execRuntimeWithContext(
         config.runtime,
         {
-          cmd: params.cmd,
+          cmd: cmdWrapped,
+          timeoutMs: 30_000,
+          tailTimeoutMs: 10_000,
         },
         cfg,
       );

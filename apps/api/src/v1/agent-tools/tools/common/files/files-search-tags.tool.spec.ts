@@ -56,12 +56,12 @@ describe('FilesSearchTagsTool', () => {
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing dir field', () => {
-      const invalidData = {
+    it('should allow missing dir field (defaults to session cwd)', () => {
+      const data = {
         alias: 'myrepo',
         query: 'MyFunction',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.schema.parse(data)).not.toThrow();
     });
 
     it('should reject missing alias field', () => {

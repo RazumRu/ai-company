@@ -203,6 +203,38 @@ describe('FilesApplyChangesTool', () => {
       expect((tool as any).execCommand).toHaveBeenCalledTimes(2);
     });
 
+    it('should create parent directories when replacing a file', async () => {
+      const args: FilesApplyChangesToolSchemaType = {
+        filePath: '/new/path/nested/file.ts',
+        operation: 'replace',
+        content: 'content',
+      };
+
+      const execSpy = vi
+        .spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '1\n',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      expect(execSpy).toHaveBeenCalledTimes(2);
+      const firstCallArgs = execSpy.mock.calls[0]?.[0] as
+        | { cmd?: string }
+        | undefined;
+      expect(firstCallArgs?.cmd).toContain('mkdir -p "/new/path/nested"');
+    });
+
     it('should replace line range successfully', async () => {
       const args: FilesApplyChangesToolSchemaType = {
         filePath: '/path/to/file.ts',

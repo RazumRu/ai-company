@@ -11,7 +11,10 @@ export const FilesListToolSchema = z.object({
   dir: z
     .string()
     .min(1)
-    .describe('The directory path to search in. Use absolute paths.'),
+    .optional()
+    .describe(
+      'Directory path to search. If omitted, uses the current working directory of the persistent shell session.',
+    ),
   pattern: z
     .string()
     .optional()
@@ -41,7 +44,7 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
 
     return dedent`
       ### Overview
-      Lists files in a directory using the \`fd\` command (a fast alternative to \`find\`). Returns absolute paths that can be directly used with other file tools.
+      Lists files in a directory using the \`fd\` command (a fast alternative to \`find\`). Returns absolute paths that can be directly used with other file tools. When \`dir\` is omitted, the command runs in the current working directory of the persistent shell session (so you can \`cd\` once via the shell tool and then list without repeating the path).
 
       ### When to Use
       - Exploring a new codebase to understand its structure
@@ -58,13 +61,19 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
 
       ### Best Practices
 
-      **1. Start broad, then narrow:**
+      **1. Start broad, then narrow (with or without dir):**
       \`\`\`json
         // First, understand the structure
         {"dir": "/repo"}
 
         // Then focus on specific areas
         {"dir": "/repo/src", "pattern": "*.ts"}
+
+        // If you already cd'd into /repo/src with shell, dir can be omitted
+        {"pattern": "*.ts"}
+
+        // From current directory (after shell cd): list everything
+        {"pattern": "**/*.ts"}
       \`\`\`
 
       **2. Use specific patterns to reduce output:**
@@ -141,12 +150,7 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<FilesListToolOutput> {
-    const cmdParts: string[] = [
-      `cd "${args.dir}"`,
-      '&&',
-      'fd',
-      '--absolute-path',
-    ];
+    const cmdParts: string[] = ['fd', '--absolute-path'];
 
     if (args.pattern) {
       cmdParts.push('--glob', `"${args.pattern}"`);
@@ -154,7 +158,8 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
 
     cmdParts.push('--type', 'f', '--hidden', '--exclude', '.git');
 
-    const cmd = cmdParts.join(' ');
+    const baseCmd = cmdParts.join(' ');
+    const cmd = args.dir ? `cd "${args.dir}" && ${baseCmd}` : baseCmd;
 
     const res = await this.execCommand(
       {

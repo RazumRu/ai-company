@@ -13,7 +13,10 @@ export const FilesSearchTextToolSchema = z.object({
   dir: z
     .string()
     .min(1)
-    .describe('The directory path to search in. Use absolute paths.'),
+    .optional()
+    .describe(
+      'Directory path to search. If omitted, uses the current working directory of the persistent shell session. Use absolute paths when provided.',
+    ),
   query: z
     .string()
     .min(1)
@@ -80,7 +83,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
 
     return dedent`
       ### Overview
-      Searches for text patterns across files using ripgrep (rg), one of the fastest text search tools available. Returns structured JSON results with file paths, line numbers, and matched content.
+      Searches for text patterns across files using ripgrep (rg), one of the fastest text search tools available. Returns structured JSON results with file paths, line numbers, and matched content. If \`dir\` is omitted, the search runs in the current working directory of the persistent shell session (e.g., after \`shell\` tool cd).
 
       ### When to Use
       - Finding where a function, class, or variable is defined or used
@@ -113,7 +116,12 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
 
       **1. Be specific with patterns:**
       - Good: {"dir": "/repo", "query": "handleSubmit"}
+      - Good (after shell cd /repo): {"query": "handleSubmit"}
       - Better: {"dir": "/repo", "query": "function handleSubmit|const handleSubmit"}
+
+      **Quick current-directory searches (after shell cd):**
+      - {"query": "TODO"}
+      - {"query": "useEffect", "includeGlobs": ["*.tsx"]}
 
       **2. Use file filters to reduce noise:**
       Example: {"dir": "/repo", "query": "useState", "includeGlobs": ["*.tsx"], "excludeGlobs": ["*.test.tsx"]}
@@ -172,8 +180,6 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     if (args.filePath) {
       cmdParts.push(`"${args.query}"`, `"${args.filePath}"`);
     } else {
-      // When searching across directory, cd to the directory first
-      cmdParts.unshift(`cd "${args.dir}"`, '&&');
       // Add hidden flag when searching across files
       cmdParts.push('--hidden');
 
@@ -198,7 +204,8 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       cmdParts.push(`"${args.query}"`);
     }
 
-    const cmd = cmdParts.join(' ');
+    const baseCmd = cmdParts.join(' ');
+    const cmd = args.dir ? `cd "${args.dir}" && ${baseCmd}` : baseCmd;
 
     const res = await this.execCommand(
       {

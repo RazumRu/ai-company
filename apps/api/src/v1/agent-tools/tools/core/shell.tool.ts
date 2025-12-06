@@ -63,6 +63,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     return dedent`
       ### Overview
       The shell tool executes arbitrary shell commands inside a prepared Docker runtime environment. It provides direct access to the command line for file operations, git commands, running tests, building projects, installing dependencies, and system inspection.
+      Commands within the same thread/run share a persistent shell session (env and cwd changes persist across calls); session ids are handled automatically.
 
       ### When to Use
       - **File operations**: Creating, moving, copying, deleting files and directories

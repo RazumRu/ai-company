@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { dirname } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
@@ -296,6 +297,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     const fullFilePath = args.filePath;
+    const parentDir = dirname(fullFilePath);
     let cmd: string;
 
     const contentBase64 =
@@ -306,7 +308,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     switch (args.operation) {
       case 'replace': {
         const tempFile = `${fullFilePath}.tmp.${Date.now()}`;
-        cmd = `echo '${contentBase64}' | base64 -d > "${tempFile}" && mv "${tempFile}" "${fullFilePath}"`;
+        cmd = `mkdir -p "${parentDir}" && echo '${contentBase64}' | base64 -d > "${tempFile}" && mv "${tempFile}" "${fullFilePath}"`;
         break;
       }
 
@@ -370,9 +372,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         ? parseInt(countRes.stdout.trim(), 10) || 0
         : undefined;
 
-    return {
+    const response = {
       success: true,
       lineCount,
     };
+
+    return response;
   }
 }

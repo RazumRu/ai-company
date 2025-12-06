@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { FilesApplyChangesTool } from './tools/common/files/files-apply-changes.tool';
 import { FilesBuildTagsTool } from './tools/common/files/files-build-tags.tool';
+import { FilesDeleteTool } from './tools/common/files/files-delete.tool';
 import { FilesListTool } from './tools/common/files/files-list.tool';
 import { FilesReadTool } from './tools/common/files/files-read.tool';
 import { FilesSearchTagsTool } from './tools/common/files/files-search-tags.tool';
@@ -38,6 +39,7 @@ import { ShellTool } from './tools/core/shell.tool';
     FilesBuildTagsTool,
     FilesSearchTagsTool,
     FilesApplyChangesTool,
+    FilesDeleteTool,
     FilesToolGroup,
   ],
   exports: [
@@ -57,6 +59,7 @@ import { ShellTool } from './tools/core/shell.tool';
     FilesBuildTagsTool,
     FilesSearchTagsTool,
     FilesApplyChangesTool,
+    FilesDeleteTool,
     FilesToolGroup,
   ],
 })

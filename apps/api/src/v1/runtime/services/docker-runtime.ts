@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { PassThrough } from 'node:stream';
+import { Duplex, PassThrough } from 'node:stream';
 
 import { BadRequestException } from '@packages/common';
 import Docker from 'dockerode';
@@ -12,6 +12,27 @@ import {
   RuntimeType,
 } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
+
+type ShellSession = {
+  id: string;
+  exec: Docker.Exec;
+  inputStream: Duplex;
+  stdoutStream: PassThrough;
+  stderrStream: PassThrough;
+  stdoutBuffer: string;
+  stderrBuffer: string;
+  queue: SessionCommand[];
+  busy: boolean;
+  workdir: string;
+};
+
+type SessionCommand = {
+  script: string;
+  workdir: string;
+  timeoutMs?: number;
+  resolve: (res: RuntimeExecResult) => void;
+  reject: (err: Error) => void;
+};
 
 /**
  * DockerRuntime using dockerode
@@ -27,6 +48,7 @@ export class DockerRuntime extends BaseRuntime {
   private dindContainer: Docker.Container | null = null;
   private createdWorkdirs = new Set<string>();
   private containerWorkdir: string | null = null;
+  private sessions = new Map<string, ShellSession>();
 
   constructor(
     private dockerOptions?: Docker.DockerOptions,
@@ -37,27 +59,19 @@ export class DockerRuntime extends BaseRuntime {
     this.image = params?.image;
   }
 
-  /**
-   * Stops and removes all containers matching the given labels
-   * This is useful for cleaning up containers by graph_id or other labels
-   * Also cleans up associated DIND containers
-   */
   static async cleanupByLabels(
     labels: Record<string, string>,
     dockerOptions?: Docker.DockerOptions,
   ): Promise<void> {
     const docker = new Docker(dockerOptions);
 
-    // Convert labels to Docker filter format
     const labelFilters = Object.entries(labels).map(([k, v]) => `${k}=${v}`);
 
-    // List all containers (including stopped ones) matching the labels
     const containers = await docker.listContainers({
       all: true,
       filters: { label: labelFilters },
     });
 
-    // Stop and remove each container
     const cleanupPromises = containers.map(async (containerInfo) => {
       try {
         const container = docker.getContainer(containerInfo.Id);
@@ -71,11 +85,6 @@ export class DockerRuntime extends BaseRuntime {
     await Promise.all(cleanupPromises);
   }
 
-  /**
-   * Finds a container matching the given labels
-   * Returns the first matching container or null if none found
-   * This is useful for checking if a container already exists before creating a new one
-   */
   static async getByLabels(
     labels: Record<string, string>,
     dockerOptions?: Docker.DockerOptions,
@@ -119,6 +128,202 @@ export class DockerRuntime extends BaseRuntime {
     return env ? Object.entries(env).map(([k, v]) => `${k}=${v}`) : undefined;
   }
 
+  private shellEscape(value: string) {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+  }
+
+  private buildEnvPrefix(env?: Record<string, string>) {
+    if (!env || !Object.keys(env).length) {
+      return '';
+    }
+
+    return `${Object.entries(env)
+      .map(([k, v]) => `${k}=${this.shellEscape(v)}`)
+      .join(' ')} `;
+  }
+
+  private async ensureSession(
+    sessionId: string,
+    workdir: string,
+    env?: string[],
+  ): Promise<ShellSession> {
+    const existing = this.sessions.get(sessionId);
+    if (existing) {
+      return existing;
+    }
+
+    if (!this.container) {
+      throw new Error('Runtime not started');
+    }
+
+    const exec = await this.container.exec({
+      Cmd: ['/bin/sh'],
+      Env: env,
+      WorkingDir: workdir,
+      AttachStdout: true,
+      AttachStderr: true,
+      AttachStdin: true,
+      Tty: false,
+    });
+
+    const stream = (await exec.start({
+      hijack: true,
+      stdin: true,
+    })) as unknown as Duplex;
+
+    // Demux the stream into separate stdout/stderr streams
+    const stdoutStream = new PassThrough();
+    const stderrStream = new PassThrough();
+    this.docker.modem.demuxStream(stream, stdoutStream, stderrStream);
+
+    const session: ShellSession = {
+      id: sessionId,
+      exec,
+      inputStream: stream,
+      stdoutStream,
+      stderrStream,
+      stdoutBuffer: '',
+      stderrBuffer: '',
+      queue: [],
+      busy: false,
+      workdir,
+    };
+
+    const cleanup = () => {
+      this.sessions.delete(sessionId);
+      try {
+        stream.removeAllListeners();
+        stdoutStream.removeAllListeners();
+        stderrStream.removeAllListeners();
+      } catch {
+        //
+      }
+    };
+
+    stream.on('error', cleanup);
+    stream.on('end', cleanup);
+    stream.on('close', cleanup);
+
+    this.sessions.set(sessionId, session);
+    return session;
+  }
+
+  private enqueueSessionCommand(session: ShellSession, cmd: SessionCommand) {
+    session.queue.push(cmd);
+    void this.processSessionQueue(session);
+  }
+
+  private async processSessionQueue(session: ShellSession) {
+    if (session.busy) return;
+
+    const next = session.queue.shift();
+    if (!next) return;
+
+    session.busy = true;
+
+    const marker = randomUUID();
+    const endToken = `__AI_END_${marker}__`;
+    const wrappedScript = [
+      next.script,
+      `printf "\\n${endToken}:%s\\n" $?`,
+    ].join('; ');
+
+    // Reset buffers for this command
+    let stdoutBuffer = '';
+    let stderrBuffer = '';
+    let finished = false;
+
+    const onStdoutData = (chunk: Buffer) => {
+      stdoutBuffer += chunk.toString('utf8');
+      const endTokenWithColon = `${endToken}:`;
+      const endIdx = stdoutBuffer.indexOf(endTokenWithColon);
+
+      if (endIdx === -1) {
+        return;
+      }
+
+      const exitStart = endIdx + endTokenWithColon.length;
+      const exitLineEnd = stdoutBuffer.indexOf('\n', exitStart);
+      const exitData =
+        exitLineEnd === -1
+          ? stdoutBuffer.slice(exitStart)
+          : stdoutBuffer.slice(exitStart, exitLineEnd);
+      const parsed = Number.parseInt(exitData.trim() || '0', 10);
+      const exitCode = Number.isNaN(parsed) ? 1 : parsed;
+
+      // Get stdout content up to the end marker (excluding trailing newline before marker)
+      let stdoutContent = stdoutBuffer.slice(0, endIdx);
+      if (stdoutContent.endsWith('\n')) {
+        stdoutContent = stdoutContent.slice(0, -1);
+      }
+
+      cleanupListeners();
+
+      finished = true;
+      next.resolve({
+        exitCode,
+        stdout: stdoutContent,
+        stderr: stderrBuffer,
+        fail: exitCode !== 0,
+        execPath: next.workdir,
+      });
+
+      session.busy = false;
+      void this.processSessionQueue(session);
+    };
+
+    const onStderrData = (chunk: Buffer) => {
+      stderrBuffer += chunk.toString('utf8');
+    };
+
+    const onError = (err: Error) => {
+      if (finished) return;
+      cleanupListeners();
+      next.reject(err);
+      session.busy = false;
+      void this.processSessionQueue(session);
+    };
+
+    const cleanupListeners = () => {
+      session.stdoutStream.off('data', onStdoutData);
+      session.stderrStream.off('data', onStderrData);
+      session.inputStream.off('error', onError);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    };
+
+    const timeout =
+      next.timeoutMs && next.timeoutMs > 0
+        ? setTimeout(() => {
+            if (finished) return;
+            cleanupListeners();
+            next.resolve({
+              exitCode: 124,
+              stdout: stdoutBuffer,
+              stderr: stderrBuffer || 'Process timed out',
+              fail: true,
+              execPath: next.workdir,
+            });
+            session.busy = false;
+            void this.processSessionQueue(session);
+          }, next.timeoutMs).unref()
+        : null;
+
+    session.stdoutStream.on('data', onStdoutData);
+    session.stderrStream.on('data', onStderrData);
+    session.inputStream.on('error', onError);
+
+    try {
+      session.inputStream.write(`${wrappedScript}\n`);
+    } catch (error) {
+      cleanupListeners();
+      session.busy = false;
+      next.reject(error as Error);
+      void this.processSessionQueue(session);
+    }
+  }
+
   private async getByLabels(labels?: Record<string, string>) {
     if (!labels || !Object.keys(labels).length) {
       return null;
@@ -137,9 +342,6 @@ export class DockerRuntime extends BaseRuntime {
     return this.docker.getContainer(list[0].Id);
   }
 
-  /**
-   * Check if a container with the given name already exists
-   */
   private async getByName(name: string): Promise<Docker.Container | null> {
     try {
       const list = await this.docker.listContainers({
@@ -161,21 +363,16 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
-  /**
-   * Ensure a Docker network exists, create it if it doesn't
-   */
   private async ensureNetwork(networkName: string): Promise<void> {
     try {
-      // Check if network already exists
       const networks = await this.docker.listNetworks({
         filters: { name: [networkName] },
       });
 
       if (networks.length > 0) {
-        return; // Network already exists
+        return;
       }
 
-      // Create the network
       await this.docker.createNetwork({
         Name: networkName,
         Driver: 'bridge',
@@ -189,9 +386,6 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
-  /**
-   * Get network information
-   */
   private async getNetwork(
     networkName: string,
   ): Promise<Docker.Network | null> {
@@ -229,7 +423,7 @@ export class DockerRuntime extends BaseRuntime {
       const res = await this.exec({
         cmd,
         env,
-        timeoutMs: timeoutMs || 10 * 60_000, // Default to 10 minutes if not specified
+        timeoutMs: timeoutMs || 10 * 60_000,
       });
       if (res.fail) {
         throw new Error(`Init failed: ${res.stderr || res.stdout}`);
@@ -237,9 +431,6 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
-  /**
-   * Wait until DIND dockerd is running and responsive (polls with timeout)
-   */
   private async waitForDindReady(
     container: Docker.Container,
     timeoutMs = 30_000,
@@ -250,7 +441,6 @@ export class DockerRuntime extends BaseRuntime {
       const st = await container.inspect();
       if (st.State.Running) {
         try {
-          // Probe: run `docker info` inside DIND
           const ex = await container.exec({
             Cmd: ['sh', '-lc', 'docker info >/dev/null 2>&1'],
             AttachStdout: true,
@@ -364,7 +554,6 @@ export class DockerRuntime extends BaseRuntime {
 
     await dindContainer.start();
 
-    // Wait for Docker daemon to be ready inside DIND container
     await this.waitForDindReady(dindContainer);
 
     return dindContainer;
@@ -435,14 +624,12 @@ export class DockerRuntime extends BaseRuntime {
 
     const env = this.prepareEnv(containerEnv);
 
-    // Prepare host configuration
     const hostConfig: Docker.HostConfig = {
       NetworkMode: networkName,
       AutoRemove: true,
     };
 
     try {
-      // Create container with automatic retry on name conflicts
       const container = await this.createContainerWithRetry(
         containerName,
         async () => {
@@ -475,10 +662,8 @@ export class DockerRuntime extends BaseRuntime {
         );
       }
 
-      // Emit start event
       this.emit({ type: 'start', data: { params: params || {} } });
     } catch (error) {
-      // Emit start event with error
       this.emit({ type: 'start', data: { params: params || {}, error } });
       throw error;
     }
@@ -493,17 +678,15 @@ export class DockerRuntime extends BaseRuntime {
       await DockerRuntime.stopByInstance(this.container);
       this.container = null;
       this.containerWorkdir = null;
+      this.sessions.clear();
 
-      // Stop and remove DIND container if it exists
       if (this.dindContainer) {
         await DockerRuntime.stopByInstance(this.dindContainer);
         this.dindContainer = null;
       }
 
-      // Emit stop event
       this.emit({ type: 'stop', data: {} });
     } catch (error) {
-      // Emit stop event with error
       this.emit({ type: 'stop', data: { error } });
       throw error;
     }
@@ -547,8 +730,6 @@ export class DockerRuntime extends BaseRuntime {
       throw new Error('Runtime not started');
     }
 
-    const execId = randomUUID();
-
     let fullWorkdir = this.containerWorkdir || undefined;
     if (params.childWorkdir) {
       fullWorkdir = params.createChildWorkdir
@@ -560,10 +741,28 @@ export class DockerRuntime extends BaseRuntime {
       fullWorkdir = this.workdir;
     }
 
+    const env = this.prepareEnv(params.env);
+
+    if (params.sessionId) {
+      try {
+        return await this.execInSession(params, fullWorkdir, env);
+      } catch (error) {
+        const err = error instanceof Error ? error.message : String(error);
+        return {
+          exitCode: 124,
+          stdout: '',
+          stderr: err,
+          fail: true,
+          execPath: fullWorkdir,
+        };
+      }
+    }
+
+    const execId = randomUUID();
+
     const cmd = Array.isArray(params.cmd)
       ? ['sh', '-lc', params.cmd.join(' && ')]
       : ['sh', '-lc', params.cmd];
-    const env = this.prepareEnv(params.env);
     const abortController = new AbortController();
 
     const ex = await this.container.exec({
@@ -576,7 +775,6 @@ export class DockerRuntime extends BaseRuntime {
       abortSignal: abortController.signal,
     });
 
-    // Emit exec started event
     this.emit({
       type: 'execStart',
       data: { execId, params },
@@ -598,7 +796,6 @@ export class DockerRuntime extends BaseRuntime {
     let overallTimer: NodeJS.Timeout | null = null;
     let tailTimer: NodeJS.Timeout | null = null;
 
-    // Function to reset the tail timeout timer
     const resetTailTimer = () => {
       if (tailTimer) {
         clearTimeout(tailTimer);
@@ -618,7 +815,6 @@ export class DockerRuntime extends BaseRuntime {
       }
     };
 
-    // Track data events to reset tail timeout
     const onData = () => {
       resetTailTimer();
     };
@@ -638,11 +834,7 @@ export class DockerRuntime extends BaseRuntime {
         const done = () => {
           cleanup();
           abortController.abort();
-          if (timedOut || tailTimedOut) {
-            resolve();
-          } else {
-            resolve();
-          }
+          resolve();
         };
 
         const fail = (e: Error) => {
@@ -659,7 +851,6 @@ export class DockerRuntime extends BaseRuntime {
         execStream.on('close', done);
         execStream.on('error', fail);
 
-        // Set up overall timeout
         if (params.timeoutMs && params.timeoutMs > 0) {
           overallTimer = setTimeout(() => {
             timedOut = true;
@@ -671,7 +862,6 @@ export class DockerRuntime extends BaseRuntime {
           }, params.timeoutMs).unref();
         }
 
-        // Set up initial tail timeout
         resetTailTimer();
       });
 
@@ -688,7 +878,6 @@ export class DockerRuntime extends BaseRuntime {
         execPath: fullWorkdir,
       };
 
-      // Emit exec finished event
       this.emit({
         type: 'execEnd',
         data: { execId, params, result },
@@ -698,7 +887,6 @@ export class DockerRuntime extends BaseRuntime {
     } catch (error) {
       cleanup();
 
-      // Emit exec finished event with error
       this.emit({
         type: 'execEnd',
         data: { execId, params, error },
@@ -706,6 +894,35 @@ export class DockerRuntime extends BaseRuntime {
 
       throw error;
     }
+  }
+
+  private async execInSession(
+    params: RuntimeExecParams,
+    workdir: string,
+    env?: string[],
+  ): Promise<RuntimeExecResult> {
+    const sessionId = params.sessionId as string;
+    const session = await this.ensureSession(sessionId, workdir, env);
+    const envPrefix = this.buildEnvPrefix(params.env);
+    const userCmd = Array.isArray(params.cmd)
+      ? params.cmd.join(' && ')
+      : params.cmd;
+
+    // Don't add any cd prefix - the session shell maintains its own cwd.
+    // Tools that need a specific directory (like files_list with dir parameter)
+    // already wrap their commands in a subshell like (cd "$dir" && command).
+    // This allows user `cd` commands to persist across session calls.
+    const script = `${envPrefix}${userCmd || ':'}`;
+
+    return await new Promise<RuntimeExecResult>((resolve, reject) => {
+      this.enqueueSessionCommand(session, {
+        script,
+        workdir,
+        timeoutMs: params.timeoutMs,
+        resolve,
+        reject,
+      });
+    });
   }
 
   public override getRuntimeInfo(): string {

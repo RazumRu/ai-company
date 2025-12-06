@@ -1,6 +1,8 @@
+import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { ShellTool, ShellToolOptions } from './shell.tool';
 
@@ -265,6 +267,39 @@ describe('ShellTool', () => {
         stdout: mockExecResult.stdout,
         stderr: mockExecResult.stderr,
       });
+    });
+
+    it('automatically sets sessionId based on run_id/thread', async () => {
+      const mockExecResult = {
+        stdout: 'session',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const result = await builtTool.invoke(
+        {
+          purpose: 'Testing persistent session',
+          cmd: 'echo "session"',
+        },
+        {
+          configurable: {
+            run_id: 'run-123',
+            thread_id: 'thread-abc',
+          },
+        } as ToolRunnableConfig<BaseAgentConfigurable>,
+      );
+
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'run-123',
+          cmd: 'echo "session"',
+        }),
+      );
+      expect(result.exitCode).toBe(0);
     });
 
     it('should return error when runtime is not provided', async () => {

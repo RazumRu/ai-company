@@ -26,11 +26,13 @@ export const execRuntimeWithContext = async (
     cfg.configurable?.thread_id ||
     'unknown';
   const runId = cfg.configurable?.run_id;
+  const sessionId = runId || threadId;
 
   return instance.exec({
     ...params,
     childWorkdir: `${threadId.replace(/:/g, '_')}`,
     createChildWorkdir: true,
+    sessionId,
     metadata: {
       threadId,
       runId,

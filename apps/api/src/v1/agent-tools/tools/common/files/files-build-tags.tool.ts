@@ -11,7 +11,10 @@ export const FilesBuildTagsToolSchema = z.object({
   dir: z
     .string()
     .min(1)
-    .describe('The directory path to search in. Use absolute paths.'),
+    .optional()
+    .describe(
+      'Directory path to index. If omitted, uses the current working directory of the persistent shell session. Use absolute paths when provided.',
+    ),
   alias: z.string().min(1).describe('Alias/name for the tags index file.'),
 });
 
@@ -39,7 +42,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
 
     return dedent`
       ### Overview
-      Generates a ctags index file for a codebase, enabling fast symbol-based searches. The index includes functions, classes, methods, variables, and other language constructs. This is a prerequisite for using \`files_search_tags\`.
+      Generates a ctags index file for a codebase, enabling fast symbol-based searches. The index includes functions, classes, methods, variables, and other language constructs. This is a prerequisite for using \`files_search_tags\`. If \`dir\` is omitted, indexing runs in the current working directory of the persistent shell session (e.g., after \`cd\` via shell).
 
       ### When to Use
       - At the start of working with a new repository (one-time setup)
@@ -60,6 +63,9 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       \`\`\`json
         // At the start of your session
         {"dir": "/repo", "alias": "project"}
+
+        // Already cd /repo via shell: omit dir
+        {"alias": "project"}
       \`\`\`
 
       **2. Use meaningful aliases:**
@@ -153,8 +159,9 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       };
     }
 
-    // Build ctags index
-    const cmd = `cd "${args.dir}" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "${tagsFile}" .`;
+    // Build ctags index without mutating session cwd (use subshell)
+    const baseCmd = `ctags -R --fields=+n+K --extras=+q --output-format=json -f "${tagsFile}" .`;
+    const cmd = args.dir ? `cd "${args.dir}" && ${baseCmd}` : baseCmd;
 
     const res = await this.execCommand(
       {

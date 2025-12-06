@@ -83,6 +83,11 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       cd /repo && git branch --show-current
       \`\`\`
 
+      **Push from current directory (after shell cd /repo):**
+      \`\`\`json
+        {"branch": "feat/add-authentication"}
+      \`\`\`
+
       ### Output Format
       Success:
       \`\`\`json
@@ -147,7 +152,8 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
 
   private buildCommand(cmd: string, path?: string): string {
     if (path) {
-      return `cd ${JSON.stringify(path)} && ${cmd}`;
+      const p = JSON.stringify(path);
+      return `cd ${p} && ${cmd}`;
     }
     return cmd;
   }

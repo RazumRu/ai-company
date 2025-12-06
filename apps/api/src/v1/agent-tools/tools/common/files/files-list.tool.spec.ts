@@ -51,9 +51,9 @@ describe('FilesListTool', () => {
       expect(() => tool.schema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing dir field', () => {
-      const invalidData = {};
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+    it('should allow missing dir field (defaults to session cwd)', () => {
+      const data = {};
+      expect(() => tool.schema.parse(data)).not.toThrow();
     });
 
     it('should reject empty dir', () => {

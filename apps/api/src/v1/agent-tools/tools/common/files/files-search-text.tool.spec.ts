@@ -45,19 +45,11 @@ describe('FilesSearchTextTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required dir and query fields', () => {
+    it('should validate query field (dir optional)', () => {
       const validData = {
-        dir: '/path/to/repo',
         query: 'function',
       };
       expect(() => tool.schema.parse(validData)).not.toThrow();
-    });
-
-    it('should reject missing dir field', () => {
-      const invalidData = {
-        query: 'function',
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
     });
 
     it('should reject missing query field', () => {
@@ -304,7 +296,7 @@ describe('FilesSearchTextTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'rg --json "function" "/path/to/repo/src/file.ts"',
+          cmd: 'cd "/path/to/repo" && rg --json "function" "/path/to/repo/src/file.ts"',
         },
         mockConfig,
         mockCfg,
@@ -526,7 +518,7 @@ describe('FilesSearchTextTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledWith(
         {
-          cmd: 'rg --json "function" "/path/to repo/src/my file.ts"',
+          cmd: 'cd "/path/to repo" && rg --json "function" "/path/to repo/src/my file.ts"',
         },
         mockConfig,
         mockCfg,

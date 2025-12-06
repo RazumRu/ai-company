@@ -11,8 +11,9 @@ export const FilesSearchTagsToolSchema = z.object({
   dir: z
     .string()
     .min(1)
+    .optional()
     .describe(
-      'The directory path to search in. Use absolute paths. Same directory that was used when building the tags.',
+      'Directory path to search. If omitted, uses the current working directory of the persistent shell session. Should match the directory used when building the tags.',
     ),
   alias: z
     .string()
@@ -56,7 +57,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
     return dedent`
       ### Overview
-      Searches a previously built ctags index for symbol definitions. Faster and more precise than text search for finding function, class, and variable definitions. Requires prior \`files_build_tags\` call.
+      Searches a previously built ctags index for symbol definitions. Faster and more precise than text search for finding function, class, and variable definitions. Requires prior \`files_build_tags\` call. If \`dir\` is omitted, runs in the current working directory of the persistent shell session (e.g., after \`cd\` via shell).
 
       ### When to Use
       - Finding where a function or class is defined
@@ -77,6 +78,11 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
       **1. Use exact match for known symbols:**
       \`\`\`json
         {"dir": "/repo", "alias": "project", "query": "UserController", "exactMatch": true}
+        // After cd /repo via shell:
+        {"alias": "project", "query": "UserController", "exactMatch": true}
+
+        // Quick current-directory example (after building tags in cwd)
+        {"alias": "project", "query": "Service", "exactMatch": false}
       \`\`\`
 
       **2. Use regex for pattern discovery:**
@@ -181,11 +187,13 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     if (args.exactMatch) {
       // Exact match: select(.name == "SYMBOL_NAME")
       const escapedQuery = args.query.replace(/"/g, '\\"');
-      cmd = `cd "${args.dir}" && jq -c 'select(.name == "${escapedQuery}")' "${tagsFile}"`;
+      const prefix = args.dir ? `cd "${args.dir}" && ` : '';
+      cmd = `${prefix}jq -c 'select(.name == "${escapedQuery}")' "${tagsFile}"`;
     } else {
       // Regex match: select(.name | test("SYMBOL_REGEX"))
       const escapedQuery = args.query.replace(/"/g, '\\"');
-      cmd = `cd "${args.dir}" && jq -c 'select(.name | test("${escapedQuery}"))' "${tagsFile}"`;
+      const prefix = args.dir ? `cd "${args.dir}" && ` : '';
+      cmd = `${prefix}jq -c 'select(.name | test("${escapedQuery}"))' "${tagsFile}"`;
     }
 
     const res = await this.execCommand(

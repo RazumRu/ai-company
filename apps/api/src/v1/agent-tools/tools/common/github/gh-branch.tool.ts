@@ -84,6 +84,11 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
       **3. Keep titles concise:**
       The title will become part of the branch name, so keep it reasonably short.
 
+      **Current directory example (after shell cd into repo):**
+      \`\`\`json
+        {"semanticType": "feat", "title": "Add OAuth Support"}
+      \`\`\`
+
       ### Output Format
       Success:
       \`\`\`json
@@ -137,7 +142,8 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
 
   private buildCommand(cmd: string, path?: string): string {
     if (path) {
-      return `cd ${JSON.stringify(path)} && ${cmd}`;
+      const p = JSON.stringify(path);
+      return `cd ${p} && ${cmd}`;
     }
     return cmd;
   }
