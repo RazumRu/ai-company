@@ -42,6 +42,10 @@ describe('ToolExecutorNode', () => {
       expect(node['tools']).toContain(mockFinishTool);
     });
 
+    it('should default maxOutputChars to 500000', () => {
+      expect(node['maxOutputChars']).toBe(500_000);
+    });
+
     it('should initialize with empty tools array', () => {
       const emptyNode = new ToolExecutorNode([]);
       expect(emptyNode['tools']).toHaveLength(0);
@@ -275,6 +279,35 @@ describe('ToolExecutorNode', () => {
       expect(result.messages?.items).toHaveLength(1);
       expect(result.messages?.items?.[0]?.content).toBe(
         JSON.stringify(complexResult),
+      );
+    });
+
+    it('should trim tool output that exceeds maxOutputChars and append suffix', async () => {
+      const limitedNode = new ToolExecutorNode([mockTool1], {
+        maxOutputChars: 10,
+      });
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'test-tool-1',
+        args: { input: 'test' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Using tool',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+      const longOutput = 'a'.repeat(12);
+      mockTool1.invoke = vi.fn().mockResolvedValue(longOutput);
+
+      const result = await limitedNode.invoke(mockState, mockConfig);
+      const expectedSuffix = '\n\n[output trimmed to 10 characters from 12]';
+
+      expect(result.messages?.items).toHaveLength(1);
+      expect(result.messages?.items?.[0]?.content).toBe(
+        `${longOutput.slice(0, 10)}${expectedSuffix}`,
       );
     });
 

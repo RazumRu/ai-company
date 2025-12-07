@@ -18,7 +18,11 @@ export abstract class FilesBaseTool<
   TResult = unknown,
 > extends BaseTool<TSchema, TConfig, TResult> {
   protected async execCommand(
-    params: { cmd: string[] | string },
+    params: {
+      cmd: string[] | string;
+      timeoutMs?: number;
+      tailTimeoutMs?: number;
+    },
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ) {
@@ -32,8 +36,8 @@ export abstract class FilesBaseTool<
         config.runtime,
         {
           cmd: cmdWrapped,
-          timeoutMs: 30_000,
-          tailTimeoutMs: 10_000,
+          timeoutMs: params.timeoutMs ?? 30_000,
+          tailTimeoutMs: params.tailTimeoutMs ?? 10_000,
         },
         cfg,
       );

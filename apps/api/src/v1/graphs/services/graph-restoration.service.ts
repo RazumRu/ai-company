@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
+import { Brackets } from 'typeorm';
 
 import { environment } from '../../../environments';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
@@ -226,24 +227,21 @@ export class GraphRestorationService {
         return;
       }
 
-      const threadIdParts = externalThreadId.split(':');
-      if (threadIdParts.length < 2) {
-        this.logger.warn(
-          `Invalid thread ID format: ${externalThreadId}, cannot resume`,
-        );
-        return;
-      }
-
-      let checkpointNs: string | undefined;
-      let checkpointId: string | undefined;
-      let agentNodeId: string | null = null;
       let checkpoints: GraphCheckpointEntity[] = [];
-
       try {
         checkpoints = await this.graphCheckpointsDao.getAll({
-          threadId: externalThreadId,
           order: { createdAt: 'DESC' },
           limit: 20,
+          customCondition: new Brackets((qb) =>
+            qb
+              .where(`${this.graphCheckpointsDao.alias}.threadId = :threadId`, {
+                threadId: externalThreadId,
+              })
+              .orWhere(
+                `${this.graphCheckpointsDao.alias}.threadId LIKE :threadPrefix`,
+                { threadPrefix: `${externalThreadId}__%` },
+              ),
+          ),
         });
       } catch (error) {
         this.logger.warn(
@@ -262,14 +260,30 @@ export class GraphRestorationService {
         compiledGraph,
       );
 
+      let resumeThreadId = externalThreadId;
+      const threadIdParts = latestCheckpoint
+        ? latestCheckpoint.threadId.split(':')
+        : externalThreadId.split(':');
+      if (threadIdParts.length < 2) {
+        this.logger.warn(
+          `Invalid thread ID format: ${externalThreadId}, cannot resume`,
+        );
+        return;
+      }
+
+      let checkpointNs: string | undefined;
+      let checkpointId: string | undefined;
+      let agentNodeId: string | null = null;
+
       if (latestCheckpoint) {
         checkpointNs = latestCheckpoint.checkpointNs;
         checkpointId = latestCheckpoint.checkpointId;
         agentNodeId = latestCheckpoint.agentNodeId;
+        resumeThreadId = latestCheckpoint.threadId;
       }
 
       if (!agentNodeId) {
-        const threadSubId = threadIdParts.slice(1).join(':');
+        const threadSubId = resumeThreadId.split(':').slice(1).join(':');
         const nodeIdMatch = threadSubId.match(/__([^_]+)$/);
         if (nodeIdMatch?.[1]) {
           agentNodeId = nodeIdMatch[1];
@@ -339,7 +353,7 @@ export class GraphRestorationService {
         {
           graphId,
           nodeId: agentNodeId,
-          threadId: externalThreadId,
+          threadId: resumeThreadId,
           checkpointNs,
           checkpointId,
         },
@@ -348,12 +362,12 @@ export class GraphRestorationService {
       // Resume the agent with empty messages to continue from checkpoint
       // LangGraph will automatically load from the last checkpoint and continue
       void agent
-        .run(externalThreadId, [], undefined, {
+        .run(resumeThreadId, [], undefined, {
           configurable: {
             graph_id: graphId,
             node_id: agentNodeId,
             parent_thread_id: externalThreadId,
-            thread_id: externalThreadId,
+            thread_id: resumeThreadId,
             source: 'graph-restoration',
             checkpoint_ns: checkpointNs,
             async: true,
@@ -387,7 +401,12 @@ export class GraphRestorationService {
     checkpoints: GraphCheckpointEntity[],
     compiledGraph: ReturnType<GraphRegistry['get']>,
   ):
-    | { checkpointNs: string; checkpointId?: string; agentNodeId: string }
+    | {
+        checkpointNs: string;
+        checkpointId?: string;
+        agentNodeId: string;
+        threadId: string;
+      }
     | undefined {
     if (!compiledGraph) {
       return undefined;
@@ -406,6 +425,7 @@ export class GraphRestorationService {
           checkpointNs: ns,
           checkpointId: cp.checkpointId || undefined,
           agentNodeId,
+          threadId: cp.threadId,
         };
       }
     }

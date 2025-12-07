@@ -84,7 +84,17 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
       ### Best Practices
 
-      **1. Use absolute paths when possible:**
+      **1. Set the working directory once per session (cwd persists):**
+      \`\`\`bash
+      # First command in the thread: move to repo root
+      cd /repo && ls
+
+      # Later commands in the same thread reuse that cwd automatically
+      pnpm test
+      git status
+      \`\`\`
+
+      **2. Use absolute paths when possible:**
       \`\`\`bash
       # Good
       /repo/src/index.ts
@@ -93,17 +103,17 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       src/index.ts
       \`\`\`
 
-      **2. Quote paths with spaces:**
+      **3. Quote paths with spaces:**
       \`\`\`bash
       cat "/path/with spaces/file.txt"
       \`\`\`
 
-      **3. Chain commands safely with && to stop on first failure:**
+      **4. Chain commands safely with && to stop on first failure:**
       \`\`\`bash
       cd /repo && npm install && npm test
       \`\`\`
 
-      **4. Use flags to constrain output:**
+      **5. Use flags to constrain output:**
       \`\`\`bash
       # Good: Constrained
       rg "TODO" --max-count=10 /repo/src

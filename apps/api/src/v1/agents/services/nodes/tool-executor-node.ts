@@ -26,7 +26,7 @@ export class ToolExecutorNode extends BaseNode<
     private readonly logger?: DefaultLogger,
   ) {
     super();
-    this.maxOutputChars = opts?.maxOutputChars ?? 50_000;
+    this.maxOutputChars = opts?.maxOutputChars ?? 500_000;
   }
 
   async invoke(
@@ -90,9 +90,10 @@ export class ToolExecutorNode extends BaseNode<
             typeof output === 'string' ? output : JSON.stringify(output);
 
           if (content.length > this.maxOutputChars) {
-            return makeMsg(
-              `Error (output too long: ${content.length} characters).`,
-            );
+            const trimmed = content.slice(0, this.maxOutputChars);
+            const suffix = `\n\n[output trimmed to ${this.maxOutputChars} characters from ${content.length}]`;
+
+            return makeMsg(`${trimmed}${suffix}`);
           }
 
           return makeMsg(content);

@@ -461,7 +461,7 @@ describe('Threads E2E', () => {
                 template: 'simple-agent',
                 config: {
                   name: 'Test Agent',
-                description: 'Test agent for thread deletion',
+                  description: 'Test agent for thread deletion',
                   instructions: 'You are a helpful test agent.',
                   invokeModelName: 'gpt-5-mini',
                 },
@@ -565,7 +565,7 @@ describe('Threads E2E', () => {
                 template: 'simple-agent',
                 config: {
                   name: 'Test Agent',
-                description: 'Test agent for cross-user deletion',
+                  description: 'Test agent for cross-user deletion',
                   instructions: 'You are a helpful test agent.',
                   invokeModelName: 'gpt-5-mini',
                 },
