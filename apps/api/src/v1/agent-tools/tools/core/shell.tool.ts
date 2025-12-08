@@ -20,8 +20,8 @@ export const ShellToolSchema = z.object({
     .min(1)
     .describe('Brief reason for using this tool. Keep it short (< 120 chars).'),
   cmd: z.string(),
-  timeoutMs: z.number().int().positive().optional(),
-  tailTimeoutMs: z.number().int().positive().optional(),
+  timeoutMs: z.number().int().positive().optional().default(300_000),
+  tailTimeoutMs: z.number().int().positive().optional().default(60_000),
   env: z
     .array(
       z.object({
@@ -34,7 +34,7 @@ export const ShellToolSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(10000)
+    .default(10_000)
     .describe(
       'Maximum length of output. If output exceeds this length, only the last N characters will be returned. Useful to prevent context size increase. Default: 10000.',
     ),

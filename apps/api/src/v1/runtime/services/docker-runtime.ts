@@ -30,6 +30,7 @@ type SessionCommand = {
   script: string;
   workdir: string;
   timeoutMs?: number;
+  tailTimeoutMs?: number;
   resolve: (res: RuntimeExecResult) => void;
   reject: (err: Error) => void;
 };
@@ -232,8 +233,33 @@ export class DockerRuntime extends BaseRuntime {
     let stdoutBuffer = '';
     let stderrBuffer = '';
     let finished = false;
+    let tailTimer: NodeJS.Timeout | null = null;
+
+    const resetTailTimer = () => {
+      if (tailTimer) {
+        clearTimeout(tailTimer);
+      }
+
+      if (next.tailTimeoutMs && next.tailTimeoutMs > 0) {
+        tailTimer = setTimeout(() => {
+          if (finished) return;
+          cleanupListeners();
+          finished = true;
+          next.resolve({
+            exitCode: 124,
+            stdout: stdoutBuffer,
+            stderr: stderrBuffer || 'Process timed out - no logs received',
+            fail: true,
+            execPath: next.workdir,
+          });
+          session.busy = false;
+          void this.processSessionQueue(session);
+        }, next.tailTimeoutMs).unref();
+      }
+    };
 
     const onStdoutData = (chunk: Buffer) => {
+      resetTailTimer();
       stdoutBuffer += chunk.toString('utf8');
       const endTokenWithColon = `${endToken}:`;
       const endIdx = stdoutBuffer.indexOf(endTokenWithColon);
@@ -273,6 +299,7 @@ export class DockerRuntime extends BaseRuntime {
     };
 
     const onStderrData = (chunk: Buffer) => {
+      resetTailTimer();
       stderrBuffer += chunk.toString('utf8');
     };
 
@@ -291,6 +318,9 @@ export class DockerRuntime extends BaseRuntime {
       if (timeout) {
         clearTimeout(timeout);
       }
+      if (tailTimer) {
+        clearTimeout(tailTimer);
+      }
     };
 
     const timeout =
@@ -298,6 +328,7 @@ export class DockerRuntime extends BaseRuntime {
         ? setTimeout(() => {
             if (finished) return;
             cleanupListeners();
+            finished = true;
             next.resolve({
               exitCode: 124,
               stdout: stdoutBuffer,
@@ -313,6 +344,7 @@ export class DockerRuntime extends BaseRuntime {
     session.stdoutStream.on('data', onStdoutData);
     session.stderrStream.on('data', onStderrData);
     session.inputStream.on('error', onError);
+    resetTailTimer();
 
     try {
       session.inputStream.write(`${wrappedScript}\n`);
@@ -730,6 +762,9 @@ export class DockerRuntime extends BaseRuntime {
       throw new Error('Runtime not started');
     }
 
+    const cmdList = Array.isArray(params.cmd) ? params.cmd : [params.cmd];
+    const envKeys = params.env ? Object.keys(params.env) : undefined;
+
     let fullWorkdir = this.containerWorkdir || undefined;
     if (params.childWorkdir) {
       fullWorkdir = params.createChildWorkdir
@@ -745,7 +780,8 @@ export class DockerRuntime extends BaseRuntime {
 
     if (params.sessionId) {
       try {
-        return await this.execInSession(params, fullWorkdir, env);
+        const result = await this.execInSession(params, fullWorkdir, env);
+        return result;
       } catch (error) {
         const err = error instanceof Error ? error.message : String(error);
         return {
@@ -919,6 +955,7 @@ export class DockerRuntime extends BaseRuntime {
         script,
         workdir,
         timeoutMs: params.timeoutMs,
+        tailTimeoutMs: params.tailTimeoutMs,
         resolve,
         reject,
       });

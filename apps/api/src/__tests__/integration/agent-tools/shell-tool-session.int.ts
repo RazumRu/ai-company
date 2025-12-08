@@ -95,4 +95,27 @@ describe('ShellTool persistent sessions (integration)', () => {
       expect(pwdResult.stdout.trim()).toBe('/tmp');
     },
   );
+
+  it(
+    'terminates commands that stop producing output within tailTimeoutMs',
+    { timeout: 120_000 },
+    async () => {
+      const builtTool = shellTool.build({ runtime });
+
+      const result = await builtTool.invoke(
+        {
+          purpose: 'tail timeout enforcement',
+          cmd: 'echo "start"; sleep 2; echo "end"',
+          tailTimeoutMs: 500,
+          timeoutMs: 10_000,
+        },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(result.exitCode).toBe(124);
+      expect(result.stdout).toContain('start');
+      expect(result.stdout).not.toContain('end');
+      expect(result.stderr.toLowerCase()).toContain('timed out');
+    },
+  );
 });

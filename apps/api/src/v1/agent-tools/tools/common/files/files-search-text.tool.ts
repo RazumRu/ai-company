@@ -219,7 +219,9 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       }
 
       // Add query
-      cmdParts.push(`"${args.query}"`);
+      // Explicit path prevents ripgrep from reading from open stdin in persistent
+      // sessions (which would otherwise block waiting for input).
+      cmdParts.push(`"${args.query}"`, '.');
     }
 
     const baseCmd = cmdParts.join(' ');

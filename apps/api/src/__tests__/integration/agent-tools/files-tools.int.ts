@@ -1,6 +1,8 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { BaseException } from '@packages/common';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { FilesApplyChangesTool } from '../../../v1/agent-tools/tools/common/files/files-apply-changes.tool';
@@ -11,10 +13,20 @@ import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-
 import { FilesSearchTagsTool } from '../../../v1/agent-tools/tools/common/files/files-search-tags.tool';
 import { FilesSearchTextTool } from '../../../v1/agent-tools/tools/common/files/files-search-text.tool';
 import { ShellTool } from '../../../v1/agent-tools/tools/core/shell.tool';
+import { ReasoningEffort } from '../../../v1/agents/agents.types';
+import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
+import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
+import { GraphStatus } from '../../../v1/graphs/graphs.types';
+import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { RuntimeProvider } from '../../../v1/runtime/services/runtime-provider';
+import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
+import { ThreadsService } from '../../../v1/threads/services/threads.service';
+import { ThreadStatus } from '../../../v1/threads/threads.types';
+import { waitForCondition } from '../helpers/graph-helpers';
+import { createTestModule } from '../setup';
 
 const THREAD_ID = `files-tools-int-${Date.now()}`;
 const WORKSPACE_DIR = `/runtime-workspace/${THREAD_ID}`;
@@ -387,6 +399,246 @@ describe('Files tools integration', () => {
 
       expect(listAfterDelete.error).toBeUndefined();
       expect(listAfterDelete.files?.includes(filePath)).toBe(false);
+    },
+  );
+});
+
+describe('Files tools graph execution', () => {
+  let app: INestApplication;
+  let graphsService: GraphsService;
+  let threadsService: ThreadsService;
+  const createdGraphIds: string[] = [];
+
+  const THREAD_STATUSES: ThreadStatus[] = [
+    ThreadStatus.Done,
+    ThreadStatus.NeedMoreInfo,
+    ThreadStatus.Stopped,
+  ];
+
+  const SEARCH_DIR = '/runtime-workspace/files-search-graph';
+  const SEARCH_QUERY = 'reasoning';
+  const INCLUDE_GLOBS = ['**/*.ts', '**/*.tsx', '**/*.txt'];
+
+  const registerGraph = (graphId: string) => {
+    if (!createdGraphIds.includes(graphId)) {
+      createdGraphIds.push(graphId);
+    }
+  };
+
+  const cleanupGraph = async (graphId: string) => {
+    try {
+      await graphsService.destroy(graphId);
+    } catch (error: unknown) {
+      if (
+        !(error instanceof BaseException) ||
+        (error.errorCode !== 'GRAPH_NOT_FOUND' &&
+          error.errorCode !== 'GRAPH_NOT_RUNNING')
+      ) {
+        throw error;
+      }
+    }
+
+    try {
+      await graphsService.delete(graphId);
+    } catch (error: unknown) {
+      if (
+        !(error instanceof BaseException) ||
+        error.errorCode !== 'GRAPH_NOT_FOUND'
+      ) {
+        throw error;
+      }
+    }
+  };
+
+  const waitForGraphStatus = async (
+    graphId: string,
+    status: GraphStatus,
+    timeoutMs = 180_000,
+  ) => {
+    return waitForCondition(
+      () => graphsService.findById(graphId),
+      (graph) => graph.status === status,
+      { timeout: timeoutMs, interval: 1_000 },
+    );
+  };
+
+  const waitForThreadCompletion = async (
+    externalThreadId: string,
+    timeoutMs = 120_000,
+  ) => {
+    const thread = await threadsService.getThreadByExternalId(externalThreadId);
+
+    return waitForCondition(
+      () => threadsService.getThreadById(thread.id),
+      (currentThread) => THREAD_STATUSES.includes(currentThread.status),
+      {
+        timeout: timeoutMs,
+        interval: 1_000,
+      },
+    );
+  };
+
+  const getThreadMessages = async (externalThreadId: string) => {
+    const thread = await threadsService.getThreadByExternalId(externalThreadId);
+    return threadsService.getThreadMessages(thread.id);
+  };
+
+  type ToolMessage = Extract<ThreadMessageDto['message'], { role: 'tool' }>;
+  const isFileSearchToolMessage = (
+    msg: ThreadMessageDto['message'],
+  ): msg is ToolMessage & { name?: string; content?: unknown } =>
+    msg.role === 'tool' &&
+    (msg as { name?: string }).name === 'files_search_text';
+
+  const findFileSearchExecution = (messages: ThreadMessageDto[]) => {
+    const toolMessage = messages
+      .map((message) => message.message)
+      .find((msg) => isFileSearchToolMessage(msg));
+
+    let parsedResult: unknown;
+    const content = (toolMessage as { content?: unknown } | undefined)?.content;
+    if (content !== undefined) {
+      try {
+        parsedResult =
+          typeof content === 'string' ? JSON.parse(content) : content;
+      } catch {
+        parsedResult = content;
+      }
+    }
+
+    return { toolMessage, parsedResult };
+  };
+
+  const createFilesSearchGraphData = (): CreateGraphDto => {
+    return {
+      name: `Files Search Graph ${Date.now()}`,
+      description: 'Integration test graph for files_search_text tool',
+      temporary: true,
+      schema: {
+        nodes: [
+          {
+            id: 'trigger-1',
+            template: 'manual-trigger',
+            config: {},
+          },
+          {
+            id: 'agent-1',
+            template: 'simple-agent',
+            config: {
+              instructions: `
+You are a file search assistant.
+When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse that JSON and call files_search_text exactly once with those parameters. After the tool returns, immediately call finish with a short summary of matches. Do not use any other tools.
+              `,
+              name: 'Files Search Agent',
+              description: 'Searches files for a query',
+              summarizeMaxTokens: 272000,
+              summarizeKeepTokens: 30000,
+              invokeModelName: 'gpt-5-mini',
+              invokeModelReasoningEffort: ReasoningEffort.None,
+              enforceToolUsage: true,
+              maxIterations: 20,
+            } satisfies SimpleAgentSchemaType,
+          },
+          {
+            id: 'files-1',
+            template: 'files-tool',
+            config: {},
+          },
+          {
+            id: 'runtime-1',
+            template: 'docker-runtime',
+            config: {
+              runtimeType: 'Docker',
+              image: environment.dockerRuntimeImage,
+              initScript: [
+                `mkdir -p ${SEARCH_DIR}/src`,
+                `echo "This line has ${SEARCH_QUERY} content." > ${SEARCH_DIR}/src/sample.ts`,
+              ],
+              initScriptTimeoutMs: 180_000,
+            },
+          },
+        ],
+        edges: [
+          { from: 'trigger-1', to: 'agent-1' },
+          { from: 'agent-1', to: 'files-1' },
+          { from: 'files-1', to: 'runtime-1' },
+        ],
+      },
+    };
+  };
+
+  beforeAll(async () => {
+    app = await createTestModule();
+    graphsService = app.get<GraphsService>(GraphsService);
+    threadsService = app.get<ThreadsService>(ThreadsService);
+  });
+
+  afterEach(async () => {
+    while (createdGraphIds.length > 0) {
+      const graphId = createdGraphIds.pop();
+      if (graphId) {
+        await cleanupGraph(graphId);
+      }
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it(
+    'runs files_search_text via graph trigger and returns matches',
+    { timeout: 45000 },
+    async () => {
+      const graph = await graphsService.create(createFilesSearchGraphData());
+      registerGraph(graph.id);
+
+      await graphsService.run(graph.id);
+      await waitForGraphStatus(graph.id, GraphStatus.Running, 30000);
+
+      const execution = await graphsService.executeTrigger(
+        graph.id,
+        'trigger-1',
+        {
+          messages: [
+            `SEARCH_WITH_FILES_TOOL {"dir":"${SEARCH_DIR}","query":"${SEARCH_QUERY}","includeGlobs":${JSON.stringify(
+              INCLUDE_GLOBS,
+            )}}`,
+          ],
+          async: false,
+        },
+      );
+
+      expect(execution.externalThreadId).toBeDefined();
+
+      const thread = await waitForThreadCompletion(execution.externalThreadId);
+      expect(THREAD_STATUSES).toContain(thread.status);
+
+      const messages = await getThreadMessages(execution.externalThreadId);
+      const searchExecution = findFileSearchExecution(messages);
+
+      if (!searchExecution.toolMessage) {
+        throw new Error(
+          `files_search_text tool was not invoked. Messages: ${JSON.stringify(
+            messages.map((m) => m.message),
+          )}`,
+        );
+      }
+
+      const parsed = searchExecution.parsedResult as
+        | { matches?: { data?: { path?: { text?: string } } }[] }
+        | undefined;
+
+      if (!Array.isArray(parsed?.matches) || parsed.matches.length === 0) {
+        throw new Error(
+          `files_search_text returned no matches. Raw result: ${JSON.stringify(
+            searchExecution.parsedResult,
+          )}`,
+        );
+      }
+
+      const firstPath = parsed.matches[0]?.data?.path?.text;
+      expect(firstPath).toContain('/src/sample.ts');
     },
   );
 });
