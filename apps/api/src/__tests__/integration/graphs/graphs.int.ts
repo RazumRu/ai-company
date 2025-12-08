@@ -697,14 +697,15 @@ describe('Graphs Integration Tests', () => {
           { timeout: 60000, interval: 1000 },
         );
 
-        const stopMessage = messages.find(
+        const stopMessages = messages.filter(
           (entry) =>
             entry.message.role === 'system' &&
             typeof entry.message.content === 'string' &&
             entry.message.content.includes('Graph execution was stopped'),
         );
 
-        expect(stopMessage?.message.content).toContain(
+        expect(stopMessages).toHaveLength(1);
+        expect(stopMessages[0]?.message.content).toContain(
           'Graph execution was stopped',
         );
       },

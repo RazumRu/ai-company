@@ -13,10 +13,17 @@ import {
   vi,
 } from 'vitest';
 
+import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { buildReasoningMessage } from '../../../v1/agents/agents.utils';
-import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
+import {
+  SimpleAgent,
+  SimpleAgentSchemaType,
+} from '../../../v1/agents/services/agents/simple-agent';
 import { GraphThreadState } from '../../../v1/agents/services/graph-thread-state';
-import { ReasoningMessageDto } from '../../../v1/graphs/dto/graphs.dto';
+import {
+  CreateGraphDto,
+  ReasoningMessageDto,
+} from '../../../v1/graphs/dto/graphs.dto';
 import {
   GraphNodeSchemaType,
   GraphNodeStatus,
@@ -40,6 +47,7 @@ import {
 } from '../../../v1/threads/dto/threads.dto';
 import { ThreadEntity } from '../../../v1/threads/entity/thread.entity';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
+import { ThreadStatus } from '../../../v1/threads/threads.types';
 import {
   createMockGraphData,
   waitForCondition,
@@ -64,6 +72,61 @@ describe('Socket Notifications Integration Tests', () => {
   let ioAdapter: IoAdapter;
   let baseUrl: string;
   const createdGraphIds: string[] = [];
+  const STOP_TRIGGER_NODE_ID = 'trigger-1';
+  const STOP_AGENT_NODE_ID = 'agent-1';
+  const STOP_SHELL_NODE_ID = 'shell-1';
+  const STOP_RUNTIME_NODE_ID = 'runtime-1';
+  const COMMAND_AGENT_INSTRUCTIONS =
+    'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, describe what happened. If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
+
+  const createCommandGraphData = (): CreateGraphDto => ({
+    name: `Command Graph ${Date.now()}`,
+    description: 'Graph with shell runtime for destroy-stop scenarios',
+    temporary: true,
+    schema: {
+      nodes: [
+        {
+          id: STOP_TRIGGER_NODE_ID,
+          template: 'manual-trigger',
+          config: {},
+        },
+        {
+          id: STOP_AGENT_NODE_ID,
+          template: 'simple-agent',
+          config: {
+            instructions: COMMAND_AGENT_INSTRUCTIONS,
+            name: 'Test Agent',
+            description: 'Test agent description',
+            summarizeMaxTokens: 272000,
+            summarizeKeepTokens: 30000,
+            invokeModelName: 'gpt-5-mini',
+            invokeModelReasoningEffort: ReasoningEffort.None,
+            enforceToolUsage: true,
+            maxIterations: 50,
+          } satisfies SimpleAgentSchemaType,
+        },
+        {
+          id: STOP_SHELL_NODE_ID,
+          template: 'shell-tool',
+          config: {},
+        },
+        {
+          id: STOP_RUNTIME_NODE_ID,
+          template: 'docker-runtime',
+          config: {
+            runtimeType: 'Docker',
+            image: 'python:3.11-slim',
+            env: {},
+          },
+        },
+      ],
+      edges: [
+        { from: STOP_TRIGGER_NODE_ID, to: STOP_AGENT_NODE_ID },
+        { from: STOP_AGENT_NODE_ID, to: STOP_SHELL_NODE_ID },
+        { from: STOP_SHELL_NODE_ID, to: STOP_RUNTIME_NODE_ID },
+      ],
+    },
+  });
 
   beforeAll(async () => {
     app = await createTestModule();
@@ -371,6 +434,86 @@ describe('Socket Notifications Integration Tests', () => {
 
         // Assert no duplicates
         expect(messageKeys.length).toBe(uniqueKeys.size);
+      },
+    );
+
+    it(
+      'emits a single stop message notification when graph execution is stopped',
+      { timeout: 120_000 },
+      async () => {
+        socket = createSocketConnection(TEST_USER_ID);
+        await waitForSocketConnection(socket);
+
+        const graphData = createCommandGraphData();
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        socket.emit('subscribe_graph', { graphId });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const stopNotifications: MessageNotification[] = [];
+
+        socket.on('agent.message', (notification: unknown) => {
+          const typedNotification = notification as MessageNotification;
+          const messageContent = typedNotification?.data?.message?.content;
+
+          if (
+            typeof messageContent === 'string' &&
+            messageContent.includes('Graph execution was stopped')
+          ) {
+            stopNotifications.push(typedNotification);
+          }
+        });
+
+        await graphsService.run(graphId);
+
+        const execution = await graphsService.executeTrigger(
+          graphId,
+          STOP_TRIGGER_NODE_ID,
+          {
+            messages: ['Run this command: sleep 100 && echo "interrupt me"'],
+            async: true,
+          },
+        );
+
+        await waitForCondition(
+          () =>
+            threadsService.getThreadByExternalId(execution.externalThreadId),
+          (thread) => thread.status === ThreadStatus.Running,
+          { timeout: 60000, interval: 1000 },
+        );
+
+        await graphsService.destroy(graphId);
+
+        await waitForCondition(
+          async () => stopNotifications,
+          (notifications) => notifications.length >= 1,
+          { timeout: 60000, interval: 500 },
+        );
+
+        // Give time for any duplicate notifications to surface
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        const stopMessageNotifications = stopNotifications.filter(
+          (notification) =>
+            typeof notification.data.message.content === 'string' &&
+            notification.data.message.content.includes(
+              'Graph execution was stopped',
+            ),
+        );
+
+        const stopKeys = stopMessageNotifications.map(
+          (notification) =>
+            `${notification.threadId}:${notification.data.message.content}`,
+        );
+        const uniqueStopKeys = new Set(stopKeys);
+
+        expect(stopMessageNotifications).toHaveLength(1);
+        expect(uniqueStopKeys.size).toBe(1);
+        expect(stopMessageNotifications[0]?.data.message.content).toContain(
+          'Graph execution was stopped',
+        );
       },
     );
 
