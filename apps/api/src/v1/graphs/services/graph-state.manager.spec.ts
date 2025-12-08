@@ -14,6 +14,7 @@ import {
   GraphNodeStatus,
   NodeKind,
 } from '../graphs.types';
+import { ThreadStatus } from '../../threads/threads.types';
 import { GraphStateManager } from './graph-state.manager';
 
 class TestRuntime extends BaseRuntime {
@@ -265,7 +266,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
               run_id: 'run-1',
             },
           },
@@ -282,7 +283,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-2',
               run_id: 'run-2',
             },
           },
@@ -299,7 +300,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
               run_id: 'run-1',
             },
           },
@@ -336,6 +337,137 @@ describe('GraphStateManager', () => {
       expect(thread1Calls[0][0].data.status).toBe('done');
     });
 
+    it('should not mark parent thread done when child agent completes', async () => {
+      let rootAgentSubscribe: ((event: any) => void) | undefined;
+      let childAgentSubscribe: ((event: any) => void) | undefined;
+
+      const rootAgent = {
+        subscribe: vi.fn((callback) => {
+          rootAgentSubscribe = callback;
+          return vi.fn();
+        }),
+        getGraphNodeMetadata: vi.fn(),
+      };
+
+      const childAgent = {
+        subscribe: vi.fn((callback) => {
+          childAgentSubscribe = callback;
+          return vi.fn();
+        }),
+        getGraphNodeMetadata: vi.fn(),
+      };
+
+      const rootNode = {
+        id: 'agent-root',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        config: {},
+        instance: rootAgent,
+      } as unknown as CompiledGraphNode;
+
+      const childNode = {
+        id: 'agent-child',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        config: {},
+        instance: childAgent,
+      } as unknown as CompiledGraphNode;
+
+      manager.registerNode(rootNode.id);
+      manager.attachGraphNode(rootNode.id, rootNode);
+
+      manager.registerNode(childNode.id);
+      manager.attachGraphNode(childNode.id, childNode);
+
+      // Simulate child agent run with different threadId than parent_thread_id
+      childAgentSubscribe?.({
+        type: 'invoke',
+        data: {
+          threadId: 'root-thread__agent-child',
+          messages: [],
+          config: {
+            configurable: {
+              graph_id: 'graph-1',
+              node_id: childNode.id,
+              parent_thread_id: 'root-thread',
+              run_id: 'run-child',
+            },
+          },
+        },
+      });
+
+      await childAgentSubscribe?.({
+        type: 'run',
+        data: {
+          threadId: 'root-thread__agent-child',
+          messages: [],
+          config: {
+            configurable: {
+              graph_id: 'graph-1',
+              node_id: childNode.id,
+              parent_thread_id: 'root-thread',
+              run_id: 'run-child',
+            },
+          },
+          result: { messages: [], threadId: 'root-thread__agent-child' },
+        },
+      });
+
+      const threadUpdateCallsAfterChild =
+        (notifications.emit as any).mock.calls.filter(
+          (call: any) =>
+            call[0]?.type === NotificationEvent.ThreadUpdate &&
+            call[0]?.threadId === 'root-thread',
+        );
+
+      expect(threadUpdateCallsAfterChild.length).toBe(0);
+
+      vi.clearAllMocks();
+
+      // Now simulate the root agent finishing on the root thread
+      rootAgentSubscribe?.({
+        type: 'invoke',
+        data: {
+          threadId: 'root-thread',
+          messages: [],
+          config: {
+            configurable: {
+              graph_id: 'graph-1',
+              node_id: rootNode.id,
+              parent_thread_id: 'root-thread',
+              run_id: 'run-root',
+            },
+          },
+        },
+      });
+
+      await rootAgentSubscribe?.({
+        type: 'run',
+        data: {
+          threadId: 'root-thread',
+          messages: [],
+          config: {
+            configurable: {
+              graph_id: 'graph-1',
+              node_id: rootNode.id,
+              parent_thread_id: 'root-thread',
+              run_id: 'run-root',
+            },
+          },
+          result: { messages: [], threadId: 'root-thread' },
+        },
+      });
+
+      const rootThreadUpdates = (notifications.emit as any).mock.calls.filter(
+        (call: any) =>
+          call[0]?.type === NotificationEvent.ThreadUpdate &&
+          call[0]?.threadId === 'root-thread',
+      );
+
+      expect(rootThreadUpdates.length).toBe(1);
+      expect(rootThreadUpdates[0][0].data.status).toBe(ThreadStatus.Done);
+    });
+
     it('should track node status as Running when at least one thread is active', async () => {
       let subscribeFn: ((event: any) => void) | undefined;
 
@@ -368,7 +500,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
               run_id: 'run-1',
             },
           },
@@ -385,7 +517,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-2',
               run_id: 'run-2',
             },
           },
@@ -402,7 +534,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
               run_id: 'run-1',
             },
           },
@@ -456,7 +588,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
               source: 'test-source',
             },
           },
@@ -469,7 +601,7 @@ describe('GraphStateManager', () => {
           graphId: 'graph-1',
           nodeId: 'agent-1',
           threadId: 'thread-1',
-          parentThreadId: 'parent-1',
+          parentThreadId: 'thread-1',
           source: 'test-source',
         }),
       );
@@ -499,7 +631,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
             },
           },
         },
@@ -511,7 +643,7 @@ describe('GraphStateManager', () => {
           graphId: 'graph-1',
           nodeId: 'agent-1',
           threadId: 'thread-1',
-          parentThreadId: 'parent-1',
+          parentThreadId: 'thread-1',
         }),
       );
 
@@ -527,7 +659,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
             },
           },
         },
@@ -539,7 +671,7 @@ describe('GraphStateManager', () => {
           graphId: 'graph-1',
           nodeId: 'agent-1',
           threadId: 'thread-1',
-          parentThreadId: 'parent-1',
+          parentThreadId: 'thread-1',
           data: { done: true, summary: 'Complete' },
         }),
       );
@@ -556,7 +688,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
               run_id: 'run-1',
             },
           },
@@ -628,7 +760,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
             },
           },
         },
@@ -653,7 +785,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
             },
           },
         },
@@ -668,7 +800,7 @@ describe('GraphStateManager', () => {
             configurable: {
               graph_id: 'graph-1',
               node_id: 'agent-1',
-              parent_thread_id: 'parent-1',
+              parent_thread_id: 'thread-1',
             },
           },
         },

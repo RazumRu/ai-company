@@ -337,13 +337,18 @@ export class GraphStateManager {
 
         if (event.type === 'run') {
           const cfg = event.data.config?.configurable;
-          const parentThreadId = cfg?.parent_thread_id || 'unknown';
+          const parentThreadId = cfg?.parent_thread_id;
+          const parentThreadIdForNotification = parentThreadId ?? 'unknown';
           const threadId = event.data.threadId;
           const runId = cfg?.run_id;
 
-          // Emit thread update notification with final status
-          // Centralized place for all thread status updates on completion
-          if (threadId) {
+          // Emit thread status only for the root thread.
+          // Nested agent executions (with a different threadId than parentThreadId)
+          // should not mark the parent thread as done.
+          const shouldEmitThreadStatus =
+            !parentThreadId || parentThreadId === threadId;
+
+          if (shouldEmitThreadStatus && threadId) {
             let finalStatus: ThreadStatus;
 
             if (event.data.error) {
@@ -362,7 +367,7 @@ export class GraphStateManager {
               graphId: this.graphId,
               nodeId: state.nodeId,
               threadId,
-              parentThreadId,
+              parentThreadId: parentThreadIdForNotification,
               data: { status: finalStatus },
             });
           }
