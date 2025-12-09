@@ -13,6 +13,10 @@ import { OnlyForAuthorized } from '@packages/http-server';
 
 import { EntityUUIDDto } from '../../../utils/dto/misc.dto';
 import {
+  SuggestAgentInstructionsDto,
+  SuggestAgentInstructionsResponseDto,
+} from '../dto/agent-instructions.dto';
+import {
   CreateGraphDto,
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
@@ -22,6 +26,7 @@ import {
   UpdateGraphDto,
   UpdateGraphResponseDto,
 } from '../dto/graphs.dto';
+import { AgentInstructionsService } from '../services/agent-instructions.service';
 import { GraphsService } from '../services/graphs.service';
 
 @Controller('graphs')
@@ -29,7 +34,10 @@ import { GraphsService } from '../services/graphs.service';
 @ApiBearerAuth()
 @OnlyForAuthorized()
 export class GraphsController {
-  constructor(private readonly graphsService: GraphsService) {}
+  constructor(
+    private readonly graphsService: GraphsService,
+    private readonly agentInstructionsService: AgentInstructionsService,
+  ) {}
 
   @Post()
   async createGraph(@Body() dto: CreateGraphDto): Promise<GraphDto> {
@@ -39,6 +47,15 @@ export class GraphsController {
   @Get()
   async getAllGraphs(): Promise<GraphDto[]> {
     return await this.graphsService.getAll();
+  }
+
+  @Post(':graphId/nodes/:nodeId/suggest-instructions')
+  async suggestAgentInstructions(
+    @Param('graphId') graphId: string,
+    @Param('nodeId') nodeId: string,
+    @Body() dto: SuggestAgentInstructionsDto,
+  ): Promise<SuggestAgentInstructionsResponseDto> {
+    return await this.agentInstructionsService.suggest(graphId, nodeId, dto);
   }
 
   @Get(':id')

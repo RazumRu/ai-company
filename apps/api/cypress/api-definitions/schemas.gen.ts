@@ -287,6 +287,33 @@ export const GraphDtoSchema = {
   ],
 } as const;
 
+export const SuggestAgentInstructionsDtoSchema = {
+  type: 'object',
+  properties: {
+    userRequest: {
+      type: 'string',
+      minLength: 1,
+    },
+    threadId: {
+      type: 'string',
+    },
+  },
+  required: ['userRequest'],
+} as const;
+
+export const SuggestAgentInstructionsResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    instructions: {
+      type: 'string',
+    },
+    threadId: {
+      type: 'string',
+    },
+  },
+  required: ['instructions', 'threadId'],
+} as const;
+
 export const GraphNodeWithStatusDtoSchema = {
   type: 'object',
   properties: {

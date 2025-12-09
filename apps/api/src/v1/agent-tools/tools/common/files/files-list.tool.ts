@@ -48,8 +48,8 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
   }
 
   public getDetailedInstructions(
-    config: FilesBaseToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: FilesBaseToolConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 

@@ -48,8 +48,8 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   }
 
   public getDetailedInstructions(
-    config: GhBaseToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: GhBaseToolConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 

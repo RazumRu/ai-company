@@ -762,9 +762,6 @@ export class DockerRuntime extends BaseRuntime {
       throw new Error('Runtime not started');
     }
 
-    const cmdList = Array.isArray(params.cmd) ? params.cmd : [params.cmd];
-    const envKeys = params.env ? Object.keys(params.env) : undefined;
-
     let fullWorkdir = this.containerWorkdir || undefined;
     if (params.childWorkdir) {
       fullWorkdir = params.createChildWorkdir

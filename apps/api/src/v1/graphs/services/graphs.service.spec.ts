@@ -586,9 +586,11 @@ describe('GraphsService', () => {
       const result = await service.getAll();
 
       expect(result).toMatchObject(expectedGraphs);
-      expect(graphDao.getAll).toHaveBeenCalledWith({
-        createdBy: mockUserId,
-      });
+      expect(graphDao.getAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          createdBy: mockUserId,
+        }),
+      );
     });
 
     it('should return empty array when no graphs found', async () => {

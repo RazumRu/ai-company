@@ -53,7 +53,7 @@ export class CommunicationExecTool extends BaseTool<
 
   public getDetailedInstructions(
     config: BaseCommunicationToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
     const availableAgents = config?.agents?.length

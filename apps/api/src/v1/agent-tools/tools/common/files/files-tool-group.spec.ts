@@ -20,7 +20,6 @@ describe('FilesToolGroup', () => {
   let mockFilesSearchTagsTool: FilesSearchTagsTool;
   let mockFilesApplyChangesTool: FilesApplyChangesTool;
   let mockFilesDeleteTool: FilesDeleteTool;
-  let mockConfig: FilesToolGroupConfig;
 
   beforeEach(async () => {
     mockFilesListTool = {
@@ -50,10 +49,6 @@ describe('FilesToolGroup', () => {
     mockFilesDeleteTool = {
       build: vi.fn(),
     } as unknown as FilesDeleteTool;
-
-    mockConfig = {
-      runtime: {} as any,
-    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

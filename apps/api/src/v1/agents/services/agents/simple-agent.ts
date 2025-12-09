@@ -70,7 +70,8 @@ export const SimpleAgentSchema = z.object({
     .describe(
       'System prompt injected at the start of each turn: role, goals, constraints, style.',
     )
-    .meta({ 'x-ui:textarea': true }),
+    .meta({ 'x-ui:textarea': true })
+    .meta({ 'x-ui:ai-suggestions': true }),
   invokeModelName: z
     .string()
     .default('gpt-5.1')

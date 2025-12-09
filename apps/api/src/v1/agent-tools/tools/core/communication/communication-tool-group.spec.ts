@@ -7,7 +7,6 @@ import { AgentInfo } from './communication-tools.types';
 
 describe('CommunicationToolGroup', () => {
   let toolGroup: CommunicationToolGroup;
-  let communicationExecTool: CommunicationExecTool;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -15,9 +14,6 @@ describe('CommunicationToolGroup', () => {
     }).compile();
 
     toolGroup = module.get<CommunicationToolGroup>(CommunicationToolGroup);
-    communicationExecTool = module.get<CommunicationExecTool>(
-      CommunicationExecTool,
-    );
   });
 
   describe('buildTools', () => {

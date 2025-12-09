@@ -41,6 +41,8 @@ import type {
   ListModelsResponses,
   RunGraphData,
   RunGraphResponses,
+  SuggestAgentInstructionsData,
+  SuggestAgentInstructionsResponses,
   UpdateGraphData,
   UpdateGraphResponses,
 } from './types.gen.js';
@@ -81,6 +83,24 @@ export const createGraph = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const suggestAgentInstructions = <ThrowOnError extends boolean = false>(
+  options: Options<SuggestAgentInstructionsData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    SuggestAgentInstructionsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-instructions',
     ...options,
     headers: {
       'Content-Type': 'application/json',

@@ -67,7 +67,7 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     mockCommunicationToolGroup = {
-      buildTools: vi.fn().mockImplementation((config) => [
+      buildTools: vi.fn().mockImplementation((_config) => [
         {
           name: 'communication_exec',
           description: 'Send a message to a specific agent',

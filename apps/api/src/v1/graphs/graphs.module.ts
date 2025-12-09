@@ -7,6 +7,7 @@ import { environment } from '../../environments';
 import { AgentsModule } from '../agents/agents.module';
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { OpenaiModule } from '../openai/openai.module';
 import { ThreadsModule } from '../threads/threads.module';
 import { GraphRevisionsController } from './controllers/graph-revisions.controller';
 import { GraphsController } from './controllers/graphs.controller';
@@ -14,6 +15,7 @@ import { GraphDao } from './dao/graph.dao';
 import { GraphRevisionDao } from './dao/graph-revision.dao';
 import { GraphEntity } from './entity/graph.entity';
 import { GraphRevisionEntity } from './entity/graph-revision.entity';
+import { AgentInstructionsService } from './services/agent-instructions.service';
 import { GraphCompiler } from './services/graph-compiler';
 import { GraphMergeService } from './services/graph-merge.service';
 import { GraphRegistry } from './services/graph-registry';
@@ -29,6 +31,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
   imports: [
     registerEntities([GraphEntity, GraphRevisionEntity]),
     forwardRef(() => GraphTemplatesModule),
+    OpenaiModule,
     NotificationsModule,
     AgentsModule,
     forwardRef(() => ThreadsModule),
@@ -38,6 +41,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphDao,
     GraphRevisionDao,
     GraphsService,
+    AgentInstructionsService,
     GraphRevisionService,
     GraphRevisionQueueService,
     GraphCompiler,
@@ -53,6 +57,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphRevisionDao,
     GraphCompiler,
     GraphsService,
+    AgentInstructionsService,
     GraphRevisionService,
     GraphRevisionQueueService,
     GraphRegistry,

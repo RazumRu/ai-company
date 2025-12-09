@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, DefaultLogger } from '@packages/common';
 
-import { environment } from '../../../environments';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';

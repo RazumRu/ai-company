@@ -50,8 +50,8 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
   }
 
   public getDetailedInstructions(
-    config: Record<PropertyKey, unknown>,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: Record<PropertyKey, unknown>,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 

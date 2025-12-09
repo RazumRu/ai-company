@@ -53,8 +53,8 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   }
 
   public getDetailedInstructions(
-    config: GhBaseToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: GhBaseToolConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 

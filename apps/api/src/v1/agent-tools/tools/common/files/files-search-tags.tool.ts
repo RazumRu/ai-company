@@ -62,8 +62,8 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
   }
 
   public getDetailedInstructions(
-    config: FilesBaseToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: FilesBaseToolConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 
@@ -247,7 +247,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
       try {
         const parsed = JSON.parse(line);
         matches.push(parsed);
-      } catch (e) {
+      } catch (_e) {
         // Skip invalid JSON lines
         continue;
       }

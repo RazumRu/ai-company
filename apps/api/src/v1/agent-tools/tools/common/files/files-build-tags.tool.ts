@@ -46,8 +46,8 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
   }
 
   public getDetailedInstructions(
-    config: FilesBaseToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: FilesBaseToolConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 

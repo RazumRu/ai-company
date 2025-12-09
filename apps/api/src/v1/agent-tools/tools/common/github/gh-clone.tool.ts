@@ -45,8 +45,8 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   }
 
   public getDetailedInstructions(
-    config: GhBaseToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: GhBaseToolConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 

@@ -29,11 +29,6 @@ describe('Graph Templates Integration Tests', () => {
     }
   };
 
-  const getTemplateByName = async (name: string) => {
-    const templates = await templatesService.getAllTemplates();
-    return templates.find((template) => template.name === name);
-  };
-
   const getTemplateById = async (id: string) => {
     const templates = await templatesService.getAllTemplates();
     return templates.find((template) => template.id === id);

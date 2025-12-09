@@ -66,7 +66,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
   public getDetailedInstructions(
     config: ShellToolOptions,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
     const runtimeInfo = this.buildRuntimeInfo(config.runtime);

@@ -87,12 +87,12 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     const location = args.filePath
       ? basename(args.filePath)
       : (args.dir ?? 'current directory');
-    return `Searching for "${args.query}"`;
+    return `Searching for "${args.query}" in ${location}`;
   }
 
   public getDetailedInstructions(
-    config: FilesBaseToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: FilesBaseToolConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 
@@ -286,7 +286,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
           }
           matches.push(parsed);
         }
-      } catch (e) {
+      } catch (_e) {
         // Skip invalid JSON lines (like summary lines)
         continue;
       }

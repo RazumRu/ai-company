@@ -56,8 +56,8 @@ export class WebSearchTool extends BaseTool<
     'Search the web for up-to-date information and return top results. For deeper results set searchDepth="advanced".';
 
   public getDetailedInstructions(
-    config: WebSearchToolConfig,
-    lgConfig?: ExtendedLangGraphRunnableConfig,
+    _config: WebSearchToolConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const parameterDocs = this.getSchemaParameterDocs(this.schema);
 

@@ -14,7 +14,6 @@ describe('GhToolGroup', () => {
   let mockGhCommitTool: GhCommitTool;
   let mockGhBranchTool: GhBranchTool;
   let mockGhPushTool: GhPushTool;
-  let mockConfig: GhToolGroupConfig;
 
   beforeEach(async () => {
     mockGhCloneTool = {
@@ -32,12 +31,6 @@ describe('GhToolGroup', () => {
     mockGhPushTool = {
       build: vi.fn(),
     } as unknown as GhPushTool;
-
-    mockConfig = {
-      runtime: {} as any,
-      patToken: 'ghp_test_token',
-      tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
-    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

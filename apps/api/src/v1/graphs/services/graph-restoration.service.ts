@@ -3,7 +3,6 @@ import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
 import { Brackets } from 'typeorm';
 
-import { environment } from '../../../environments';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { GraphCheckpointEntity } from '../../agents/entity/graph-chekpoints.entity';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';

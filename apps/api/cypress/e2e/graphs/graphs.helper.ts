@@ -4,6 +4,7 @@ import {
   ExecuteTriggerResponseDto,
   GraphDto,
   GraphNodeWithStatusDto,
+  SuggestAgentInstructionsResponseDto,
   UpdateGraphDto,
   UpdateGraphResponseDto,
 } from '../../api-definitions';
@@ -197,6 +198,21 @@ export const waitForGraphStatus = (
 
   return poll();
 };
+
+export const suggestAgentInstructions = (
+  graphId: string,
+  nodeId: string,
+  userRequest: string,
+  headers = reqHeaders,
+  threadId?: string,
+) =>
+  cy.request<SuggestAgentInstructionsResponseDto>({
+    url: `/api/v1/graphs/${graphId}/nodes/${nodeId}/suggest-instructions`,
+    method: 'POST',
+    headers,
+    body: { userRequest, threadId },
+    failOnStatusCode: false,
+  });
 
 export const waitForGraphToBeStopped = (
   id: string,
