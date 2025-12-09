@@ -71,7 +71,7 @@ describe('FilesDeleteTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
@@ -96,7 +96,7 @@ describe('FilesDeleteTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('File not found');

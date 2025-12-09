@@ -127,6 +127,10 @@ export class MessageTransformerService {
         const toolName = (m.name as string) || 'unknown';
         const toolCallId = (m.tool_call_id as string) || '';
         const parsed = this.parseToolContent(m.content);
+        const title =
+          typeof additionalKwargs?.__title === 'string'
+            ? (additionalKwargs.__title as string)
+            : undefined;
 
         if (toolName === 'shell') {
           return {
@@ -149,6 +153,7 @@ export class MessageTransformerService {
           name: toolName,
           content: parsed,
           toolCallId,
+          title,
           additionalKwargs,
         };
       }

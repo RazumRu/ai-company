@@ -178,6 +178,10 @@ export const ToolMessageSchema = z.object({
     .record(z.string(), z.unknown())
     .describe('Parsed tool result as JSON'),
   toolCallId: z.string().describe('Tool call ID'),
+  title: z
+    .string()
+    .optional()
+    .describe('Optional human-readable tool call title'),
   additionalKwargs: z
     .record(z.string(), z.unknown())
     .optional()

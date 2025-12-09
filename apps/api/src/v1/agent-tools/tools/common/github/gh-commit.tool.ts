@@ -4,7 +4,10 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { GhBaseTool, GhBaseToolConfig } from './gh-base.tool';
 
 export enum SemanticCommitType {
@@ -41,6 +44,13 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   public name = 'gh_commit';
   public description =
     'Create a git (GitHub) commit locally with a semantic commit message. The commit message will be formatted as "{semanticType}: [AI] {title}" with an optional body. Use gh_push tool to push commits to the remote repository.';
+
+  protected override generateTitle(
+    args: GhCommitToolSchemaType,
+    _config: GhBaseToolConfig,
+  ): string {
+    return `Committing (${args.semanticType}) ${args.title}`;
+  }
 
   public getDetailedInstructions(
     config: GhBaseToolConfig,
@@ -189,7 +199,10 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
     args: GhCommitToolSchemaType,
     config: GhBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<GhCommitToolOutput> {
+  ): Promise<ToolInvokeResult<GhCommitToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
+
     const commitMessage = `${args.semanticType}: [AI] ${args.title}`;
 
     // Use git commit command
@@ -206,9 +219,12 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
     if (diffRes.exitCode === 0) {
       // No staged changes
       return {
-        error:
-          'No staged changes to commit. Please stage your changes first using `git add`.',
-        success: false,
+        output: {
+          error:
+            'No staged changes to commit. Please stage your changes first using `git add`.',
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
@@ -228,9 +244,12 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
 
     if (commitRes.exitCode !== 0) {
       return {
-        error:
-          commitRes.stderr || commitRes.stdout || 'Failed to create commit',
-        success: false,
+        output: {
+          error:
+            commitRes.stderr || commitRes.stdout || 'Failed to create commit',
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
@@ -247,8 +266,11 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
       hashRes.exitCode === 0 ? hashRes.stdout.trim() : undefined;
 
     return {
-      success: true,
-      commitHash,
+      output: {
+        success: true,
+        commitHash,
+      },
+      messageMetadata,
     };
   }
 }

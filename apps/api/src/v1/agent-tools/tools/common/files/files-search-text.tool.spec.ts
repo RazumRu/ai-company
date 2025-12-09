@@ -143,7 +143,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(1);
@@ -183,7 +183,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
@@ -218,7 +218,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
@@ -252,7 +252,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
@@ -285,7 +285,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
@@ -309,7 +309,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toEqual([]);
       expect(result.error).toBeUndefined();
@@ -347,7 +347,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(2);
@@ -380,7 +380,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(30);
@@ -417,7 +417,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(1);
@@ -438,7 +438,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('rg: error: invalid pattern');
       expect(result.matches).toBeUndefined();
@@ -457,7 +457,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('Error: ripgrep not found');
       expect(result.matches).toBeUndefined();
@@ -476,7 +476,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('Failed to search text');
       expect(result.matches).toBeUndefined();
@@ -505,7 +505,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
@@ -542,7 +542,7 @@ describe('FilesSearchTextTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(1);

@@ -17,9 +17,18 @@ export type BuiltAgentTool = DynamicStructuredTool & {
   __instructions?: string;
 };
 
+export type ToolInvokeResult<TResult> = {
+  output: TResult;
+  messageMetadata?: {
+    __title?: string;
+  };
+};
+
 export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
   public abstract name: string;
   public abstract description: string;
+
+  protected generateTitle?(args: TSchema, config: TConfig): string;
 
   protected getSchemaParameterDocs(schema: z.ZodTypeAny) {
     return getSchemaParameterDocs(schema);
@@ -45,7 +54,7 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     args: TSchema,
     config: TConfig,
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<TResult> | TResult;
+  ): Promise<ToolInvokeResult<TResult>> | ToolInvokeResult<TResult>;
 
   public build(
     config: TConfig,

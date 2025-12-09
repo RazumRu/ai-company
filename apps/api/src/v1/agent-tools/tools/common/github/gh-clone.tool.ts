@@ -6,7 +6,10 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { GhBaseTool, GhBaseToolConfig, GhBaseToolSchema } from './gh-base.tool';
 
 export const GhCloneToolSchema = GhBaseToolSchema.extend({
@@ -32,6 +35,14 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   public name = 'gh_clone';
   public description =
     'Clone a GitHub repository into the running container using authenticated HTTPS. Optionally specify a branch or tag to checkout, and a depth for shallow cloning. Returns the path to the cloned repository.';
+
+  protected override generateTitle(
+    args: GhCloneToolSchemaType,
+    _config: GhBaseToolConfig,
+  ): string {
+    const suffix = args.branch ? `@${args.branch}` : '';
+    return `Cloning ${args.owner}/${args.repo}${suffix}`;
+  }
 
   public getDetailedInstructions(
     config: GhBaseToolConfig,
@@ -130,7 +141,10 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     args: GhCloneToolSchemaType,
     config: GhBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<GhCloneToolOutput> {
+  ): Promise<ToolInvokeResult<GhCloneToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
+
     const cmd = [`gh repo clone ${args.owner}/${args.repo}`];
 
     if (args.branch || args.depth) {
@@ -155,12 +169,18 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
 
     if (res.exitCode !== 0) {
       return {
-        error: res.stderr || res.stdout || 'Failed to clone repository',
+        output: {
+          error: res.stderr || res.stdout || 'Failed to clone repository',
+        },
+        messageMetadata,
       };
     }
 
     return {
-      path: path.join(res.execPath || '', args.repo),
+      output: {
+        path: path.join(res.execPath || '', args.repo),
+      },
+      messageMetadata,
     };
   }
 }

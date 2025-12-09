@@ -154,7 +154,7 @@ describe('GhCommitTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.commitHash).toBe('abc123def456');
@@ -210,7 +210,7 @@ describe('GhCommitTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.commitHash).toBe('def456ghi789');
@@ -239,7 +239,7 @@ describe('GhCommitTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No staged changes to commit');
@@ -268,7 +268,7 @@ describe('GhCommitTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Error: nothing to commit');
@@ -296,7 +296,7 @@ describe('GhCommitTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Error: nothing to commit');
@@ -323,7 +323,7 @@ describe('GhCommitTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Failed to create commit');
@@ -356,7 +356,7 @@ describe('GhCommitTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.commitHash).toBeUndefined();
@@ -446,7 +446,7 @@ describe('GhCommitTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
@@ -498,7 +498,7 @@ describe('GhCommitTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(

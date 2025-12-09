@@ -1,10 +1,15 @@
+import { basename } from 'node:path';
+
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesReadToolSchema = z.object({
@@ -45,6 +50,18 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
     'Read the contents of a file using an absolute path. Optionally read specific line ranges using startLine and endLine parameters. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns the file content and line count.';
+
+  protected override generateTitle(
+    args: FilesReadToolSchemaType,
+    _config: FilesBaseToolConfig,
+  ): string {
+    const name = basename(args.filePath);
+    const range =
+      args.startLine !== undefined && args.endLine !== undefined
+        ? ` lines ${args.startLine}-${args.endLine}`
+        : '';
+    return `Reading ${name}${range}`;
+  }
 
   public getDetailedInstructions(
     config: FilesBaseToolConfig,
@@ -134,17 +151,25 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     args: FilesReadToolSchemaType,
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<FilesReadToolOutput> {
+  ): Promise<ToolInvokeResult<FilesReadToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
     // Validate that if startLine is provided, endLine must also be provided
     if (args.startLine !== undefined && args.endLine === undefined) {
       return {
-        error: 'endLine must be provided when startLine is specified',
+        output: {
+          error: 'endLine must be provided when startLine is specified',
+        },
+        messageMetadata,
       };
     }
 
     if (args.endLine !== undefined && args.startLine === undefined) {
       return {
-        error: 'startLine must be provided when endLine is specified',
+        output: {
+          error: 'startLine must be provided when endLine is specified',
+        },
+        messageMetadata,
       };
     }
 
@@ -154,7 +179,10 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       args.startLine > args.endLine
     ) {
       return {
-        error: 'startLine must be less than or equal to endLine',
+        output: {
+          error: 'startLine must be less than or equal to endLine',
+        },
+        messageMetadata,
       };
     }
 
@@ -179,7 +207,10 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
 
     if (res.exitCode !== 0) {
       return {
-        error: res.stderr || res.stdout || 'Failed to read file',
+        output: {
+          error: res.stderr || res.stdout || 'Failed to read file',
+        },
+        messageMetadata,
       };
     }
 
@@ -187,8 +218,11 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     const lineCount = content.split('\n').length;
 
     return {
-      content,
-      lineCount,
+      output: {
+        content,
+        lineCount,
+      },
+      messageMetadata,
     };
   }
 }

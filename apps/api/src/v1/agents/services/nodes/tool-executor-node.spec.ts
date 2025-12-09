@@ -86,7 +86,7 @@ describe('ToolExecutorNode', () => {
       });
 
       mockState.messages = [aiMessage];
-      mockTool1.invoke = vi.fn().mockResolvedValue('Tool result 1');
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: 'Tool result 1' });
 
       const result = await node.invoke(mockState, mockConfig);
 
@@ -122,8 +122,8 @@ describe('ToolExecutorNode', () => {
       });
 
       mockState.messages = [aiMessage];
-      mockTool1.invoke = vi.fn().mockResolvedValue('Result 1');
-      mockTool2.invoke = vi.fn().mockResolvedValue('Result 2');
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: 'Result 1' });
+      mockTool2.invoke = vi.fn().mockResolvedValue({ output: 'Result 2' });
 
       const result = await node.invoke(mockState, mockConfig);
 
@@ -244,7 +244,7 @@ describe('ToolExecutorNode', () => {
       });
 
       mockState.messages = [humanMessage, aiMessage];
-      mockTool1.invoke = vi.fn().mockResolvedValue('Tool result');
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: 'Tool result' });
 
       const result = await node.invoke(mockState, mockConfig);
 
@@ -272,7 +272,7 @@ describe('ToolExecutorNode', () => {
         array: [1, 2, 3],
         boolean: true,
       };
-      mockTool1.invoke = vi.fn().mockResolvedValue(complexResult);
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: complexResult });
 
       const result = await node.invoke(mockState, mockConfig);
 
@@ -300,7 +300,7 @@ describe('ToolExecutorNode', () => {
 
       mockState.messages = [aiMessage];
       const longOutput = 'a'.repeat(12);
-      mockTool1.invoke = vi.fn().mockResolvedValue(longOutput);
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: longOutput });
 
       const result = await limitedNode.invoke(mockState, mockConfig);
       const expectedSuffix = '\n\n[output trimmed to 10 characters from 12]';
@@ -324,7 +324,9 @@ describe('ToolExecutorNode', () => {
       });
 
       mockState.messages = [aiMessage];
-      mockTool1.invoke = vi.fn().mockResolvedValue('Simple string result');
+      mockTool1.invoke = vi.fn().mockResolvedValue({
+        output: 'Simple string result',
+      });
 
       const result = await node.invoke(mockState, mockConfig);
 
@@ -353,7 +355,7 @@ describe('ToolExecutorNode', () => {
       };
 
       mockState.messages = [aiMessage];
-      mockTool1.invoke = vi.fn().mockResolvedValue('result');
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: 'result' });
 
       await node.invoke(mockState, customConfig);
 
@@ -382,11 +384,9 @@ describe('ToolExecutorNode', () => {
 
       mockState.messages = [aiMessage];
       mockState.done = false;
-      mockFinishTool.invoke = vi
-        .fn()
-        .mockResolvedValue(
-          new FinishToolResponse('Task completed successfully', false),
-        );
+      mockFinishTool.invoke = vi.fn().mockResolvedValue({
+        output: new FinishToolResponse('Task completed successfully', false),
+      });
 
       const result = await node.invoke(mockState, mockConfig);
 
@@ -415,11 +415,9 @@ describe('ToolExecutorNode', () => {
       mockState.messages = [aiMessage];
       mockState.done = false;
       mockState.needsMoreInfo = false;
-      mockFinishTool.invoke = vi
-        .fn()
-        .mockResolvedValue(
-          new FinishToolResponse('What is the target environment?', true),
-        );
+      mockFinishTool.invoke = vi.fn().mockResolvedValue({
+        output: new FinishToolResponse('What is the target environment?', true),
+      });
 
       const result = await node.invoke(mockState, mockConfig);
 

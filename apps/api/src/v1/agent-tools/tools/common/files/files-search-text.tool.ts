@@ -1,10 +1,15 @@
+import { basename } from 'node:path';
+
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 const MAX_MATCHES = 30;
@@ -74,6 +79,16 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   public name = 'files_search_text';
   public description =
     'Search for text patterns in repository files using ripgrep (rg). Supports regex patterns, file filtering with globs, and searching in specific files. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns JSON-formatted search results with file paths, line numbers, and matched text (capped at 30 matches).';
+
+  protected override generateTitle(
+    args: FilesSearchTextToolSchemaType,
+    _config: FilesBaseToolConfig,
+  ): string {
+    const location = args.filePath
+      ? basename(args.filePath)
+      : (args.dir ?? 'current directory');
+    return `Searching for "${args.query}"`;
+  }
 
   public getDetailedInstructions(
     config: FilesBaseToolConfig,
@@ -173,7 +188,9 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     args: FilesSearchTextToolSchemaType,
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<FilesSearchTextToolOutput> {
+  ): Promise<ToolInvokeResult<FilesSearchTextToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
     const cmdParts: string[] = ['rg', '--json'];
 
     // If filePath is provided, use absolute path directly (no need to cd)
@@ -239,12 +256,18 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       // ripgrep returns exit code 1 when no matches are found, which is not an error
       if (res.exitCode === 1 && !res.stderr) {
         return {
-          matches: [],
+          output: {
+            matches: [],
+          },
+          messageMetadata,
         };
       }
 
       return {
-        error: res.stderr || res.stdout || 'Failed to search text',
+        output: {
+          error: res.stderr || res.stdout || 'Failed to search text',
+        },
+        messageMetadata,
       };
     }
 
@@ -270,7 +293,10 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     }
 
     return {
-      matches,
+      output: {
+        matches,
+      },
+      messageMetadata,
     };
   }
 }

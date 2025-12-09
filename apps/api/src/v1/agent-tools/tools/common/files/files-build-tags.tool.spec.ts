@@ -122,7 +122,7 @@ describe('FilesBuildTagsTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.tagsFile).toBe('/tmp/test-thread-123/myrepo.json');
@@ -173,7 +173,11 @@ describe('FilesBuildTagsTool', () => {
           execPath: '/runtime-workspace/parent-thread-456',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfgWithParent);
+      const { output: result } = await tool.invoke(
+        args,
+        mockConfig,
+        mockCfgWithParent,
+      );
 
       expect(result.success).toBe(true);
       expect(result.tagsFile).toBe('/tmp/parent-thread-456/myrepo.json');
@@ -213,7 +217,11 @@ describe('FilesBuildTagsTool', () => {
           execPath: '/runtime-workspace/test-thread-789',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfgFallback);
+      const { output: result } = await tool.invoke(
+        args,
+        mockConfig,
+        mockCfgFallback,
+      );
 
       expect(result.success).toBe(true);
       expect(result.tagsFile).toBe('/tmp/test-thread-789/myrepo.json');
@@ -243,7 +251,11 @@ describe('FilesBuildTagsTool', () => {
           execPath: '/runtime-workspace/unknown',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfgNoThread);
+      const { output: result } = await tool.invoke(
+        args,
+        mockConfig,
+        mockCfgNoThread,
+      );
 
       expect(result.success).toBe(true);
       expect(result.tagsFile).toBe('/tmp/unknown/myrepo.json');
@@ -262,7 +274,7 @@ describe('FilesBuildTagsTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
         'Failed to create tags directory: mkdir: Permission denied',
@@ -284,7 +296,7 @@ describe('FilesBuildTagsTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
         'Failed to create tags directory: Error: Cannot create directory',
@@ -312,7 +324,7 @@ describe('FilesBuildTagsTool', () => {
           execPath: '',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('ctags: command not found');
       expect(result.success).toBeUndefined();
@@ -339,7 +351,7 @@ describe('FilesBuildTagsTool', () => {
           execPath: '',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('Error: Invalid directory');
       expect(result.success).toBeUndefined();
@@ -365,7 +377,7 @@ describe('FilesBuildTagsTool', () => {
           execPath: '',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('Failed to build tags');
       expect(result.success).toBeUndefined();
@@ -391,7 +403,7 @@ describe('FilesBuildTagsTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect((tool as any).execCommand).toHaveBeenNthCalledWith(
@@ -424,7 +436,7 @@ describe('FilesBuildTagsTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.tagsFile).toBe('/tmp/test-thread-123/my-repo_123.json');

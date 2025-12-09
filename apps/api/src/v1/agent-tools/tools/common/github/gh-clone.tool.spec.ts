@@ -155,7 +155,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBe(
         '/runtime-workspace/test-thread-123/Hello-World',
@@ -184,7 +184,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBe(
         '/runtime-workspace/test-thread-123/Hello-World',
@@ -213,7 +213,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBe(
         '/runtime-workspace/test-thread-123/Hello-World',
@@ -243,7 +243,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBe(
         '/runtime-workspace/test-thread-123/Hello-World',
@@ -271,7 +271,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBeUndefined();
       expect(result.error).toBe('Repository not found');
@@ -297,7 +297,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBeUndefined();
       expect(result.error).toBe('Error: Repository not found');
@@ -316,7 +316,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBeUndefined();
       expect(result.error).toBe('Failed to clone repository');
@@ -335,7 +335,7 @@ describe('GhCloneTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBe('Hello-World');
       expect(result.error).toBeUndefined();
@@ -354,7 +354,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBe(
         '/runtime-workspace/test-thread-123/Hello-World',
@@ -381,7 +381,7 @@ describe('GhCloneTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.path).toBe(
         '/runtime-workspace/test-thread-123/Hello-World',

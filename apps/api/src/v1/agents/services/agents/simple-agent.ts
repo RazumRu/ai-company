@@ -76,13 +76,15 @@ export const SimpleAgentSchema = z.object({
     .default('gpt-5.1')
     .describe('Chat model used for the main reasoning/tool-call step.')
     .meta({ 'x-ui:show-on-node': true })
+    .meta({ 'x-ui:label': 'Model' })
     .meta({ 'x-ui:litellm-models-list-select': true }),
   invokeModelReasoningEffort: z
     .enum(ReasoningEffort)
     .optional()
     .default(ReasoningEffort.None)
     .describe('Reasoning effort')
-    .meta({ 'x-ui:show-on-node': true }),
+    .meta({ 'x-ui:show-on-node': true })
+    .meta({ 'x-ui:label': 'Reasoning' }),
   enforceToolUsage: z
     .boolean()
     .optional()

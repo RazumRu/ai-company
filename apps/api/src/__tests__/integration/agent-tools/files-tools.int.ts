@@ -51,8 +51,12 @@ const SAMPLE_TS_CONTENT = [
   '}',
 ].join('\n');
 
-type SearchTextResult = Awaited<ReturnType<FilesSearchTextTool['invoke']>>;
-type SearchTagsResult = Awaited<ReturnType<FilesSearchTagsTool['invoke']>>;
+type SearchTextResult = Awaited<
+  ReturnType<FilesSearchTextTool['invoke']>
+>['output'];
+type SearchTagsResult = Awaited<
+  ReturnType<FilesSearchTagsTool['invoke']>
+>['output'];
 
 const hasTextMatch = (result: SearchTextResult, snippet: string) =>
   Array.isArray(result.matches) &&
@@ -86,7 +90,7 @@ describe('Files tools integration', () => {
   const writeSampleFile = async (fileName = 'sample.ts') => {
     const filePath = `${WORKSPACE_DIR}/${fileName}`;
 
-    const result = await filesApplyChangesTool.invoke(
+    const { output: result } = await filesApplyChangesTool.invoke(
       {
         filePath,
         operation: 'replace',
@@ -151,7 +155,7 @@ describe('Files tools integration', () => {
     async () => {
       const filePath = await writeSampleFile('workspace.ts');
 
-      const insertResult = await filesApplyChangesTool.invoke(
+      const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
           operation: 'insert',
@@ -164,7 +168,7 @@ describe('Files tools integration', () => {
 
       expect(insertResult.success).toBe(true);
 
-      const listResult = await filesListTool.invoke(
+      const { output: listResult } = await filesListTool.invoke(
         { dir: WORKSPACE_DIR, pattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -174,7 +178,7 @@ describe('Files tools integration', () => {
       expect(listResult.files).toBeDefined();
       expect(listResult.files).toContain(filePath);
 
-      const readResult = await filesReadTool.invoke(
+      const { output: readResult } = await filesReadTool.invoke(
         { filePath },
         { runtime },
         RUNNABLE_CONFIG,
@@ -186,7 +190,7 @@ describe('Files tools integration', () => {
       );
       expect(readResult.content?.includes('export function greet')).toBe(true);
 
-      const searchResult = await filesSearchTextTool.invoke(
+      const { output: searchResult } = await filesSearchTextTool.invoke(
         { filePath, query: 'HelperService' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -203,7 +207,7 @@ describe('Files tools integration', () => {
     async () => {
       await writeSampleFile('tags.ts');
 
-      const buildResult = await filesBuildTagsTool.invoke(
+      const { output: buildResult } = await filesBuildTagsTool.invoke(
         { dir: WORKSPACE_DIR, alias: TAGS_ALIAS },
         { runtime },
         RUNNABLE_CONFIG,
@@ -214,7 +218,7 @@ describe('Files tools integration', () => {
       expect(buildResult.tagsFile).toBeDefined();
       expect(buildResult.tagsFile?.endsWith(`${TAGS_ALIAS}.json`)).toBe(true);
 
-      const classSearch = await filesSearchTagsTool.invoke(
+      const { output: classSearch } = await filesSearchTagsTool.invoke(
         {
           dir: WORKSPACE_DIR,
           alias: TAGS_ALIAS,
@@ -228,7 +232,7 @@ describe('Files tools integration', () => {
       expect(classSearch.error).toBeUndefined();
       expect(hasNamedTag(classSearch, 'HelperService')).toBe(true);
 
-      const functionSearch = await filesSearchTagsTool.invoke(
+      const { output: functionSearch } = await filesSearchTagsTool.invoke(
         {
           dir: WORKSPACE_DIR,
           alias: TAGS_ALIAS,
@@ -251,7 +255,7 @@ describe('Files tools integration', () => {
       // Write a file into the thread workspace (default child workdir)
       const filePath = await writeSampleFile('cwd-file.ts');
 
-      const listResult = await filesListTool.invoke(
+      const { output: listResult } = await filesListTool.invoke(
         { pattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -262,7 +266,7 @@ describe('Files tools integration', () => {
         true,
       );
 
-      const searchResult = await filesSearchTextTool.invoke(
+      const { output: searchResult } = await filesSearchTextTool.invoke(
         { filePath, query: 'HelperService' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -283,7 +287,7 @@ describe('Files tools integration', () => {
       const content = 'Hello from custom dir';
 
       // Create file in a custom directory
-      const applyRes = await filesApplyChangesTool.invoke(
+      const { output: applyRes } = await filesApplyChangesTool.invoke(
         {
           filePath,
           operation: 'replace',
@@ -295,7 +299,7 @@ describe('Files tools integration', () => {
       expect(applyRes.success).toBe(true);
 
       // Move shell session into that directory and verify cwd
-      const cdRes = await builtShell.invoke(
+      const { output: cdRes } = await builtShell.invoke(
         { purpose: 'cd into custom dir', cmd: `cd ${customDir} && pwd` },
         RUNNABLE_CONFIG,
       );
@@ -303,7 +307,7 @@ describe('Files tools integration', () => {
       expect(cdRes.stdout.trim()).toBe(customDir);
 
       // Use files_list without dir to rely on current session cwd
-      const listRes = await filesListTool.invoke(
+      const { output: listRes } = await filesListTool.invoke(
         { pattern: '*.txt' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -314,7 +318,7 @@ describe('Files tools integration', () => {
       expect(listedFile?.startsWith(customDir)).toBe(true);
 
       // Read the file from the custom directory
-      const readRes = await filesReadTool.invoke(
+      const { output: readRes } = await filesReadTool.invoke(
         { filePath },
         { runtime },
         RUNNABLE_CONFIG,
@@ -330,7 +334,7 @@ describe('Files tools integration', () => {
     async () => {
       const builtShell = shellTool.build({ runtime });
 
-      const setCwd = await builtShell.invoke(
+      const { output: setCwd } = await builtShell.invoke(
         { purpose: 'set cwd', cmd: 'cd /tmp && pwd' },
         RUNNABLE_CONFIG,
       );
@@ -338,14 +342,14 @@ describe('Files tools integration', () => {
       expect(setCwd.stdout.trim()).toBe('/tmp');
 
       // Run files_list with an explicit dir (subshell) and ensure cwd remains /tmp
-      const listResult = await filesListTool.invoke(
+      const { output: listResult } = await filesListTool.invoke(
         { dir: WORKSPACE_DIR, pattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
       );
       expect(listResult.error).toBeUndefined();
 
-      const cwdResult = await builtShell.invoke(
+      const { output: cwdResult } = await builtShell.invoke(
         { purpose: 'check cwd', cmd: 'pwd' },
         RUNNABLE_CONFIG,
       );
@@ -363,7 +367,7 @@ describe('Files tools integration', () => {
       const filePath = `${nestedDir}/${fileName}`;
       const content = 'temporary file content';
 
-      const createResult = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
           operation: 'replace',
@@ -375,7 +379,7 @@ describe('Files tools integration', () => {
 
       expect(createResult.success).toBe(true);
 
-      const listAfterCreate = await filesListTool.invoke(
+      const { output: listAfterCreate } = await filesListTool.invoke(
         { dir: nestedDir, pattern: fileName },
         { runtime },
         RUNNABLE_CONFIG,
@@ -383,7 +387,7 @@ describe('Files tools integration', () => {
       expect(listAfterCreate.error).toBeUndefined();
       expect(listAfterCreate.files).toContain(filePath);
 
-      const deleteResult = await filesDeleteTool.invoke(
+      const { output: deleteResult } = await filesDeleteTool.invoke(
         { filePath },
         { runtime },
         RUNNABLE_CONFIG,
@@ -391,7 +395,7 @@ describe('Files tools integration', () => {
 
       expect(deleteResult.success).toBe(true);
 
-      const listAfterDelete = await filesListTool.invoke(
+      const { output: listAfterDelete } = await filesListTool.invoke(
         { dir: nestedDir, pattern: fileName },
         { runtime },
         RUNNABLE_CONFIG,

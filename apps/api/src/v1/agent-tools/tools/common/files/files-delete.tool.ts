@@ -1,10 +1,15 @@
+import { basename } from 'node:path';
+
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesDeleteToolSchema = z.object({
@@ -26,6 +31,13 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
   public name = 'files_delete';
   public description =
     'Delete a file by absolute path. Intended for cleanup of generated or temporary files. Works with paths returned from files_list. Returns success or error message.';
+
+  protected override generateTitle(
+    args: FilesDeleteToolSchemaType,
+    _config: FilesBaseToolConfig,
+  ): string {
+    return `Deleting ${basename(args.filePath)}`;
+  }
 
   public getDetailedInstructions(
     config: FilesBaseToolConfig,
@@ -75,7 +87,9 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
     args: FilesDeleteToolSchemaType,
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<FilesDeleteToolOutput> {
+  ): Promise<ToolInvokeResult<FilesDeleteToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
     const fullFilePath = args.filePath;
     const cmd = [
       `if [ ! -e "${fullFilePath}" ]; then`,
@@ -99,13 +113,19 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
 
     if (res.exitCode !== 0) {
       return {
-        success: false,
-        error: res.stderr || res.stdout || 'Failed to delete file',
+        output: {
+          success: false,
+          error: res.stderr || res.stdout || 'Failed to delete file',
+        },
+        messageMetadata,
       };
     }
 
     return {
-      success: true,
+      output: {
+        success: true,
+      },
+      messageMetadata,
     };
   }
 }

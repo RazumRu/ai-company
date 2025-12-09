@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { dirname } from 'node:path';
+import { basename, dirname } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
@@ -7,7 +7,10 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesApplyChangesToolSchema = z.object({
@@ -54,6 +57,27 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   public name = 'files_apply_changes';
   public description =
     'Apply changes to a file using an absolute path. Supports replacing entire file, replacing line ranges, inserting content at specific lines, and deleting line ranges. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns success status and updated line count.';
+
+  protected override generateTitle(
+    args: FilesApplyChangesToolSchemaType,
+    _config: FilesBaseToolConfig,
+  ): string {
+    const name = basename(args.filePath);
+    const { operation, startLine, endLine } = args;
+
+    switch (operation) {
+      case 'replace':
+        return `Replacing ${name}`;
+      case 'replace_range':
+        return `Replacing lines ${startLine}-${endLine} in ${name}`;
+      case 'insert':
+        return `Inserting before line ${startLine} in ${name}`;
+      case 'delete':
+        return `Deleting lines ${startLine}-${endLine} in ${name}`;
+      default:
+        return `Editing ${name}`;
+    }
+  }
 
   public get schema() {
     return FilesApplyChangesToolSchema;
@@ -250,7 +274,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     args: FilesApplyChangesToolSchemaType,
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<FilesApplyChangesToolOutput> {
+  ): Promise<ToolInvokeResult<FilesApplyChangesToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
     if (
       (args.operation === 'replace' ||
         args.operation === 'replace_range' ||
@@ -258,8 +284,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       args.content === undefined
     ) {
       return {
-        error: `content is required for ${args.operation} operation`,
-        success: false,
+        output: {
+          error: `content is required for ${args.operation} operation`,
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
@@ -270,8 +299,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       args.startLine === undefined
     ) {
       return {
-        error: `startLine is required for ${args.operation} operation`,
-        success: false,
+        output: {
+          error: `startLine is required for ${args.operation} operation`,
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
@@ -280,8 +312,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       args.endLine === undefined
     ) {
       return {
-        error: `endLine is required for ${args.operation} operation`,
-        success: false,
+        output: {
+          error: `endLine is required for ${args.operation} operation`,
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
@@ -291,8 +326,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       args.startLine > args.endLine
     ) {
       return {
-        error: 'startLine must be less than or equal to endLine',
-        success: false,
+        output: {
+          error: 'startLine must be less than or equal to endLine',
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
@@ -339,8 +377,10 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
       default:
         return {
-          error: `Unknown operation: ${args.operation}`,
-          success: false,
+          output: {
+            error: `Unknown operation: ${args.operation}`,
+            success: false,
+          },
         };
     }
 
@@ -354,8 +394,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     if (res.exitCode !== 0) {
       return {
-        error: res.stderr || res.stdout || 'Failed to apply changes',
-        success: false,
+        output: {
+          error: res.stderr || res.stdout || 'Failed to apply changes',
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
@@ -377,6 +420,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       lineCount,
     };
 
-    return response;
+    return {
+      output: response,
+      messageMetadata,
+    };
   }
 }

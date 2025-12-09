@@ -3,7 +3,11 @@ import { tavily } from '@tavily/core';
 import dedent from 'dedent';
 import { z } from 'zod';
 
-import { BaseTool, ExtendedLangGraphRunnableConfig } from '../base-tool';
+import {
+  BaseTool,
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../base-tool';
 
 export const WebSearchToolSchema = z.object({
   query: z
@@ -168,19 +172,33 @@ export class WebSearchTool extends BaseTool<
   public async invoke(
     args: WebSearchToolSchemaType,
     config: WebSearchToolConfig,
-  ): Promise<WebSearchOutput> {
+  ): Promise<ToolInvokeResult<WebSearchOutput>> {
     const client = tavily({ apiKey: config.apiKey });
     const { query, ...opts } = args;
 
     const res = await client.search(query, opts);
 
+    const title = this.generateTitle?.(args, config);
+
     return {
-      answer: res.answer ?? null,
-      results: (res.results ?? []).map((r) => ({
-        title: r.title,
-        url: r.url,
-        content: r.content,
-      })),
+      output: {
+        answer: res.answer ?? null,
+        results: (res.results ?? []).map((r) => ({
+          title: r.title,
+          url: r.url,
+          content: r.content,
+        })),
+      },
+      messageMetadata: {
+        __title: title,
+      },
     };
+  }
+
+  protected override generateTitle(
+    args: WebSearchToolSchemaType,
+    _config: WebSearchToolConfig,
+  ): string {
+    return `Search in internet: ${args.query}`;
   }
 }

@@ -5,7 +5,11 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { BaseTool, ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  BaseTool,
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { BaseCommunicationToolConfig } from './communication-tools.types';
 
 export const CommunicationExecSchema = z.object({
@@ -39,6 +43,13 @@ export class CommunicationExecTool extends BaseTool<
   public name = 'communication_exec';
   public description =
     'Send a message to a specific agent. Connected agents are listed in the instructions.';
+
+  protected override generateTitle(
+    args: CommunicationExecSchemaType,
+    _config: BaseCommunicationToolConfig,
+  ): string {
+    return `${args.purpose} → ${args.agent}`;
+  }
 
   public getDetailedInstructions(
     config: BaseCommunicationToolConfig,
@@ -161,7 +172,9 @@ export class CommunicationExecTool extends BaseTool<
     args: CommunicationExecSchemaType,
     config: BaseCommunicationToolConfig,
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
-  ) {
+  ): Promise<ToolInvokeResult<unknown>> {
+    const title = this.generateTitle?.(args, config);
+
     if (!config?.agents || config.agents.length === 0) {
       throw new BadRequestException(
         undefined,
@@ -180,6 +193,14 @@ export class CommunicationExecTool extends BaseTool<
       );
     }
 
-    return targetAgent.invokeAgent([args.message], runnableConfig);
+    const output = await targetAgent.invokeAgent(
+      [args.message],
+      runnableConfig,
+    );
+
+    return {
+      output,
+      messageMetadata: { __title: title },
+    };
   }
 }

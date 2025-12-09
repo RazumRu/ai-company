@@ -135,7 +135,7 @@ describe('FilesReadTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.content).toBe(fileContent);
       expect(result.lineCount).toBe(4); // 'line 1\nline 2\nline 3\n' splits to ['line 1', 'line 2', 'line 3', '']
@@ -165,7 +165,7 @@ describe('FilesReadTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.content).toBe(fileContent);
       expect(result.lineCount).toBe(4); // 'line 2\nline 3\nline 4\n' splits to ['line 2', 'line 3', 'line 4', '']
@@ -195,7 +195,7 @@ describe('FilesReadTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.content).toBe(fileContent);
       expect(result.lineCount).toBe(2); // 'line 5\n' splits to ['line 5', '']
@@ -215,7 +215,7 @@ describe('FilesReadTool', () => {
         endLine: 10,
       } as FilesReadToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
         'startLine must be provided when endLine is specified',
@@ -229,7 +229,7 @@ describe('FilesReadTool', () => {
         startLine: 1,
       } as FilesReadToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
         'endLine must be provided when startLine is specified',
@@ -244,7 +244,7 @@ describe('FilesReadTool', () => {
         endLine: 5,
       };
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
         'startLine must be less than or equal to endLine',
@@ -264,7 +264,7 @@ describe('FilesReadTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
         'cat: /path/to/repo/nonexistent.ts: No such file or directory',
@@ -284,7 +284,7 @@ describe('FilesReadTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('Error: Permission denied');
       expect(result.content).toBeUndefined();
@@ -302,7 +302,7 @@ describe('FilesReadTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('Failed to read file');
       expect(result.content).toBeUndefined();
@@ -322,7 +322,7 @@ describe('FilesReadTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.content).toBe(fileContent);
       expect(result.error).toBeUndefined();
@@ -347,7 +347,7 @@ describe('FilesReadTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.content).toBe('');
       expect(result.lineCount).toBe(1); // Empty string splits to ['']
@@ -366,7 +366,7 @@ describe('FilesReadTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.content).toBe('\n');
       expect(result.lineCount).toBe(2);

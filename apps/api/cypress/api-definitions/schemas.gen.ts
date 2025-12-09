@@ -1565,6 +1565,9 @@ export const ThreadMessageDtoSchema = {
             toolCallId: {
               type: 'string',
             },
+            title: {
+              type: 'string',
+            },
             additionalKwargs: {
               type: 'object',
               propertyNames: {

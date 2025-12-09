@@ -4,7 +4,10 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { GhBaseTool, GhBaseToolConfig } from './gh-base.tool';
 import { SemanticCommitType } from './gh-commit.tool';
 
@@ -34,6 +37,13 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
   public name = 'gh_branch';
   public description =
     'Create a new git (GitHub) branch locally with a semantic branch name. The branch name will be formatted as "{semanticType}/{title}" where title is converted to lowercase with dashes.';
+
+  protected override generateTitle(
+    args: GhBranchToolSchemaType,
+    _config: GhBaseToolConfig,
+  ): string {
+    return `Creating branch ${args.semanticType}/${this.formatBranchName(args.title)}`;
+  }
 
   public getDetailedInstructions(
     config: GhBaseToolConfig,
@@ -152,7 +162,10 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
     args: GhBranchToolSchemaType,
     config: GhBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<GhBranchToolOutput> {
+  ): Promise<ToolInvokeResult<GhBranchToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
+
     const formattedTitle = this.formatBranchName(args.title);
     const branchName = `${args.semanticType}/${formattedTitle}`;
     const baseBranch = args.base || 'main';
@@ -168,8 +181,11 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
 
     if (checkoutBaseRes.exitCode !== 0) {
       return {
-        error: `Failed to checkout base branch '${baseBranch}': ${checkoutBaseRes.stderr || checkoutBaseRes.stdout || 'Unknown error'}`,
-        success: false,
+        output: {
+          error: `Failed to checkout base branch '${baseBranch}': ${checkoutBaseRes.stderr || checkoutBaseRes.stdout || 'Unknown error'}`,
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
@@ -187,15 +203,21 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
 
     if (branchRes.exitCode !== 0) {
       return {
-        error:
-          branchRes.stderr || branchRes.stdout || 'Failed to create branch',
-        success: false,
+        output: {
+          error:
+            branchRes.stderr || branchRes.stdout || 'Failed to create branch',
+          success: false,
+        },
+        messageMetadata,
       };
     }
 
     return {
-      success: true,
-      branchName,
+      output: {
+        success: true,
+        branchName,
+      },
+      messageMetadata,
     };
   }
 }

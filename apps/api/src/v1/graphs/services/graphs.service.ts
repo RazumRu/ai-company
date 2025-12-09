@@ -87,6 +87,9 @@ export class GraphsService {
   async getAll(): Promise<GraphDto[]> {
     const row = await this.graphDao.getAll({
       createdBy: this.authContext.checkSub(),
+      order: {
+        updatedAt: 'DESC',
+      },
     });
 
     return row.map(this.prepareResponse);

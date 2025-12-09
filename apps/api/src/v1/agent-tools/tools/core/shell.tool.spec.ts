@@ -175,7 +175,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output } = await builtTool.invoke({
         purpose: 'Testing echo command',
         cmd: 'echo "hello world"',
       });
@@ -189,11 +189,30 @@ describe('ShellTool', () => {
           metadata: expect.objectContaining({ threadId: 'unknown' }),
         }),
       );
-      expect(result).toEqual({
+      expect(output).toEqual({
         exitCode: mockExecResult.exitCode,
         stdout: mockExecResult.stdout,
         stderr: mockExecResult.stderr,
       });
+    });
+
+    it('should include generated title in message metadata', async () => {
+      const mockExecResult = {
+        stdout: 'hello world',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      const { messageMetadata } = await builtTool.invoke({
+        purpose: 'Testing echo command',
+        cmd: 'echo "hello world"',
+      });
+
+      expect(messageMetadata?.__title).toBe('Testing echo command');
     });
 
     it('should execute command with environment variables', async () => {
@@ -208,7 +227,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       const envArray = [{ key: 'NODE_ENV', value: 'test' }];
-      const result = await builtTool.invoke({
+      const { output } = await builtTool.invoke({
         purpose: 'Testing environment variables',
         cmd: 'echo $NODE_ENV',
         env: envArray,
@@ -223,7 +242,7 @@ describe('ShellTool', () => {
           metadata: expect.objectContaining({ threadId: 'unknown' }),
         }),
       );
-      expect(result).toEqual({
+      expect(output).toEqual({
         exitCode: mockExecResult.exitCode,
         stdout: mockExecResult.stdout,
         stderr: mockExecResult.stderr,
@@ -242,7 +261,7 @@ describe('ShellTool', () => {
       const builtTool = tool.build(config);
 
       const envArray = [{ key: 'TEST', value: 'value' }];
-      const result = await builtTool.invoke({
+      const { output } = await builtTool.invoke({
         purpose: 'Testing all options',
         cmd: 'pwd',
         timeoutMs: 5000,
@@ -262,7 +281,7 @@ describe('ShellTool', () => {
           metadata: expect.objectContaining({ threadId: 'unknown' }),
         }),
       );
-      expect(result).toEqual({
+      expect(output).toEqual({
         exitCode: mockExecResult.exitCode,
         stdout: mockExecResult.stdout,
         stderr: mockExecResult.stderr,
@@ -280,7 +299,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke(
+      const { output: result } = await builtTool.invoke(
         {
           purpose: 'Testing persistent session',
           cmd: 'echo "session"',
@@ -311,7 +330,7 @@ describe('ShellTool', () => {
         runtime: null as unknown as BaseRuntime,
       });
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing error handling',
         cmd: 'echo "hello"',
       });
@@ -327,7 +346,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing error handling',
         cmd: 'invalid-command',
       });
@@ -346,7 +365,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing runtime error',
         cmd: 'echo "test"',
       });
@@ -571,7 +590,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing output trimming',
         cmd: 'echo "long output"',
         maxOutputLength: 5000,
@@ -594,7 +613,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing error trimming',
         cmd: 'invalid-command',
         maxOutputLength: 3000,
@@ -618,7 +637,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing both outputs trimming',
         cmd: 'some-command',
         maxOutputLength: 8000,
@@ -642,7 +661,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing no trimming needed',
         cmd: 'echo "short"',
         maxOutputLength: 1000,
@@ -664,7 +683,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing default max output length',
         cmd: 'echo "long"',
       });
@@ -680,7 +699,7 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         purpose: 'Testing error message trimming',
         cmd: 'invalid-command',
         maxOutputLength: 500,

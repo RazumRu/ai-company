@@ -162,7 +162,7 @@ describe('WebSearchTool', () => {
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
-      const result = await builtTool.invoke({
+      const { output: result, messageMetadata } = await builtTool.invoke({
         query: 'test search',
       });
 
@@ -180,6 +180,7 @@ describe('WebSearchTool', () => {
           },
         ],
       });
+      expect(messageMetadata?.__title).toBe('Search in internet: test search');
     });
 
     it('should perform advanced search with options', async () => {
@@ -196,7 +197,7 @@ describe('WebSearchTool', () => {
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         query: 'advanced search',
         searchDepth: 'advanced',
         includeDomains: ['example.com'],
@@ -231,7 +232,7 @@ describe('WebSearchTool', () => {
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         query: 'no results query',
       });
 
@@ -249,7 +250,7 @@ describe('WebSearchTool', () => {
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         query: 'undefined results query',
       });
 
@@ -289,7 +290,7 @@ describe('WebSearchTool', () => {
       mockTavilyClient.search.mockResolvedValue(mockSearchResult);
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
-      const result = await builtTool.invoke({
+      const { output: result } = await builtTool.invoke({
         query: 'test search',
       });
 

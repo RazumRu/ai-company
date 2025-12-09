@@ -4,7 +4,11 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import { BaseTool, ExtendedLangGraphRunnableConfig } from '../base-tool';
+import {
+  BaseTool,
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../base-tool';
 
 export class FinishToolResponse {
   constructor(
@@ -37,6 +41,13 @@ export type FinishToolSchemaType = z.infer<typeof FinishToolSchema>;
 export class FinishTool extends BaseTool<FinishToolSchemaType> {
   public name = 'finish';
   public description = `Signal task completion or request strictly necessary info. Always call this tool to end your turn. Set needsMoreInfo=false when done. Set needsMoreInfo=true only if a specific required input is missing and you cannot proceed; do not ask open-ended or speculative questions. If you can proceed using context or reasonable defaults, do so and state assumptions in message. If you must ask, send one concise, structured request listing the exact fields and acceptable formats. This is the only way to end your response.`;
+
+  protected override generateTitle(
+    args: FinishToolSchemaType,
+    _config: Record<PropertyKey, unknown>,
+  ): string {
+    return args.purpose;
+  }
 
   public getDetailedInstructions(
     config: Record<PropertyKey, unknown>,
@@ -164,7 +175,12 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
     args: FinishToolSchemaType,
     _config: Record<PropertyKey, unknown>,
     _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ) {
-    return new FinishToolResponse(args.message, args.needsMoreInfo);
+  ): ToolInvokeResult<FinishToolResponse> {
+    const title = this.generateTitle?.(args, _config);
+
+    return {
+      output: new FinishToolResponse(args.message, args.needsMoreInfo),
+      messageMetadata: { __title: title },
+    };
   }
 }

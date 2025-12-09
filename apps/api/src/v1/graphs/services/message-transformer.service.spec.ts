@@ -159,6 +159,9 @@ describe('MessageTransformerService', () => {
         content: '{"result": "success"}',
         name: 'web_search',
         tool_call_id: 'call-789',
+        additional_kwargs: {
+          __title: 'Search in internet: cats',
+        },
       });
 
       const result = service.transformMessageToDto(msg);
@@ -168,7 +171,10 @@ describe('MessageTransformerService', () => {
         name: 'web_search',
         content: { result: 'success' },
         toolCallId: 'call-789',
-        additionalKwargs: undefined,
+        title: 'Search in internet: cats',
+        additionalKwargs: {
+          __title: 'Search in internet: cats',
+        },
       } as ToolMessageDto);
     });
 

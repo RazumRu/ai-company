@@ -6,7 +6,11 @@ import { z } from 'zod';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { execRuntimeWithContext } from '../../agent-tools.utils';
-import { BaseTool, ExtendedLangGraphRunnableConfig } from '../base-tool';
+import {
+  BaseTool,
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../base-tool';
 
 export interface ShellToolOptions {
   runtime: BaseRuntime | (() => BaseRuntime);
@@ -52,6 +56,13 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public name = 'shell';
   public description =
     'Executes arbitrary shell commands inside the prepared Docker runtime. Use it for files, git, tests, builds, installs, inspection. Returns stdout, stderr, exitCode. If command output is expected to be large (e.g. rg, ls -R, test logs), consider constraining it with flags (-n, --max-count, specific paths) instead of dumping full repo logs.';
+
+  protected override generateTitle(
+    args: ShellToolSchemaType,
+    _config: ShellToolOptions,
+  ): string {
+    return args.purpose;
+  }
 
   public getDetailedInstructions(
     config: ShellToolOptions,
@@ -160,7 +171,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     data: ShellToolSchemaType,
     config: ShellToolOptions,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<ShellToolOutput> {
+  ): Promise<ToolInvokeResult<ShellToolOutput>> {
     // Get environment variables from config
     const configEnv = config.env || {};
 
@@ -202,20 +213,34 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
             )
           : trimOutput(res.stderr);
 
+      const title = this.generateTitle(data, config);
+
       return {
-        exitCode: res.exitCode,
-        stdout: trimOutput(res.stdout),
-        stderr,
+        output: {
+          exitCode: res.exitCode,
+          stdout: trimOutput(res.stdout),
+          stderr,
+        },
+        messageMetadata: {
+          __title: title,
+        },
       };
     } catch (error) {
       // Handle runtime errors by returning them in the expected RuntimeExecResult format
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
+      const title = this.generateTitle(data, config);
+
       return {
-        exitCode: 1,
-        stdout: '',
-        stderr: trimOutput(errorMessage),
+        output: {
+          exitCode: 1,
+          stdout: '',
+          stderr: trimOutput(errorMessage),
+        },
+        messageMetadata: {
+          __title: title,
+        },
       };
     }
   }

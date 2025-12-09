@@ -102,7 +102,7 @@ describe('CommunicationExecTool', () => {
         configurable: { thread_id: 'test-thread' },
       };
 
-      const result = await tool.invoke(
+      const { output: result } = await tool.invoke(
         {
           message: 'Can you research this topic?',
           purpose: 'Research request',

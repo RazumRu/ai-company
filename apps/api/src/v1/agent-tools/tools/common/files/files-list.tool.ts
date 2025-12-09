@@ -4,7 +4,10 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesListToolSchema = z.object({
@@ -35,6 +38,14 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
   public name = 'files_list';
   public description =
     'List files in a repository directory using fd (find). Supports optional pattern filtering. Returns an array of absolute file paths. The paths returned can be used directly with files_read, files_apply_changes, and files_search_text.filePath.';
+
+  protected override generateTitle(
+    args: FilesListToolSchemaType,
+    _config: FilesBaseToolConfig,
+  ): string {
+    const pattern = args.pattern ? ` matching "${args.pattern}"` : '';
+    return `Listing directory${pattern}`;
+  }
 
   public getDetailedInstructions(
     config: FilesBaseToolConfig,
@@ -149,7 +160,9 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
     args: FilesListToolSchemaType,
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<FilesListToolOutput> {
+  ): Promise<ToolInvokeResult<FilesListToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
     const cmdParts: string[] = ['fd', '--absolute-path'];
 
     if (args.pattern) {
@@ -171,7 +184,10 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
 
     if (res.exitCode !== 0) {
       return {
-        error: res.stderr || res.stdout || 'Failed to list files',
+        output: {
+          error: res.stderr || res.stdout || 'Failed to list files',
+        },
+        messageMetadata,
       };
     }
 
@@ -182,7 +198,10 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
       .filter((line) => line.length > 0);
 
     return {
-      files,
+      output: {
+        files,
+      },
+      messageMetadata,
     };
   }
 }

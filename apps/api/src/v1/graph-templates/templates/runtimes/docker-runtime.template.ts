@@ -15,12 +15,14 @@ export const DockerRuntimeTemplateSchema = z
   .object({
     runtimeType: z
       .literal(RuntimeType.Docker)
-      .meta({ 'x-ui:show-on-node': true }),
+      .meta({ 'x-ui:show-on-node': true })
+      .meta({ 'x-ui:label': 'Runtime' }),
     image: z
       .string()
       .optional()
       .describe('Docker image to use. If not set - will use default image')
-      .meta({ 'x-ui:show-on-node': true }),
+      .meta({ 'x-ui:show-on-node': true })
+      .meta({ 'x-ui:label': 'Image' }),
     env: z
       .record(z.string(), z.string())
       .optional()
@@ -46,8 +48,7 @@ export const DockerRuntimeTemplateSchema = z
       .optional()
       .describe(
         'Enable Docker-in-Docker by creating a separate DIND container for this runtime',
-      )
-      .meta({ 'x-ui:show-on-node': true }),
+      ),
   })
   // Strip legacy/unknown fields so older configs remain valid.
   .strip();

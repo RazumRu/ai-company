@@ -950,6 +950,10 @@ export type ThreadMessageDto = {
          */
         toolCallId: string;
         /**
+         * Optional human-readable tool call title
+         */
+        title?: string;
+        /**
          * Additional message metadata
          */
         additionalKwargs?: {

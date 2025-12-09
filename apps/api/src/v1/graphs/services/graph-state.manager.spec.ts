@@ -8,13 +8,13 @@ import {
   RuntimeExecResult,
 } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { ThreadStatus } from '../../threads/threads.types';
 import {
   CompiledGraphNode,
   GraphExecutionMetadata,
   GraphNodeStatus,
   NodeKind,
 } from '../graphs.types';
-import { ThreadStatus } from '../../threads/threads.types';
 import { GraphStateManager } from './graph-state.manager';
 
 class TestRuntime extends BaseRuntime {
@@ -413,12 +413,13 @@ describe('GraphStateManager', () => {
         },
       });
 
-      const threadUpdateCallsAfterChild =
-        (notifications.emit as any).mock.calls.filter(
-          (call: any) =>
-            call[0]?.type === NotificationEvent.ThreadUpdate &&
-            call[0]?.threadId === 'root-thread',
-        );
+      const threadUpdateCallsAfterChild = (
+        notifications.emit as any
+      ).mock.calls.filter(
+        (call: any) =>
+          call[0]?.type === NotificationEvent.ThreadUpdate &&
+          call[0]?.threadId === 'root-thread',
+      );
 
       expect(threadUpdateCallsAfterChild.length).toBe(0);
 

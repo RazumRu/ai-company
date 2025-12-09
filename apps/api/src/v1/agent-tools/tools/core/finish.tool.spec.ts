@@ -96,9 +96,9 @@ describe('FinishTool', () => {
         message,
       });
 
-      expect(result).toBeInstanceOf(FinishToolResponse);
-      expect(result.message).toBe(message);
-      expect(result.needsMoreInfo).toBe(false);
+      expect(result.output).toBeInstanceOf(FinishToolResponse);
+      expect((result.output as FinishToolResponse).message).toBe(message);
+      expect((result.output as FinishToolResponse).needsMoreInfo).toBe(false);
     });
 
     it('should return FinishToolResponse with needsMoreInfo', async () => {
@@ -110,9 +110,11 @@ describe('FinishTool', () => {
         needsMoreInfo: true,
       });
 
-      expect(result).toBeInstanceOf(FinishToolResponse);
-      expect(result.message).toBe('What is the target environment?');
-      expect(result.needsMoreInfo).toBe(true);
+      expect(result.output).toBeInstanceOf(FinishToolResponse);
+      expect((result.output as FinishToolResponse).message).toBe(
+        'What is the target environment?',
+      );
+      expect((result.output as FinishToolResponse).needsMoreInfo).toBe(true);
     });
 
     it('should default needsMoreInfo to false', async () => {
@@ -123,9 +125,11 @@ describe('FinishTool', () => {
         message: 'Task completed',
       });
 
-      expect(result).toBeInstanceOf(FinishToolResponse);
-      expect(result.message).toBe('Task completed');
-      expect(result.needsMoreInfo).toBe(false);
+      expect(result.output).toBeInstanceOf(FinishToolResponse);
+      expect((result.output as FinishToolResponse).message).toBe(
+        'Task completed',
+      );
+      expect((result.output as FinishToolResponse).needsMoreInfo).toBe(false);
     });
   });
 

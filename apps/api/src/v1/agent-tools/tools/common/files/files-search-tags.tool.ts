@@ -4,7 +4,10 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesSearchTagsToolSchema = z.object({
@@ -48,6 +51,15 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
   public name = 'files_search_tags';
   public description =
     'Search for symbols in a ctags index file. Supports both exact name matching and regex pattern matching. Returns matching tag entries as JSON.';
+
+  protected override generateTitle(
+    args: FilesSearchTagsToolSchemaType,
+    _config: FilesBaseToolConfig,
+  ): string {
+    const matchType = args.exactMatch ? 'exact' : 'regex';
+    const location = args.dir ?? 'current directory';
+    return `Tag search (${matchType}) "${args.query}" in ${location} (alias ${args.alias})`;
+  }
 
   public getDetailedInstructions(
     config: FilesBaseToolConfig,
@@ -175,7 +187,9 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     args: FilesSearchTagsToolSchemaType,
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<FilesSearchTagsToolOutput> {
+  ): Promise<ToolInvokeResult<FilesSearchTagsToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
     const threadId =
       cfg.configurable?.parent_thread_id ||
       cfg.configurable?.thread_id ||
@@ -208,12 +222,18 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
       // jq returns exit code 1 when no matches are found, which is not an error
       if (res.exitCode === 1 && !res.stderr) {
         return {
-          matches: [],
+          output: {
+            matches: [],
+          },
+          messageMetadata,
         };
       }
 
       return {
-        error: res.stderr || res.stdout || 'Failed to search tags',
+        output: {
+          error: res.stderr || res.stdout || 'Failed to search tags',
+        },
+        messageMetadata,
       };
     }
 
@@ -234,7 +254,10 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     }
 
     return {
-      matches,
+      output: {
+        matches,
+      },
+      messageMetadata,
     };
   }
 }

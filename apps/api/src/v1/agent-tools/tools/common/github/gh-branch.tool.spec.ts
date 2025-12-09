@@ -146,7 +146,7 @@ describe('GhBranchTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.branchName).toBe('feat/add-new-feature');
@@ -187,7 +187,7 @@ describe('GhBranchTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.branchName).toBe('fix/fix-bug');
@@ -268,7 +268,7 @@ describe('GhBranchTool', () => {
             execPath: '/runtime-workspace/test-thread-123',
           });
 
-        const result = await tool.invoke(args, mockConfig, mockCfg);
+        const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
         expect(result.branchName).toBe(testCase.expected);
         vi.clearAllMocks();
@@ -290,7 +290,7 @@ describe('GhBranchTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain(
@@ -321,7 +321,7 @@ describe('GhBranchTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain(
@@ -350,7 +350,7 @@ describe('GhBranchTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Error: Branch already exists');
@@ -376,7 +376,7 @@ describe('GhBranchTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Failed to create branch');
@@ -453,7 +453,7 @@ describe('GhBranchTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
@@ -492,7 +492,7 @@ describe('GhBranchTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(

@@ -4,7 +4,10 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { GhBaseTool, GhBaseToolConfig } from './gh-base.tool';
 
 export const GhPushToolSchema = z.object({
@@ -34,6 +37,15 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   public name = 'gh_push';
   public description =
     'Push commits from a local git (GitHub) repository to a remote repository. Optionally specify the remote name and branch name.';
+
+  protected override generateTitle(
+    args: GhPushToolSchemaType,
+    _config: GhBaseToolConfig,
+  ): string {
+    const remote = args.remote || 'origin';
+    const branch = args.branch ? ` ${args.branch}` : '';
+    return `Pushing to ${remote}${branch}`;
+  }
 
   public getDetailedInstructions(
     config: GhBaseToolConfig,
@@ -162,7 +174,10 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     args: GhPushToolSchemaType,
     config: GhBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<GhPushToolOutput> {
+  ): Promise<ToolInvokeResult<GhPushToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
+
     const remote = args.remote || 'origin';
 
     // Build git push command
@@ -181,13 +196,19 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
 
     if (pushRes.exitCode !== 0) {
       return {
-        success: false,
-        error: pushRes.stderr || pushRes.stdout || 'Failed to push commits',
+        output: {
+          success: false,
+          error: pushRes.stderr || pushRes.stdout || 'Failed to push commits',
+        },
+        messageMetadata,
       };
     }
 
     return {
-      success: true,
+      output: {
+        success: true,
+      },
+      messageMetadata,
     };
   }
 }

@@ -107,7 +107,7 @@ describe('FilesListTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.files).toEqual([
         '/path/to/repo/file1.ts',
@@ -137,7 +137,7 @@ describe('FilesListTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.files).toEqual([
         '/path/to/repo/file1.ts',
@@ -166,7 +166,7 @@ describe('FilesListTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.files).toEqual([]);
       expect(result.error).toBeUndefined();
@@ -184,7 +184,7 @@ describe('FilesListTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.files).toEqual(['file1.ts', 'file2.ts']);
       expect(result.error).toBeUndefined();
@@ -202,7 +202,7 @@ describe('FilesListTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('fd: command not found');
       expect(result.files).toBeUndefined();
@@ -220,7 +220,7 @@ describe('FilesListTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('Error: Directory not found');
       expect(result.files).toBeUndefined();
@@ -238,7 +238,7 @@ describe('FilesListTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe('Failed to list files');
       expect(result.files).toBeUndefined();
@@ -257,7 +257,7 @@ describe('FilesListTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.files).toEqual([
         '/path/to/repo/src/file1.ts',
@@ -285,7 +285,7 @@ describe('FilesListTool', () => {
         execPath: '/runtime-workspace/test-thread-123',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.files).toEqual(['/path/to my repo/file1.ts']);
       expect(result.error).toBeUndefined();

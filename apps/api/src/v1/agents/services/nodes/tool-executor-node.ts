@@ -7,6 +7,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { DefaultLogger } from '@packages/common';
 import { keyBy } from 'lodash';
 
+import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
 import { FinishToolResponse } from '../../../agent-tools/tools/core/finish.tool';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
@@ -52,20 +53,30 @@ export class ToolExecutorNode extends BaseNode<
         const callId =
           tc.id ?? `missing_id_${Math.random().toString(36).slice(2)}`;
         const tool = toolsMap[tc.name];
-        const makeMsg = (content: string) =>
-          new ToolMessage({ tool_call_id: callId, name: tc.name, content });
+        const makeMsg = (
+          content: string,
+          messageMetadata?: ToolInvokeResult<unknown>['messageMetadata'],
+        ) =>
+          new ToolMessage({
+            tool_call_id: callId,
+            name: tc.name,
+            content,
+            ...(messageMetadata ? { additional_kwargs: messageMetadata } : {}),
+          });
 
         if (!tool) {
           return makeMsg(`Tool '${tc.name}' not found.`);
         }
 
         try {
-          const output = await tool.invoke<
+          const rawResult = await tool.invoke<
             unknown,
             ToolRunnableConfig<BaseAgentConfigurable>
           >(tc.args, {
             configurable: cfg.configurable,
           });
+          const { output, messageMetadata } =
+            rawResult as ToolInvokeResult<unknown>;
 
           if (output instanceof FinishToolResponse) {
             // Only set done=true if needsMoreInfo is false
@@ -83,7 +94,7 @@ export class ToolExecutorNode extends BaseNode<
               needsMoreInfo: output.needsMoreInfo,
             };
 
-            return makeMsg(JSON.stringify(toolResponse));
+            return makeMsg(JSON.stringify(toolResponse), messageMetadata);
           }
 
           const content =
@@ -93,10 +104,10 @@ export class ToolExecutorNode extends BaseNode<
             const trimmed = content.slice(0, this.maxOutputChars);
             const suffix = `\n\n[output trimmed to ${this.maxOutputChars} characters from ${content.length}]`;
 
-            return makeMsg(`${trimmed}${suffix}`);
+            return makeMsg(`${trimmed}${suffix}`, messageMetadata);
           }
 
-          return makeMsg(content);
+          return makeMsg(content, messageMetadata);
         } catch (e) {
           const err = e as Error;
           this.logger?.error(err, `Error executing tool '${tc.name}'`, {

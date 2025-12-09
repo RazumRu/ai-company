@@ -195,7 +195,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.lineCount).toBe(2);
@@ -225,7 +225,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(execSpy).toHaveBeenCalledTimes(2);
@@ -258,7 +258,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.lineCount).toBe(10);
@@ -287,7 +287,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.lineCount).toBe(5);
@@ -316,7 +316,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.lineCount).toBe(7);
@@ -329,7 +329,7 @@ describe('FilesApplyChangesTool', () => {
         operation: 'replace' as const,
       } as FilesApplyChangesToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('content is required for replace operation');
@@ -343,7 +343,7 @@ describe('FilesApplyChangesTool', () => {
         endLine: 5,
       } as FilesApplyChangesToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
@@ -358,7 +358,7 @@ describe('FilesApplyChangesTool', () => {
         startLine: 1,
       } as FilesApplyChangesToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('content is required for insert operation');
@@ -372,7 +372,7 @@ describe('FilesApplyChangesTool', () => {
         endLine: 5,
       } as FilesApplyChangesToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
@@ -387,7 +387,7 @@ describe('FilesApplyChangesTool', () => {
         content: 'content',
       } as FilesApplyChangesToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('startLine is required for insert operation');
@@ -400,7 +400,7 @@ describe('FilesApplyChangesTool', () => {
         endLine: 5,
       } as FilesApplyChangesToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('startLine is required for delete operation');
@@ -414,7 +414,7 @@ describe('FilesApplyChangesTool', () => {
         startLine: 1,
       } as FilesApplyChangesToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
@@ -429,7 +429,7 @@ describe('FilesApplyChangesTool', () => {
         startLine: 1,
       } as FilesApplyChangesToolSchemaType;
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('endLine is required for delete operation');
@@ -444,7 +444,7 @@ describe('FilesApplyChangesTool', () => {
         endLine: 5,
       };
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
@@ -466,7 +466,7 @@ describe('FilesApplyChangesTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('No such file or directory');
@@ -486,7 +486,7 @@ describe('FilesApplyChangesTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Error: Permission denied');
@@ -506,7 +506,7 @@ describe('FilesApplyChangesTool', () => {
         execPath: '',
       });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Failed to apply changes');
@@ -533,7 +533,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
@@ -560,7 +560,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.lineCount).toBe(2);
@@ -587,7 +587,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.lineCount).toBe(0);
@@ -614,7 +614,7 @@ describe('FilesApplyChangesTool', () => {
           execPath: '',
         });
 
-      const result = await tool.invoke(args, mockConfig, mockCfg);
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect(result.lineCount).toBeUndefined();

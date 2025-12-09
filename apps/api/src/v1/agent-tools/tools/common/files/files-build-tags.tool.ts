@@ -4,7 +4,10 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { ExtendedLangGraphRunnableConfig } from '../../base-tool';
+import {
+  ExtendedLangGraphRunnableConfig,
+  ToolInvokeResult,
+} from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesBuildTagsToolSchema = z.object({
@@ -33,6 +36,14 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
   public name = 'files_build_tags';
   public description =
     'Build a ctags index for a repository directory. Creates a JSON-formatted tags file that can be used for symbol searching. Takes a directory path and an alias to name the tags file. This tool needs to be called when the repository is initialized and when files are changed to keep the index up to date.';
+
+  protected override generateTitle(
+    args: FilesBuildTagsToolSchemaType,
+    _config: FilesBaseToolConfig,
+  ): string {
+    const dir = args.dir ?? 'current directory';
+    return `Building tags "${args.alias}" in ${dir}`;
+  }
 
   public getDetailedInstructions(
     config: FilesBaseToolConfig,
@@ -133,7 +144,9 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
     args: FilesBuildTagsToolSchemaType,
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<FilesBuildTagsToolOutput> {
+  ): Promise<ToolInvokeResult<FilesBuildTagsToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
     const threadId =
       cfg.configurable?.parent_thread_id ||
       cfg.configurable?.thread_id ||
@@ -155,7 +168,10 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
 
     if (mkdirRes.exitCode !== 0) {
       return {
-        error: `Failed to create tags directory: ${mkdirRes.stderr || mkdirRes.stdout}`,
+        output: {
+          error: `Failed to create tags directory: ${mkdirRes.stderr || mkdirRes.stdout}`,
+        },
+        messageMetadata,
       };
     }
 
@@ -173,13 +189,19 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
 
     if (res.exitCode !== 0) {
       return {
-        error: res.stderr || res.stdout || 'Failed to build tags',
+        output: {
+          error: res.stderr || res.stdout || 'Failed to build tags',
+        },
+        messageMetadata,
       };
     }
 
     return {
-      success: true,
-      tagsFile,
+      output: {
+        success: true,
+        tagsFile,
+      },
+      messageMetadata,
     };
   }
 }
