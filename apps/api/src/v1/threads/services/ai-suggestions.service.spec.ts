@@ -255,13 +255,35 @@ describe('AiSuggestionsService', () => {
       { systemMessage?: string; message: string },
       { previous_response_id?: string },
     ];
-    expect(payload.message).toContain('Agent configuration:');
-    expect(payload.message).toContain('Thread messages (oldest first):');
-    expect(payload.message).toContain('System intro');
-    expect(payload.message).toContain('How is the weather?');
-    expect(payload.message).toContain('toolCalls');
-    expect(payload.message).toContain('User input:');
+    expect(payload.message).toContain(
+      '<<<BLOCK id=information purpose="General information">>>',
+    );
+    expect(payload.message).toContain('User request:');
     expect(payload.message).toContain('Focus on tooling issues');
+    expect(payload.message).toContain('<<<END BLOCK id=information>>>');
+    expect(payload.message).toContain(
+      '<<<BLOCK id=agents purpose="Providing information about agents">>>',
+    );
+    expect(payload.message).toContain('Agents configuration:');
+    expect(payload.message).toContain(
+      '<<<SUBBLOCK id=agent_agent-1 name="Primary agent">>>',
+    );
+    expect(payload.message).toContain('Agent Primary agent (simple-agent)');
+    expect(payload.message).toContain('Instructions:');
+    expect(payload.message).toContain('Be concise.');
+    expect(payload.message).toContain('<<<END SUBBLOCK id=agent_agent-1>>>');
+    expect(payload.message).toContain('<<<END BLOCK id=agents>>>');
+    expect(payload.message).toContain(
+      '<<<BLOCK id=messages purpose="Thread messages">>>',
+    );
+    expect(payload.message).toContain('Thread messages (oldest first):');
+    expect(payload.message).toContain('system message from Primary agent');
+    expect(payload.message).toContain('human message from Primary agent');
+    expect(payload.message).toContain('ai message from Primary agent');
+    expect(payload.message).toContain('tool message from Search');
+    expect(payload.message).toContain('tool-shell message from Search');
+    expect(payload.message).toContain('toolCalls');
+    expect(payload.message).toContain('<<<END BLOCK id=messages>>>');
     expect(params.previous_response_id).toBe('prev-thread');
   });
 });

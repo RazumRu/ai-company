@@ -20,6 +20,7 @@ type SanitizedMessage =
   | {
       role: 'human' | 'ai' | 'reasoning' | 'system';
       content: string;
+      from: string;
       toolCalls?: {
         name: string;
         args?: Record<string, unknown>;
@@ -30,6 +31,7 @@ type SanitizedMessage =
       role: 'tool';
       name: string;
       content: string;
+      from: string;
       title?: string;
     }
   | {
@@ -38,6 +40,7 @@ type SanitizedMessage =
       exitCode: number;
       stdout?: string;
       stderr?: string;
+      from: string;
     };
 
 type AgentContext = {
@@ -98,7 +101,8 @@ export class AiSuggestionsService {
     });
 
     const sanitizedMessages = this.sanitizeMessages(
-      messages.map((m) => m.message),
+      messages.map((m) => ({ message: m.message, from: m.nodeId })),
+      compiledGraph,
     );
     const agents = this.buildAgentContexts(compiledGraph);
 
@@ -135,10 +139,10 @@ export class AiSuggestionsService {
       },
     );
 
-    const analysis = response.content?.trim();
+    const analysis = response.content?.trim() || '';
 
     return {
-      analysis: analysis?.length ? analysis : prompt,
+      analysis,
       conversationId: response.conversationId,
     };
   }
@@ -151,12 +155,23 @@ export class AiSuggestionsService {
     userInput?: string;
   }): string {
     const threadStatusLine = `Thread status: ${data.thread.status}`;
+    const userInputSection = [
+      'User request:',
+      data.userInput && data.userInput.trim().length
+        ? data.userInput
+        : 'No user request provided.',
+    ];
+
     const agentSection = data.agents.length
       ? data.agents
           .map((agent) => {
+            const displayName = agent.name || agent.nodeId;
+            const subblockId = `agent_${agent.nodeId}`;
             return [
-              `## Agent ${agent.nodeId} (${agent.template})${agent.name ? ` - ${agent.name}` : ''}`,
-              `## Instructions:\n${agent.instructions}`,
+              `<<<SUBBLOCK id=${subblockId} name="${displayName}">>>`,
+              `Agent ${displayName} (${agent.template})`,
+              `Instructions:\n${agent.instructions}`,
+              `<<<END SUBBLOCK id=${subblockId}>>>`,
             ]
               .filter(Boolean)
               .join('\n');
@@ -170,17 +185,33 @@ export class AiSuggestionsService {
           .join('\n')
       : 'No messages available for this thread.';
 
-    const userInputSection = data.userInput
-      ? ['# User input:', data.userInput]
-      : [];
+    const wrapBlock = (id: string, purpose: string, content: string): string =>
+      [
+        `<<<BLOCK id=${id} purpose="${purpose}">>>`,
+        content,
+        `<<<END BLOCK id=${id}>>>`,
+      ].join('\n');
+
+    const statusBlock = wrapBlock(
+      'information',
+      'General information',
+      [threadStatusLine, ...userInputSection].join('\n\n'),
+    );
+    const agentsBlock = wrapBlock(
+      'agents',
+      'Providing information about agents',
+      ['Agents configuration:', agentSection].join('\n\n'),
+    );
+    const messagesBlock = wrapBlock(
+      'messages',
+      'Thread messages',
+      ['Thread messages (oldest first):', messagesSection].join('\n\n'),
+    );
 
     return [
-      threadStatusLine,
-      '# Agent configuration:',
-      agentSection,
-      '# Thread messages (oldest first):',
-      messagesSection,
-      ...userInputSection,
+      statusBlock,
+      agentsBlock,
+      messagesBlock,
       'Provide the requested analysis using the structure from the system instructions.',
     ].join('\n\n');
   }
@@ -188,7 +219,7 @@ export class AiSuggestionsService {
   private formatMessage(index: number, msg: SanitizedMessage): string {
     if (msg.role === 'tool') {
       return [
-        `${index}. tool:${msg.name}`,
+        `${index}. tool message from ${msg.from}`,
         `content: ${msg.content}`,
         msg.title ? `title: ${msg.title}` : null,
       ]
@@ -200,7 +231,7 @@ export class AiSuggestionsService {
       const stdout = msg.stdout ? `stdout: ${msg.stdout}` : null;
       const stderr = msg.stderr ? `stderr: ${msg.stderr}` : null;
       return [
-        `${index}. tool-shell:${msg.name}`,
+        `${index}. tool-shell message from ${msg.from}`,
         `exitCode: ${msg.exitCode}`,
         stdout,
         stderr,
@@ -219,17 +250,27 @@ export class AiSuggestionsService {
           .join('; ')}`
       : null;
 
-    return [`${index}. ${msg.role}:`, msg.content, toolCalls]
+    return [
+      `${index}. ${msg.role} message from ${msg.from}:`,
+      msg.content,
+      toolCalls,
+    ]
       .filter(Boolean)
       .join(' ');
   }
 
-  private sanitizeMessages(messages: MessageDto[]): SanitizedMessage[] {
-    return messages.map((message) => {
+  private sanitizeMessages(
+    messages: { message: MessageDto; from: string }[],
+    compiledGraph: CompiledGraph,
+  ): SanitizedMessage[] {
+    return messages.map(({ message, from }) => {
+      const fromLabel = this.getNodeDisplayName(compiledGraph, from);
+
       if (message.role === 'human') {
         return {
           role: 'human',
           content: message.content,
+          from: fromLabel,
         };
       }
 
@@ -237,6 +278,7 @@ export class AiSuggestionsService {
         return {
           role: 'ai',
           content: message.content,
+          from: fromLabel,
           toolCalls: message.toolCalls?.map((tc) => ({
             name: tc.name,
             args: tc.args,
@@ -249,6 +291,7 @@ export class AiSuggestionsService {
         return {
           role: 'reasoning',
           content: message.content,
+          from: fromLabel,
         };
       }
 
@@ -257,6 +300,7 @@ export class AiSuggestionsService {
           role: 'tool',
           name: message.name,
           content: this.safeStringify(message.content),
+          from: fromLabel,
           title: message.title,
         };
       }
@@ -268,6 +312,7 @@ export class AiSuggestionsService {
           exitCode: message.content.exitCode,
           stdout: message.content.stdout,
           stderr: message.content.stderr,
+          from: fromLabel,
         };
       }
 
@@ -277,8 +322,32 @@ export class AiSuggestionsService {
           typeof message.content === 'string'
             ? message.content
             : this.safeStringify(message.content),
+        from: fromLabel,
       };
     });
+  }
+
+  private getNodeDisplayName(compiledGraph: CompiledGraph, nodeId: string) {
+    const node = compiledGraph.nodes.get(nodeId);
+    if (!node) {
+      return nodeId;
+    }
+
+    if (node.type === NodeKind.SimpleAgent) {
+      const name = (node.config as { name?: string })?.name;
+      return name || nodeId;
+    }
+
+    if (node.type === NodeKind.Tool) {
+      const instance = node.instance;
+      const toolName =
+        (Array.isArray(instance)
+          ? instance[0]?.name
+          : (instance as { name?: string })?.name) || nodeId;
+      return toolName;
+    }
+
+    return nodeId;
   }
 
   private buildAgentContexts(compiledGraph: CompiledGraph): AgentContext[] {
@@ -287,17 +356,27 @@ export class AiSuggestionsService {
     );
 
     return agentNodes.map((node) => {
-      const config = node.config as { name?: string; description?: string };
+      const config = node.config as {
+        name?: string;
+        description?: string;
+        instructions?: string;
+      };
+      const instanceInstructions = (
+        node.instance as { currentConfig?: { instructions?: string } }
+      )?.currentConfig?.instructions;
 
-      const instructions =
-        (node.config as { instructions?: string }).instructions ?? '';
+      const instructions = (
+        instanceInstructions ??
+        config.instructions ??
+        ''
+      ).trim();
 
       return {
         nodeId: node.id,
         template: node.template,
         name: config.name,
         description: config.description,
-        instructions: instructions.trim(),
+        instructions,
       };
     });
   }

@@ -74,7 +74,7 @@ describe('AiSuggestionsService (integration)', () => {
             {
               id: 'agent-1',
               template: 'simple-agent',
-              config: { instructions: 'Do it' },
+              config: { name: 'Primary agent', instructions: 'Do it' },
             },
             { id: 'tool-1', template: 'search-tool', config: {} },
           ],
@@ -96,7 +96,7 @@ describe('AiSuggestionsService (integration)', () => {
               type: NodeKind.SimpleAgent,
               template: 'simple-agent',
               instance: {} as unknown,
-              config: { instructions: 'Do it' },
+              config: { name: 'Primary agent', instructions: 'Do it' },
             },
           ],
           [
@@ -202,17 +202,39 @@ describe('AiSuggestionsService (integration)', () => {
       });
 
       expect(responseMock).toHaveBeenCalledTimes(1);
-      const [, params] = responseMock.mock.calls[0] as [
+      const [payload, params] = responseMock.mock.calls[0] as [
         { message: string },
         { previous_response_id?: string },
       ];
       expect(params.previous_response_id).toBe('conv-prev');
-      expect(result.analysis).toContain('Agent configuration:');
-      expect(result.analysis).toContain('Thread messages (oldest first):');
-      expect(result.analysis).toContain('System intro');
-      expect(result.analysis).toContain('toolCalls');
-      expect(result.analysis).toContain('User input:');
-      expect(result.analysis).toContain('Please check tools');
+      expect(payload.message).toContain(
+        '<<<BLOCK id=information purpose="General information">>>',
+      );
+      expect(payload.message).toContain('User request:');
+      expect(payload.message).toContain('Please check tools');
+      expect(payload.message).toContain('<<<END BLOCK id=information>>>');
+      expect(payload.message).toContain(
+        '<<<BLOCK id=agents purpose="Providing information about agents">>>',
+      );
+      expect(payload.message).toContain(
+        '<<<SUBBLOCK id=agent_agent-1 name="Primary agent">>>',
+      );
+      expect(payload.message).toContain('Agent Primary agent (simple-agent)');
+      expect(payload.message).toContain('Instructions:');
+      expect(payload.message).toContain('Do it');
+      expect(payload.message).toContain('<<<END SUBBLOCK id=agent_agent-1>>>');
+      expect(payload.message).toContain('<<<END BLOCK id=agents>>>');
+      expect(payload.message).toContain(
+        '<<<BLOCK id=messages purpose="Thread messages">>>',
+      );
+      expect(payload.message).toContain('Thread messages (oldest first):');
+      expect(payload.message).toContain('system message from Primary agent');
+      expect(payload.message).toContain('human message from Primary agent');
+      expect(payload.message).toContain('ai message from Primary agent');
+      expect(payload.message).toContain('tool message from Search');
+      expect(payload.message).toContain('tool-shell message from Search');
+      expect(payload.message).toContain('toolCalls');
+      expect(payload.message).toContain('<<<END BLOCK id=messages>>>');
     },
   );
 });
