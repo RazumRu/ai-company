@@ -1619,6 +1619,30 @@ export const ThreadMessageDtoSchema = {
   ],
 } as const;
 
+export const ThreadAnalysisRequestDtoSchema = {
+  type: 'object',
+  properties: {
+    userInput: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 5000,
+    },
+  },
+} as const;
+
+export const ThreadAnalysisResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    analysis: {
+      type: 'string',
+    },
+    conversationId: {
+      type: 'string',
+    },
+  },
+  required: ['analysis', 'conversationId'],
+} as const;
+
 export const LiteLlmModelDtoSchema = {
   type: 'object',
   properties: {

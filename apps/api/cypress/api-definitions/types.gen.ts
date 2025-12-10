@@ -984,6 +984,24 @@ export type ThreadMessageDto = {
       };
 };
 
+export type ThreadAnalysisRequestDto = {
+  /**
+   * Optional user-provided input to guide the analysis
+   */
+  userInput?: string;
+};
+
+export type ThreadAnalysisResponseDto = {
+  /**
+   * LLM-generated analysis and improvement suggestions
+   */
+  analysis: string;
+  /**
+   * Identifier of the LLM conversation used for the analysis
+   */
+  conversationId: string;
+};
+
 export type LiteLlmModelDto = {
   /**
    * Model identifier
@@ -1304,6 +1322,22 @@ export type GetThreadMessagesResponses = {
 
 export type GetThreadMessagesResponse =
   GetThreadMessagesResponses[keyof GetThreadMessagesResponses];
+
+export type AnalyzeThreadData = {
+  body: ThreadAnalysisRequestDto;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}/analyze';
+};
+
+export type AnalyzeThreadResponses = {
+  201: ThreadAnalysisResponseDto;
+};
+
+export type AnalyzeThreadResponse =
+  AnalyzeThreadResponses[keyof AnalyzeThreadResponses];
 
 export type ListModelsData = {
   body?: never;

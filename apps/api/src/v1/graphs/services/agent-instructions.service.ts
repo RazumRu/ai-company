@@ -85,7 +85,7 @@ export class AgentInstructionsService {
       },
       {
         model: 'gpt-5.1',
-        reasoning: { effort: 'medium' },
+        reasoning: { effort: 'high' },
         previous_response_id: threadId,
       },
     );

@@ -7,6 +7,8 @@ import type {
   TDataShape,
 } from './client/index.js';
 import type {
+  AnalyzeThreadData,
+  AnalyzeThreadResponses,
   CreateGraphData,
   CreateGraphResponses,
   DeleteGraphData,
@@ -304,6 +306,24 @@ export const getThreadMessages = <ThrowOnError extends boolean = false>(
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/messages',
     ...options,
+  });
+
+export const analyzeThread = <ThrowOnError extends boolean = false>(
+  options: Options<AnalyzeThreadData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    AnalyzeThreadResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/{threadId}/analyze',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
   });
 
 export const listModels = <ThrowOnError extends boolean = false>(
