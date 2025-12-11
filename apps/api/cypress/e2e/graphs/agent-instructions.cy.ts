@@ -19,15 +19,11 @@ describe('Graph agent instructions suggestion (E2E)', () => {
       expect(response.status).to.equal(201);
       const graphId = response.body.id;
 
-      suggestAgentInstructions(
-        graphId,
-        'agent-1',
-        'Make it concise',
-        undefined,
-        'cypress-thread-stopped',
-      ).then((suggestionResponse) => {
-        expect(suggestionResponse.status).to.equal(400);
-      });
+      suggestAgentInstructions(graphId, 'agent-1', 'Make it concise').then(
+        (suggestionResponse) => {
+          expect(suggestionResponse.status).to.equal(400);
+        },
+      );
     });
   });
 
@@ -46,38 +42,15 @@ describe('Graph agent instructions suggestion (E2E)', () => {
             graphId,
             'agent-1',
             'Add safety guidelines',
-            undefined,
-            'cypress-thread-running',
           ).then((suggestionResponse) => {
             expect(suggestionResponse.status).to.equal(201);
             expect(suggestionResponse.body.instructions).to.be.a('string');
             expect(
               suggestionResponse.body.instructions.length,
             ).to.be.greaterThan(0);
-            expect(suggestionResponse.body.threadId).to.equal(
-              'cypress-thread-running',
-            );
           });
         });
       });
-    });
-  });
-
-  it('returns generated threadId when not provided', () => {
-    const graphData = createMockGraphData();
-
-    createGraph(graphData).then((response) => {
-      expect(response.status).to.equal(201);
-      const graphId = response.body.id;
-
-      suggestAgentInstructions(graphId, 'agent-1', 'No thread').then(
-        (suggestionResponse) => {
-          expect(suggestionResponse.status).to.equal(201);
-          expect(suggestionResponse.body.instructions).to.be.a('string');
-          expect(suggestionResponse.body.threadId).to.be.a('string');
-          expect(suggestionResponse.body.threadId.length).to.be.greaterThan(0);
-        },
-      );
     });
   });
 });

@@ -144,7 +144,20 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       **3. Escape special regex characters:**
       If searching for literal special characters, escape them:
       - Search for \${: {"dir": "/repo", "query": "\\\\$\\\\{"}
-      - Search for []: {"dir": "/repo", "query": "\\\\[\\\\]"}
+      - Search for []: {"dir": "/repo", "query": "\\\$begin:math:display$\\\\\\$end:math:display$"}
+
+      **4. Systematic discovery of types/enums and allowed values:**
+      When trying to find “possible values for X”, prefer a two-step, pattern-based approach instead of many ad-hoc searches:
+
+      - First, hunt for the type/enum/interface definition:
+        - {"dir": "/repo", "query": "(enum|type|interface)\\\\s+NewMessageMode"}
+        - This helps find canonical definitions for things like \`NewMessageMode\`.
+
+      - If no explicit type/enum/interface is found, search for string-literal unions in field definitions:
+        - {"dir": "/repo", "query": "newMessageMode\\\\?\\\\s*:\\\\s*'[^']+'\\\\s*\\\\|"}
+        - Adjust the field name and pattern as needed to discover all allowed string literal values.
+
+      This approach makes “find possible values for X” more systematic and reduces overlapping guesswork across multiple searches.
 
       ### Output Format
       Returns matches as JSON array with type, path, lines, line_number, and submatches. Results are capped at 30 matches to prevent overwhelming output.

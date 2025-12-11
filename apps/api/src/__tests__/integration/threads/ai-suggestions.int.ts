@@ -9,6 +9,7 @@ import {
   vi,
 } from 'vitest';
 
+import { AiSuggestionsService } from '../../../v1/ai-suggestions/services/ai-suggestions.service';
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { GraphEntity } from '../../../v1/graphs/entity/graph.entity';
 import { GraphStatus, NodeKind } from '../../../v1/graphs/graphs.types';
@@ -17,7 +18,6 @@ import { OpenaiService } from '../../../v1/openai/openai.service';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadEntity } from '../../../v1/threads/entity/thread.entity';
-import { AiSuggestionsService } from '../../../v1/threads/services/ai-suggestions.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
@@ -207,34 +207,7 @@ describe('AiSuggestionsService (integration)', () => {
         { previous_response_id?: string },
       ];
       expect(params.previous_response_id).toBe('conv-prev');
-      expect(payload.message).toContain(
-        '<<<BLOCK id=information purpose="General information">>>',
-      );
-      expect(payload.message).toContain('User request:');
-      expect(payload.message).toContain('Please check tools');
-      expect(payload.message).toContain('<<<END BLOCK id=information>>>');
-      expect(payload.message).toContain(
-        '<<<BLOCK id=agents purpose="Providing information about agents">>>',
-      );
-      expect(payload.message).toContain(
-        '<<<SUBBLOCK id=agent_agent-1 name="Primary agent">>>',
-      );
-      expect(payload.message).toContain('Agent Primary agent (simple-agent)');
-      expect(payload.message).toContain('Instructions:');
-      expect(payload.message).toContain('Do it');
-      expect(payload.message).toContain('<<<END SUBBLOCK id=agent_agent-1>>>');
-      expect(payload.message).toContain('<<<END BLOCK id=agents>>>');
-      expect(payload.message).toContain(
-        '<<<BLOCK id=messages purpose="Thread messages">>>',
-      );
-      expect(payload.message).toContain('Thread messages (oldest first):');
-      expect(payload.message).toContain('system message from Primary agent');
-      expect(payload.message).toContain('human message from Primary agent');
-      expect(payload.message).toContain('ai message from Primary agent');
-      expect(payload.message).toContain('tool message from Search');
-      expect(payload.message).toContain('tool-shell message from Search');
-      expect(payload.message).toContain('toolCalls');
-      expect(payload.message).toContain('<<<END BLOCK id=messages>>>');
+      expect(payload.message).toBe('Please check tools');
     },
   );
 });

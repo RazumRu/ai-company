@@ -8,6 +8,7 @@ export enum NodeKind {
   SimpleAgent = 'simpleAgent',
   Trigger = 'trigger',
   Resource = 'resource',
+  Knowledge = 'knowledge',
 }
 
 export enum GraphStatus {

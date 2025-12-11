@@ -56,7 +56,7 @@ describe('ShellTool persistent sessions (integration)', () => {
     async () => {
       const builtTool = shellTool.build({ runtime });
 
-      const exportResult = await builtTool.invoke(
+      const { output: exportResult } = await builtTool.invoke(
         {
           purpose: 'set env',
           cmd: 'export PERSIST_FOO=bar',
@@ -65,7 +65,7 @@ describe('ShellTool persistent sessions (integration)', () => {
       );
       expect(exportResult.exitCode).toBe(0);
 
-      const envResult = await builtTool.invoke(
+      const { output: envResult } = await builtTool.invoke(
         {
           purpose: 'read env',
           cmd: 'echo $PERSIST_FOO',
@@ -75,7 +75,7 @@ describe('ShellTool persistent sessions (integration)', () => {
       expect(envResult.exitCode).toBe(0);
       expect(envResult.stdout.trim()).toBe('bar');
 
-      const changeDirResult = await builtTool.invoke(
+      const { output: changeDirResult } = await builtTool.invoke(
         {
           purpose: 'change dir',
           cmd: 'cd /tmp',
@@ -84,7 +84,7 @@ describe('ShellTool persistent sessions (integration)', () => {
       );
       expect(changeDirResult.exitCode).toBe(0);
 
-      const pwdResult = await builtTool.invoke(
+      const { output: pwdResult } = await builtTool.invoke(
         {
           purpose: 'confirm dir',
           cmd: 'pwd',
@@ -102,7 +102,7 @@ describe('ShellTool persistent sessions (integration)', () => {
     async () => {
       const builtTool = shellTool.build({ runtime });
 
-      const result = await builtTool.invoke(
+      const { output: result } = await builtTool.invoke(
         {
           purpose: 'tail timeout enforcement',
           cmd: 'echo "start"; sleep 2; echo "end"',

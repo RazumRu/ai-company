@@ -212,13 +212,24 @@ export const suggestAgentInstructions = (
     headers,
     body: { userRequest, threadId },
     failOnStatusCode: false,
+    timeout: 300_000,
   });
 
-export const waitForGraphToBeStopped = (
-  id: string,
+export const suggestKnowledgeContent = (
+  graphId: string,
+  nodeId: string,
+  userRequest: string,
+  threadId?: string,
   headers = reqHeaders,
-  timeoutMs = 60000,
-) => waitForGraphStatus(id, 'stopped', headers, timeoutMs);
+) =>
+  cy.request({
+    url: `/api/v1/graphs/${graphId}/nodes/${nodeId}/suggest-knowledge`,
+    method: 'POST',
+    headers,
+    body: { userRequest, threadId },
+    failOnStatusCode: false,
+    timeout: 300_000,
+  });
 
 export const createMockGraphData = (
   overrides: Partial<CreateGraphDto> = {},

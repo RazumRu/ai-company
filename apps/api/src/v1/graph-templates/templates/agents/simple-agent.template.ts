@@ -2,13 +2,15 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
+import { IBaseKnowledgeOutput } from '../../../agent-knowledge/agent-knowledge.types';
+import { SimpleKnowledge } from '../../../agent-knowledge/services/simple-knowledge';
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
 import {
   SimpleAgent,
   SimpleAgentSchema,
 } from '../../../agents/services/agents/simple-agent';
-import { NodeKind } from '../../../graphs/graphs.types';
+import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
@@ -53,6 +55,11 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       value: NodeKind.Tool,
       multiple: true,
     },
+    {
+      type: 'kind',
+      value: NodeKind.Knowledge,
+      multiple: true,
+    },
   ] as const;
 
   constructor(
@@ -72,15 +79,21 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
     // Collect all tools from connected nodes
     const allTools: BuiltAgentTool[] = [];
+    const knowledgeBlocks: { id: string; content: string }[] = [];
     for (const nodeId of outputNodeIds) {
       const node = this.graphRegistry.getNode<
         | BuiltAgentTool
         | BuiltAgentTool[]
         | DynamicStructuredTool
         | DynamicStructuredTool[]
+        | SimpleKnowledge
       >(metadata.graphId, nodeId);
 
-      if (node && node.type === NodeKind.Tool) {
+      if (!node) {
+        continue;
+      }
+
+      if (node.type === NodeKind.Tool) {
         const tools = Array.isArray(node.instance)
           ? node.instance
           : [node.instance];
@@ -90,16 +103,31 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
           allTools.push(builtTool);
           agent.addTool(builtTool);
         });
+        continue;
+      }
+
+      if (node.type === NodeKind.Knowledge) {
+        const content = this.extractKnowledgeContent(node);
+        if (content) {
+          knowledgeBlocks.push({ id: nodeId, content });
+        }
       }
     }
 
     // Collect detailed instructions from all connected tools
     const toolInstructions = this.collectToolInstructions(allTools);
 
+    const knowledgeInstructions =
+      this.collectKnowledgeInstructions(knowledgeBlocks);
+
     // Build enhanced instructions with tool usage guidance
-    const enhancedInstructions = toolInstructions
-      ? `${config.instructions}\n\n${toolInstructions}`
-      : config.instructions;
+    const enhancedInstructions = [
+      config.instructions,
+      knowledgeInstructions,
+      toolInstructions,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     // Set configuration with enhanced instructions
     const agentConfig = {
@@ -128,5 +156,28 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     }
 
     return ['## Tool Instructions', ...blocks].join('\n\n');
+  }
+
+  private extractKnowledgeContent(node: CompiledGraphNode): string | undefined {
+    const content = (node.instance as IBaseKnowledgeOutput)?.content;
+
+    if (typeof content !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = content.trim();
+    return trimmed.length ? trimmed : undefined;
+  }
+
+  private collectKnowledgeInstructions(
+    knowledgeBlocks: { id: string; content: string }[],
+  ): string | undefined {
+    if (!knowledgeBlocks.length) {
+      return undefined;
+    }
+
+    const blocks = knowledgeBlocks.map(({ id, content }) => `${content}`);
+
+    return ['## Knowledge', ...blocks].join('\n\n');
   }
 }

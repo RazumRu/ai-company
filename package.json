@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "full-check": "pnpm -s build --output-logs=errors-only && pnpm -s build:tests --output-logs=errors-only && pnpm -s lint:fix --output-logs=errors-only && pnpm -s test:unit --output-logs=errors-only -- --silent",
+    "full-check": "pnpm -s build --output-logs=errors-only --cache=local:r,remote:r && pnpm -s build:tests --output-logs=errors-only --cache=local:r,remote:r && pnpm -s lint:fix --output-logs=errors-only --cache=local:r,remote:r && pnpm -s test:unit --output-logs=errors-only --cache=local:r,remote:r -- --silent",
     "build": "turbo run build",
     "build:tests": "turbo run build:tests",
     "build:packages": "turbo run build --filter='./packages/*'",

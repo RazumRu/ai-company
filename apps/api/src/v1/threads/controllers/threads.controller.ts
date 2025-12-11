@@ -1,26 +1,13 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Controller, Delete, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
 
-import {
-  ThreadAnalysisRequestDto,
-  ThreadAnalysisResponseDto,
-} from '../dto/ai-suggestions.dto';
 import {
   GetMessagesQueryDto,
   GetThreadsQueryDto,
   ThreadDto,
   ThreadMessageDto,
 } from '../dto/threads.dto';
-import { AiSuggestionsService } from '../services/ai-suggestions.service';
 import { ThreadsService } from '../services/threads.service';
 
 @ApiTags('threads')
@@ -28,10 +15,7 @@ import { ThreadsService } from '../services/threads.service';
 @ApiBearerAuth()
 @OnlyForAuthorized()
 export class ThreadsController {
-  constructor(
-    private readonly threadsService: ThreadsService,
-    private readonly aiSuggestionsService: AiSuggestionsService,
-  ) {}
+  constructor(private readonly threadsService: ThreadsService) {}
 
   @Get()
   async getThreads(@Query() query: GetThreadsQueryDto): Promise<ThreadDto[]> {
@@ -56,14 +40,6 @@ export class ThreadsController {
     @Query() query: GetMessagesQueryDto,
   ): Promise<ThreadMessageDto[]> {
     return this.threadsService.getThreadMessages(threadId, query);
-  }
-
-  @Post(':threadId/analyze')
-  async analyzeThread(
-    @Param('threadId') threadId: string,
-    @Body() payload: ThreadAnalysisRequestDto,
-  ): Promise<ThreadAnalysisResponseDto> {
-    return this.aiSuggestionsService.analyzeThread(threadId, payload);
   }
 
   @Delete(':threadId')

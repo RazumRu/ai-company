@@ -66,6 +66,13 @@ export abstract class ResourceNodeBaseTemplate<
   readonly kind: NodeKind = NodeKind.Resource;
 }
 
+export abstract class KnowledgeNodeBaseTemplate<
+  TConfig extends z.ZodTypeAny,
+  TResult = unknown,
+> extends NodeBaseTemplate<TConfig, TResult> {
+  readonly kind: NodeKind = NodeKind.Knowledge;
+}
+
 export abstract class SimpleAgentNodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
   TResult = SimpleAgent,

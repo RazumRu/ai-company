@@ -1,6 +1,7 @@
 import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 
+import { AgentKnowledgeModule } from '../agent-knowledge/agent-knowledge.module';
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
 import { AgentTriggersModule } from '../agent-triggers/agent-triggers.module';
 import { AgentsModule } from '../agents/agents.module';
@@ -12,6 +13,7 @@ import { REGISTER_TEMPLATE_KEY } from './decorators/register-template.decorator'
 import { TemplateRegistry } from './services/template-registry';
 import { TemplatesService } from './services/templates.service';
 import { SimpleAgentTemplate } from './templates/agents/simple-agent.template';
+import { SimpleKnowledgeTemplate } from './templates/knowledge/simple-knowledge.template';
 import { GithubResourceTemplate } from './templates/resources/github-resource.template';
 import { DockerRuntimeTemplate } from './templates/runtimes/docker-runtime.template';
 import { AgentCommunicationToolTemplate } from './templates/tools/agent-communication-tool.template';
@@ -25,6 +27,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
   imports: [
     RuntimeModule,
     AgentToolsModule,
+    AgentKnowledgeModule,
     AgentsModule,
     AgentTriggersModule,
     GraphResourcesModule,
@@ -41,6 +44,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     ShellToolTemplate,
     WebSearchToolTemplate,
     SimpleAgentTemplate,
+    SimpleKnowledgeTemplate,
     ManualTriggerTemplate,
     GhToolTemplate,
     FilesToolTemplate,

@@ -92,6 +92,21 @@ describe('SimpleAgentTemplate', () => {
     it('should have correct schema', () => {
       expect(template.schema).toBe(SimpleAgentTemplateSchema);
     });
+
+    it('should expose tool and knowledge connections', () => {
+      expect(template.outputs).toEqual([
+        {
+          type: 'kind',
+          value: NodeKind.Tool,
+          multiple: true,
+        },
+        {
+          type: 'kind',
+          value: NodeKind.Knowledge,
+          multiple: true,
+        },
+      ]);
+    });
   });
 
   describe('schema validation', () => {
@@ -494,6 +509,46 @@ describe('SimpleAgentTemplate', () => {
 
       expect(result).toBe(mockSimpleAgent);
       expect(result).toBeInstanceOf(Object);
+    });
+
+    it('augments instructions with connected knowledge content', async () => {
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Base instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+        maxIterations: 50,
+      };
+
+      const knowledgeNode = buildCompiledNode({
+        id: 'knowledge-1',
+        type: NodeKind.Knowledge,
+        template: 'simple-knowledge',
+        config: { content: 'Knowledge block' },
+        instance: { content: 'Knowledge block' },
+      });
+
+      mockGraphRegistry.getNode = vi
+        .fn()
+        .mockImplementation((_graphId, nodeId) => {
+          if (nodeId === 'knowledge-1') return knowledgeNode;
+          return undefined;
+        });
+
+      await template.create(config, new Set(), new Set(['knowledge-1']), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
+
+      expect(mockSimpleAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instructions: expect.stringContaining('Knowledge block'),
+        }),
+      );
     });
   });
 });
