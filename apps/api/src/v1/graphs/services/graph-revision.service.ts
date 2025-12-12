@@ -353,16 +353,11 @@ export class GraphRevisionService {
     }
 
     try {
-      await this.typeorm.trx(async (entityManager) => {
-        await this.graphRevisionDao.updateById(
-          revision.id,
-          {
-            status: GraphRevisionStatus.Applying,
-          },
-          {},
-          entityManager,
-        );
+      await this.graphRevisionDao.updateById(revision.id, {
+        status: GraphRevisionStatus.Applying,
+      });
 
+      await this.typeorm.trx(async (entityManager) => {
         await this.notificationsService.emit({
           type: NotificationEvent.GraphRevisionApplying,
           graphId: revision.graphId,

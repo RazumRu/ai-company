@@ -176,7 +176,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       return undefined;
     }
 
-    const blocks = knowledgeBlocks.map(({ id, content }) => `${content}`);
+    const blocks = knowledgeBlocks.map(({ content }) => `${content}`);
 
     return ['## Knowledge', ...blocks].join('\n\n');
   }

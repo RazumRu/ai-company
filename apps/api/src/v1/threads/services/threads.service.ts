@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 
+import { GraphsService } from '../../graphs/services/graphs.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../dao/messages.dao';
@@ -14,6 +15,7 @@ import {
 } from '../dto/threads.dto';
 import { MessageEntity } from '../entity/message.entity';
 import { ThreadEntity } from '../entity/thread.entity';
+import { ThreadStatus } from '../threads.types';
 
 @Injectable()
 export class ThreadsService {
@@ -22,6 +24,7 @@ export class ThreadsService {
     private readonly messagesDao: MessagesDao,
     private readonly authContext: AuthContextService,
     private readonly notificationsService: NotificationsService,
+    private readonly graphsService: GraphsService,
   ) {}
 
   async getThreads(query: GetThreadsQueryDto): Promise<ThreadDto[]> {
@@ -118,6 +121,52 @@ export class ThreadsService {
 
     // Then delete the thread itself
     await this.threadDao.deleteById(threadId);
+  }
+
+  async stopThread(threadId: string): Promise<ThreadDto> {
+    const userId = this.authContext.checkSub();
+
+    const thread = await this.threadDao.getOne({
+      id: threadId,
+      createdBy: userId,
+    });
+
+    if (!thread) {
+      throw new NotFoundException('THREAD_NOT_FOUND');
+    }
+
+    if (thread.status !== ThreadStatus.Running) {
+      return this.prepareThreadResponse(thread);
+    }
+
+    // Best effort: stop execution in the running graph (if present in registry)
+    try {
+      await this.graphsService.stopThreadExecution(
+        thread.graphId,
+        thread.externalThreadId,
+        'Graph execution was stopped',
+      );
+    } catch {
+      // best effort
+    }
+    // Do not emit ThreadUpdate here; GraphStateManager will emit ThreadUpdate with Stopped
+    // when the agent run terminates due to abort.
+    return this.prepareThreadResponse(thread);
+  }
+
+  async stopThreadByExternalId(externalThreadId: string): Promise<ThreadDto> {
+    const userId = this.authContext.checkSub();
+
+    const thread = await this.threadDao.getOne({
+      externalThreadId,
+      createdBy: userId,
+    });
+
+    if (!thread) {
+      throw new NotFoundException('THREAD_NOT_FOUND');
+    }
+
+    return this.stopThread(thread.id);
   }
 
   public prepareThreadResponse(entity: ThreadEntity): ThreadDto {

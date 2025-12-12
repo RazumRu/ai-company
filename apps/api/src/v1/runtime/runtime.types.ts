@@ -18,6 +18,12 @@ export interface RuntimeExecParams {
   childWorkdir?: string;
   env?: Record<string, string>;
   /**
+   * Optional AbortSignal to cancel an in-flight execution.
+   * When aborted, runtimes should best-effort stop the underlying process and
+   * return an exit code 124 (timeout/aborted).
+   */
+  signal?: AbortSignal;
+  /**
    * Optional session identifier. When provided, the runtime may keep a persistent
    * shell process keyed by this id and route commands through it instead of
    * starting a fresh process per call.

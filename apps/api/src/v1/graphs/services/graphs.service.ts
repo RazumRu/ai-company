@@ -7,6 +7,7 @@ import { isEqual, isUndefined, omitBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
+import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
@@ -376,16 +377,42 @@ export class GraphsService {
           await this.threadsDao.updateById(thread.id, {
             status: ThreadStatus.Stopped,
           });
-
-          await this.notificationsService.emit({
-            type: NotificationEvent.ThreadUpdate,
-            graphId,
-            threadId: thread.externalThreadId,
-            data: { status: ThreadStatus.Stopped },
-          });
         })(),
       ),
     );
+  }
+
+  /**
+   * Best-effort stop of a single thread execution within a running graph.
+   * Stops any active agent runs whose thread_id or parent_thread_id matches the provided externalThreadId.
+   */
+  async stopThreadExecution(
+    graphId: string,
+    externalThreadId: string,
+    reason?: string,
+  ): Promise<boolean> {
+    const compiledGraph = this.graphRegistry.get(graphId);
+    if (!compiledGraph) {
+      return false;
+    }
+
+    const agentNodes = this.graphRegistry.getNodesByType<SimpleAgent>(
+      graphId,
+      NodeKind.SimpleAgent,
+    );
+
+    if (!agentNodes.length) {
+      return false;
+    }
+
+    const results = await Promise.allSettled(
+      agentNodes.map(async (node) => {
+        await node.instance.stopThread(externalThreadId, reason);
+        return true;
+      }),
+    );
+
+    return results.some((r) => r.status === 'fulfilled' && r.value === true);
   }
 
   async destroy(id: string): Promise<GraphDto> {

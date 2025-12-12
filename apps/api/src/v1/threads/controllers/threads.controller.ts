@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, Query } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
 
@@ -45,5 +45,17 @@ export class ThreadsController {
   @Delete(':threadId')
   async deleteThread(@Param('threadId') threadId: string): Promise<void> {
     return this.threadsService.deleteThread(threadId);
+  }
+
+  @Post(':threadId/stop')
+  async stopThread(@Param('threadId') threadId: string): Promise<ThreadDto> {
+    return this.threadsService.stopThread(threadId);
+  }
+
+  @Post('external/:externalThreadId/stop')
+  async stopThreadByExternalId(
+    @Param('externalThreadId') externalThreadId: string,
+  ): Promise<ThreadDto> {
+    return this.threadsService.stopThreadByExternalId(externalThreadId);
   }
 }

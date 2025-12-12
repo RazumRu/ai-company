@@ -7,6 +7,7 @@ import {
   destroyGraph,
   executeTrigger,
   runGraph,
+  waitForGraphToBeRunning,
 } from '../graphs/graphs.helper';
 import {
   deleteThread,
@@ -14,6 +15,9 @@ import {
   getThreadById,
   getThreadMessages,
   getThreads,
+  stopThread,
+  stopThreadByExternalId,
+  waitForThreadStatus,
 } from './threads.helper';
 
 describe('Threads E2E', () => {
@@ -623,6 +627,183 @@ describe('Threads E2E', () => {
             expect(getResponse.body.id).to.equal(internalThreadId);
 
             // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+    });
+
+    describe.only('Thread Stop Execution', () => {
+      it('should stop a running thread by externalThreadId', () => {
+        let testGraphId: string;
+        let externalThreadId: string;
+
+        const graphData = {
+          name: `Thread Stop Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for thread stop execution',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Command Agent',
+                  description: 'Agent that executes a shell sleep command',
+                  instructions:
+                    'When asked, call shell to run the exact command requested, then finish.',
+                  invokeModelName: 'gpt-5-mini',
+                  maxIterations: 50,
+                },
+              },
+              {
+                id: 'shell-1',
+                template: 'shell-tool',
+                config: {},
+              },
+              {
+                id: 'runtime-1',
+                template: 'docker-runtime',
+                config: {
+                  runtimeType: 'Docker',
+                  image: 'python:3.11-slim',
+                  env: {},
+                },
+              },
+            ],
+            edges: [
+              { from: 'trigger-1', to: 'agent-1' },
+              { from: 'agent-1', to: 'shell-1' },
+              { from: 'shell-1', to: 'runtime-1' },
+            ],
+          },
+        };
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((response) => {
+            expect(response.status).to.equal(201);
+
+            return waitForGraphToBeRunning(testGraphId);
+          })
+          .then(() => {
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['Run this command: sleep 60'],
+              async: true,
+              threadSubId: 'e2e-stop-thread',
+            });
+          })
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+            externalThreadId = triggerResponse.body.externalThreadId;
+            cy.wait(5000);
+
+            return stopThreadByExternalId(externalThreadId);
+          })
+          .then((stopResponse) => {
+            expect([200, 201]).to.contain(stopResponse.status);
+
+            return waitForThreadStatus(externalThreadId, 'stopped', 20, 3000);
+          })
+          .then(() => {
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+
+      it('should stop a running thread by internal thread id', () => {
+        let testGraphId: string;
+        let externalThreadId: string;
+        let internalThreadId: string;
+
+        const graphData = {
+          name: `Thread Stop Internal Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for internal thread stop execution',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              { id: 'trigger-1', template: 'manual-trigger', config: {} },
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Command Agent',
+                  description: 'Agent that executes a shell sleep command',
+                  instructions:
+                    'When asked, call shell to run the exact command requested, then finish.',
+                  invokeModelName: 'gpt-5-mini',
+                  maxIterations: 50,
+                },
+              },
+              { id: 'shell-1', template: 'shell-tool', config: {} },
+              {
+                id: 'runtime-1',
+                template: 'docker-runtime',
+                config: {
+                  runtimeType: 'Docker',
+                  image: 'python:3.11-slim',
+                  env: {},
+                },
+              },
+            ],
+            edges: [
+              { from: 'trigger-1', to: 'agent-1' },
+              { from: 'agent-1', to: 'shell-1' },
+              { from: 'shell-1', to: 'runtime-1' },
+            ],
+          },
+        };
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((response) => {
+            expect(response.status).to.equal(201);
+
+            return waitForGraphToBeRunning(testGraphId);
+          })
+          .then(() => {
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['Run this command: sleep 60'],
+              async: true,
+              threadSubId: 'e2e-stop-thread-internal',
+            });
+          })
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+            externalThreadId = triggerResponse.body.externalThreadId;
+            cy.wait(5000);
+
+            return getThreadByExternalId(externalThreadId);
+          })
+          .then((threadResponse) => {
+            expect(threadResponse.status).to.equal(200);
+            internalThreadId = threadResponse.body.id;
+
+            return stopThread(internalThreadId);
+          })
+          .then((stopResponse) => {
+            expect([200, 201]).to.contain(stopResponse.status);
+
+            return waitForThreadStatus(externalThreadId, 'stopped', 20, 3000);
+          })
+          .then(() => {
             destroyGraph(testGraphId).then(() => {
               deleteGraph(testGraphId);
             });

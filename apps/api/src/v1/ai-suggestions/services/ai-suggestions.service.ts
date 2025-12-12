@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 
+import { IBaseKnowledgeOutput } from '../../agent-knowledge/agent-knowledge.types';
+import { SimpleKnowledgeConfig } from '../../agent-knowledge/services/simple-knowledge';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { GraphDao } from '../../graphs/dao/graph.dao';
@@ -230,7 +232,15 @@ export class AiSuggestionsService {
     const threadId = payload.threadId;
     const isContinuation = !!threadId;
 
-    const systemMessage = isContinuation ? undefined : this.buildSystemPrompt();
+    const systemMessage = isContinuation
+      ? undefined
+      : [
+          'You rewrite agent system instructions.',
+          'Use the current instructions as a base and apply the user request.',
+          'You can analyze connected tool capabilities and their usage guidelines. But dont duplicate Connected tools and Knowledge sections information, it will be automatically injected to instructions. So you can just refer to it if needed.',
+          'Keep the result concise, actionable, and focused on how the agent should behave.',
+          'Return only the updated instructions text without extra commentary.',
+        ].join('\n');
     const message = isContinuation
       ? (payload.userRequest || '').trim()
       : this.buildInstructionRequestPrompt(
@@ -659,9 +669,9 @@ export class AiSuggestionsService {
         }
 
         const content =
-          (knowledgeNode.instance as { content?: string } | undefined)
+          (knowledgeNode.instance as IBaseKnowledgeOutput | undefined)
             ?.content ??
-          (knowledgeNode.config as { content?: unknown })?.content;
+          (knowledgeNode.config as SimpleKnowledgeConfig)?.content;
 
         if (typeof content !== 'string') {
           return undefined;
@@ -672,7 +682,7 @@ export class AiSuggestionsService {
           return undefined;
         }
 
-        return `### ${knowledgeNodeId}\n${trimmed}`;
+        return trimmed;
       })
       .filter((block): block is string => Boolean(block));
 
@@ -681,16 +691,6 @@ export class AiSuggestionsService {
     }
 
     return ['## Knowledge', ...blocks].join('\n\n');
-  }
-
-  private buildSystemPrompt(): string {
-    return [
-      'You rewrite agent system instructions.',
-      'Use the current instructions as a base and apply the user request.',
-      'You can analyze connected tool capabilities and their usage guidelines. But dont duplicate Connected tools information, it will be automatically injected to instructions. So you can just refer to it if needed.',
-      'Keep the result concise, actionable, and focused on how the agent should behave.',
-      'Return only the updated instructions text without extra commentary.',
-    ].join('\n');
   }
 
   private buildInstructionRequestPrompt(

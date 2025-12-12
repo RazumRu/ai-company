@@ -1406,6 +1406,37 @@ export type GetThreadMessagesResponses = {
 export type GetThreadMessagesResponse =
   GetThreadMessagesResponses[keyof GetThreadMessagesResponses];
 
+export type StopThreadData = {
+  body?: never;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}/stop';
+};
+
+export type StopThreadResponses = {
+  201: ThreadDto;
+};
+
+export type StopThreadResponse = StopThreadResponses[keyof StopThreadResponses];
+
+export type StopThreadByExternalIdData = {
+  body?: never;
+  path: {
+    externalThreadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/external/{externalThreadId}/stop';
+};
+
+export type StopThreadByExternalIdResponses = {
+  201: ThreadDto;
+};
+
+export type StopThreadByExternalIdResponse =
+  StopThreadByExternalIdResponses[keyof StopThreadByExternalIdResponses];
+
 export type ListModelsData = {
   body?: never;
   path?: never;

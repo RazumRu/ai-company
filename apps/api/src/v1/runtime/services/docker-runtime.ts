@@ -31,6 +31,7 @@ type SessionCommand = {
   workdir: string;
   timeoutMs?: number;
   tailTimeoutMs?: number;
+  signal?: AbortSignal;
   resolve: (res: RuntimeExecResult) => void;
   reject: (err: Error) => void;
 };
@@ -234,6 +235,7 @@ export class DockerRuntime extends BaseRuntime {
     let stderrBuffer = '';
     let finished = false;
     let tailTimer: NodeJS.Timeout | null = null;
+    let abortListener: (() => void) | null = null;
 
     const resetTailTimer = () => {
       if (tailTimer) {
@@ -287,7 +289,7 @@ export class DockerRuntime extends BaseRuntime {
       // This allows any pending stderr data to be processed by the demux stream
       setImmediate(() => {
         if (finished) return;
-        
+
         cleanupListeners();
         finished = true;
         next.resolve({
@@ -320,6 +322,10 @@ export class DockerRuntime extends BaseRuntime {
       session.stdoutStream.off('data', onStdoutData);
       session.stderrStream.off('data', onStderrData);
       session.inputStream.off('error', onError);
+      if (abortListener) {
+        abortListener();
+        abortListener = null;
+      }
       if (timeout) {
         clearTimeout(timeout);
       }
@@ -350,6 +356,56 @@ export class DockerRuntime extends BaseRuntime {
     session.stderrStream.on('data', onStderrData);
     session.inputStream.on('error', onError);
     resetTailTimer();
+
+    const abortNow = () => {
+      if (finished) return;
+      cleanupListeners();
+      finished = true;
+
+      // Best effort: interrupt and drop the session so we don't hang on a command
+      try {
+        session.inputStream.write('\u0003');
+      } catch {
+        //
+      }
+      try {
+        session.inputStream.destroy(new Error('ABORTED'));
+      } catch {
+        //
+      }
+      try {
+        this.sessions.delete(session.id);
+      } catch {
+        //
+      }
+
+      next.resolve({
+        exitCode: 124,
+        stdout: stdoutBuffer,
+        stderr: stderrBuffer || 'Aborted',
+        fail: true,
+        execPath: next.workdir,
+      });
+      session.busy = false;
+      void this.processSessionQueue(session);
+    };
+
+    if (next.signal) {
+      if (next.signal.aborted) {
+        abortNow();
+        return;
+      }
+
+      const onAbort = () => abortNow();
+      next.signal.addEventListener('abort', onAbort, { once: true });
+      abortListener = () => {
+        try {
+          next.signal?.removeEventListener('abort', onAbort);
+        } catch {
+          //
+        }
+      };
+    }
 
     try {
       session.inputStream.write(`${wrappedScript}\n`);
@@ -803,6 +859,24 @@ export class DockerRuntime extends BaseRuntime {
       : ['sh', '-lc', params.cmd];
     const abortController = new AbortController();
 
+    if (params.signal) {
+      if (params.signal.aborted) {
+        abortController.abort();
+      } else {
+        params.signal.addEventListener(
+          'abort',
+          () => {
+            try {
+              abortController.abort();
+            } catch {
+              //
+            }
+          },
+          { once: true },
+        );
+      }
+    }
+
     const ex = await this.container.exec({
       Cmd: cmd,
       Env: env,
@@ -958,6 +1032,7 @@ export class DockerRuntime extends BaseRuntime {
         workdir,
         timeoutMs: params.timeoutMs,
         tailTimeoutMs: params.tailTimeoutMs,
+        signal: params.signal,
         resolve,
         reject,
       });

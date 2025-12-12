@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthContextService } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { GraphsService } from '../../graphs/services/graphs.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../dao/messages.dao';
@@ -88,6 +89,12 @@ describe('ThreadsService', () => {
           provide: NotificationsService,
           useValue: {
             emit: vi.fn(),
+          },
+        },
+        {
+          provide: GraphsService,
+          useValue: {
+            stopThreadExecution: vi.fn(),
           },
         },
       ],

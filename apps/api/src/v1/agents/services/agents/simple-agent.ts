@@ -2,7 +2,9 @@ import {
   AIMessage,
   AIMessageChunk,
   BaseMessage,
+  HumanMessage,
   SystemMessage,
+  ToolMessage,
 } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import {
@@ -929,6 +931,99 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     this.graphThreadStateUnsubscribe?.();
     this.graphThreadStateUnsubscribe = undefined;
     this.graphThreadState = undefined;
+  }
+
+  /**
+   * Stop execution for a specific thread (best effort).
+   * This aborts any active runs whose thread_id or parent_thread_id matches the provided threadId.
+   */
+  public async stopThread(threadId: string, reason?: string): Promise<void> {
+    for (const [runId, run] of this.activeRuns.entries()) {
+      const cfg = run.runnableConfig?.configurable;
+      const runThreadId = run.threadId;
+      const parentThreadId = cfg?.parent_thread_id;
+
+      const matches = runThreadId === threadId || parentThreadId === threadId;
+      if (!matches) {
+        continue;
+      }
+
+      if (cfg?.graph_id && !run.lastState.done) {
+        const msg = markMessageHideForLlm(
+          new SystemMessage(reason ?? 'Graph execution was stopped'),
+        );
+        const msgs = updateMessagesListWithMetadata([msg], run.runnableConfig);
+
+        // Emit message event so the user can see the stop reason in thread history
+        this.emit({
+          type: 'message',
+          data: {
+            threadId: run.threadId,
+            messages: msgs,
+            config: run.runnableConfig,
+          },
+        });
+
+        // Emit stop event so GraphStateManager can deterministically emit ThreadUpdate(Sto pped)
+        // even if the underlying LangGraph run is aborted before it reaches the final `run` event.
+        this.emit({
+          type: 'stop',
+          data: { config: run.runnableConfig, threadId: run.threadId },
+        });
+
+        // Best-effort: if the agent already decided to call the shell tool but the run is being
+        // stopped before the tool result is persisted, emit a deterministic aborted shell result.
+        // This makes "stop while a shell command is in-flight" observable in thread history.
+        const hasShellTool = this.tools.some((t) => t.name === 'shell');
+        const hasAnyShellToolMessage = run.lastState.messages.some(
+          (m) => m instanceof ToolMessage && (m.name as string) === 'shell',
+        );
+
+        if (hasShellTool && !hasAnyShellToolMessage) {
+          const pendingShellCall = [...run.lastState.messages]
+            .reverse()
+            .filter((m) => m instanceof AIMessage)
+            .flatMap((m) => (m as AIMessage).tool_calls ?? [])
+            .find((tc) => tc?.name === 'shell');
+
+          const callId = pendingShellCall?.id ?? '';
+
+          const abortedShell = new ToolMessage({
+            tool_call_id: callId,
+            name: 'shell',
+            content: JSON.stringify({
+              exitCode: 124,
+              stdout: '',
+              stderr: 'Aborted',
+              fail: true,
+            }),
+          });
+
+          this.emit({
+            type: 'message',
+            data: {
+              threadId: run.threadId,
+              messages: updateMessagesListWithMetadata(
+                [abortedShell],
+                run.runnableConfig,
+              ),
+              config: run.runnableConfig,
+            },
+          });
+        }
+      }
+
+      run.stopped = true;
+      run.stopReason ??= reason ?? 'Graph execution was stopped';
+
+      try {
+        run.abortController.abort();
+      } catch {
+        // noop
+      }
+
+      this.activeRuns.delete(runId);
+    }
   }
 
   /**

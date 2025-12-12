@@ -1236,14 +1236,7 @@ describe('GraphsService', () => {
       expect(threadsDao.updateById).toHaveBeenCalledWith(runningThread.id, {
         status: ThreadStatus.Stopped,
       });
-      expect(notificationsService.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.ThreadUpdate,
-          graphId: mockGraphId,
-          threadId: runningThread.externalThreadId,
-          data: { status: ThreadStatus.Stopped },
-        }),
-      );
+      // ThreadUpdate(Stooped) is emitted by GraphStateManager, not GraphsService.
     });
 
     it('should cleanup registry when database update fails', async () => {

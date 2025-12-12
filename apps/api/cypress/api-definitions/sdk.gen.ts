@@ -43,6 +43,10 @@ import type {
   ListModelsResponses,
   RunGraphData,
   RunGraphResponses,
+  StopThreadByExternalIdData,
+  StopThreadByExternalIdResponses,
+  StopThreadData,
+  StopThreadResponses,
   SuggestAgentInstructionsData,
   SuggestAgentInstructionsResponses,
   SuggestKnowledgeContentData,
@@ -343,6 +347,30 @@ export const getThreadMessages = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/messages',
+    ...options,
+  });
+
+export const stopThread = <ThrowOnError extends boolean = false>(
+  options: Options<StopThreadData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<StopThreadResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/{threadId}/stop',
+    ...options,
+  });
+
+export const stopThreadByExternalId = <ThrowOnError extends boolean = false>(
+  options: Options<StopThreadByExternalIdData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    StopThreadByExternalIdResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/external/{externalThreadId}/stop',
     ...options,
   });
 

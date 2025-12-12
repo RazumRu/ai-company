@@ -33,6 +33,7 @@ export const execRuntimeWithContext = async (
     childWorkdir: `${threadId.replace(/:/g, '_')}`,
     createChildWorkdir: true,
     sessionId,
+    signal: cfg.signal,
     metadata: {
       threadId,
       runId,

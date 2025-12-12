@@ -56,6 +56,25 @@ export const deleteThread = (threadId: string, headers = reqHeaders) =>
     failOnStatusCode: false,
   });
 
+export const stopThread = (threadId: string, headers = reqHeaders) =>
+  cy.request<ThreadDto>({
+    url: `/api/v1/threads/${threadId}/stop`,
+    method: 'POST',
+    headers,
+    failOnStatusCode: false,
+  });
+
+export const stopThreadByExternalId = (
+  externalThreadId: string,
+  headers = reqHeaders,
+) =>
+  cy.request<ThreadDto>({
+    url: `/api/v1/threads/external/${externalThreadId}/stop`,
+    method: 'POST',
+    headers,
+    failOnStatusCode: false,
+  });
+
 export const waitForThreadStatus = (
   externalThreadId: string,
   expectedStatus: ThreadDto['status'] | ThreadDto['status'][],
