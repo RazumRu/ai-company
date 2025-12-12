@@ -21,6 +21,8 @@ export const SimpleKnowledgeTemplateSchema = z.object({
     .string()
     .min(1)
     .optional()
+    .meta({ 'x-ui:show-on-node': true })
+    .meta({ 'x-ui:label': 'Repo' })
     .describe(
       'Optional repository name/URL this knowledge is specific to (including clones).',
     ),

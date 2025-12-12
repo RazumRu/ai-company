@@ -160,7 +160,7 @@ export class AiSuggestionsService {
         message,
       },
       {
-        model: 'gpt-5.2',
+        model: 'openai/gpt-5.2',
         reasoning: { effort: 'high' },
         previous_response_id: payload.threadId,
       },
@@ -245,7 +245,7 @@ export class AiSuggestionsService {
         message,
       },
       {
-        model: 'gpt-5.2',
+        model: 'openai/gpt-5.2',
         reasoning: { effort: 'high' },
         previous_response_id: threadId,
       },
@@ -313,7 +313,7 @@ export class AiSuggestionsService {
         message: this.buildKnowledgeRequestPrompt(userRequest, baseContent),
       },
       {
-        model: 'gpt-5.2',
+        model: 'openai/gpt-5.2',
         reasoning: { effort: 'high' },
         previous_response_id: threadId,
       },

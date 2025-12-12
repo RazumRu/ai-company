@@ -283,19 +283,24 @@ export class DockerRuntime extends BaseRuntime {
         stdoutContent = stdoutContent.slice(0, -1);
       }
 
-      cleanupListeners();
+      // Use setImmediate to defer resolution to the next iteration of the event loop
+      // This allows any pending stderr data to be processed by the demux stream
+      setImmediate(() => {
+        if (finished) return;
+        
+        cleanupListeners();
+        finished = true;
+        next.resolve({
+          exitCode,
+          stdout: stdoutContent,
+          stderr: stderrBuffer,
+          fail: exitCode !== 0,
+          execPath: next.workdir,
+        });
 
-      finished = true;
-      next.resolve({
-        exitCode,
-        stdout: stdoutContent,
-        stderr: stderrBuffer,
-        fail: exitCode !== 0,
-        execPath: next.workdir,
+        session.busy = false;
+        void this.processSessionQueue(session);
       });
-
-      session.busy = false;
-      void this.processSessionQueue(session);
     };
 
     const onStderrData = (chunk: Buffer) => {
