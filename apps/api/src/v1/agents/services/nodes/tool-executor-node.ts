@@ -112,27 +112,6 @@ export class ToolExecutorNode extends BaseNode<
         } catch (e) {
           const err = e as Error;
 
-          const isAborted =
-            Boolean(cfg.signal?.aborted) ||
-            err?.name === 'AbortError' ||
-            err?.message?.toLowerCase().includes('abort') ||
-            err?.message?.toLowerCase().includes('aborted');
-
-          // Special-case: the `shell` tool is expected to always emit a structured payload
-          // (MessageTransformerService maps it into role 'tool-shell' and integration tests
-          // assert on exitCode). When a run is cancelled, produce a deterministic "aborted"
-          // shell result instead of a plain string error.
-          if (tc.name === 'shell' && isAborted) {
-            return makeMsg(
-              JSON.stringify({
-                exitCode: 124,
-                stdout: '',
-                stderr: 'Aborted',
-                fail: true,
-              }),
-            );
-          }
-
           this.logger?.error(err, `Error executing tool '${tc.name}'`, {
             toolName: tc.name,
             callId,

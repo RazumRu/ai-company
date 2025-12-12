@@ -975,41 +975,40 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         // stopped before the tool result is persisted, emit a deterministic aborted shell result.
         // This makes "stop while a shell command is in-flight" observable in thread history.
         const hasShellTool = this.tools.some((t) => t.name === 'shell');
-        const hasAnyShellToolMessage = run.lastState.messages.some(
-          (m) => m instanceof ToolMessage && (m.name as string) === 'shell',
-        );
 
-        if (hasShellTool && !hasAnyShellToolMessage) {
+        if (hasShellTool) {
           const pendingShellCall = [...run.lastState.messages]
             .reverse()
             .filter((m) => m instanceof AIMessage)
             .flatMap((m) => (m as AIMessage).tool_calls ?? [])
             .find((tc) => tc?.name === 'shell');
 
-          const callId = pendingShellCall?.id ?? '';
+          if (pendingShellCall) {
+            const callId = pendingShellCall?.id ?? '';
 
-          const abortedShell = new ToolMessage({
-            tool_call_id: callId,
-            name: 'shell',
-            content: JSON.stringify({
-              exitCode: 124,
-              stdout: '',
-              stderr: 'Aborted',
-              fail: true,
-            }),
-          });
+            const abortedShell = new ToolMessage({
+              tool_call_id: callId,
+              name: 'shell',
+              content: JSON.stringify({
+                exitCode: 124,
+                stdout: '',
+                stderr: 'Aborted',
+                fail: true,
+              }),
+            });
 
-          this.emit({
-            type: 'message',
-            data: {
-              threadId: run.threadId,
-              messages: updateMessagesListWithMetadata(
-                [abortedShell],
-                run.runnableConfig,
-              ),
-              config: run.runnableConfig,
-            },
-          });
+            this.emit({
+              type: 'message',
+              data: {
+                threadId: run.threadId,
+                messages: updateMessagesListWithMetadata(
+                  [abortedShell],
+                  run.runnableConfig,
+                ),
+                config: run.runnableConfig,
+              },
+            });
+          }
         }
       }
 
