@@ -38,8 +38,8 @@ model_list:
       drop_params: true
       additional_drop_params: [ "stop" ]
 
-  - model_name: gpt-5.2
-    litellm_params:
-      model: openai/gpt-5.2
-      drop_params: true
-      additional_drop_params: [ "stop" ]
+#  - model_name: gpt-5.2
+#    litellm_params:
+#      model: openai/gpt-5.2
+#      drop_params: true
+#      additional_drop_params: [ "stop" ]

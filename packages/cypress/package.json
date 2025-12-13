@@ -6,7 +6,7 @@
     "cy-generate-api": "src/bin/generate-api.js"
   },
   "dependencies": {
-    "@hey-api/openapi-ts": "^0.88.0",
+    "@hey-api/openapi-ts": "^0.89.0",
     "@nestjs/common": "^11.1.9",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
@@ -15,8 +15,8 @@
     "reflect-metadata": "^0.2.2"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1",
-    "eslint": "^9.39.1",
+    "@types/node": "^25.0.1",
+    "eslint": "^9.39.2",
     "typescript": "^5.9.3"
   },
   "license": "ISC",

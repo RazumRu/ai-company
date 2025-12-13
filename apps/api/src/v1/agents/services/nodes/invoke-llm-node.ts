@@ -12,7 +12,7 @@ import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
   buildReasoningMessage,
   convertChunkToMessage,
-  filterMessagesForLlm,
+  prepareMessagesForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
@@ -61,7 +61,7 @@ export class InvokeLlmNode extends BaseNode<
         ...(state.summary
           ? [new SystemMessage(`Summary:\n${state.summary}`)]
           : []),
-        ...filterMessagesForLlm(state.messages),
+        ...prepareMessagesForLlm(state.messages),
       ],
       cfg,
     );

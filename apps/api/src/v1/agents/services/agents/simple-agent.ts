@@ -779,6 +779,19 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       },
     );
 
+    // initial state push for first user message
+    await this.emitNewMessages(updateMessages, mergedConfig, threadId);
+
+    await this.emitStateUpdate(
+      finalState,
+      {
+        ...finalState,
+        messages: updateMessages,
+      },
+      mergedConfig,
+      threadId,
+    );
+
     try {
       for await (const event of stream) {
         const [mode, value] = event as ['updates' | 'messages', unknown];

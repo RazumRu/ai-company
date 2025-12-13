@@ -1,5 +1,5 @@
 # ---------- Builder ----------
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 
 ENV APP_NAME="api"
 WORKDIR /usr/src/app
@@ -14,7 +14,7 @@ RUN corepack enable && \
     pnpm run build --no-cache --filter="*$APP_NAME"
 
 # ---------- Runner ----------
-FROM node:22-alpine AS run
+FROM node:24-alpine AS run
 
 ENV WORKDIR=/usr/src/app
 ENV APP_NAME="api"

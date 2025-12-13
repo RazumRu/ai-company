@@ -187,7 +187,7 @@ describe('Docker-in-Docker Integration', () => {
           template: 'docker-runtime',
           config: {
             runtimeType: 'Docker',
-            image: 'node:20-alpine',
+            image: 'node:24-alpine',
             env: {},
             initScript: 'apk add --no-cache docker-cli',
             initScriptTimeoutMs: 60000,

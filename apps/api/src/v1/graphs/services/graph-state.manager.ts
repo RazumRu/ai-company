@@ -274,6 +274,7 @@ export class GraphStateManager {
             nodeId,
             threadId: event.data.threadId,
             parentThreadId,
+            ...(runId ? { runId } : {}),
             source: cfg?.source,
             data: {
               messages: event.data.messages,

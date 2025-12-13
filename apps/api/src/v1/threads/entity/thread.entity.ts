@@ -34,4 +34,7 @@ export class ThreadEntity extends TimestampsEntity {
   @Column({ type: 'varchar', default: ThreadStatus.Running })
   @Index()
   status!: ThreadStatus;
+
+  @Column({ type: 'uuid', nullable: true })
+  lastRunId?: string;
 }

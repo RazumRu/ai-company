@@ -2,14 +2,17 @@ import {
   AIMessage,
   HumanMessage,
   SystemMessage,
+  ToolMessage,
 } from '@langchain/core/messages';
 import { describe, expect, it } from 'vitest';
 
 import {
   buildReasoningMessage,
+  cleanMessagesForLlm,
   extractTextFromResponseContent,
   filterMessagesForLlm,
   markMessageHideForLlm,
+  prepareMessagesForLlm,
   updateMessagesListWithMetadata,
   updateMessageWithMetadata,
 } from './agents.utils';
@@ -83,6 +86,68 @@ describe('agents.utils', () => {
     it('should return empty array for empty input', () => {
       const filtered = filterMessagesForLlm([]);
       expect(filtered).toHaveLength(0);
+    });
+  });
+
+  describe('cleanMessagesForLlm', () => {
+    it('should remove AI tool call messages that have missing tool results', () => {
+      const toolCallId = 'call-1';
+      const msgs = [
+        new AIMessage({
+          content: 'calling tool',
+          tool_calls: [
+            { id: toolCallId, name: 'tool', args: {}, type: 'tool_call' },
+          ],
+        }),
+      ];
+
+      const cleaned = cleanMessagesForLlm(msgs);
+      expect(cleaned).toHaveLength(0);
+    });
+
+    it('should keep AI tool call messages when matching tool results exist', () => {
+      const toolCallId = 'call-1';
+      const msgs = [
+        new AIMessage({
+          content: 'calling tool',
+          tool_calls: [
+            { id: toolCallId, name: 'tool', args: {}, type: 'tool_call' },
+          ],
+        }),
+        // ToolMessage in LangChain carries tool_call_id
+        new ToolMessage({
+          tool_call_id: toolCallId,
+          name: 'tool',
+          content: 'ok',
+        }),
+      ];
+
+      const cleaned = cleanMessagesForLlm(msgs);
+      expect(cleaned).toHaveLength(2);
+    });
+
+    it('should keep non-tool-calling AI messages unchanged', () => {
+      const msgs = [new AIMessage('hello'), new HumanMessage('hi')];
+      const cleaned = cleanMessagesForLlm(msgs);
+      expect(cleaned).toHaveLength(2);
+    });
+  });
+
+  describe('prepareMessagesForLlm', () => {
+    it('should filter hideForLlm messages and then clean dangling tool calls', () => {
+      const toolCallId = 'call-1';
+      const msgs = [
+        markMessageHideForLlm(new SystemMessage('hidden')),
+        new AIMessage({
+          content: 'calling tool',
+          tool_calls: [
+            { id: toolCallId, name: 'tool', args: {}, type: 'tool_call' },
+          ],
+        }),
+      ];
+
+      const prepared = prepareMessagesForLlm(msgs);
+      expect(prepared).toHaveLength(0);
     });
   });
 

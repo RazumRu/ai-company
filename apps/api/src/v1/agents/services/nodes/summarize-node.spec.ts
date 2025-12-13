@@ -70,7 +70,8 @@ describe('SummarizeNode', () => {
 
       const result = await nodeWithZeroMax.invoke(state, createMockConfig());
 
-      expect(result.messages?.items).toEqual(messages);
+      // No summarization/changes should be applied at all
+      expect(result).toEqual({});
       expect(mockGetNumTokens).not.toHaveBeenCalled();
     });
 
@@ -82,8 +83,8 @@ describe('SummarizeNode', () => {
 
       const result = await node.invoke(state, createMockConfig());
 
-      expect(result.messages?.mode).toBe('replace');
-      expect(result.messages?.items.length).toBeGreaterThan(0);
+      // No summarization/changes should be applied at all
+      expect(result).toEqual({});
       expect(mockInvoke).not.toHaveBeenCalled();
     });
 

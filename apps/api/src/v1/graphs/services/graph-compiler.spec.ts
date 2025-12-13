@@ -246,7 +246,7 @@ describe('GraphCompiler', () => {
           {
             id: 'node-runtime',
             template: 'docker-runtime',
-            config: { image: 'node:20' },
+            config: { image: 'node:24' },
           },
           {
             id: 'python-shell',
@@ -1659,7 +1659,7 @@ describe('GraphCompiler', () => {
             template: 'docker-runtime',
             config: {
               runtimeType: 'Docker',
-              image: 'node:20',
+              image: 'node:24',
             },
           },
           {
@@ -1719,7 +1719,7 @@ describe('GraphCompiler', () => {
             template: 'docker-runtime',
             config: {
               runtimeType: 'Docker',
-              image: 'node:20',
+              image: 'node:24',
             },
           },
           {

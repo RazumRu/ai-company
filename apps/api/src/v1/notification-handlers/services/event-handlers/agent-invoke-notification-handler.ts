@@ -27,7 +27,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
   }
 
   async handle(event: IAgentInvokeNotification): Promise<never[]> {
-    const { threadId, graphId, parentThreadId, source } = event;
+    const { threadId, graphId, parentThreadId, source, runId } = event;
 
     // Get graph to extract createdBy
     const graph = await this.graphDao.getOne({ id: graphId });
@@ -51,6 +51,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         externalThreadId: externalThreadKey,
         source,
         status: ThreadStatus.Running,
+        ...(runId ? { lastRunId: runId } : {}),
       });
 
       // Emit ThreadCreate notification
@@ -62,7 +63,9 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         data: createdThread,
       });
     } else {
-      const updates: Partial<Pick<ThreadEntity, 'status' | 'source'>> = {};
+      const updates: Partial<
+        Pick<ThreadEntity, 'status' | 'source' | 'lastRunId'>
+      > = {};
 
       if (existingInternalThread.status !== ThreadStatus.Running) {
         updates.status = ThreadStatus.Running;
@@ -70,6 +73,10 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
 
       if (source && !existingInternalThread.source) {
         updates.source = source;
+      }
+
+      if (runId && existingInternalThread.lastRunId !== runId) {
+        updates.lastRunId = runId;
       }
 
       const hasUpdates = Object.keys(updates).length > 0;

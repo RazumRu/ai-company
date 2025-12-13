@@ -675,6 +675,106 @@ describe('Thread Management Integration Tests', () => {
     });
 
     it(
+      'creates a thread on trigger execution and persists first human message + deterministic AI answer',
+      { timeout: 120000 },
+      async () => {
+        const token = `FINISH_TOKEN_${Date.now()}`;
+
+        const graphData = createMockGraphData({
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  instructions:
+                    'You are an integration test agent. You MUST call the finish tool with needsMoreInfo=false. ' +
+                    'When the user asks you to include a token, include it verbatim in the finish tool message.',
+                  invokeModelName: 'gpt-5-mini',
+                  enforceToolUsage: true,
+                  maxIterations: 10,
+                  summarizeMaxTokens: 272000,
+                  summarizeKeepTokens: 30000,
+                },
+              },
+              { id: 'trigger-1', template: 'manual-trigger', config: {} },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        });
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        await graphsService.run(graphId);
+
+        const userMessage =
+          `Call the finish tool with needsMoreInfo=false and set the finish message to include this token: ${token}. ` +
+          'Do not call any other tools.';
+
+        const triggerResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: [userMessage],
+            threadSubId: 'deterministic-ai-answer',
+          },
+        );
+
+        const thread = await waitForCondition(
+          () =>
+            threadsService.getThreadByExternalId(
+              triggerResult.externalThreadId,
+            ),
+          (t) =>
+            t.status === ThreadStatus.Done ||
+            t.status === ThreadStatus.NeedMoreInfo,
+          { timeout: 60000, interval: 1000 },
+        );
+
+        const stringify = (content: unknown) =>
+          typeof content === 'string' ? content : JSON.stringify(content);
+
+        const messages = await waitForCondition(
+          () =>
+            threadsService.getThreadMessages(thread.id, {
+              limit: 200,
+              offset: 0,
+            }),
+          (msgs) => {
+            const human = msgs.find(
+              (m) =>
+                m.message.role === 'human' && m.message.content === userMessage,
+            );
+            const finishTool = msgs.find((m) => {
+              if (m.message.role !== 'tool' || m.message.name !== 'finish') {
+                return false;
+              }
+              const content = m.message.content as { message?: unknown };
+              return stringify(content?.message).includes(token);
+            });
+            return Boolean(human) && Boolean(finishTool);
+          },
+          { timeout: 60000, interval: 1000 },
+        );
+
+        const humanContents = messages
+          .filter((m) => m.message.role === 'human')
+          .map((m) => stringify(m.message.content));
+        expect(humanContents).toContain(userMessage);
+
+        const finishMessages = messages
+          .filter(
+            (m) => m.message.role === 'tool' && m.message.name === 'finish',
+          )
+          .map((m) =>
+            stringify((m.message.content as { message?: unknown })?.message),
+          );
+        expect(finishMessages.join('\n')).toContain(token);
+      },
+    );
+
+    it(
       'should not duplicate messages when re-invoking existing thread',
       { timeout: 60000 },
       async () => {

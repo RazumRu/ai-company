@@ -9,6 +9,11 @@ export const ThreadSchema = z.object({
   id: z.uuid().describe('Thread ID'),
   graphId: z.uuid().describe('Graph ID'),
   externalThreadId: z.string().describe('External thread ID from LangChain'),
+  lastRunId: z
+    .uuid()
+    .optional()
+    .nullable()
+    .describe('Last LangGraph run_id observed for this thread'),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   metadata: z

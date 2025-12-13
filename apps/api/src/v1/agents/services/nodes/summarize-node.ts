@@ -3,7 +3,6 @@ import {
   BaseMessage,
   HumanMessage,
   SystemMessage,
-  ToolMessage,
   trimMessages,
 } from '@langchain/core/messages';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
@@ -12,6 +11,7 @@ import { DefaultLogger } from '@packages/common';
 
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
+  cleanMessagesForLlm,
   extractTextFromResponseContent,
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
@@ -42,11 +42,7 @@ export class SummarizeNode extends BaseNode<
   ): Promise<BaseAgentStateChange> {
     const { maxTokens, keepTokens } = this.opts;
     if (maxTokens <= 0) {
-      return {
-        messages: { mode: 'replace', items: state.messages },
-        toolUsageGuardActivated: false,
-        toolUsageGuardActivatedCount: 0,
-      };
+      return {};
     }
 
     const totalNow =
@@ -54,17 +50,7 @@ export class SummarizeNode extends BaseNode<
       (state.summary ? await this.countTokens(state.summary) : 0);
 
     if (totalNow <= maxTokens) {
-      return {
-        messages: {
-          mode: 'replace',
-          items: updateMessagesListWithMetadata(
-            this.clean(state.messages),
-            cfg,
-          ),
-        },
-        toolUsageGuardActivated: false,
-        toolUsageGuardActivatedCount: 0,
-      };
+      return {};
     }
 
     let tail: BaseMessage[];
@@ -114,9 +100,9 @@ export class SummarizeNode extends BaseNode<
               `Summary updated: Previous messages have been summarized to manage context length.`,
             ),
           ),
-          ...this.clean(finalTail),
+          ...cleanMessagesForLlm(finalTail),
         ]
-      : this.clean(finalTail);
+      : cleanMessagesForLlm(finalTail);
 
     return {
       messages: {
@@ -181,17 +167,5 @@ export class SummarizeNode extends BaseNode<
     return typeof res.content === 'string'
       ? res.content
       : JSON.stringify(res.content);
-  }
-
-  private clean(msgs: BaseMessage[]): BaseMessage[] {
-    const toolIds = new Set(
-      msgs.filter((m) => m instanceof ToolMessage).map((m) => m.tool_call_id),
-    );
-    return msgs.filter(
-      (m) =>
-        !(m instanceof AIMessage) ||
-        !m.tool_calls?.length ||
-        m.tool_calls.every((tc) => toolIds.has(tc.id ?? '')),
-    );
   }
 }

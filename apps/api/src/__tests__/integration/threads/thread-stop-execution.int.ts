@@ -177,6 +177,60 @@ describe('Thread Stop Execution Integration Tests', () => {
     return typeof raw?.exitCode === 'number' ? raw.exitCode : null;
   };
 
+  const extractShellResult = (
+    message: ThreadMessageDto['message'],
+  ): { exitCode: number; stdout: string; stderr: string } | null => {
+    if (!isShellThreadMessage(message)) return null;
+
+    const raw =
+      message.role === 'tool-shell'
+        ? message.content
+        : message.role === 'tool'
+          ? (message.content as {
+              exitCode?: number;
+              stdout?: string;
+              stderr?: string;
+            })
+          : undefined;
+
+    if (
+      typeof raw?.exitCode !== 'number' ||
+      typeof raw?.stdout !== 'string' ||
+      typeof raw?.stderr !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      exitCode: raw.exitCode,
+      stdout: raw.stdout,
+      stderr: raw.stderr,
+    };
+  };
+
+  const getShellResults = (messages: ThreadMessageDto[]) =>
+    messages
+      .map((m) => extractShellResult(m.message))
+      .filter((r): r is { exitCode: number; stdout: string; stderr: string } =>
+        Boolean(r),
+      );
+
+  const hasShellToolCall = (message: ThreadMessageDto['message']): boolean => {
+    if (message.role !== 'ai') return false;
+    return (
+      Array.isArray(message.toolCalls) &&
+      message.toolCalls.some((toolCall) => toolCall.name === 'shell')
+    );
+  };
+
+  const getThreadMessagesByExternalId = async (externalThreadId: string) => {
+    const thread = await threadsService.getThreadByExternalId(externalThreadId);
+    return threadsService.getThreadMessages(thread.id, {
+      limit: 200,
+      offset: 0,
+    });
+  };
+
   it(
     'stopThreadByExternalId aborts a running execution (ThreadUpdate stopped emitted by GraphStateManager)',
     { timeout: 300_000 },
@@ -199,6 +253,14 @@ describe('Thread Stop Execution Integration Tests', () => {
         { timeout: 30_000, interval: 1_000 },
       );
 
+      // Ensure the agent has actually decided to run the shell tool before stopping.
+      // Otherwise, there's nothing to "abort" into a deterministic exitCode=124 message.
+      await waitForCondition(
+        () => getThreadMessagesByExternalId(execution.externalThreadId),
+        (messages) => messages.some((m) => hasShellToolCall(m.message)),
+        { timeout: 30_000, interval: 1_000 },
+      );
+
       await threadsService.stopThreadByExternalId(execution.externalThreadId);
 
       const stoppedThread = await waitForCondition(
@@ -209,15 +271,7 @@ describe('Thread Stop Execution Integration Tests', () => {
       expect(stoppedThread.status).toBe(ThreadStatus.Stopped);
 
       const msgs = await waitForCondition(
-        async () => {
-          const t = await threadsService.getThreadByExternalId(
-            execution.externalThreadId,
-          );
-          return await threadsService.getThreadMessages(t.id, {
-            limit: 100,
-            offset: 0,
-          });
-        },
+        () => getThreadMessagesByExternalId(execution.externalThreadId),
         (messages) => getShellExitCode(messages) !== null,
         { timeout: 60_000, interval: 2_000 },
       );
@@ -255,6 +309,116 @@ describe('Thread Stop Execution Integration Tests', () => {
         { timeout: 60_000, interval: 1_000 },
       );
       expect(stoppedThread.status).toBe(ThreadStatus.Stopped);
+    },
+  );
+
+  it(
+    'can stop a running shell thread and then re-trigger the same thread to completion (preserves message history)',
+    { timeout: 300_000 },
+    async () => {
+      const graphId = await createAndRunGraph();
+
+      const threadSubId = `stop-rerun-${Date.now()}`;
+      const sleepMessage = 'Run this command: sleep 60';
+
+      const execution1 = await graphsService.executeTrigger(
+        graphId,
+        TRIGGER_NODE_ID,
+        {
+          messages: [sleepMessage],
+          async: true,
+          threadSubId,
+        },
+      );
+
+      const runningThread = await waitForCondition(
+        () => threadsService.getThreadByExternalId(execution1.externalThreadId),
+        (t) => t.status === ThreadStatus.Running,
+        { timeout: 30_000, interval: 1_000 },
+      );
+
+      await waitForCondition(
+        () => getThreadMessagesByExternalId(execution1.externalThreadId),
+        (messages) => messages.some((m) => hasShellToolCall(m.message)),
+        { timeout: 30_000, interval: 1_000 },
+      );
+
+      await threadsService.stopThreadByExternalId(execution1.externalThreadId);
+
+      await waitForCondition(
+        () => threadsService.getThreadById(runningThread.id),
+        (t) => t.status === ThreadStatus.Stopped,
+        { timeout: 60_000, interval: 1_000 },
+      );
+
+      await waitForCondition(
+        () => getThreadMessagesByExternalId(execution1.externalThreadId),
+        (messages) => getShellResults(messages).some((r) => r.exitCode === 124),
+        { timeout: 60_000, interval: 2_000 },
+      );
+
+      const rerunToken = `RERUN_OK_${Date.now()}`;
+      const rerunMessage = `Run this command: echo "${rerunToken}"`;
+
+      const execution2 = await graphsService.executeTrigger(
+        graphId,
+        TRIGGER_NODE_ID,
+        {
+          messages: [rerunMessage],
+          async: false,
+          threadSubId,
+        },
+      );
+
+      expect(execution2.externalThreadId).toBe(execution1.externalThreadId);
+
+      const completedThread = await waitForCondition(
+        () => threadsService.getThreadByExternalId(execution2.externalThreadId),
+        (t) =>
+          t.status === ThreadStatus.Done ||
+          t.status === ThreadStatus.NeedMoreInfo,
+        { timeout: 60_000, interval: 1_000 },
+      );
+
+      const messages = await waitForCondition(
+        () =>
+          threadsService.getThreadMessages(completedThread.id, {
+            limit: 500,
+            offset: 0,
+          }),
+        (msgs) => {
+          const humanContents = msgs
+            .filter((m) => m.message.role === 'human')
+            .map((m) => m.message.content);
+
+          const shellResults = getShellResults(msgs);
+
+          return (
+            humanContents.includes(sleepMessage) &&
+            humanContents.includes(rerunMessage) &&
+            shellResults.some((r) => r.exitCode === 124) &&
+            shellResults.some(
+              (r) => r.exitCode === 0 && r.stdout.includes(rerunToken),
+            )
+          );
+        },
+        { timeout: 120_000, interval: 2_000 },
+      );
+
+      const humanContents = messages
+        .filter((m) => m.message.role === 'human')
+        .map((m) => m.message.content);
+      expect(humanContents).toEqual(
+        expect.arrayContaining([sleepMessage, rerunMessage]),
+      );
+
+      const shellResults = getShellResults(messages);
+      expect(shellResults.some((r) => r.exitCode === 124)).toBe(true);
+      expect(
+        shellResults.some(
+          (r) => r.exitCode === 0 && r.stdout.includes(rerunToken),
+        ),
+      ).toBe(true);
     },
   );
 });

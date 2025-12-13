@@ -4,7 +4,7 @@ import {
   ChatMessage,
   ContentBlock,
 } from '@langchain/core/messages';
-import { BaseMessage } from '@langchain/core/messages';
+import { BaseMessage, ToolMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 
 import { BaseAgentConfigurable } from './services/nodes/base-node';
@@ -93,6 +93,42 @@ export function markMessageHideForLlm<T extends BaseMessage>(message: T): T {
 
 export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
   return messages.filter((msg) => !msg.additional_kwargs?.hideForLlm);
+}
+
+/**
+ * Cleans a message list so tool-calling AI messages are only kept if all their tool calls
+ * have matching tool result messages present in the same list.
+ *
+ * This prevents sending "dangling" tool calls to the LLM (e.g. after trimming context).
+ */
+export function cleanMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
+  const toolIds = new Set(
+    messages
+      .filter((m) => m instanceof ToolMessage)
+      .map((m) => (m as ToolMessage).tool_call_id),
+  );
+
+  return messages.filter((m) => {
+    if (!(m instanceof AIMessage)) {
+      return true;
+    }
+
+    const toolCalls = m.tool_calls;
+    if (!toolCalls?.length) {
+      return true;
+    }
+
+    return toolCalls.every((tc) => toolIds.has(tc.id ?? ''));
+  });
+}
+
+/**
+ * Prepares messages for sending to the LLM.
+ * - Filters out messages explicitly marked as "hideForLlm"
+ * - Cleans dangling tool calls so the LLM sees a consistent tool-call trace
+ */
+export function prepareMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
+  return cleanMessagesForLlm(filterMessagesForLlm(messages));
 }
 
 export function convertChunkToMessage(chunk: AIMessageChunk): AIMessage {
