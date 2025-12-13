@@ -52,7 +52,7 @@ describe('ShellTool persistent sessions (integration)', () => {
 
   it(
     'preserves environment variables and cwd within the same session',
-    { timeout: 240_000 },
+    { timeout: 90000 },
     async () => {
       const builtTool = shellTool.build({ runtime });
 

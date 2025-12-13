@@ -254,7 +254,7 @@ describe('Graph Resources Integration Tests', () => {
   describe('GitHub resource execution', () => {
     it(
       'installs and configures GitHub CLI when the resource is connected',
-      { timeout: 240_000 },
+      { timeout: 120_000 },
       async () => {
         const graphData = createResourceGraphData();
         const graph = await graphsService.create(graphData);

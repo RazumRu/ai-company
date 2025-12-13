@@ -585,6 +585,20 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     });
   }
 
+  private formatStoppedReason(reason?: string): string {
+    const base = reason ?? 'Graph execution was stopped';
+    if (base !== 'Graph execution was stopped') {
+      return base;
+    }
+
+    const agentName = this.currentConfig?.name;
+    if (!agentName) {
+      return base;
+    }
+
+    return `Graph execution was stopped for agent ${agentName}`;
+  }
+
   private readonly handleThreadStateChange = (threadId: string) => {
     if (!threadId) {
       return;
@@ -877,7 +891,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     const wasStopped = Boolean(runEntry.stopped) && !finalState.done;
     const stopError = wasStopped
-      ? new Error(runEntry.stopReason ?? 'Graph execution was stopped')
+      ? new Error(runEntry.stopReason ?? this.formatStoppedReason())
       : undefined;
 
     // Emit run event with result or stop error so thread status can be updated
@@ -906,7 +920,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       const graphId = run.runnableConfig?.configurable?.graph_id;
       if (graphId && !run.lastState.done) {
         const msg = markMessageHideForLlm(
-          new SystemMessage('Graph execution was stopped'),
+          new SystemMessage(this.formatStoppedReason()),
         );
         const msgs = updateMessagesListWithMetadata([msg], run.runnableConfig);
 
@@ -927,7 +941,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       }
 
       run.stopped = true;
-      run.stopReason ??= 'Graph execution was stopped';
+      run.stopReason ??= this.formatStoppedReason(run.stopReason);
 
       try {
         run.abortController.abort();
@@ -962,7 +976,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
       if (cfg?.graph_id && !run.lastState.done) {
         const msg = markMessageHideForLlm(
-          new SystemMessage(reason ?? 'Graph execution was stopped'),
+          new SystemMessage(this.formatStoppedReason(reason)),
         );
         const msgs = updateMessagesListWithMetadata([msg], run.runnableConfig);
 
@@ -1025,7 +1039,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       }
 
       run.stopped = true;
-      run.stopReason ??= reason ?? 'Graph execution was stopped';
+      run.stopReason ??= this.formatStoppedReason(reason);
 
       try {
         run.abortController.abort();

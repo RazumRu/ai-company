@@ -15,6 +15,7 @@ export type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
 
 export type BuiltAgentTool = DynamicStructuredTool & {
   __instructions?: string;
+  __titleFromArgs?: (args: unknown) => string | undefined;
 };
 
 export type ToolInvokeResult<TResult> = {
@@ -70,7 +71,18 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
       ? this.getDetailedInstructions(config, lgConfig)
       : undefined;
 
-    return Object.assign(builtTool, { __instructions: instructions });
+    const titleFromArgs = this.generateTitle
+      ? (args: unknown) => {
+          const parsed = this.schema.safeParse(args);
+          if (!parsed.success) return undefined;
+          return this.generateTitle?.(parsed.data as TSchema, config);
+        }
+      : undefined;
+
+    return Object.assign(builtTool, {
+      __instructions: instructions,
+      __titleFromArgs: titleFromArgs,
+    });
   }
 
   protected toolWrapper(

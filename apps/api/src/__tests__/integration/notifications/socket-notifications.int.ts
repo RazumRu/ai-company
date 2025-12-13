@@ -460,7 +460,9 @@ describe('Socket Notifications Integration Tests', () => {
 
           if (
             typeof messageContent === 'string' &&
-            messageContent.includes('Graph execution was stopped')
+            messageContent.includes(
+              'Graph execution was stopped for agent Test Agent',
+            )
           ) {
             stopNotifications.push(typedNotification);
           }
@@ -499,7 +501,7 @@ describe('Socket Notifications Integration Tests', () => {
           (notification) =>
             typeof notification.data.message.content === 'string' &&
             notification.data.message.content.includes(
-              'Graph execution was stopped',
+              'Graph execution was stopped for agent Test Agent',
             ),
         );
 
@@ -512,7 +514,7 @@ describe('Socket Notifications Integration Tests', () => {
         expect(stopMessageNotifications).toHaveLength(1);
         expect(uniqueStopKeys.size).toBe(1);
         expect(stopMessageNotifications[0]?.data.message.content).toContain(
-          'Graph execution was stopped',
+          'Graph execution was stopped for agent Test Agent',
         );
       },
     );
@@ -668,7 +670,7 @@ describe('Socket Notifications Integration Tests', () => {
 
     it(
       'should receive multiple revision notifications',
-      { timeout: 180_000 },
+      { timeout: 120_000 },
       async () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);

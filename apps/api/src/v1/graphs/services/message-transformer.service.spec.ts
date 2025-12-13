@@ -133,6 +133,49 @@ describe('MessageTransformerService', () => {
       } as AIMessageDto);
     });
 
+    it('should pass through __title metadata for tool call requests', () => {
+      const msg = new AIMessage({
+        content: 'Calling tools',
+        id: 'msg-req-1',
+        tool_calls: [
+          {
+            name: 'shell',
+            args: { purpose: 'List repo root', cmd: 'ls' },
+            type: 'tool_call',
+            id: 'call-shell-req-1',
+            __title: 'List repo root',
+          },
+          {
+            name: 'web_search',
+            args: { query: 'NestJS interceptors', searchDepth: 'basic' },
+            type: 'tool_call',
+            id: 'call-web-req-1',
+            __title: 'Search in internet: NestJS interceptors',
+          },
+        ] as unknown as never,
+      });
+
+      const result = service.transformMessageToDto(msg) as AIMessageDto;
+
+      expect(result.role).toBe('ai');
+      expect(result.toolCalls).toEqual([
+        {
+          name: 'shell',
+          args: { purpose: 'List repo root', cmd: 'ls' },
+          type: 'tool_call',
+          id: 'call-shell-req-1',
+          title: 'List repo root',
+        },
+        {
+          name: 'web_search',
+          args: { query: 'NestJS interceptors', searchDepth: 'basic' },
+          type: 'tool_call',
+          id: 'call-web-req-1',
+          title: 'Search in internet: NestJS interceptors',
+        },
+      ]);
+    });
+
     it('should transform reasoning chat message', () => {
       const msg = buildReasoningMessage('Detailed reasoning steps');
 

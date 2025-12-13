@@ -309,10 +309,133 @@ describe('Shell Execution Integration Tests', () => {
     return summary;
   };
 
+  describe('Tool call request ordering', () => {
+    it(
+      'persists shell tool call request before the tool result message',
+      { timeout: 360_000 },
+      async () => {
+        const graphId = await createAndRunShellGraph();
+
+        const execution = await graphsService.executeTrigger(
+          graphId,
+          TRIGGER_NODE_ID,
+          {
+            messages: [
+              'Execute the shell command: sleep 15; echo "done-after-sleep"',
+            ],
+            async: true,
+          },
+        );
+
+        expect(execution.externalThreadId).toBeDefined();
+
+        const threadId = execution.externalThreadId;
+
+        // Wait until the LLM-produced AI message with the shell tool call is persisted,
+        // but the tool result message is not yet present (command is intentionally slow).
+        const messagesWithRequestOnly = await waitForCondition(
+          () => getThreadMessages(threadId),
+          (threadMessages) => {
+            const msgs = threadMessages.map((m) => m.message);
+            const aiIndex = msgs.findIndex(
+              (m) =>
+                m.role === 'ai' &&
+                Array.isArray(m.toolCalls) &&
+                m.toolCalls.some((tc) => tc.name === 'shell'),
+            );
+            if (aiIndex < 0) return false;
+
+            const ai = msgs[aiIndex];
+            if (!ai || ai.role !== 'ai') return false;
+
+            const shellToolCall = ai.toolCalls?.find(
+              (tc) => tc.name === 'shell',
+            );
+            if (!shellToolCall?.id) return false;
+
+            // Title should already be present on the request (generated from tool schema).
+            if (
+              typeof shellToolCall.title !== 'string' ||
+              shellToolCall.title.length === 0
+            ) {
+              return false;
+            }
+
+            const toolIndex = msgs.findIndex(
+              (m) =>
+                (m.role === 'tool-shell' || m.role === 'tool') &&
+                m.name === 'shell' &&
+                m.toolCallId === shellToolCall.id,
+            );
+
+            return toolIndex < 0;
+          },
+          { timeout: 120_000, interval: 1_000 },
+        );
+
+        const msgsNow = messagesWithRequestOnly.map((m) => m.message);
+        const aiNowIndex = msgsNow.findIndex(
+          (m) =>
+            m.role === 'ai' &&
+            Array.isArray(m.toolCalls) &&
+            m.toolCalls.some((tc) => tc.name === 'shell'),
+        );
+        expect(aiNowIndex).toBeGreaterThanOrEqual(0);
+
+        const aiNow = msgsNow[aiNowIndex];
+        expect(aiNow && aiNow.role === 'ai').toBe(true);
+        if (!aiNow || aiNow.role !== 'ai') return;
+
+        const shellCall = aiNow.toolCalls?.find((tc) => tc.name === 'shell');
+        expect(shellCall?.id).toBeDefined();
+        expect(typeof shellCall?.title).toBe('string');
+        expect(shellCall?.title?.length).toBeGreaterThan(0);
+
+        // Wait for completion and verify the tool result arrives after the request.
+        await waitForThreadCompletion(threadId, 300_000);
+
+        const finalMessages = await waitForShellExecution(threadId);
+        const requestEntry = finalMessages.find((entry) => {
+          const m = entry.message;
+          return (
+            m.role === 'ai' &&
+            Array.isArray(m.toolCalls) &&
+            m.toolCalls.some((tc) => tc.id === shellCall?.id)
+          );
+        });
+
+        const resultEntry = finalMessages.find((entry) => {
+          const m = entry.message;
+          return (
+            (m.role === 'tool-shell' || m.role === 'tool') &&
+            m.name === 'shell' &&
+            m.toolCallId === shellCall?.id
+          );
+        });
+
+        expect(requestEntry).toBeDefined();
+        expect(resultEntry).toBeDefined();
+
+        // Thread messages API returns messages ordered by createdAt DESC, so compare timestamps
+        // instead of relying on array index ordering.
+        const requestTime = requestEntry
+          ? new Date(requestEntry.createdAt).getTime()
+          : NaN;
+        const resultTime = resultEntry
+          ? new Date(resultEntry.createdAt).getTime()
+          : NaN;
+
+        expect(Number.isFinite(requestTime)).toBe(true);
+        expect(Number.isFinite(resultTime)).toBe(true);
+        expect(requestTime).toBeLessThan(resultTime);
+      },
+    );
+  });
+
   describe('Runtime shell command execution', () => {
     it(
       'runs a simple shell command end-to-end',
-      { timeout: 240_000 },
+      { timeout: 120_000 },
       async () => {
         const graphId = await createAndRunShellGraph({
           env: { FOO: 'bar' },
@@ -334,7 +457,7 @@ describe('Shell Execution Integration Tests', () => {
 
     it(
       'propagates runtime environment variables into the shell tool',
-      { timeout: 240_000 },
+      { timeout: 120_000 },
       async () => {
         const graphId = await createAndRunShellGraph({
           env: { FOO: 'bar' },
@@ -354,7 +477,7 @@ describe('Shell Execution Integration Tests', () => {
   describe('Custom runtime images', () => {
     it(
       'executes commands in an alpine runtime',
-      { timeout: 300_000 },
+      { timeout: 120_000 },
       async () => {
         const graphId = await createAndRunShellGraph({
           dockerImage: 'alpine:latest',
@@ -375,7 +498,7 @@ describe('Shell Execution Integration Tests', () => {
   describe('Shell command error handling', () => {
     it(
       'surfaces stderr for invalid commands',
-      { timeout: 240_000 },
+      { timeout: 120_000 },
       async () => {
         const graphId = await createAndRunShellGraph();
 
@@ -393,7 +516,7 @@ describe('Shell Execution Integration Tests', () => {
 
     it(
       'returns non-zero exit codes for failing commands',
-      { timeout: 240_000 },
+      { timeout: 120_000 },
       async () => {
         const graphId = await createAndRunShellGraph();
 
@@ -411,7 +534,7 @@ describe('Shell Execution Integration Tests', () => {
   describe('Shell command timeout behavior', () => {
     it(
       'applies overall timeout for long running commands',
-      { timeout: 300_000 },
+      { timeout: 120_000 },
       async () => {
         const graphId = await createAndRunShellGraph();
 
@@ -430,7 +553,7 @@ describe('Shell Execution Integration Tests', () => {
 
     it(
       'completes when the command keeps producing output within tail timeout',
-      { timeout: 300_000 },
+      { timeout: 120_000 },
       async () => {
         const graphId = await createAndRunShellGraph();
 
@@ -447,7 +570,7 @@ describe('Shell Execution Integration Tests', () => {
 
     it(
       'does not hit timeouts for quick commands',
-      { timeout: 240_000 },
+      { timeout: 120_000 },
       async () => {
         const graphId = await createAndRunShellGraph();
 

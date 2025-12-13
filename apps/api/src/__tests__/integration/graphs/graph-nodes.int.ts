@@ -217,7 +217,7 @@ describe('Graph Nodes Integration Tests', () => {
 
   it(
     'returns compiled node snapshots for a running graph',
-    { timeout: 180_000 },
+    { timeout: 120_000 },
     async () => {
       const graph = await graphsService.create(createMockGraphData());
       registerGraph(graph.id);
@@ -249,7 +249,7 @@ describe('Graph Nodes Integration Tests', () => {
 
   it(
     'filters node snapshots by thread and run identifiers',
-    { timeout: 240_000 },
+    { timeout: 120_000 },
     async () => {
       const graph = await graphsService.create(createMockGraphData());
       registerGraph(graph.id);
@@ -329,7 +329,7 @@ describe('Graph Nodes Integration Tests', () => {
 
   it(
     'exposes agent pending messages through additional node metadata',
-    { timeout: 240_000 },
+    { timeout: 120_000 },
     async () => {
       const graph = await graphsService.create(createMockGraphData());
       registerGraph(graph.id);

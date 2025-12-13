@@ -692,7 +692,9 @@ describe('Graphs Integration Tests', () => {
               (entry) =>
                 entry.message.role === 'system' &&
                 typeof entry.message.content === 'string' &&
-                entry.message.content.includes('Graph execution was stopped'),
+                entry.message.content.includes(
+                  'Graph execution was stopped for agent Test Agent',
+                ),
             ),
           { timeout: 60000, interval: 1000 },
         );
@@ -701,12 +703,14 @@ describe('Graphs Integration Tests', () => {
           (entry) =>
             entry.message.role === 'system' &&
             typeof entry.message.content === 'string' &&
-            entry.message.content.includes('Graph execution was stopped'),
+            entry.message.content.includes(
+              'Graph execution was stopped for agent Test Agent',
+            ),
         );
 
         expect(stopMessages).toHaveLength(1);
         expect(stopMessages[0]?.message.content).toContain(
-          'Graph execution was stopped',
+          'Graph execution was stopped for agent Test Agent',
         );
       },
     );

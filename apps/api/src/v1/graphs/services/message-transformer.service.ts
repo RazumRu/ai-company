@@ -18,6 +18,7 @@ interface RawToolCall {
   args?: Record<string, unknown> | string;
   type?: string;
   id?: string;
+  __title?: string;
   function?: {
     name?: string;
     arguments?: string | Record<string, unknown>;
@@ -207,10 +208,15 @@ export class MessageTransformerService {
     args: Record<string, unknown>;
     type: string;
     id: string;
+    title?: string;
   }[] {
     return (toolCalls || [])
       .filter((tc) => isObject(tc))
       .map((tc) => {
+        const title =
+          typeof tc.__title === 'string' && tc.__title.length > 0
+            ? tc.__title
+            : undefined;
         if (isObject(tc.function)) {
           let args: Record<string, unknown> = {};
           const rawArgs = tc.function.arguments;
@@ -223,11 +229,13 @@ export class MessageTransformerService {
           } else if (isObject(rawArgs)) {
             args = rawArgs as Record<string, unknown>;
           }
+          const toolName = tc.function.name || '';
           return {
-            name: tc.function.name || '',
+            name: toolName,
             args: args || {},
             type: tc.type || 'tool_call',
             id: tc.id || '',
+            ...(title ? { title } : {}),
           };
         }
 
@@ -242,11 +250,13 @@ export class MessageTransformerService {
           args = tc.args as Record<string, unknown>;
         }
 
+        const toolName = tc.name || '';
         return {
-          name: tc.name || '',
+          name: toolName,
           args: args,
           type: tc.type || 'tool_call',
           id: tc.id || '',
+          ...(title ? { title } : {}),
         };
       })
       .filter((tc) => tc.name);

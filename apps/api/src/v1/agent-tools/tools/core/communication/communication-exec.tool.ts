@@ -48,7 +48,7 @@ export class CommunicationExecTool extends BaseTool<
     args: CommunicationExecSchemaType,
     _config: BaseCommunicationToolConfig,
   ): string {
-    return `${args.purpose} → ${args.agent}`;
+    return `Asking ${args.agent}: ${args.purpose}`;
   }
 
   public getDetailedInstructions(

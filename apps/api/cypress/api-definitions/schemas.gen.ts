@@ -1591,6 +1591,9 @@ export const ThreadMessageDtoSchema = {
                   id: {
                     type: 'string',
                   },
+                  title: {
+                    type: 'string',
+                  },
                 },
                 required: ['name', 'args', 'type', 'id'],
               },

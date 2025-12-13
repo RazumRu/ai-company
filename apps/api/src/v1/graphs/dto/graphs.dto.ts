@@ -99,6 +99,10 @@ export const ToolCallSchema = z.object({
   args: z.record(z.string(), z.unknown()).describe('Tool arguments'),
   type: z.string().describe('Tool call type'),
   id: z.string().describe('Tool call ID'),
+  title: z
+    .string()
+    .optional()
+    .describe('Optional human-readable tool call title'),
 });
 
 // Human message schema

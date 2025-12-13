@@ -232,7 +232,7 @@ describe('GitHub Tool Integration Tests', () => {
 
     it(
       'executes GitHub clone tool when agent requests repository clone',
-      { timeout: 240_000 },
+      { timeout: 120000 },
       async () => {
         const graphData = createGhToolGraphData();
         const graph = await graphsService.create(graphData);
