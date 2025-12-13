@@ -41,6 +41,7 @@ export interface RuntimeExecResult {
   stdout: string;
   stderr: string;
   execPath: string;
+  timeout?: number;
 }
 
 export enum RuntimeType {

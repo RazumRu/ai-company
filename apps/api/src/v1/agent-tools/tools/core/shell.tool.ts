@@ -208,7 +208,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         res.exitCode === 124
           ? trimOutput(
               `${res.stderr ? `${res.stderr}\n` : ''}Command timed out after ${
-                execData.timeoutMs ?? 'the configured'
+                (res.timeout || execData.timeoutMs) ?? 'the configured'
               } ms (exit code 124).`,
             )
           : trimOutput(res.stderr);

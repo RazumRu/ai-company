@@ -34,6 +34,7 @@ describe('MessageTransformerService', () => {
         role: 'human',
         content: 'Hello, world!',
         additionalKwargs: undefined,
+        runId: null,
       } as HumanMessageDto);
     });
 
@@ -42,6 +43,7 @@ describe('MessageTransformerService', () => {
         content: 'Please help the user with the deployment.',
         additional_kwargs: {
           isAgentInstructionMessage: true,
+          run_id: 'run-1',
         },
       });
 
@@ -53,8 +55,10 @@ describe('MessageTransformerService', () => {
         rawContent: 'Please help the user with the deployment.',
         id: undefined,
         toolCalls: undefined,
+        runId: 'run-1',
         additionalKwargs: expect.objectContaining({
           isAgentInstructionMessage: true,
+          run_id: 'run-1',
         }),
       } as AIMessageDto);
     });
@@ -62,7 +66,7 @@ describe('MessageTransformerService', () => {
     it('should transform system message', () => {
       const msg = new SystemMessage({
         content: 'System instruction',
-        additional_kwargs: { context: 'test' },
+        additional_kwargs: { context: 'test', run_id: 'run-1' },
       });
 
       const result = service.transformMessageToDto(msg);
@@ -70,7 +74,8 @@ describe('MessageTransformerService', () => {
       expect(result).toEqual({
         role: 'system',
         content: 'System instruction',
-        additionalKwargs: { context: 'test' },
+        runId: 'run-1',
+        additionalKwargs: { context: 'test', run_id: 'run-1' },
       } as SystemMessageDto);
     });
 
@@ -89,6 +94,7 @@ describe('MessageTransformerService', () => {
         id: 'msg-123',
         toolCalls: undefined,
         additionalKwargs: undefined,
+        runId: null,
       } as AIMessageDto);
     });
 
@@ -104,6 +110,7 @@ describe('MessageTransformerService', () => {
             id: 'call-1',
           },
         ],
+        additional_kwargs: { run_id: 'run-1' },
       });
 
       const result = service.transformMessageToDto(msg);
@@ -121,7 +128,8 @@ describe('MessageTransformerService', () => {
             id: 'call-1',
           },
         ],
-        additionalKwargs: undefined,
+        runId: 'run-1',
+        additionalKwargs: { run_id: 'run-1' },
       } as AIMessageDto);
     });
 
@@ -134,6 +142,7 @@ describe('MessageTransformerService', () => {
         role: 'reasoning',
         content: 'Detailed reasoning steps',
         additionalKwargs: { hideForLlm: true },
+        runId: null,
       } as ReasoningMessageDto);
     });
 
@@ -147,6 +156,7 @@ describe('MessageTransformerService', () => {
         role: 'reasoning',
         content: 'Serialized reasoning',
         id: 'reasoning:parent-42',
+        runId: null,
         additionalKwargs: {
           hideForLlm: true,
           reasoningId: 'reasoning:parent-42',
@@ -161,6 +171,7 @@ describe('MessageTransformerService', () => {
         tool_call_id: 'call-789',
         additional_kwargs: {
           __title: 'Search in internet: cats',
+          run_id: 'run-1',
         },
       });
 
@@ -172,8 +183,10 @@ describe('MessageTransformerService', () => {
         content: { result: 'success' },
         toolCallId: 'call-789',
         title: 'Search in internet: cats',
+        runId: 'run-1',
         additionalKwargs: {
           __title: 'Search in internet: cats',
+          run_id: 'run-1',
         },
       } as ToolMessageDto);
     });
@@ -188,6 +201,7 @@ describe('MessageTransformerService', () => {
         }),
         name: 'shell',
         tool_call_id: 'call-shell-1',
+        additional_kwargs: { run_id: 'run-1' },
       });
 
       const result = service.transformMessageToDto(msg);
@@ -202,7 +216,8 @@ describe('MessageTransformerService', () => {
           cmd: 'echo test',
         },
         toolCallId: 'call-shell-1',
-        additionalKwargs: undefined,
+        runId: 'run-1',
+        additionalKwargs: { run_id: 'run-1' },
       } as ShellToolMessageDto);
     });
 
@@ -216,6 +231,7 @@ describe('MessageTransformerService', () => {
       const result = service.transformMessageToDto(msg) as ToolMessageDto;
 
       expect(result.content).toEqual({ message: 'not valid json' });
+      expect(result.runId).toBeNull();
     });
 
     it('should transform serialized human message', () => {
@@ -235,6 +251,7 @@ describe('MessageTransformerService', () => {
         role: 'human',
         content: 'Hello from serialized message!',
         additionalKwargs: undefined,
+        runId: null,
       } as HumanMessageDto);
     });
 
@@ -253,7 +270,7 @@ describe('MessageTransformerService', () => {
             cmd: 'docker info',
             fail: false,
           }),
-          additional_kwargs: {},
+          additional_kwargs: { run_id: 'run-1' },
         },
       };
 
@@ -270,7 +287,8 @@ describe('MessageTransformerService', () => {
           fail: false,
         },
         toolCallId: 'call_QrlzvPAGfR5P9k8KgEzt7zgH',
-        additionalKwargs: undefined,
+        runId: 'run-1',
+        additionalKwargs: { run_id: 'run-1' },
       } as ShellToolMessageDto);
     });
 
@@ -290,7 +308,7 @@ describe('MessageTransformerService', () => {
               id: 'call-1',
             },
           ],
-          additional_kwargs: {},
+          additional_kwargs: { run_id: 'run-1' },
         },
       };
 
@@ -309,7 +327,8 @@ describe('MessageTransformerService', () => {
             id: 'call-1',
           },
         ],
-        additionalKwargs: undefined,
+        runId: 'run-1',
+        additionalKwargs: { run_id: 'run-1' },
       } as AIMessageDto);
     });
 
@@ -332,6 +351,7 @@ describe('MessageTransformerService', () => {
         content: 'Serialized reasoning trace',
         id: undefined,
         additionalKwargs: undefined,
+        runId: null,
       } as ReasoningMessageDto);
     });
 

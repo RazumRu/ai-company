@@ -105,6 +105,11 @@ export const ToolCallSchema = z.object({
 export const HumanMessageSchema = z.object({
   role: z.literal('human').describe('Message role'),
   content: z.string().describe('Message content'),
+  runId: z
+    .string()
+    .optional()
+    .nullable()
+    .describe('Run ID associated with this message'),
   additionalKwargs: z
     .record(z.string(), z.unknown())
     .optional()
@@ -116,6 +121,11 @@ export const AIMessageSchema = z.object({
   role: z.literal('ai').describe('Message role'),
   content: z.string().describe('Message content'),
   id: z.string().optional().describe('Message ID'),
+  runId: z
+    .string()
+    .optional()
+    .nullable()
+    .describe('Run ID associated with this message'),
   rawContent: z
     .unknown()
     .optional()
@@ -135,6 +145,11 @@ export const ReasoningMessageSchema = z.object({
   id: z.string().optional().describe('Message ID'),
   role: z.literal('reasoning').describe('Message role'),
   content: z.string().describe('Reasoning trace emitted by the model'),
+  runId: z
+    .string()
+    .optional()
+    .nullable()
+    .describe('Run ID associated with this message'),
   additionalKwargs: z
     .record(z.string(), z.unknown())
     .optional()
@@ -145,6 +160,11 @@ export const ReasoningMessageSchema = z.object({
 export const SystemMessageSchema = z.object({
   role: z.literal('system').describe('Message role'),
   content: z.string().describe('Message content'),
+  runId: z
+    .string()
+    .optional()
+    .nullable()
+    .describe('Run ID associated with this message'),
   additionalKwargs: z
     .record(z.string(), z.unknown())
     .optional()
@@ -164,6 +184,11 @@ export const ShellToolMessageSchema = z.object({
   name: z.literal('shell').describe('Tool name - shell'),
   content: ShellToolResultSchema.describe('Parsed shell execution result'),
   toolCallId: z.string().describe('Tool call ID'),
+  runId: z
+    .string()
+    .optional()
+    .nullable()
+    .describe('Run ID associated with this message'),
   additionalKwargs: z
     .record(z.string(), z.unknown())
     .optional()
@@ -178,6 +203,11 @@ export const ToolMessageSchema = z.object({
     .record(z.string(), z.unknown())
     .describe('Parsed tool result as JSON'),
   toolCallId: z.string().describe('Tool call ID'),
+  runId: z
+    .string()
+    .optional()
+    .nullable()
+    .describe('Run ID associated with this message'),
   title: z
     .string()
     .optional()

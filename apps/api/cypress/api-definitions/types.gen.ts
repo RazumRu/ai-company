@@ -854,6 +854,10 @@ export type ThreadDto = {
    * External thread ID from LangChain
    */
   externalThreadId: string;
+  /**
+   * Last LangGraph run_id observed for this thread
+   */
+  lastRunId?: string | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -894,6 +898,10 @@ export type ThreadMessageDto = {
          */
         content: string;
         /**
+         * Run ID associated with this message
+         */
+        runId?: string | null;
+        /**
          * Additional message metadata
          */
         additionalKwargs?: {
@@ -913,6 +921,10 @@ export type ThreadMessageDto = {
          * Message ID
          */
         id?: string;
+        /**
+         * Run ID associated with this message
+         */
+        runId?: string | null;
         /**
          * Original raw content as received from the provider
          */
@@ -961,6 +973,10 @@ export type ThreadMessageDto = {
          */
         content: string;
         /**
+         * Run ID associated with this message
+         */
+        runId?: string | null;
+        /**
          * Additional message metadata
          */
         additionalKwargs?: {
@@ -976,6 +992,10 @@ export type ThreadMessageDto = {
          * Message content
          */
         content: string;
+        /**
+         * Run ID associated with this message
+         */
+        runId?: string | null;
         /**
          * Additional message metadata
          */
@@ -1014,6 +1034,10 @@ export type ThreadMessageDto = {
          */
         toolCallId: string;
         /**
+         * Run ID associated with this message
+         */
+        runId?: string | null;
+        /**
          * Additional message metadata
          */
         additionalKwargs?: {
@@ -1039,6 +1063,10 @@ export type ThreadMessageDto = {
          * Tool call ID
          */
         toolCallId: string;
+        /**
+         * Run ID associated with this message
+         */
+        runId?: string | null;
         /**
          * Optional human-readable tool call title
          */

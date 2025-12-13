@@ -253,6 +253,7 @@ export class DockerRuntime extends BaseRuntime {
             stderr: stderrBuffer || 'Process timed out - no logs received',
             fail: true,
             execPath: next.workdir,
+            timeout: next.tailTimeoutMs,
           });
           session.busy = false;
           void this.processSessionQueue(session);
@@ -346,6 +347,7 @@ export class DockerRuntime extends BaseRuntime {
               stderr: stderrBuffer || 'Process timed out',
               fail: true,
               execPath: next.workdir,
+              timeout: next.timeoutMs,
             });
             session.busy = false;
             void this.processSessionQueue(session);

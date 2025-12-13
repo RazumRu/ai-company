@@ -63,6 +63,10 @@ export class MessageTransformerService {
     ).additional_kwargs;
     const additionalKwargs =
       this.normalizeAdditionalKwargs(rawAdditionalKwargs);
+    const runId =
+      typeof additionalKwargs?.run_id === 'string'
+        ? (additionalKwargs.run_id as string)
+        : null;
     const isAgentInstruction = !!additionalKwargs?.isAgentInstructionMessage;
     const contentStr = this.normalizeContent(msgBody.content);
 
@@ -74,12 +78,13 @@ export class MessageTransformerService {
             content: contentStr,
             rawContent: (msgBody as { content?: unknown }).content,
             additionalKwargs,
+            runId,
           };
         }
-        return { role: 'human', content: contentStr, additionalKwargs };
+        return { role: 'human', content: contentStr, additionalKwargs, runId };
 
       case 'SystemMessage':
-        return { role: 'system', content: contentStr, additionalKwargs };
+        return { role: 'system', content: contentStr, additionalKwargs, runId };
 
       case 'ChatMessage': {
         const m = <ChatMessage>(<unknown>msgBody);
@@ -94,6 +99,7 @@ export class MessageTransformerService {
             role: 'reasoning',
             content: contentStr,
             additionalKwargs,
+            runId,
           };
         }
 
@@ -103,6 +109,7 @@ export class MessageTransformerService {
           rawContent: m.content,
           id: (m.id as string | undefined) || undefined,
           additionalKwargs,
+          runId,
         };
       }
 
@@ -119,6 +126,7 @@ export class MessageTransformerService {
           id: m.id as string,
           toolCalls: toolCalls.length ? toolCalls : undefined,
           additionalKwargs,
+          runId,
         };
       }
 
@@ -145,6 +153,7 @@ export class MessageTransformerService {
             },
             toolCallId,
             additionalKwargs,
+            runId,
           };
         }
 
@@ -155,12 +164,13 @@ export class MessageTransformerService {
           toolCallId,
           title,
           additionalKwargs,
+          runId,
         };
       }
 
       default:
         // Fallback for unknown message types - treat as system message
-        return { role: 'system', content: contentStr, additionalKwargs };
+        return { role: 'system', content: contentStr, additionalKwargs, runId };
     }
   }
 
