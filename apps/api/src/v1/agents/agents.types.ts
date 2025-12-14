@@ -12,7 +12,6 @@ export interface BaseAgentState {
   needsMoreInfo: boolean;
   toolUsageGuardActivated: boolean;
   toolUsageGuardActivatedCount: number;
-  generatedTitle?: string;
 }
 
 export interface BaseAgentStateChange extends Partial<

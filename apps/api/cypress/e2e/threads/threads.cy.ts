@@ -83,7 +83,7 @@ describe('Threads E2E', () => {
           expect(threadResponse.body).to.have.property('id');
           internalThreadId = threadResponse.body.id;
 
-          return getThreadById(internalThreadId!);
+          return getThreadById(internalThreadId);
         })
         .then((threadResponse) => {
           expect(threadResponse.status).to.equal(200);
@@ -284,7 +284,7 @@ describe('Threads E2E', () => {
               internalThreadId = threadResponse.body.id;
 
               // Get all messages
-              return getThreadMessages(internalThreadId!);
+              return getThreadMessages(internalThreadId);
             })
             .then((allMessagesResponse) => {
               expect(allMessagesResponse.status).to.equal(200);
@@ -346,7 +346,12 @@ describe('Threads E2E', () => {
             // Get messages using thread API
             return getThreads({ graphId: testGraphId }).then((threadsRes) => {
               const internalThreadId = threadsRes.body[0]?.id;
-              return getThreadMessages(internalThreadId!);
+              if (!internalThreadId) {
+                throw new Error(
+                  'Expected an internal thread id to be returned',
+                );
+              }
+              return getThreadMessages(internalThreadId);
             });
           })
           .then((response) => {
@@ -400,7 +405,12 @@ describe('Threads E2E', () => {
             // Get messages with limit
             return getThreads({ graphId: testGraphId }).then((threadsRes) => {
               const internalThreadId = threadsRes.body[0]?.id;
-              return getThreadMessages(internalThreadId!, { limit: 2 });
+              if (!internalThreadId) {
+                throw new Error(
+                  'Expected an internal thread id to be returned',
+                );
+              }
+              return getThreadMessages(internalThreadId, { limit: 2 });
             });
           })
           .then((response) => {

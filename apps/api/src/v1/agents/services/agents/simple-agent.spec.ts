@@ -490,7 +490,6 @@ describe('SimpleAgent', () => {
       needsMoreInfo: false,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
-      generatedTitle: undefined,
     });
 
     beforeEach(() => {
@@ -875,7 +874,6 @@ describe('SimpleAgent', () => {
       needsMoreInfo: false,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
-      generatedTitle: undefined,
     });
 
     const registerActiveRun = () => {

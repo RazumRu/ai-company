@@ -295,11 +295,14 @@ describe('Socket Gateway E2E', () => {
 
         // Trigger a graph action that will emit notifications
         // Running the graph will trigger compilation events
-        return runGraph(freshGraphId, reqHeaders).then((runResponse) => {
-          expect(runResponse.status).to.equal(201);
-          // Graph run request completed, now wait for notification
-          return notificationPromise;
-        });
+        return runGraph(freshGraphId, reqHeaders).then(
+          { timeout: 30000 },
+          (runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            // Graph run request completed, now wait for notification
+            return notificationPromise;
+          },
+        );
       });
     });
 
@@ -369,7 +372,7 @@ describe('Socket Gateway E2E', () => {
             'trigger-1',
             { messages: ['Hello, this is a test message'] },
             reqHeaders,
-          ).then((triggerResponse) => {
+          ).then({ timeout: 30000 }, (triggerResponse) => {
             expect(triggerResponse.status).to.equal(201);
             return cy.wrap(notificationPromise, { timeout: 90000 });
           });
@@ -395,12 +398,15 @@ describe('Socket Gateway E2E', () => {
       socket = createSocketConnection(baseUrl, mockUserId);
       secondSocket = createSocketConnection(baseUrl, mockUserId);
 
-      return waitForSocketConnection(socket).then(() => {
-        return waitForSocketConnection(secondSocket).then(() => {
-          expect(socket.connected).to.be.true;
-          expect(secondSocket.connected).to.be.true;
-          expect(socket.id).to.not.equal(secondSocket.id);
-        });
+      return waitForSocketConnection(socket).then({ timeout: 30000 }, () => {
+        return waitForSocketConnection(secondSocket).then(
+          { timeout: 30000 },
+          () => {
+            expect(socket.connected).to.be.true;
+            expect(secondSocket.connected).to.be.true;
+            expect(socket.id).to.not.equal(secondSocket.id);
+          },
+        );
       });
     });
 

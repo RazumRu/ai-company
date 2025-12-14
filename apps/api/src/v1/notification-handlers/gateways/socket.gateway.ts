@@ -12,7 +12,9 @@ import {
   ValidationException,
 } from '@packages/common';
 import { AuthContextDataBuilder } from '@packages/http-server';
+import { isPlainObject } from 'lodash';
 import { Server, Socket } from 'socket.io';
+import type { UnknownRecord } from 'type-fest';
 
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import {
@@ -77,10 +79,22 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
 
   async handleConnection(client: Socket) {
     try {
-      const token = client.handshake.auth.token;
+      const auth = client.handshake.auth as unknown;
+      const authRecord: UnknownRecord = isPlainObject(auth)
+        ? (auth as UnknownRecord)
+        : {};
+      const token = authRecord.token;
+      if (typeof token !== 'string' || token.length === 0) {
+        throw new UnauthorizedException();
+      }
 
       // Get auth data from the socket handshake for dev mode authentication
-      const authData = client.handshake.auth as Record<string, string>;
+      const authData: Record<string, string> = {};
+      for (const [key, value] of Object.entries(authRecord)) {
+        if (typeof value === 'string') {
+          authData[key] = value;
+        }
+      }
 
       const contextData = await this.authContextDataBuilder.buildContextData(
         token,
@@ -94,7 +108,7 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
       const userId = contextData.sub;
 
       // Store user ID in socket data for later use
-      client.data.userId = userId;
+      (client.data as Record<string, unknown>).userId = userId;
 
       // Automatically join user's personal room
       const userRoom = this.getUserRoomName(userId);
@@ -120,7 +134,8 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
     payload: { graphId: string },
   ): Promise<void> {
     try {
-      const userId = client.data.userId;
+      const userIdRaw = (client.data as Record<string, unknown>).userId;
+      const userId = typeof userIdRaw === 'string' ? userIdRaw : undefined;
 
       if (!userId) {
         throw new UnauthorizedException();

@@ -28,8 +28,8 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
   }
 
   private k(cfg: RunnableConfig): Keys {
-    const c = cfg?.configurable ?? {};
-    const threadId = c.thread_id as string | undefined;
+    const c = (cfg?.configurable ?? {}) as Record<string, unknown>;
+    const threadId = typeof c.thread_id === 'string' ? c.thread_id : undefined;
     if (!threadId) {
       throw new ValidationException(
         'VALIDATION_ERROR',
@@ -37,10 +37,22 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       );
     }
 
+    const checkpointNsFromConfig = c.checkpoint_ns;
+    const checkpointNsFromMeta = (
+      cfg?.metadata as Record<string, unknown> | undefined
+    )?.checkpoint_ns;
+    const checkpointNs =
+      (typeof checkpointNsFromConfig === 'string' && checkpointNsFromConfig) ||
+      (typeof checkpointNsFromMeta === 'string' && checkpointNsFromMeta) ||
+      '';
+
+    const checkpointId =
+      typeof c.checkpoint_id === 'string' ? c.checkpoint_id : undefined;
+
     return {
       threadId,
-      checkpointNs: c.checkpoint_ns || cfg?.metadata?.checkpoint_ns || '',
-      checkpointId: c.checkpoint_id,
+      checkpointNs,
+      checkpointId,
     };
   }
 
@@ -64,21 +76,24 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       order: { taskId: 'ASC', idx: 'ASC' },
     });
 
-    const checkpoint: Checkpoint = await this.serde.loadsTyped(
+    const checkpoint = (await this.serde.loadsTyped(
       doc.type,
       doc.checkpoint.toString('utf8'),
-    );
-    const metadata: CheckpointMetadata = await this.serde.loadsTyped(
+    )) as unknown as Checkpoint;
+    const metadata = (await this.serde.loadsTyped(
       doc.type,
       doc.metadata.toString('utf8'),
-    );
+    )) as unknown as CheckpointMetadata;
     const pendingWrites = await Promise.all(
       writes.map(
         async (w) =>
           [
             w.taskId,
             w.channel,
-            await this.serde.loadsTyped(w.type, w.value.toString('utf8')),
+            (await this.serde.loadsTyped(
+              w.type,
+              w.value.toString('utf8'),
+            )) as unknown,
           ] as [string, string, unknown],
       ),
     );
@@ -111,32 +126,35 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
     options?: CheckpointListOptions,
   ): AsyncGenerator<CheckpointTuple> {
     const { threadId, checkpointNs } = this.k(config);
-    const before = options?.before?.configurable?.checkpoint_id;
+    const before = (
+      options?.before?.configurable as Record<string, unknown> | undefined
+    )?.checkpoint_id;
+    const beforeId = typeof before === 'string' ? before : undefined;
 
     const rows = await this.graphCheckpointsDao.getAll({
       threadId,
       checkpointNs,
       order: { checkpointId: 'DESC' },
       limit: options?.limit,
-      customCondition: before
+      customCondition: beforeId
         ? new Brackets((qb) =>
             qb.andWhere(
               `${this.graphCheckpointsDao.alias}.checkpointId < :cid`,
-              { cid: before },
+              { cid: beforeId },
             ),
           )
         : undefined,
     });
 
     for (const doc of rows) {
-      const checkpoint: Checkpoint = await this.serde.loadsTyped(
+      const checkpoint = (await this.serde.loadsTyped(
         doc.type,
         doc.checkpoint.toString('utf8'),
-      );
-      const metadata: CheckpointMetadata = await this.serde.loadsTyped(
+      )) as unknown as Checkpoint;
+      const metadata = (await this.serde.loadsTyped(
         doc.type,
         doc.metadata.toString('utf8'),
-      );
+      )) as unknown as CheckpointMetadata;
 
       yield {
         config: {
@@ -186,7 +204,9 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
 
     if (existing) {
       await this.graphCheckpointsDao.updateById(existing.id, {
-        parentCheckpointId: config.configurable?.checkpoint_id ?? null,
+        parentCheckpointId:
+          ((config.configurable as Record<string, unknown> | undefined)
+            ?.checkpoint_id as string | undefined) ?? null,
         type: typeA,
         checkpoint: Buffer.from(chk),
         metadata: Buffer.from(meta),
@@ -196,7 +216,9 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
         threadId,
         checkpointNs,
         checkpointId: id,
-        parentCheckpointId: config.configurable?.checkpoint_id ?? null,
+        parentCheckpointId:
+          ((config.configurable as Record<string, unknown> | undefined)
+            ?.checkpoint_id as string | undefined) ?? null,
         type: typeA,
         checkpoint: Buffer.from(chk),
         metadata: Buffer.from(meta),

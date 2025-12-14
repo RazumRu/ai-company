@@ -12,7 +12,17 @@ const config = defineConfig([
   globalIgnores(['**/*.gen.ts']),
   { languageOptions: { globals: globals.node } },
   pluginJs.configs.recommended,
+  // Base TypeScript rules (non-type-aware).
   ...tseslint.configs.recommended,
+  {
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
   {
     plugins: { 'simple-import-sort': simpleImportSort },
     rules: {
@@ -25,6 +35,15 @@ const config = defineConfig([
   {
     rules: {
       semi: ['error', 'always'],
+      'no-empty': ['error', { allowEmptyCatch: false }],
+      'max-depth': ['error', 5],
+      'no-useless-catch': 'error',
+      'no-useless-escape': 'error',
+      'prefer-const': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-require-imports': 'error',
+      '@typescript-eslint/no-unsafe-function-type': 'error',
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-unused-expressions': 'off',
       '@typescript-eslint/no-explicit-any': 'error',
@@ -72,6 +91,19 @@ const config = defineConfig([
     files: ['**/*.spec.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
+    files: [
+      '**/*.spec.ts',
+      '**/*.int.ts',
+      '**/*.cy.ts',
+      '**/cypress/**/*.{js,ts,tsx}',
+    ],
+    rules: {
+      // Tests frequently consume intentionally-untyped fixtures and API responses.
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
     },
   },
 ]);

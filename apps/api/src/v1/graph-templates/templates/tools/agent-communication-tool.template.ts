@@ -2,6 +2,8 @@ import { HumanMessage } from '@langchain/core/messages';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
+import { isObject } from 'lodash';
+import type { JsonObject, JsonValue } from 'type-fest';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
@@ -191,10 +193,16 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
 
             // Try to parse the content to extract needsMoreInfo flag
             try {
-              const parsedContent = JSON.parse(content);
-              if (typeof parsedContent === 'object' && parsedContent !== null) {
-                responseMessage = parsedContent.message || content;
-                needsMoreInfo = parsedContent.needsMoreInfo === true;
+              const parsedContent = JSON.parse(content) as JsonValue;
+              if (isObject(parsedContent)) {
+                const rec = parsedContent as JsonObject;
+                const parsedMessage = rec.message;
+
+                responseMessage =
+                  typeof parsedMessage === 'string' && parsedMessage.length > 0
+                    ? parsedMessage
+                    : content;
+                needsMoreInfo = rec.needsMoreInfo === true;
               } else {
                 responseMessage = content;
               }

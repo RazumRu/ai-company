@@ -1,6 +1,7 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
+import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -13,6 +14,7 @@ import {
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
+import { ThreadNameGeneratorService } from '../../../threads/services/thread-name-generator.service';
 import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
 import { AgentInvokeNotificationHandler } from './agent-invoke-notification-handler';
@@ -23,6 +25,10 @@ describe('AgentInvokeNotificationHandler', () => {
   let graphDao: GraphDao;
   let notificationsService: NotificationsService;
   let moduleRefMock: { create: ReturnType<typeof vi.fn> };
+  let threadNameGenerator: {
+    generateFromFirstUserMessage: ReturnType<typeof vi.fn>;
+  };
+  let logger: { error: ReturnType<typeof vi.fn> };
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -112,6 +118,14 @@ describe('AgentInvokeNotificationHandler', () => {
       create: vi.fn().mockResolvedValue(threadsServiceMock),
     };
 
+    threadNameGenerator = {
+      generateFromFirstUserMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    logger = {
+      error: vi.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AgentInvokeNotificationHandler,
@@ -139,6 +153,14 @@ describe('AgentInvokeNotificationHandler', () => {
         {
           provide: ModuleRef,
           useValue: moduleRefMock,
+        },
+        {
+          provide: ThreadNameGeneratorService,
+          useValue: threadNameGenerator,
+        },
+        {
+          provide: DefaultLogger,
+          useValue: logger,
         },
       ],
     }).compile();
@@ -187,6 +209,47 @@ describe('AgentInvokeNotificationHandler', () => {
         data: createdThread,
       });
       expect(result).toEqual([]);
+    });
+
+    it('should generate and emit thread name for root thread execution (async, non-blocking)', async () => {
+      const mockGraph = createMockGraphEntity();
+      const createdThread = createMockThreadEntity({
+        externalThreadId: 'parent-thread-123',
+      });
+
+      const notification = createMockNotification({
+        threadId: 'parent-thread-123',
+        parentThreadId: 'parent-thread-123',
+      });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+      vi.spyOn(threadsDao, 'create').mockResolvedValue(createdThread);
+      threadNameGenerator.generateFromFirstUserMessage.mockResolvedValue(
+        'Thread Name',
+      );
+
+      await handler.handle(notification);
+
+      // Allow fire-and-forget naming task to run
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadCreate,
+        graphId: mockGraphId,
+        threadId: 'parent-thread-123',
+        internalThreadId: createdThread.id,
+        data: createdThread,
+      });
+
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadUpdate,
+        graphId: mockGraphId,
+        nodeId: mockNodeId,
+        threadId: 'parent-thread-123',
+        parentThreadId: 'parent-thread-123',
+        data: { name: 'Thread Name' },
+      });
     });
 
     it('should use parent thread ID for internal thread when provided', async () => {

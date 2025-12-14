@@ -53,9 +53,7 @@ export class MessageTransformerService {
   transformMessageToDto(msg: BaseMessage | SerializedMessage): MessageDto {
     // Handle serialized LangChain messages (with lc, type, id, kwargs structure)
     const isInstance = !this.isSerializedMessage(msg);
-    const messageType = isInstance
-      ? (msg as BaseMessage).constructor.name
-      : msg.id[2];
+    const messageType = isInstance ? msg.constructor.name : msg.id[2];
     const msgBody = isInstance ? msg : msg.kwargs;
     const rawAdditionalKwargs = (
       msgBody as {
@@ -66,7 +64,7 @@ export class MessageTransformerService {
       this.normalizeAdditionalKwargs(rawAdditionalKwargs);
     const runId =
       typeof additionalKwargs?.run_id === 'string'
-        ? (additionalKwargs.run_id as string)
+        ? additionalKwargs.run_id
         : null;
     const isAgentInstruction = !!additionalKwargs?.isAgentInstructionMessage;
     const contentStr = this.normalizeContent(msgBody.content);
@@ -90,9 +88,7 @@ export class MessageTransformerService {
       case 'ChatMessage': {
         const m = <ChatMessage>(<unknown>msgBody);
         const reasoningId =
-          (m.id as string | undefined) ||
-          (rawAdditionalKwargs?.reasoningId as string) ||
-          undefined;
+          m.id || (rawAdditionalKwargs?.reasoningId as string) || undefined;
 
         if (m.role === 'reasoning') {
           return {
@@ -108,7 +104,7 @@ export class MessageTransformerService {
           role: 'ai',
           content: contentStr,
           rawContent: m.content,
-          id: (m.id as string | undefined) || undefined,
+          id: m.id || undefined,
           additionalKwargs,
           runId,
         };
@@ -134,11 +130,11 @@ export class MessageTransformerService {
       case 'ToolMessage': {
         const m = <ToolMessage>(<unknown>msgBody);
         const toolName = (m.name as string) || 'unknown';
-        const toolCallId = (m.tool_call_id as string) || '';
+        const toolCallId = m.tool_call_id || '';
         const parsed = this.parseToolContent(m.content);
         const title =
           typeof additionalKwargs?.__title === 'string'
-            ? (additionalKwargs.__title as string)
+            ? additionalKwargs.__title
             : undefined;
 
         if (toolName === 'shell') {
@@ -186,7 +182,9 @@ export class MessageTransformerService {
   private parseToolContent(input: unknown): Record<string, unknown> {
     if (typeof input === 'string') {
       try {
-        return JSON.parse(input);
+        const parsed = JSON.parse(input) as unknown;
+        if (isObject(parsed)) return parsed as Record<string, unknown>;
+        return { message: parsed };
       } catch {
         return { message: input };
       }
@@ -222,12 +220,15 @@ export class MessageTransformerService {
           const rawArgs = tc.function.arguments;
           if (isString(rawArgs)) {
             try {
-              args = JSON.parse(rawArgs);
+              const parsed = JSON.parse(rawArgs) as unknown;
+              args = isObject(parsed)
+                ? (parsed as Record<string, unknown>)
+                : {};
             } catch {
               args = {};
             }
           } else if (isObject(rawArgs)) {
-            args = rawArgs as Record<string, unknown>;
+            args = rawArgs;
           }
           const toolName = tc.function.name || '';
           return {
@@ -242,12 +243,13 @@ export class MessageTransformerService {
         let args: Record<string, unknown> = {};
         if (isString(tc.args)) {
           try {
-            args = JSON.parse(tc.args);
+            const parsed = JSON.parse(tc.args) as unknown;
+            args = isObject(parsed) ? (parsed as Record<string, unknown>) : {};
           } catch {
             args = {};
           }
         } else if (isObject(tc.args)) {
-          args = tc.args as Record<string, unknown>;
+          args = tc.args;
         }
 
         const toolName = tc.name || '';

@@ -69,13 +69,13 @@ export class ToolExecutorNode extends BaseNode<
         }
 
         try {
-          const rawResult = await tool.invoke<
+          const rawResult = (await tool.invoke<
             unknown,
             ToolRunnableConfig<BaseAgentConfigurable>
           >(tc.args, {
             configurable: cfg.configurable,
             signal: cfg.signal,
-          });
+          })) as unknown;
           const { output, messageMetadata } =
             rawResult as ToolInvokeResult<unknown>;
 

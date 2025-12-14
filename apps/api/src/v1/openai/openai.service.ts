@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { compact } from 'lodash';
+import { compact, isObject } from 'lodash';
 import OpenAI from 'openai';
 import { ResponseCreateParams } from 'openai/resources/responses/responses';
 
@@ -60,13 +60,15 @@ export class OpenaiService {
         return content
           .map((item) => {
             const textValue = (item as { text?: unknown }).text;
-            if (typeof textValue === 'string') return textValue;
-            if (
-              textValue &&
-              typeof textValue === 'object' &&
-              typeof (textValue as { value?: unknown }).value === 'string'
-            ) {
-              return (textValue as { value?: string }).value;
+            if (typeof textValue === 'string') {
+              return textValue;
+            }
+
+            if (isObject(textValue)) {
+              const valueHolder = textValue as { value?: unknown };
+              if (typeof valueHolder.value === 'string') {
+                return valueHolder.value;
+              }
             }
             return undefined;
           })

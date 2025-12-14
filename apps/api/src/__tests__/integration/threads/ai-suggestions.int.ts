@@ -11,13 +11,11 @@ import {
 
 import { AiSuggestionsService } from '../../../v1/ai-suggestions/services/ai-suggestions.service';
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
-import { GraphEntity } from '../../../v1/graphs/entity/graph.entity';
 import { GraphStatus, NodeKind } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { OpenaiService } from '../../../v1/openai/openai.service';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
-import { ThreadEntity } from '../../../v1/threads/entity/thread.entity';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
@@ -63,7 +61,7 @@ describe('AiSuggestionsService (integration)', () => {
     'analyzes a thread and calls LLM with cleaned messages',
     { timeout: 30000 },
     async () => {
-      const graph = (await graphDao.create({
+      const graph = await graphDao.create({
         name: 'ai-suggestions-graph',
         description: 'test graph',
         error: null,
@@ -84,7 +82,7 @@ describe('AiSuggestionsService (integration)', () => {
         metadata: {},
         createdBy: TEST_USER_ID,
         temporary: false,
-      })) as GraphEntity;
+      });
       createdGraphs.push(graph.id);
 
       graphRegistry.register(graph.id, {
@@ -120,7 +118,7 @@ describe('AiSuggestionsService (integration)', () => {
         status: GraphStatus.Running,
       });
 
-      const thread = (await threadsDao.create({
+      const thread = await threadsDao.create({
         graphId: graph.id,
         createdBy: TEST_USER_ID,
         externalThreadId: 'ext-thread-1',
@@ -128,7 +126,7 @@ describe('AiSuggestionsService (integration)', () => {
         source: null,
         name: 'Test thread',
         status: ThreadStatus.Running,
-      })) as ThreadEntity;
+      });
       createdThreads.push(thread.id);
 
       await messagesDao.create({

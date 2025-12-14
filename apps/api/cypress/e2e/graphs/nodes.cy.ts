@@ -25,9 +25,9 @@ const ALLOWED_STATUSES: GraphNodeWithStatusDto['status'][] = [
 
 const extractRunId = (messages: ThreadMessageDto[]): string | undefined => {
   for (const entry of messages) {
-    const additionalKwargs = ((
-      entry.message as { additionalKwargs?: Record<string, unknown> }
-    ).additionalKwargs ?? {}) as Record<string, unknown>;
+    const additionalKwargs =
+      (entry.message as { additionalKwargs?: Record<string, unknown> })
+        .additionalKwargs ?? {};
     const runId = additionalKwargs['run_id'];
 
     if (typeof runId === 'string' && runId.length > 0) {

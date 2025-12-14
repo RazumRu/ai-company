@@ -11,7 +11,7 @@ export const environment = () =>
     sentryDsn: getEnv('SENTRY_DSN'),
 
     // server
-    globalPrefix: <string>getEnv('GLOBAL_PATH_PREFIX', 'api'),
+    globalPrefix: getEnv('GLOBAL_PATH_PREFIX', 'api'),
     swaggerPath: getEnv('SWAGGER_PATH'),
     port: +getEnv('HTTP_PORT', '5000'),
 

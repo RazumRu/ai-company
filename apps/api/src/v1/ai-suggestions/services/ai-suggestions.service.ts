@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
+import { isPlainObject, isString } from 'lodash';
+import type { UnknownRecord } from 'type-fest';
 
 import { IBaseKnowledgeOutput } from '../../agent-knowledge/agent-knowledge.types';
 import { SimpleKnowledgeConfig } from '../../agent-knowledge/services/simple-knowledge';
@@ -471,8 +473,10 @@ export class AiSuggestionsService {
           from: fromLabel,
           toolCalls: message.toolCalls?.map((tc) => ({
             name: tc.name,
-            args: tc.args,
-            type: tc.type,
+            args: isPlainObject(tc.args as unknown)
+              ? (tc.args as UnknownRecord)
+              : undefined,
+            type: typeof tc.type === 'string' ? tc.type : undefined,
           })),
         };
       }
@@ -496,12 +500,23 @@ export class AiSuggestionsService {
       }
 
       if (message.role === 'tool-shell') {
+        const content = message.content as unknown;
+        const rec: UnknownRecord = isPlainObject(content)
+          ? (content as UnknownRecord)
+          : {};
+        const exitCode =
+          typeof rec.exitCode === 'number'
+            ? rec.exitCode
+            : Number(rec.exitCode) || 0;
+        const stdout = typeof rec.stdout === 'string' ? rec.stdout : undefined;
+        const stderr = typeof rec.stderr === 'string' ? rec.stderr : undefined;
+
         return {
           role: 'tool-shell',
           name: 'shell',
-          exitCode: message.content.exitCode,
-          stdout: message.content.stdout,
-          stderr: message.content.stderr,
+          exitCode,
+          stdout,
+          stderr,
           from: fromLabel,
         };
       }
@@ -517,24 +532,57 @@ export class AiSuggestionsService {
     });
   }
 
-  private getNodeDisplayName(compiledGraph: CompiledGraph, nodeId: string) {
-    const node = compiledGraph.nodes.get(nodeId);
+  private getNodeDisplayName(
+    compiledGraph: CompiledGraph,
+    nodeId: string,
+  ): string {
+    const node = compiledGraph.nodes.get(nodeId) as unknown;
     if (!node) {
       return nodeId;
     }
 
-    if (node.type === NodeKind.SimpleAgent) {
-      const name = (node.config as { name?: string })?.name;
+    const nodeType = (node as { type?: unknown }).type;
+
+    if (nodeType === NodeKind.SimpleAgent) {
+      const cfg = (node as { config?: unknown }).config;
+      const cfgRecord: UnknownRecord | undefined = isPlainObject(cfg)
+        ? (cfg as UnknownRecord)
+        : undefined;
+      const name =
+        cfgRecord &&
+        isString(cfgRecord.name) &&
+        cfgRecord.name.trim().length > 0
+          ? cfgRecord.name
+          : undefined;
       return name || nodeId;
     }
 
-    if (node.type === NodeKind.Tool) {
-      const instance = node.instance;
-      const toolName =
-        (Array.isArray(instance)
-          ? instance[0]?.name
-          : (instance as { name?: string })?.name) || nodeId;
-      return toolName;
+    if (nodeType === NodeKind.Tool) {
+      const instance = (node as { instance?: unknown }).instance;
+      if (Array.isArray(instance)) {
+        const first = instance[0] as unknown;
+        const firstRecord: UnknownRecord | undefined = isPlainObject(first)
+          ? (first as UnknownRecord)
+          : undefined;
+        const name =
+          firstRecord &&
+          isString(firstRecord.name) &&
+          firstRecord.name.trim().length > 0
+            ? firstRecord.name
+            : undefined;
+        return name || nodeId;
+      }
+
+      const instanceRecord: UnknownRecord | undefined = isPlainObject(instance)
+        ? (instance as UnknownRecord)
+        : undefined;
+      const name =
+        instanceRecord &&
+        isString(instanceRecord.name) &&
+        instanceRecord.name.trim().length > 0
+          ? instanceRecord.name
+          : undefined;
+      return name || nodeId;
     }
 
     return nodeId;

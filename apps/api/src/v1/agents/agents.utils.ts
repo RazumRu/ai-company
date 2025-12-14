@@ -6,11 +6,16 @@ import {
 } from '@langchain/core/messages';
 import { BaseMessage, ToolMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
+import { isPlainObject } from 'lodash';
+import type { UnknownRecord } from 'type-fest';
 
 import { BaseAgentConfigurable } from './services/nodes/base-node';
 
 function cloneMessage<T extends BaseMessage>(message: T): T {
-  return Object.assign(Object.create(Object.getPrototypeOf(message)), message);
+  return Object.assign(
+    Object.create(Object.getPrototypeOf(message)) as T,
+    message,
+  );
 }
 
 export function extractTextFromResponseContent(
@@ -34,7 +39,7 @@ export function extractTextFromResponseContent(
     const trimmed = content.trim();
     if (trimmed.startsWith('[')) {
       try {
-        const parsed = JSON.parse(trimmed);
+        const parsed = JSON.parse(trimmed) as unknown;
         if (Array.isArray(parsed)) {
           return flattenBlocks(parsed as ContentBlock[]);
         }
@@ -53,17 +58,25 @@ export function updateMessageWithMetadata(
   message: BaseMessage,
   runnableConfig: RunnableConfig<BaseAgentConfigurable>,
 ) {
-  if (message.additional_kwargs?.run_id) {
+  const currentKwargs = message.additional_kwargs as unknown;
+  if (
+    isPlainObject(currentKwargs) &&
+    typeof (currentKwargs as UnknownRecord).run_id === 'string'
+  ) {
     return message;
   }
 
   const clone = cloneMessage(message);
 
-  const prev = clone.additional_kwargs ?? {};
+  const prev: UnknownRecord = isPlainObject(clone.additional_kwargs as unknown)
+    ? (clone.additional_kwargs as UnknownRecord)
+    : {};
   clone.additional_kwargs = {
     ...prev,
     run_id: runnableConfig?.configurable?.run_id,
-    created_at: prev.created_at || new Date().toISOString(),
+    created_at:
+      (typeof prev.created_at === 'string' && prev.created_at) ||
+      new Date().toISOString(),
   };
 
   return clone;
@@ -78,11 +91,13 @@ export function updateMessagesListWithMetadata(
 
 export function markMessageHideForLlm<T extends BaseMessage>(message: T): T {
   const clone = Object.assign(
-    Object.create(Object.getPrototypeOf(message)),
+    Object.create(Object.getPrototypeOf(message)) as T,
     message,
   );
 
-  const prev = clone.additional_kwargs ?? {};
+  const prev: UnknownRecord = isPlainObject(clone.additional_kwargs as unknown)
+    ? (clone.additional_kwargs as UnknownRecord)
+    : {};
   clone.additional_kwargs = {
     ...prev,
     hideForLlm: true,

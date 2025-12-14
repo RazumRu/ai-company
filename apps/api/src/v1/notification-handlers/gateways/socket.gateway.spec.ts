@@ -110,7 +110,6 @@ describe('SocketGateway', () => {
         graphId: mockGraphId,
         ownerId: mockUserId,
         data: {
-          generatedTitle: 'Test Thread Title',
           summary: 'Test summary',
           done: false,
         },
@@ -341,7 +340,6 @@ describe('SocketGateway', () => {
         graphId: mockGraphId,
         ownerId: mockUserId,
         data: {
-          generatedTitle: 'New Thread Title',
           summary: 'Updated summary',
           done: true,
         },

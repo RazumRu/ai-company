@@ -31,7 +31,7 @@ export class GraphThreadState {
 
     for (const [key, value] of state.reasoningChunks) {
       const msgClone = Object.assign(
-        Object.create(Object.getPrototypeOf(value)),
+        Object.create(Object.getPrototypeOf(value)) as ChatMessage,
         value,
       );
       reasoningChunksCopy.set(key, msgClone);

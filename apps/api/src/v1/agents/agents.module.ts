@@ -51,7 +51,7 @@ export class AgentsModule implements OnModuleInit {
       const hasAgentDecorator = Reflect.getMetadata(
         AGENT_FACTORY_KEY,
         w.metatype || {},
-      );
+      ) as unknown;
       if (!hasAgentDecorator) {
         continue;
       }

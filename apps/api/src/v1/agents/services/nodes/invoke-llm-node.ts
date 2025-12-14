@@ -113,6 +113,6 @@ export class InvokeLlmNode extends BaseNode<
       if (!title) return tc;
 
       return Object.assign({}, tc, { __title: title });
-    }) as typeof calls;
+    });
   }
 }

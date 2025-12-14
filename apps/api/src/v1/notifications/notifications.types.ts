@@ -67,7 +67,6 @@ export interface IAgentInvokeNotification extends INotification<IAgentInvokeData
 }
 
 export interface IAgentStateUpdateData {
-  generatedTitle?: string;
   summary?: string;
   done?: boolean;
   needsMoreInfo?: boolean;

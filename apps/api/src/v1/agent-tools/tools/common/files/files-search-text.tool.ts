@@ -3,6 +3,7 @@ import { basename } from 'node:path';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
+import { isObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
@@ -289,15 +290,20 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       .split('\n')
       .filter((line) => line.trim().length > 0);
     const matches: FilesSearchTextToolOutput['matches'] = [];
+    type Match = NonNullable<FilesSearchTextToolOutput['matches']>[number];
 
     for (const line of lines) {
       try {
-        const parsed = JSON.parse(line);
-        if (parsed.type === 'match') {
+        const parsed = JSON.parse(line) as unknown;
+        const parsedType = isObject(parsed)
+          ? (parsed as { type?: unknown }).type
+          : undefined;
+
+        if (parsedType === 'match') {
           if (matches.length >= MAX_MATCHES) {
             break;
           }
-          matches.push(parsed);
+          matches.push(parsed as Match);
         }
       } catch (_e) {
         // Skip invalid JSON lines (like summary lines)

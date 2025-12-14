@@ -16,7 +16,6 @@ describe('InjectPendingNode', () => {
     needsMoreInfo: false,
     toolUsageGuardActivated: false,
     toolUsageGuardActivatedCount: 0,
-    generatedTitle: undefined,
   };
 
   const cfg = {

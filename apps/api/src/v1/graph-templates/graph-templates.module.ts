@@ -1,5 +1,6 @@
 import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
+import { z } from 'zod';
 
 import { AgentKnowledgeModule } from '../agent-knowledge/agent-knowledge.module';
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
@@ -13,6 +14,7 @@ import { REGISTER_TEMPLATE_KEY } from './decorators/register-template.decorator'
 import { TemplateRegistry } from './services/template-registry';
 import { TemplatesService } from './services/templates.service';
 import { SimpleAgentTemplate } from './templates/agents/simple-agent.template';
+import { NodeBaseTemplate } from './templates/base-node.template';
 import { SimpleKnowledgeTemplate } from './templates/knowledge/simple-knowledge.template';
 import { GithubResourceTemplate } from './templates/resources/github-resource.template';
 import { DockerRuntimeTemplate } from './templates/runtimes/docker-runtime.template';
@@ -63,19 +65,24 @@ export class GraphTemplatesModule implements OnModuleInit {
   async onModuleInit() {
     const wrappers = this.discovery.getProviders().filter((w) => w?.metatype);
     for (const w of wrappers) {
-      const meta = Reflect.getMetadata(REGISTER_TEMPLATE_KEY, w.metatype || {});
+      const meta = Reflect.getMetadata(
+        REGISTER_TEMPLATE_KEY,
+        w.metatype || {},
+      ) as unknown;
       if (!meta) {
         continue;
       }
 
-      const instance =
-        w.instance ?? this.moduleRef.get(w.token, { strict: false });
+      const instance = (w.instance ??
+        this.moduleRef.get(w.token, { strict: false })) as unknown;
 
       if (!instance) {
         continue;
       }
 
-      this.templateRegistry.register(instance);
+      this.templateRegistry.register(
+        instance as NodeBaseTemplate<z.ZodTypeAny, unknown>,
+      );
     }
   }
 }

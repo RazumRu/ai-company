@@ -291,7 +291,7 @@ describe('AiSuggestionsService', () => {
         kind: NodeKind.SimpleAgent,
       });
       (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue({
-        edges: graph.schema.edges as GraphEdgeSchemaType[],
+        edges: graph.schema.edges,
       });
       (
         graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>

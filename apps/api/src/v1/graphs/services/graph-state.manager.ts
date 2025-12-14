@@ -186,9 +186,7 @@ export class GraphStateManager {
 
       if (event.type === 'execStart') {
         const execId = event.data.execId;
-        const meta = event.data.params.metadata as
-          | GraphExecutionMetadata
-          | undefined;
+        const meta = event.data.params.metadata;
         const threadId = meta?.threadId;
         const runId = meta?.runId;
         state.activeExecs.set(execId, {
@@ -314,26 +312,6 @@ export class GraphStateManager {
             parentThreadId,
             data: event.data.stateChange,
           });
-
-          // Handle thread name updates (generatedTitle)
-          // Centralized place for all thread updates
-          const stateChange = event.data.stateChange as Record<string, unknown>;
-          if (
-            stateChange.generatedTitle &&
-            typeof stateChange.generatedTitle === 'string'
-          ) {
-            const threadId = event.data.threadId;
-            const externalThreadKey = parentThreadId ?? threadId;
-
-            await this.notificationsService.emit({
-              type: NotificationEvent.ThreadUpdate,
-              graphId,
-              nodeId,
-              threadId: externalThreadKey,
-              parentThreadId,
-              data: { name: stateChange.generatedTitle },
-            });
-          }
         }
 
         if (event.type === 'run') {

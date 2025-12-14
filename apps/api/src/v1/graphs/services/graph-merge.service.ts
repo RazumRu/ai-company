@@ -5,7 +5,7 @@ import {
   compare as diffSchemas,
   type Operation,
 } from 'fast-json-patch';
-import { cloneDeep, isEqual } from 'lodash';
+import { cloneDeep, isEqual, isNil, isObject } from 'lodash';
 
 import type { GraphSchemaType } from '../graphs.types';
 
@@ -255,11 +255,11 @@ export class GraphMergeService {
     let current = obj;
 
     for (const part of parts) {
-      if (current === null || current === undefined) return undefined;
-      if (
-        typeof current === 'object' &&
-        part in (current as Record<string, unknown>)
-      ) {
+      if (isNil(current)) {
+        return undefined;
+      }
+
+      if (isObject(current) && part in (current as Record<string, unknown>)) {
         current = (current as Record<string, unknown>)[part];
       } else {
         return undefined;

@@ -34,7 +34,6 @@ import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { MessageTransformerService } from '../../../v1/graphs/services/message-transformer.service';
 import { IEnrichedNotification } from '../../../v1/notification-handlers/notification-handlers.types';
 import {
-  IAgentStateUpdateData,
   IGraphNodeUpdateData,
   Notification,
   NotificationEvent,
@@ -57,8 +56,8 @@ import { createTestModule, TEST_USER_ID } from '../setup';
 // Type aliases for socket notifications (using business logic interfaces)
 type MessageNotification = IEnrichedNotification<ThreadMessageDto>;
 type NodeUpdateNotification = IEnrichedNotification<IGraphNodeUpdateData>;
-type ThreadNotification = IEnrichedNotification<ThreadEntity>;
-type StateUpdateNotification = IEnrichedNotification<IAgentStateUpdateData>;
+type ThreadCreateNotification = IEnrichedNotification<ThreadEntity>;
+type ThreadUpdateNotification = IEnrichedNotification<ThreadDto>;
 
 describe('Socket Notifications Integration Tests', () => {
   let app: INestApplication;
@@ -1436,8 +1435,7 @@ describe('Socket Notifications Integration Tests', () => {
           const storedReasoning = storedMessages.find(
             (msg) =>
               msg.message.role === 'reasoning' &&
-              (msg.message as ReasoningMessageDto).id ===
-                'reasoning:chunk-integration',
+              msg.message.id === 'reasoning:chunk-integration',
           ) as
             | (ThreadMessageDto & { message: ReasoningMessageDto })
             | undefined;
@@ -1503,7 +1501,7 @@ describe('Socket Notifications Integration Tests', () => {
 
         // Verify thread create events with proper typing
         expect(threadCreateEvents.length).toBeGreaterThanOrEqual(1);
-        const typedEvent = threadCreateEvents[0] as ThreadNotification;
+        const typedEvent = threadCreateEvents[0] as ThreadCreateNotification;
         expect(typedEvent.type).toBe('thread.create');
         expect(typedEvent.graphId).toBe(graphId);
         expect(typedEvent.threadId).toMatch(/^[0-9a-f-]+:[0-9a-f-]+$/);
@@ -1522,10 +1520,10 @@ describe('Socket Notifications Integration Tests', () => {
         const graphId = createResult.id;
         createdGraphIds.push(graphId);
 
-        // Listen for agent state update events
-        const stateUpdateEvents: unknown[] = [];
-        socket.on('agent.state.update', (data: unknown) => {
-          stateUpdateEvents.push(data);
+        // Listen for thread update events (name/status updates)
+        const threadUpdateEvents: unknown[] = [];
+        socket.on('thread.update', (data: unknown) => {
+          threadUpdateEvents.push(data);
         });
 
         // Subscribe to graph updates BEFORE running the graph
@@ -1534,44 +1532,46 @@ describe('Socket Notifications Integration Tests', () => {
         // Small wait to ensure subscription is processed
         await new Promise((resolve) => setTimeout(resolve, 500));
 
-        // Set up promise to wait for title update notification
-        const waitForTitleUpdate = new Promise((resolve, reject) => {
-          const checkForTitleUpdate = () => {
-            const titleUpdateEvent = (
-              stateUpdateEvents as {
-                data?: { generatedTitle?: string };
+        // Set up promise to wait for thread name update notification
+        const waitForThreadNameUpdate = new Promise((resolve, reject) => {
+          const checkForThreadNameUpdate = () => {
+            const nameUpdateEvent = (
+              threadUpdateEvents as {
+                data?: { name?: string | null };
                 type?: string;
                 graphId?: string;
               }[]
-            ).find((event) => event.data && event.data.generatedTitle);
+            ).find((event) => {
+              const name = event.data?.name;
+              return typeof name === 'string' && name.length > 0;
+            });
 
-            if (titleUpdateEvent) {
-              expect(titleUpdateEvent.type).toBe('agent.state.update');
-              expect(titleUpdateEvent.graphId).toBe(graphId);
-              expect(titleUpdateEvent.data!.generatedTitle).toBeDefined();
-              expect(titleUpdateEvent.data!.generatedTitle).not.toBe('');
+            if (nameUpdateEvent) {
+              expect(nameUpdateEvent.type).toBe('thread.update');
+              expect(nameUpdateEvent.graphId).toBe(graphId);
+              const name = nameUpdateEvent.data!.name as string;
+              expect(name).toBeDefined();
+              expect(name).not.toBe('');
               resolve(undefined);
             }
           };
 
           // Check periodically for title update
           const intervalId = setInterval(() => {
-            checkForTitleUpdate();
+            checkForThreadNameUpdate();
           }, 1000);
 
           // Timeout after 30 seconds
           setTimeout(() => {
             clearInterval(intervalId);
-            if (stateUpdateEvents.length === 0) {
+            if (threadUpdateEvents.length === 0) {
               reject(
-                new Error(
-                  'Timeout: No agent state update notifications received',
-                ),
+                new Error('Timeout: No thread update notifications received'),
               );
             } else {
               reject(
                 new Error(
-                  `Timeout: Received ${stateUpdateEvents.length} events but none with generatedTitle`,
+                  `Timeout: Received ${threadUpdateEvents.length} events but none with thread name`,
                 ),
               );
             }
@@ -1588,16 +1588,20 @@ describe('Socket Notifications Integration Tests', () => {
           threadSubId: 'socket-test-thread',
         });
 
-        // Wait for the title update notification
-        await waitForTitleUpdate;
+        // Wait for the thread name update notification
+        await waitForThreadNameUpdate;
 
-        // Verify we received expected state updates
-        expect(stateUpdateEvents.length).toBeGreaterThanOrEqual(1);
-        const typedEvents = stateUpdateEvents as StateUpdateNotification[];
-        const titleUpdateEvent = typedEvents.find((e) => e.data.generatedTitle);
-        expect(titleUpdateEvent).toBeDefined();
-        expect(titleUpdateEvent!.data.generatedTitle).toBeTruthy();
-        expect(titleUpdateEvent!.graphId).toBe(graphId);
+        // Verify we received expected thread updates
+        expect(threadUpdateEvents.length).toBeGreaterThanOrEqual(1);
+        const typedEvents = threadUpdateEvents as ThreadUpdateNotification[];
+        const nameUpdateEvent = typedEvents.find(
+          (e) => typeof (e.data as { name?: unknown }).name === 'string',
+        );
+        expect(nameUpdateEvent).toBeDefined();
+        expect(
+          String((nameUpdateEvent!.data as { name?: string }).name ?? ''),
+        ).toBeTruthy();
+        expect(nameUpdateEvent!.graphId).toBe(graphId);
       },
     );
   });

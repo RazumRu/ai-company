@@ -148,12 +148,12 @@ export const getSchemaParameterDocs = (schema: z.ZodTypeAny) => {
     return '';
   }
 
-  const shape = objectSchema.shape as Record<string, z.ZodTypeAny>;
+  const shape = objectSchema.shape;
   const params: string[] = [];
 
   for (const [key, field] of Object.entries(shape)) {
-    const description = getFieldDescription(field as z.ZodTypeAny);
-    const optional = isOptionalField(field as z.ZodTypeAny);
+    const description = getFieldDescription(field);
+    const optional = isOptionalField(field);
 
     params.push(`#### \`${key}\``);
     params.push(`${optional ? '(optional) ' : '(required) '}${description}`);

@@ -39,7 +39,6 @@ import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InjectPendingNode } from '../nodes/inject-pending-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { SummarizeNode } from '../nodes/summarize-node';
-import { TitleGenerationNode } from '../nodes/title-generation-node';
 import { ToolExecutorNode } from '../nodes/tool-executor-node';
 import { ToolUsageGuardNode } from '../nodes/tool-usage-guard-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
@@ -183,10 +182,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         reducer: (left, right) => right ?? left,
         default: () => false,
       }),
-      generatedTitle: Annotation<string | undefined, string | undefined>({
-        reducer: (left, right) => right ?? left,
-        default: () => undefined,
-      }),
     } satisfies Record<
       keyof BaseAgentState,
       BaseChannel | (() => BaseChannel)
@@ -259,21 +254,11 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         this.logger,
       );
 
-      // ---- title generation ----
-      const titleGenerationNode = new TitleGenerationNode(
-        this.buildLLM('gpt-5-mini'),
-        this.logger,
-      );
-
       // ---- build ----
       const g = new StateGraph({
         stateSchema: this.buildState(),
       })
         .addNode('summarize', summarizeNode.invoke.bind(summarizeNode))
-        .addNode(
-          'generate_title',
-          titleGenerationNode.invoke.bind(titleGenerationNode),
-        )
         .addNode('invoke_llm', invokeLlmNode.invoke.bind(invokeLlmNode))
         .addNode('tools', toolExecutorNode.invoke.bind(toolExecutorNode))
         .addNode(
@@ -281,8 +266,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           injectPendingNode.invoke.bind(injectPendingNode),
         )
         // ---- routing ----
-        .addEdge(START, 'generate_title')
-        .addEdge('generate_title', 'summarize')
+        .addEdge(START, 'summarize')
         .addEdge('summarize', 'invoke_llm');
 
       // ---- conditional tool usage guard ----
@@ -395,7 +379,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       needsMoreInfo: false,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
-      generatedTitle: undefined,
     };
   }
 
@@ -419,7 +402,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       toolUsageGuardActivatedCount:
         change.toolUsageGuardActivatedCount ??
         prev.toolUsageGuardActivatedCount,
-      generatedTitle: change.generatedTitle ?? prev.generatedTitle,
     };
   }
 
@@ -455,10 +437,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     // Build state change object with only changed fields
     const stateChange: Partial<BaseAgentState> = {};
-
-    if (prevState.generatedTitle !== nextState.generatedTitle) {
-      stateChange.generatedTitle = nextState.generatedTitle;
-    }
 
     if (prevState.summary !== nextState.summary) {
       stateChange.summary = nextState.summary;
@@ -814,7 +792,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
           for (const [_nodeName, nodeState] of Object.entries(chunk)) {
             // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
-            const stateChange = nodeState as BaseAgentStateChange;
+            const stateChange = nodeState;
             if (!stateChange || typeof stateChange !== 'object') continue;
 
             const beforeLen = finalState.messages.length;
@@ -860,8 +838,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         }
       }
     } catch (err) {
-      const name = (err as unknown as { name?: string })?.name;
-      const msg = (err as unknown as { message?: string })?.message || '';
+      const name = (err as { name?: string })?.name;
+      const msg = (err as { message?: string })?.message || '';
       const aborted = abortController.signal.aborted;
       if (
         !aborted ||

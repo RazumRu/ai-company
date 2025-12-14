@@ -47,7 +47,6 @@ describe('SummarizeNode', () => {
     needsMoreInfo: false,
     toolUsageGuardActivated: false,
     toolUsageGuardActivatedCount: 0,
-    generatedTitle: undefined,
     ...overrides,
   });
 

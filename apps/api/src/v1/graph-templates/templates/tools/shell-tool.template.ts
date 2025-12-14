@@ -175,7 +175,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
           continue;
         }
 
-        const resourceOutput = node.instance as IShellResourceOutput;
+        const resourceOutput = node.instance;
 
         const resourceEnv = resourceOutput.data.env;
         if (resourceEnv) {

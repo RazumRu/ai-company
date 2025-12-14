@@ -245,7 +245,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
     for (const line of lines) {
       try {
-        const parsed = JSON.parse(line);
+        const parsed = JSON.parse(line) as unknown;
         matches.push(parsed);
       } catch (_e) {
         // Skip invalid JSON lines

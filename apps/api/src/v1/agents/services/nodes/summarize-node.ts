@@ -57,7 +57,7 @@ export class SummarizeNode extends BaseNode<
     if (keepTokens > 0) {
       tail = await trimMessages({
         strategy: 'last',
-        tokenCounter: this.llm!,
+        tokenCounter: this.llm,
         maxTokens: keepTokens,
         startOn: ['human', 'ai', 'tool', 'system'],
         endOn: ['human', 'ai', 'tool', 'system'],
@@ -80,7 +80,7 @@ export class SummarizeNode extends BaseNode<
       remaining > 0
         ? await trimMessages({
             strategy: 'last',
-            tokenCounter: this.llm!,
+            tokenCounter: this.llm,
             maxTokens: remaining,
             startOn: ['human', 'ai', 'tool', 'system'],
             endOn: ['human', 'ai', 'tool', 'system'],
@@ -118,7 +118,7 @@ export class SummarizeNode extends BaseNode<
   private async countTokens(x: BaseMessage[] | string): Promise<number> {
     if (typeof x === 'string') {
       try {
-        return await this.llm!.getNumTokens(x);
+        return await this.llm.getNumTokens(x);
       } catch {
         return x.length;
       }
@@ -129,7 +129,7 @@ export class SummarizeNode extends BaseNode<
       const c =
         typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
       try {
-        t += await this.llm!.getNumTokens(c);
+        t += await this.llm.getNumTokens(c);
       } catch {
         t += c.length;
       }
@@ -159,7 +159,7 @@ export class SummarizeNode extends BaseNode<
     const human = new HumanMessage(
       `Previous summary:\n${prev ?? '(none)'}\n\nFold in the following messages:\n${lines}\n\nReturn only the updated summary.`,
     );
-    const res = (await this.llm!.invoke([sys, human])) as AIMessage;
+    const res = (await this.llm.invoke([sys, human])) as AIMessage;
     const extracted = extractTextFromResponseContent(res.content);
     if (extracted !== undefined) {
       return extracted;

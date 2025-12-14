@@ -55,7 +55,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
     threadId: mockThreadId,
     parentThreadId: mockParentThreadId,
     data: {
-      generatedTitle: 'Test Title',
+      summary: 'Test summary',
     },
     ...overrides,
   });
@@ -110,9 +110,9 @@ describe('AgentStateUpdateNotificationHandler', () => {
   });
 
   describe('handle', () => {
-    it('enriches agent state update with generatedTitle', async () => {
+    it('enriches agent state update with summary', async () => {
       const notification = createMockNotification({
-        data: { generatedTitle: 'New Name' },
+        data: { summary: 'New summary' },
       });
 
       const result = await handler.handle(notification);
@@ -126,7 +126,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
           threadId: mockThreadId,
-          data: { generatedTitle: 'New Name' },
+          data: { summary: 'New summary' },
         },
       ]);
     });
@@ -134,7 +134,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
     it('enriches agent state update with threadId when parentThreadId is missing', async () => {
       const notification = createMockNotification({
         parentThreadId: undefined,
-        data: { generatedTitle: 'Thread Name' },
+        data: { summary: 'Thread summary' },
       });
 
       const result = await handler.handle(notification);
@@ -148,7 +148,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
           threadId: mockThreadId,
-          data: { generatedTitle: 'Thread Name' },
+          data: { summary: 'Thread summary' },
         },
       ]);
     });
@@ -222,7 +222,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
 
     it('enriches agent state update regardless of data content', async () => {
       const notification = createMockNotification({
-        data: { generatedTitle: 'Any Title' },
+        data: { summary: 'Any summary' },
       });
 
       const result = await handler.handle(notification);
@@ -235,7 +235,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
           threadId: mockThreadId,
-          data: { generatedTitle: 'Any Title' },
+          data: { summary: 'Any summary' },
         },
       ]);
     });

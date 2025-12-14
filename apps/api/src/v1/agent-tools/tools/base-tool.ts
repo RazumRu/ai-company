@@ -75,7 +75,7 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
       ? (args: unknown) => {
           const parsed = this.schema.safeParse(args);
           if (!parsed.success) return undefined;
-          return this.generateTitle?.(parsed.data as TSchema, config);
+          return this.generateTitle?.(parsed.data, config);
         }
       : undefined;
 
@@ -94,7 +94,7 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
       const parsedArgs = this.schema.parse(args);
 
       return cb(
-        parsedArgs as TSchema,
+        parsedArgs,
         config,
         runnableConfig as ToolRunnableConfig<BaseAgentConfigurable>,
       );
