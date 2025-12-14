@@ -4,12 +4,25 @@ export const createSocketConnection = (
   baseUrl: string,
   userId?: string,
 ): Socket => {
+  // The API socket gateway requires a non-empty `token` in the handshake,
+  // and (in dev auth mode) reads user identity from `x-dev-jwt-*` fields.
+  const token = userId ?? '';
   const socket = io(baseUrl, {
     auth: {
+      token,
       'x-dev-jwt-sub': userId,
     },
     transports: ['websocket'],
     reconnection: false,
+  });
+
+  // Avoid race conditions in tests where `socket_connected` can be emitted
+  // before the waiting helper attaches its listener.
+  (socket as unknown as { __socketConnected?: boolean }).__socketConnected =
+    false;
+  socket.on('socket_connected', () => {
+    (socket as unknown as { __socketConnected?: boolean }).__socketConnected =
+      true;
   });
 
   return socket;
@@ -31,6 +44,7 @@ export const waitForSocketEvent = (
         resolve(data);
       });
     }),
+    { timeout },
   );
 };
 
@@ -40,19 +54,26 @@ export const waitForSocketConnection = (
 ): Cypress.Chainable<unknown> => {
   return cy.wrap(
     new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error('Timeout waiting for socket connection'));
-      }, timeout);
-
-      if (socket.connected) {
-        clearTimeout(timer);
+      if ((socket as unknown as { __socketConnected?: boolean }).__socketConnected) {
         resolve(undefined);
         return;
       }
 
-      socket.once('connect', () => {
+      const timer = setTimeout(() => {
+        reject(new Error('Timeout waiting for socket connection'));
+      }, timeout);
+
+      // The server emits `socket_connected` only after auth succeeds and the
+      // user is joined to their personal room. Waiting for raw `connect` is
+      // not sufficient because the transport can connect even when auth fails.
+      socket.once('socket_connected', () => {
         clearTimeout(timer);
         resolve(undefined);
+      });
+
+      socket.once('server_error', (error) => {
+        clearTimeout(timer);
+        reject(error);
       });
 
       socket.once('connect_error', (error) => {
@@ -60,6 +81,7 @@ export const waitForSocketConnection = (
         reject(error);
       });
     }),
+    { timeout },
   );
 };
 
