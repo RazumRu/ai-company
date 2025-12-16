@@ -19,7 +19,6 @@ export class ThreadNameGeneratorService {
     }
 
     const fallback = normalized.slice(0, 100);
-    console.log('fallback', fallback);
 
     try {
       const llmTimeoutMs = 30000;

@@ -1,5 +1,6 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 
+import { AgentsModule } from '../agents/agents.module';
 import { GraphsModule } from '../graphs/graphs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ThreadsModule } from '../threads/threads.module';
@@ -16,7 +17,7 @@ import { ThreadUpdateNotificationHandler } from './services/event-handlers/threa
 import { NotificationHandler } from './services/notification-handler.service';
 
 @Module({
-  imports: [GraphsModule, NotificationsModule, ThreadsModule],
+  imports: [GraphsModule, NotificationsModule, ThreadsModule, AgentsModule],
   providers: [
     GraphNotificationHandler,
     GraphRevisionNotificationHandler,

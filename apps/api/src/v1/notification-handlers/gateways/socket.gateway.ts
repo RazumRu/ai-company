@@ -83,10 +83,11 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
       const authRecord: UnknownRecord = isPlainObject(auth)
         ? (auth as UnknownRecord)
         : {};
-      const token = authRecord.token;
-      if (typeof token !== 'string' || token.length === 0) {
-        throw new UnauthorizedException();
-      }
+      const tokenRaw = authRecord.token;
+      const token =
+        typeof tokenRaw === 'string' && tokenRaw.length > 0
+          ? tokenRaw
+          : undefined;
 
       // Get auth data from the socket handshake for dev mode authentication
       const authData: Record<string, string> = {};

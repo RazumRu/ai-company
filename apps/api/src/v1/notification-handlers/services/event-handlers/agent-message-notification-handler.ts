@@ -3,6 +3,7 @@ import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
+import type { TokenUsage } from '../../../litellm/litellm.types';
 import {
   IAgentMessageNotification,
   NotificationEvent,
@@ -63,13 +64,21 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
       event.data.messages,
     );
 
-    for (const messageDto of messageDtos) {
+    for (const [i, messageDto] of messageDtos.entries()) {
+      const originalMessage = event.data.messages[i];
+      const tokenUsage = (
+        originalMessage?.additional_kwargs as
+          | { tokenUsage?: TokenUsage }
+          | undefined
+      )?.tokenUsage;
+
       // Save message to database with correct internal thread ID
       const createdMessage = await this.messagesDao.create({
         threadId: internalThread.id,
         externalThreadId: event.threadId,
         nodeId: event.nodeId,
         message: messageDto,
+        ...(tokenUsage ? { tokenUsage } : {}),
       });
 
       out.push({

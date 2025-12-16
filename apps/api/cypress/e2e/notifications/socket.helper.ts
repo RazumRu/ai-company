@@ -54,7 +54,9 @@ export const waitForSocketConnection = (
 ): Cypress.Chainable<unknown> => {
   return cy.wrap(
     new Promise((resolve, reject) => {
-      if ((socket as unknown as { __socketConnected?: boolean }).__socketConnected) {
+      if (
+        (socket as unknown as { __socketConnected?: boolean }).__socketConnected
+      ) {
         resolve(undefined);
         return;
       }

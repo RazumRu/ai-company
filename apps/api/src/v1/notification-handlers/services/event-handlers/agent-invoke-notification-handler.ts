@@ -117,7 +117,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         if (refreshedThread) {
           const threadsService = await this.moduleRef.create(ThreadsService);
           const threadDto =
-            threadsService.prepareThreadResponse(refreshedThread);
+            await threadsService.prepareThreadResponse(refreshedThread);
 
           await this.notificationsService.emit({
             type: NotificationEvent.ThreadUpdate,

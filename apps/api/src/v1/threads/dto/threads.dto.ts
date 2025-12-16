@@ -4,6 +4,15 @@ import { z } from 'zod';
 import { MessageSchema } from '../../graphs/dto/graphs.dto';
 import { ThreadStatus } from '../threads.types';
 
+export const TokenUsageSchema = z.object({
+  inputTokens: z.number().describe('Input tokens'),
+  cachedInputTokens: z.number().optional().describe('Cached input tokens'),
+  outputTokens: z.number().describe('Output tokens'),
+  reasoningTokens: z.number().optional().describe('Reasoning tokens'),
+  totalTokens: z.number().describe('Total tokens'),
+  totalPrice: z.number().optional().describe('Total price in USD'),
+});
+
 // Thread schema
 export const ThreadSchema = z.object({
   id: z.uuid().describe('Thread ID'),
@@ -32,6 +41,9 @@ export const ThreadSchema = z.object({
     .nullable()
     .describe('Thread name (auto-generated from first user message)'),
   status: z.enum(ThreadStatus).describe('Thread execution status'),
+  tokenUsage: TokenUsageSchema.optional()
+    .nullable()
+    .describe('Aggregated token usage & cost for this thread'),
 });
 
 export const ThreadMessageSchema = z.object({
@@ -42,6 +54,9 @@ export const ThreadMessageSchema = z.object({
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   message: MessageSchema,
+  tokenUsage: TokenUsageSchema.optional()
+    .nullable()
+    .describe('Token usage & cost for this message'),
 });
 
 // Get threads query parameters

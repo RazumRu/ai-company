@@ -6,6 +6,12 @@ export interface IGraphThreadStateData {
   pendingMessages: BaseMessage[];
   newMessageMode: NewMessageMode;
   reasoningChunks: Map<string, ChatMessage>;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+  totalPrice: number;
 }
 
 type GraphThreadStateSubscriber = (
@@ -23,6 +29,12 @@ export class GraphThreadState {
       pendingMessages: [],
       newMessageMode: NewMessageMode.InjectAfterToolCall,
       reasoningChunks: new Map(),
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      totalPrice: 0,
     };
   }
 
@@ -41,6 +53,12 @@ export class GraphThreadState {
       pendingMessages: [...state.pendingMessages],
       newMessageMode: state.newMessageMode,
       reasoningChunks: reasoningChunksCopy,
+      inputTokens: state.inputTokens,
+      cachedInputTokens: state.cachedInputTokens,
+      outputTokens: state.outputTokens,
+      reasoningTokens: state.reasoningTokens,
+      totalTokens: state.totalTokens,
+      totalPrice: state.totalPrice,
     };
   }
 
@@ -67,6 +85,12 @@ export class GraphThreadState {
       pendingMessages: patch.pendingMessages ?? prevState.pendingMessages,
       newMessageMode: patch.newMessageMode ?? prevState.newMessageMode,
       reasoningChunks: patch.reasoningChunks ?? prevState.reasoningChunks,
+      inputTokens: patch.inputTokens ?? prevState.inputTokens,
+      cachedInputTokens: patch.cachedInputTokens ?? prevState.cachedInputTokens,
+      outputTokens: patch.outputTokens ?? prevState.outputTokens,
+      reasoningTokens: patch.reasoningTokens ?? prevState.reasoningTokens,
+      totalTokens: patch.totalTokens ?? prevState.totalTokens,
+      totalPrice: patch.totalPrice ?? prevState.totalPrice,
     };
 
     if (!this.hasStateChanged(prevState, nextState)) {
@@ -90,7 +114,13 @@ export class GraphThreadState {
     return (
       prev.newMessageMode !== next.newMessageMode ||
       prev.pendingMessages !== next.pendingMessages ||
-      prev.reasoningChunks !== next.reasoningChunks
+      prev.reasoningChunks !== next.reasoningChunks ||
+      prev.inputTokens !== next.inputTokens ||
+      prev.cachedInputTokens !== next.cachedInputTokens ||
+      prev.outputTokens !== next.outputTokens ||
+      prev.reasoningTokens !== next.reasoningTokens ||
+      prev.totalTokens !== next.totalTokens ||
+      prev.totalPrice !== next.totalPrice
     );
   }
 

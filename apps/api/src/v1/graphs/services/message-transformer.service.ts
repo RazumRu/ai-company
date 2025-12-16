@@ -41,9 +41,11 @@ export class MessageTransformerService {
    * Transform multiple BaseMessages to MessageDto array
    * This is the primary method for transforming checkpoint messages
    */
-  transformMessagesToDto(messages: BaseMessage[]): MessageDto[] {
+  transformMessagesToDto(messages: (BaseMessage | unknown)[]): MessageDto[] {
     return messages
-      .map((msg) => this.transformMessageToDto(msg))
+      .map((msg) =>
+        this.transformMessageToDto(msg as BaseMessage | SerializedMessage),
+      )
       .filter((dto): dto is MessageDto => dto !== null);
   }
 

@@ -21,6 +21,8 @@ import { z } from 'zod';
 
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
+import type { TokenUsage } from '../../../litellm/litellm.types';
+import { extractTokenUsageFromAdditionalKwargs } from '../../../litellm/litellm.utils';
 import {
   BaseAgentState,
   BaseAgentStateChange,
@@ -416,6 +418,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     const fresh = messages.filter((m) => m.additional_kwargs?.run_id === runId);
 
     if (fresh.length > 0) {
+      this.updateThreadTokenUsage(threadId, fresh);
       this.emit({
         type: 'message',
         data: {
@@ -425,6 +428,84 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         },
       });
     }
+  }
+
+  public getThreadTokenUsage(threadId: string): TokenUsage | null {
+    if (!this.graphThreadState) {
+      return null;
+    }
+
+    const s = this.graphThreadState.getByThread(threadId);
+    const hasAny =
+      s.inputTokens !== 0 ||
+      s.cachedInputTokens !== 0 ||
+      s.outputTokens !== 0 ||
+      s.reasoningTokens !== 0 ||
+      s.totalTokens !== 0 ||
+      s.totalPrice !== 0;
+
+    if (!hasAny) {
+      return null;
+    }
+
+    return {
+      inputTokens: s.inputTokens,
+      ...(s.cachedInputTokens
+        ? { cachedInputTokens: s.cachedInputTokens }
+        : {}),
+      outputTokens: s.outputTokens,
+      ...(s.reasoningTokens ? { reasoningTokens: s.reasoningTokens } : {}),
+      totalTokens: s.totalTokens,
+      ...(s.totalPrice ? { totalPrice: s.totalPrice } : {}),
+    };
+  }
+
+  private updateThreadTokenUsage(threadId: string, messages: BaseMessage[]) {
+    if (!this.graphThreadState) {
+      return;
+    }
+
+    let deltaInput = 0;
+    let deltaCached = 0;
+    let deltaOutput = 0;
+    let deltaReasoning = 0;
+    let deltaTotal = 0;
+    let deltaPrice = 0;
+
+    for (const m of messages) {
+      const tu = extractTokenUsageFromAdditionalKwargs(
+        m.additional_kwargs as Record<string, unknown> | undefined,
+      );
+      if (!tu) continue;
+
+      deltaInput += tu.inputTokens;
+      deltaCached += tu.cachedInputTokens ?? 0;
+      deltaOutput += tu.outputTokens;
+      deltaReasoning += tu.reasoningTokens ?? 0;
+      deltaTotal += tu.totalTokens;
+      deltaPrice += tu.totalPrice ?? 0;
+    }
+
+    if (
+      deltaInput === 0 &&
+      deltaCached === 0 &&
+      deltaOutput === 0 &&
+      deltaReasoning === 0 &&
+      deltaTotal === 0 &&
+      deltaPrice === 0
+    ) {
+      return;
+    }
+
+    const prev = this.graphThreadState.getByThread(threadId);
+    this.graphThreadState.applyForThread(threadId, {
+      inputTokens: prev.inputTokens + deltaInput,
+      cachedInputTokens: prev.cachedInputTokens + deltaCached,
+      outputTokens: prev.outputTokens + deltaOutput,
+      reasoningTokens: prev.reasoningTokens + deltaReasoning,
+      totalTokens: prev.totalTokens + deltaTotal,
+      totalPrice: prev.totalPrice + deltaPrice,
+    });
   }
 
   private async emitStateUpdate(

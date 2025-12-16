@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
+import { AgentsModule } from '../agents/agents.module';
 import { GraphsModule } from '../graphs/graphs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OpenaiModule } from '../openai/openai.module';
@@ -15,6 +16,7 @@ import { ThreadsService } from './services/threads.service';
 @Module({
   imports: [
     registerEntities([ThreadEntity, MessageEntity]),
+    AgentsModule,
     forwardRef(() => GraphsModule),
     NotificationsModule,
     OpenaiModule,

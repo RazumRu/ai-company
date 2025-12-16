@@ -17,6 +17,7 @@ import {
   CreateGraphDto,
   GraphDto,
   GraphNodesQueryDto,
+  MessageDto,
   UpdateGraphDto,
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
@@ -297,7 +298,7 @@ describe('GraphsService', () => {
     });
 
     // Mock message transformer to actually transform messages
-    const transformMessage = (msg: HumanMessage | AIMessage) => {
+    const transformMessage = (msg: BaseMessage): MessageDto => {
       if (msg instanceof HumanMessage) {
         return {
           role: 'human',
@@ -309,16 +310,16 @@ describe('GraphsService', () => {
           role: 'ai',
           content: msg.content as string,
           id: msg.id,
-          toolCalls:
-            msg.tool_calls && msg.tool_calls.length > 0 ? msg.tool_calls : [],
+          // Keep this mock minimal; detailed toolCall mapping is tested in MessageTransformerService unit tests.
+          toolCalls: undefined,
           additionalKwargs: msg.additional_kwargs,
         };
       }
 
       return {
         role: 'system',
-        content: (msg as BaseMessage).content as string,
-        additionalKwargs: (msg as BaseMessage).additional_kwargs,
+        content: msg.content as string,
+        additionalKwargs: msg.additional_kwargs,
       };
     };
 
@@ -326,10 +327,7 @@ describe('GraphsService', () => {
       transformMessage as unknown as typeof messageTransformer.transformMessageToDto,
     );
     vi.mocked(messageTransformer.transformMessagesToDto).mockImplementation(
-      (messages) =>
-        messages.map(
-          transformMessage as unknown as typeof messageTransformer.transformMessageToDto,
-        ),
+      (messages) => (messages as BaseMessage[]).map((m) => transformMessage(m)),
     );
   });
 

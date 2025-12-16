@@ -8,6 +8,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
+import { extractTokenUsageFromResponse } from '../../../litellm/litellm.utils';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
   buildReasoningMessage,
@@ -73,6 +74,21 @@ export class InvokeLlmNode extends BaseNode<
     const res = await runner.invoke(messages);
     const preparedRes = convertChunkToMessage(res);
     this.attachToolCallTitles(preparedRes);
+
+    // Extract token usage from the response
+    const tokenUsage = extractTokenUsageFromResponse({
+      usage_metadata: res.usage_metadata,
+      response_metadata: res.response_metadata,
+      model: String(this.llm.model),
+    });
+    if (tokenUsage) {
+      // Attach token usage to the message's additional_kwargs
+      preparedRes.additional_kwargs = {
+        ...preparedRes.additional_kwargs,
+        tokenUsage,
+      };
+    }
+
     const out: BaseMessage[] = updateMessagesListWithMetadata(
       [preparedRes],
       cfg,

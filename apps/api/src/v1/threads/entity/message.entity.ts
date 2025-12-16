@@ -2,6 +2,7 @@ import { TimestampsEntity } from '@packages/typeorm';
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 import type { MessageDto } from '../../graphs/dto/graphs.dto';
+import type { TokenUsage } from '../../litellm/litellm.types';
 
 @Entity('messages')
 export class MessageEntity extends TimestampsEntity {
@@ -22,4 +23,7 @@ export class MessageEntity extends TimestampsEntity {
 
   @Column({ type: 'jsonb' })
   message!: MessageDto;
+
+  @Column({ type: 'jsonb', nullable: true })
+  tokenUsage?: TokenUsage;
 }

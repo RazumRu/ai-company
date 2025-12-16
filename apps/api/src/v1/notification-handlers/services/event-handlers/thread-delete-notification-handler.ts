@@ -41,7 +41,7 @@ export class ThreadDeleteNotificationHandler extends BaseNotificationHandler<ITh
     const ownerId = await this.getGraphOwner(graphId);
     const threadsService = await this.moduleRef.create(ThreadsService);
 
-    const threadDto = threadsService.prepareThreadResponse(data);
+    const threadDto = await threadsService.prepareThreadResponse(data);
 
     return [
       {

@@ -192,6 +192,9 @@ importers:
       ioredis:
         specifier: ^5.8.2
         version: 5.8.2
+      llm-cost:
+        specifier: ^1.0.5
+        version: 1.0.5
       lodash:
         specifier: ^4.17.21
         version: 4.17.21
@@ -3798,6 +3801,9 @@ packages:
       enquirer:
         optional: true
 
+  llm-cost@1.0.5:
+    resolution: {integrity: sha512-1JBZBwmcgX1yIEY9ky9mYuU7VnaE82siEOZJgG9Gq6qNs+VLUlU1X24yHjBRjGdwoBhfn5APJIdifdMrcpvH1w==}
+
   load-esm@1.0.3:
     resolution: {integrity: sha512-v5xlu8eHD1+6r8EHTg6hfmO97LN8ugKtiXcy5e6oN72iD2r6u0RPfLl6fxM+7Wnh2ZRq15o0russMst44WauPA==}
     engines: {node: '>=13.2.0'}
@@ -5068,6 +5074,9 @@ packages:
 
   through@2.3.8:
     resolution: {integrity: sha512-w89qg7PI8wAdvX60bMDP+bFoD5Dvhm9oLheFp5O4a2QF0cSBGsBX4qZmadPMvVqlLJBBci+WqGGOAPvcDeNSVg==}
+
+  tiktoken@1.0.22:
+    resolution: {integrity: sha512-PKvy1rVF1RibfF3JlXBSP0Jrcw2uq3yXdgcEXtKTYn3QJ/cBRBHDnrJ5jHky+MENZ6DIPwNUGWpkVx+7joCpNA==}
 
   time-span@5.1.0:
     resolution: {integrity: sha512-75voc/9G4rDIJleOo4jPvN4/YC4GRZrY8yy1uU4lwrB3XEQbWve8zXoO5No4eFrGcTAMYyoY67p8jRQdtA1HbA==}
@@ -9189,6 +9198,10 @@ snapshots:
     optionalDependencies:
       enquirer: 2.4.1
 
+  llm-cost@1.0.5:
+    dependencies:
+      tiktoken: 1.0.22
+
   load-esm@1.0.3: {}
 
   load-json-file@4.0.0:
@@ -10415,6 +10428,8 @@ snapshots:
       xtend: 4.0.2
 
   through@2.3.8: {}
+
+  tiktoken@1.0.22: {}
 
   time-span@5.1.0:
     dependencies:

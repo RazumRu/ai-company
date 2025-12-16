@@ -32,8 +32,8 @@
     "seed:run-all": "NODE_ENV=development run-all-seeds ./src/db"
   },
   "dependencies": {
-    "@hey-api/openapi-ts": "^0.89.0",
     "@fastify/static": "^8.3.0",
+    "@hey-api/openapi-ts": "^0.89.0",
     "@langchain/core": "^1.1.5",
     "@langchain/langgraph": "^1.0.4",
     "@langchain/langgraph-checkpoint": "^1.0.0",
@@ -63,6 +63,7 @@
     "fast-json-patch": "^3.1.1",
     "fastify": "^5.6.2",
     "ioredis": "^5.8.2",
+    "llm-cost": "^1.0.5",
     "lodash": "^4.17.21",
     "ms": "^2.1.3",
     "nestjs-zod": "^5.0.1",
