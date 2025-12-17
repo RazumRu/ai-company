@@ -150,6 +150,7 @@ export interface IAgentStateUpdateData {
   reasoningTokens?: number;
   totalTokens?: number;
   totalPrice?: number;
+  currentContext?: number;
 }
 
 export interface IAgentStateUpdateNotification extends INotification<IAgentStateUpdateData> {

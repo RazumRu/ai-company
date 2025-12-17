@@ -120,6 +120,9 @@ export class InvokeLlmNode extends BaseNode<
             reasoningTokens: threadUsage.reasoningTokens ?? 0,
             totalTokens: threadUsage.totalTokens,
             totalPrice: threadUsage.totalPrice ?? 0,
+            // Snapshot of actual request context size, as reported by the provider.
+            // This must represent what we *sent* to the LLM for this invocation.
+            currentContext: threadUsage.inputTokens,
           }
         : {}),
       ...(shouldResetNeedsMoreInfo ? { needsMoreInfo: false } : {}),

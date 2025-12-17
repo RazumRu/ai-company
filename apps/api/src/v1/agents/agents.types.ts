@@ -23,6 +23,11 @@ export interface BaseAgentState {
   reasoningTokens: number;
   totalTokens: number;
   totalPrice: number;
+  /**
+   * Current context size (tokens) for this thread/run snapshot.
+   * Not additive; overwritten with latest measurement.
+   */
+  currentContext: number;
 }
 
 export interface BaseAgentStateChange extends Partial<

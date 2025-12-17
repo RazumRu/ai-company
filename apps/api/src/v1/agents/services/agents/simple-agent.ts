@@ -210,6 +210,11 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         reducer: (left, right) => left + (right ?? 0),
         default: () => 0,
       }),
+      // Current context size (snapshot) - persisted via checkpoints
+      currentContext: Annotation<number, number>({
+        reducer: (left, right) => right ?? left,
+        default: () => 0,
+      }),
     } satisfies Record<
       keyof BaseAgentState,
       BaseChannel | (() => BaseChannel)
@@ -415,6 +420,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
+      currentContext: 0,
     };
   }
 
@@ -445,6 +451,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       reasoningTokens: prev.reasoningTokens + (change.reasoningTokens ?? 0),
       totalTokens: prev.totalTokens + (change.totalTokens ?? 0),
       totalPrice: prev.totalPrice + (change.totalPrice ?? 0),
+      currentContext: change.currentContext ?? prev.currentContext,
     };
   }
 
@@ -491,7 +498,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       s.outputTokens !== 0 ||
       s.reasoningTokens !== 0 ||
       s.totalTokens !== 0 ||
-      s.totalPrice !== 0;
+      s.totalPrice !== 0 ||
+      s.currentContext !== 0;
 
     if (!hasAny) {
       return null;
@@ -506,6 +514,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       ...(s.reasoningTokens ? { reasoningTokens: s.reasoningTokens } : {}),
       totalTokens: s.totalTokens,
       ...(s.totalPrice ? { totalPrice: s.totalPrice } : {}),
+      ...(s.currentContext ? { currentContext: s.currentContext } : {}),
     };
   }
 
@@ -518,7 +527,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       prev.outputTokens === state.outputTokens &&
       prev.reasoningTokens === state.reasoningTokens &&
       prev.totalTokens === state.totalTokens &&
-      prev.totalPrice === state.totalPrice
+      prev.totalPrice === state.totalPrice &&
+      prev.currentContext === state.currentContext
     ) {
       return;
     }
@@ -529,6 +539,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       reasoningTokens: state.reasoningTokens,
       totalTokens: state.totalTokens,
       totalPrice: state.totalPrice,
+      currentContext: state.currentContext,
     });
   }
 
@@ -592,6 +603,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     if (prevState.totalPrice !== nextState.totalPrice) {
       stateChange.totalPrice = nextState.totalPrice;
+    }
+
+    if (prevState.currentContext !== nextState.currentContext) {
+      stateChange.currentContext = nextState.currentContext;
     }
 
     // Only emit if there are changes

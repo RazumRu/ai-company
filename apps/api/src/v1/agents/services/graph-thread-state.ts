@@ -12,6 +12,7 @@ export interface IGraphThreadStateData {
   reasoningTokens: number;
   totalTokens: number;
   totalPrice: number;
+  currentContext: number;
 }
 
 type GraphThreadStateSubscriber = (
@@ -35,6 +36,7 @@ export class GraphThreadState {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
+      currentContext: 0,
     };
   }
 
@@ -59,6 +61,7 @@ export class GraphThreadState {
       reasoningTokens: state.reasoningTokens,
       totalTokens: state.totalTokens,
       totalPrice: state.totalPrice,
+      currentContext: state.currentContext,
     };
   }
 
@@ -91,6 +94,7 @@ export class GraphThreadState {
       reasoningTokens: patch.reasoningTokens ?? prevState.reasoningTokens,
       totalTokens: patch.totalTokens ?? prevState.totalTokens,
       totalPrice: patch.totalPrice ?? prevState.totalPrice,
+      currentContext: patch.currentContext ?? prevState.currentContext,
     };
 
     if (!this.hasStateChanged(prevState, nextState)) {
@@ -120,7 +124,8 @@ export class GraphThreadState {
       prev.outputTokens !== next.outputTokens ||
       prev.reasoningTokens !== next.reasoningTokens ||
       prev.totalTokens !== next.totalTokens ||
-      prev.totalPrice !== next.totalPrice
+      prev.totalPrice !== next.totalPrice ||
+      prev.currentContext !== next.currentContext
     );
   }
 

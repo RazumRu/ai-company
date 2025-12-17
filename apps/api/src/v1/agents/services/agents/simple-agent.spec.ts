@@ -503,6 +503,7 @@ describe('SimpleAgent', () => {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
+      currentContext: 0,
     });
 
     beforeEach(() => {
@@ -893,6 +894,7 @@ describe('SimpleAgent', () => {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
+      currentContext: 0,
     });
 
     const registerActiveRun = () => {

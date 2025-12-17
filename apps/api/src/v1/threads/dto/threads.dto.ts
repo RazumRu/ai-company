@@ -11,6 +11,10 @@ export const TokenUsageSchema = z.object({
   reasoningTokens: z.number().optional().describe('Reasoning tokens'),
   totalTokens: z.number().describe('Total tokens'),
   totalPrice: z.number().optional().describe('Total price in USD'),
+  currentContext: z
+    .number()
+    .optional()
+    .describe('Current context size in tokens (snapshot, not additive)'),
 });
 
 export const ThreadTokenUsageSchema = TokenUsageSchema.extend({

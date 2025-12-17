@@ -3,6 +3,7 @@ import { NotFoundException } from '@packages/common';
 
 import { ThreadTokenUsageCacheService } from '../../../cache/services/thread-token-usage-cache.service';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
+import type { TokenUsage } from '../../../litellm/litellm.types';
 import {
   IAgentStateUpdateNotification,
   NotificationEvent,
@@ -44,17 +45,32 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
     const ownerId = await this.getGraphOwner(graphId);
 
     // Best-effort: persist per-node token usage into Redis
+    const patch: Partial<TokenUsage> = {
+      ...(data.inputTokens !== undefined
+        ? { inputTokens: data.inputTokens }
+        : {}),
+      ...(data.cachedInputTokens !== undefined
+        ? { cachedInputTokens: data.cachedInputTokens }
+        : {}),
+      ...(data.outputTokens !== undefined
+        ? { outputTokens: data.outputTokens }
+        : {}),
+      ...(data.reasoningTokens !== undefined
+        ? { reasoningTokens: data.reasoningTokens }
+        : {}),
+      ...(data.totalTokens !== undefined
+        ? { totalTokens: data.totalTokens }
+        : {}),
+      ...(data.totalPrice !== undefined ? { totalPrice: data.totalPrice } : {}),
+      ...(data.currentContext !== undefined
+        ? { currentContext: data.currentContext }
+        : {}),
+    };
+
     await this.threadTokenUsageCacheService.upsertNodeTokenUsage(
       externalThreadKey,
       nodeId,
-      {
-        inputTokens: data.inputTokens,
-        cachedInputTokens: data.cachedInputTokens,
-        outputTokens: data.outputTokens,
-        reasoningTokens: data.reasoningTokens,
-        totalTokens: data.totalTokens,
-        totalPrice: data.totalPrice,
-      },
+      patch,
     );
 
     const notifications: IAgentStateUpdateEnrichedNotification[] = [];

@@ -42,6 +42,8 @@ export class ThreadTokenUsageCacheService {
         typeof v.reasoningTokens === 'number' ? v.reasoningTokens : undefined,
       totalTokens: typeof v.totalTokens === 'number' ? v.totalTokens : 0,
       totalPrice: typeof v.totalPrice === 'number' ? v.totalPrice : undefined,
+      currentContext:
+        typeof v.currentContext === 'number' ? v.currentContext : undefined,
     };
   }
 
@@ -65,6 +67,7 @@ export class ThreadTokenUsageCacheService {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
+      currentContext: 0,
     };
 
     for (const usage of nodes) {
@@ -74,6 +77,11 @@ export class ThreadTokenUsageCacheService {
       aggregated.reasoningTokens! += usage.reasoningTokens || 0;
       aggregated.totalTokens += usage.totalTokens || 0;
       aggregated.totalPrice! += usage.totalPrice || 0;
+      // currentContext is a snapshot; use max across nodes as a stable thread-level view
+      aggregated.currentContext = Math.max(
+        aggregated.currentContext ?? 0,
+        usage.currentContext ?? 0,
+      );
     }
 
     // Clean up optional fields if they're zero
@@ -91,6 +99,9 @@ export class ThreadTokenUsageCacheService {
     }
     if (aggregated.totalPrice && aggregated.totalPrice > 0) {
       result.totalPrice = aggregated.totalPrice;
+    }
+    if (aggregated.currentContext && aggregated.currentContext > 0) {
+      result.currentContext = aggregated.currentContext;
     }
 
     return result;
@@ -149,7 +160,8 @@ export class ThreadTokenUsageCacheService {
       patch.outputTokens !== undefined ||
       patch.reasoningTokens !== undefined ||
       patch.totalTokens !== undefined ||
-      patch.totalPrice !== undefined;
+      patch.totalPrice !== undefined ||
+      patch.currentContext !== undefined;
 
     if (!hasAny) return;
 

@@ -60,6 +60,7 @@ describe('SummarizeNode', () => {
     reasoningTokens: 0,
     totalTokens: 0,
     totalPrice: 0,
+    currentContext: 0,
     ...overrides,
   });
 

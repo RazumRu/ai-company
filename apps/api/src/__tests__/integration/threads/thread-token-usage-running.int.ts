@@ -118,11 +118,12 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       const runningThread = await waitForCondition(
         () =>
           threadsService.getThreadByExternalId(createdThread.externalThreadId),
-        (t) => t.tokenUsage !== null,
+        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
         { timeout: 120_000, interval: 2_000 },
       );
       expect(runningThread.tokenUsage).not.toBeNull();
       expect(runningThread.tokenUsage?.totalTokens).toBeGreaterThan(0);
+      expect(runningThread.tokenUsage?.currentContext).toBeGreaterThan(0);
 
       // Message DTOs should include per-message tokenUsage (AI messages must not be null).
       const messagesWhileRunning = await waitForCondition(
@@ -163,11 +164,12 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       const stoppedThread = await waitForCondition(
         () =>
           threadsService.getThreadByExternalId(createdThread.externalThreadId),
-        (t) => t.tokenUsage !== null,
+        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
         { timeout: 60_000, interval: 2_000 },
       );
       expect(stoppedThread.tokenUsage).not.toBeNull();
       expect(stoppedThread.tokenUsage?.totalTokens).toBeGreaterThan(0);
+      expect(stoppedThread.tokenUsage?.currentContext).toBeGreaterThan(0);
 
       // Messages should still carry per-message tokenUsage after stop.
       const messagesAfterStop = await waitForCondition(
