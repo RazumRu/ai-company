@@ -2,6 +2,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ThreadTokenUsageCacheService } from '../../../cache/services/thread-token-usage-cache.service';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { GraphEntity } from '../../../graphs/entity/graph.entity';
 import { GraphStatus } from '../../../graphs/graphs.types';
@@ -124,6 +125,16 @@ describe('ThreadUpdateNotificationHandler', () => {
         {
           provide: ModuleRef,
           useValue: moduleRefMock,
+        },
+        {
+          provide: ThreadTokenUsageCacheService,
+          useValue: {
+            getThreadTokenUsage: vi.fn().mockResolvedValue(null),
+            getMultipleThreadTokenUsage: vi.fn().mockResolvedValue(new Map()),
+            setThreadTokenUsage: vi.fn().mockResolvedValue(undefined),
+            flushThreadTokenUsage: vi.fn().mockResolvedValue(null),
+            deleteThreadTokenUsage: vi.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();

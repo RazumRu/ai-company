@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { TokenUsage } from '../../../litellm/litellm.types';
-import { extractTokenUsageFromAdditionalKwargs } from '../../../litellm/litellm.utils';
+import { LitellmService } from '../../../litellm/services/litellm.service';
 import {
   BaseAgentState,
   BaseAgentStateChange,
@@ -135,6 +135,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
+    private readonly litellmService: LitellmService,
     private readonly logger: DefaultLogger,
   ) {
     super();
@@ -184,6 +185,31 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         reducer: (left, right) => right ?? left,
         default: () => false,
       }),
+      // Token usage counters (accumulated) - persisted via checkpoints
+      inputTokens: Annotation<number, number>({
+        reducer: (left, right) => left + (right ?? 0),
+        default: () => 0,
+      }),
+      cachedInputTokens: Annotation<number, number>({
+        reducer: (left, right) => left + (right ?? 0),
+        default: () => 0,
+      }),
+      outputTokens: Annotation<number, number>({
+        reducer: (left, right) => left + (right ?? 0),
+        default: () => 0,
+      }),
+      reasoningTokens: Annotation<number, number>({
+        reducer: (left, right) => left + (right ?? 0),
+        default: () => 0,
+      }),
+      totalTokens: Annotation<number, number>({
+        reducer: (left, right) => left + (right ?? 0),
+        default: () => 0,
+      }),
+      totalPrice: Annotation<number, number>({
+        reducer: (left, right) => left + (right ?? 0),
+        default: () => 0,
+      }),
     } satisfies Record<
       keyof BaseAgentState,
       BaseChannel | (() => BaseChannel)
@@ -207,6 +233,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
       // ---- summarize ----
       const summarizeNode = new SummarizeNode(
+        this.litellmService,
         this.buildLLM('gpt-5-mini'),
         {
           maxTokens: config.summarizeMaxTokens,
@@ -220,6 +247,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       const shouldUseResponsesApi =
         config.invokeModelReasoningEffort !== ReasoningEffort.None;
       const invokeLlmNode = new InvokeLlmNode(
+        this.litellmService,
         this.buildLLM(
           config.invokeModelName,
           shouldUseResponsesApi
@@ -381,6 +409,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       needsMoreInfo: false,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      totalPrice: 0,
     };
   }
 
@@ -404,6 +438,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       toolUsageGuardActivatedCount:
         change.toolUsageGuardActivatedCount ??
         prev.toolUsageGuardActivatedCount,
+      inputTokens: prev.inputTokens + (change.inputTokens ?? 0),
+      cachedInputTokens:
+        prev.cachedInputTokens + (change.cachedInputTokens ?? 0),
+      outputTokens: prev.outputTokens + (change.outputTokens ?? 0),
+      reasoningTokens: prev.reasoningTokens + (change.reasoningTokens ?? 0),
+      totalTokens: prev.totalTokens + (change.totalTokens ?? 0),
+      totalPrice: prev.totalPrice + (change.totalPrice ?? 0),
     };
   }
 
@@ -418,7 +459,15 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     const fresh = messages.filter((m) => m.additional_kwargs?.run_id === runId);
 
     if (fresh.length > 0) {
-      this.updateThreadTokenUsage(threadId, fresh);
+      const model = this.currentConfig?.invokeModelName;
+      if (typeof model === 'string' && model.length > 0) {
+        for (const m of fresh) {
+          m.additional_kwargs = {
+            ...(m.additional_kwargs ?? {}),
+            __model: model,
+          };
+        }
+      }
       this.emit({
         type: 'message',
         data: {
@@ -460,51 +509,26 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     };
   }
 
-  private updateThreadTokenUsage(threadId: string, messages: BaseMessage[]) {
-    if (!this.graphThreadState) {
-      return;
-    }
-
-    let deltaInput = 0;
-    let deltaCached = 0;
-    let deltaOutput = 0;
-    let deltaReasoning = 0;
-    let deltaTotal = 0;
-    let deltaPrice = 0;
-
-    for (const m of messages) {
-      const tu = extractTokenUsageFromAdditionalKwargs(
-        m.additional_kwargs as Record<string, unknown> | undefined,
-      );
-      if (!tu) continue;
-
-      deltaInput += tu.inputTokens;
-      deltaCached += tu.cachedInputTokens ?? 0;
-      deltaOutput += tu.outputTokens;
-      deltaReasoning += tu.reasoningTokens ?? 0;
-      deltaTotal += tu.totalTokens;
-      deltaPrice += tu.totalPrice ?? 0;
-    }
-
+  private syncThreadTotals(threadId: string, state: BaseAgentState) {
+    if (!this.graphThreadState) return;
+    const prev = this.graphThreadState.getByThread(threadId);
     if (
-      deltaInput === 0 &&
-      deltaCached === 0 &&
-      deltaOutput === 0 &&
-      deltaReasoning === 0 &&
-      deltaTotal === 0 &&
-      deltaPrice === 0
+      prev.inputTokens === state.inputTokens &&
+      prev.cachedInputTokens === state.cachedInputTokens &&
+      prev.outputTokens === state.outputTokens &&
+      prev.reasoningTokens === state.reasoningTokens &&
+      prev.totalTokens === state.totalTokens &&
+      prev.totalPrice === state.totalPrice
     ) {
       return;
     }
-
-    const prev = this.graphThreadState.getByThread(threadId);
     this.graphThreadState.applyForThread(threadId, {
-      inputTokens: prev.inputTokens + deltaInput,
-      cachedInputTokens: prev.cachedInputTokens + deltaCached,
-      outputTokens: prev.outputTokens + deltaOutput,
-      reasoningTokens: prev.reasoningTokens + deltaReasoning,
-      totalTokens: prev.totalTokens + deltaTotal,
-      totalPrice: prev.totalPrice + deltaPrice,
+      inputTokens: state.inputTokens,
+      cachedInputTokens: state.cachedInputTokens,
+      outputTokens: state.outputTokens,
+      reasoningTokens: state.reasoningTokens,
+      totalTokens: state.totalTokens,
+      totalPrice: state.totalPrice,
     });
   }
 
@@ -543,6 +567,31 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     ) {
       stateChange.toolUsageGuardActivatedCount =
         nextState.toolUsageGuardActivatedCount;
+    }
+
+    // Track token usage changes
+    if (prevState.inputTokens !== nextState.inputTokens) {
+      stateChange.inputTokens = nextState.inputTokens;
+    }
+
+    if (prevState.cachedInputTokens !== nextState.cachedInputTokens) {
+      stateChange.cachedInputTokens = nextState.cachedInputTokens;
+    }
+
+    if (prevState.outputTokens !== nextState.outputTokens) {
+      stateChange.outputTokens = nextState.outputTokens;
+    }
+
+    if (prevState.reasoningTokens !== nextState.reasoningTokens) {
+      stateChange.reasoningTokens = nextState.reasoningTokens;
+    }
+
+    if (prevState.totalTokens !== nextState.totalTokens) {
+      stateChange.totalTokens = nextState.totalTokens;
+    }
+
+    if (prevState.totalPrice !== nextState.totalPrice) {
+      stateChange.totalPrice = nextState.totalPrice;
     }
 
     // Only emit if there are changes
@@ -709,6 +758,28 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     };
   }
 
+  /**
+   * Attach token usage to messages that don't already have it.
+   * This is primarily for human messages which don't go through the LLM node.
+   */
+  private async attachTokenUsageToMessages(
+    messages: BaseMessage[],
+    model: string,
+  ): Promise<void> {
+    await this.litellmService.attachTokenUsageToMessages(
+      messages as unknown as {
+        content: unknown;
+        tool_calls?: unknown[];
+        additional_kwargs?: Record<string, unknown>;
+      }[],
+      model,
+      {
+        direction: 'input', // Human messages are typically inputs
+        skipIfExists: true,
+      },
+    );
+  }
+
   public async runOrAppend(
     threadId: string,
     messages: BaseMessage[],
@@ -726,6 +797,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     if (!activeRun) {
       return this.run(threadId, messages, config, runnableConfig);
     }
+
+    // Calculate token usage for appended messages
+    const model = config.invokeModelName || 'gpt-5.1';
+    await this.attachTokenUsageToMessages(messages, model);
 
     await this.appendMessages(messages, activeRun);
 
@@ -801,6 +876,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       messages,
       mergedConfig,
     );
+
+    // Calculate token usage for input messages (e.g., human messages)
+    const model = config.invokeModelName || 'gpt-5.1';
+    await this.attachTokenUsageToMessages(updateMessages, model);
 
     // Emit invoke event
     this.emit({
@@ -881,6 +960,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
             // Convert state change to final state for tracking
             finalState = this.applyChange(finalState, stateChange);
+            this.syncThreadTotals(threadId, finalState);
 
             // Persist latest state for potential stop handling
             const runRef = this.activeRuns.get(runId);

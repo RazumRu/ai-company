@@ -12,6 +12,17 @@ export interface BaseAgentState {
   needsMoreInfo: boolean;
   toolUsageGuardActivated: boolean;
   toolUsageGuardActivatedCount: number;
+  /**
+   * Aggregated token usage for this thread/run.
+   * These counters are part of the persisted graph checkpoint state so
+   * ThreadsService can read them without re-summing messages.
+   */
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+  totalPrice: number;
 }
 
 export interface BaseAgentStateChange extends Partial<

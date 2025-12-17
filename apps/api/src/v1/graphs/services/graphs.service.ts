@@ -301,7 +301,7 @@ export class GraphsService {
 
     try {
       // Compile the graph (it will be registered automatically during compilation)
-      const _compiledGraph = await this.graphCompiler.compile(graph, {
+      await this.graphCompiler.compile(graph, {
         graphId: graph.id,
         name: graph.name,
         version: graph.version,

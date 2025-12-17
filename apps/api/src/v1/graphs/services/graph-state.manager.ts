@@ -4,6 +4,7 @@ import { DefaultLogger, NotFoundException } from '@packages/common';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { NotificationEvent } from '../../notifications/notifications.types';
+import { serializeBaseMessages } from '../../notifications/notifications.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { ThreadStatus } from '../../threads/threads.types';
@@ -275,7 +276,7 @@ export class GraphStateManager {
             ...(runId ? { runId } : {}),
             source: cfg?.source,
             data: {
-              messages: event.data.messages,
+              messages: serializeBaseMessages(event.data.messages),
             },
           });
         }
@@ -293,7 +294,7 @@ export class GraphStateManager {
             threadId: event.data.threadId,
             parentThreadId,
             data: {
-              messages: event.data.messages,
+              messages: serializeBaseMessages(event.data.messages),
             },
           });
         }

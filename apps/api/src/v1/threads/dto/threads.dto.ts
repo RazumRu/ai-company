@@ -13,6 +13,21 @@ export const TokenUsageSchema = z.object({
   totalPrice: z.number().optional().describe('Total price in USD'),
 });
 
+export const ThreadTokenUsageSchema = TokenUsageSchema.extend({
+  byNode: z
+    .record(z.string(), TokenUsageSchema)
+    .optional()
+    .describe('Token usage breakdown by node ID'),
+});
+
+export const MessageTokenUsageSchema = z.object({
+  totalTokens: z.number().describe('Total tokens for this message'),
+  totalPrice: z
+    .number()
+    .optional()
+    .describe('Total price for this message in USD'),
+});
+
 // Thread schema
 export const ThreadSchema = z.object({
   id: z.uuid().describe('Thread ID'),
@@ -41,7 +56,7 @@ export const ThreadSchema = z.object({
     .nullable()
     .describe('Thread name (auto-generated from first user message)'),
   status: z.enum(ThreadStatus).describe('Thread execution status'),
-  tokenUsage: TokenUsageSchema.optional()
+  tokenUsage: ThreadTokenUsageSchema.optional()
     .nullable()
     .describe('Aggregated token usage & cost for this thread'),
 });
@@ -54,7 +69,7 @@ export const ThreadMessageSchema = z.object({
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   message: MessageSchema,
-  tokenUsage: TokenUsageSchema.optional()
+  tokenUsage: MessageTokenUsageSchema.optional()
     .nullable()
     .describe('Token usage & cost for this message'),
 });
@@ -101,6 +116,10 @@ export const GetMessagesQuerySchema = z.object({
     .default(0)
     .describe('Number of messages to skip'),
 });
+
+// Type exports
+export type ThreadTokenUsage = z.infer<typeof ThreadTokenUsageSchema>;
+export type MessageTokenUsage = z.infer<typeof MessageTokenUsageSchema>;
 
 // DTOs
 export class ThreadDto extends createZodDto(ThreadSchema) {}

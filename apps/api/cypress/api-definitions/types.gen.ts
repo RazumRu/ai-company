@@ -4,6 +4,17 @@ export type ClientOptions = {
   baseURL: string;
 };
 
+export type LiteLlmModelDto = {
+  /**
+   * Model identifier
+   */
+  id: string;
+  /**
+   * Owner of the model
+   */
+  ownedBy: string;
+};
+
 export type SuggestAgentInstructionsDto = {
   /**
    * User request describing how to adjust agent instructions
@@ -878,6 +889,66 @@ export type ThreadDto = {
    * Thread execution status
    */
   status: 'running' | 'done' | 'need_more_info' | 'stopped';
+  /**
+   * Aggregated token usage & cost for this thread
+   */
+  tokenUsage?: {
+    /**
+     * Input tokens
+     */
+    inputTokens: number;
+    /**
+     * Cached input tokens
+     */
+    cachedInputTokens?: number;
+    /**
+     * Output tokens
+     */
+    outputTokens: number;
+    /**
+     * Reasoning tokens
+     */
+    reasoningTokens?: number;
+    /**
+     * Total tokens
+     */
+    totalTokens: number;
+    /**
+     * Total price in USD
+     */
+    totalPrice?: number;
+    /**
+     * Token usage breakdown by node ID
+     */
+    byNode?: {
+      [key: string]: {
+        /**
+         * Input tokens
+         */
+        inputTokens: number;
+        /**
+         * Cached input tokens
+         */
+        cachedInputTokens?: number;
+        /**
+         * Output tokens
+         */
+        outputTokens: number;
+        /**
+         * Reasoning tokens
+         */
+        reasoningTokens?: number;
+        /**
+         * Total tokens
+         */
+        totalTokens: number;
+        /**
+         * Total price in USD
+         */
+        totalPrice?: number;
+      };
+    };
+  } | null;
 };
 
 export type ThreadMessageDto = {
@@ -1082,18 +1153,33 @@ export type ThreadMessageDto = {
           [key: string]: unknown;
         };
       };
+  /**
+   * Token usage & cost for this message
+   */
+  tokenUsage?: {
+    /**
+     * Total tokens for this message
+     */
+    totalTokens: number;
+    /**
+     * Total price for this message in USD
+     */
+    totalPrice?: number;
+  } | null;
 };
 
-export type LiteLlmModelDto = {
-  /**
-   * Model identifier
-   */
-  id: string;
-  /**
-   * Owner of the model
-   */
-  ownedBy: string;
+export type ListModelsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/models';
 };
+
+export type ListModelsResponses = {
+  200: Array<LiteLlmModelDto>;
+};
+
+export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
 
 export type SuggestAgentInstructionsData = {
   body: SuggestAgentInstructionsDto;
@@ -1468,16 +1554,3 @@ export type StopThreadByExternalIdResponses = {
 
 export type StopThreadByExternalIdResponse =
   StopThreadByExternalIdResponses[keyof StopThreadByExternalIdResponses];
-
-export type ListModelsData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: '/api/v1/litellm/models';
-};
-
-export type ListModelsResponses = {
-  200: Array<LiteLlmModelDto>;
-};
-
-export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];

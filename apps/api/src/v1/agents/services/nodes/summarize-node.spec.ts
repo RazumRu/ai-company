@@ -17,6 +17,13 @@ vi.mock('@langchain/openai');
 describe('SummarizeNode', () => {
   let node: SummarizeNode;
   let mockLlm: ChatOpenAI;
+  const mockLitellmService = {
+    extractTokenUsageFromResponse: vi.fn().mockReturnValue(null),
+    extractTokenUsageFromResponseWithPriceFallback: vi
+      .fn()
+      .mockResolvedValue(null),
+    estimateThreadTotalPriceFromModelRates: vi.fn().mockResolvedValue(null),
+  } as unknown as never;
   let mockInvoke: MockedFunction<(messages: unknown[]) => Promise<AIMessage>>;
   let mockGetNumTokens: MockedFunction<(text: string) => Promise<number>>;
 
@@ -32,7 +39,7 @@ describe('SummarizeNode', () => {
       getNumTokens: mockGetNumTokens,
     } as unknown as ChatOpenAI;
 
-    node = new SummarizeNode(mockLlm, {
+    node = new SummarizeNode(mockLitellmService, mockLlm, {
       maxTokens: 1000,
       keepTokens: 500,
     });
@@ -47,6 +54,12 @@ describe('SummarizeNode', () => {
     needsMoreInfo: false,
     toolUsageGuardActivated: false,
     toolUsageGuardActivatedCount: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+    totalPrice: 0,
     ...overrides,
   });
 
@@ -60,7 +73,7 @@ describe('SummarizeNode', () => {
 
   describe('invoke', () => {
     it('should return messages unchanged if maxTokens <= 0', async () => {
-      const nodeWithZeroMax = new SummarizeNode(mockLlm, {
+      const nodeWithZeroMax = new SummarizeNode(mockLitellmService, mockLlm, {
         maxTokens: 0,
         keepTokens: 500,
       });
@@ -231,7 +244,7 @@ describe('SummarizeNode', () => {
     });
 
     it('should handle keepTokens = 0 by keeping only last message', async () => {
-      const nodeWithZeroKeep = new SummarizeNode(mockLlm, {
+      const nodeWithZeroKeep = new SummarizeNode(mockLitellmService, mockLlm, {
         maxTokens: 1000,
         keepTokens: 0,
       });
@@ -263,11 +276,15 @@ describe('SummarizeNode', () => {
 
     it('should use custom systemNote when provided', async () => {
       const customSystemNote = 'Custom summarization instruction';
-      const nodeWithCustomNote = new SummarizeNode(mockLlm, {
-        maxTokens: 1000,
-        keepTokens: 500,
-        systemNote: customSystemNote,
-      });
+      const nodeWithCustomNote = new SummarizeNode(
+        mockLitellmService,
+        mockLlm,
+        {
+          maxTokens: 1000,
+          keepTokens: 500,
+          systemNote: customSystemNote,
+        },
+      );
 
       const messages = Array.from(
         { length: 10 },

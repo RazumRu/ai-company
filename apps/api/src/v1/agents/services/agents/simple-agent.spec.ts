@@ -6,6 +6,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerModule } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LitellmService } from '../../../litellm/services/litellm.service';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { NewMessageMode, ReasoningEffort } from '../../agents.types';
 import { buildReasoningMessage } from '../../agents.utils';
@@ -104,6 +105,12 @@ describe('SimpleAgent', () => {
       ],
       providers: [
         SimpleAgent,
+        {
+          provide: LitellmService,
+          useValue: new LitellmService({
+            listModels: vi.fn(),
+          } as unknown as never),
+        },
         {
           provide: PgCheckpointSaver,
           useValue: mockCheckpointSaver,
@@ -490,6 +497,12 @@ describe('SimpleAgent', () => {
       needsMoreInfo: false,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      totalPrice: 0,
     });
 
     beforeEach(() => {
@@ -874,6 +887,12 @@ describe('SimpleAgent', () => {
       needsMoreInfo: false,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      totalPrice: 0,
     });
 
     const registerActiveRun = () => {

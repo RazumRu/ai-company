@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { GraphStateManager } from './services/graph-state.manager';
+import type { GraphStateManager } from './services/graph-state.manager';
 
 export enum NodeKind {
   Runtime = 'runtime',

@@ -3,7 +3,8 @@ import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
-import type { TokenUsage } from '../../../litellm/litellm.types';
+import type { MessageTokenUsage } from '../../../litellm/litellm.types';
+import { LitellmService } from '../../../litellm/services/litellm.service';
 import {
   IAgentMessageNotification,
   NotificationEvent,
@@ -38,6 +39,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     private readonly messageTransformer: MessageTransformerService,
     private readonly messagesDao: MessagesDao,
     private readonly threadsDao: ThreadsDao,
+    private readonly litellmService: LitellmService,
   ) {
     super();
   }
@@ -66,11 +68,35 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
 
     for (const [i, messageDto] of messageDtos.entries()) {
       const originalMessage = event.data.messages[i];
-      const tokenUsage = (
-        originalMessage?.additional_kwargs as
-          | { tokenUsage?: TokenUsage }
-          | undefined
-      )?.tokenUsage;
+      let tokenUsage =
+        this.litellmService.extractMessageTokenUsageFromAdditionalKwargs(
+          originalMessage?.additional_kwargs ?? undefined,
+        );
+
+      // Tool response messages don't have provider usage metadata.
+      // Compute token usage from the tool output content so UI can show
+      // both tool "request" (AI tool call) and tool "response" usage.
+      if (!tokenUsage && originalMessage?.type === 'ToolMessage') {
+        const model =
+          typeof originalMessage.additional_kwargs?.__model === 'string'
+            ? originalMessage.additional_kwargs.__model
+            : null;
+
+        if (model) {
+          tokenUsage = await this.litellmService.attachTokenUsageToMessage(
+            {
+              // LitellmService expects a required `content` field
+              content: originalMessage.content ?? '',
+              ...(Array.isArray(originalMessage.tool_calls)
+                ? { tool_calls: originalMessage.tool_calls }
+                : {}),
+              additional_kwargs: originalMessage.additional_kwargs,
+            },
+            model,
+            { direction: 'input', skipIfExists: false },
+          );
+        }
+      }
 
       // Save message to database with correct internal thread ID
       const createdMessage = await this.messagesDao.create({
@@ -78,7 +104,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         externalThreadId: event.threadId,
         nodeId: event.nodeId,
         message: messageDto,
-        ...(tokenUsage ? { tokenUsage } : {}),
+        ...(tokenUsage ? { tokenUsage: tokenUsage as MessageTokenUsage } : {}),
       });
 
       out.push({

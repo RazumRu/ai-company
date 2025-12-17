@@ -1,12 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { DefaultLogger } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
+import { ThreadTokenUsageCacheService } from '../../cache/services/thread-token-usage-cache.service';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphsService } from '../../graphs/services/graphs.service';
 import { MessageTransformerService } from '../../graphs/services/message-transformer.service';
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../dao/messages.dao';
@@ -22,9 +25,6 @@ describe('ThreadsService', () => {
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
   let graphRegistry: GraphRegistry;
-  let graphCheckpointsDao: GraphCheckpointsDao;
-  let checkpointer: PgCheckpointSaver;
-  let messageTransformer: MessageTransformerService;
   let authContext: AuthContextService;
   let notificationsService: NotificationsService;
 
@@ -64,6 +64,13 @@ describe('ThreadsService', () => {
     ...overrides,
   });
 
+  const mockLogger = {
+    log: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -73,6 +80,20 @@ describe('ThreadsService', () => {
           useValue: {
             get: vi.fn().mockReturnValue(undefined),
             getNodesByType: vi.fn().mockReturnValue([]),
+          },
+        },
+        {
+          provide: DefaultLogger,
+          useValue: mockLogger,
+        },
+        {
+          provide: ThreadTokenUsageCacheService,
+          useValue: {
+            getThreadTokenUsage: vi.fn().mockResolvedValue(null),
+            getMultipleThreadTokenUsage: vi.fn().mockResolvedValue(new Map()),
+            setThreadTokenUsage: vi.fn().mockResolvedValue(undefined),
+            flushThreadTokenUsage: vi.fn().mockResolvedValue(null),
+            deleteThreadTokenUsage: vi.fn().mockResolvedValue(undefined),
           },
         },
         {
@@ -130,6 +151,12 @@ describe('ThreadsService', () => {
             stopThreadExecution: vi.fn(),
           },
         },
+        {
+          provide: LitellmService,
+          useValue: new LitellmService({
+            listModels: vi.fn(),
+          } as unknown as never),
+        },
       ],
     }).compile();
 
@@ -137,11 +164,6 @@ describe('ThreadsService', () => {
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     messagesDao = module.get<MessagesDao>(MessagesDao);
     graphRegistry = module.get<GraphRegistry>(GraphRegistry);
-    graphCheckpointsDao = module.get<GraphCheckpointsDao>(GraphCheckpointsDao);
-    checkpointer = module.get<PgCheckpointSaver>(PgCheckpointSaver);
-    messageTransformer = module.get<MessageTransformerService>(
-      MessageTransformerService,
-    );
     authContext = module.get<AuthContextService>(AuthContextService);
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
@@ -304,16 +326,41 @@ describe('ThreadsService', () => {
   });
 
   describe('token usage aggregation', () => {
-    it('sums token usage from running graph state across agents', async () => {
+    it('sums token usage from running graph state across agents and returns from Redis', async () => {
       const mockThread = createMockThreadEntity({
         status: ThreadStatus.Running,
         externalThreadId: 'external-thread-123',
       });
 
+      const expectedTokenUsage = {
+        inputTokens: 13,
+        cachedInputTokens: 2,
+        outputTokens: 7,
+        reasoningTokens: 1,
+        totalTokens: 20,
+        totalPrice: 0.01,
+        byNode: {
+          'agent-1': {
+            inputTokens: 10,
+            cachedInputTokens: 2,
+            outputTokens: 5,
+            reasoningTokens: 1,
+            totalTokens: 15,
+            totalPrice: 0.01,
+          },
+          'agent-2': {
+            inputTokens: 3,
+            outputTokens: 2,
+            totalTokens: 5,
+          },
+        },
+      };
+
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
       vi.spyOn(graphRegistry, 'get').mockReturnValue({} as unknown as never);
       vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([
         {
+          id: 'agent-1',
           instance: {
             getThreadTokenUsage: () => ({
               inputTokens: 10,
@@ -326,6 +373,7 @@ describe('ThreadsService', () => {
           },
         },
         {
+          id: 'agent-2',
           instance: {
             getThreadTokenUsage: () => ({
               inputTokens: 3,
@@ -336,80 +384,52 @@ describe('ThreadsService', () => {
         },
       ] as unknown as ReturnType<GraphRegistry['getNodesByType']>);
 
+      // Mock the batch operation to return the expected token usage
+      const mockThreadTokenUsageCacheService = (service as any)
+        .threadTokenUsageCacheService;
+      mockThreadTokenUsageCacheService.getMultipleThreadTokenUsage = vi
+        .fn()
+        .mockResolvedValue(
+          new Map([[mockThread.externalThreadId, expectedTokenUsage]]),
+        );
+
       const result = await service.getThreadById(mockThreadId);
 
-      expect(result.tokenUsage).toEqual({
-        inputTokens: 13,
-        cachedInputTokens: 2,
-        outputTokens: 7,
-        reasoningTokens: 1,
-        totalTokens: 20,
-        totalPrice: 0.01,
-      });
+      expect(result.tokenUsage).toEqual(expectedTokenUsage);
+      // Verify batch operation was used
+      expect(
+        mockThreadTokenUsageCacheService.getMultipleThreadTokenUsage,
+      ).toHaveBeenCalledWith([mockThread.externalThreadId]);
     });
 
-    it('falls back to latest checkpoint when graph is not running', async () => {
+    it('reads token usage from DB for stopped threads', async () => {
+      const tokenUsageFromDB = {
+        inputTokens: 6,
+        outputTokens: 3,
+        totalTokens: 9,
+        totalPrice: 0.02,
+        byNode: {
+          'agent-1': {
+            inputTokens: 4,
+            outputTokens: 5,
+            totalTokens: 9,
+            totalPrice: 0.02,
+          },
+        },
+      };
+
       const mockThread = createMockThreadEntity({
         status: ThreadStatus.Stopped,
         externalThreadId: 'external-thread-123',
+        tokenUsage: tokenUsageFromDB,
       });
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
       vi.spyOn(graphRegistry, 'get').mockReturnValue(undefined);
 
-      vi.spyOn(graphCheckpointsDao, 'getOne').mockResolvedValue({
-        id: 'cp-id',
-        threadId: 'external-thread-123',
-        checkpointNs: 'ns',
-        checkpointId: 'cp-123',
-        parentCheckpointId: null,
-        type: 'json',
-        checkpoint: Buffer.from('{}'),
-        metadata: Buffer.from('{}'),
-        createdAt: new Date('2024-01-01T00:00:00Z'),
-        updatedAt: new Date('2024-01-01T00:00:00Z'),
-      });
-
-      vi.spyOn(checkpointer, 'getTuple').mockResolvedValue({
-        checkpoint: {
-          channel_values: {
-            messages: [{}, {}],
-          },
-        },
-      } as unknown as Awaited<ReturnType<PgCheckpointSaver['getTuple']>>);
-
-      vi.spyOn(messageTransformer, 'transformMessagesToDto').mockReturnValue([
-        {
-          additionalKwargs: {
-            tokenUsage: {
-              inputTokens: 5,
-              outputTokens: 2,
-              totalTokens: 7,
-              totalPrice: 0.02,
-            },
-          },
-        },
-        {
-          additionalKwargs: {
-            tokenUsage: {
-              inputTokens: 1,
-              outputTokens: 1,
-              totalTokens: 2,
-            },
-          },
-        },
-      ] as unknown as ReturnType<
-        MessageTransformerService['transformMessagesToDto']
-      >);
-
       const result = await service.getThreadById(mockThreadId);
 
-      expect(result.tokenUsage).toEqual({
-        inputTokens: 6,
-        outputTokens: 3,
-        totalTokens: 9,
-        totalPrice: 0.02,
-      });
+      expect(result.tokenUsage).toEqual(tokenUsageFromDB);
     });
   });
 

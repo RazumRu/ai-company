@@ -64,6 +64,12 @@ describe('ToolExecutorNode', () => {
         done: false,
         needsMoreInfo: false,
         toolUsageGuardActivatedCount: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+        totalPrice: 0,
       };
 
       mockConfig = {

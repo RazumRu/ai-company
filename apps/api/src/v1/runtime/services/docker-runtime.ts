@@ -225,9 +225,11 @@ export class DockerRuntime extends BaseRuntime {
 
     const marker = randomUUID();
     const endToken = `__AI_END_${marker}__`;
+    const stderrEndToken = `__AI_END_ERR_${marker}__`;
     const wrappedScript = [
       next.script,
       `printf "\\n${endToken}:%s\\n" $?`,
+      `printf "\\n${stderrEndToken}\\n" 1>&2`,
     ].join('; ');
 
     // Reset buffers for this command
@@ -261,6 +263,27 @@ export class DockerRuntime extends BaseRuntime {
       }
     };
 
+    let stdoutDone = false;
+    let stderrDone = false;
+    let exitCode: number | null = null;
+    let stdoutContent: string | null = null;
+
+    const maybeResolve = () => {
+      if (!stdoutDone || !stderrDone) return;
+      if (finished) return;
+      cleanupListeners();
+      finished = true;
+      next.resolve({
+        exitCode: exitCode ?? 1,
+        stdout: stdoutContent ?? '',
+        stderr: stderrBuffer,
+        fail: (exitCode ?? 1) !== 0,
+        execPath: next.workdir,
+      });
+      session.busy = false;
+      void this.processSessionQueue(session);
+    };
+
     const onStdoutData = (chunk: Buffer) => {
       resetTailTimer();
       stdoutBuffer += chunk.toString('utf8');
@@ -278,37 +301,33 @@ export class DockerRuntime extends BaseRuntime {
           ? stdoutBuffer.slice(exitStart)
           : stdoutBuffer.slice(exitStart, exitLineEnd);
       const parsed = Number.parseInt(exitData.trim() || '0', 10);
-      const exitCode = Number.isNaN(parsed) ? 1 : parsed;
+      exitCode = Number.isNaN(parsed) ? 1 : parsed;
 
       // Get stdout content up to the end marker (excluding trailing newline before marker)
-      let stdoutContent = stdoutBuffer.slice(0, endIdx);
+      stdoutContent = stdoutBuffer.slice(0, endIdx);
       if (stdoutContent.endsWith('\n')) {
         stdoutContent = stdoutContent.slice(0, -1);
       }
 
-      // Use setImmediate to defer resolution to the next iteration of the event loop
-      // This allows any pending stderr data to be processed by the demux stream
-      setImmediate(() => {
-        if (finished) return;
-
-        cleanupListeners();
-        finished = true;
-        next.resolve({
-          exitCode,
-          stdout: stdoutContent,
-          stderr: stderrBuffer,
-          fail: exitCode !== 0,
-          execPath: next.workdir,
-        });
-
-        session.busy = false;
-        void this.processSessionQueue(session);
-      });
+      stdoutDone = true;
+      maybeResolve();
     };
 
     const onStderrData = (chunk: Buffer) => {
       resetTailTimer();
       stderrBuffer += chunk.toString('utf8');
+
+      const idx = stderrBuffer.indexOf(stderrEndToken);
+      if (idx !== -1) {
+        // Strip the stderr end marker and anything after it
+        let cleaned = stderrBuffer.slice(0, idx);
+        if (cleaned.endsWith('\n')) {
+          cleaned = cleaned.slice(0, -1);
+        }
+        stderrBuffer = cleaned;
+        stderrDone = true;
+        maybeResolve();
+      }
     };
 
     const onError = (err: Error) => {

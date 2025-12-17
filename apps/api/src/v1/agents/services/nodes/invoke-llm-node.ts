@@ -8,7 +8,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
-import { extractTokenUsageFromResponse } from '../../../litellm/litellm.utils';
+import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
   buildReasoningMessage,
@@ -33,6 +33,7 @@ export class InvokeLlmNode extends BaseNode<
   BaseAgentStateChange
 > {
   constructor(
+    private readonly litellmService: LitellmService,
     private llm: ChatOpenAI,
     private tools: ToolWithTitle[],
     private opts?: InvokeLlmNodeOpts,
@@ -75,19 +76,25 @@ export class InvokeLlmNode extends BaseNode<
     const preparedRes = convertChunkToMessage(res);
     this.attachToolCallTitles(preparedRes);
 
-    // Extract token usage from the response
-    const tokenUsage = extractTokenUsageFromResponse({
-      usage_metadata: res.usage_metadata,
-      response_metadata: res.response_metadata,
-      model: String(this.llm.model),
+    const model = String(this.llm.model);
+    const threadUsage =
+      await this.litellmService.extractTokenUsageFromResponseWithPriceFallback({
+        model,
+        usage_metadata: res.usage_metadata,
+        response_metadata: res.response_metadata,
+      });
+
+    // Attach token usage to this message using centralized method
+    await this.litellmService.attachTokenUsageToMessage(preparedRes, model, {
+      threadUsage,
+      skipIfExists: false,
     });
-    if (tokenUsage) {
-      // Attach token usage to the message's additional_kwargs
-      preparedRes.additional_kwargs = {
-        ...preparedRes.additional_kwargs,
-        tokenUsage,
-      };
-    }
+
+    // Attach model metadata
+    preparedRes.additional_kwargs = {
+      ...preparedRes.additional_kwargs,
+      __model: model,
+    };
 
     const out: BaseMessage[] = updateMessagesListWithMetadata(
       [preparedRes],
@@ -105,6 +112,16 @@ export class InvokeLlmNode extends BaseNode<
 
     return {
       messages: { mode: 'append', items: [...reasoningMessages, ...out] },
+      ...(threadUsage
+        ? {
+            inputTokens: threadUsage.inputTokens,
+            cachedInputTokens: threadUsage.cachedInputTokens ?? 0,
+            outputTokens: threadUsage.outputTokens,
+            reasoningTokens: threadUsage.reasoningTokens ?? 0,
+            totalTokens: threadUsage.totalTokens,
+            totalPrice: threadUsage.totalPrice ?? 0,
+          }
+        : {}),
       ...(shouldResetNeedsMoreInfo ? { needsMoreInfo: false } : {}),
     };
   }

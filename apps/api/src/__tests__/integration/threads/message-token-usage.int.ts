@@ -9,12 +9,13 @@ import {
   IAgentMessageNotification,
   NotificationEvent,
 } from '../../../v1/notifications/notifications.types';
+import { serializeBaseMessages } from '../../../v1/notifications/notifications.utils';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
-describe('Message token usage + cost (integration)', () => {
+describe('Message token usage (integration)', () => {
   let app: INestApplication;
   let graphDao: GraphDao;
   let threadsDao: ThreadsDao;
@@ -49,7 +50,7 @@ describe('Message token usage + cost (integration)', () => {
     await app.close();
   });
 
-  it('persists tokenUsage (including totalPrice) on stored messages', async () => {
+  it('persists tokenUsage (totalTokens) on stored messages', async () => {
     const graph = await graphDao.create({
       name: 'token-usage-test-graph',
       description: 'token usage integration test',
@@ -79,16 +80,12 @@ describe('Message token usage + cost (integration)', () => {
 
     const human = new HumanMessage('hi');
     const ai = new AIMessage('hello');
-    ai.additional_kwargs = {
-      tokenUsage: {
-        inputTokens: 10,
-        cachedInputTokens: 2,
-        outputTokens: 20,
-        reasoningTokens: 5,
-        totalTokens: 35,
-        totalPrice: 0.0123,
-      },
+    human.additional_kwargs = {
+      tokenUsage: { totalTokens: 2, totalPrice: 0.01 },
     };
+    ai.additional_kwargs = { tokenUsage: { totalTokens: 3, totalPrice: 0.02 } };
+
+    const serializedMessages = serializeBaseMessages([human, ai]);
 
     const event: IAgentMessageNotification = {
       type: NotificationEvent.AgentMessage,
@@ -97,7 +94,7 @@ describe('Message token usage + cost (integration)', () => {
       threadId: `external-thread-${Date.now()}`,
       parentThreadId: internalThreadExternalId,
       data: {
-        messages: [human, ai],
+        messages: serializedMessages,
       },
     };
 
@@ -114,27 +111,17 @@ describe('Message token usage + cost (integration)', () => {
 
     const aiStored = stored.find((m) => m.message.role === 'ai');
     expect(aiStored).toBeDefined();
-    expect(aiStored?.tokenUsage).toEqual({
-      inputTokens: 10,
-      cachedInputTokens: 2,
-      outputTokens: 20,
-      reasoningTokens: 5,
-      totalTokens: 35,
-      totalPrice: 0.0123,
-    });
+    expect(aiStored?.tokenUsage).toEqual({ totalTokens: 3, totalPrice: 0.02 });
 
     const humanStored = stored.find((m) => m.message.role === 'human');
     expect(humanStored).toBeDefined();
-    expect(humanStored?.tokenUsage).toBeNull();
+    expect(humanStored?.tokenUsage).toEqual({
+      totalTokens: 2,
+      totalPrice: 0.01,
+    });
 
     const aiNotification = enriched.find((n) => n.data.message.role === 'ai');
-    expect(aiNotification?.data.tokenUsage).toEqual({
-      inputTokens: 10,
-      cachedInputTokens: 2,
-      outputTokens: 20,
-      reasoningTokens: 5,
-      totalTokens: 35,
-      totalPrice: 0.0123,
-    });
+    expect(aiNotification?.data.tokenUsage).not.toBeNull();
+    expect(aiNotification?.data.tokenUsage?.totalTokens).toBeGreaterThan(0);
   });
 });

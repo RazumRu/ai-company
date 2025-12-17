@@ -10,6 +10,7 @@ import {
   IGraphNotification,
   NotificationEvent,
 } from '../../notifications/notifications.types';
+import { serializeBaseMessages } from '../../notifications/notifications.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import {
   EnrichedNotificationEvent,
@@ -203,7 +204,9 @@ describe('NotificationHandler', () => {
         mockMessageNotification,
       ]);
 
-      const mockMessages = [new AIMessage('Hello, world!')];
+      const mockMessages = serializeBaseMessages([
+        new AIMessage('Hello, world!'),
+      ]);
       const mockNotification: IAgentMessageNotification = {
         type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
@@ -269,7 +272,7 @@ describe('NotificationHandler', () => {
         mockMessageNotification,
       ]);
 
-      const mockMessages = [
+      const mockMessages = serializeBaseMessages([
         new AIMessage({
           content: '',
           tool_calls: [
@@ -280,7 +283,7 @@ describe('NotificationHandler', () => {
             },
           ],
         }),
-      ];
+      ]);
       const mockNotification: IAgentMessageNotification = {
         type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
@@ -360,7 +363,10 @@ describe('NotificationHandler', () => {
         mockMessageNotification2,
       ]);
 
-      const mockMessages = [new AIMessage('Hello!'), new HumanMessage('Hi!')];
+      const mockMessages = serializeBaseMessages([
+        new AIMessage('Hello!'),
+        new HumanMessage('Hi!'),
+      ]);
       const mockNotification: IAgentMessageNotification = {
         type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
@@ -425,7 +431,7 @@ describe('NotificationHandler', () => {
         mockMessageNotification,
       ]);
 
-      const mockMessages = [
+      const mockMessages = serializeBaseMessages([
         new ToolMessage({
           content: JSON.stringify({
             exitCode: 0,
@@ -436,7 +442,7 @@ describe('NotificationHandler', () => {
           tool_call_id: 'call-shell-1',
           name: 'shell',
         }),
-      ];
+      ]);
       const mockNotification: IAgentMessageNotification = {
         type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,

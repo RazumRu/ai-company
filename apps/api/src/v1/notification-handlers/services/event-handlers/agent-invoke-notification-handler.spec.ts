@@ -11,6 +11,7 @@ import {
   IAgentInvokeNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
+import { serializeBaseMessages } from '../../../notifications/notifications.utils';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
@@ -83,7 +84,7 @@ describe('AgentInvokeNotificationHandler', () => {
     parentThreadId: 'parent-thread-123',
     runId: undefined,
     data: {
-      messages: [new HumanMessage('Test message')],
+      messages: serializeBaseMessages([new HumanMessage('Test message')]),
     },
     ...overrides,
   });

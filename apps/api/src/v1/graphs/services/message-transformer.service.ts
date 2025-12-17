@@ -1,13 +1,8 @@
-import {
-  AIMessage,
-  BaseMessage,
-  ChatMessage,
-  ToolMessage,
-} from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
 import { isObject, isString } from 'lodash';
 
 import { extractTextFromResponseContent } from '../../agents/agents.utils';
+import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import { MessageDto } from '../dto/graphs.dto';
 
 /**
@@ -25,43 +20,23 @@ interface RawToolCall {
   };
 }
 
-/**
- * Interface for LangChain serialized message format
- */
-interface SerializedMessage {
-  lc: number;
-  type: string;
-  id: string[];
-  kwargs: Record<string, unknown>;
-}
-
 @Injectable()
 export class MessageTransformerService {
   /**
-   * Transform multiple BaseMessages to MessageDto array
-   * This is the primary method for transforming checkpoint messages
+   * Transform SerializedBaseMessage array to MessageDto array
    */
-  transformMessagesToDto(messages: (BaseMessage | unknown)[]): MessageDto[] {
+  transformMessagesToDto(messages: SerializedBaseMessage[]): MessageDto[] {
     return messages
-      .map((msg) =>
-        this.transformMessageToDto(msg as BaseMessage | SerializedMessage),
-      )
+      .map((msg) => this.transformMessageToDto(msg))
       .filter((dto): dto is MessageDto => dto !== null);
   }
 
   /**
-   * Transform a LangChain BaseMessage to MessageDto
+   * Transform a serialized message to MessageDto
    */
-  transformMessageToDto(msg: BaseMessage | SerializedMessage): MessageDto {
-    // Handle serialized LangChain messages (with lc, type, id, kwargs structure)
-    const isInstance = !this.isSerializedMessage(msg);
-    const messageType = isInstance ? msg.constructor.name : msg.id[2];
-    const msgBody = isInstance ? msg : msg.kwargs;
-    const rawAdditionalKwargs = (
-      msgBody as {
-        additional_kwargs?: Record<string, unknown>;
-      }
-    ).additional_kwargs;
+  transformMessageToDto(msg: SerializedBaseMessage): MessageDto {
+    const messageType = msg.type;
+    const rawAdditionalKwargs = msg.additional_kwargs;
     const additionalKwargs =
       this.normalizeAdditionalKwargs(rawAdditionalKwargs);
     const runId =
@@ -69,7 +44,7 @@ export class MessageTransformerService {
         ? additionalKwargs.run_id
         : null;
     const isAgentInstruction = !!additionalKwargs?.isAgentInstructionMessage;
-    const contentStr = this.normalizeContent(msgBody.content);
+    const contentStr = this.normalizeContent(msg.content);
 
     switch (messageType) {
       case 'HumanMessage':
@@ -77,7 +52,7 @@ export class MessageTransformerService {
           return {
             role: 'ai',
             content: contentStr,
-            rawContent: (msgBody as { content?: unknown }).content,
+            rawContent: msg.content,
             additionalKwargs,
             runId,
           };
@@ -88,11 +63,13 @@ export class MessageTransformerService {
         return { role: 'system', content: contentStr, additionalKwargs, runId };
 
       case 'ChatMessage': {
-        const m = <ChatMessage>(<unknown>msgBody);
+        const role = typeof msg.role === 'string' ? msg.role : undefined;
         const reasoningId =
-          m.id || (rawAdditionalKwargs?.reasoningId as string) || undefined;
+          (typeof msg.id === 'string' ? msg.id : undefined) ||
+          rawAdditionalKwargs?.reasoningId ||
+          undefined;
 
-        if (m.role === 'reasoning') {
+        if (role === 'reasoning') {
           return {
             id: reasoningId,
             role: 'reasoning',
@@ -105,8 +82,8 @@ export class MessageTransformerService {
         return {
           role: 'ai',
           content: contentStr,
-          rawContent: m.content,
-          id: m.id || undefined,
+          rawContent: msg.content,
+          id: typeof msg.id === 'string' ? msg.id : undefined,
           additionalKwargs,
           runId,
         };
@@ -114,15 +91,16 @@ export class MessageTransformerService {
 
       case 'AIMessageChunk':
       case 'AIMessage': {
-        const m = <AIMessage>(<unknown>msgBody);
         const toolCalls = this.mapToolCalls(
-          (m.tool_calls as RawToolCall[]) || [],
+          Array.isArray(msg.tool_calls)
+            ? (msg.tool_calls as RawToolCall[])
+            : [],
         );
         return {
           role: 'ai',
           content: contentStr,
-          rawContent: m.content,
-          id: m.id as string,
+          rawContent: msg.content,
+          id: typeof msg.id === 'string' ? msg.id : undefined,
           toolCalls: toolCalls.length ? toolCalls : undefined,
           additionalKwargs,
           runId,
@@ -130,10 +108,9 @@ export class MessageTransformerService {
       }
 
       case 'ToolMessage': {
-        const m = <ToolMessage>(<unknown>msgBody);
-        const toolName = (m.name as string) || 'unknown';
-        const toolCallId = m.tool_call_id || '';
-        const parsed = this.parseToolContent(m.content);
+        const toolName = msg.name || 'unknown';
+        const toolCallId = msg.tool_call_id || '';
+        const parsed = this.parseToolContent(msg.content);
         const title =
           typeof additionalKwargs?.__title === 'string'
             ? additionalKwargs.__title
@@ -264,27 +241,5 @@ export class MessageTransformerService {
         };
       })
       .filter((tc) => tc.name);
-  }
-
-  /**
-   * Check if a message is in LangChain serialized format
-   */
-  private isSerializedMessage(
-    msg: BaseMessage | SerializedMessage,
-  ): msg is SerializedMessage {
-    return (
-      isObject(msg) &&
-      'lc' in msg &&
-      msg.lc === 1 &&
-      'type' in msg &&
-      msg.type === 'constructor' &&
-      'id' in msg &&
-      Array.isArray(msg.id) &&
-      msg.id.length >= 2 &&
-      msg.id[0] === 'langchain_core' &&
-      msg.id[1] === 'messages' &&
-      'kwargs' in msg &&
-      isObject(msg.kwargs)
-    );
   }
 }

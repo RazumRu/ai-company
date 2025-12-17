@@ -1,5 +1,3 @@
-import { BaseMessage } from '@langchain/core/messages';
-
 import { GraphRevisionEntity } from '../graphs/entity/graph-revision.entity';
 import {
   GraphExecutionMetadata,
@@ -7,9 +5,83 @@ import {
   GraphSchemaType,
   GraphStatus,
 } from '../graphs/graphs.types';
+import type { MessageTokenUsage } from '../litellm/litellm.types';
 import { ThreadDto } from '../threads/dto/threads.dto';
 import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
+
+/**
+ * Minimal, JSON-serializable message shape that we persist through BullMQ.
+ * Keep this interface focused on fields we actually need downstream:
+ * - message type (for DTO transformation / thread name generation)
+ * - content
+ * - tool metadata (for tool messages and AI tool calls)
+ * - usage/response metadata + additional_kwargs (for tokenUsage)
+ */
+export interface SerializedBaseMessage {
+  /**
+   * Hidden marker to reliably distinguish our BullMQ-safe serialized messages.
+   */
+  __serialized: true;
+
+  /**
+   * LangChain message class name (e.g. HumanMessage / AIMessage / ToolMessage / SystemMessage / ChatMessage).
+   */
+  type: string;
+
+  /**
+   * Raw content as produced by the model/tool/user.
+   */
+  content?: unknown;
+
+  /**
+   * LangChain message id (optional).
+   */
+  id?: string;
+
+  /**
+   * Chat role (mainly for ChatMessage / reasoning).
+   */
+  role?: string;
+
+  /**
+   * Tool message fields.
+   */
+  name?: string;
+  tool_call_id?: string;
+
+  /**
+   * AI tool calls as emitted by LangChain.
+   */
+  tool_calls?: unknown[];
+  invalid_tool_calls?: unknown[];
+
+  /**
+   * Provider metadata used to compute token usage/cost.
+   */
+  usage_metadata?: unknown;
+  response_metadata?: unknown;
+
+  /**
+   * IMPORTANT: must preserve for tokenUsage.
+   */
+  additional_kwargs?: MessageAdditionalKwargs;
+}
+
+export type MessageAdditionalKwargs = {
+  run_id?: string;
+  thread_id?: string;
+  __model?: string;
+  __title?: string;
+  // Used by message transformer for reasoning + LLM visibility controls
+  reasoningId?: string;
+  hideForLlm?: boolean;
+  isAgentInstructionMessage?: boolean;
+  context?: unknown;
+  // Per-message token usage (totalTokens + totalPrice only)
+  // Full TokenUsage breakdown belongs to thread-level state, not individual messages
+  tokenUsage?: MessageTokenUsage;
+};
 
 export enum NotificationEvent {
   Graph = 'graph.update',
@@ -44,7 +116,7 @@ export interface IGraphNotification extends INotification<{
 }
 
 export interface IAgentMessageData {
-  messages: BaseMessage[];
+  messages: SerializedBaseMessage[];
 }
 
 export interface IAgentMessageNotification extends INotification<IAgentMessageData> {
@@ -55,7 +127,7 @@ export interface IAgentMessageNotification extends INotification<IAgentMessageDa
 }
 
 export interface IAgentInvokeData {
-  messages: BaseMessage[];
+  messages: SerializedBaseMessage[];
 }
 
 export interface IAgentInvokeNotification extends INotification<IAgentInvokeData> {
@@ -72,6 +144,12 @@ export interface IAgentStateUpdateData {
   needsMoreInfo?: boolean;
   toolUsageGuardActivated?: boolean;
   toolUsageGuardActivatedCount?: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  totalTokens?: number;
+  totalPrice?: number;
 }
 
 export interface IAgentStateUpdateNotification extends INotification<IAgentStateUpdateData> {

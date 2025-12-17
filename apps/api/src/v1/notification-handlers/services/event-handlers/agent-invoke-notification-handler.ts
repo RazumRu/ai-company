@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
-import { isObject } from 'lodash';
-import type { JsonObject } from 'type-fest';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
@@ -156,33 +154,15 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     event: IAgentInvokeNotification,
     externalThreadKey: string,
   ): Promise<void> {
-    const firstHuman = event.data.messages.find((m) => {
-      if (!isObject(m)) {
-        return false;
-      }
-
-      const id = (m as unknown as JsonObject).id;
-
-      // Handle LangChain serialized message format: { id: [..., ..., 'HumanMessage'], kwargs: { content } }
-      if (Array.isArray(id) && typeof id[2] === 'string') {
-        return id[2] === 'HumanMessage';
-      }
-
-      // Handle best-effort plain shapes (rare but possible)
-      return (m as unknown as JsonObject).type === 'human';
-    });
+    const firstHuman = event.data.messages.find(
+      (m) => m.type === 'HumanMessage',
+    );
 
     if (!firstHuman) {
       return;
     }
 
-    const firstHumanJson = firstHuman as unknown as JsonObject;
-    const rawContent =
-      Array.isArray(firstHumanJson.id) &&
-      typeof firstHumanJson.id[2] === 'string' &&
-      isObject(firstHumanJson.kwargs)
-        ? (firstHumanJson.kwargs as JsonObject).content
-        : firstHumanJson.content;
+    const rawContent = firstHuman.content;
 
     const userInput =
       typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent);

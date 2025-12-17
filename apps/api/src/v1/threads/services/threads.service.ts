@@ -1,18 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
+import { DefaultLogger, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 
-import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
-import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
-import { NodeKind } from '../../graphs/graphs.types';
-import { GraphRegistry } from '../../graphs/services/graph-registry';
+import { ThreadTokenUsageCacheService } from '../../cache/services/thread-token-usage-cache.service';
 import { GraphsService } from '../../graphs/services/graphs.service';
-import { MessageTransformerService } from '../../graphs/services/message-transformer.service';
 import type { TokenUsage } from '../../litellm/litellm.types';
-import {
-  extractTokenUsageFromAdditionalKwargs,
-  sumTokenUsages,
-} from '../../litellm/litellm.utils';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../dao/messages.dao';
@@ -32,13 +24,11 @@ export class ThreadsService {
   constructor(
     private readonly threadDao: ThreadsDao,
     private readonly messagesDao: MessagesDao,
-    private readonly graphRegistry: GraphRegistry,
-    private readonly graphCheckpointsDao: GraphCheckpointsDao,
-    private readonly checkpointer: PgCheckpointSaver,
-    private readonly messageTransformer: MessageTransformerService,
     private readonly authContext: AuthContextService,
     private readonly notificationsService: NotificationsService,
     private readonly graphsService: GraphsService,
+    private readonly logger: DefaultLogger,
+    private readonly threadTokenUsageCacheService: ThreadTokenUsageCacheService,
   ) {}
 
   async getThreads(query: GetThreadsQueryDto): Promise<ThreadDto[]> {
@@ -120,6 +110,11 @@ export class ThreadsService {
     if (!thread) {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
+
+    // Clean up Redis cache
+    await this.threadTokenUsageCacheService.deleteThreadTokenUsage(
+      thread.externalThreadId,
+    );
 
     // Delete all messages associated with this thread first
     await this.messagesDao.delete({ threadId });
@@ -206,84 +201,41 @@ export class ThreadsService {
 
   private async getThreadsTokenUsage(
     entities: ThreadEntity[],
-  ): Promise<Map<string, TokenUsage | null>> {
-    const out = new Map<string, TokenUsage | null>();
+  ): Promise<
+    Map<string, (TokenUsage & { byNode?: Record<string, TokenUsage> }) | null>
+  > {
+    const out = new Map<
+      string,
+      (TokenUsage & { byNode?: Record<string, TokenUsage> }) | null
+    >();
 
-    // Compute each thread independently; we keep the logic in one place so callers never
-    // compute token usage outside of prepareThreadsResponse().
-    for (const thread of entities) {
-      const running = Boolean(this.graphRegistry.get(thread.graphId));
-      const tokenUsage = running
-        ? this.getTokenUsageFromRunningGraph(thread)
-        : await this.getTokenUsageFromCheckpoint(thread);
-      out.set(thread.id, tokenUsage);
+    const runningThreads = entities.filter(
+      (t) => t.status === ThreadStatus.Running,
+    );
+
+    const nonRunningThreads = entities.filter(
+      (t) => t.status !== ThreadStatus.Running,
+    );
+
+    // Handle running threads: batch read from Redis (no syncing here)
+    if (runningThreads.length > 0) {
+      const externalThreadIds = runningThreads.map((t) => t.externalThreadId);
+      const redisResults =
+        await this.threadTokenUsageCacheService.getMultipleThreadTokenUsage(
+          externalThreadIds,
+        );
+
+      for (const thread of runningThreads) {
+        out.set(thread.id, redisResults.get(thread.externalThreadId) ?? null);
+      }
+    }
+
+    // Handle non-running threads: read from DB
+    for (const thread of nonRunningThreads) {
+      out.set(thread.id, thread.tokenUsage ?? null);
     }
 
     return out;
-  }
-
-  private getTokenUsageFromRunningGraph(
-    thread: ThreadEntity,
-  ): TokenUsage | null {
-    if (!this.graphRegistry.get(thread.graphId)) {
-      return null;
-    }
-
-    const agentNodes = this.graphRegistry.getNodesByType<{
-      getThreadTokenUsage: (threadId: string) => TokenUsage | null;
-    }>(thread.graphId, NodeKind.SimpleAgent);
-
-    if (!agentNodes.length) {
-      return null;
-    }
-
-    return sumTokenUsages(
-      agentNodes.map(
-        (n) => n.instance?.getThreadTokenUsage(thread.externalThreadId) ?? null,
-      ),
-    );
-  }
-
-  private async getTokenUsageFromCheckpoint(
-    thread: ThreadEntity,
-  ): Promise<TokenUsage | null> {
-    const latest = await this.graphCheckpointsDao.getOne({
-      threadId: thread.externalThreadId,
-      order: { createdAt: 'DESC' },
-      limit: 1,
-    });
-
-    if (!latest) {
-      return null;
-    }
-
-    const tuple = await this.checkpointer.getTuple({
-      configurable: {
-        thread_id: latest.threadId,
-        checkpoint_ns: latest.checkpointNs,
-        checkpoint_id: latest.checkpointId,
-      },
-    });
-
-    if (!tuple) {
-      return null;
-    }
-
-    const channelValues =
-      (tuple.checkpoint as { channel_values?: Record<string, unknown> })
-        .channel_values ?? {};
-    const messagesUnknown = channelValues.messages;
-
-    if (!Array.isArray(messagesUnknown)) {
-      return null;
-    }
-
-    const messageDtos =
-      this.messageTransformer.transformMessagesToDto(messagesUnknown);
-
-    return extractTokenUsageFromAdditionalKwargs(
-      messageDtos.map((dto) => dto.additionalKwargs),
-    );
   }
 
   public prepareMessageResponse(entity: MessageEntity): ThreadMessageDto {

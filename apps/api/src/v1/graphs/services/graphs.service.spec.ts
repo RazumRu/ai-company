@@ -1,4 +1,3 @@
-import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
@@ -8,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
+import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
@@ -297,20 +297,22 @@ describe('GraphsService', () => {
       return callback(mockEntityManager);
     });
 
-    // Mock message transformer to actually transform messages
-    const transformMessage = (msg: BaseMessage): MessageDto => {
-      if (msg instanceof HumanMessage) {
+    // Mock message transformer to transform serialized messages
+    const transformMessage = (msg: SerializedBaseMessage): MessageDto => {
+      if (msg.type === 'HumanMessage') {
         return {
           role: 'human',
-          content: msg.content as string,
+          content: String(msg.content ?? ''),
           additionalKwargs: msg.additional_kwargs,
         };
-      } else if (msg instanceof AIMessage) {
+      }
+
+      if (msg.type === 'AIMessage' || msg.type === 'AIMessageChunk') {
         return {
           role: 'ai',
-          content: msg.content as string,
+          content: String(msg.content ?? ''),
           id: msg.id,
-          // Keep this mock minimal; detailed toolCall mapping is tested in MessageTransformerService unit tests.
+          // Keep this mock minimal; detailed toolCall mapping is tested elsewhere.
           toolCalls: undefined,
           additionalKwargs: msg.additional_kwargs,
         };
@@ -318,7 +320,7 @@ describe('GraphsService', () => {
 
       return {
         role: 'system',
-        content: msg.content as string,
+        content: String(msg.content ?? ''),
         additionalKwargs: msg.additional_kwargs,
       };
     };
@@ -327,7 +329,8 @@ describe('GraphsService', () => {
       transformMessage as unknown as typeof messageTransformer.transformMessageToDto,
     );
     vi.mocked(messageTransformer.transformMessagesToDto).mockImplementation(
-      (messages) => (messages as BaseMessage[]).map((m) => transformMessage(m)),
+      (messages) =>
+        (messages as SerializedBaseMessage[]).map((m) => transformMessage(m)),
     );
   });
 

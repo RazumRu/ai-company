@@ -3,6 +3,7 @@ import { v4 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { MessageTransformerService } from '../../../v1/graphs/services/message-transformer.service';
+import { serializeBaseMessages } from '../../../v1/notifications/notifications.utils';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
@@ -53,7 +54,11 @@ describe('Web search tool integration', () => {
       additional_kwargs: { __title: title },
     });
 
-    const dto = messageTransformer.transformMessageToDto(toolMsg);
+    const [serialized] = serializeBaseMessages([toolMsg]);
+    if (!serialized) {
+      throw new Error('Failed to serialize tool message');
+    }
+    const dto = messageTransformer.transformMessageToDto(serialized);
     expect(dto.role).toBe('tool');
     if (dto.role !== 'tool') return;
     expect(dto.title).toBe(title);

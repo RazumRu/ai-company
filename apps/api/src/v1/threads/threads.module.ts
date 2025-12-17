@@ -3,6 +3,7 @@ import { registerEntities } from '@packages/typeorm';
 
 import { AgentsModule } from '../agents/agents.module';
 import { GraphsModule } from '../graphs/graphs.module';
+import { LitellmModule } from '../litellm/litellm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OpenaiModule } from '../openai/openai.module';
 import { ThreadsController } from './controllers/threads.controller';
@@ -19,6 +20,7 @@ import { ThreadsService } from './services/threads.service';
     AgentsModule,
     forwardRef(() => GraphsModule),
     NotificationsModule,
+    LitellmModule,
     OpenaiModule,
   ],
   controllers: [ThreadsController],

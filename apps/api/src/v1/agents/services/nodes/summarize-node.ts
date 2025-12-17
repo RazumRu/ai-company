@@ -9,6 +9,8 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
+import type { TokenUsage } from '../../../litellm/litellm.types';
+import { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
   cleanMessagesForLlm,
@@ -29,6 +31,7 @@ export class SummarizeNode extends BaseNode<
   BaseAgentStateChange
 > {
   constructor(
+    private readonly litellmService: LitellmService,
     private llm: ChatOpenAI,
     private opts: SummarizeOpts,
     private readonly logger?: DefaultLogger,
@@ -70,9 +73,10 @@ export class SummarizeNode extends BaseNode<
     }
 
     const older = state.messages.slice(0, state.messages.length - tail.length);
-    const newSummary = older.length
+    const summaryResult = older.length
       ? await this.fold(state.summary, older)
-      : state.summary;
+      : { summary: state.summary, usage: null };
+    const newSummary = summaryResult.summary;
 
     const summaryCost = newSummary ? await this.countTokens(newSummary) : 0;
     const remaining = Math.max(0, maxTokens - summaryCost);
@@ -112,6 +116,16 @@ export class SummarizeNode extends BaseNode<
       summary: newSummary || '',
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
+      ...(summaryResult.usage
+        ? {
+            inputTokens: summaryResult.usage.inputTokens,
+            cachedInputTokens: summaryResult.usage.cachedInputTokens ?? 0,
+            outputTokens: summaryResult.usage.outputTokens,
+            reasoningTokens: summaryResult.usage.reasoningTokens ?? 0,
+            totalTokens: summaryResult.usage.totalTokens,
+            totalPrice: summaryResult.usage.totalPrice ?? 0,
+          }
+        : {}),
     };
   }
 
@@ -141,7 +155,10 @@ export class SummarizeNode extends BaseNode<
   private async fold(
     prev: string | undefined,
     older: BaseMessage[],
-  ): Promise<string> {
+  ): Promise<{
+    summary: string;
+    usage: TokenUsage | null;
+  }> {
     const sys = new SystemMessage(
       this.opts.systemNote ||
         'You update a running summary of a conversation. Keep key facts, goals, decisions, constraints, names, deadlines, and follow-ups. Be concise; use compact sentences; omit chit-chat.',
@@ -160,12 +177,25 @@ export class SummarizeNode extends BaseNode<
       `Previous summary:\n${prev ?? '(none)'}\n\nFold in the following messages:\n${lines}\n\nReturn only the updated summary.`,
     );
     const res = (await this.llm.invoke([sys, human])) as AIMessage;
+    const model = String(this.llm.model);
+    const usage =
+      await this.litellmService.extractTokenUsageFromResponseWithPriceFallback({
+        model,
+        usage_metadata: (res as unknown as { usage_metadata?: unknown })
+          ?.usage_metadata,
+        response_metadata: (res as unknown as { response_metadata?: unknown })
+          ?.response_metadata,
+      });
     const extracted = extractTextFromResponseContent(res.content);
     if (extracted !== undefined) {
-      return extracted;
+      return { summary: extracted, usage };
     }
-    return typeof res.content === 'string'
-      ? res.content
-      : JSON.stringify(res.content);
+    return {
+      summary:
+        typeof res.content === 'string'
+          ? res.content
+          : JSON.stringify(res.content),
+      usage,
+    };
   }
 }

@@ -72,6 +72,16 @@ export type Options<
   meta?: Record<string, unknown>;
 };
 
+export const listModels = <ThrowOnError extends boolean = false>(
+  options?: Options<ListModelsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<ListModelsResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/models',
+    ...options,
+  });
+
 export const suggestAgentInstructions = <ThrowOnError extends boolean = false>(
   options: Options<SuggestAgentInstructionsData, ThrowOnError>,
 ) =>
@@ -371,15 +381,5 @@ export const stopThreadByExternalId = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/external/{externalThreadId}/stop',
-    ...options,
-  });
-
-export const listModels = <ThrowOnError extends boolean = false>(
-  options?: Options<ListModelsData, ThrowOnError>,
-) =>
-  (options?.client ?? client).get<ListModelsResponses, unknown, ThrowOnError>({
-    responseType: 'json',
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/litellm/models',
     ...options,
   });

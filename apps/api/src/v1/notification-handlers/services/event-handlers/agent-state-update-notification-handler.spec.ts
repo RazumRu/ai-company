@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ThreadTokenUsageCacheService } from '../../../cache/services/thread-token-usage-cache.service';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { GraphEntity } from '../../../graphs/entity/graph.entity';
 import { GraphStatus } from '../../../graphs/graphs.types';
@@ -93,6 +94,12 @@ describe('AgentStateUpdateNotificationHandler', () => {
           },
         },
         {
+          provide: ThreadTokenUsageCacheService,
+          useValue: {
+            upsertNodeTokenUsage: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
           provide: NotificationsService,
           useValue: {
             emit: vi.fn().mockResolvedValue(undefined),
@@ -125,7 +132,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           graphId: mockGraphId,
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
-          threadId: mockThreadId,
+          threadId: mockParentThreadId,
           data: { summary: 'New summary' },
         },
       ]);
@@ -170,7 +177,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           graphId: mockGraphId,
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
-          threadId: mockThreadId,
+          threadId: mockParentThreadId,
           data: { needsMoreInfo: true },
         },
       ]);
@@ -193,7 +200,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           graphId: mockGraphId,
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
-          threadId: mockThreadId,
+          threadId: mockParentThreadId,
           data: { done: true },
         },
       ]);
@@ -214,7 +221,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           graphId: mockGraphId,
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
-          threadId: mockThreadId,
+          threadId: mockParentThreadId,
           data: { summary: 'Some summary' },
         },
       ]);
@@ -234,7 +241,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           graphId: mockGraphId,
           ownerId: mockOwnerId,
           nodeId: mockNodeId,
-          threadId: mockThreadId,
+          threadId: mockParentThreadId,
           data: { summary: 'Any summary' },
         },
       ]);

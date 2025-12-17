@@ -10,6 +10,7 @@ import {
   IGraphNotification,
   NotificationEvent,
 } from '../notifications.types';
+import { serializeBaseMessages } from '../notifications.utils';
 import { NotificationsService } from './notifications.service';
 
 // Mock BullMQ and IORedis
@@ -91,7 +92,7 @@ describe('NotificationsService', () => {
         threadId: 'test-thread-789',
         parentThreadId: 'parent-thread-123',
         data: {
-          messages: [new HumanMessage('Hello world')],
+          messages: serializeBaseMessages([new HumanMessage('Hello world')]),
         },
       };
 
@@ -113,7 +114,7 @@ describe('NotificationsService', () => {
         threadId: 'test-thread-789',
         parentThreadId: 'parent-thread-123',
         data: {
-          messages: [new HumanMessage('Hello')],
+          messages: serializeBaseMessages([new HumanMessage('Hello')]),
         },
       };
 
@@ -157,7 +158,7 @@ describe('NotificationsService', () => {
         threadId: 'test-thread-789',
         parentThreadId: 'parent-thread-123',
         data: {
-          messages: [new HumanMessage('Hello')],
+          messages: serializeBaseMessages([new HumanMessage('Hello')]),
         },
       };
 

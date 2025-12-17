@@ -38,6 +38,8 @@ import {
   Notification,
   NotificationEvent,
 } from '../../../v1/notifications/notifications.types';
+import { IAgentStateUpdateData } from '../../../v1/notifications/notifications.types';
+import { serializeBaseMessages } from '../../../v1/notifications/notifications.utils';
 import { NotificationsService } from '../../../v1/notifications/services/notifications.service';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import {
@@ -58,6 +60,8 @@ type MessageNotification = IEnrichedNotification<ThreadMessageDto>;
 type NodeUpdateNotification = IEnrichedNotification<IGraphNodeUpdateData>;
 type ThreadCreateNotification = IEnrichedNotification<ThreadEntity>;
 type ThreadUpdateNotification = IEnrichedNotification<ThreadDto>;
+type AgentStateUpdateNotification =
+  IEnrichedNotification<IAgentStateUpdateData>;
 
 describe('Socket Notifications Integration Tests', () => {
   let app: INestApplication;
@@ -1414,12 +1418,17 @@ describe('Socket Notifications Integration Tests', () => {
             graphThreadState.getByThread(threadId).reasoningChunks.size;
           expect(finalStateCount).toBe(0);
 
-          const reasoningMessageDto = messageTransformer.transformMessageToDto(
+          const [serializedReasoning] = serializeBaseMessages([
             buildReasoningMessage(
               'integration reasoning step',
               'chunk-integration',
             ),
-          );
+          ]);
+          if (!serializedReasoning) {
+            throw new Error('Failed to serialize reasoning message');
+          }
+          const reasoningMessageDto =
+            messageTransformer.transformMessageToDto(serializedReasoning);
 
           await messagesDao.create({
             threadId: persistedThread.id,
@@ -1602,6 +1611,215 @@ describe('Socket Notifications Integration Tests', () => {
           String((nameUpdateEvent!.data as { name?: string }).name ?? ''),
         ).toBeTruthy();
         expect(nameUpdateEvent!.graphId).toBe(graphId);
+      },
+    );
+  });
+
+  describe('Thread Token Usage in Agent State Update Notifications', () => {
+    it(
+      'should receive agent.state.update notifications with token usage when messages are processed',
+      { timeout: 90_000 },
+      async () => {
+        socket = createSocketConnection(TEST_USER_ID);
+        await waitForSocketConnection(socket);
+
+        const graphData = createMockGraphData();
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        socket.emit('subscribe_graph', { graphId });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const stateUpdateNotifications: unknown[] = [];
+
+        const stateUpdatePromise = new Promise((resolve, reject) => {
+          socket.on('agent.state.update', (notification) => {
+            // Only collect notifications with token usage
+            if (
+              notification.data?.totalTokens !== undefined &&
+              notification.data.totalTokens > 0
+            ) {
+              stateUpdateNotifications.push(notification);
+
+              // Once we receive at least one with token usage, we're done
+              if (stateUpdateNotifications.length >= 1) {
+                resolve(stateUpdateNotifications);
+              }
+            }
+          });
+
+          socket.once('server_error', (error) => reject(error));
+
+          setTimeout(() => {
+            if (stateUpdateNotifications.length > 0) {
+              resolve(stateUpdateNotifications);
+            } else {
+              reject(
+                new Error(
+                  'Timeout: No agent.state.update notifications with token usage received',
+                ),
+              );
+            }
+          }, 60_000);
+        });
+
+        await graphsService.run(graphId);
+
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['Test message for token usage in agent state update'],
+        });
+
+        await stateUpdatePromise;
+
+        expect(stateUpdateNotifications.length).toBeGreaterThanOrEqual(1);
+
+        // Verify structure includes token usage
+        const typedNotifications =
+          stateUpdateNotifications as AgentStateUpdateNotification[];
+        typedNotifications.forEach((notification) => {
+          expect(notification.graphId).toBe(graphId);
+          expect(notification.type).toBe('agent.state.update');
+          expect(notification.data.totalTokens).toBeGreaterThan(0);
+          expect(typeof notification.data.totalTokens).toBe('number');
+        });
+      },
+    );
+
+    it(
+      'should show token usage increasing across multiple messages in same thread',
+      { timeout: 90_000 },
+      async () => {
+        socket = createSocketConnection(TEST_USER_ID);
+        await waitForSocketConnection(socket);
+
+        const graphData = createMockGraphData();
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        socket.emit('subscribe_graph', { graphId });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const stateUpdateNotifications: AgentStateUpdateNotification[] = [];
+
+        socket.on('agent.state.update', (notification) => {
+          const typed = notification as AgentStateUpdateNotification;
+          // Only collect notifications with token usage
+          if (
+            typed.data?.totalTokens !== undefined &&
+            typed.data.totalTokens > 0
+          ) {
+            stateUpdateNotifications.push(typed);
+          }
+        });
+
+        await graphsService.run(graphId);
+
+        const threadSubId = 'token-usage-accumulation-test';
+
+        // Send first message
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['First message'],
+          threadSubId,
+        });
+
+        // Wait for first notification with token usage
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+
+        const firstNotificationCount = stateUpdateNotifications.length;
+        expect(firstNotificationCount).toBeGreaterThanOrEqual(1);
+
+        // Send second message to same thread
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['Second message to accumulate more tokens'],
+          threadSubId,
+        });
+
+        // Wait for additional notifications
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+
+        // Should have received more agent.state.update notifications with token usage
+        expect(stateUpdateNotifications.length).toBeGreaterThan(
+          firstNotificationCount,
+        );
+
+        // Verify token usage increases over time for the same thread
+        const threadNotifications = stateUpdateNotifications.filter((n) =>
+          n.threadId?.includes(threadSubId),
+        );
+
+        if (threadNotifications.length >= 2) {
+          const firstUsage = threadNotifications[0]?.data?.totalTokens;
+          const laterUsage =
+            threadNotifications[threadNotifications.length - 1]?.data
+              ?.totalTokens;
+
+          if (firstUsage && laterUsage) {
+            // Token usage should increase or stay the same (never decrease)
+            expect(laterUsage).toBeGreaterThanOrEqual(firstUsage);
+          }
+        }
+      },
+    );
+
+    it(
+      'should include all token usage fields in agent.state.update notifications',
+      { timeout: 60_000 },
+      async () => {
+        socket = createSocketConnection(TEST_USER_ID);
+        await waitForSocketConnection(socket);
+
+        const graphData = createMockGraphData();
+        const createResult = await graphsService.create(graphData);
+        const graphId = createResult.id;
+        createdGraphIds.push(graphId);
+
+        socket.emit('subscribe_graph', { graphId });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const stateUpdatePromise = new Promise<AgentStateUpdateNotification>(
+          (resolve, reject) => {
+            socket.on('agent.state.update', (notification) => {
+              const typed = notification as AgentStateUpdateNotification;
+              if (
+                typed.graphId === graphId &&
+                typed.data?.totalTokens &&
+                typed.data.totalTokens > 0
+              ) {
+                resolve(typed);
+              }
+            });
+
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    'Timeout waiting for agent.state.update with token usage',
+                  ),
+                ),
+              45_000,
+            );
+          },
+        );
+
+        await graphsService.run(graphId);
+
+        await graphsService.executeTrigger(graphId, 'trigger-1', {
+          messages: ['Test message to generate token usage'],
+        });
+
+        const notification = await stateUpdatePromise;
+
+        // Verify token usage fields are present
+        expect(notification.data.totalTokens).toBeGreaterThan(0);
+        expect(typeof notification.data.totalTokens).toBe('number');
+
+        // Check that at least some token fields are present
+        expect(
+          notification.data.inputTokens !== undefined ||
+            notification.data.outputTokens !== undefined,
+        ).toBe(true);
       },
     );
   });

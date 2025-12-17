@@ -1,12 +1,6 @@
-import {
-  AIMessage,
-  HumanMessage,
-  SystemMessage,
-  ToolMessage,
-} from '@langchain/core/messages';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { buildReasoningMessage } from '../../agents/agents.utils';
+import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import {
   AIMessageDto,
   HumanMessageDto,
@@ -20,15 +14,22 @@ import { MessageTransformerService } from './message-transformer.service';
 describe('MessageTransformerService', () => {
   let service: MessageTransformerService;
 
+  const msg = (
+    m: Omit<SerializedBaseMessage, '__serialized'>,
+  ): SerializedBaseMessage => ({
+    __serialized: true,
+    ...m,
+  });
+
   beforeEach(() => {
     service = new MessageTransformerService();
   });
 
   describe('transformMessageToDto', () => {
     it('should transform human message', () => {
-      const msg = new HumanMessage('Hello, world!');
+      const m = msg({ type: 'HumanMessage', content: 'Hello, world!' });
 
-      const result = service.transformMessageToDto(msg);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'human',
@@ -39,7 +40,8 @@ describe('MessageTransformerService', () => {
     });
 
     it('should convert agent instruction human messages into ai responses', () => {
-      const msg = new HumanMessage({
+      const m = msg({
+        type: 'HumanMessage',
         content: 'Please help the user with the deployment.',
         additional_kwargs: {
           isAgentInstructionMessage: true,
@@ -47,7 +49,7 @@ describe('MessageTransformerService', () => {
         },
       });
 
-      const result = service.transformMessageToDto(msg);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'ai',
@@ -64,12 +66,13 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform system message', () => {
-      const msg = new SystemMessage({
+      const m = msg({
+        type: 'SystemMessage',
         content: 'System instruction',
         additional_kwargs: { context: 'test', run_id: 'run-1' },
       });
 
-      const result = service.transformMessageToDto(msg);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'system',
@@ -80,12 +83,13 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform AI message without tool calls', () => {
-      const msg = new AIMessage({
+      const m = msg({
+        type: 'AIMessage',
         content: 'AI response',
         id: 'msg-123',
       });
 
-      const result = service.transformMessageToDto(msg);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'ai',
@@ -99,7 +103,8 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform AI message with tool calls', () => {
-      const msg = new AIMessage({
+      const m = msg({
+        type: 'AIMessage',
         content: 'Calling tools',
         id: 'msg-456',
         tool_calls: [
@@ -113,7 +118,7 @@ describe('MessageTransformerService', () => {
         additional_kwargs: { run_id: 'run-1' },
       });
 
-      const result = service.transformMessageToDto(msg);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'ai',
@@ -134,7 +139,8 @@ describe('MessageTransformerService', () => {
     });
 
     it('should pass through __title metadata for tool call requests', () => {
-      const msg = new AIMessage({
+      const m = msg({
+        type: 'AIMessage',
         content: 'Calling tools',
         id: 'msg-req-1',
         tool_calls: [
@@ -152,10 +158,10 @@ describe('MessageTransformerService', () => {
             id: 'call-web-req-1',
             __title: 'Search in internet: NestJS interceptors',
           },
-        ] as unknown as never,
+        ],
       });
 
-      const result = service.transformMessageToDto(msg) as AIMessageDto;
+      const result = service.transformMessageToDto(m) as AIMessageDto;
 
       expect(result.role).toBe('ai');
       expect(result.toolCalls).toEqual([
@@ -177,9 +183,14 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform reasoning chat message', () => {
-      const msg = buildReasoningMessage('Detailed reasoning steps');
+      const m = msg({
+        type: 'ChatMessage',
+        role: 'reasoning',
+        content: 'Detailed reasoning steps',
+        additional_kwargs: { hideForLlm: true },
+      });
 
-      const result = service.transformMessageToDto(msg);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'reasoning',
@@ -189,11 +200,18 @@ describe('MessageTransformerService', () => {
       } as ReasoningMessageDto);
     });
 
-    it('should preserve reasoning id for serialized reasoning message', () => {
-      const msg = buildReasoningMessage('Serialized reasoning', 'parent-42');
-      const serialized = msg.toJSON();
+    it('should preserve reasoning id for reasoning messages', () => {
+      const m = msg({
+        type: 'ChatMessage',
+        role: 'reasoning',
+        content: 'Serialized reasoning',
+        additional_kwargs: {
+          hideForLlm: true,
+          reasoningId: 'reasoning:parent-42',
+        },
+      });
 
-      const result = service.transformMessageToDto(serialized as never);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'reasoning',
@@ -208,7 +226,8 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform tool message', () => {
-      const msg = new ToolMessage({
+      const m = msg({
+        type: 'ToolMessage',
         content: '{"result": "success"}',
         name: 'web_search',
         tool_call_id: 'call-789',
@@ -218,7 +237,7 @@ describe('MessageTransformerService', () => {
         },
       });
 
-      const result = service.transformMessageToDto(msg);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'tool',
@@ -235,7 +254,8 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform shell tool message', () => {
-      const msg = new ToolMessage({
+      const m = msg({
+        type: 'ToolMessage',
         content: JSON.stringify({
           exitCode: 0,
           stdout: 'Success',
@@ -247,7 +267,7 @@ describe('MessageTransformerService', () => {
         additional_kwargs: { run_id: 'run-1' },
       });
 
-      const result = service.transformMessageToDto(msg);
+      const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
         role: 'tool-shell',
@@ -265,178 +285,25 @@ describe('MessageTransformerService', () => {
     });
 
     it('should handle malformed tool content', () => {
-      const msg = new ToolMessage({
+      const m = msg({
+        type: 'ToolMessage',
         content: 'not valid json',
         name: 'test_tool',
         tool_call_id: 'call-1',
       });
 
-      const result = service.transformMessageToDto(msg) as ToolMessageDto;
+      const result = service.transformMessageToDto(m) as ToolMessageDto;
 
       expect(result.content).toEqual({ message: 'not valid json' });
       expect(result.runId).toBeNull();
     });
-
-    it('should transform serialized human message', () => {
-      const serializedMsg = {
-        lc: 1,
-        type: 'constructor',
-        id: ['langchain_core', 'messages', 'HumanMessage'],
-        kwargs: {
-          content: 'Hello from serialized message!',
-          additional_kwargs: {},
-        },
-      };
-
-      const result = service.transformMessageToDto(serializedMsg);
-
-      expect(result).toEqual({
-        role: 'human',
-        content: 'Hello from serialized message!',
-        additionalKwargs: undefined,
-        runId: null,
-      } as HumanMessageDto);
-    });
-
-    it('should transform serialized tool message', () => {
-      const serializedMsg = {
-        lc: 1,
-        type: 'constructor',
-        id: ['langchain_core', 'messages', 'ToolMessage'],
-        kwargs: {
-          tool_call_id: 'call_QrlzvPAGfR5P9k8KgEzt7zgH',
-          name: 'shell',
-          content: JSON.stringify({
-            exitCode: 0,
-            stdout: 'Docker info output',
-            stderr: 'Some warnings',
-            cmd: 'docker info',
-            fail: false,
-          }),
-          additional_kwargs: { run_id: 'run-1' },
-        },
-      };
-
-      const result = service.transformMessageToDto(serializedMsg);
-
-      expect(result).toEqual({
-        role: 'tool-shell',
-        name: 'shell',
-        content: {
-          exitCode: 0,
-          stdout: 'Docker info output',
-          stderr: 'Some warnings',
-          cmd: 'docker info',
-          fail: false,
-        },
-        toolCallId: 'call_QrlzvPAGfR5P9k8KgEzt7zgH',
-        runId: 'run-1',
-        additionalKwargs: { run_id: 'run-1' },
-      } as ShellToolMessageDto);
-    });
-
-    it('should transform serialized AI message with tool calls', () => {
-      const serializedMsg = {
-        lc: 1,
-        type: 'constructor',
-        id: ['langchain_core', 'messages', 'AIMessage'],
-        kwargs: {
-          content: 'I will call a tool',
-          id: 'msg-123',
-          tool_calls: [
-            {
-              name: 'get_weather',
-              args: { city: 'SF' },
-              type: 'tool_call',
-              id: 'call-1',
-            },
-          ],
-          additional_kwargs: { run_id: 'run-1' },
-        },
-      };
-
-      const result = service.transformMessageToDto(serializedMsg);
-
-      expect(result).toEqual({
-        role: 'ai',
-        content: 'I will call a tool',
-        rawContent: 'I will call a tool',
-        id: 'msg-123',
-        toolCalls: [
-          {
-            name: 'get_weather',
-            args: { city: 'SF' },
-            type: 'tool_call',
-            id: 'call-1',
-          },
-        ],
-        runId: 'run-1',
-        additionalKwargs: { run_id: 'run-1' },
-      } as AIMessageDto);
-    });
-
-    it('should treat unknown chat roles as system messages', () => {
-      const serializedMsg = {
-        lc: 1,
-        type: 'constructor',
-        id: ['langchain_core', 'messages', 'ChatMessage'],
-        kwargs: {
-          content: 'Serialized reasoning trace',
-          role: 'reasoning',
-          additional_kwargs: {},
-        },
-      };
-
-      const result = service.transformMessageToDto(serializedMsg);
-
-      expect(result).toEqual({
-        role: 'reasoning',
-        content: 'Serialized reasoning trace',
-        id: undefined,
-        additionalKwargs: undefined,
-        runId: null,
-      } as ReasoningMessageDto);
-    });
-
-    it('should handle the exact serialized message format from the user issue', () => {
-      const serializedMsg = {
-        lc: 1,
-        type: 'constructor',
-        id: ['langchain_core', 'messages', 'ToolMessage'],
-        kwargs: {
-          tool_call_id: 'call_QrlzvPAGfR5P9k8KgEzt7zgH',
-          name: 'shell',
-          content:
-            '{"exitCode":0,"stdout":"DOCKER_HOST=tcp://dind-rt-5ac512cd-3622-45ef-99bd-cdb9bfc09f03-runtime-1:2375\\nDOCKER_HOST=tcp://dind-rt-5ac512cd-3622-45ef-99bd-cdb9bfc09f03-runtime-1:2375\\nClient:\\n Version:    28.3.3\\n Context:    default\\n Debug Mode: false\\n\\nServer:\\n Containers: 0\\n  Running: 0\\n  Paused: 0\\n  Stopped: 0\\n Images: 0\\n Server Version: 27.5.1\\n Storage Driver: overlay2\\n  Backing Filesystem: xfs\\n  Supports d_type: true\\n  Using metacopy: false\\n  Native Overlay Diff: true\\n  userxattr: false\\n Logging Driver: json-file\\n Cgroup Driver: cgroupfs\\n Cgroup Version: 2\\n Plugins:\\n  Volume: local\\n  Network: bridge host ipvlan macvlan null overlay\\n  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog\\n Swarm: inactive\\n Runtimes: io.containerd.runc.v2 runc\\n Default Runtime: runc\\n Init Binary: docker-init\\n containerd version: bcc810d6b9066471b0b6fa75f557a15a1cbf31bb\\n runc version: v1.2.4-0-g6c52b3f\\n init version: de40ad0\\n Security Options:\\n  seccomp\\n   Profile: builtin\\n  cgroupns\\n Kernel Version: 6.12.13-200.fc41.aarch64\\n Operating System: Alpine Linux v3.21 (containerized)\\n OSType: linux\\n Architecture: aarch64\\n CPUs: 4\\n Total Memory: 18.13GiB\\n Name: f2995c57f1be\\n ID: c336402e-b158-4049-a33c-b1433ecc5a91\\n Docker Root Dir: /var/lib/docker\\n Debug Mode: false\\n Experimental: false\\n Insecure Registries:\\n  127.0.0.0/8\\n Live Restore Enabled: false\\n Product License: Community Engine\\n\\n Security Options:\\n  seccomp\\n   Profile: builtin\\n  cgroupns\\n Kernel Version: 6.12.13-200.fc41.aarch64\\n Operating System: Alpine Linux v3.21 (containerized)\\n OSType: linux\\n Architecture: aarch64\\n CPUs: 4\\n Total Memory: 18.13GiB\\n Name: f2995c57f1be\\n ID: c336402e-b158-4049-a33c-b1433ecc5a91\\n Docker Root Dir: /var/lib/docker\\n Debug Mode: false\\n Experimental: false\\n Insecure Registries:\\n  127.0.0.0/8\\n Live Restore Enabled: false\\n Product License: Community Engine\\n\\n","stderr":"[DEPRECATION NOTICE]: API is accessible on http://0.0.0.0:2375 without encryption.\\n         Access to the remote API is equivalent to root access on the host. Refer\\n         to the \'Docker daemon attack surface\' section in the documentation for\\n         more information: https://docs.docker.com/go/attack-surface/\\nIn future versions this will be a hard failure preventing the daemon from starting! Learn more at: https://docs.docker.com/go/api-security/\\n[DEPRECATION NOTICE]: API is accessible on http://0.0.0.0:2375 without encryption.\\n         Access to the remote API is equivalent to root access on the host. Refer\\n         to the \'Docker daemon attack surface\' section in the documentation for\\n         more information: https://docs.docker.com/go/attack-surface/\\nIn future versions this will be a hard failure preventing the daemon from starting! Learn more at: https://docs.docker.com/go/api-security/\\n","fail":false,"cmd":"echo \\"DOCKER_HOST=$DOCKER_HOST\\" && docker info"}',
-          additional_kwargs: {},
-          response_metadata: {},
-        },
-      };
-
-      const result = service.transformMessageToDto(serializedMsg);
-
-      expect(result.role).toBe('tool-shell');
-      if (result.role === 'tool-shell') {
-        expect(result.name).toBe('shell');
-        expect(result.toolCallId).toBe('call_QrlzvPAGfR5P9k8KgEzt7zgH');
-      }
-      expect(result.content).toBeDefined();
-      expect(result.content).toHaveProperty('exitCode', 0);
-      expect(result.content).toHaveProperty('stdout');
-      expect(result.content).toHaveProperty('stderr');
-      expect(result.content).toHaveProperty('cmd');
-      expect(result.content).toHaveProperty('fail', false);
-    });
   });
 
   describe('transformMessagesToDto', () => {
-    it('should transform multiple BaseMessages to MessageDto array', () => {
+    it('should transform multiple SerializedBaseMessage to MessageDto array', () => {
       const messages = [
-        new HumanMessage('First message'),
-        new AIMessage({
-          content: 'Second message',
-          id: 'msg-2',
-        }),
+        msg({ type: 'HumanMessage', content: 'First message' }),
+        msg({ type: 'AIMessage', content: 'Second message', id: 'msg-2' }),
       ];
 
       const results = service.transformMessagesToDto(messages);
@@ -448,24 +315,15 @@ describe('MessageTransformerService', () => {
       expect(results[1]?.content).toBe('Second message');
     });
 
-    it('should filter out null results', () => {
-      const messages = [new HumanMessage('Valid message')];
-
-      const results = service.transformMessagesToDto(messages);
-
-      expect(results).toHaveLength(1);
-      expect(results[0]?.content).toBe('Valid message');
-    });
-
     it('should handle empty array', () => {
       const results = service.transformMessagesToDto([]);
-
       expect(results).toEqual([]);
     });
 
     it('should handle messages with tool calls', () => {
       const messages = [
-        new AIMessage({
+        msg({
+          type: 'AIMessage',
           content: 'Using tools',
           id: 'msg-1',
           tool_calls: [

@@ -1,0 +1,145 @@
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { DefaultLogger } from '@packages/common';
+import IORedis from 'ioredis';
+
+import { environment } from '../../../environments';
+
+/**
+ * Generic Redis cache service providing low-level Redis operations.
+ * This service should be used as a foundation for domain-specific cache services.
+ */
+@Injectable()
+export class CacheService implements OnModuleDestroy {
+  private redis: IORedis;
+
+  constructor(private readonly logger: DefaultLogger) {
+    this.redis = new IORedis(environment.redisUrl, {
+      maxRetriesPerRequest: null,
+      lazyConnect: false,
+    });
+
+    this.redis.on('error', (error) => {
+      this.logger.error(error, 'Redis connection error');
+    });
+
+    this.redis.on('connect', () => {
+      this.logger.debug('Redis connected');
+    });
+  }
+
+  async onModuleDestroy() {
+    await this.redis.quit();
+  }
+
+  /**
+   * Get a string value by key
+   */
+  async get(key: string): Promise<string | null> {
+    return this.redis.get(key);
+  }
+
+  /**
+   * Set a string value with optional TTL
+   * @param ttl Time to live in seconds
+   */
+  async set(key: string, value: string, ttl?: number): Promise<void> {
+    if (ttl) {
+      await this.redis.setex(key, ttl, value);
+    } else {
+      await this.redis.set(key, value);
+    }
+  }
+
+  /**
+   * Delete a key
+   */
+  async del(key: string): Promise<void> {
+    await this.redis.del(key);
+  }
+
+  /**
+   * Check if a key exists
+   */
+  async exists(key: string): Promise<boolean> {
+    const result = await this.redis.exists(key);
+    return result > 0;
+  }
+
+  /**
+   * Set a hash field
+   */
+  async hset(key: string, field: string, value: string): Promise<void> {
+    await this.redis.hset(key, field, value);
+  }
+
+  /**
+   * Get a hash field
+   */
+  async hget(key: string, field: string): Promise<string | null> {
+    return this.redis.hget(key, field);
+  }
+
+  /**
+   * Get all hash fields
+   */
+  async hgetall(key: string): Promise<Record<string, string>> {
+    return this.redis.hgetall(key);
+  }
+
+  /**
+   * Delete a hash field
+   */
+  async hdel(key: string, field: string): Promise<void> {
+    await this.redis.hdel(key, field);
+  }
+
+  /**
+   * Set multiple hash fields at once
+   */
+  async hmset(key: string, data: Record<string, string>): Promise<void> {
+    if (Object.keys(data).length === 0) return;
+    await this.redis.hmset(key, data);
+  }
+
+  /**
+   * Set expiration on a key
+   * @param ttl Time to live in seconds
+   */
+  async expire(key: string, ttl: number): Promise<void> {
+    await this.redis.expire(key, ttl);
+  }
+
+  /**
+   * Get multiple hash objects in a single pipeline operation
+   * @param keys Array of Redis keys to fetch
+   * @returns Map of key to hash data
+   */
+  async hmgetall(keys: string[]): Promise<Map<string, Record<string, string>>> {
+    if (keys.length === 0) {
+      return new Map();
+    }
+
+    const pipeline = this.redis.pipeline();
+    for (const key of keys) {
+      pipeline.hgetall(key);
+    }
+
+    const results = await pipeline.exec();
+    const resultMap = new Map<string, Record<string, string>>();
+
+    if (results) {
+      for (let i = 0; i < keys.length; i++) {
+        const result = results[i];
+        if (!result) continue;
+
+        const [error, data] = result;
+        const key = keys[i];
+        if (!error && data && key) {
+          resultMap.set(key, data as Record<string, string>);
+        }
+      }
+    }
+
+    return resultMap;
+  }
+}

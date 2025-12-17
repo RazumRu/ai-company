@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 
+import { ThreadTokenUsageCacheService } from '../../../cache/services/thread-token-usage-cache.service';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
   IAgentStateUpdateNotification,
@@ -26,17 +27,35 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
   readonly pattern = NotificationEvent.AgentStateUpdate;
   private readonly graphOwnerCache = new Map<string, string>();
 
-  constructor(private readonly graphDao: GraphDao) {
+  constructor(
+    private readonly graphDao: GraphDao,
+    private readonly threadTokenUsageCacheService: ThreadTokenUsageCacheService,
+  ) {
     super();
   }
 
   async handle(
     event: IAgentStateUpdateNotification,
   ): Promise<IAgentStateUpdateEnrichedNotification[]> {
-    const { threadId, graphId, data, nodeId } = event;
+    const { threadId, parentThreadId, graphId, data, nodeId } = event;
+    const externalThreadKey = parentThreadId ?? threadId;
 
     // Get graph owner for enriching notification
     const ownerId = await this.getGraphOwner(graphId);
+
+    // Best-effort: persist per-node token usage into Redis
+    await this.threadTokenUsageCacheService.upsertNodeTokenUsage(
+      externalThreadKey,
+      nodeId,
+      {
+        inputTokens: data.inputTokens,
+        cachedInputTokens: data.cachedInputTokens,
+        outputTokens: data.outputTokens,
+        reasoningTokens: data.reasoningTokens,
+        totalTokens: data.totalTokens,
+        totalPrice: data.totalPrice,
+      },
+    );
 
     const notifications: IAgentStateUpdateEnrichedNotification[] = [];
 
@@ -45,7 +64,7 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
       graphId,
       ownerId,
       nodeId,
-      threadId,
+      threadId: externalThreadKey,
       data,
       scope: [NotificationScope.Graph],
     };
