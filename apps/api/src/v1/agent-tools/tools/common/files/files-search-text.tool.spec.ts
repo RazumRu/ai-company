@@ -151,7 +151,7 @@ describe('FilesSearchTextTool', () => {
       expect(result.error).toBeUndefined();
       const call = (tool as any).execCommand.mock.calls[0]![0];
       expect(call.cmd).toContain('rg --json --hidden');
-      expect(call.cmd).toContain('cd "/path/to/repo" &&');
+      expect(call.cmd).toContain("cd '/path/to/repo' &&");
       expect(call.cmd).toContain("'!.git/**'");
       expect(call.cmd).toContain("'!node_modules/**'");
       expect(call.cmd).toContain("'!.next/**'");
@@ -188,7 +188,7 @@ describe('FilesSearchTextTool', () => {
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
       const call = (tool as any).execCommand.mock.calls[0]![0];
-      expect(call.cmd).toContain('cd "/path/to/repo" &&');
+      expect(call.cmd).toContain("cd '/path/to/repo' &&");
       expect(call.cmd).toContain("--glob '*.ts'");
       expect(call.cmd).toContain("--glob 'src/**'");
       expect(call.cmd).toContain("'!.git/**'");
@@ -223,7 +223,7 @@ describe('FilesSearchTextTool', () => {
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
       const call = (tool as any).execCommand.mock.calls[0]![0];
-      expect(call.cmd).toContain('cd "/path/to/repo" &&');
+      expect(call.cmd).toContain("cd '/path/to/repo' &&");
       expect(call.cmd).toContain("--glob '!*.test.ts'");
       expect(call.cmd).toContain("'!node_modules/**'");
     });
@@ -257,7 +257,7 @@ describe('FilesSearchTextTool', () => {
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
       const call = (tool as any).execCommand.mock.calls[0]![0];
-      expect(call.cmd).toContain('cd "/path/to/repo" &&');
+      expect(call.cmd).toContain("cd '/path/to/repo' &&");
       expect(call.cmd).toContain("--glob '*.ts'");
       expect(call.cmd).toContain("--glob '!*.test.ts'");
     });
@@ -290,9 +290,9 @@ describe('FilesSearchTextTool', () => {
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
       const call = (tool as any).execCommand.mock.calls[0]![0];
-      expect(call.cmd).toContain('cd "/path/to/repo" &&');
+      expect(call.cmd).toContain("cd '/path/to/repo' &&");
       expect(call.cmd).toContain(
-        'rg --json "function" "/path/to/repo/src/file.ts"',
+        "rg --json -- 'function' '/path/to/repo/src/file.ts'",
       );
     });
 
@@ -510,9 +510,9 @@ describe('FilesSearchTextTool', () => {
       expect(result.matches).toBeDefined();
       expect(result.error).toBeUndefined();
       const call = (tool as any).execCommand.mock.calls[0]![0];
-      expect(call.cmd).toContain('cd "/path/to repo" &&');
+      expect(call.cmd).toContain("cd '/path/to repo' &&");
       expect(call.cmd).toContain(
-        'rg --json "function" "/path/to repo/src/my file.ts"',
+        "rg --json -- 'function' '/path/to repo/src/my file.ts'",
       );
     });
 

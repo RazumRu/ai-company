@@ -13,70 +13,75 @@ import {
 } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-export const FilesApplyChangesToolSchema = z.object({
-  filePath: z.string().min(1).describe('Absolute path to the file to modify'),
-  operation: z
-    .enum(['replace', 'replace_range', 'insert', 'delete'])
-    .describe('Type of operation to perform'),
-  content: z
+export const FilesApplyChangesToolEditSchema = z.object({
+  oldText: z
     .string()
-    .optional()
+    .min(1)
     .describe(
-      'New content to write (required for replace, replace_range, and insert operations)',
+      'Text to search for (can be substring). Whitespace is normalized for matching.',
     ),
-  startLine: z
-    .number()
-    .int()
-    .positive()
-    .optional()
+  newText: z
+    .string()
     .describe(
-      'Starting line number (1-based, required for replace_range, insert, and delete operations)',
-    ),
-  endLine: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe(
-      'Ending line number (1-based, required for replace_range and delete operations)',
+      'Text to replace with. Indentation will be preserved from original.',
     ),
 });
 
+const FilesApplyChangesToolSchemaBase = z.object({
+  path: z.string().min(1).describe('Absolute path to the file to edit'),
+  edits: z
+    .array(FilesApplyChangesToolEditSchema)
+    .min(1)
+    .describe('List of edit operations to perform'),
+  dryRun: z
+    .boolean()
+    .optional()
+    .describe('Preview changes without applying them'),
+});
+
+export const FilesApplyChangesToolSchema =
+  FilesApplyChangesToolSchemaBase.transform((data) => ({
+    ...data,
+    dryRun: data.dryRun ?? false,
+  }));
+
 export type FilesApplyChangesToolSchemaType = z.infer<
-  typeof FilesApplyChangesToolSchema
+  typeof FilesApplyChangesToolSchemaBase
 >;
+export type FilesApplyChangesToolEditSchemaType = z.infer<
+  typeof FilesApplyChangesToolEditSchema
+>;
+
+type EditMatch = {
+  editIndex: number;
+  startLine: number;
+  endLine: number;
+  matchedText: string;
+  indentation: string;
+};
 
 type FilesApplyChangesToolOutput = {
   error?: string;
   success?: boolean;
-  lineCount?: number;
+  diff?: string;
+  appliedEdits?: number;
+  totalEdits?: number;
 };
 
 @Injectable()
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Apply changes to a file using an absolute path. Supports replacing entire file, replacing line ranges, inserting content at specific lines, and deleting line ranges. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns success status and updated line count.';
+    'Make selective edits to files using pattern matching instead of line numbers. Searches for oldText and replaces with newText. Supports multiple simultaneous edits, whitespace normalization, and indentation preservation. Use dryRun: true to preview changes before applying.';
 
   protected override generateTitle(
     args: FilesApplyChangesToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    const name = basename(args.filePath);
-    const { operation, startLine, endLine } = args;
-
-    switch (operation) {
-      case 'replace':
-        return `Replacing ${name}`;
-      case 'replace_range':
-        return `Replacing lines ${startLine}-${endLine} in ${name}`;
-      case 'insert':
-        return `Inserting before line ${startLine} in ${name}`;
-      case 'delete':
-        return `Deleting lines ${startLine}-${endLine} in ${name}`;
-      default:
-        return `Editing ${name}`;
-    }
+    const name = basename(args.path);
+    const editsCount = args.edits.length;
+    const dryRunText = args.dryRun ? ' (preview)' : '';
+    return `Editing ${name} (${editsCount} edit${editsCount > 1 ? 's' : ''})${dryRunText}`;
   }
 
   public get schema() {
@@ -91,183 +96,502 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     return dedent`
       ### Overview
-      Applies modifications to files with surgical precision. Supports four operations: full replacement, line range replacement, insertion, and deletion. All operations are atomic - they either fully succeed or fail without partial changes.
+      Makes selective edits using advanced pattern matching and formatting. Searches for text patterns and replaces them with new content. Features line-based and multi-line content matching, whitespace normalization with indentation preservation, and preview mode.
+
+      ### Why Use Pattern Matching
+      - **No line numbers needed**: Find text by content, not by counting lines
+      - **More reliable**: Doesn't break when file changes elsewhere
+      - **Better for LLMs**: Natural way to specify "replace this with that"
+      - **Safer**: Always preview with dryRun first
+      - **Multiple edits**: Apply several changes in one call
 
       ### When to Use
-      - Creating new files (operation: "replace" on non-existent file)
-      - Modifying specific lines in source code
-      - Adding imports or new code sections
-      - Removing deprecated code blocks
-      - Any file modification where you need precise control
+      - Modifying specific functions or code blocks by content
+      - Replacing patterns across a file
+      - Updating imports, configuration values, or constants
+      - Making multiple related changes at once
+      - Adding text to the beginning, middle, or end of a file
+      - Creating new files from scratch
+      - Any edit where you know what text to find (or file is empty)
 
       ### When NOT to Use
-      - For bulk find-and-replace across multiple files → use shell with \`sed\` or custom script
-      - For reading files → use \`files_read\`
-      - For simple appending → can use shell with \`echo >> file\`
-
-      ### Operations
-
-      #### 1. \`replace\` - Replace Entire File
-      Replaces all content. Creates file if it doesn't exist.
-
-      Example:
-      \`\`\`json
-      {
-        "filePath": "/repo/src/new-file.ts",
-        "operation": "replace",
-        "content": "export const hello = 'world';"
-      }
-      \`\`\`
-
-      **Use for:**
-      - Creating new files
-      - Complete file rewrites
-      - Small files where full replacement is simpler
-
-      #### 2. \`replace_range\` - Replace Specific Lines
-      Replaces lines from startLine to endLine (inclusive) with new content.
-
-      Example:
-      \`\`\`json
-      {
-        "filePath": "/repo/src/app.ts",
-        "operation": "replace_range",
-        "startLine": 10,
-        "endLine": 15,
-        "content": "// New implementationfunction updated() {  return 'new';}"
-      }
-      \`\`\`
-
-      **Use for:**
-      - Updating function implementations
-      - Modifying code blocks
-      - Fixing bugs in specific sections
-
-      **Important:** Content should include appropriate newlines. The number of lines in content doesn't need to match the replaced range.
-
-      #### 3. \`insert\` - Insert Content at Line
-      Inserts new content BEFORE the specified startLine.
-
-      Example:
-      \`\`\`json
-      {
-        "filePath": "/repo/src/app.ts",
-        "operation": "insert",
-        "startLine": 1,
-        "content": "import { newDep } from 'new-package';"
-      }
-      \`\`\`
-
-      **Use for:**
-      - Adding imports at the top of files
-      - Inserting new functions or classes
-      - Adding comments or documentation
-
-      **Line numbers:**
-      - startLine: 1 → Inserts at the very beginning
-      - startLine: N → Inserts before line N (line N becomes line N + newLines)
-
-      #### 4. \`delete\` - Remove Lines
-      Removes lines from startLine to endLine (inclusive).
-
-      Example:
-      \`\`\`json
-      {
-        "filePath": "/repo/src/app.ts",
-        "operation": "delete",
-        "startLine": 20,
-        "endLine": 25
-      }
-      \`\`\`
-
-      **Use for:**
-      - Removing deprecated code
-      - Cleaning up unused imports
-      - Removing debug statements
+      - Deleting entire files → use \`files_delete\`
+      - When oldText appears multiple times and you only want to change one → be more specific with oldText
+      - For binary files → not supported
 
       ${parameterDocs}
 
-      ### Best Practices
+      ### How Pattern Matching Works
 
-      **1. Always read before modifying:**
-      1. files_read the file to see current content and line numbers
-      2. Identify exact lines to modify
-      3. files_apply_changes with precise line numbers
-      4. Optionally files_read again to verify
+      **1. Whitespace Normalization**
+      - Extra spaces/tabs are normalized for matching
+      - Indentation is detected and preserved in newText
+      - Leading/trailing whitespace is flexible
 
-      **2. Keep content format correct:**
-      - Include trailing newlines where appropriate
-      - Match the file's existing indentation style
-      - Preserve line endings (usually )
+      **2. Exact Substring Match**
+      - oldText must be a substring of file content (after normalization)
+      - Match is case-sensitive
+      - Must be unique in the file (will error if multiple matches)
 
-      **3. Make minimal changes:**
-      Instead of replacing 100 lines, replace just the 5 lines that need changing.
+      **3. Indentation Preservation**
+      - Tool detects indentation of matched text
+      - Applies same indentation to newText
+      - Works with tabs or spaces
 
-      **4. For new files, use replace:**
+      ### Best Practice: Always Use dryRun First
+
+      **Step 1: Preview with dryRun: true**
       \`\`\`json
       {
-        "filePath": "/repo/src/newFile.ts",
-        "operation": "replace",
-        "content": "// New file content"
+        "path": "/repo/src/utils.ts",
+        "edits": [
+          {
+            "oldText": "function oldName() {\\n  return 'old';\\n}",
+            "newText": "function newName() {\\n  return 'new';\\n}"
+          }
+        ],
+        "dryRun": true
+      }
+      \`\`\`
+
+      Review the diff output to confirm changes are correct.
+
+      **Step 2: Apply with dryRun: false**
+      If the preview looks good, run again with \`dryRun: false\` (or omit it):
+      \`\`\`json
+      {
+        "path": "/repo/src/utils.ts",
+        "edits": [
+          {
+            "oldText": "function oldName() {\\n  return 'old';\\n}",
+            "newText": "function newName() {\\n  return 'new';\\n}"
+          }
+        ]
+      }
+      \`\`\`
+
+      ### Examples
+
+      **Example 1: Simple function replacement**
+      \`\`\`json
+      {
+        "path": "/repo/src/calculator.ts",
+        "edits": [
+          {
+            "oldText": "function add(a, b) {\\n  return a + b;\\n}",
+            "newText": "function add(a: number, b: number): number {\\n  return a + b;\\n}"
+          }
+        ],
+        "dryRun": true
+      }
+      \`\`\`
+
+      **Example 2: Multiple edits at once**
+      \`\`\`json
+      {
+        "path": "/repo/src/config.ts",
+        "edits": [
+          {
+            "oldText": "const API_URL = 'http://localhost:3000'",
+            "newText": "const API_URL = 'https://api.production.com'"
+          },
+          {
+            "oldText": "const DEBUG = true",
+            "newText": "const DEBUG = false"
+          }
+        ]
+      }
+      \`\`\`
+
+      **Example 3: Replacing import statement**
+      \`\`\`json
+      {
+        "path": "/repo/src/components/Button.tsx",
+        "edits": [
+          {
+            "oldText": "import { OldButton } from './old-button'",
+            "newText": "import { NewButton } from './new-button'"
+          }
+        ]
+      }
+      \`\`\`
+
+      **Example 4: Using partial text for matching**
+      You don't need to include the entire function, just enough to uniquely identify it:
+      \`\`\`json
+      {
+        "path": "/repo/src/user.service.ts",
+        "edits": [
+          {
+            "oldText": "async getUserById(id: string) {\\n    return this.db.findOne({ id });",
+            "newText": "async getUserById(id: string) {\\n    return this.db.findOne({ id, active: true });"
+          }
+        ]
+      }
+      \`\`\`
+
+      **Example 5: Creating a new file (special case)**
+      To create a new file, provide empty oldText:
+      \`\`\`json
+      {
+        "path": "/repo/src/new-file.ts",
+        "edits": [
+          {
+            "oldText": "",
+            "newText": "export const hello = 'world';"
+          }
+        ]
+      }
+      \`\`\`
+
+      **Example 6: Adding text to the end of a file**
+      Read the file first, then include all current content in oldText:
+      \`\`\`json
+      {
+        "path": "/repo/src/utils.ts",
+        "edits": [
+          {
+            "oldText": "export function helper() {\\n  return true;\\n}",
+            "newText": "export function helper() {\\n  return true;\\n}\\n\\nexport function newHelper() {\\n  return false;\\n}"
+          }
+        ]
+      }
+      \`\`\`
+
+      **Example 7: Adding import to the beginning**
+      Read the file first, then prepend to existing content:
+      \`\`\`json
+      {
+        "path": "/repo/src/app.ts",
+        "edits": [
+          {
+            "oldText": "import { existing } from './existing';\\n\\nconst app = 'app';",
+            "newText": "import { existing } from './existing';\\nimport { newImport } from './new';\\n\\nconst app = 'app';"
+          }
+        ]
+      }
+      \`\`\`
+
+      **Example 8: Inserting in the middle of a file**
+      Find a unique marker and include surrounding context:
+      \`\`\`json
+      {
+        "path": "/repo/src/config.ts",
+        "edits": [
+          {
+            "oldText": "export const config = {\\n  api: 'http://localhost',\\n};",
+            "newText": "export const config = {\\n  api: 'http://localhost',\\n  timeout: 5000,\\n};"
+          }
+        ]
+      }
+      \`\`\`
+
+      **Example 9: Working with empty file**
+      For completely empty files, use empty oldText:
+      \`\`\`json
+      {
+        "path": "/repo/src/empty.ts",
+        "edits": [
+          {
+            "oldText": "",
+            "newText": "// First line of content\\nexport const data = 'value';"
+          }
+        ]
       }
       \`\`\`
 
       ### Output Format
-      Success:
+
+      **Dry Run Output:**
       \`\`\`json
       {
         "success": true,
-        "lineCount": 150
+        "appliedEdits": 0,
+        "totalEdits": 2,
+        "diff": "@@ -10,3 +10,3 @@\\n-const API_URL = 'localhost'\\n+const API_URL = 'production'\\n@@ -25,2 +25,2 @@\\n-const DEBUG = true\\n+const DEBUG = false"
       }
       \`\`\`
 
-      Error:
+      **Applied Output:**
+      \`\`\`json
+      {
+        "success": true,
+        "appliedEdits": 2,
+        "totalEdits": 2
+      }
+      \`\`\`
+
+      **Error Output:**
       \`\`\`json
       {
         "success": false,
-        "error": "startLine must be less than or equal to endLine"
-      }
-      \`\`\`
-
-      ### Common Patterns
-
-      **Adding an import:**
-      \`\`\`json
-      {
-        "filePath": "/repo/src/app.ts",
-        "operation": "insert",
-        "startLine": 1,
-        "content": "import { Something } from './something';"
-      }
-      \`\`\`
-
-      **Updating a function:**
-      First read lines 50-70, then:
-      \`\`\`json
-      {
-        "filePath": "/repo/src/utils.ts",
-        "operation": "replace_range",
-        "startLine": 50,
-        "endLine": 70,
-        "content": "function improvedFunction() {  // new implementation}"
-      }
-      \`\`\`
-
-      **Creating a new file:**
-      \`\`\`json
-      {
-        "filePath": "/repo/src/components/NewComponent.tsx",
-        "operation": "replace",
-        "content": "import React from 'react';export const NewComponent = () => {  return <div>Hello</div>;};"
+        "error": "Edit 0: Could not find unique match for oldText. Found 3 matches."
       }
       \`\`\`
 
       ### Error Handling
-      - Check that startLine <= endLine
-      - Verify the file exists for replace_range, insert, delete
-      - Ensure content is provided for operations that require it
-      - Use files_read to verify line numbers before modifying
+
+      **"Could not find match"**
+      - oldText doesn't exist in file
+      - Check file content with \`files_read\` first
+      - Verify text matches exactly (case-sensitive)
+
+      **"Found multiple matches"**
+      - oldText appears more than once in file
+      - Include more context in oldText to make it unique
+      - Add surrounding lines or more specific content
+
+      **"File not found"**
+      - Path is incorrect
+      - Use \`files_list\` to find correct path
+      - Check if file was moved or deleted
+
+      ### Adding Text Without Replacing
+
+      The tool supports three ways to add text:
+
+      **1. To a New/Empty File**
+      Use empty oldText:
+      \`\`\`json
+      {
+        "path": "/repo/new.ts",
+        "edits": [{ "oldText": "", "newText": "new content" }]
+      }
+      \`\`\`
+
+      **2. To the Beginning**
+      Read file first, then prepend to current content in newText:
+      \`\`\`json
+      {
+        "oldText": "current content",
+        "newText": "new line at top\\ncurrent content"
+      }
+      \`\`\`
+
+      **3. To the End**
+      Read file first, then append to current content in newText:
+      \`\`\`json
+      {
+        "oldText": "current content",
+        "newText": "current content\\nnew line at bottom"
+      }
+      \`\`\`
+
+      **4. In the Middle**
+      Find unique marker, include it in both oldText and newText with additions:
+      \`\`\`json
+      {
+        "oldText": "line before\\nline after",
+        "newText": "line before\\nNEW LINE HERE\\nline after"
+      }
+      \`\`\`
+
+      ### Tips for Success
+
+      1. **Read first**: Always use \`files_read\` to see current content before editing (unless creating new file)
+      2. **Preview always**: Use \`dryRun: true\` to verify changes before applying
+      3. **Be specific**: Include enough context in oldText to avoid multiple matches
+      4. **Mind whitespace**: Don't worry too much about exact spacing - normalization handles it
+      5. **Batch edits**: Multiple independent edits can be done in one call
+      6. **Check output**: Review diff in dry run to ensure changes are correct
+      7. **For additions**: Remember to read file first to get current content (except for new files)
     `;
+  }
+
+  private normalizeWhitespace(text: string): string {
+    return text
+      .split('\n')
+      .map((line) => line.trim())
+      .join('\n')
+      .trim();
+  }
+
+  private detectIndentation(line: string): string {
+    const match = line.match(/^(\s+)/);
+    return match && match[1] ? match[1] : '';
+  }
+
+  private applyIndentation(text: string, indentation: string): string {
+    if (!indentation) return text;
+    return text
+      .split('\n')
+      .map((line, index) => {
+        // Don't indent empty lines or first line if original wasn't indented
+        if (line.trim() === '' || (index === 0 && !text.startsWith('\n'))) {
+          return line;
+        }
+        return indentation + line;
+      })
+      .join('\n');
+  }
+
+  private findMatches(
+    fileContent: string,
+    edits: FilesApplyChangesToolEditSchemaType[],
+  ): { matches: EditMatch[]; errors: string[] } {
+    const lines = fileContent.split('\n');
+    const matches: EditMatch[] = [];
+    const errors: string[] = [];
+
+    for (let editIndex = 0; editIndex < edits.length; editIndex++) {
+      const edit = edits[editIndex];
+
+      if (!edit) {
+        continue;
+      }
+
+      // Special case: empty oldText means we're creating/replacing entire file
+      if (edit.oldText === '') {
+        continue;
+      }
+
+      const normalizedOldText = this.normalizeWhitespace(edit.oldText);
+      const searchLines = normalizedOldText.split('\n');
+      const searchLineCount = searchLines.length;
+
+      const foundMatches: EditMatch[] = [];
+
+      // Search through file for matches
+      for (
+        let lineIndex = 0;
+        lineIndex <= lines.length - searchLineCount;
+        lineIndex++
+      ) {
+        const candidateLines = lines.slice(
+          lineIndex,
+          lineIndex + searchLineCount,
+        );
+        const normalizedCandidate = this.normalizeWhitespace(
+          candidateLines.join('\n'),
+        );
+
+        if (normalizedCandidate === normalizedOldText) {
+          const lineAtIndex = lines[lineIndex];
+          const indentation = lineAtIndex
+            ? this.detectIndentation(lineAtIndex)
+            : '';
+          foundMatches.push({
+            editIndex,
+            startLine: lineIndex,
+            endLine: lineIndex + searchLineCount - 1,
+            matchedText: candidateLines.join('\n'),
+            indentation,
+          });
+        }
+      }
+
+      if (foundMatches.length === 0) {
+        errors.push(
+          `Edit ${editIndex}: Could not find match for oldText in file.`,
+        );
+      } else if (foundMatches.length > 1) {
+        errors.push(
+          `Edit ${editIndex}: Found ${foundMatches.length} matches for oldText. Please be more specific to match uniquely.`,
+        );
+      } else if (foundMatches[0]) {
+        matches.push(foundMatches[0]);
+      }
+    }
+
+    return { matches, errors };
+  }
+
+  private generateDiff(
+    originalLines: string[],
+    matches: EditMatch[],
+    edits: FilesApplyChangesToolEditSchemaType[],
+  ): string {
+    const diffParts: string[] = [];
+
+    for (const match of matches) {
+      const edit = edits[match.editIndex];
+      if (!edit || edit.newText === undefined) continue;
+
+      const contextBefore = 2;
+      const contextAfter = 2;
+
+      const startContext = Math.max(0, match.startLine - contextBefore);
+      const endContext = Math.min(
+        originalLines.length - 1,
+        match.endLine + contextAfter,
+      );
+
+      const newTextLines = (edit?.newText ?? '').split('\n').length;
+      diffParts.push(
+        `@@ -${match.startLine + 1},${match.endLine - match.startLine + 1} +${match.startLine + 1},${newTextLines} @@`,
+      );
+
+      // Context before
+      for (let i = startContext; i < match.startLine; i++) {
+        const line = originalLines[i];
+        if (line !== undefined) {
+          diffParts.push(` ${line}`);
+        }
+      }
+
+      // Old lines
+      for (let i = match.startLine; i <= match.endLine; i++) {
+        const line = originalLines[i];
+        if (line !== undefined) {
+          diffParts.push(`-${line}`);
+        }
+      }
+
+      // New lines
+      if (edit) {
+        const newTextWithIndent = this.applyIndentation(
+          edit.newText,
+          match.indentation,
+        );
+        for (const line of newTextWithIndent.split('\n')) {
+          diffParts.push(`+${line}`);
+        }
+      }
+
+      // Context after
+      for (let i = match.endLine + 1; i <= endContext; i++) {
+        const line = originalLines[i];
+        if (line !== undefined) {
+          diffParts.push(` ${line}`);
+        }
+      }
+    }
+
+    return diffParts.join('\n');
+  }
+
+  private applyEdits(
+    fileContent: string,
+    matches: EditMatch[],
+    edits: FilesApplyChangesToolEditSchemaType[],
+  ): string {
+    const lines = fileContent.split('\n');
+
+    // Sort matches by startLine in descending order to apply from bottom to top
+    // This prevents line number shifts from affecting subsequent edits
+    const sortedMatches = [...matches].sort(
+      (a, b) => b.startLine - a.startLine,
+    );
+
+    for (const match of sortedMatches) {
+      const edit = edits[match.editIndex];
+      if (!edit || edit.newText === undefined) continue;
+
+      const newTextWithIndent = this.applyIndentation(
+        edit.newText,
+        match.indentation,
+      );
+      const newLines = newTextWithIndent.split('\n');
+
+      // Replace lines from startLine to endLine with new lines
+      lines.splice(
+        match.startLine,
+        match.endLine - match.startLine + 1,
+        ...newLines,
+      );
+    }
+
+    return lines.join('\n');
   }
 
   public async invoke(
@@ -277,114 +601,130 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): Promise<ToolInvokeResult<FilesApplyChangesToolOutput>> {
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
-    if (
-      (args.operation === 'replace' ||
-        args.operation === 'replace_range' ||
-        args.operation === 'insert') &&
-      args.content === undefined
-    ) {
-      return {
-        output: {
-          error: `content is required for ${args.operation} operation`,
-          success: false,
-        },
-        messageMetadata,
-      };
-    }
 
-    if (
-      (args.operation === 'replace_range' ||
-        args.operation === 'insert' ||
-        args.operation === 'delete') &&
-      args.startLine === undefined
-    ) {
-      return {
-        output: {
-          error: `startLine is required for ${args.operation} operation`,
-          success: false,
-        },
-        messageMetadata,
-      };
-    }
+    // Special case: if all edits have empty oldText, we're creating a new file
+    const isNewFile = args.edits.every((edit) => edit.oldText === '');
 
-    if (
-      (args.operation === 'replace_range' || args.operation === 'delete') &&
-      args.endLine === undefined
-    ) {
-      return {
-        output: {
-          error: `endLine is required for ${args.operation} operation`,
-          success: false,
-        },
-        messageMetadata,
-      };
-    }
-
-    if (
-      args.startLine !== undefined &&
-      args.endLine !== undefined &&
-      args.startLine > args.endLine
-    ) {
-      return {
-        output: {
-          error: 'startLine must be less than or equal to endLine',
-          success: false,
-        },
-        messageMetadata,
-      };
-    }
-
-    const fullFilePath = args.filePath;
-    const parentDir = dirname(fullFilePath);
-    let cmd: string;
-
-    const contentBase64 =
-      args.content !== undefined
-        ? Buffer.from(args.content, 'utf8').toString('base64')
-        : '';
-
-    switch (args.operation) {
-      case 'replace': {
-        const tempFile = `${fullFilePath}.tmp.${Date.now()}`;
-        cmd = `mkdir -p "${parentDir}" && echo '${contentBase64}' | base64 -d > "${tempFile}" && mv "${tempFile}" "${fullFilePath}"`;
-        break;
-      }
-
-      case 'replace_range': {
-        const tempFile = `${fullFilePath}.tmp.${Date.now()}`;
-        const newContentFile = `${fullFilePath}.new.${Date.now()}`;
-        cmd = `echo '${contentBase64}' | base64 -d > "${newContentFile}" && awk -v start=${args.startLine} -v end=${args.endLine} -v newfile="${newContentFile}" 'NR==start{while((getline line < newfile) > 0) print line; close(newfile)} NR<start || NR>end' "${fullFilePath}" > "${tempFile}" && mv "${tempFile}" "${fullFilePath}" && rm -f "${newContentFile}"`;
-        break;
-      }
-
-      case 'insert': {
-        const tempFile = `${fullFilePath}.tmp.${Date.now()}`;
-        const newContentFile = `${fullFilePath}.new.${Date.now()}`;
-        if (args.startLine === 1) {
-          cmd = `echo '${contentBase64}' | base64 -d > "${newContentFile}" && cat "${newContentFile}" "${fullFilePath}" > "${tempFile}" && mv "${tempFile}" "${fullFilePath}" && rm -f "${newContentFile}"`;
-        } else {
-          const insertLine = args.startLine! - 1;
-          cmd = `echo '${contentBase64}' | base64 -d > "${newContentFile}" && sed -e "${insertLine}r ${newContentFile}" "${fullFilePath}" > "${tempFile}" && mv "${tempFile}" "${fullFilePath}" && rm -f "${newContentFile}"`;
-        }
-        break;
-      }
-
-      case 'delete': {
-        const tempFile = `${fullFilePath}.tmp.${Date.now()}`;
-        cmd = `sed '${args.startLine},${args.endLine}d' "${fullFilePath}" > "${tempFile}" && mv "${tempFile}" "${fullFilePath}"`;
-        break;
-      }
-
-      default:
+    if (isNewFile && args.edits.length === 1) {
+      // Creating new file
+      const firstEdit = args.edits[0];
+      if (!firstEdit) {
         return {
           output: {
-            error: `Unknown operation: ${args.operation}`,
             success: false,
+            error: 'No edits provided',
           },
+          messageMetadata,
         };
+      }
+      const newContent = firstEdit.newText;
+
+      if (args.dryRun) {
+        return {
+          output: {
+            success: true,
+            appliedEdits: 0,
+            totalEdits: 1,
+            diff: `New file:\n+${newContent.split('\n').join('\n+')}`,
+          },
+          messageMetadata,
+        };
+      }
+
+      // Use base64 encoding to safely handle special characters
+      const parentDir = dirname(args.path);
+      const contentBase64 = Buffer.from(newContent, 'utf8').toString('base64');
+      const tempFile = `${args.path}.tmp.${Date.now()}`;
+      const cmd = `mkdir -p "${parentDir}" && echo '${contentBase64}' | base64 -d > "${tempFile}" && mv "${tempFile}" "${args.path}"`;
+
+      const writeResult = await this.execCommand(
+        {
+          cmd,
+        },
+        config,
+        cfg,
+      );
+
+      if (writeResult.exitCode !== 0) {
+        return {
+          output: {
+            success: false,
+            error: writeResult.stderr || 'Failed to create file',
+          },
+          messageMetadata,
+        };
+      }
+
+      return {
+        output: {
+          success: true,
+          appliedEdits: 1,
+          totalEdits: 1,
+        },
+        messageMetadata,
+      };
     }
 
-    const res = await this.execCommand(
+    // Read the file
+    const readResult = await this.execCommand(
+      { cmd: `cat "${args.path}"` },
+      config,
+      cfg,
+    );
+
+    if (readResult.exitCode !== 0) {
+      return {
+        output: {
+          success: false,
+          error: readResult.stderr || 'Failed to read file',
+        },
+        messageMetadata,
+      };
+    }
+
+    const fileContent = readResult.stdout;
+
+    // Find all matches
+    const { matches, errors } = this.findMatches(fileContent, args.edits);
+
+    if (errors.length > 0) {
+      return {
+        output: {
+          success: false,
+          error: errors.join(' '),
+        },
+        messageMetadata,
+      };
+    }
+
+    // Generate diff
+    const originalLines = fileContent.split('\n');
+    const diff = this.generateDiff(originalLines, matches, args.edits);
+
+    // If dry run, return diff without applying
+    if (args.dryRun) {
+      return {
+        output: {
+          success: true,
+          appliedEdits: 0,
+          totalEdits: args.edits.length,
+          diff,
+        },
+        messageMetadata,
+      };
+    }
+
+    // Apply edits
+    const modifiedContent = this.applyEdits(fileContent, matches, args.edits);
+
+    // Write modified content back to file using base64 encoding
+    const contentBase64 = Buffer.from(modifiedContent, 'utf8').toString(
+      'base64',
+    );
+    const tempFile = `${args.path}.tmp.${Date.now()}`;
+    const cmd = `echo '${contentBase64}' | base64 -d > "${tempFile}" && mv "${tempFile}" "${args.path}"`;
+
+    const writeResult = await this.execCommand(
       {
         cmd,
       },
@@ -392,36 +732,22 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       cfg,
     );
 
-    if (res.exitCode !== 0) {
+    if (writeResult.exitCode !== 0) {
       return {
         output: {
-          error: res.stderr || res.stdout || 'Failed to apply changes',
           success: false,
+          error: writeResult.stderr || 'Failed to write file',
         },
         messageMetadata,
       };
     }
 
-    const countRes = await this.execCommand(
-      {
-        cmd: `wc -l < "${fullFilePath}"`,
-      },
-      config,
-      cfg,
-    );
-
-    const lineCount =
-      countRes.exitCode === 0
-        ? parseInt(countRes.stdout.trim(), 10) || 0
-        : undefined;
-
-    const response = {
-      success: true,
-      lineCount,
-    };
-
     return {
-      output: response,
+      output: {
+        success: true,
+        appliedEdits: matches.length,
+        totalEdits: args.edits.length,
+      },
       messageMetadata,
     };
   }

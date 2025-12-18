@@ -14,7 +14,17 @@ import {
 } from '../base-node.template';
 
 export const FilesToolTemplateSchema = z
-  .object({})
+  .object({
+    includeEditActions: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe(
+        'Whether to include edit actions (files_apply_changes, files_delete). If false, only read/search tools are included.',
+      )
+      .meta({ 'x-ui:show-on-node': true })
+      .meta({ 'x-ui:label': 'Edit mode' }),
+  })
   // Strip legacy/unknown fields so older configs remain valid.
   .strip();
 
@@ -105,6 +115,7 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
 
         return currentRuntimeNode.instance;
       },
+      includeEditActions: config.includeEditActions,
     });
   }
 }

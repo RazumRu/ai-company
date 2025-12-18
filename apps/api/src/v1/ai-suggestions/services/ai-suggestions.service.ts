@@ -239,9 +239,12 @@ export class AiSuggestionsService {
       : [
           'You rewrite agent system instructions.',
           'Use the current instructions as a base and apply the user request.',
-          'You can analyze connected tool capabilities and their usage guidelines. But dont duplicate Connected tools and Knowledge sections information, it will be automatically injected to instructions. So you can just refer to it if needed.',
+          'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
+          'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
+          'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
+          "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and Knowledge sections information, it will be automatically injected to instructions. So you can just refer to it if needed.",
           'Keep the result concise, actionable, and focused on how the agent should behave.',
-          'Return only the updated instructions text without extra commentary.',
+          'Return only the updated instructions text without extra commentary. No need to add information about Connected tools and Knowledge sections',
         ].join('\n');
     const message = isContinuation
       ? (payload.userRequest || '').trim()
@@ -347,12 +350,9 @@ export class AiSuggestionsService {
     userInput?: string;
   }): string {
     const threadStatusLine = `Thread status: ${data.thread.status}`;
-    const userInputSection = [
-      'User request:',
-      data.userInput && data.userInput.trim().length
-        ? data.userInput
-        : 'No user request provided.',
-    ];
+    const userInputSection = data.userInput
+      ? ['User request:', data.userInput.trim().length]
+      : null;
 
     const agentSection = data.agents.length
       ? data.agents
@@ -387,7 +387,7 @@ export class AiSuggestionsService {
     const statusBlock = wrapBlock(
       'information',
       'General information',
-      [threadStatusLine, ...userInputSection].join('\n\n'),
+      [threadStatusLine, ...(userInputSection || [])].join('\n\n'),
     );
     const agentsBlock = wrapBlock(
       'agents',

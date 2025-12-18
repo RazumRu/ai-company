@@ -92,9 +92,8 @@ describe('Files tools integration', () => {
 
     const { output: result } = await filesApplyChangesTool.invoke(
       {
-        filePath,
-        operation: 'replace',
-        content: SAMPLE_TS_CONTENT,
+        path: filePath,
+        edits: [{ oldText: '', newText: SAMPLE_TS_CONTENT }],
       },
       { runtime },
       RUNNABLE_CONFIG,
@@ -155,12 +154,22 @@ describe('Files tools integration', () => {
     async () => {
       const filePath = await writeSampleFile('workspace.ts');
 
+      // Read file first
+      const { output: initialRead } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
-          filePath,
-          operation: 'insert',
-          startLine: 1,
-          content: '// Integration header\n',
+          path: filePath,
+          edits: [
+            {
+              oldText: initialRead.content || '',
+              newText: '// Integration header\n' + (initialRead.content || ''),
+            },
+          ],
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -289,9 +298,8 @@ describe('Files tools integration', () => {
       // Create file in a custom directory
       const { output: applyRes } = await filesApplyChangesTool.invoke(
         {
-          filePath,
-          operation: 'replace',
-          content,
+          path: filePath,
+          edits: [{ oldText: '', newText: content }],
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -369,9 +377,8 @@ describe('Files tools integration', () => {
 
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
-          filePath,
-          operation: 'replace',
-          content,
+          path: filePath,
+          edits: [{ oldText: '', newText: content }],
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -403,6 +410,379 @@ describe('Files tools integration', () => {
 
       expect(listAfterDelete.error).toBeUndefined();
       expect(listAfterDelete.files?.includes(filePath)).toBe(false);
+    },
+  );
+
+  it(
+    'replaces text in a file using pattern matching',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const filePath = `${WORKSPACE_DIR}/replace-test.ts`;
+
+      // Create a file with initial content
+      const initialContent = `export function oldFunction() {\n  return 'old value';\n}\n\nexport const config = 'old';`;
+
+      const { output: createResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [{ oldText: '', newText: initialContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(createResult.success).toBe(true);
+
+      // Replace a specific function using pattern matching
+      const { output: replaceResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [
+            {
+              oldText: `export function oldFunction() {\n  return 'old value';\n}`,
+              newText: `export function newFunction() {\n  return 'new value';\n}`,
+            },
+          ],
+          dryRun: false,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(replaceResult.success).toBe(true);
+      expect(replaceResult.appliedEdits).toBe(1);
+
+      // Verify the replacement
+      const { output: readResult } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(readResult.content).toContain('newFunction');
+      expect(readResult.content).toContain("return 'new value'");
+      expect(readResult.content).not.toContain('oldFunction');
+      expect(readResult.content).toContain("export const config = 'old'"); // Other content unchanged
+    },
+  );
+
+  it(
+    'inserts text at the beginning of a file',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const filePath = `${WORKSPACE_DIR}/insert-beginning.ts`;
+
+      // Create a file with initial content
+      const initialContent = `export const data = 'value';\n\nfunction helper() {\n  return true;\n}`;
+
+      const { output: createResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [{ oldText: '', newText: initialContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(createResult.success).toBe(true);
+
+      // Read current content
+      const { output: readBefore } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Insert import at the beginning
+      const { output: insertResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [
+            {
+              oldText: readBefore.content || '',
+              newText: `import { newImport } from './new';\n\n${readBefore.content || ''}`,
+            },
+          ],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(insertResult.success).toBe(true);
+
+      // Verify the insertion
+      const { output: readAfter } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(readAfter.content).toContain("import { newImport } from './new'");
+      expect(readAfter.content?.indexOf('import')).toBe(0); // At the very beginning
+      expect(readAfter.content).toContain('export const data');
+    },
+  );
+
+  it(
+    'appends text to the end of a file',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const filePath = `${WORKSPACE_DIR}/append-end.ts`;
+
+      // Create a file with initial content
+      const initialContent = `export const first = 'value';\n\nexport function existing() {\n  return 'exists';\n}`;
+
+      const { output: createResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [{ oldText: '', newText: initialContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(createResult.success).toBe(true);
+
+      // Read current content
+      const { output: readBefore } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Append new function at the end
+      const { output: appendResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [
+            {
+              oldText: readBefore.content || '',
+              newText: `${readBefore.content || ''}\n\nexport function newFunction() {\n  return 'new';\n}`,
+            },
+          ],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(appendResult.success).toBe(true);
+
+      // Verify the append
+      const { output: readAfter } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(readAfter.content).toContain('export const first');
+      expect(readAfter.content).toContain('export function existing');
+      expect(readAfter.content).toContain('export function newFunction');
+
+      // Verify order - newFunction should be at the end
+      const lines = readAfter.content?.split('\n') || [];
+      const newFunctionIndex = lines.findIndex((l) =>
+        l.includes('newFunction'),
+      );
+      const existingIndex = lines.findIndex((l) => l.includes('existing'));
+      expect(newFunctionIndex).toBeGreaterThan(existingIndex);
+    },
+  );
+
+  it(
+    'inserts text in the middle of a file',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const filePath = `${WORKSPACE_DIR}/insert-middle.ts`;
+
+      // Create a file with initial content
+      const initialContent = `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`;
+
+      const { output: createResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [{ oldText: '', newText: initialContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(createResult.success).toBe(true);
+
+      // Insert a new property in the middle
+      const { output: insertResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [
+            {
+              oldText: `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`,
+              newText: `export const config = {\n  api: 'http://localhost',\n  timeout: 5000,\n  port: 3000,\n};`,
+            },
+          ],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(insertResult.success).toBe(true);
+
+      // Verify the insertion
+      const { output: readAfter } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(readAfter.content).toContain('api:');
+      expect(readAfter.content).toContain('timeout: 5000');
+      expect(readAfter.content).toContain('port:');
+
+      // Verify order - timeout should be between api and port
+      const lines = readAfter.content?.split('\n') || [];
+      const apiIndex = lines.findIndex((l) => l.includes('api:'));
+      const timeoutIndex = lines.findIndex((l) => l.includes('timeout:'));
+      const portIndex = lines.findIndex((l) => l.includes('port:'));
+
+      expect(timeoutIndex).toBeGreaterThan(apiIndex);
+      expect(portIndex).toBeGreaterThan(timeoutIndex);
+    },
+  );
+
+  it(
+    'works with empty files and adds content',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const filePath = `${WORKSPACE_DIR}/empty-file.ts`;
+
+      // Create an empty file
+      const { output: createResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [{ oldText: '', newText: '' }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(createResult.success).toBe(true);
+
+      // Verify it's empty
+      const { output: readEmpty } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(readEmpty.content).toBe('');
+
+      // Add content to the empty file
+      const { output: addResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [
+            {
+              oldText: '',
+              newText: `// First line\nexport const value = 'data';`,
+            },
+          ],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(addResult.success).toBe(true);
+
+      // Verify content was added
+      const { output: readAfter } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(readAfter.content).toContain('// First line');
+      expect(readAfter.content).toContain("export const value = 'data'");
+    },
+  );
+
+  it(
+    'uses dryRun to preview changes before applying',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const filePath = `${WORKSPACE_DIR}/dryrun-test.ts`;
+
+      // Create a file
+      const initialContent = `export function test() {\n  return 'original';\n}`;
+
+      const { output: createResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [{ oldText: '', newText: initialContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(createResult.success).toBe(true);
+
+      // Preview changes with dryRun
+      const { output: dryRunResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [
+            {
+              oldText: `export function test() {\n  return 'original';\n}`,
+              newText: `export function test() {\n  return 'modified';\n}`,
+            },
+          ],
+          dryRun: true,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(dryRunResult.success).toBe(true);
+      expect(dryRunResult.appliedEdits).toBe(0); // No edits applied in dry run
+      expect(dryRunResult.diff).toBeDefined();
+      expect(dryRunResult.diff).toContain("-  return 'original'");
+      expect(dryRunResult.diff).toContain("+  return 'modified'");
+
+      // Verify file wasn't changed
+      const { output: readAfterDryRun } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(readAfterDryRun.content).toContain('original');
+      expect(readAfterDryRun.content).not.toContain('modified');
+
+      // Now apply for real
+      const { output: applyResult } = await filesApplyChangesTool.invoke(
+        {
+          path: filePath,
+          edits: [
+            {
+              oldText: `export function test() {\n  return 'original';\n}`,
+              newText: `export function test() {\n  return 'modified';\n}`,
+            },
+          ],
+          dryRun: false,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(applyResult.success).toBe(true);
+      expect(applyResult.appliedEdits).toBe(1);
+
+      // Verify file was changed
+      const { output: readAfterApply } = await filesReadTool.invoke(
+        { filePath },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(readAfterApply.content).toContain('modified');
+      expect(readAfterApply.content).not.toContain('original');
     },
   );
 });

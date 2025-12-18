@@ -14,7 +14,13 @@ import { FilesReadTool } from './files-read.tool';
 import { FilesSearchTagsTool } from './files-search-tags.tool';
 import { FilesSearchTextTool } from './files-search-text.tool';
 
-export type FilesToolGroupConfig = FilesBaseToolConfig;
+export type FilesToolGroupConfig = FilesBaseToolConfig & {
+  /**
+   * Whether to include tools that can modify the filesystem (e.g. apply changes, delete files).
+   * Defaults to true.
+   */
+  includeEditActions?: boolean;
+};
 
 @Injectable()
 export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
@@ -34,15 +40,21 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     config: FilesToolGroupConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): BuiltAgentTool[] {
+    const includeEditActions = config.includeEditActions ?? true;
     const tools: BuiltAgentTool[] = [
       this.filesListTool.build(config, lgConfig),
       this.filesReadTool.build(config, lgConfig),
       this.filesSearchTextTool.build(config, lgConfig),
       this.filesBuildTagsTool.build(config, lgConfig),
       this.filesSearchTagsTool.build(config, lgConfig),
-      this.filesApplyChangesTool.build(config, lgConfig),
-      this.filesDeleteTool.build(config, lgConfig),
     ];
+
+    if (includeEditActions) {
+      tools.push(
+        this.filesApplyChangesTool.build(config, lgConfig),
+        this.filesDeleteTool.build(config, lgConfig),
+      );
+    }
 
     return tools;
   }

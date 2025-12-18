@@ -1,623 +1,389 @@
-import { ToolRunnableConfig } from '@langchain/core/tools';
-import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { BaseRuntime } from '../../../../runtime/services/base-runtime';
-import {
-  FilesApplyChangesTool,
-  FilesApplyChangesToolSchemaType,
-} from './files-apply-changes.tool';
+import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
 
 describe('FilesApplyChangesTool', () => {
   let tool: FilesApplyChangesTool;
-  let mockRuntime: BaseRuntime;
   let mockConfig: FilesBaseToolConfig;
 
-  beforeEach(async () => {
-    mockRuntime = {
-      exec: vi.fn(),
-      stop: vi.fn(),
-      start: vi.fn(),
-    } as unknown as BaseRuntime;
-
+  beforeEach(() => {
+    tool = new FilesApplyChangesTool();
     mockConfig = {
-      runtime: mockRuntime,
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [FilesApplyChangesTool],
-    }).compile();
-
-    tool = module.get<FilesApplyChangesTool>(FilesApplyChangesTool);
+      runtime: vi.fn(),
+    } as unknown as FilesBaseToolConfig;
   });
 
-  describe('properties', () => {
+  describe('schema', () => {
+    it('should have correct schema structure', () => {
+      const schema = tool.schema;
+      expect(schema).toBeDefined();
+
+      const parsed = schema.safeParse({
+        path: '/test/file.ts',
+        edits: [
+          {
+            oldText: 'old',
+            newText: 'new',
+          },
+        ],
+      });
+
+      expect(parsed.success).toBe(true);
+    });
+
+    it('should require at least one edit', () => {
+      const parsed = tool.schema.safeParse({
+        path: '/test/file.ts',
+        edits: [],
+      });
+
+      expect(parsed.success).toBe(false);
+    });
+
+    it('should default dryRun to false', () => {
+      const parsed = tool.schema.safeParse({
+        path: '/test/file.ts',
+        edits: [{ oldText: 'old', newText: 'new' }],
+      });
+
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.dryRun).toBe(false);
+      }
+    });
+  });
+
+  describe('name and description', () => {
     it('should have correct name', () => {
       expect(tool.name).toBe('files_apply_changes');
     });
 
-    it('should have correct description', () => {
-      expect(tool.description).toContain('Apply changes to a file');
-      expect(tool.description).toContain('replacing entire file');
+    it('should have meaningful description', () => {
+      expect(tool.description).toContain('pattern matching');
+      expect(tool.description).toContain('oldText');
+      expect(tool.description).toContain('newText');
     });
   });
 
-  describe('schema', () => {
-    it('should validate required filePath and operation fields', () => {
-      const validData = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace' as const,
-        content: 'new content',
-      };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+  describe('generateTitle', () => {
+    it('should generate title with file name and edit count', () => {
+      const title = tool['generateTitle'](
+        {
+          path: '/repo/src/utils.ts',
+          edits: [{ oldText: 'old', newText: 'new' }],
+          dryRun: false,
+        },
+        mockConfig,
+      );
+
+      expect(title).toBe('Editing utils.ts (1 edit)');
     });
 
-    it('should reject missing filePath field', () => {
-      const invalidData = {
-        operation: 'replace' as const,
-        content: 'new content',
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+    it('should pluralize edits correctly', () => {
+      const title = tool['generateTitle'](
+        {
+          path: '/repo/src/app.ts',
+          edits: [
+            { oldText: 'old1', newText: 'new1' },
+            { oldText: 'old2', newText: 'new2' },
+          ],
+          dryRun: false,
+        },
+        mockConfig,
+      );
+
+      expect(title).toBe('Editing app.ts (2 edits)');
     });
 
-    it('should reject missing operation field', () => {
-      const invalidData = {
-        filePath: '/path/to/file.ts',
-        content: 'new content',
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
+    it('should indicate preview mode when dryRun is true', () => {
+      const title = tool['generateTitle'](
+        {
+          path: '/repo/src/test.ts',
+          edits: [{ oldText: 'old', newText: 'new' }],
+          dryRun: true,
+        },
+        mockConfig,
+      );
 
-    it('should reject empty filePath', () => {
-      const invalidData = {
-        filePath: '',
-        operation: 'replace' as const,
-        content: 'new content',
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
-
-    it('should accept valid operation values', () => {
-      const operations = [
-        'replace',
-        'replace_range',
-        'insert',
-        'delete',
-      ] as const;
-      for (const op of operations) {
-        const validData = {
-          filePath: '/path/to/file.ts',
-          operation: op,
-          content: op !== 'delete' ? 'content' : undefined,
-          startLine: op !== 'replace' ? 1 : undefined,
-          endLine: op === 'replace_range' || op === 'delete' ? 5 : undefined,
-        };
-        expect(() => tool.schema.parse(validData)).not.toThrow();
-      }
-    });
-
-    it('should reject invalid operation value', () => {
-      const invalidData = {
-        filePath: '/path/to/file.ts',
-        operation: 'invalid' as any,
-        content: 'content',
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
-
-    it('should accept optional content field', () => {
-      const validData = {
-        filePath: '/path/to/file.ts',
-        operation: 'delete' as const,
-        startLine: 1,
-        endLine: 5,
-      };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
-    });
-
-    it('should accept optional startLine and endLine fields', () => {
-      const validData = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace' as const,
-        content: 'new content',
-      };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
-    });
-
-    it('should reject non-positive startLine', () => {
-      const invalidData = {
-        filePath: '/path/to/file.ts',
-        operation: 'insert' as const,
-        content: 'content',
-        startLine: 0,
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
-
-    it('should reject non-positive endLine', () => {
-      const invalidData = {
-        filePath: '/path/to/file.ts',
-        operation: 'delete' as const,
-        startLine: 1,
-        endLine: 0,
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
-
-    it('should reject non-integer startLine', () => {
-      const invalidData = {
-        filePath: '/path/to/file.ts',
-        operation: 'insert' as const,
-        content: 'content',
-        startLine: 1.5,
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
-
-    it('should reject non-integer endLine', () => {
-      const invalidData = {
-        filePath: '/path/to/file.ts',
-        operation: 'delete' as const,
-        startLine: 1,
-        endLine: 5.5,
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(title).toContain('(preview)');
     });
   });
 
-  describe('invoke', () => {
-    const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
-      configurable: {
-        thread_id: 'test-thread-123',
-      },
-    };
-
-    it('should replace entire file successfully', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace',
-        content: 'new file content\nline 2',
-      };
-
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '2\n',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.lineCount).toBe(2);
-      expect(result.error).toBeUndefined();
-      expect((tool as any).execCommand).toHaveBeenCalledTimes(2);
+  describe('normalizeWhitespace', () => {
+    it('should trim each line and overall', () => {
+      const result = tool['normalizeWhitespace']('  hello world  ');
+      expect(result).toBe('hello world');
     });
 
-    it('should create parent directories when replacing a file', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/new/path/nested/file.ts',
-        operation: 'replace',
-        content: 'content',
-      };
-
-      const execSpy = vi
-        .spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '1\n',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(execSpy).toHaveBeenCalledTimes(2);
-      const firstCallArgs = execSpy.mock.calls[0]?.[0] as
-        | { cmd?: string }
-        | undefined;
-      expect(firstCallArgs?.cmd).toContain('mkdir -p "/new/path/nested"');
+    it('should trim leading and trailing whitespace', () => {
+      const result = tool['normalizeWhitespace']('  hello  ');
+      expect(result).toBe('hello');
     });
 
-    it('should replace line range successfully', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace_range',
-        content: 'replaced content\n',
-        startLine: 2,
-        endLine: 4,
-      };
+    it('should normalize whitespace in multiline text', () => {
+      const result = tool['normalizeWhitespace']('  line1  \n  line2  ');
+      expect(result).toBe('line1\nline2');
+    });
+  });
 
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '10\n',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.lineCount).toBe(10);
-      expect(result.error).toBeUndefined();
+  describe('detectIndentation', () => {
+    it('should detect spaces indentation', () => {
+      const result = tool['detectIndentation']('    code');
+      expect(result).toBe('    ');
     });
 
-    it('should insert content at specific line successfully', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'insert',
-        content: 'inserted line\n',
-        startLine: 3,
-      };
-
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '5\n',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.lineCount).toBe(5);
-      expect(result.error).toBeUndefined();
+    it('should detect tabs indentation', () => {
+      const result = tool['detectIndentation']('\t\tcode');
+      expect(result).toBe('\t\t');
     });
 
-    it('should delete line range successfully', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'delete',
-        startLine: 2,
-        endLine: 4,
-      };
+    it('should return empty string for no indentation', () => {
+      const result = tool['detectIndentation']('code');
+      expect(result).toBe('');
+    });
+  });
 
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '7\n',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.lineCount).toBe(7);
-      expect(result.error).toBeUndefined();
+  describe('applyIndentation', () => {
+    it('should apply indentation to each line', () => {
+      const result = tool['applyIndentation']('line1\nline2\nline3', '  ');
+      expect(result).toBe('line1\n  line2\n  line3');
     });
 
-    it('should return error when content is missing for replace operation', async () => {
-      const args = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace' as const,
-      } as FilesApplyChangesToolSchemaType;
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('content is required for replace operation');
+    it('should not indent empty lines', () => {
+      const result = tool['applyIndentation']('line1\n\nline3', '  ');
+      expect(result).toBe('line1\n\n  line3');
     });
 
-    it('should return error when content is missing for replace_range operation', async () => {
-      const args = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace_range' as const,
-        startLine: 1,
-        endLine: 5,
-      } as FilesApplyChangesToolSchemaType;
+    it('should return original if no indentation', () => {
+      const result = tool['applyIndentation']('line1\nline2', '');
+      expect(result).toBe('line1\nline2');
+    });
+  });
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+  describe('findMatches', () => {
+    it('should find single match', () => {
+      const fileContent = 'line1\nline2\nline3';
+      const edits = [{ oldText: 'line2', newText: 'modified' }];
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        'content is required for replace_range operation',
-      );
+      const { matches, errors } = tool['findMatches'](fileContent, edits);
+
+      expect(matches).toHaveLength(1);
+      expect(errors).toHaveLength(0);
+      const match = matches[0]!;
+      expect(match.startLine).toBe(1);
+      expect(match.endLine).toBe(1);
     });
 
-    it('should return error when content is missing for insert operation', async () => {
-      const args = {
-        filePath: '/path/to/file.ts',
-        operation: 'insert' as const,
-        startLine: 1,
-      } as FilesApplyChangesToolSchemaType;
+    it('should find multiline match', () => {
+      const fileContent = 'line1\nline2\nline3\nline4';
+      const edits = [{ oldText: 'line2\nline3', newText: 'modified' }];
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+      const { matches, errors } = tool['findMatches'](fileContent, edits);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('content is required for insert operation');
+      expect(matches).toHaveLength(1);
+      expect(errors).toHaveLength(0);
+      const match = matches[0]!;
+      expect(match.startLine).toBe(1);
+      expect(match.endLine).toBe(2);
     });
 
-    it('should return error when startLine is missing for replace_range operation', async () => {
-      const args = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace_range' as const,
-        content: 'content',
-        endLine: 5,
-      } as FilesApplyChangesToolSchemaType;
+    it('should handle whitespace normalization', () => {
+      const fileContent = '  line1  \n  line2  ';
+      const edits = [{ oldText: 'line1\nline2', newText: 'modified' }];
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+      const { matches, errors } = tool['findMatches'](fileContent, edits);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        'startLine is required for replace_range operation',
-      );
+      expect(matches).toHaveLength(1);
+      expect(errors).toHaveLength(0);
     });
 
-    it('should return error when startLine is missing for insert operation', async () => {
-      const args = {
-        filePath: '/path/to/file.ts',
-        operation: 'insert' as const,
-        content: 'content',
-      } as FilesApplyChangesToolSchemaType;
+    it('should detect when no match found', () => {
+      const fileContent = 'line1\nline2';
+      const edits = [{ oldText: 'nonexistent', newText: 'modified' }];
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+      const { matches, errors } = tool['findMatches'](fileContent, edits);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('startLine is required for insert operation');
+      expect(matches).toHaveLength(0);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('Could not find match');
     });
 
-    it('should return error when startLine is missing for delete operation', async () => {
-      const args = {
-        filePath: '/path/to/file.ts',
-        operation: 'delete' as const,
-        endLine: 5,
-      } as FilesApplyChangesToolSchemaType;
+    it('should detect multiple matches', () => {
+      const fileContent = 'line1\nline1\nline1';
+      const edits = [{ oldText: 'line1', newText: 'modified' }];
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+      const { matches, errors } = tool['findMatches'](fileContent, edits);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('startLine is required for delete operation');
+      expect(matches).toHaveLength(0);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('Found 3 matches');
     });
 
-    it('should return error when endLine is missing for replace_range operation', async () => {
-      const args = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace_range' as const,
-        content: 'content',
-        startLine: 1,
-      } as FilesApplyChangesToolSchemaType;
+    it('should handle multiple edits', () => {
+      const fileContent = 'line1\nline2\nline3';
+      const edits = [
+        { oldText: 'line1', newText: 'modified1' },
+        { oldText: 'line3', newText: 'modified3' },
+      ];
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+      const { matches, errors } = tool['findMatches'](fileContent, edits);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        'endLine is required for replace_range operation',
-      );
+      expect(matches).toHaveLength(2);
+      expect(errors).toHaveLength(0);
     });
 
-    it('should return error when endLine is missing for delete operation', async () => {
-      const args = {
-        filePath: '/path/to/file.ts',
-        operation: 'delete' as const,
-        startLine: 1,
-      } as FilesApplyChangesToolSchemaType;
+    it('should skip edits with empty oldText', () => {
+      const fileContent = 'line1\nline2';
+      const edits = [{ oldText: '', newText: 'new file' }];
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+      const { matches, errors } = tool['findMatches'](fileContent, edits);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('endLine is required for delete operation');
+      expect(matches).toHaveLength(0);
+      expect(errors).toHaveLength(0);
+    });
+  });
+
+  describe('generateDiff', () => {
+    it('should generate basic diff', () => {
+      const originalLines = ['line1', 'line2', 'line3'];
+      const matches = [
+        {
+          editIndex: 0,
+          startLine: 1,
+          endLine: 1,
+          matchedText: 'line2',
+          indentation: '',
+        },
+      ];
+      const edits = [{ oldText: 'line2', newText: 'modified' }];
+
+      const diff = tool['generateDiff'](originalLines, matches, edits);
+
+      expect(diff).toContain('-line2');
+      expect(diff).toContain('+modified');
     });
 
-    it('should return error when startLine is greater than endLine', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace_range',
-        content: 'content',
-        startLine: 10,
-        endLine: 5,
-      };
+    it('should include context lines', () => {
+      const originalLines = ['line1', 'line2', 'line3', 'line4', 'line5'];
+      const matches = [
+        {
+          editIndex: 0,
+          startLine: 2,
+          endLine: 2,
+          matchedText: 'line3',
+          indentation: '',
+        },
+      ];
+      const edits = [{ oldText: 'line3', newText: 'modified' }];
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+      const diff = tool['generateDiff'](originalLines, matches, edits);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        'startLine must be less than or equal to endLine',
-      );
+      expect(diff).toContain(' line1');
+      expect(diff).toContain(' line2');
+      expect(diff).toContain('-line3');
+      expect(diff).toContain('+modified');
+      expect(diff).toContain(' line4');
+      expect(diff).toContain(' line5');
+    });
+  });
+
+  describe('applyEdits', () => {
+    it('should apply single edit', () => {
+      const fileContent = 'line1\nline2\nline3';
+      const matches = [
+        {
+          editIndex: 0,
+          startLine: 1,
+          endLine: 1,
+          matchedText: 'line2',
+          indentation: '',
+        },
+      ];
+      const edits = [{ oldText: 'line2', newText: 'modified' }];
+
+      const result = tool['applyEdits'](fileContent, matches, edits);
+
+      expect(result).toBe('line1\nmodified\nline3');
     });
 
-    it('should return error when command fails', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/nonexistent.ts',
-        operation: 'replace',
-        content: 'content',
-      };
+    it('should apply multiple edits from bottom to top', () => {
+      const fileContent = 'line1\nline2\nline3\nline4';
+      const matches = [
+        {
+          editIndex: 0,
+          startLine: 1,
+          endLine: 1,
+          matchedText: 'line2',
+          indentation: '',
+        },
+        {
+          editIndex: 1,
+          startLine: 3,
+          endLine: 3,
+          matchedText: 'line4',
+          indentation: '',
+        },
+      ];
+      const edits = [
+        { oldText: 'line2', newText: 'mod2' },
+        { oldText: 'line4', newText: 'mod4' },
+      ];
 
-      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'No such file or directory',
-        execPath: '',
-      });
+      const result = tool['applyEdits'](fileContent, matches, edits);
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('No such file or directory');
+      expect(result).toBe('line1\nmod2\nline3\nmod4');
     });
 
-    it('should return error message from stdout when stderr is empty', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace',
-        content: 'content',
-      };
+    it('should preserve indentation', () => {
+      const fileContent = 'line1\n  line2\nline3';
+      const matches = [
+        {
+          editIndex: 0,
+          startLine: 1,
+          endLine: 1,
+          matchedText: '  line2',
+          indentation: '  ',
+        },
+      ];
+      const edits = [{ oldText: 'line2', newText: 'mod2\nmod2line2' }];
 
-      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 1,
-        stdout: 'Error: Permission denied',
-        stderr: '',
-        execPath: '',
-      });
+      const result = tool['applyEdits'](fileContent, matches, edits);
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Error: Permission denied');
+      // First line of replacement gets the indentation of original,
+      // subsequent lines also get indented
+      expect(result).toBe('line1\nmod2\n  mod2line2\nline3');
     });
 
-    it('should return default error message when both stdout and stderr are empty', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace',
-        content: 'content',
-      };
+    it('should handle multiline replacements', () => {
+      const fileContent = 'line1\nline2\nline3\nline4';
+      const matches = [
+        {
+          editIndex: 0,
+          startLine: 1,
+          endLine: 2,
+          matchedText: 'line2\nline3',
+          indentation: '',
+        },
+      ];
+      const edits = [{ oldText: 'line2\nline3', newText: 'modified' }];
 
-      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 1,
-        stdout: '',
-        stderr: '',
-        execPath: '',
-      });
+      const result = tool['applyEdits'](fileContent, matches, edits);
 
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Failed to apply changes');
+      expect(result).toBe('line1\nmodified\nline4');
     });
+  });
 
-    it('should handle file path with spaces', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to my file.ts',
-        operation: 'replace',
-        content: 'content',
-      };
+  describe('getDetailedInstructions', () => {
+    it('should return detailed instructions', () => {
+      const instructions = tool.getDetailedInstructions(mockConfig);
 
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '1\n',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.error).toBeUndefined();
-    });
-
-    it('should handle content with special characters', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace',
-        content: 'content with $pecial chars & symbols\nnew line',
-      };
-
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '2\n',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.lineCount).toBe(2);
-    });
-
-    it('should handle empty content for replace operation', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace',
-        content: '',
-      };
-
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '0\n',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.lineCount).toBe(0);
-    });
-
-    it('should handle line count command failure gracefully', async () => {
-      const args: FilesApplyChangesToolSchemaType = {
-        filePath: '/path/to/file.ts',
-        operation: 'replace',
-        content: 'content',
-      };
-
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/test-thread-123',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 1,
-          stdout: '',
-          stderr: 'wc: error',
-          execPath: '',
-        });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.lineCount).toBeUndefined();
+      expect(instructions).toBeDefined();
+      expect(instructions).toContain('Overview');
+      expect(instructions).toContain('pattern matching');
+      expect(instructions).toContain('dryRun');
+      expect(instructions).toContain('oldText');
+      expect(instructions).toContain('newText');
     });
   });
 });

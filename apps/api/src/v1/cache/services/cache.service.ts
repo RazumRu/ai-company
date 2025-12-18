@@ -21,10 +21,6 @@ export class CacheService implements OnModuleDestroy {
     this.redis.on('error', (error) => {
       this.logger.error(error, 'Redis connection error');
     });
-
-    this.redis.on('connect', () => {
-      this.logger.debug('Redis connected');
-    });
   }
 
   async onModuleDestroy() {

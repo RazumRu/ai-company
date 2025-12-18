@@ -128,11 +128,6 @@ export class ThreadTokenUsageCacheService {
       // Store in Redis
       await this.cacheService.hmset(key, hashData);
       await this.cacheService.expire(key, this.TTL_SECONDS);
-
-      this.logger.debug('Stored thread token usage in Redis', {
-        threadId: externalThreadId,
-        nodeCount: Object.keys(byNode).length,
-      });
     } catch (error) {
       this.logger.error(
         error instanceof Error ? error : new Error(String(error)),
@@ -253,9 +248,6 @@ export class ThreadTokenUsageCacheService {
       // Delete from Redis
       if (tokenUsage) {
         await this.cacheService.del(key);
-        this.logger.debug('Flushed thread token usage from Redis', {
-          threadId: externalThreadId,
-        });
       }
 
       return tokenUsage;
@@ -279,9 +271,6 @@ export class ThreadTokenUsageCacheService {
 
     try {
       await this.cacheService.del(key);
-      this.logger.debug('Deleted thread token usage from Redis', {
-        threadId: externalThreadId,
-      });
     } catch (error) {
       this.logger.error(
         error instanceof Error ? error : new Error(String(error)),
@@ -351,12 +340,6 @@ export class ThreadTokenUsageCacheService {
           byNode,
         });
       }
-
-      this.logger.debug('Retrieved multiple thread token usages from Redis', {
-        requestedCount: externalThreadIds.length,
-        foundCount: Array.from(resultMap.values()).filter((v) => v !== null)
-          .length,
-      });
 
       return resultMap;
     } catch (error) {

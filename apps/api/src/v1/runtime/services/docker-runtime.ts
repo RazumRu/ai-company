@@ -13,6 +13,28 @@ import {
 } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
 
+const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+
+const appendTail = (prev: string, chunk: Buffer, max = MAX_OUTPUT_BYTES) => {
+  const s = chunk.toString('utf8');
+  if (!prev) return s.length <= max ? s : s.slice(s.length - max);
+  const combined = prev + s;
+  if (combined.length <= max) return combined;
+  return combined.slice(combined.length - max);
+};
+
+const appendTailBuf = (
+  prev: Buffer<ArrayBufferLike>,
+  chunk: Buffer<ArrayBufferLike>,
+  max = MAX_OUTPUT_BYTES,
+): Buffer<ArrayBufferLike> => {
+  const combined = (prev.length ? Buffer.concat([prev, chunk]) : chunk) as
+    | Buffer<ArrayBufferLike>
+    | Buffer<ArrayBuffer>;
+  if (combined.length <= max) return combined as Buffer<ArrayBufferLike>;
+  return combined.subarray(combined.length - max) as Buffer<ArrayBufferLike>;
+};
+
 type ShellSession = {
   id: string;
   exec: Docker.Exec;
@@ -24,6 +46,7 @@ type ShellSession = {
   queue: SessionCommand[];
   busy: boolean;
   workdir: string;
+  env?: string[];
 };
 
 type SessionCommand = {
@@ -110,6 +133,44 @@ export class DockerRuntime extends BaseRuntime {
     return docker.getContainer(list[0].Id);
   }
 
+  private dropSession(sessionId: string, _reason?: Error) {
+    const s = this.sessions.get(sessionId);
+    if (!s) return;
+
+    this.sessions.delete(sessionId);
+
+    s.inputStream.removeAllListeners();
+    s.stdoutStream.removeAllListeners();
+    s.stderrStream.removeAllListeners();
+
+    try {
+      s.inputStream.destroy();
+      s.stdoutStream.destroy();
+      s.stderrStream.destroy();
+    } catch {
+      // Ignore errors during cleanup
+    }
+  }
+
+  private async restartSession(
+    sessionId: string,
+    workdir: string,
+    env: string[] | undefined,
+    pending: SessionCommand[],
+    reason: Error,
+  ) {
+    this.dropSession(sessionId, reason);
+    try {
+      const s = await this.ensureSession(sessionId, workdir, env);
+      for (const c of pending) {
+        this.enqueueSessionCommand(s, c);
+      }
+      void this.processSessionQueue(s);
+    } catch {
+      //
+    }
+  }
+
   private async ensureImage(name: string) {
     const ref = name.includes(':') ? name : `${name}:latest`;
     try {
@@ -150,8 +211,12 @@ export class DockerRuntime extends BaseRuntime {
     env?: string[],
   ): Promise<ShellSession> {
     const existing = this.sessions.get(sessionId);
-    if (existing) {
+    if (existing && !existing.inputStream.destroyed) {
       return existing;
+    }
+
+    if (existing?.inputStream.destroyed) {
+      this.dropSession(sessionId, new Error('SESSION_STREAM_DESTROYED'));
     }
 
     if (!this.container) {
@@ -173,7 +238,6 @@ export class DockerRuntime extends BaseRuntime {
       stdin: true,
     })) as unknown as Duplex;
 
-    // Demux the stream into separate stdout/stderr streams
     const stdoutStream = new PassThrough();
     const stderrStream = new PassThrough();
     this.docker.modem.demuxStream(stream, stdoutStream, stderrStream);
@@ -189,7 +253,11 @@ export class DockerRuntime extends BaseRuntime {
       queue: [],
       busy: false,
       workdir,
+      env,
     };
+
+    stdoutStream.on('data', () => undefined);
+    stderrStream.on('data', () => undefined);
 
     const cleanup = () => {
       this.sessions.delete(sessionId);
@@ -223,103 +291,133 @@ export class DockerRuntime extends BaseRuntime {
 
     session.busy = true;
 
-    const marker = randomUUID();
-    const endToken = `__AI_END_${marker}__`;
-    const stderrEndToken = `__AI_END_ERR_${marker}__`;
-    const wrappedScript = [
-      next.script,
-      `printf "\\n${endToken}:%s\\n" $?`,
-      `printf "\\n${stderrEndToken}\\n" 1>&2`,
-    ].join('; ');
+    try {
+      const marker = randomUUID();
+      const endToken = `__AI_END_${marker}__`;
+      const stderrEndToken = `__AI_END_ERR_${marker}__`;
+      const wrappedScript = [
+        next.script,
+        `printf "\\n${endToken}:%s\\n" $?`,
+        `printf "\\n${stderrEndToken}\\n" 1>&2`,
+      ].join('; ');
 
-    // Reset buffers for this command
-    let stdoutBuffer = '';
-    let stderrBuffer = '';
-    let finished = false;
-    let tailTimer: NodeJS.Timeout | null = null;
-    let abortListener: (() => void) | null = null;
+      let stdoutBuffer = '';
+      let stderrBuffer = '';
+      let finished = false;
+      let tailTimer: NodeJS.Timeout | null = null;
+      let abortListener: (() => void) | null = null;
+      let timeoutTimer: NodeJS.Timeout | null = null;
+      let closeListener: (() => void) | null = null;
 
-    const resetTailTimer = () => {
-      if (tailTimer) {
-        clearTimeout(tailTimer);
-      }
+      let stdoutDone = false;
+      let stderrDone = false;
+      let exitCode: number | null = null;
+      let stdoutContent: string | null = null;
 
-      if (next.tailTimeoutMs && next.tailTimeoutMs > 0) {
-        tailTimer = setTimeout(() => {
-          if (finished) return;
-          cleanupListeners();
-          finished = true;
-          next.resolve({
-            exitCode: 124,
-            stdout: stdoutBuffer,
-            stderr: stderrBuffer || 'Process timed out - no logs received',
-            fail: true,
-            execPath: next.workdir,
-            timeout: next.tailTimeoutMs,
-          });
-          session.busy = false;
-          void this.processSessionQueue(session);
-        }, next.tailTimeoutMs).unref();
-      }
-    };
+      const sid = session.id;
+      const sEnv = session.env;
 
-    let stdoutDone = false;
-    let stderrDone = false;
-    let exitCode: number | null = null;
-    let stdoutContent: string | null = null;
+      const cleanupListeners = () => {
+        session.stdoutStream.off('data', onStdoutData);
+        session.stderrStream.off('data', onStderrData);
+        session.inputStream.off('error', onError);
+        if (closeListener) {
+          session.inputStream.off('close', closeListener);
+          session.inputStream.off('end', closeListener);
+          closeListener = null;
+        }
+        if (abortListener) {
+          abortListener();
+          abortListener = null;
+        }
+        if (timeoutTimer) {
+          clearTimeout(timeoutTimer);
+          timeoutTimer = null;
+        }
+        if (tailTimer) {
+          clearTimeout(tailTimer);
+          tailTimer = null;
+        }
+      };
 
-    const maybeResolve = () => {
-      if (!stdoutDone || !stderrDone) return;
-      if (finished) return;
-      cleanupListeners();
-      finished = true;
-      next.resolve({
-        exitCode: exitCode ?? 1,
-        stdout: stdoutContent ?? '',
-        stderr: stderrBuffer,
-        fail: (exitCode ?? 1) !== 0,
-        execPath: next.workdir,
-      });
-      session.busy = false;
-      void this.processSessionQueue(session);
-    };
+      const finishWithRestart = async (
+        res: RuntimeExecResult,
+        reason: Error,
+      ) => {
+        if (finished) return;
+        finished = true;
+        cleanupListeners();
+        const pending = session.queue.splice(0);
+        session.busy = false;
+        await this.restartSession(sid, next.workdir, sEnv, pending, reason);
+        next.resolve(res);
+      };
 
-    const onStdoutData = (chunk: Buffer) => {
-      resetTailTimer();
-      stdoutBuffer += chunk.toString('utf8');
-      const endTokenWithColon = `${endToken}:`;
-      const endIdx = stdoutBuffer.indexOf(endTokenWithColon);
+      const maybeResolve = () => {
+        if (!stdoutDone || !stderrDone) return;
+        if (finished) return;
+        finished = true;
+        cleanupListeners();
+        next.resolve({
+          exitCode: exitCode ?? 1,
+          stdout: stdoutContent ?? '',
+          stderr: stderrBuffer,
+          fail: (exitCode ?? 1) !== 0,
+          execPath: next.workdir,
+        });
+        session.busy = false;
+        void this.processSessionQueue(session);
+      };
 
-      if (endIdx === -1) {
-        return;
-      }
+      const resetTailTimer = () => {
+        if (tailTimer) clearTimeout(tailTimer);
+        if (next.tailTimeoutMs && next.tailTimeoutMs > 0) {
+          tailTimer = setTimeout(() => {
+            void finishWithRestart(
+              {
+                exitCode: 124,
+                stdout: stdoutBuffer,
+                stderr: stderrBuffer || 'Process timed out - no logs received',
+                fail: true,
+                execPath: next.workdir,
+                timeout: next.tailTimeoutMs,
+              },
+              new Error('SESSION_TAIL_TIMEOUT'),
+            );
+          }, next.tailTimeoutMs).unref();
+        }
+      };
 
-      const exitStart = endIdx + endTokenWithColon.length;
-      const exitLineEnd = stdoutBuffer.indexOf('\n', exitStart);
-      const exitData =
-        exitLineEnd === -1
-          ? stdoutBuffer.slice(exitStart)
-          : stdoutBuffer.slice(exitStart, exitLineEnd);
-      const parsed = Number.parseInt(exitData.trim() || '0', 10);
-      exitCode = Number.isNaN(parsed) ? 1 : parsed;
+      const onStdoutData = (chunk: Buffer) => {
+        resetTailTimer();
+        stdoutBuffer = appendTail(stdoutBuffer, chunk);
+        const endTokenWithColon = `${endToken}:`;
+        const endIdx = stdoutBuffer.indexOf(endTokenWithColon);
+        if (endIdx === -1) return;
 
-      // Get stdout content up to the end marker (excluding trailing newline before marker)
-      stdoutContent = stdoutBuffer.slice(0, endIdx);
-      if (stdoutContent.endsWith('\n')) {
-        stdoutContent = stdoutContent.slice(0, -1);
-      }
+        const exitStart = endIdx + endTokenWithColon.length;
+        const exitLineEnd = stdoutBuffer.indexOf('\n', exitStart);
+        const exitData =
+          exitLineEnd === -1
+            ? stdoutBuffer.slice(exitStart)
+            : stdoutBuffer.slice(exitStart, exitLineEnd);
+        const parsed = Number.parseInt(exitData.trim() || '0', 10);
+        exitCode = Number.isNaN(parsed) ? 1 : parsed;
 
-      stdoutDone = true;
-      maybeResolve();
-    };
+        stdoutContent = stdoutBuffer.slice(0, endIdx);
+        if (stdoutContent.endsWith('\n')) {
+          stdoutContent = stdoutContent.slice(0, -1);
+        }
 
-    const onStderrData = (chunk: Buffer) => {
-      resetTailTimer();
-      stderrBuffer += chunk.toString('utf8');
+        stdoutDone = true;
+        maybeResolve();
+      };
 
-      const idx = stderrBuffer.indexOf(stderrEndToken);
-      if (idx !== -1) {
-        // Strip the stderr end marker and anything after it
+      const onStderrData = (chunk: Buffer) => {
+        resetTailTimer();
+        stderrBuffer = appendTail(stderrBuffer, chunk);
+        const idx = stderrBuffer.indexOf(stderrEndToken);
+        if (idx === -1) return;
         let cleaned = stderrBuffer.slice(0, idx);
         if (cleaned.endsWith('\n')) {
           cleaned = cleaned.slice(0, -1);
@@ -327,114 +425,90 @@ export class DockerRuntime extends BaseRuntime {
         stderrBuffer = cleaned;
         stderrDone = true;
         maybeResolve();
-      }
-    };
+      };
 
-    const onError = (err: Error) => {
-      if (finished) return;
-      cleanupListeners();
-      next.reject(err);
-      session.busy = false;
-      void this.processSessionQueue(session);
-    };
+      const onError = (err: Error) => {
+        if (finished) return;
+        void finishWithRestart(
+          {
+            exitCode: 124,
+            stdout: stdoutBuffer,
+            stderr: stderrBuffer || err.message,
+            fail: true,
+            execPath: next.workdir,
+          },
+          err,
+        );
+      };
 
-    const cleanupListeners = () => {
-      session.stdoutStream.off('data', onStdoutData);
-      session.stderrStream.off('data', onStderrData);
-      session.inputStream.off('error', onError);
-      if (abortListener) {
-        abortListener();
-        abortListener = null;
-      }
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      if (tailTimer) {
-        clearTimeout(tailTimer);
-      }
-    };
+      session.stdoutStream.on('data', onStdoutData);
+      session.stderrStream.on('data', onStderrData);
+      session.inputStream.on('error', onError);
 
-    const timeout =
-      next.timeoutMs && next.timeoutMs > 0
-        ? setTimeout(() => {
-            if (finished) return;
-            cleanupListeners();
-            finished = true;
-            next.resolve({
+      closeListener = () => onError(new Error('SESSION_CLOSED'));
+      session.inputStream.on('close', closeListener);
+      session.inputStream.on('end', closeListener);
+
+      if (next.timeoutMs && next.timeoutMs > 0) {
+        timeoutTimer = setTimeout(() => {
+          void finishWithRestart(
+            {
               exitCode: 124,
               stdout: stdoutBuffer,
               stderr: stderrBuffer || 'Process timed out',
               fail: true,
               execPath: next.workdir,
               timeout: next.timeoutMs,
-            });
-            session.busy = false;
-            void this.processSessionQueue(session);
-          }, next.timeoutMs).unref()
-        : null;
-
-    session.stdoutStream.on('data', onStdoutData);
-    session.stderrStream.on('data', onStderrData);
-    session.inputStream.on('error', onError);
-    resetTailTimer();
-
-    const abortNow = () => {
-      if (finished) return;
-      cleanupListeners();
-      finished = true;
-
-      // Best effort: interrupt and drop the session so we don't hang on a command
-      try {
-        session.inputStream.write('\u0003');
-      } catch {
-        //
-      }
-      try {
-        session.inputStream.destroy(new Error('ABORTED'));
-      } catch {
-        //
-      }
-      try {
-        this.sessions.delete(session.id);
-      } catch {
-        //
+            },
+            new Error('SESSION_TIMEOUT'),
+          );
+        }, next.timeoutMs).unref();
       }
 
-      next.resolve({
-        exitCode: 124,
-        stdout: stdoutBuffer,
-        stderr: stderrBuffer || 'Aborted',
-        fail: true,
-        execPath: next.workdir,
-      });
-      session.busy = false;
-      void this.processSessionQueue(session);
-    };
+      resetTailTimer();
 
-    if (next.signal) {
-      if (next.signal.aborted) {
-        abortNow();
-        return;
-      }
-
-      const onAbort = () => abortNow();
-      next.signal.addEventListener('abort', onAbort, { once: true });
-      abortListener = () => {
-        try {
-          next.signal?.removeEventListener('abort', onAbort);
-        } catch {
-          //
-        }
+      const abortNow = () => {
+        void finishWithRestart(
+          {
+            exitCode: 124,
+            stdout: stdoutBuffer,
+            stderr: stderrBuffer || 'Aborted',
+            fail: true,
+            execPath: next.workdir,
+          },
+          new Error('ABORTED'),
+        );
       };
-    }
 
-    try {
+      if (next.signal) {
+        if (next.signal.aborted) {
+          abortNow();
+          return;
+        }
+
+        const onAbort = () => abortNow();
+        next.signal.addEventListener('abort', onAbort, { once: true });
+        abortListener = () => {
+          try {
+            next.signal?.removeEventListener('abort', onAbort);
+          } catch {
+            //
+          }
+        };
+      }
+
       session.inputStream.write(`${wrappedScript}\n`);
     } catch (error) {
-      cleanupListeners();
       session.busy = false;
+      const pending = session.queue.splice(0);
       next.reject(error as Error);
-      void this.processSessionQueue(session);
+      void this.restartSession(
+        session.id,
+        next.workdir,
+        session.env,
+        pending,
+        error as Error,
+      );
     }
   }
 
@@ -915,11 +989,15 @@ export class DockerRuntime extends BaseRuntime {
 
     const stdoutStream = new PassThrough();
     const stderrStream = new PassThrough();
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
+    let stdoutBuf = Buffer.alloc(0) as Buffer<ArrayBufferLike>;
+    let stderrBuf = Buffer.alloc(0) as Buffer<ArrayBufferLike>;
 
-    stdoutStream.on('data', (c) => stdoutChunks.push(Buffer.from(c)));
-    stderrStream.on('data', (c) => stderrChunks.push(Buffer.from(c)));
+    stdoutStream.on('data', (c: Buffer) => {
+      stdoutBuf = appendTailBuf(stdoutBuf, c as Buffer<ArrayBufferLike>);
+    });
+    stderrStream.on('data', (c: Buffer) => {
+      stderrBuf = appendTailBuf(stderrBuf, c as Buffer<ArrayBufferLike>);
+    });
 
     const execStream = await ex.start({ hijack: true, stdin: false });
     this.docker.modem.demuxStream(execStream, stdoutStream, stderrStream);
@@ -1000,8 +1078,8 @@ export class DockerRuntime extends BaseRuntime {
 
       const info = await ex.inspect();
       const exitCode = timedOut || tailTimedOut ? 124 : info.ExitCode || 0;
-      const stdout = Buffer.concat(stdoutChunks).toString('utf8');
-      const stderr = Buffer.concat(stderrChunks).toString('utf8');
+      const stdout = stdoutBuf.toString('utf8');
+      const stderr = stderrBuf.toString('utf8');
 
       const result: RuntimeExecResult = {
         exitCode,
@@ -1041,10 +1119,6 @@ export class DockerRuntime extends BaseRuntime {
       ? params.cmd.join(' && ')
       : params.cmd;
 
-    // Don't add any cd prefix - the session shell maintains its own cwd.
-    // Tools that need a specific directory (like files_list with dir parameter)
-    // already wrap their commands in a subshell like (cd "$dir" && command).
-    // This allows user `cd` commands to persist across session calls.
     const script = `${envPrefix}${userCmd || ':'}`;
 
     return await new Promise<RuntimeExecResult>((resolve, reject) => {

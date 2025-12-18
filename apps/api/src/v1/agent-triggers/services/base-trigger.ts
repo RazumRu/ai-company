@@ -117,17 +117,8 @@ export abstract class BaseTrigger<TConfig = unknown, TPayload = unknown> {
       );
     }
 
-    this.logger?.debug('trigger.handle-event', {
-      triggerId: event.triggerId,
-      status: this.status,
-    });
-
     // Convert payload to human messages
     const messages = this.convertPayloadToMessages(event.payload);
-
-    this.logger?.debug('trigger.invoke', {
-      messageCount: messages.length,
-    });
 
     // Invoke the agent
     const result = await this.invokeAgent(messages, config);
