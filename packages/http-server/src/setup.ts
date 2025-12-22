@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import {
   AppBootstrapperConfigService,
+  BaseLogger,
   DefaultLogger,
   IAppBootstrapperExtension,
   Logger,
@@ -170,8 +171,11 @@ export const setupMiddlewares = (
   fastifyInstance.addHook('preHandler', async (req) => {
     const contextId = ContextIdFactory.create();
     app.registerRequestByContextId(req, contextId);
-    const logger = await app.resolve(Logger, contextId);
-    const { method, originalUrl } = req;
+    const logger = await app.resolve<BaseLogger>(Logger, contextId);
+    const { method, originalUrl } = req as {
+      method: string;
+      originalUrl: string;
+    };
 
     logger.log(`Request ${method}: ${originalUrl}`);
   });

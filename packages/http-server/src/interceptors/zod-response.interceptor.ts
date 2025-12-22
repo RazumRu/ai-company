@@ -24,11 +24,10 @@ export class ZodResponseInterceptor implements NestInterceptor {
   constructor(private readonly reflector: Reflector) {}
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const meta =
-      this.reflector.getAllAndOverride(DECORATORS.API_RESPONSE, [
-        ctx.getHandler(),
-        ctx.getClass(),
-      ]) || {};
+    const meta = (this.reflector.getAllAndOverride(DECORATORS.API_RESPONSE, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]) || {}) as Record<string, { type?: MaybeZodDto; isArray?: boolean }>;
 
     const resp = meta['200'] || meta['201'] || meta['default'];
     const dto = resp?.type as MaybeZodDto | undefined;

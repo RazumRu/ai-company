@@ -1,17 +1,17 @@
-import { Transform } from 'class-transformer';
+import { Transform, TransformFnParams } from 'class-transformer';
 import { isNumberString } from 'class-validator';
 import { isArray, isNumber, isString } from 'lodash';
 
 export const TransformQueryArray = (type?: (...args: unknown[]) => unknown) => {
   return function (target: object, propertyKey: string | symbol) {
-    Transform((params) => {
-      let val = params.obj[params.key];
+    Transform(({ value }: TransformFnParams) => {
+      let val = value as unknown;
 
       if (isString(val)) {
         val = val.split(',');
       }
 
-      return val?.map((v: unknown) => (type ? type(v) : v));
+      return (val as unknown[])?.map((v: unknown) => (type ? type(v) : v));
     })(target, propertyKey);
   };
 };
@@ -38,28 +38,31 @@ export const TransformEnum = <T extends { [key: string]: unknown }>(
   options: TransformEnumOptions<T>,
 ) => {
   return function (target: object, propertyKey: string | symbol) {
-    Transform((params) => {
-      let val = params.obj[params.key];
+    Transform(({ value }: TransformFnParams) => {
+      let val = value as unknown;
 
       if (!isArray(val)) {
         val = [val];
       }
 
-      for (const i in val) {
-        if (options.type === 'number' && !isNumber(val[i])) {
-          if (isNumberString(val[i])) {
-            val[i] = Number(val[i]);
+      const valArray = val as unknown[];
+      for (const i in valArray) {
+        if (options.type === 'number' && !isNumber(valArray[i])) {
+          if (isNumberString(valArray[i])) {
+            valArray[i] = Number(valArray[i]);
           } else {
-            val[i] = options.enum[val[i]];
+            const key = String(valArray[i]);
+            valArray[i] = options.enum[key];
           }
         }
 
-        if (options.type === 'string' && !isString(val[i])) {
-          val[i] = options.enum[val[i]];
+        if (options.type === 'string' && !isString(valArray[i])) {
+          const key = String(valArray[i]);
+          valArray[i] = options.enum[key];
         }
       }
 
-      return options.isArray ? val : val[0];
+      return options.isArray ? valArray : valArray[0];
     })(target, propertyKey);
   };
 };

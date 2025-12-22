@@ -27,7 +27,7 @@
   },
   "scripts": {
     "lint:fix": "pnpm run lint --fix",
-    "lint": "pnpm eslint ./src/**",
+    "lint": "pnpm eslint \"./src/**/*.ts\"",
     "build": "tsc -p tsconfig.build.json",
     "prebuild": "rm -rf ./dist || true"
   },

@@ -22,9 +22,9 @@ export function IsRequiredIf(
       },
       validator: {
         validate(value: unknown, args: ValidationArguments) {
-          const [cb] = args.constraints;
+          const [callback] = args.constraints as [(object: unknown) => boolean];
 
-          if (cb(args.object) && isUndefined(value)) {
+          if (callback(args.object) && isUndefined(value)) {
             return false;
           }
 

@@ -224,7 +224,8 @@ export abstract class BaseDao<
       .returning('*')
       .execute();
 
-    return (result.raw[0] as T) || null;
+    const raw = result.raw as unknown[];
+    return (raw[0] as T) || null;
   }
 
   public async updateById(
@@ -260,7 +261,8 @@ export abstract class BaseDao<
       .returning('*')
       .execute();
 
-    return (result.raw[0] as T) || null;
+    const raw = result.raw as unknown[];
+    return (raw[0] as T) || null;
   }
 
   public async getById(id: K, entityManager?: EntityManager): Promise<T | null>;
@@ -291,8 +293,8 @@ export abstract class BaseDao<
     }
 
     if ((<AdditionalParams>params)?.rawData) {
-      const res = await builder.getRawOne();
-      return res ? removeKeysPrefix(this.alias, res) : null;
+      const res = (await builder.getRawOne()) as Record<string, unknown> | null;
+      return res ? (removeKeysPrefix(this.alias, res) as unknown as T) : null;
     } else {
       return builder.getOne();
     }
@@ -349,9 +351,9 @@ export abstract class BaseDao<
     }
 
     if ((<AdditionalParams>params)?.rawData) {
-      const res = await builder.getRawOne();
+      const res = (await builder.getRawOne()) as Record<string, unknown> | null;
 
-      return res ? removeKeysPrefix(this.alias, res) : null;
+      return res ? (removeKeysPrefix(this.alias, res) as unknown as T) : null;
     } else {
       return builder.getOne();
     }

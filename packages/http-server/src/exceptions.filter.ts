@@ -9,7 +9,8 @@ import {
   ContextIdFactory,
   HttpAdapterHost,
 } from '@nestjs/core';
-import { Logger, SentryService } from '@packages/common';
+import { BaseLogger, Logger, SentryService } from '@packages/common';
+import { FastifyRequest } from 'fastify';
 
 import { RequestContextService } from './context';
 import { ExceptionHandler } from './exception-handler';
@@ -25,16 +26,18 @@ export class ExceptionsFilter extends BaseExceptionFilter {
   async catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const contextId = ContextIdFactory.create();
-    const response = ctx.getResponse();
-    const request = ctx.getRequest();
+    const response = ctx.getResponse() as {
+      status: (code: number) => { send: (data: unknown) => void };
+    };
+    const request = ctx.getRequest<FastifyRequest & FastifyRequest['raw']>();
 
     this.moduleRef.registerRequestByContextId(request, contextId);
 
-    const sentryService = await this.moduleRef.resolve(
+    const sentryService = await this.moduleRef.resolve<SentryService>(
       SentryService,
       contextId,
     );
-    const logger = await this.moduleRef.resolve(Logger, contextId);
+    const logger = await this.moduleRef.resolve<BaseLogger>(Logger, contextId);
 
     const exceptionHandler = new ExceptionHandler(
       new RequestContextService(request),
