@@ -164,7 +164,10 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   }
 
   public get schema() {
-    return ShellToolSchema;
+    return z.toJSONSchema(ShellToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   public async invoke(
@@ -183,7 +186,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     // Merge config env with provided env (provided env takes precedence)
     const mergedEnv = { ...configEnv, ...providedEnv };
 
-    // Extract purpose and maxOutputLength from data before passing to runtime.exec
+    // Extract non-runtime fields from data before passing to runtime.exec
     const { purpose: _purpose, maxOutputLength, ...execData } = data;
 
     // Trim output to last N characters if it exceeds maxOutputLength
@@ -193,6 +196,8 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       }
       return output;
     };
+
+    const title = this.generateTitle(data, config);
 
     try {
       const res = await execRuntimeWithContext(
@@ -213,8 +218,6 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
             )
           : trimOutput(res.stderr);
 
-      const title = this.generateTitle(data, config);
-
       return {
         output: {
           exitCode: res.exitCode,
@@ -229,8 +232,6 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       // Handle runtime errors by returning them in the expected RuntimeExecResult format
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-
-      const title = this.generateTitle(data, config);
 
       return {
         output: {

@@ -30,22 +30,22 @@ describe('ShellTool', () => {
         purpose: 'Testing echo command',
         cmd: 'echo "hello"',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject missing purpose field', () => {
       const invalidData = { cmd: 'echo "hello"' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject missing cmd field', () => {
       const invalidData = { purpose: 'Testing command' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty purpose', () => {
       const invalidData = { purpose: '', cmd: 'echo "hello"' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate optional fields', () => {
@@ -54,13 +54,12 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         timeoutMs: 5000,
         tailTimeoutMs: 2000,
-        workdir: '/tmp',
         env: [
           { key: 'NODE_ENV', value: 'test' },
           { key: 'DEBUG', value: 'true' },
         ],
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate positive timeout', () => {
@@ -69,7 +68,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         timeoutMs: 1000,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject negative timeout', () => {
@@ -78,7 +77,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         timeoutMs: -1000,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject zero timeout', () => {
@@ -87,7 +86,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         timeoutMs: 0,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate positive tail timeout', () => {
@@ -96,7 +95,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         tailTimeoutMs: 1000,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject negative tail timeout', () => {
@@ -105,7 +104,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         tailTimeoutMs: -1000,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject zero tail timeout', () => {
@@ -114,7 +113,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         tailTimeoutMs: 0,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate positive maxOutputLength', () => {
@@ -123,7 +122,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         maxOutputLength: 5000,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject negative maxOutputLength', () => {
@@ -132,7 +131,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         maxOutputLength: -1000,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject zero maxOutputLength', () => {
@@ -141,7 +140,7 @@ describe('ShellTool', () => {
         cmd: 'echo "hello"',
         maxOutputLength: 0,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should default maxOutputLength to 10000', () => {
@@ -149,7 +148,7 @@ describe('ShellTool', () => {
         purpose: 'Testing default max output length',
         cmd: 'echo "hello"',
       };
-      const parsed = tool.schema.parse(data);
+      const parsed = tool.validate(data);
       expect(parsed.maxOutputLength).toBe(10000);
     });
   });
@@ -266,7 +265,6 @@ describe('ShellTool', () => {
         cmd: 'pwd',
         timeoutMs: 5000,
         tailTimeoutMs: 2000,
-        workdir: '/tmp',
         env: envArray,
       });
 

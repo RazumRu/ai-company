@@ -36,10 +36,19 @@ describe('SimpleAgentTemplate', () => {
   let mockGraphRegistry: GraphRegistry;
 
   beforeEach(async () => {
+    const addedTools: unknown[] = [];
     mockSimpleAgent = {
-      addTool: vi.fn(),
+      addTool: vi.fn((tool: unknown) => {
+        addedTools.push(tool);
+      }),
       run: vi.fn(),
       setConfig: vi.fn(),
+      initTools: vi.fn().mockResolvedValue(undefined),
+      setMcpServices: vi.fn(),
+      ensureGraphBuilt: vi.fn(),
+      updateToolsSnapshot: vi.fn(),
+      getTools: vi.fn(() => addedTools),
+      getConfig: vi.fn(),
       schema: {} as SimpleAgent['schema'],
       buildLLM: vi.fn(),
     } as unknown as SimpleAgent;
@@ -103,6 +112,11 @@ describe('SimpleAgentTemplate', () => {
         {
           type: 'kind',
           value: NodeKind.Knowledge,
+          multiple: true,
+        },
+        {
+          type: 'kind',
+          value: NodeKind.Mcp,
           multiple: true,
         },
       ]);
@@ -548,6 +562,178 @@ describe('SimpleAgentTemplate', () => {
         expect.objectContaining({
           instructions: expect.stringContaining('Knowledge block'),
         }),
+      );
+    });
+
+    it('augments instructions with connected MCP server instructions', async () => {
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Base instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+        maxIterations: 50,
+      };
+
+      // Mock BaseMcp instance (MCP nodes now return BaseMcp directly)
+      const mockMcpInstance = {
+        getDetailedInstructions: vi
+          .fn()
+          .mockReturnValue('MCP filesystem instructions'),
+      };
+
+      const mcpNode = buildCompiledNode({
+        id: 'mcp-1',
+        type: NodeKind.Mcp,
+        template: 'filesystem-mcp',
+        config: { name: 'filesystem', allowedDirectories: ['/tmp'] },
+        instance: mockMcpInstance,
+      });
+
+      mockGraphRegistry.getNode = vi
+        .fn()
+        .mockImplementation((_graphId, nodeId) => {
+          if (nodeId === 'mcp-1') return mcpNode;
+          return undefined;
+        });
+
+      await template.create(config, new Set(), new Set(['mcp-1']), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
+
+      expect(mockSimpleAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instructions: expect.stringContaining('MCP filesystem instructions'),
+        }),
+      );
+      expect(mockSimpleAgent.setMcpServices).toHaveBeenCalledWith(
+        expect.arrayContaining([mockMcpInstance]),
+      );
+    });
+
+    it('augments instructions with all connected resources', async () => {
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Base instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+        maxIterations: 50,
+      };
+
+      const toolNode = buildCompiledNode({
+        id: 'tool-1',
+        type: NodeKind.Tool,
+        template: 'web-search-tool',
+        config: {},
+        instance: {
+          name: 'web_search',
+          invoke: vi.fn(),
+          __instructions: 'Tool instructions',
+        },
+      });
+
+      const knowledgeNode = buildCompiledNode({
+        id: 'knowledge-1',
+        type: NodeKind.Knowledge,
+        template: 'simple-knowledge',
+        config: { content: 'Knowledge block' },
+        instance: { content: 'Knowledge content' },
+      });
+
+      // Mock BaseMcp instance (MCP nodes now return BaseMcp directly)
+      const mockMcpInstance = {
+        getDetailedInstructions: vi.fn().mockReturnValue('MCP instructions'),
+      };
+
+      const mcpNode = buildCompiledNode({
+        id: 'mcp-1',
+        type: NodeKind.Mcp,
+        template: 'filesystem-mcp',
+        config: { name: 'filesystem', allowedDirectories: ['/tmp'] },
+        instance: mockMcpInstance,
+      });
+
+      mockGraphRegistry.getNode = vi
+        .fn()
+        .mockImplementation((_graphId, nodeId) => {
+          if (nodeId === 'tool-1') return toolNode;
+          if (nodeId === 'knowledge-1') return knowledgeNode;
+          if (nodeId === 'mcp-1') return mcpNode;
+          return undefined;
+        });
+
+      await template.create(
+        config,
+        new Set(),
+        new Set(['tool-1', 'knowledge-1', 'mcp-1']),
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
+
+      expect(mockSimpleAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instructions: expect.stringMatching(
+            /Base instructions[\s\S]*Knowledge content[\s\S]*Tool instructions[\s\S]*MCP instructions/,
+          ),
+        }),
+      );
+      expect(mockSimpleAgent.setMcpServices).toHaveBeenCalledWith(
+        expect.arrayContaining([mockMcpInstance]),
+      );
+    });
+
+    it('passes MCP service instances correctly', async () => {
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Base instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+        maxIterations: 50,
+      };
+
+      // Mock BaseMcp instance (MCP nodes now return BaseMcp directly)
+      const mockMcpInstance = {
+        getDetailedInstructions: vi
+          .fn()
+          .mockReturnValue('Jira MCP instructions'),
+      };
+
+      const mcpNode = buildCompiledNode({
+        id: 'mcp-1',
+        type: NodeKind.Mcp,
+        template: 'jira-mcp',
+        config: { name: 'jira' },
+        instance: mockMcpInstance,
+      });
+
+      mockGraphRegistry.getNode = vi
+        .fn()
+        .mockImplementation((_graphId, nodeId) => {
+          if (nodeId === 'mcp-1') return mcpNode;
+          return undefined;
+        });
+
+      await template.create(config, new Set(), new Set(['mcp-1']), {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      });
+
+      expect(mockSimpleAgent.setMcpServices).toHaveBeenCalledWith(
+        expect.arrayContaining([mockMcpInstance]),
       );
     });
   });

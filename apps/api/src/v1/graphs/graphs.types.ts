@@ -9,6 +9,7 @@ export enum NodeKind {
   Trigger = 'trigger',
   Resource = 'resource',
   Knowledge = 'knowledge',
+  Mcp = 'mcp',
 }
 
 export enum GraphStatus {

@@ -48,17 +48,17 @@ describe('GhBranchTool', () => {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject missing semanticType field', () => {
       const invalidData = { title: 'Add new feature' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject missing title field', () => {
       const invalidData = { semanticType: SemanticCommitType.FEAT };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty title', () => {
@@ -66,7 +66,7 @@ describe('GhBranchTool', () => {
         semanticType: SemanticCommitType.FEAT,
         title: '',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should use default base branch when not provided', () => {
@@ -74,7 +74,7 @@ describe('GhBranchTool', () => {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
       };
-      const parsed = tool.schema.parse(validData);
+      const parsed = tool.validate(validData);
       expect(parsed.base).toBeUndefined();
       // Default is handled in code, not in schema
     });
@@ -85,7 +85,7 @@ describe('GhBranchTool', () => {
         title: 'Add new feature',
         base: 'develop',
       };
-      const parsed = tool.schema.parse(validData);
+      const parsed = tool.validate(validData);
       expect(parsed.base).toBe('develop');
     });
 
@@ -96,7 +96,7 @@ describe('GhBranchTool', () => {
           semanticType: type,
           title: 'Test branch',
         };
-        expect(() => tool.schema.parse(validData)).not.toThrow();
+        expect(() => tool.validate(validData)).not.toThrow();
       });
     });
 
@@ -106,7 +106,7 @@ describe('GhBranchTool', () => {
         title: 'Add new feature',
         path: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should work without path field', () => {
@@ -114,7 +114,7 @@ describe('GhBranchTool', () => {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
       };
-      const parsed = tool.schema.parse(validData);
+      const parsed = tool.validate(validData);
       expect(parsed.path).toBeUndefined();
     });
   });

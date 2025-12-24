@@ -35,20 +35,18 @@ const FilesApplyChangesToolSchemaBase = z.object({
     .describe('List of edit operations to perform'),
   dryRun: z
     .boolean()
-    .optional()
+    .default(false)
     .describe('Preview changes without applying them'),
 });
 
-export const FilesApplyChangesToolSchema =
-  FilesApplyChangesToolSchemaBase.transform((data) => ({
-    ...data,
-    dryRun: data.dryRun ?? false,
-  }));
+export const FilesApplyChangesToolSchema = FilesApplyChangesToolSchemaBase;
 
-export type FilesApplyChangesToolSchemaType = z.infer<
-  typeof FilesApplyChangesToolSchemaBase
+// Use `z.input<>` so callers can omit defaulted fields like `dryRun`.
+// (Defaults are still applied at runtime via Ajv useDefaults + JSON schema "default".)
+export type FilesApplyChangesToolSchemaType = z.input<
+  typeof FilesApplyChangesToolSchema
 >;
-export type FilesApplyChangesToolEditSchemaType = z.infer<
+export type FilesApplyChangesToolEditSchemaType = z.input<
   typeof FilesApplyChangesToolEditSchema
 >;
 
@@ -85,7 +83,10 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   public get schema() {
-    return FilesApplyChangesToolSchema;
+    return z.toJSONSchema(FilesApplyChangesToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   public getDetailedInstructions(

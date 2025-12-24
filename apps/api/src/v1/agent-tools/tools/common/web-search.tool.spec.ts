@@ -51,19 +51,19 @@ describe('WebSearchTool', () => {
       const validData = {
         query: 'test search',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject empty query', () => {
       const invalidData = {
         query: '',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject missing query', () => {
       const invalidData = {};
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate searchDepth enum', () => {
@@ -76,8 +76,8 @@ describe('WebSearchTool', () => {
         searchDepth: 'advanced',
       };
 
-      expect(() => tool.schema.parse(validBasic)).not.toThrow();
-      expect(() => tool.schema.parse(validAdvanced)).not.toThrow();
+      expect(() => tool.validate(validBasic)).not.toThrow();
+      expect(() => tool.validate(validAdvanced)).not.toThrow();
     });
 
     it('should reject invalid searchDepth', () => {
@@ -85,14 +85,14 @@ describe('WebSearchTool', () => {
         query: 'test',
         searchDepth: 'invalid',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should default searchDepth to basic', () => {
       const data = {
         query: 'test',
       };
-      const parsed = tool.schema.parse(data);
+      const parsed = tool.validate(data);
       expect(parsed.searchDepth).toBe('basic');
     });
 
@@ -102,7 +102,7 @@ describe('WebSearchTool', () => {
         includeDomains: ['example.com', 'test.org'],
         excludeDomains: ['spam.com'],
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate maxResults range', () => {
@@ -119,9 +119,9 @@ describe('WebSearchTool', () => {
         maxResults: 10,
       };
 
-      expect(() => tool.schema.parse(validMin)).not.toThrow();
-      expect(() => tool.schema.parse(validMax)).not.toThrow();
-      expect(() => tool.schema.parse(validMid)).not.toThrow();
+      expect(() => tool.validate(validMin)).not.toThrow();
+      expect(() => tool.validate(validMax)).not.toThrow();
+      expect(() => tool.validate(validMid)).not.toThrow();
     });
 
     it('should reject maxResults out of range', () => {
@@ -134,8 +134,8 @@ describe('WebSearchTool', () => {
         maxResults: 21,
       };
 
-      expect(() => tool.schema.parse(tooSmall)).toThrow();
-      expect(() => tool.schema.parse(tooLarge)).toThrow();
+      expect(() => tool.validate(tooSmall)).toThrow();
+      expect(() => tool.validate(tooLarge)).toThrow();
     });
   });
 

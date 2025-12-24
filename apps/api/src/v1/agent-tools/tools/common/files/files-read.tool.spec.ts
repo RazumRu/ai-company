@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
-import { FilesReadTool, FilesReadToolSchemaType } from './files-read.tool';
+import {
+  FilesReadTool,
+  FilesReadToolSchema,
+  FilesReadToolSchemaType,
+} from './files-read.tool';
 
 describe('FilesReadTool', () => {
   let tool: FilesReadTool;
@@ -46,19 +50,19 @@ describe('FilesReadTool', () => {
       const validData = {
         filePath: '/path/to/repo/src/file.ts',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesReadToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should reject missing filePath field', () => {
       const invalidData = {};
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty filePath', () => {
       const invalidData = {
         filePath: '',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should accept optional startLine and endLine fields', () => {
@@ -67,14 +71,14 @@ describe('FilesReadTool', () => {
         startLine: 1,
         endLine: 10,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesReadToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should accept data without startLine and endLine', () => {
       const validData = {
         filePath: '/path/to/repo/src/file.ts',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesReadToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should reject non-positive startLine', () => {
@@ -83,7 +87,7 @@ describe('FilesReadTool', () => {
         startLine: 0,
         endLine: 10,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject non-positive endLine', () => {
@@ -92,7 +96,7 @@ describe('FilesReadTool', () => {
         startLine: 1,
         endLine: 0,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject non-integer startLine', () => {
@@ -101,7 +105,7 @@ describe('FilesReadTool', () => {
         startLine: 1.5,
         endLine: 10,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject non-integer endLine', () => {
@@ -110,7 +114,7 @@ describe('FilesReadTool', () => {
         startLine: 1,
         endLine: 10.5,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
   });
 

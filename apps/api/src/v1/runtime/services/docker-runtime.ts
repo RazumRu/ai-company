@@ -1134,6 +1134,67 @@ export class DockerRuntime extends BaseRuntime {
     });
   }
 
+  /**
+   * Execute command with persistent streams for MCP communication
+   * Returns properly demultiplexed stdin/stdout/stderr streams
+   * Uses docker.modem.demuxStream to handle Docker's 8-byte header format
+   */
+  public async execStream(
+    command: string[],
+    options?: {
+      workdir?: string;
+      env?: Record<string, string>;
+    },
+  ): Promise<{
+    stdin: Duplex;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    close: () => void;
+  }> {
+    if (!this.container) {
+      throw new Error('Runtime not started');
+    }
+
+    const workdir = options?.workdir || this.containerWorkdir || this.workdir;
+    const env = this.prepareEnv(options?.env);
+
+    const exec = await this.container.exec({
+      Cmd: command,
+      Env: env,
+      WorkingDir: workdir,
+      AttachStdout: true,
+      AttachStderr: true,
+      AttachStdin: true,
+      Tty: false,
+    });
+
+    const stream = (await exec.start({
+      hijack: true,
+      stdin: true,
+    })) as unknown as Duplex;
+
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+
+    // Use dockerode's native demuxStream - handles 8-byte header format correctly
+    this.docker.modem.demuxStream(stream, stdout, stderr);
+
+    return {
+      stdin: stream,
+      stdout,
+      stderr,
+      close: () => {
+        try {
+          stream.destroy();
+          stdout.destroy();
+          stderr.destroy();
+        } catch {
+          // Ignore cleanup errors
+        }
+      },
+    };
+  }
+
   public override getRuntimeInfo(): string {
     const runtimeImage = this.image ?? environment.dockerRuntimeImage;
     const infoLines = [

@@ -12,7 +12,6 @@ import { coerce, inc } from 'semver';
 import { setTimeout } from 'timers/promises';
 import { EntityManager } from 'typeorm';
 
-import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
@@ -240,9 +239,6 @@ export class GraphRevisionService {
     }
 
     if (!baseSchemaCache) {
-      this.logger.warn(
-        `[APPLY-REMERGE-SKIP] Base schema not found for initial version ${revision.baseVersion}. Using cached merge.`,
-      );
       this.graphCompiler.validateSchema(revision.newSchema);
       await this.syncRevisionSchema(
         revision,
@@ -497,29 +493,52 @@ export class GraphRevisionService {
     compiledGraph.edges = revision.newSchema.edges || [];
 
     const buildOrder = this.graphCompiler.getBuildOrder(revision.newSchema);
+    const newEdges = revision.newSchema.edges || [];
+
+    // Determine which nodes must be rebuilt.
+    // IMPORTANT: Nodes often hold references to dependency node instances (e.g., runtime, MCP),
+    // so when a dependency is rebuilt we must also rebuild all dependent nodes.
+    const nodesToRebuild = new Set<string>();
 
     for (const nodeSchema of buildOrder) {
-      const existingNode = compiledGraph.nodes.get(
-        nodeSchema.id,
-      ) as CompiledGraphNode<SimpleAgent>;
+      const existingNode = compiledGraph.nodes.get(nodeSchema.id);
 
       const oldIncomingEdges = oldEdges.filter((e) => e.to === nodeSchema.id);
       const oldOutgoingEdges = oldEdges.filter((e) => e.from === nodeSchema.id);
-      const newIncomingEdges =
-        revision.newSchema.edges?.filter((e) => e.to === nodeSchema.id) || [];
-      const newOutgoingEdges =
-        revision.newSchema.edges?.filter((e) => e.from === nodeSchema.id) || [];
+      const newIncomingEdges = newEdges.filter((e) => e.to === nodeSchema.id);
+      const newOutgoingEdges = newEdges.filter((e) => e.from === nodeSchema.id);
 
       const edgesChanged =
         JSON.stringify(oldIncomingEdges) !== JSON.stringify(newIncomingEdges) ||
         JSON.stringify(oldOutgoingEdges) !== JSON.stringify(newOutgoingEdges);
 
-      if (
-        existingNode &&
-        JSON.stringify(existingNode.config) ===
-          JSON.stringify(nodeSchema.config) &&
-        !edgesChanged
-      ) {
+      const configChanged =
+        !existingNode ||
+        JSON.stringify(existingNode.config) !==
+          JSON.stringify(nodeSchema.config);
+
+      if (configChanged || edgesChanged) {
+        nodesToRebuild.add(nodeSchema.id);
+      }
+    }
+
+    // Expand to include all dependents (edge.from depends on edge.to).
+    // If edge.to is rebuilt, edge.from must be rebuilt too.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const edge of newEdges) {
+        if (nodesToRebuild.has(edge.to) && !nodesToRebuild.has(edge.from)) {
+          nodesToRebuild.add(edge.from);
+          changed = true;
+        }
+      }
+    }
+
+    for (const nodeSchema of buildOrder) {
+      const existingNode = compiledGraph.nodes.get(nodeSchema.id);
+
+      if (!nodesToRebuild.has(nodeSchema.id)) {
         continue;
       }
 

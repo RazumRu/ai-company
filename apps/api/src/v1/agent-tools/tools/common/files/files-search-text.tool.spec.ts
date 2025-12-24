@@ -7,6 +7,7 @@ import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
 import {
   FilesSearchTextTool,
+  FilesSearchTextToolSchema,
   FilesSearchTextToolSchemaType,
 } from './files-search-text.tool';
 
@@ -49,14 +50,14 @@ describe('FilesSearchTextTool', () => {
       const validData = {
         query: 'function',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should reject missing query field', () => {
       const invalidData = {
         dir: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesSearchTextToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty dir', () => {
@@ -64,7 +65,7 @@ describe('FilesSearchTextTool', () => {
         dir: '',
         query: 'function',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesSearchTextToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty query', () => {
@@ -72,7 +73,7 @@ describe('FilesSearchTextTool', () => {
         dir: '/path/to/repo',
         query: '',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesSearchTextToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should accept optional filePath field', () => {
@@ -81,7 +82,7 @@ describe('FilesSearchTextTool', () => {
         query: 'function',
         filePath: '/path/to/repo/src/file.ts',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should accept optional includeGlobs field', () => {
@@ -90,7 +91,7 @@ describe('FilesSearchTextTool', () => {
         query: 'function',
         includeGlobs: ['*.ts', 'src/**'],
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should accept optional excludeGlobs field', () => {
@@ -99,7 +100,7 @@ describe('FilesSearchTextTool', () => {
         query: 'function',
         excludeGlobs: ['*.test.ts', 'node_modules/**'],
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should accept all optional fields together', () => {
@@ -110,7 +111,7 @@ describe('FilesSearchTextTool', () => {
         includeGlobs: ['*.ts'],
         excludeGlobs: ['*.test.ts'],
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
   });
 

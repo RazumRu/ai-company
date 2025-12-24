@@ -402,6 +402,7 @@ export const GraphNodeWithStatusDtoSchema = {
         'trigger',
         'resource',
         'knowledge',
+        'mcp',
       ],
     },
     status: {
@@ -1283,6 +1284,7 @@ export const TemplateDtoSchema = {
         'trigger',
         'resource',
         'knowledge',
+        'mcp',
       ],
     },
     schema: {
@@ -1312,6 +1314,7 @@ export const TemplateDtoSchema = {
                   'trigger',
                   'resource',
                   'knowledge',
+                  'mcp',
                 ],
               },
               required: {
@@ -1365,6 +1368,7 @@ export const TemplateDtoSchema = {
                   'trigger',
                   'resource',
                   'knowledge',
+                  'mcp',
                 ],
               },
               required: {
@@ -1506,6 +1510,9 @@ export const ThreadDtoSchema = {
             totalPrice: {
               type: 'number',
             },
+            currentContext: {
+              type: 'number',
+            },
             byNode: {
               type: 'object',
               propertyNames: {
@@ -1530,6 +1537,9 @@ export const ThreadDtoSchema = {
                     type: 'number',
                   },
                   totalPrice: {
+                    type: 'number',
+                  },
+                  currentContext: {
                     type: 'number',
                   },
                 },

@@ -297,7 +297,8 @@ export type GraphNodeWithStatusDto = {
     | 'simpleAgent'
     | 'trigger'
     | 'resource'
-    | 'knowledge';
+    | 'knowledge'
+    | 'mcp';
   /**
    * Current node status
    */
@@ -806,7 +807,8 @@ export type TemplateDto = {
     | 'simpleAgent'
     | 'trigger'
     | 'resource'
-    | 'knowledge';
+    | 'knowledge'
+    | 'mcp';
   schema: {
     [key: string]: unknown;
   };
@@ -819,7 +821,8 @@ export type TemplateDto = {
           | 'simpleAgent'
           | 'trigger'
           | 'resource'
-          | 'knowledge';
+          | 'knowledge'
+          | 'mcp';
         required?: boolean;
         multiple: boolean;
       }
@@ -839,7 +842,8 @@ export type TemplateDto = {
           | 'simpleAgent'
           | 'trigger'
           | 'resource'
-          | 'knowledge';
+          | 'knowledge'
+          | 'mcp';
         required?: boolean;
         multiple: boolean;
       }
@@ -918,6 +922,10 @@ export type ThreadDto = {
      */
     totalPrice?: number;
     /**
+     * Current context size in tokens (snapshot, not additive)
+     */
+    currentContext?: number;
+    /**
      * Token usage breakdown by node ID
      */
     byNode?: {
@@ -946,6 +954,10 @@ export type ThreadDto = {
          * Total price in USD
          */
         totalPrice?: number;
+        /**
+         * Current context size in tokens (snapshot, not additive)
+         */
+        currentContext?: number;
       };
     };
   } | null;

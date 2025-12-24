@@ -14,11 +14,15 @@ import { GhBaseTool, GhBaseToolConfig, GhBaseToolSchema } from './gh-base.tool';
 
 export const GhCloneToolSchema = GhBaseToolSchema.extend({
   branch: z
-    .union([z.string(), z.null()])
+    .string()
+    .nullable()
     .optional()
     .describe('Optional branch or tag to checkout.'),
   depth: z
-    .union([z.number().int().positive(), z.null()])
+    .number()
+    .int()
+    .min(1)
+    .nullable()
     .optional()
     .describe('Shallow clone depth (omit for full clone).'),
 });
@@ -134,7 +138,10 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   }
 
   public get schema() {
-    return GhCloneToolSchema;
+    return z.toJSONSchema(GhCloneToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   public async invoke(

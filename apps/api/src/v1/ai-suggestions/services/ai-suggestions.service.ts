@@ -242,9 +242,9 @@ export class AiSuggestionsService {
           'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
           'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
           'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
-          "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and Knowledge sections information, it will be automatically injected to instructions. So you can just refer to it if needed.",
+          "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools, MCP servers, and Knowledge sections information in your response. You can only refer to it if needed.",
           'Keep the result concise, actionable, and focused on how the agent should behave.',
-          'Return only the updated instructions text without extra commentary. No need to add information about Connected tools and Knowledge sections',
+          'Return only the updated instructions text without extra commentary. No need to add information about Connected tools, MCP servers, and Knowledge sections',
         ].join('\n');
     const message = isContinuation
       ? (payload.userRequest || '').trim()

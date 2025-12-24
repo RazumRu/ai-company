@@ -25,7 +25,7 @@ describe('CommunicationExecTool', () => {
         agent: 'research-agent',
       };
 
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject missing message field', () => {
@@ -34,7 +34,7 @@ describe('CommunicationExecTool', () => {
         agent: 'research-agent',
       };
 
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject missing purpose field', () => {
@@ -43,7 +43,7 @@ describe('CommunicationExecTool', () => {
         agent: 'research-agent',
       };
 
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject missing agent field', () => {
@@ -52,7 +52,7 @@ describe('CommunicationExecTool', () => {
         purpose: 'Requesting help',
       };
 
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty message', () => {
@@ -62,7 +62,7 @@ describe('CommunicationExecTool', () => {
         agent: 'research-agent',
       };
 
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty agent', () => {
@@ -72,7 +72,7 @@ describe('CommunicationExecTool', () => {
         agent: '',
       };
 
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
   });
 

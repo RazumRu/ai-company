@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FilesApplyChangesTool } from './files-apply-changes.tool';
+import {
+  FilesApplyChangesTool,
+  FilesApplyChangesToolSchema,
+} from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
 
 describe('FilesApplyChangesTool', () => {
@@ -16,7 +19,7 @@ describe('FilesApplyChangesTool', () => {
 
   describe('schema', () => {
     it('should have correct schema structure', () => {
-      const schema = tool.schema;
+      const schema = FilesApplyChangesToolSchema;
       expect(schema).toBeDefined();
 
       const parsed = schema.safeParse({
@@ -33,7 +36,7 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should require at least one edit', () => {
-      const parsed = tool.schema.safeParse({
+      const parsed = FilesApplyChangesToolSchema.safeParse({
         path: '/test/file.ts',
         edits: [],
       });
@@ -42,7 +45,7 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should default dryRun to false', () => {
-      const parsed = tool.schema.safeParse({
+      const parsed = FilesApplyChangesToolSchema.safeParse({
         path: '/test/file.ts',
         edits: [{ oldText: 'old', newText: 'new' }],
       });

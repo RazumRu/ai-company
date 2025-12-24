@@ -117,14 +117,14 @@ describe('FilesToolTemplate', () => {
       const config = {};
 
       const parsed = FilesToolTemplateSchema.parse(config);
-      expect(parsed).toEqual({});
+      expect(parsed).toEqual({ includeEditActions: true });
     });
 
     it('should ignore legacy/unknown fields', () => {
       const config = { includeRepo: true, extra: 'value' };
 
       const parsed = FilesToolTemplateSchema.parse(config);
-      expect(parsed).toEqual({});
+      expect(parsed).toEqual({ includeEditActions: true });
       expect(parsed).not.toHaveProperty('includeRepo');
       expect(parsed).not.toHaveProperty('extra');
     });
@@ -165,11 +165,16 @@ describe('FilesToolTemplate', () => {
       const config = {};
       const outputNodeIds = new Set(['runtime-1']);
 
-      const result = await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      const result = await template.create(
+        FilesToolTemplateSchema.parse(config),
+        new Set(),
+        outputNodeIds,
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
 
       expect(mockGraphRegistry.filterNodesByType).toHaveBeenCalledWith(
         'test-graph',
@@ -191,11 +196,16 @@ describe('FilesToolTemplate', () => {
       const outputNodeIds = new Set(['other-node']);
 
       await expect(
-        template.create(config, new Set(), outputNodeIds, {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
+        template.create(
+          FilesToolTemplateSchema.parse(config),
+          new Set(),
+          outputNodeIds,
+          {
+            graphId: 'test-graph',
+            nodeId: 'test-node',
+            version: '1.0.0',
+          },
+        ),
       ).rejects.toThrow(NotFoundException);
       expect(mockGraphRegistry.filterNodesByType).toHaveBeenCalledWith(
         'test-graph',
@@ -214,11 +224,16 @@ describe('FilesToolTemplate', () => {
       const outputNodeIds = new Set(['runtime-1']);
 
       await expect(
-        template.create(config, new Set(), outputNodeIds, {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
+        template.create(
+          FilesToolTemplateSchema.parse(config),
+          new Set(),
+          outputNodeIds,
+          {
+            graphId: 'test-graph',
+            nodeId: 'test-node',
+            version: '1.0.0',
+          },
+        ),
       ).rejects.toThrow(NotFoundException);
       expect(mockGraphRegistry.getNode).toHaveBeenCalledWith(
         'test-graph',
@@ -256,11 +271,16 @@ describe('FilesToolTemplate', () => {
       const config = {};
       const outputNodeIds = new Set(['runtime-1']);
 
-      await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      await template.create(
+        FilesToolTemplateSchema.parse(config),
+        new Set(),
+        outputNodeIds,
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
 
       expect(mockFilesToolGroup.buildTools).toHaveBeenCalled();
       const buildToolsCall = vi.mocked(mockFilesToolGroup.buildTools).mock
@@ -303,11 +323,16 @@ describe('FilesToolTemplate', () => {
       const config = {};
       const outputNodeIds = new Set(['runtime-1']);
 
-      await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      await template.create(
+        FilesToolTemplateSchema.parse(config),
+        new Set(),
+        outputNodeIds,
+        {
+          graphId: 'test-graph',
+          nodeId: 'test-node',
+          version: '1.0.0',
+        },
+      );
 
       // Now simulate runtime node being removed
       mockGraphRegistry.getNode = vi.fn().mockReturnValue(undefined);

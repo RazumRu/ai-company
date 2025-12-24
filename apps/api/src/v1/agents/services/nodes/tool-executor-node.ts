@@ -64,8 +64,19 @@ export class ToolExecutorNode extends BaseNode<
             ...(messageMetadata ? { additional_kwargs: messageMetadata } : {}),
           });
 
+        const makeErrorMsg = (
+          content: string,
+          messageMetadata?: ToolInvokeResult<unknown>['messageMetadata'],
+        ) =>
+          new ToolMessage({
+            tool_call_id: callId,
+            name: tc.name,
+            content: JSON.stringify({ error: content }),
+            ...(messageMetadata ? { additional_kwargs: messageMetadata } : {}),
+          });
+
         if (!tool) {
-          return makeMsg(`Tool '${tc.name}' not found.`);
+          return makeErrorMsg(`Tool '${tc.name}' not found.`);
         }
 
         try {
@@ -116,7 +127,7 @@ export class ToolExecutorNode extends BaseNode<
             toolName: tc.name,
             callId,
           });
-          return makeMsg(
+          return makeErrorMsg(
             `Error executing tool '${tc.name}': ${err?.message || String(err)}`,
           );
         }

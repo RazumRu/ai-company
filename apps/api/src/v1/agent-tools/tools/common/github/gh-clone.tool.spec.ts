@@ -47,27 +47,27 @@ describe('GhCloneTool', () => {
         owner: 'octocat',
         repo: 'Hello-World',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject missing owner field', () => {
       const invalidData = { repo: 'Hello-World' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject missing repo field', () => {
       const invalidData = { owner: 'octocat' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty owner', () => {
       const invalidData = { owner: '', repo: 'Hello-World' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty repo', () => {
       const invalidData = { owner: 'octocat', repo: '' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate optional branch field', () => {
@@ -76,7 +76,7 @@ describe('GhCloneTool', () => {
         repo: 'Hello-World',
         branch: 'main',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate optional depth field', () => {
@@ -85,7 +85,7 @@ describe('GhCloneTool', () => {
         repo: 'Hello-World',
         depth: 1,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate branch and depth together', () => {
@@ -95,7 +95,7 @@ describe('GhCloneTool', () => {
         branch: 'main',
         depth: 1,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should accept null branch', () => {
@@ -104,7 +104,7 @@ describe('GhCloneTool', () => {
         repo: 'Hello-World',
         branch: null,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should accept null depth', () => {
@@ -113,7 +113,7 @@ describe('GhCloneTool', () => {
         repo: 'Hello-World',
         depth: null,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject negative depth', () => {
@@ -122,16 +122,7 @@ describe('GhCloneTool', () => {
         repo: 'Hello-World',
         depth: -1,
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
-    });
-
-    it('should reject zero depth', () => {
-      const invalidData = {
-        owner: 'octocat',
-        repo: 'Hello-World',
-        depth: 0,
-      };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
   });
 

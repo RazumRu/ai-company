@@ -144,7 +144,10 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   }
 
   public get schema() {
-    return FilesReadToolSchema;
+    return z.toJSONSchema(FilesReadToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   public async invoke(

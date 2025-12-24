@@ -4,10 +4,16 @@ import {
   ToolRunnableConfig,
 } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
+import Ajv from 'ajv';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
-import { getSchemaParameterDocs } from '../agent-tools.utils';
+import {
+  fixRequiredWithDefaults,
+  getSchemaParameterDocs,
+} from '../agent-tools.utils';
+
+export type JSONSchema = ReturnType<typeof z.toJSONSchema>;
 
 export type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
   description?: string;
@@ -31,7 +37,9 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
 
   protected generateTitle?(args: TSchema, config: TConfig): string;
 
-  protected getSchemaParameterDocs(schema: z.ZodTypeAny) {
+  private ajv = new Ajv({ useDefaults: true, coerceTypes: true });
+
+  protected getSchemaParameterDocs(schema: JSONSchema) {
     return getSchemaParameterDocs(schema);
   }
 
@@ -40,13 +48,30 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string;
 
-  public abstract get schema(): z.ZodType<TSchema>;
+  public abstract get schema(): JSONSchema;
+
+  /**
+   * Validates arguments against the JSON schema using Ajv
+   * @throws Error if validation fails
+   */
+  public validate(args: unknown): TSchema {
+    const validate = this.ajv.compile(this.schema);
+    if (!validate(args)) {
+      const errors = validate.errors
+        ?.map((err) => `${err.instancePath} ${err.message}`)
+        .join(', ');
+      throw new Error(`Schema validation failed: ${errors}`);
+    }
+    return args as TSchema;
+  }
 
   protected buildToolConfiguration(config?: ExtendedLangGraphRunnableConfig) {
     return {
       name: this.name,
       description: config?.description || this.description,
-      schema: this.schema,
+      schema: fixRequiredWithDefaults(this.schema) as Parameters<
+        typeof tool
+      >[1]['schema'],
       ...config,
     };
   }
@@ -73,31 +98,34 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
 
     const titleFromArgs = this.generateTitle
       ? (args: unknown) => {
-          const parsed = this.schema.safeParse(args);
-          if (!parsed.success) return undefined;
-          return this.generateTitle?.(parsed.data, config);
+          try {
+            const parsed = this.validate(args);
+            return this.generateTitle?.(parsed, config);
+          } catch {
+            return undefined;
+          }
         }
       : undefined;
 
     return Object.assign(builtTool, {
       __instructions: instructions,
       __titleFromArgs: titleFromArgs,
-    });
+    }) as BuiltAgentTool;
   }
 
   protected toolWrapper(
     cb: typeof this.invoke,
     config: TConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
-  ) {
+  ): DynamicStructuredTool {
     return tool(async (args, runnableConfig) => {
-      const parsedArgs = this.schema.parse(args);
+      const parsedArgs = this.validate(args);
 
       return cb(
         parsedArgs,
         config,
         runnableConfig as ToolRunnableConfig<BaseAgentConfigurable>,
       );
-    }, this.buildToolConfiguration(lgConfig));
+    }, this.buildToolConfiguration(lgConfig)) as DynamicStructuredTool;
   }
 }

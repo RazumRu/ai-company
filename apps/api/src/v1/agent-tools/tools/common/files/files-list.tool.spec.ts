@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
-import { FilesListTool, FilesListToolSchemaType } from './files-list.tool';
+import {
+  FilesListTool,
+  FilesListToolSchema,
+  FilesListToolSchemaType,
+} from './files-list.tool';
 
 describe('FilesListTool', () => {
   let tool: FilesListTool;
@@ -48,19 +52,19 @@ describe('FilesListTool', () => {
       const validData = {
         dir: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesListToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should allow missing dir field (defaults to session cwd)', () => {
       const data = {};
-      expect(() => tool.schema.parse(data)).not.toThrow();
+      expect(() => FilesListToolSchema.parse(data)).not.toThrow();
     });
 
     it('should reject empty dir', () => {
       const invalidData = {
         dir: '',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesListToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should accept optional pattern field', () => {
@@ -68,14 +72,14 @@ describe('FilesListTool', () => {
         dir: '/path/to/repo',
         pattern: '*.ts',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesListToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should accept data without pattern', () => {
       const validData = {
         dir: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesListToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should accept pattern with wildcards', () => {
@@ -83,7 +87,7 @@ describe('FilesListTool', () => {
         dir: '/path/to/repo',
         pattern: 'src/**/*.ts',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesListToolSchema.parse(validData)).not.toThrow();
     });
   });
 

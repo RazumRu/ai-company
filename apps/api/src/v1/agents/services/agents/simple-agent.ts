@@ -6,6 +6,7 @@ import {
   ToolMessage,
 } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
+import { DynamicStructuredTool } from '@langchain/core/tools';
 import {
   Annotation,
   BaseChannel,
@@ -19,6 +20,7 @@ import { DefaultLogger } from '@packages/common';
 import { v4 } from 'uuid';
 import { z } from 'zod';
 
+import { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { TokenUsage } from '../../../litellm/litellm.types';
@@ -132,6 +134,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private graphThreadStateUnsubscribe?: () => void;
   private currentConfig?: SimpleAgentSchemaType;
   private activeRuns = new Map<string, ActiveRunEntry>();
+  private mcpServices: BaseMcp<unknown>[] = [];
 
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
@@ -221,20 +224,41 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     >);
   }
 
-  protected buildGraph(config: SimpleAgentSchemaType) {
+  public async initTools(config: SimpleAgentSchemaType) {
+    // ----- finish tool -----
+    const enforceToolUsage = config.enforceToolUsage ?? true;
+
+    if (enforceToolUsage) {
+      this.addTool(new FinishTool().build({}));
+    }
+
+    // ----- mcp -----
+    for (const mcpService of this.mcpServices) {
+      try {
+        const mcpTools = await mcpService.discoverTools();
+
+        for (const builtAgentTool of mcpTools) {
+          this.addTool(builtAgentTool);
+        }
+      } catch (error) {
+        this.logger.error(
+          error instanceof Error ? error : new Error(String(error)),
+          `Failed to discover tools from MCP service`,
+        );
+      }
+    }
+  }
+
+  protected async buildGraph(config: SimpleAgentSchemaType) {
     if (!this.graph) {
       const graphThreadState = new GraphThreadState();
       this.graphThreadStateUnsubscribe?.();
       this.graphThreadStateUnsubscribe = graphThreadState.subscribe(
         this.handleThreadStateChange,
       );
-
-      // Apply defaults for optional fields
       const enforceToolUsage = config.enforceToolUsage ?? true;
 
-      if (enforceToolUsage) {
-        this.addTool(new FinishTool().build({}));
-      }
+      await this.initTools(config);
 
       // ---- summarize ----
       const summarizeNode = new SummarizeNode(
@@ -248,7 +272,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       );
 
       // ---- invoke ----
-      const tools = this.tools;
+      const toolsArray = this.getTools();
       const shouldUseResponsesApi =
         config.invokeModelReasoningEffort !== ReasoningEffort.None;
       const invokeLlmNode = new InvokeLlmNode(
@@ -267,7 +291,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
                 useResponsesApi: false,
               },
         ),
-        tools,
+        toolsArray,
         {
           systemPrompt: config.instructions,
           toolChoice: 'auto',
@@ -278,7 +302,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
       // ---- tool executor ----
       const toolExecutorNode = new ToolExecutorNode(
-        tools,
+        toolsArray,
         undefined,
         this.logger,
       );
@@ -744,8 +768,24 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       ? { instructions: instructions.trim() }
       : undefined;
 
+    const allTools = this.getTools();
+
+    const connectivityMeta = {
+      connectedTools: allTools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        schema: z.toJSONSchema(t.schema as z.ZodTypeAny, {
+          target: 'draft-7',
+          reused: 'ref',
+        }),
+      })),
+    };
+
     if (!meta?.threadId || !this.graphThreadState) {
-      return instructionsMeta;
+      return {
+        ...(instructionsMeta ?? {}),
+        ...connectivityMeta,
+      };
     }
 
     const threadState = this.graphThreadState.getByThread(meta.threadId);
@@ -770,6 +810,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         {} as Record<string, unknown>,
       ),
       ...(instructionsMeta ?? {}),
+      ...connectivityMeta,
     };
   }
 
@@ -906,7 +947,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       },
     });
 
-    const g = this.buildGraph(config);
+    const g = await this.buildGraph(config);
 
     this.graphThreadState?.applyForThread(threadId, {
       newMessageMode: config.newMessageMode,
@@ -1111,6 +1152,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     this.graphThreadStateUnsubscribe?.();
     this.graphThreadStateUnsubscribe = undefined;
     this.graphThreadState = undefined;
+
+    // MCP cleanup is handled by GraphCompiler
   }
 
   /**
@@ -1154,7 +1197,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         // Best-effort: if the agent already decided to call the shell tool but the run is being
         // stopped before the tool result is persisted, emit a deterministic aborted shell result.
         // This makes "stop while a shell command is in-flight" observable in thread history.
-        const hasShellTool = this.tools.some((t) => t.name === 'shell');
+        const hasShellTool = this.hasTool('shell');
 
         if (hasShellTool) {
           const pendingShellCall = [...run.lastState.messages]
@@ -1219,5 +1262,31 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     this.graphThreadStateUnsubscribe?.();
     this.graphThreadStateUnsubscribe = undefined;
     this.graphThreadState = undefined;
+  }
+
+  public getConfig(): SimpleAgentSchemaType {
+    if (!this.currentConfig) {
+      throw new Error('Agent config not initialized');
+    }
+    return this.currentConfig;
+  }
+
+  /**
+   * Set MCP services for this agent.
+   * Called by the template during agent creation to inject MCP services from connected nodes.
+   */
+  public setMcpServices(mcpServices: BaseMcp<unknown>[]): void {
+    this.mcpServices = mcpServices;
+  }
+
+  private hasTool(name: string): boolean {
+    return this.tools.has(name);
+  }
+
+  /**
+   * Get all tools (including MCP tools after they're discovered)
+   */
+  public getTools(): DynamicStructuredTool[] {
+    return Array.from(this.tools.values());
   }
 }

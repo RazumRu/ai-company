@@ -197,7 +197,7 @@ describe('Graph Nodes Integration Tests', () => {
         await cleanupGraph(graphId);
       }
     }
-  });
+  }, 180_000);
 
   afterAll(async () => {
     await app.close();
@@ -422,6 +422,107 @@ describe('Graph Nodes Integration Tests', () => {
           }
         )?.pendingMessages,
       ).toEqual([]);
+    },
+  );
+
+  it(
+    'exposes connected tool list (including MCP tools) through additional node metadata',
+    { timeout: 180_000 },
+    async () => {
+      const graph = await graphsService.create(
+        createMockGraphData({
+          schema: {
+            nodes: [
+              {
+                id: 'runtime-1',
+                template: 'docker-runtime',
+                config: { runtimeType: 'Docker' },
+              },
+              {
+                id: 'mcp-1',
+                template: 'filesystem-mcp',
+                config: {},
+              },
+              {
+                id: AGENT_NODE_ID,
+                template: 'simple-agent',
+                config: {
+                  // Avoid tool execution in this test; we only need MCP tool discovery during graph build.
+                  enforceToolUsage: false,
+                },
+              },
+              {
+                id: TRIGGER_NODE_ID,
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [
+              { from: AGENT_NODE_ID, to: 'mcp-1' },
+              { from: 'mcp-1', to: 'runtime-1' },
+              { from: TRIGGER_NODE_ID, to: AGENT_NODE_ID },
+            ],
+          },
+        }),
+      );
+      registerGraph(graph.id);
+
+      await graphsService.run(graph.id);
+      await waitForGraphToBeRunning(graph.id);
+
+      const execution = await graphsService.executeTrigger(
+        graph.id,
+        TRIGGER_NODE_ID,
+        {
+          messages: ['No tools needed. Reply with a short acknowledgement.'],
+          threadSubId: 'connected-tools-metadata-thread',
+          async: false,
+        },
+      );
+
+      await waitForThreadCompletion(execution.externalThreadId);
+
+      const snapshots = await waitForSnapshots(
+        graph.id,
+        { threadId: execution.externalThreadId },
+        (nodes) =>
+          nodes.some(
+            (n) =>
+              n.id === AGENT_NODE_ID &&
+              typeof (n.additionalNodeMetadata as Record<string, unknown>)?.[
+                'connectedTools'
+              ] === 'object',
+          ),
+      );
+
+      const agentNode = snapshots.find((n) => n.id === AGENT_NODE_ID);
+      const meta = agentNode?.additionalNodeMetadata as
+        | {
+            connectedTools?: {
+              name?: string;
+              description?: string;
+              schema?: unknown;
+            }[];
+            connectedMcp?: unknown;
+          }
+        | undefined;
+
+      expect(meta?.connectedTools).toBeDefined();
+      expect(Array.isArray(meta?.connectedTools)).toBe(true);
+
+      // Should include MCP filesystem tool(s) after execution
+      const readFileTool = meta?.connectedTools?.find(
+        (t) => t?.name === 'read_file',
+      );
+      expect(readFileTool).toBeDefined();
+      expect(typeof readFileTool?.description).toBe('string');
+      // Schema should be serialized the same way as /templates (draft-7 JSON schema)
+      expect(
+        (readFileTool?.schema as { $schema?: unknown } | undefined)?.$schema,
+      ).toBe('http://json-schema.org/draft-07/schema#');
+
+      // Ensure we don't expose connectedMcp anymore
+      expect(meta?.connectedMcp).toBeUndefined();
     },
   );
 });

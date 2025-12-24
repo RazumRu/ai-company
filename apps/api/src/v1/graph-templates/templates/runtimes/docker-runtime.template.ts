@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
+import { NodeKind } from '../../../graphs/graphs.types';
 import { RuntimeType } from '../../../runtime/runtime.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { DockerRuntime } from '../../../runtime/services/docker-runtime';
@@ -77,6 +78,12 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
     {
       type: 'template',
       value: 'files-tool',
+      multiple: true,
+    },
+    // MCP nodes can run inside this runtime as well.
+    {
+      type: 'kind',
+      value: NodeKind.Mcp,
       multiple: true,
     },
   ] as const;

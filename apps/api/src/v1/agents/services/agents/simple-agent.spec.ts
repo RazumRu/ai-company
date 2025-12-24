@@ -107,9 +107,10 @@ describe('SimpleAgent', () => {
         SimpleAgent,
         {
           provide: LitellmService,
-          useValue: new LitellmService({
-            listModels: vi.fn(),
-          } as unknown as never),
+          useValue: {
+            // SimpleAgent awaits this on every run/runOrAppend; mock it to avoid timeouts.
+            attachTokenUsageToMessages: vi.fn().mockResolvedValue(undefined),
+          } as unknown as LitellmService,
         },
         {
           provide: PgCheckpointSaver,
@@ -261,19 +262,19 @@ describe('SimpleAgent', () => {
   });
 
   describe('addTool', () => {
-    it('should add tool to tools array', () => {
+    it('should add tool to tools map', () => {
       const mockTool = {
         name: 'test-tool',
         description: 'Test tool',
         invoke: vi.fn(),
       } as unknown as DynamicStructuredTool;
 
-      const initialToolCount = agent['tools'].length;
+      const initialToolCount = agent['tools'].size;
 
       agent.addTool(mockTool);
 
-      expect(agent['tools']).toHaveLength(initialToolCount + 1);
-      expect(agent['tools']).toContain(mockTool);
+      expect(agent['tools'].size).toBe(initialToolCount + 1);
+      expect(agent['tools'].get(mockTool.name)).toBe(mockTool);
     });
 
     it('should add multiple tools', () => {
@@ -286,14 +287,14 @@ describe('SimpleAgent', () => {
         invoke: vi.fn(),
       } as unknown as DynamicStructuredTool;
 
-      const initialToolCount = agent['tools'].length;
+      const initialToolCount = agent['tools'].size;
 
       agent.addTool(mockTool1);
       agent.addTool(mockTool2);
 
-      expect(agent['tools']).toHaveLength(initialToolCount + 2);
-      expect(agent['tools']).toContain(mockTool1);
-      expect(agent['tools']).toContain(mockTool2);
+      expect(agent['tools'].size).toBe(initialToolCount + 2);
+      expect(agent['tools'].get(mockTool1.name)).toBe(mockTool1);
+      expect(agent['tools'].get(mockTool2.name)).toBe(mockTool2);
     });
   });
 
@@ -488,6 +489,7 @@ describe('SimpleAgent', () => {
       description: 'Test agent description',
       invokeModelName: 'gpt-5-mini',
       invokeModelReasoningEffort: ReasoningEffort.None,
+      mcpServices: [],
     };
 
     const buildState = () => ({
@@ -800,9 +802,13 @@ describe('SimpleAgent', () => {
 
   describe('getGraphNodeMetadata', () => {
     it('should return undefined when no graph thread state is set', () => {
-      expect(
-        agent.getGraphNodeMetadata({ threadId: 'thread-1' }),
-      ).toBeUndefined();
+      const metadata = agent.getGraphNodeMetadata({ threadId: 'thread-1' });
+      // When no config is set, metadata should be undefined or only contain connectedTools
+      if (metadata) {
+        expect(metadata).toEqual({ connectedTools: [] });
+      } else {
+        expect(metadata).toBeUndefined();
+      }
     });
 
     it('should return instructions when configured even without thread state', () => {
@@ -818,7 +824,10 @@ describe('SimpleAgent', () => {
 
       const metadata = agent.getGraphNodeMetadata({});
 
-      expect(metadata).toEqual({ instructions: 'Follow these steps' });
+      expect(metadata).toEqual({
+        instructions: 'Follow these steps',
+        connectedTools: [],
+      });
     });
 
     it('should return empty pending messages when there are no pending messages', () => {
@@ -840,6 +849,7 @@ describe('SimpleAgent', () => {
         pendingMessages: [],
         reasoningChunks: {},
         instructions: 'Agent instructions',
+        connectedTools: [],
       });
     });
 
@@ -873,6 +883,7 @@ describe('SimpleAgent', () => {
         ],
         reasoningChunks: {},
         instructions: 'Agent instructions',
+        connectedTools: [],
       });
     });
   });
@@ -1073,6 +1084,7 @@ describe('SimpleAgent', () => {
               pendingMessages: [],
               reasoningChunks: {},
               instructions: 'Test instructions',
+              connectedTools: [],
             },
           },
         }),

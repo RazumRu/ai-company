@@ -80,7 +80,10 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
   }
 
   public get schema() {
-    return FilesDeleteToolSchema;
+    return z.toJSONSchema(FilesDeleteToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   public async invoke(

@@ -180,7 +180,10 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
   }
 
   public get schema() {
-    return FilesSearchTagsToolSchema;
+    return z.toJSONSchema(FilesSearchTagsToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   public async invoke(

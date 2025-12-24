@@ -7,6 +7,7 @@ import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
 import {
   FilesDeleteTool,
+  FilesDeleteToolSchema,
   FilesDeleteToolSchemaType,
 } from './files-delete.tool';
 
@@ -43,12 +44,12 @@ describe('FilesDeleteTool', () => {
   describe('schema', () => {
     it('accepts valid payload', () => {
       const data = { filePath: '/tmp/file.txt' };
-      expect(() => tool.schema.parse(data)).not.toThrow();
+      expect(() => FilesDeleteToolSchema.parse(data)).not.toThrow();
     });
 
     it('rejects empty file path', () => {
       const data = { filePath: '' };
-      expect(() => tool.schema.parse(data)).toThrow();
+      expect(() => FilesDeleteToolSchema.parse(data)).toThrow();
     });
   });
 

@@ -52,7 +52,7 @@ describe('GhCommitTool', () => {
         title: 'Add new feature',
         path: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject missing semanticType field', () => {
@@ -60,7 +60,7 @@ describe('GhCommitTool', () => {
         title: 'Add new feature',
         path: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject missing title field', () => {
@@ -68,7 +68,7 @@ describe('GhCommitTool', () => {
         semanticType: SemanticCommitType.FEAT,
         path: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty title', () => {
@@ -77,7 +77,7 @@ describe('GhCommitTool', () => {
         title: '',
         path: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate optional body field', () => {
@@ -87,7 +87,7 @@ describe('GhCommitTool', () => {
         path: '/path/to/repo',
         body: 'This is a detailed description',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate all semantic commit types', () => {
@@ -98,7 +98,7 @@ describe('GhCommitTool', () => {
           title: 'Test commit',
           path: '/path/to/repo',
         };
-        expect(() => tool.schema.parse(validData)).not.toThrow();
+        expect(() => tool.validate(validData)).not.toThrow();
       });
     });
 
@@ -108,7 +108,7 @@ describe('GhCommitTool', () => {
         title: 'Add new feature',
         path: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject missing path field', () => {
@@ -116,7 +116,7 @@ describe('GhCommitTool', () => {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
   });
 

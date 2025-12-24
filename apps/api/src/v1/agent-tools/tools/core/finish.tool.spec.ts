@@ -30,17 +30,17 @@ describe('FinishTool', () => {
         purpose: 'Completing the task',
         message: 'Task completed successfully',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject missing purpose field', () => {
       const invalidData = { message: 'Task completed successfully' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject missing message field', () => {
       const invalidData = { purpose: 'Completing the task' };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate with needsMoreInfo', () => {
@@ -49,7 +49,7 @@ describe('FinishTool', () => {
         message: 'What is the target deployment environment?',
         needsMoreInfo: true,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should default needsMoreInfo to false', () => {
@@ -57,7 +57,7 @@ describe('FinishTool', () => {
         purpose: 'Completing the task',
         message: 'Task completed successfully',
       };
-      const parsed = tool.schema.parse(validData);
+      const parsed = tool.validate(validData);
       expect(parsed.needsMoreInfo).toBe(false);
     });
 
@@ -66,7 +66,7 @@ describe('FinishTool', () => {
         purpose: '',
         message: 'Task completed successfully',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty message', () => {
@@ -74,7 +74,7 @@ describe('FinishTool', () => {
         purpose: 'Completing the task',
         message: '',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
   });
 

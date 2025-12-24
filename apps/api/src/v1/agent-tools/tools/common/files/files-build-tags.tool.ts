@@ -137,7 +137,10 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
   }
 
   public get schema() {
-    return FilesBuildTagsToolSchema;
+    return z.toJSONSchema(FilesBuildTagsToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   public async invoke(

@@ -7,7 +7,6 @@ import {
   OpenAIChatModelId,
 } from '@langchain/openai';
 import { EventEmitter } from 'events';
-import { isArray } from 'lodash';
 import { z } from 'zod';
 
 import { environment } from '../../../../environments';
@@ -73,12 +72,11 @@ export abstract class BaseAgent<
   TSchema = unknown,
   TNodeMetadata = Record<string, unknown>,
 > {
-  protected tools: DynamicStructuredTool[] = [];
+  protected tools: Map<string, DynamicStructuredTool> = new Map();
   protected eventEmitter = new EventEmitter();
 
-  public addTool(tool: DynamicStructuredTool | DynamicStructuredTool[]) {
-    const tools = isArray(tool) ? tool : [tool];
-    this.tools.push(...tools);
+  public addTool(tool: DynamicStructuredTool): void {
+    this.tools.set(tool.name, tool);
   }
 
   /**
@@ -139,4 +137,9 @@ export abstract class BaseAgent<
    * This allows tools that hold references to the agent to continue working with the updated config.
    */
   public abstract setConfig(config: z.infer<TSchema>): void;
+
+  /**
+   * Get the current agent configuration (including enhanced instructions)
+   */
+  public abstract getConfig(): z.infer<TSchema>;
 }

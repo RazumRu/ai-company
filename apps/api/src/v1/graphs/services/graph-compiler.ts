@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, DefaultLogger } from '@packages/common';
 
+import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
@@ -304,6 +305,13 @@ export class GraphCompiler {
       await agent.stop().catch((error: Error) => {
         this.logger.error(error, `Failed to stop agent ${node.id}`);
       });
+    } else if (node.type === NodeKind.Mcp) {
+      const mcp = node.instance as BaseMcp;
+      if (mcp && typeof mcp.cleanup === 'function') {
+        await mcp.cleanup().catch((error: Error) => {
+          this.logger.error(error, `Failed to cleanup MCP ${node.id}`);
+        });
+      }
     } else if (node.type === NodeKind.Runtime) {
       const runtime = node.instance as BaseRuntime;
       if (runtime && typeof runtime.stop === 'function') {
@@ -325,6 +333,7 @@ export class GraphCompiler {
     // Group nodes by type for ordered destruction
     const triggerNodes: CompiledGraphNode[] = [];
     const agentNodes: CompiledGraphNode[] = [];
+    const mcpNodes: CompiledGraphNode[] = [];
     const runtimeNodes: CompiledGraphNode[] = [];
 
     for (const node of nodes.values()) {
@@ -332,6 +341,8 @@ export class GraphCompiler {
         triggerNodes.push(node);
       } else if (node.type === NodeKind.SimpleAgent) {
         agentNodes.push(node);
+      } else if (node.type === NodeKind.Mcp) {
+        mcpNodes.push(node);
       } else if (node.type === NodeKind.Runtime) {
         runtimeNodes.push(node);
       }
@@ -342,6 +353,9 @@ export class GraphCompiler {
 
     // Then destroy agents (they might have active streams)
     await Promise.all(agentNodes.map((node) => this.destroyNode(node)));
+
+    // Then destroy MCP services (agents might be using them)
+    await Promise.all(mcpNodes.map((node) => this.destroyNode(node)));
 
     // Finally destroy runtimes (they might have containers running)
     await Promise.all(runtimeNodes.map((node) => this.destroyNode(node)));

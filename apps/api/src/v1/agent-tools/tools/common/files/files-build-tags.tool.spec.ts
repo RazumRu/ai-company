@@ -7,6 +7,7 @@ import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
 import {
   FilesBuildTagsTool,
+  FilesBuildTagsToolSchema,
   FilesBuildTagsToolSchemaType,
 } from './files-build-tags.tool';
 
@@ -51,21 +52,21 @@ describe('FilesBuildTagsTool', () => {
         dir: '/path/to/repo',
         alias: 'myrepo',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesBuildTagsToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should allow missing dir field (defaults to session cwd)', () => {
       const data = {
         alias: 'myrepo',
       };
-      expect(() => tool.schema.parse(data)).not.toThrow();
+      expect(() => FilesBuildTagsToolSchema.parse(data)).not.toThrow();
     });
 
     it('should reject missing alias field', () => {
       const invalidData = {
         dir: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesBuildTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty dir', () => {
@@ -73,7 +74,7 @@ describe('FilesBuildTagsTool', () => {
         dir: '',
         alias: 'myrepo',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesBuildTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty alias', () => {
@@ -81,7 +82,7 @@ describe('FilesBuildTagsTool', () => {
         dir: '/path/to/repo',
         alias: '',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesBuildTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should accept alias with special characters', () => {
@@ -89,7 +90,7 @@ describe('FilesBuildTagsTool', () => {
         dir: '/path/to/repo',
         alias: 'my-repo_123',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesBuildTagsToolSchema.parse(validData)).not.toThrow();
     });
   });
 

@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { IBaseKnowledgeOutput } from '../../../agent-knowledge/agent-knowledge.types';
 import { SimpleKnowledge } from '../../../agent-knowledge/services/simple-knowledge';
+import type { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
 import {
@@ -60,6 +61,11 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       value: NodeKind.Knowledge,
       multiple: true,
     },
+    {
+      type: 'kind',
+      value: NodeKind.Mcp,
+      multiple: true,
+    },
   ] as const;
 
   constructor(
@@ -80,6 +86,8 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     // Collect all tools from connected nodes
     const allTools: BuiltAgentTool[] = [];
     const knowledgeBlocks: { id: string; content: string }[] = [];
+    const mcpOutputs: BaseMcp<unknown>[] = [];
+
     for (const nodeId of outputNodeIds) {
       const node = this.graphRegistry.getNode<
         | BuiltAgentTool
@@ -87,6 +95,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         | DynamicStructuredTool
         | DynamicStructuredTool[]
         | SimpleKnowledge
+        | BaseMcp<unknown>
       >(metadata.graphId, nodeId);
 
       if (!node) {
@@ -111,37 +120,52 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         if (content) {
           knowledgeBlocks.push({ id: nodeId, content });
         }
+        continue;
+      }
+
+      if (node.type === NodeKind.Mcp) {
+        const mcpService = node.instance as BaseMcp<unknown>;
+        if (mcpService) {
+          mcpOutputs.push(mcpService);
+        }
       }
     }
-
-    // Collect detailed instructions from all connected tools
-    const toolInstructions = this.collectToolInstructions(allTools);
 
     const knowledgeInstructions =
       this.collectKnowledgeInstructions(knowledgeBlocks);
 
-    // Build enhanced instructions with tool usage guidance
-    const enhancedInstructions = [
-      config.instructions,
-      knowledgeInstructions,
-      toolInstructions,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
+    const mcpInstructions = this.collectMcpInstructions(mcpOutputs);
 
-    // Set configuration with enhanced instructions
-    const agentConfig = {
+    agent.setConfig(config);
+    agent.setMcpServices(mcpOutputs);
+    await agent.initTools(config);
+
+    // After the first build, the agent contains ALL tools (connected + MCP + finish).
+    // Now we can generate tool instructions in the same format as regular tools.
+    const toolInstructions = this.collectToolInstructions(
+      agent.getTools() as BuiltAgentTool[],
+    );
+
+    const finalConfig = {
       ...config,
-      instructions: enhancedInstructions,
+      instructions: [
+        config.instructions,
+        knowledgeInstructions,
+        toolInstructions,
+        mcpInstructions,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
     };
 
-    agent.setConfig(agentConfig);
+    agent.setConfig(finalConfig);
 
     return agent;
   }
 
   private collectToolInstructions(tools: BuiltAgentTool[]): string | undefined {
     const blocks = tools
+      .filter((tool): tool is BuiltAgentTool => Boolean(tool))
       .map((tool) => {
         if (!tool.__instructions) {
           return null;
@@ -179,5 +203,22 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     const blocks = knowledgeBlocks.map(({ content }) => `${content}`);
 
     return ['## Knowledge', ...blocks].join('\n\n');
+  }
+
+  private collectMcpInstructions(
+    mcpOutputs: BaseMcp<unknown>[],
+  ): string | undefined {
+    const blocks = mcpOutputs
+      .map((mcp) => {
+        const instructions = mcp.getDetailedInstructions?.(mcp.config as never);
+        return instructions || null;
+      })
+      .filter((block): block is string => Boolean(block));
+
+    if (!blocks.length) {
+      return undefined;
+    }
+
+    return ['## MCP Instructions', ...blocks].join('\n\n');
   }
 }

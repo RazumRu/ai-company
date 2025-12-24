@@ -3,6 +3,7 @@ import { BaseException } from '@packages/common';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { BaseMcp } from '../../../v1/agent-mcp/services/base-mcp';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
@@ -11,8 +12,10 @@ import {
   GraphRevisionStatus,
   GraphStatus,
 } from '../../../v1/graphs/graphs.types';
+import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphRevisionService } from '../../../v1/graphs/services/graph-revision.service';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
@@ -33,6 +36,7 @@ describe('Graph Revisions Integration Tests', () => {
   let graphsService: GraphsService;
   let revisionsService: GraphRevisionService;
   let threadsService: ThreadsService;
+  let graphRegistry: GraphRegistry;
   const createdGraphIds: string[] = [];
 
   const waitForGraphToBeRunning = async (id: string, timeoutMs = 60000) => {
@@ -82,6 +86,32 @@ describe('Graph Revisions Integration Tests', () => {
 
       await wait(1000);
     }
+  };
+
+  const getRuntime = (graphId: string, nodeId: string) => {
+    const runtimeNode = graphRegistry.getNode<DockerRuntime>(graphId, nodeId);
+    if (!runtimeNode?.instance) {
+      throw new Error(`Runtime node ${nodeId} not found in graph ${graphId}`);
+    }
+    return runtimeNode.instance;
+  };
+
+  const getMcpOutput = (graphId: string, nodeId: string) => {
+    const mcpNode = graphRegistry.getNode<BaseMcp>(graphId, nodeId);
+    if (!mcpNode?.instance) {
+      throw new Error(`MCP node ${nodeId} not found in graph ${graphId}`);
+    }
+    return mcpNode.instance;
+  };
+
+  const getContainerHostname = async (runtime: DockerRuntime) => {
+    const res = await runtime.exec({ cmd: 'cat /etc/hostname' });
+    if (res.fail) {
+      throw new Error(
+        `Failed to read hostname: exit=${res.exitCode} stderr=${res.stderr}`,
+      );
+    }
+    return res.stdout.trim();
   };
 
   const waitForThreadCompletion = async (
@@ -211,6 +241,7 @@ describe('Graph Revisions Integration Tests', () => {
     graphsService = app.get<GraphsService>(GraphsService);
     revisionsService = app.get<GraphRevisionService>(GraphRevisionService);
     threadsService = app.get<ThreadsService>(ThreadsService);
+    graphRegistry = app.get<GraphRegistry>(GraphRegistry);
   });
 
   afterAll(async () => {
@@ -429,7 +460,7 @@ describe('Graph Revisions Integration Tests', () => {
               ...node,
               config: {
                 ...(node.config as SimpleAgentSchemaType),
-                invokeModelName: 'gpt-5',
+                invokeModelName: 'gpt-5.1',
               } satisfies SimpleAgentSchemaType,
             }
           : node,
@@ -472,7 +503,7 @@ describe('Graph Revisions Integration Tests', () => {
       );
       expect(agentNode?.config.instructions).toBe('User A instructions');
       expect((agentNode?.config as SimpleAgentSchemaType).invokeModelName).toBe(
-        'gpt-5',
+        'gpt-5.1',
       );
     },
   );
@@ -1286,7 +1317,7 @@ describe('Graph Revisions Integration Tests', () => {
                 ...node,
                 config: {
                   ...(node.config as SimpleAgentSchemaType),
-                  invokeModelName: 'gpt-5',
+                  invokeModelName: 'gpt-5.1',
                 } satisfies SimpleAgentSchemaType,
               }
             : node,
@@ -1312,7 +1343,7 @@ describe('Graph Revisions Integration Tests', () => {
         );
         expect(
           (updatedAgentNode?.config as SimpleAgentSchemaType).invokeModelName,
-        ).toBe('gpt-5');
+        ).toBe('gpt-5.1');
         expect(
           (updatedAgentNode?.config as SimpleAgentSchemaType).invokeModelName,
         ).not.toBe(originalModel);
@@ -2119,6 +2150,207 @@ describe('Graph Revisions Integration Tests', () => {
         expect(shellExecution.result?.stdout).toContain(
           'test after resource change',
         );
+      },
+    );
+  });
+
+  describe('MCP + Graph Revisions', () => {
+    it(
+      'keeps filesystem MCP usable after runtime update revision (runtime reload)',
+      { timeout: 180000 },
+      async () => {
+        const graphData: CreateGraphDto = {
+          name: `MCP runtime update test ${Date.now()}`,
+          description:
+            'Filesystem MCP should keep working after runtime reload',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'runtime-1',
+                template: 'docker-runtime',
+                config: {
+                  runtimeType: 'Docker',
+                  image: 'node:20',
+                  env: {
+                    TEST_VAR: 'original',
+                  },
+                },
+              },
+              {
+                id: 'mcp-fs-1',
+                template: 'filesystem-mcp',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'mcp-fs-1', to: 'runtime-1' }],
+          },
+        };
+
+        const createResponse = await graphsService.create(graphData);
+        const graphId = createResponse.id;
+        createdGraphIds.push(graphId);
+        const currentVersion = createResponse.version;
+
+        await graphsService.run(graphId);
+        await waitForGraphToBeRunning(graphId);
+
+        const runtimeBefore = getRuntime(graphId, 'runtime-1');
+        const hostnameBefore = await getContainerHostname(runtimeBefore);
+
+        const mcpBefore = getMcpOutput(graphId, 'mcp-fs-1');
+        const toolsBefore = await mcpBefore.discoverTools();
+        const listDirToolBefore = toolsBefore.find(
+          (t) => t.name === 'list_directory',
+        );
+        expect(listDirToolBefore).toBeDefined();
+        const beforeResult = await listDirToolBefore!.invoke({
+          path: '/runtime-workspace',
+        });
+        expect(beforeResult).toBeDefined();
+        expect(beforeResult.output).toBeDefined();
+
+        const updatedSchema = cloneDeep(graphData.schema);
+        updatedSchema.nodes = updatedSchema.nodes.map((node) =>
+          node.id === 'runtime-1'
+            ? {
+                ...node,
+                config: {
+                  ...node.config,
+                  // Force container recreate (image + env changes)
+                  image: 'node:20-slim',
+                  env: { TEST_VAR: 'updated' },
+                },
+              }
+            : node,
+        );
+
+        const updateResponse = await graphsService.update(graphId, {
+          schema: updatedSchema,
+          currentVersion,
+        });
+
+        expect(updateResponse.revision).toBeDefined();
+        const revisionId = updateResponse.revision!.id;
+
+        await waitForRevisionStatus(
+          graphId,
+          revisionId,
+          GraphRevisionStatus.Applied,
+          120000,
+        );
+
+        await waitForGraphToBeRunning(graphId);
+
+        const runtimeAfter = getRuntime(graphId, 'runtime-1');
+        const hostnameAfter = await getContainerHostname(runtimeAfter);
+        expect(hostnameAfter).not.toBe(hostnameBefore);
+
+        const mcpAfter = getMcpOutput(graphId, 'mcp-fs-1');
+        const toolsAfter = await mcpAfter.discoverTools();
+        const listDirToolAfter = toolsAfter.find(
+          (t) => t.name === 'list_directory',
+        );
+        expect(listDirToolAfter).toBeDefined();
+        const afterResult = await listDirToolAfter!.invoke({
+          path: '/runtime-workspace',
+        });
+        expect(afterResult).toBeDefined();
+        expect(afterResult.output).toBeDefined();
+      },
+    );
+
+    it(
+      'keeps filesystem MCP usable after revision (triggered by config update)',
+      { timeout: 180000 },
+      async () => {
+        const graphData: CreateGraphDto = {
+          name: `MCP config update test ${Date.now()}`,
+          description:
+            'Filesystem MCP should be usable after a revision is applied',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'runtime-1',
+                template: 'docker-runtime',
+                config: {
+                  runtimeType: 'Docker',
+                  image: 'node:20',
+                  env: {},
+                },
+              },
+              {
+                id: 'mcp-fs-1',
+                template: 'filesystem-mcp',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'mcp-fs-1', to: 'runtime-1' }],
+          },
+        };
+
+        const createResponse = await graphsService.create(graphData);
+        const graphId = createResponse.id;
+        createdGraphIds.push(graphId);
+        const currentVersion = createResponse.version;
+
+        await graphsService.run(graphId);
+        await waitForGraphToBeRunning(graphId);
+
+        const mcpBefore = getMcpOutput(graphId, 'mcp-fs-1');
+        const toolsBefore = await mcpBefore.discoverTools();
+        const listDirToolBefore = toolsBefore.find(
+          (t) => t.name === 'list_directory',
+        );
+        expect(listDirToolBefore).toBeDefined();
+        const beforeResult = await listDirToolBefore!.invoke({
+          path: '/runtime-workspace',
+        });
+        expect(beforeResult).toBeDefined();
+        expect(beforeResult.output).toBeDefined();
+
+        // Update runtime config to force a revision
+        const graph = await graphsService.findById(graphId);
+        const updatedSchema = cloneDeep(graph.schema);
+        const runtimeNode = updatedSchema.nodes.find(
+          (n) => n.id === 'runtime-1',
+        );
+        if (runtimeNode) {
+          runtimeNode.config = {
+            ...runtimeNode.config,
+            env: { FORCED_UPDATE: 'true' },
+          };
+        }
+
+        const updateResponse = await graphsService.update(graphId, {
+          schema: updatedSchema,
+          currentVersion,
+        });
+
+        expect(updateResponse.revision).toBeDefined();
+        const revisionId = updateResponse.revision!.id;
+
+        await waitForRevisionStatus(
+          graphId,
+          revisionId,
+          GraphRevisionStatus.Applied,
+          120000,
+        );
+
+        await waitForGraphToBeRunning(graphId);
+
+        const mcpAfter = getMcpOutput(graphId, 'mcp-fs-1');
+        const toolsAfter = await mcpAfter.discoverTools();
+        const listDirToolAfter = toolsAfter.find(
+          (t) => t.name === 'list_directory',
+        );
+        expect(listDirToolAfter).toBeDefined();
+        const afterResult = await listDirToolAfter!.invoke({
+          path: '/runtime-workspace',
+        });
+        expect(afterResult).toBeDefined();
+        expect(afterResult.output).toBeDefined();
       },
     );
   });

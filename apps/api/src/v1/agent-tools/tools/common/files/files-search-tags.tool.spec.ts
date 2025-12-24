@@ -7,6 +7,7 @@ import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
 import {
   FilesSearchTagsTool,
+  FilesSearchTagsToolSchema,
   FilesSearchTagsToolSchemaType,
 } from './files-search-tags.tool';
 
@@ -53,7 +54,7 @@ describe('FilesSearchTagsTool', () => {
         alias: 'myrepo',
         query: 'MyFunction',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesSearchTagsToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should allow missing dir field (defaults to session cwd)', () => {
@@ -61,7 +62,7 @@ describe('FilesSearchTagsTool', () => {
         alias: 'myrepo',
         query: 'MyFunction',
       };
-      expect(() => tool.schema.parse(data)).not.toThrow();
+      expect(() => FilesSearchTagsToolSchema.parse(data)).not.toThrow();
     });
 
     it('should reject missing alias field', () => {
@@ -69,7 +70,7 @@ describe('FilesSearchTagsTool', () => {
         dir: '/path/to/repo',
         query: 'MyFunction',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesSearchTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject missing query field', () => {
@@ -77,7 +78,7 @@ describe('FilesSearchTagsTool', () => {
         dir: '/path/to/repo',
         alias: 'myrepo',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesSearchTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty dir', () => {
@@ -86,7 +87,7 @@ describe('FilesSearchTagsTool', () => {
         alias: 'myrepo',
         query: 'MyFunction',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesSearchTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty alias', () => {
@@ -95,7 +96,7 @@ describe('FilesSearchTagsTool', () => {
         alias: '',
         query: 'MyFunction',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesSearchTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty query', () => {
@@ -104,7 +105,7 @@ describe('FilesSearchTagsTool', () => {
         alias: 'myrepo',
         query: '',
       };
-      expect(() => tool.schema.parse(invalidData)).toThrow();
+      expect(() => FilesSearchTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should accept optional exactMatch field', () => {
@@ -114,7 +115,7 @@ describe('FilesSearchTagsTool', () => {
         query: 'MyFunction',
         exactMatch: true,
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => FilesSearchTagsToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should default exactMatch to false when not provided', () => {
@@ -123,7 +124,7 @@ describe('FilesSearchTagsTool', () => {
         alias: 'myrepo',
         query: 'MyFunction',
       };
-      const parsed = tool.schema.parse(validData);
+      const parsed = FilesSearchTagsToolSchema.parse(validData);
       expect(parsed.exactMatch).toBe(false);
     });
   });
@@ -219,7 +220,7 @@ describe('FilesSearchTagsTool', () => {
     });
 
     it('should default to regex match when exactMatch is not provided', async () => {
-      const args = tool.schema.parse({
+      const args = FilesSearchTagsToolSchema.parse({
         dir: '/path/to/repo',
         alias: 'myrepo',
         query: 'MyFunction',

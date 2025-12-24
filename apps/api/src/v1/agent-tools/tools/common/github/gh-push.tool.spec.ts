@@ -44,28 +44,28 @@ describe('GhPushTool', () => {
   describe('schema', () => {
     it('should validate with no fields (all optional)', () => {
       const validData = {};
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate with path field', () => {
       const validData = {
         path: '/path/to/repo',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate with remote field', () => {
       const validData = {
         remote: 'upstream',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate with branch field', () => {
       const validData = {
         branch: 'main',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate with all fields', () => {
@@ -74,7 +74,7 @@ describe('GhPushTool', () => {
         remote: 'origin',
         branch: 'feature-branch',
       };
-      expect(() => tool.schema.parse(validData)).not.toThrow();
+      expect(() => tool.validate(validData)).not.toThrow();
     });
   });
 

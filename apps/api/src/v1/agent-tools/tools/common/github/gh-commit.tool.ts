@@ -184,7 +184,10 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   }
 
   public get schema() {
-    return GhCommitToolSchema;
+    return z.toJSONSchema(GhCommitToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   private buildCommand(cmd: string, path?: string): string {

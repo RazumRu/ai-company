@@ -11,7 +11,7 @@ describe('LiteLLM (integration)', () => {
 
   const mockResponse = [
     {
-      id: 'gpt-5',
+      id: 'gpt-5.1',
       object: 'model',
       created: 1677610602,
       owned_by: 'openai',
@@ -37,6 +37,6 @@ describe('LiteLLM (integration)', () => {
 
   it('returns models from LiteLLM client', async () => {
     const result = await modelsService.listModels();
-    expect(result).toEqual([{ id: 'gpt-5', ownedBy: 'openai' }]);
+    expect(result).toEqual([{ id: 'gpt-5.1', ownedBy: 'openai' }]);
   });
 });

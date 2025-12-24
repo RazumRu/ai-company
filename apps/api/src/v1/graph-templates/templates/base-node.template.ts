@@ -1,14 +1,11 @@
 import { z } from 'zod';
 
+import type { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { IBaseResourceOutput } from '../../graph-resources/graph-resources.types';
-import {
-  CompiledGraphNode as _CompiledGraphNode,
-  GraphMetadataSchemaType,
-  NodeKind,
-} from '../../graphs/graphs.types';
+import { GraphMetadataSchemaType, NodeKind } from '../../graphs/graphs.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 
 export interface NodeBaseTemplateMetadata extends GraphMetadataSchemaType {
@@ -85,4 +82,11 @@ export abstract class TriggerNodeBaseTemplate<
   TResult = BaseTrigger<TConfig>,
 > extends NodeBaseTemplate<TConfig, TResult> {
   readonly kind: NodeKind = NodeKind.Trigger;
+}
+
+export abstract class McpNodeBaseTemplate<
+  TConfig extends z.ZodTypeAny,
+  TResult extends BaseMcp = BaseMcp<unknown>,
+> extends NodeBaseTemplate<TConfig, TResult> {
+  readonly kind: NodeKind = NodeKind.Mcp;
 }

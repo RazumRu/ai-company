@@ -166,7 +166,10 @@ export class WebSearchTool extends BaseTool<
   }
 
   public get schema() {
-    return WebSearchToolSchema;
+    return z.toJSONSchema(WebSearchToolSchema, {
+      target: 'draft-7',
+      reused: 'ref',
+    }) as ReturnType<typeof z.toJSONSchema>;
   }
 
   public async invoke(

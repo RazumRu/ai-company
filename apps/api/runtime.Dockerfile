@@ -9,7 +9,10 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
   git \
   curl \
   openssh-client \
-  jq
+  jq \
+  python3 \
+  python3-pip \
+  && ln -s /usr/bin/python3 /usr/bin/python
 
 # files tools
 RUN apt-get install -y --no-install-recommends \
