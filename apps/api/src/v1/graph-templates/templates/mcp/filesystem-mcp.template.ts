@@ -17,7 +17,20 @@ import {
   NodeBaseTemplateMetadata,
 } from '../base-node.template';
 
-export const FilesystemMcpTemplateSchema = z.object({});
+export const FilesystemMcpTemplateSchema = z
+  .object({
+    readOnly: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        'If true, only read-only filesystem tools are exposed (no write/edit/move/create).',
+      )
+      .meta({ 'x-ui:show-on-node': true })
+      .meta({ 'x-ui:label': 'Read-only mode' }),
+  })
+  // Strip legacy/unknown fields so older configs remain valid.
+  .strip();
 
 export type FilesystemMcpTemplateSchemaType = z.infer<
   typeof FilesystemMcpTemplateSchema

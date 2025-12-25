@@ -195,7 +195,9 @@ describe('TemplatesService', () => {
 
       // Act
       const result = (
-        service as unknown as { serializeSchema: (schema: unknown) => unknown }
+        service as unknown as {
+          serializeSchema: (schema: unknown) => unknown;
+        }
       ).serializeSchema(schema);
 
       expect(result).toEqual({
@@ -213,7 +215,9 @@ describe('TemplatesService', () => {
 
       // Act
       const result = (
-        service as unknown as { serializeSchema: (schema: unknown) => unknown }
+        service as unknown as {
+          serializeSchema: (schema: unknown) => unknown;
+        }
       ).serializeSchema(schema);
 
       expect(result).toEqual({

@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import {
@@ -36,6 +36,8 @@ describe('Graph Nodes Integration Tests', () => {
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
   const createdGraphIds: string[] = [];
+  let basicGraphId: string;
+  let mcpGraphId: string;
 
   const registerGraph = (graphId: string) => {
     if (!createdGraphIds.includes(graphId)) {
@@ -188,20 +190,78 @@ describe('Graph Nodes Integration Tests', () => {
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
-  });
+    const basic = await graphsService.create(
+      createMockGraphData({
+        name: `Graph Nodes Basic ${Date.now()}`,
+      }),
+    );
+    basicGraphId = basic.id;
+    registerGraph(basicGraphId);
+    await graphsService.run(basicGraphId);
+    await waitForGraphToBeRunning(basicGraphId);
 
-  afterEach(async () => {
+    const mcpGraph = await graphsService.create(
+      createMockGraphData({
+        name: `Graph Nodes MCP ${Date.now()}`,
+        schema: {
+          nodes: [
+            {
+              id: 'runtime-1',
+              template: 'docker-runtime',
+              config: { runtimeType: 'Docker' },
+            },
+            {
+              id: 'mcp-1',
+              template: 'filesystem-mcp',
+              config: {},
+            },
+            {
+              id: AGENT_NODE_ID,
+              template: 'simple-agent',
+              config: {
+                // Avoid tool execution in this test; we only need MCP tool discovery during graph build.
+                enforceToolUsage: false,
+              },
+            },
+            {
+              id: TRIGGER_NODE_ID,
+              template: 'manual-trigger',
+              config: {},
+            },
+          ],
+          edges: [
+            { from: AGENT_NODE_ID, to: 'mcp-1' },
+            { from: 'mcp-1', to: 'runtime-1' },
+            { from: TRIGGER_NODE_ID, to: AGENT_NODE_ID },
+          ],
+        },
+      }),
+    );
+    mcpGraphId = mcpGraph.id;
+    registerGraph(mcpGraphId);
+    await graphsService.run(mcpGraphId);
+    await waitForGraphToBeRunning(mcpGraphId, 180_000);
+  }, 300_000);
+
+  afterAll(async () => {
     while (createdGraphIds.length > 0) {
       const graphId = createdGraphIds.pop();
       if (graphId) {
         await cleanupGraph(graphId);
       }
     }
-  }, 180_000);
-
-  afterAll(async () => {
     await app.close();
-  });
+  }, 300_000);
+
+  const uniqueThreadSubId = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ensureGraphRunning = async (graphId: string) => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
+    await graphsService.run(graphId);
+    await waitForGraphToBeRunning(graphId);
+  };
 
   it('rejects compiled node requests when graph is not running', async () => {
     const graph = await graphsService.create(createMockGraphData());
@@ -219,14 +279,11 @@ describe('Graph Nodes Integration Tests', () => {
     'returns compiled node snapshots for a running graph',
     { timeout: 120_000 },
     async () => {
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
-
-      await graphsService.run(graph.id);
-      await waitForGraphToBeRunning(graph.id);
+      await ensureGraphRunning(basicGraphId);
+      const graph = await graphsService.findById(basicGraphId);
 
       const nodes = await waitForSnapshots(
-        graph.id,
+        basicGraphId,
         {},
         (snapshots) => snapshots.length >= graph.schema.nodes.length,
       );
@@ -251,20 +308,17 @@ describe('Graph Nodes Integration Tests', () => {
     'filters node snapshots by thread and run identifiers',
     { timeout: 120_000 },
     async () => {
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
-
-      await graphsService.run(graph.id);
-      await waitForGraphToBeRunning(graph.id);
+      await ensureGraphRunning(basicGraphId);
+      const graph = await graphsService.findById(basicGraphId);
 
       const execution = await graphsService.executeTrigger(
-        graph.id,
+        basicGraphId,
         TRIGGER_NODE_ID,
         {
           messages: [
             'Please summarize this synthetically and confirm completion.',
           ],
-          threadSubId: 'node-status-thread',
+          threadSubId: uniqueThreadSubId('node-status-thread'),
           async: false,
         },
       );
@@ -273,7 +327,7 @@ describe('Graph Nodes Integration Tests', () => {
       await waitForThreadCompletion(execution.externalThreadId);
 
       const threadFiltered = await waitForSnapshots(
-        graph.id,
+        basicGraphId,
         { threadId: execution.externalThreadId },
         (snapshots) =>
           snapshots.some(
@@ -297,7 +351,7 @@ describe('Graph Nodes Integration Tests', () => {
       expect(effectiveRunId).toBeDefined();
 
       const runFiltered = await waitForSnapshots(
-        graph.id,
+        basicGraphId,
         { runId: effectiveRunId },
         (snapshots) =>
           snapshots.some(
@@ -316,10 +370,10 @@ describe('Graph Nodes Integration Tests', () => {
         expect(ALLOWED_STATUSES).toContain(node.status);
       });
 
-      await graphsService.destroy(graph.id);
+      await graphsService.destroy(basicGraphId);
 
       await expect(
-        graphsService.getCompiledNodes(graph.id, {} as GraphNodesQueryDto),
+        graphsService.getCompiledNodes(basicGraphId, {} as GraphNodesQueryDto),
       ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_RUNNING',
         statusCode: 400,
@@ -331,15 +385,11 @@ describe('Graph Nodes Integration Tests', () => {
     'exposes agent pending messages through additional node metadata',
     { timeout: 120_000 },
     async () => {
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
+      await ensureGraphRunning(basicGraphId);
 
-      await graphsService.run(graph.id);
-      await waitForGraphToBeRunning(graph.id);
-
-      const threadSubId = 'pending-metadata-thread';
+      const threadSubId = uniqueThreadSubId('pending-metadata-thread');
       const firstExecution = await graphsService.executeTrigger(
-        graph.id,
+        basicGraphId,
         TRIGGER_NODE_ID,
         {
           messages: ['Start long running task'],
@@ -349,7 +399,7 @@ describe('Graph Nodes Integration Tests', () => {
       );
       const threadId = firstExecution.externalThreadId;
 
-      await waitForSnapshots(graph.id, { threadId }, (snapshots) =>
+      await waitForSnapshots(basicGraphId, { threadId }, (snapshots) =>
         snapshots.some(
           (node) =>
             node.id === AGENT_NODE_ID &&
@@ -357,14 +407,14 @@ describe('Graph Nodes Integration Tests', () => {
         ),
       );
 
-      await graphsService.executeTrigger(graph.id, TRIGGER_NODE_ID, {
+      await graphsService.executeTrigger(basicGraphId, TRIGGER_NODE_ID, {
         messages: ['Follow-up while running'],
         threadSubId,
         async: true,
       });
 
       const nodesWithPending = await waitForSnapshots(
-        graph.id,
+        basicGraphId,
         { threadId },
         (snapshots) =>
           snapshots.some((node) => {
@@ -396,7 +446,7 @@ describe('Graph Nodes Integration Tests', () => {
       await waitForThreadCompletion(threadId);
 
       const nodesAfterCompletion = await waitForSnapshots(
-        graph.id,
+        basicGraphId,
         { threadId },
         (snapshots) =>
           snapshots.some(
@@ -429,53 +479,14 @@ describe('Graph Nodes Integration Tests', () => {
     'exposes connected tool list (including MCP tools) through additional node metadata',
     { timeout: 180_000 },
     async () => {
-      const graph = await graphsService.create(
-        createMockGraphData({
-          schema: {
-            nodes: [
-              {
-                id: 'runtime-1',
-                template: 'docker-runtime',
-                config: { runtimeType: 'Docker' },
-              },
-              {
-                id: 'mcp-1',
-                template: 'filesystem-mcp',
-                config: {},
-              },
-              {
-                id: AGENT_NODE_ID,
-                template: 'simple-agent',
-                config: {
-                  // Avoid tool execution in this test; we only need MCP tool discovery during graph build.
-                  enforceToolUsage: false,
-                },
-              },
-              {
-                id: TRIGGER_NODE_ID,
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [
-              { from: AGENT_NODE_ID, to: 'mcp-1' },
-              { from: 'mcp-1', to: 'runtime-1' },
-              { from: TRIGGER_NODE_ID, to: AGENT_NODE_ID },
-            ],
-          },
-        }),
-      );
-      registerGraph(graph.id);
-
-      await graphsService.run(graph.id);
-      await waitForGraphToBeRunning(graph.id);
+      await ensureGraphRunning(mcpGraphId);
 
       const execution = await graphsService.executeTrigger(
-        graph.id,
+        mcpGraphId,
         TRIGGER_NODE_ID,
         {
           messages: ['No tools needed. Reply with a short acknowledgement.'],
-          threadSubId: 'connected-tools-metadata-thread',
+          threadSubId: uniqueThreadSubId('connected-tools-metadata-thread'),
           async: false,
         },
       );
@@ -483,7 +494,7 @@ describe('Graph Nodes Integration Tests', () => {
       await waitForThreadCompletion(execution.externalThreadId);
 
       const snapshots = await waitForSnapshots(
-        graph.id,
+        mcpGraphId,
         { threadId: execution.externalThreadId },
         (nodes) =>
           nodes.some(
@@ -511,8 +522,10 @@ describe('Graph Nodes Integration Tests', () => {
       expect(Array.isArray(meta?.connectedTools)).toBe(true);
 
       // Should include MCP filesystem tool(s) after execution
-      const readFileTool = meta?.connectedTools?.find(
-        (t) => t?.name === 'read_file',
+      // Note: our Filesystem MCP maps the filesystem server tools and currently exposes
+      // `read_text_file` (not `read_file`).
+      const readFileTool = meta?.connectedTools?.find((t) =>
+        ['read_text_file', 'read_file'].includes(String(t?.name ?? '')),
       );
       expect(readFileTool).toBeDefined();
       expect(typeof readFileTool?.description).toBe('string');

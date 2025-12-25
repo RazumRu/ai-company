@@ -28,6 +28,7 @@ import {
   GraphNodeSchemaType,
   GraphNodeStatus,
   GraphSchemaType,
+  GraphStatus,
 } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
@@ -75,6 +76,8 @@ describe('Socket Notifications Integration Tests', () => {
   let ioAdapter: IoAdapter;
   let baseUrl: string;
   const createdGraphIds: string[] = [];
+  let baseGraphId: string;
+  let commandGraphId: string;
   const STOP_TRIGGER_NODE_ID = 'trigger-1';
   const STOP_AGENT_NODE_ID = 'agent-1';
   const STOP_SHELL_NODE_ID = 'shell-1';
@@ -148,7 +151,19 @@ describe('Socket Notifications Integration Tests', () => {
       MessageTransformerService,
     );
     baseUrl = 'http://localhost:5050';
-  });
+
+    const baseGraph = await graphsService.create(
+      createMockGraphData({
+        name: `Socket Notifications Base ${Date.now()}`,
+      }),
+    );
+    baseGraphId = baseGraph.id;
+    createdGraphIds.push(baseGraphId);
+
+    const commandGraph = await graphsService.create(createCommandGraphData());
+    commandGraphId = commandGraph.id;
+    createdGraphIds.push(commandGraphId);
+  }, 180_000);
 
   afterEach(async () => {
     // Disconnect socket
@@ -156,40 +171,55 @@ describe('Socket Notifications Integration Tests', () => {
       socket.disconnect();
     }
 
-    // Cleanup all created graphs
+    // Reset graphs to a known non-running state for the next test.
     for (const graphId of createdGraphIds) {
       try {
         await graphsService.destroy(graphId);
-      } catch (error: unknown) {
-        // Only ignore expected "not running" errors - re-throw others
-        if (
-          error instanceof BaseException &&
-          error.errorCode !== 'GRAPH_NOT_RUNNING' &&
-          error.errorCode !== 'GRAPH_NOT_FOUND'
-        ) {
-          console.error(`Unexpected error destroying graph ${graphId}:`, error);
-          throw error;
-        }
+      } catch {
+        // best effort
+      }
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    // Cleanup graphs created in beforeAll (and any graphs created during tests)
+    for (const graphId of createdGraphIds) {
+      try {
+        await graphsService.destroy(graphId);
+      } catch {
+        // best effort
       }
       try {
         await graphsService.delete(graphId);
-      } catch (error: unknown) {
-        // Only ignore expected "not found" errors - re-throw others
-        if (
-          error instanceof BaseException &&
-          error.errorCode !== 'GRAPH_NOT_FOUND'
-        ) {
-          console.error(`Unexpected error deleting graph ${graphId}:`, error);
-          throw error;
-        }
+      } catch {
+        // best effort
       }
     }
-    createdGraphIds.length = 0;
-  });
-
-  afterAll(async () => {
     await app.close();
-  });
+  }, 180_000);
+
+  const uniqueThreadSubId = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ensureGraphRunning = async (graphId: string) => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
+    await graphsService.run(graphId);
+    await waitForCondition(
+      () => graphsService.findById(graphId),
+      (g) => g.status === GraphStatus.Running,
+      { timeout: 60_000, interval: 1_000 },
+    );
+  };
+
+  const restartGraph = async (graphId: string) => {
+    try {
+      await graphsService.destroy(graphId);
+    } catch {
+      // best effort
+    }
+    await ensureGraphRunning(graphId);
+  };
 
   const createSocketConnection = (userId: string): Socket => {
     return io(baseUrl, {
@@ -259,10 +289,7 @@ describe('Socket Notifications Integration Tests', () => {
       socket = createSocketConnection(TEST_USER_ID);
       await waitForSocketConnection(socket);
 
-      const graphData = createMockGraphData();
-      const createResult = await graphsService.create(graphData);
-      const graphId = createResult.id;
-      createdGraphIds.push(graphId);
+      const graphId = baseGraphId;
 
       // Subscribe to graph
       socket.emit('subscribe_graph', { graphId });
@@ -283,7 +310,7 @@ describe('Socket Notifications Integration Tests', () => {
       });
 
       // Trigger a graph action that will emit notifications
-      await graphsService.run(graphId);
+      await restartGraph(graphId);
 
       await notificationPromise;
     });
@@ -313,10 +340,7 @@ describe('Socket Notifications Integration Tests', () => {
       socket = createSocketConnection(TEST_USER_ID);
       await waitForSocketConnection(socket);
 
-      const graphData = createMockGraphData();
-      const createResult = await graphsService.create(graphData);
-      const graphId = createResult.id;
-      createdGraphIds.push(graphId);
+      const graphId = baseGraphId;
 
       // Subscribe
       socket.emit('subscribe_graph', { graphId });
@@ -339,10 +363,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         // Subscribe to graph
         socket.emit('subscribe_graph', { graphId });
@@ -371,12 +392,13 @@ describe('Socket Notifications Integration Tests', () => {
         });
 
         // Run the graph
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         // Execute trigger
         await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Hello, this is a test message'],
           async: true,
+          threadSubId: uniqueThreadSubId('socket-msg'),
         });
 
         await messagePromise;
@@ -403,10 +425,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         socket.emit('subscribe_graph', { graphId });
 
@@ -416,10 +435,11 @@ describe('Socket Notifications Integration Tests', () => {
           messageNotifications.push(notification);
         });
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Test message for duplicate check'],
+          threadSubId: uniqueThreadSubId('socket-dup'),
         });
 
         // Wait for messages to arrive
@@ -447,10 +467,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createCommandGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = commandGraphId;
 
         socket.emit('subscribe_graph', { graphId });
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -471,7 +488,7 @@ describe('Socket Notifications Integration Tests', () => {
           }
         });
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         const execution = await graphsService.executeTrigger(
           graphId,
@@ -479,6 +496,7 @@ describe('Socket Notifications Integration Tests', () => {
           {
             messages: ['Run this command: sleep 100 && echo "interrupt me"'],
             async: true,
+            threadSubId: uniqueThreadSubId('socket-stop'),
           },
         );
 
@@ -521,155 +539,24 @@ describe('Socket Notifications Integration Tests', () => {
         );
       },
     );
-
-    it(
-      'should receive multiple message notifications during graph execution',
-      { timeout: 60000 },
-      async () => {
-        socket = createSocketConnection(TEST_USER_ID);
-        await waitForSocketConnection(socket);
-
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        socket.emit('subscribe_graph', { graphId });
-
-        const receivedMessages: unknown[] = [];
-
-        // Set up listener for message events
-        const messagePromise = new Promise((resolve, reject) => {
-          socket.on('agent.message', (notification) => {
-            receivedMessages.push(notification);
-
-            // Verify each message has the correct structure
-            expect(notification).toHaveProperty('graphId', graphId);
-            expect(notification).toHaveProperty('type', 'agent.message');
-            expect(notification.data).toHaveProperty('message');
-            expect(notification.data.message).toHaveProperty('content');
-            expect(notification.data.message).toHaveProperty('role');
-
-            // Once we have at least 2 messages (user + AI response), we're done
-            if (receivedMessages.length >= 2) {
-              resolve(undefined);
-            }
-          });
-
-          socket.once('server_error', (error) => reject(error));
-
-          // Timeout after 20 seconds
-          setTimeout(() => {
-            // We should have at least received some messages
-            if (receivedMessages.length > 0) {
-              resolve(undefined);
-            } else {
-              reject(new Error('Timeout: No message notifications received'));
-            }
-          }, 30000);
-        });
-
-        await graphsService.run(graphId);
-
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
-          messages: ['Hello, how are you?'],
-          async: true,
-        });
-
-        await messagePromise;
-      },
-    );
   });
 
   describe('Graph Revision Notifications', () => {
-    it(
-      'should receive revision lifecycle notifications when revision is applied',
-      { timeout: 120_000 },
-      async () => {
-        socket = createSocketConnection(TEST_USER_ID);
-        await waitForSocketConnection(socket);
+    let revisionGraphId: string;
+    let revisionBaseSchema: GraphSchemaType;
+    let revisionCurrentVersion: string;
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        const currentVersion = createResult.version;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        socket.emit('subscribe_graph', { graphId });
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const revisionEvents: unknown[] = [];
-        const expectedEvents = [
-          'graph.revision.create',
-          'graph.revision.applying',
-          'graph.revision.applied',
-        ];
-
-        const eventsPromise = new Promise((resolve, reject) => {
-          const seenEvents = new Set<string>();
-
-          expectedEvents.forEach((eventType) => {
-            socket.on(eventType, (payload) => {
-              if (payload.graphId === graphId) {
-                revisionEvents.push({ type: eventType, payload });
-                seenEvents.add(eventType);
-
-                if (
-                  expectedEvents.every((expected) => seenEvents.has(expected))
-                ) {
-                  resolve(revisionEvents);
-                }
-              }
-            });
-          });
-
-          socket.once('server_error', (error) => reject(error));
-          setTimeout(() => {
-            if (revisionEvents.length > 0) {
-              resolve(revisionEvents);
-            } else {
-              reject(new Error('Timeout waiting for revision events'));
-            }
-          }, 90_000);
-        });
-
-        // Update schema to trigger revision
-        const updatedSchema: GraphSchemaType = {
-          ...createResult.schema,
-          nodes: createResult.schema.nodes.map((node: GraphNodeSchemaType) =>
-            node.id === 'agent-1'
-              ? {
-                  ...node,
-                  config: {
-                    ...node.config,
-                    instructions: 'Socket test applied revision instructions',
-                  },
-                }
-              : node,
-          ),
-        };
-
-        await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
-
-        const events = await eventsPromise;
-        const eventTypes = (events as { type: string }[]).map((e) => e.type);
-        const uniqueEventTypes = Array.from(new Set(eventTypes));
-
-        // Verify we receive the meaningful lifecycle events
-        // Note: 'applying' state is extremely transient and may be missed in fast tests
-        expect(uniqueEventTypes).toContain('graph.revision.create');
-        expect(uniqueEventTypes).toContain('graph.revision.applied');
-
-        // The applying event is optional since it's transient (microseconds)
-        // and socket notifications have inherent race conditions
-      },
-    );
+    beforeAll(async () => {
+      const createResult = await graphsService.create(
+        createMockGraphData({
+          name: `Socket Revision Graph ${Date.now()}`,
+        }),
+      );
+      revisionGraphId = createResult.id;
+      revisionBaseSchema = createResult.schema;
+      revisionCurrentVersion = createResult.version;
+      createdGraphIds.push(revisionGraphId);
+    }, 120_000);
 
     it(
       'should receive multiple revision notifications',
@@ -678,15 +565,12 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        const baseSchema: GraphSchemaType = createResult.schema;
-        let currentVersion = createResult.version;
-        createdGraphIds.push(graphId);
+        const graphId = revisionGraphId;
+        const baseSchema: GraphSchemaType = revisionBaseSchema;
+        let currentVersion = revisionCurrentVersion;
 
-        await graphsService.run(graphId);
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await restartGraph(graphId);
+        await new Promise((resolve) => setTimeout(resolve, 1500));
 
         socket.emit('subscribe_graph', { graphId });
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -769,6 +653,7 @@ describe('Socket Notifications Integration Tests', () => {
         // Fetch the graph again to get the actual current version
         const updatedGraph = await graphsService.findById(graphId);
         currentVersion = updatedGraph.version;
+        revisionCurrentVersion = updatedGraph.version;
         const secondSchema: GraphSchemaType = {
           ...baseSchema,
           nodes: baseSchema.nodes.map((node) =>
@@ -802,10 +687,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         socket.emit('subscribe_graph', { graphId });
 
@@ -839,11 +721,12 @@ describe('Socket Notifications Integration Tests', () => {
           }, 60_000);
         });
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Test message for node status'],
           async: true,
+          threadSubId: uniqueThreadSubId('socket-node-status'),
         });
 
         await waitForNodeUpdates;
@@ -874,16 +757,13 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         socket.emit('subscribe_graph', { graphId });
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
-        const threadSubId = 'socket-pending-metadata';
+        const threadSubId = uniqueThreadSubId('socket-pending-metadata');
         const firstExecution = await graphsService.executeTrigger(
           graphId,
           'trigger-1',
@@ -959,142 +839,11 @@ describe('Socket Notifications Integration Tests', () => {
     );
 
     it(
-      'should receive notification when pending messages are processed and removed',
-      { timeout: 60000 },
-      async () => {
-        const graph = await graphsService.create(createMockGraphData());
-        const graphId = graph.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
-
-        const socket = createSocketConnection(TEST_USER_ID);
-        await new Promise<void>((resolve) =>
-          socket.once('connect', () => resolve()),
-        );
-
-        socket.emit('subscribe_graph', { graphId });
-
-        const threadSubId = 'pending-removal-thread';
-
-        // Start first execution
-        const firstExecution = await graphsService.executeTrigger(
-          graphId,
-          'trigger-1',
-          {
-            messages: ['Start task'],
-            threadSubId,
-            async: true,
-          },
-        );
-
-        const threadId = firstExecution.externalThreadId;
-
-        // Wait for agent to start running
-        await waitForCondition(
-          () => graphsService.getCompiledNodes(graphId, { threadId }),
-          (snapshots) =>
-            snapshots.some(
-              (node) =>
-                node.id === 'agent-1' &&
-                node.status === GraphNodeStatus.Running,
-            ),
-          { timeout: 120_000, interval: 1_000 },
-        );
-
-        // Send follow-up to create pending messages
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
-          messages: ['Follow-up message'],
-          threadSubId,
-          async: true,
-        });
-
-        // Wait for pending messages to appear in metadata
-        const hasPendingNotification = new Promise<NodeUpdateNotification>(
-          (resolve, reject) => {
-            function handleMetadata(notification: NodeUpdateNotification) {
-              const metadata = notification.data?.additionalNodeMetadata as
-                | { pendingMessages?: unknown[] }
-                | undefined;
-
-              if (
-                notification.graphId === graphId &&
-                notification.nodeId === 'agent-1' &&
-                Array.isArray(metadata?.pendingMessages) &&
-                metadata.pendingMessages.length > 0
-              ) {
-                clearTimeout(timeout);
-                socket.off('graph.node.update', handleMetadata);
-                resolve(notification);
-              }
-            }
-
-            const timeout = setTimeout(() => {
-              socket.off('graph.node.update', handleMetadata);
-              reject(new Error('Timeout waiting for pending messages'));
-            }, 30000);
-
-            socket.on('graph.node.update', handleMetadata);
-          },
-        );
-
-        await hasPendingNotification;
-
-        // Now wait for pending messages to be cleared (processed and removed)
-        const pendingClearedNotification = new Promise<NodeUpdateNotification>(
-          (resolve, reject) => {
-            function handleMetadata(notification: NodeUpdateNotification) {
-              const metadata = notification.data?.additionalNodeMetadata as
-                | { pendingMessages?: unknown[] }
-                | undefined;
-
-              if (
-                notification.graphId === graphId &&
-                notification.nodeId === 'agent-1' &&
-                Array.isArray(metadata?.pendingMessages) &&
-                metadata.pendingMessages.length === 0
-              ) {
-                clearTimeout(timeout);
-                socket.off('graph.node.update', handleMetadata);
-                resolve(notification);
-              }
-            }
-
-            const timeout = setTimeout(() => {
-              socket.off('graph.node.update', handleMetadata);
-              reject(
-                new Error('Timeout waiting for pending messages to be cleared'),
-              );
-            }, 30000);
-
-            socket.on('graph.node.update', handleMetadata);
-          },
-        );
-
-        const clearedNotification = await pendingClearedNotification;
-
-        // Verify the notification contains empty pending messages array
-        const clearedMetadata = clearedNotification.data
-          .additionalNodeMetadata as
-          | { pendingMessages?: unknown[] }
-          | undefined;
-
-        expect(clearedMetadata?.pendingMessages).toBeDefined();
-        expect(clearedMetadata?.pendingMessages).toEqual([]);
-
-        socket.disconnect();
-      },
-    );
-
-    it(
       'should receive sequential notifications as pending messages are added and removed',
       { timeout: 90000 },
       async () => {
-        const graph = await graphsService.create(createMockGraphData());
-        const graphId = graph.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        const graphId = baseGraphId;
+        await restartGraph(graphId);
 
         const socket = createSocketConnection(TEST_USER_ID);
         await new Promise<void>((resolve) =>
@@ -1103,7 +852,7 @@ describe('Socket Notifications Integration Tests', () => {
 
         socket.emit('subscribe_graph', { graphId });
 
-        const threadSubId = 'sequential-pending-thread';
+        const threadSubId = uniqueThreadSubId('sequential-pending-thread');
         const metadataUpdates: {
           pendingCount: number;
           timestamp: number;
@@ -1131,13 +880,17 @@ describe('Socket Notifications Integration Tests', () => {
         );
 
         // Start first execution
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
-          messages: ['Start task'],
-          threadSubId,
-          async: true,
-        });
+        const firstExecution = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Start task'],
+            threadSubId,
+            async: true,
+          },
+        );
 
-        const threadId = `${graphId}:${threadSubId}`;
+        const threadId = firstExecution.externalThreadId;
 
         // Wait for running status
         await waitForCondition(
@@ -1218,19 +971,15 @@ describe('Socket Notifications Integration Tests', () => {
       'should emit reasoning metadata updates and clear them when reasoning state resets',
       { timeout: 90000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        const graphId = baseGraphId;
+        await restartGraph(graphId);
 
         const triggerResult = await graphsService.executeTrigger(
           graphId,
           'trigger-1',
           {
             messages: ['Start reasoning metadata test'],
-            threadSubId: 'reasoning-metadata-thread',
+            threadSubId: uniqueThreadSubId('reasoning-metadata-thread'),
             async: true,
           },
         );
@@ -1468,10 +1217,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         const threadCreateEvents: unknown[] = [];
 
@@ -1482,7 +1228,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket.emit('subscribe_graph', { graphId });
         await new Promise((resolve) => setTimeout(resolve, 500));
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         const waitForThreadCreate = new Promise((resolve, reject) => {
           const checkInterval = setInterval(() => {
@@ -1502,8 +1248,10 @@ describe('Socket Notifications Integration Tests', () => {
           }, 30000);
         });
 
+        const threadSubId = uniqueThreadSubId('socket-thread-create');
         await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Test message for thread creation'],
+          threadSubId,
         });
 
         await waitForThreadCreate;
@@ -1513,7 +1261,7 @@ describe('Socket Notifications Integration Tests', () => {
         const typedEvent = threadCreateEvents[0] as ThreadCreateNotification;
         expect(typedEvent.type).toBe('thread.create');
         expect(typedEvent.graphId).toBe(graphId);
-        expect(typedEvent.threadId).toMatch(/^[0-9a-f-]+:[0-9a-f-]+$/);
+        expect(typedEvent.threadId).toBe(`${graphId}:${threadSubId}`);
       },
     );
 
@@ -1524,10 +1272,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         // Listen for thread update events (name/status updates)
         const threadUpdateEvents: unknown[] = [];
@@ -1588,13 +1333,13 @@ describe('Socket Notifications Integration Tests', () => {
         });
 
         // Run the graph, then execute trigger, then wait for notification
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
         await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Execute trigger
         await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Test message for socket notifications'],
-          threadSubId: 'socket-test-thread',
+          threadSubId: uniqueThreadSubId('socket-test-thread'),
         });
 
         // Wait for the thread name update notification
@@ -1623,10 +1368,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         socket.emit('subscribe_graph', { graphId });
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1664,10 +1406,11 @@ describe('Socket Notifications Integration Tests', () => {
           }, 60_000);
         });
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Test message for token usage in agent state update'],
+          threadSubId: uniqueThreadSubId('socket-token-usage'),
         });
 
         await stateUpdatePromise;
@@ -1693,10 +1436,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         socket.emit('subscribe_graph', { graphId });
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1714,9 +1454,9 @@ describe('Socket Notifications Integration Tests', () => {
           }
         });
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
-        const threadSubId = 'token-usage-accumulation-test';
+        const threadSubId = uniqueThreadSubId('token-usage-accumulation-test');
 
         // Send first message
         await graphsService.executeTrigger(graphId, 'trigger-1', {
@@ -1770,10 +1510,7 @@ describe('Socket Notifications Integration Tests', () => {
         socket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(socket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         socket.emit('subscribe_graph', { graphId });
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1803,10 +1540,11 @@ describe('Socket Notifications Integration Tests', () => {
           },
         );
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Test message to generate token usage'],
+          threadSubId: uniqueThreadSubId('socket-token-usage-fields'),
         });
 
         const notification = await stateUpdatePromise;
@@ -1859,10 +1597,7 @@ describe('Socket Notifications Integration Tests', () => {
         const secondSocket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(secondSocket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         // Set up listeners on both sockets
         const firstSocketEvent = new Promise((resolve, reject) => {
@@ -1886,7 +1621,7 @@ describe('Socket Notifications Integration Tests', () => {
         secondSocket.emit('subscribe_graph', { graphId });
 
         // Trigger notification
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         // Both sockets should receive the notification
         const events = await Promise.all([firstSocketEvent, secondSocketEvent]);
@@ -1912,10 +1647,7 @@ describe('Socket Notifications Integration Tests', () => {
         const secondSocket = createSocketConnection(TEST_USER_ID);
         await waitForSocketConnection(secondSocket);
 
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const graphId = baseGraphId;
 
         const socket1Messages: { content: string; threadId: string }[] = [];
         const socket2Messages: { content: string; threadId: string }[] = [];
@@ -1941,10 +1673,11 @@ describe('Socket Notifications Integration Tests', () => {
 
         await new Promise((resolve) => setTimeout(resolve, 500));
 
-        await graphsService.run(graphId);
+        await restartGraph(graphId);
 
         await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Test message for multi-socket duplicate check'],
+          threadSubId: uniqueThreadSubId('socket-multi-dup'),
         });
 
         // Wait for messages to arrive

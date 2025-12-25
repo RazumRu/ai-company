@@ -29,7 +29,8 @@ describe('Finish Tool Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
-  const createdGraphIds: string[] = [];
+  let doneGraphId: string;
+  let needMoreInfoGraphId: string;
 
   const waitForGraphToBeRunning = async (
     graphId: string,
@@ -135,11 +136,30 @@ describe('Finish Tool Integration Tests', () => {
 
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
-  });
+
+    const doneGraph = await graphsService.create(
+      createFinishToolGraphData(
+        'You are a helpful assistant. When you can answer the user directly, call the finish tool with needsMoreInfo=false and include your final response. Always call the finish tool to end your answer even without being reminded.',
+      ),
+    );
+    doneGraphId = doneGraph.id;
+    await graphsService.run(doneGraphId);
+    await waitForGraphToBeRunning(doneGraphId);
+
+    const needMoreInfoGraph = await graphsService.create(
+      createFinishToolGraphData(
+        'You are a helpful assistant. When you lack details, call finish with needsMoreInfo=true and ask a single clarifying question.',
+      ),
+    );
+    needMoreInfoGraphId = needMoreInfoGraph.id;
+    await graphsService.run(needMoreInfoGraphId);
+    await waitForGraphToBeRunning(needMoreInfoGraphId);
+  }, 180_000);
 
   afterAll(async () => {
+    const graphIds = [doneGraphId, needMoreInfoGraphId].filter(Boolean);
     await Promise.all(
-      createdGraphIds.map(async (graphId) => {
+      graphIds.map(async (graphId) => {
         try {
           await graphsService.destroy(graphId);
         } catch (error: unknown) {
@@ -166,28 +186,31 @@ describe('Finish Tool Integration Tests', () => {
     );
 
     await app.close();
-  }, 120_000);
+  }, 180_000);
+
+  const uniqueThreadSubId = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ensureGraphRunning = async (graphId: string) => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
+    await graphsService.run(graphId);
+    await waitForGraphToBeRunning(graphId);
+  };
 
   it(
     'records finish tool response when agent completes a task',
     { timeout: 120_000 },
     async () => {
-      const graphData = createFinishToolGraphData(
-        'You are a helpful assistant. When you can answer the user directly, call the finish tool with needsMoreInfo=false and include your final response.',
-      );
-
-      const graph = await graphsService.create(graphData);
-      createdGraphIds.push(graph.id);
-
-      await graphsService.run(graph.id);
-      await waitForGraphToBeRunning(graph.id);
+      await ensureGraphRunning(doneGraphId);
 
       const execution = await graphsService.executeTrigger(
-        graph.id,
+        doneGraphId,
         TRIGGER_NODE_ID,
         {
           messages: ['What is your name?'],
           async: false,
+          threadSubId: uniqueThreadSubId('finish-done'),
         },
       );
 
@@ -213,22 +236,15 @@ describe('Finish Tool Integration Tests', () => {
     'sets thread status to need_more_info when finish tool requests clarification',
     { timeout: 120_000 },
     async () => {
-      const graphData = createFinishToolGraphData(
-        'You are a helpful assistant. When you lack details, call finish with needsMoreInfo=true and ask a single clarifying question.',
-      );
-
-      const graph = await graphsService.create(graphData);
-      createdGraphIds.push(graph.id);
-
-      await graphsService.run(graph.id);
-      await waitForGraphToBeRunning(graph.id);
+      await ensureGraphRunning(needMoreInfoGraphId);
 
       const execution = await graphsService.executeTrigger(
-        graph.id,
+        needMoreInfoGraphId,
         TRIGGER_NODE_ID,
         {
           messages: ['Help me with something'],
           async: false,
+          threadSubId: uniqueThreadSubId('finish-need-more'),
         },
       );
 
@@ -250,22 +266,15 @@ describe('Finish Tool Integration Tests', () => {
     'does not inject tool guard prompts when agent voluntarily calls finish',
     { timeout: 120_000 },
     async () => {
-      const graphData = createFinishToolGraphData(
-        'You are a helpful assistant. Always call the finish tool to end your answer even without being reminded.',
-      );
-
-      const graph = await graphsService.create(graphData);
-      createdGraphIds.push(graph.id);
-
-      await graphsService.run(graph.id);
-      await waitForGraphToBeRunning(graph.id);
+      await ensureGraphRunning(doneGraphId);
 
       const execution = await graphsService.executeTrigger(
-        graph.id,
+        doneGraphId,
         TRIGGER_NODE_ID,
         {
           messages: ['What is 2 + 2?'],
           async: false,
+          threadSubId: uniqueThreadSubId('finish-voluntary'),
         },
       );
 

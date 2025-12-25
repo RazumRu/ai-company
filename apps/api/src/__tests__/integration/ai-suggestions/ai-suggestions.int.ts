@@ -13,14 +13,19 @@ import {
 import { AiSuggestionsController } from '../../../v1/ai-suggestions/controllers/ai-suggestions.controller';
 import { SuggestAgentInstructionsDto } from '../../../v1/ai-suggestions/dto/agent-instructions.dto';
 import { SuggestKnowledgeContentDto } from '../../../v1/ai-suggestions/dto/knowledge-suggestions.dto';
-import { GraphStatus } from '../../../v1/graphs/graphs.types';
+import { AiSuggestionsService } from '../../../v1/ai-suggestions/services/ai-suggestions.service';
+import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
+import { GraphStatus, NodeKind } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
+import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
+import { ThreadStatus } from '../../../v1/threads/threads.types';
 import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const responseMock = vi.fn();
 
@@ -30,18 +35,34 @@ vi.mock('../../../v1/openai/openai.service', () => ({
   },
 }));
 
-describe('AiSuggestionsController (integration)', () => {
-  let app: INestApplication;
-  let controller: AiSuggestionsController;
-  let graphsService: GraphsService;
-  let graphRegistry: GraphRegistry;
-  const createdGraphIds: string[] = [];
+let app: INestApplication;
+let controller: AiSuggestionsController;
+let graphsService: GraphsService;
+let graphRegistry: GraphRegistry;
+let aiSuggestionsService: AiSuggestionsService;
+let graphDao: GraphDao;
+let threadsDao: ThreadsDao;
+let messagesDao: MessagesDao;
 
-  const registerGraph = (graphId: string) => {
-    if (!createdGraphIds.includes(graphId)) {
-      createdGraphIds.push(graphId);
-    }
-  };
+beforeAll(async () => {
+  app = await createTestModule();
+  controller = app.get(AiSuggestionsController);
+  graphsService = app.get(GraphsService);
+  graphRegistry = app.get(GraphRegistry);
+  aiSuggestionsService = app.get(AiSuggestionsService);
+  graphDao = app.get(GraphDao);
+  threadsDao = app.get(ThreadsDao);
+  messagesDao = app.get(MessagesDao);
+}, 180_000);
+
+afterAll(async () => {
+  await app?.close();
+}, 180_000);
+
+describe('AiSuggestionsController (integration)', () => {
+  let knowledgeGraphId: string;
+  let runningGraphId: string;
+  let stoppedGraphId: string;
 
   const cleanupGraph = async (graphId: string) => {
     try {
@@ -58,62 +79,66 @@ describe('AiSuggestionsController (integration)', () => {
   };
 
   beforeAll(async () => {
-    app = await createTestModule();
-    controller = app.get(AiSuggestionsController);
-    graphsService = app.get(GraphsService);
-    graphRegistry = app.get(GraphRegistry);
-  });
+    const knowledgeGraph = await graphsService.create(
+      createMockGraphData({
+        schema: {
+          nodes: [
+            {
+              id: 'agent-1',
+              template: 'simple-agent',
+              config: {
+                instructions: 'Base instructions',
+              },
+            },
+            {
+              id: 'knowledge-1',
+              template: 'simple-knowledge',
+              config: { content: 'Knowledge block' },
+            },
+            {
+              id: 'trigger-1',
+              template: 'manual-trigger',
+              config: {},
+            },
+          ],
+          edges: [
+            { from: 'trigger-1', to: 'agent-1' },
+            { from: 'agent-1', to: 'knowledge-1' },
+          ],
+        },
+      }),
+    );
+    knowledgeGraphId = knowledgeGraph.id;
+    await graphsService.run(knowledgeGraphId);
+
+    const runningGraph = await graphsService.create(createMockGraphData());
+    runningGraphId = runningGraph.id;
+    await graphsService.run(runningGraphId);
+
+    const stoppedGraph = await graphsService.create(createMockGraphData());
+    stoppedGraphId = stoppedGraph.id;
+  }, 180_000);
 
   beforeEach(() => {
     responseMock.mockClear();
   });
 
-  afterEach(async () => {
-    while (createdGraphIds.length > 0) {
-      const graphId = createdGraphIds.pop();
-      if (graphId) {
-        await cleanupGraph(graphId);
-      }
-    }
-  });
-
   afterAll(async () => {
-    await app.close();
-  });
+    const graphIds = [knowledgeGraphId, runningGraphId, stoppedGraphId].filter(
+      Boolean,
+    );
+    await Promise.all(graphIds.map((id) => cleanupGraph(id)));
+  }, 180_000);
+
+  const ensureGraphRunning = async (graphId: string) => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
+    await graphsService.run(graphId);
+  };
 
   describe('knowledge suggestions', () => {
     it('returns generated knowledge content for a new thread', async () => {
-      const graph = await graphsService.create(
-        createMockGraphData({
-          schema: {
-            nodes: [
-              {
-                id: 'agent-1',
-                template: 'simple-agent',
-                config: {
-                  instructions: 'Base instructions',
-                },
-              },
-              {
-                id: 'knowledge-1',
-                template: 'simple-knowledge',
-                config: { content: 'Existing knowledge' },
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [
-              { from: 'trigger-1', to: 'agent-1' },
-              { from: 'agent-1', to: 'knowledge-1' },
-            ],
-          },
-        }),
-      );
-      registerGraph(graph.id);
-      await graphsService.run(graph.id);
+      await ensureGraphRunning(knowledgeGraphId);
 
       responseMock.mockResolvedValueOnce({
         content: 'Generated knowledge block',
@@ -121,7 +146,7 @@ describe('AiSuggestionsController (integration)', () => {
       });
 
       const result = await controller.suggestKnowledgeContent(
-        graph.id,
+        knowledgeGraphId,
         'knowledge-1',
         {
           userRequest: 'Provide facts about the product',
@@ -138,42 +163,12 @@ describe('AiSuggestionsController (integration)', () => {
         'You generate concise knowledge blocks',
       );
       expect(payload.message).toContain('Provide facts about the product');
-      expect(payload.message).toContain('Existing knowledge');
+      expect(payload.message).toContain('Knowledge block');
       expect(params.previous_response_id).toBeUndefined();
     });
 
     it('continues existing knowledge suggestion thread', async () => {
-      const graph = await graphsService.create(
-        createMockGraphData({
-          schema: {
-            nodes: [
-              {
-                id: 'agent-1',
-                template: 'simple-agent',
-                config: {
-                  instructions: 'Base instructions',
-                },
-              },
-              {
-                id: 'knowledge-1',
-                template: 'simple-knowledge',
-                config: { content: 'Existing knowledge' },
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [
-              { from: 'trigger-1', to: 'agent-1' },
-              { from: 'agent-1', to: 'knowledge-1' },
-            ],
-          },
-        }),
-      );
-      registerGraph(graph.id);
-      await graphsService.run(graph.id);
+      await ensureGraphRunning(knowledgeGraphId);
 
       responseMock.mockResolvedValueOnce({
         content: 'Continuation content',
@@ -181,7 +176,7 @@ describe('AiSuggestionsController (integration)', () => {
       });
 
       const result = await controller.suggestKnowledgeContent(
-        graph.id,
+        knowledgeGraphId,
         'knowledge-1',
         {
           userRequest: 'Continue with additional details',
@@ -200,26 +195,21 @@ describe('AiSuggestionsController (integration)', () => {
       const [payload, params] = lastCall;
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toContain('Continue with additional details');
-      expect(payload.message).toContain('Existing knowledge');
+      expect(payload.message).toContain('Knowledge block');
       expect(params.previous_response_id).toBe('prev-thread');
     });
   });
 
   describe('agent instructions', () => {
     it('returns suggested instructions for a running graph', async () => {
+      await ensureGraphRunning(runningGraphId);
       responseMock.mockResolvedValue({
         content: 'Updated instructions (running)',
         conversationId: 'thread-running',
       });
 
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
-
-      const running = await graphsService.run(graph.id);
-      expect(running.status).toBe(GraphStatus.Running);
-
       const response = await controller.suggestAgentInstructions(
-        graph.id,
+        runningGraphId,
         'agent-1',
         {
           userRequest: 'Shorten the instructions',
@@ -233,11 +223,8 @@ describe('AiSuggestionsController (integration)', () => {
     });
 
     it('returns error for a non-running graph', async () => {
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
-
       await expect(
-        controller.suggestAgentInstructions(graph.id, 'agent-1', {
+        controller.suggestAgentInstructions(stoppedGraphId, 'agent-1', {
           userRequest: 'Add safety notes',
           threadId: 'thread-stopped',
         } as SuggestAgentInstructionsDto),
@@ -245,19 +232,14 @@ describe('AiSuggestionsController (integration)', () => {
     });
 
     it('returns generated threadId when not provided', async () => {
+      await ensureGraphRunning(runningGraphId);
       responseMock.mockResolvedValue({
         content: 'Generated thread',
         conversationId: 'generated-thread',
       });
 
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
-
-      const running = await graphsService.run(graph.id);
-      expect(running.status).toBe(GraphStatus.Running);
-
       const response = await controller.suggestAgentInstructions(
-        graph.id,
+        runningGraphId,
         'agent-1',
         { userRequest: 'No thread provided' } as SuggestAgentInstructionsDto,
       );
@@ -271,42 +253,10 @@ describe('AiSuggestionsController (integration)', () => {
       'runs graph with knowledge node and exposes knowledge in agent instructions',
       { timeout: 20000 },
       async () => {
-        const graph = await graphsService.create(
-          createMockGraphData({
-            schema: {
-              nodes: [
-                {
-                  id: 'agent-1',
-                  template: 'simple-agent',
-                  config: {
-                    instructions: 'Base instructions',
-                  },
-                },
-                {
-                  id: 'knowledge-1',
-                  template: 'simple-knowledge',
-                  config: { content: 'Knowledge block' },
-                },
-                {
-                  id: 'trigger-1',
-                  template: 'manual-trigger',
-                  config: {},
-                },
-              ],
-              edges: [
-                { from: 'trigger-1', to: 'agent-1' },
-                { from: 'agent-1', to: 'knowledge-1' },
-              ],
-            },
-          }),
-        );
-        registerGraph(graph.id);
-
-        const running = await graphsService.run(graph.id);
-        expect(running.status).toBe(GraphStatus.Running);
+        await ensureGraphRunning(knowledgeGraphId);
 
         const compiledGraph = await waitForCondition(
-          () => Promise.resolve(graphRegistry.get(graph.id)),
+          () => Promise.resolve(graphRegistry.get(knowledgeGraphId)),
           (result) => Boolean(result?.nodes.get('agent-1')),
           { timeout: 5000, interval: 200 },
         );
@@ -325,4 +275,180 @@ describe('AiSuggestionsController (integration)', () => {
       },
     );
   });
+});
+
+describe('AiSuggestionsService (integration)', () => {
+  const createdGraphs: string[] = [];
+  const createdThreads: string[] = [];
+
+  beforeEach(() => {
+    responseMock.mockClear();
+  });
+
+  afterEach(async () => {
+    for (const threadId of createdThreads) {
+      await messagesDao.delete({ threadId });
+      await threadsDao.deleteById(threadId);
+    }
+    createdThreads.length = 0;
+
+    for (const graphId of createdGraphs) {
+      await graphRegistry.destroy(graphId).catch(() => undefined);
+      await graphDao.deleteById(graphId);
+    }
+    createdGraphs.length = 0;
+  });
+
+  afterAll(async () => {
+    // app closed at file-level afterAll
+  });
+
+  it(
+    'analyzes a thread and calls LLM with cleaned messages',
+    { timeout: 30000 },
+    async () => {
+      const graph = await graphDao.create({
+        name: 'ai-suggestions-graph',
+        description: 'test graph',
+        error: null,
+        version: '1.0.0',
+        targetVersion: '1.0.0',
+        schema: {
+          nodes: [
+            {
+              id: 'agent-1',
+              template: 'simple-agent',
+              config: { name: 'Primary agent', instructions: 'Do it' },
+            },
+            { id: 'tool-1', template: 'search-tool', config: {} },
+          ],
+          edges: [{ from: 'agent-1', to: 'tool-1' }],
+        },
+        status: GraphStatus.Running,
+        metadata: {},
+        createdBy: TEST_USER_ID,
+        temporary: false,
+      });
+      createdGraphs.push(graph.id);
+
+      graphRegistry.register(graph.id, {
+        nodes: new Map([
+          [
+            'agent-1',
+            {
+              id: 'agent-1',
+              type: NodeKind.SimpleAgent,
+              template: 'simple-agent',
+              instance: {} as unknown,
+              config: { name: 'Primary agent', instructions: 'Do it' },
+            },
+          ],
+          [
+            'tool-1',
+            {
+              id: 'tool-1',
+              type: NodeKind.Tool,
+              template: 'search-tool',
+              instance: {
+                name: 'Search',
+                description: 'Search the web',
+                __instructions: 'Use it wisely',
+              },
+              config: {},
+            },
+          ],
+        ]),
+        edges: [{ from: 'agent-1', to: 'tool-1' }],
+        state: {} as never,
+        destroy: async () => undefined,
+        status: GraphStatus.Running,
+      });
+
+      const thread = await threadsDao.create({
+        graphId: graph.id,
+        createdBy: TEST_USER_ID,
+        externalThreadId: `ext-thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        metadata: {},
+        source: null,
+        name: 'Test thread',
+        status: ThreadStatus.Running,
+      });
+      createdThreads.push(thread.id);
+
+      await messagesDao.create({
+        threadId: thread.id,
+        externalThreadId: thread.externalThreadId,
+        nodeId: 'agent-1',
+        message: { role: 'system', content: 'System intro' },
+      });
+      await messagesDao.create({
+        threadId: thread.id,
+        externalThreadId: thread.externalThreadId,
+        nodeId: 'agent-1',
+        message: { role: 'human', content: 'Hello' },
+      });
+      await messagesDao.create({
+        threadId: thread.id,
+        externalThreadId: thread.externalThreadId,
+        nodeId: 'agent-1',
+        message: {
+          role: 'ai',
+          content: 'Calling tool',
+          toolCalls: [
+            {
+              name: 'search',
+              args: { query: 'hi' },
+              type: 'tool_call',
+              id: 'call-1',
+            },
+          ],
+        },
+      });
+      await messagesDao.create({
+        threadId: thread.id,
+        externalThreadId: thread.externalThreadId,
+        nodeId: 'tool-1',
+        message: {
+          role: 'tool',
+          name: 'search',
+          content: { result: 'ok' },
+          toolCallId: '1',
+        },
+      });
+      await messagesDao.create({
+        threadId: thread.id,
+        externalThreadId: thread.externalThreadId,
+        nodeId: 'tool-1',
+        message: {
+          role: 'tool-shell',
+          name: 'shell',
+          content: { stdout: 'done', stderr: '', exitCode: 0 },
+          toolCallId: '2',
+        },
+      });
+
+      responseMock.mockResolvedValueOnce({
+        content: 'Analysis result',
+        conversationId: 'conv-123',
+      });
+
+      const result = await aiSuggestionsService.analyzeThread(thread.id, {
+        userInput: 'Please check tools',
+        threadId: 'conv-prev',
+      });
+
+      expect(result).toEqual({
+        analysis: 'Analysis result',
+        conversationId: 'conv-123',
+      });
+
+      expect(responseMock).toHaveBeenCalledTimes(1);
+      const [payload, params] = responseMock.mock.calls[0] as [
+        { message: string },
+        { previous_response_id?: string },
+      ];
+      expect(params.previous_response_id).toBe('conv-prev');
+      expect(payload.message).toBe('Please check tools');
+    },
+  );
 });

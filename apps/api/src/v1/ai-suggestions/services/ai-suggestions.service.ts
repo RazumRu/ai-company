@@ -6,6 +6,7 @@ import type { UnknownRecord } from 'type-fest';
 
 import { IBaseKnowledgeOutput } from '../../agent-knowledge/agent-knowledge.types';
 import { SimpleKnowledgeConfig } from '../../agent-knowledge/services/simple-knowledge';
+import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { GraphDao } from '../../graphs/dao/graph.dao';
@@ -230,6 +231,12 @@ export class AiSuggestionsService {
       compiledGraph?.edges || graph.schema.edges,
       compiledGraph,
     );
+    const mcpInstructions = this.getConnectedMcpInstructions(
+      graphId,
+      nodeId,
+      compiledGraph?.edges || graph.schema.edges,
+      compiledGraph,
+    );
 
     const threadId = payload.threadId;
     const isContinuation = !!threadId;
@@ -252,6 +259,7 @@ export class AiSuggestionsService {
           payload.userRequest,
           effectiveInstructions,
           tools,
+          mcpInstructions,
         );
 
     const response = await this.openaiService.response(
@@ -741,10 +749,77 @@ export class AiSuggestionsService {
     return ['## Knowledge', ...blocks].join('\n\n');
   }
 
+  private getConnectedMcpInstructions(
+    graphId: string,
+    nodeId: string,
+    edges: GraphEdgeSchemaType[] | undefined,
+    compiledGraph?: CompiledGraph,
+  ): string | undefined {
+    if (!compiledGraph) {
+      return undefined;
+    }
+
+    const outgoingNodeIds = new Set(
+      (edges || [])
+        .filter((edge) => edge.from === nodeId)
+        .map((edge) => edge.to),
+    );
+
+    if (!outgoingNodeIds.size) {
+      return undefined;
+    }
+
+    const mcpNodeIds = this.graphRegistry.filterNodesByType(
+      graphId,
+      outgoingNodeIds,
+      NodeKind.Mcp,
+    );
+
+    const blocks = mcpNodeIds
+      .map((mcpNodeId) => {
+        const mcpNode = this.graphRegistry.getNode<BaseMcp<unknown>>(
+          graphId,
+          mcpNodeId,
+        );
+        if (!mcpNode || mcpNode.type !== NodeKind.Mcp) {
+          return undefined;
+        }
+
+        const mcpService = mcpNode.instance;
+        if (!mcpService) {
+          return undefined;
+        }
+
+        // Get detailed instructions from MCP service
+        const instructions = mcpService.getDetailedInstructions?.(
+          mcpService.config as never,
+        );
+
+        if (typeof instructions !== 'string') {
+          return undefined;
+        }
+
+        const trimmed = instructions.trim();
+        if (!trimmed) {
+          return undefined;
+        }
+
+        return trimmed;
+      })
+      .filter((block): block is string => Boolean(block));
+
+    if (!blocks.length) {
+      return undefined;
+    }
+
+    return ['## MCP Instructions', ...blocks].join('\n\n');
+  }
+
   private buildInstructionRequestPrompt(
     userRequest: string,
     currentInstructions: string,
     tools: ConnectedToolInfo[],
+    mcpInstructions?: string,
   ): string {
     const toolsSection = tools.length
       ? tools
@@ -763,12 +838,19 @@ export class AiSuggestionsService {
           .join('\n\n')
       : 'No connected tools available.';
 
+    const mcpSection = mcpInstructions
+      ? `Connected MCP servers (NEVER INCLUDE IT IN YOUR ANSWER):\n${mcpInstructions}`
+      : undefined;
+
     return [
       `User request:\n${userRequest}`,
       `Current instructions:\n${currentInstructions}`,
-      `Connected tools:\n${toolsSection}`,
+      `Connected tools (NEVER INCLUDE IT IN YOUR ANSWER):\n${toolsSection}`,
+      mcpSection,
       'Provide the full updated instructions. Do not include a preamble.',
-    ].join('\n\n');
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   private composeInstructions(

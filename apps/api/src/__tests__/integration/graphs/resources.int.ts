@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
@@ -31,13 +31,7 @@ describe('Graph Resources Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
-  const createdGraphIds: string[] = [];
-
-  const registerGraph = (graphId: string) => {
-    if (!createdGraphIds.includes(graphId)) {
-      createdGraphIds.push(graphId);
-    }
-  };
+  let resourceGraphId: string;
 
   const cleanupGraph = async (graphId: string) => {
     try {
@@ -236,39 +230,45 @@ describe('Graph Resources Integration Tests', () => {
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
-  });
+    const graph = await graphsService.create(createResourceGraphData());
+    resourceGraphId = graph.id;
 
-  afterEach(async () => {
-    while (createdGraphIds.length > 0) {
-      const graphId = createdGraphIds.pop();
-      if (graphId) {
-        await cleanupGraph(graphId);
-      }
-    }
-  }, 120_000);
+    await graphsService.run(resourceGraphId);
+    await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 240_000);
+  }, 300_000);
 
   afterAll(async () => {
+    if (resourceGraphId) {
+      await cleanupGraph(resourceGraphId);
+    }
     await app.close();
-  });
+  }, 300_000);
+
+  const ensureGraphRunning = async () => {
+    const graph = await graphsService.findById(resourceGraphId);
+    if (graph.status === GraphStatus.Running) return;
+
+    await graphsService.run(resourceGraphId);
+    await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 240_000);
+  };
+
+  const uniqueThreadSubId = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   describe('GitHub resource execution', () => {
     it(
       'installs and configures GitHub CLI when the resource is connected',
       { timeout: 120_000 },
       async () => {
-        const graphData = createResourceGraphData();
-        const graph = await graphsService.create(graphData);
-        registerGraph(graph.id);
-
-        await graphsService.run(graph.id);
-        await waitForGraphStatus(graph.id, GraphStatus.Running);
+        await ensureGraphRunning();
 
         const execution = await graphsService.executeTrigger(
-          graph.id,
+          resourceGraphId,
           TRIGGER_NODE_ID,
           {
             messages: ['Run this command: gh --version'],
             async: false,
+            threadSubId: uniqueThreadSubId('gh-version'),
           },
         );
 

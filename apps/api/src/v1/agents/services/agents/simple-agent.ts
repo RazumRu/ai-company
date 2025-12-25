@@ -774,10 +774,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       connectedTools: allTools.map((t) => ({
         name: t.name,
         description: t.description,
-        schema: z.toJSONSchema(t.schema as z.ZodTypeAny, {
-          target: 'draft-7',
-          reused: 'ref',
-        }),
+        // Tools in this codebase provide JSONSchema already (see BaseTool.buildToolConfiguration()).
+        schema: t.schema,
       })),
     };
 

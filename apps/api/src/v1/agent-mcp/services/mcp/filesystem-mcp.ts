@@ -7,7 +7,7 @@ import { IMcpServerConfig } from '../../agent-mcp.types';
 import { BaseMcp, McpToolMetadata } from '../base-mcp';
 
 export interface FilesystemMcpConfig {
-  //
+  readOnly: boolean;
 }
 
 @Injectable({ scope: Scope.TRANSIENT })
@@ -18,8 +18,9 @@ export class FilesystemMcp extends BaseMcp<FilesystemMcpConfig> {
 
   protected toolsMapping(): Map<string, McpToolMetadata> {
     const defaultDirectory = '/runtime-workspace';
+    const readOnly = this.config?.readOnly ?? false;
 
-    return new Map([
+    const mapping = new Map<string, McpToolMetadata>([
       [
         'list_allowed_directories',
         {
@@ -625,6 +626,26 @@ export class FilesystemMcp extends BaseMcp<FilesystemMcpConfig> {
         },
       ],
     ]);
+
+    if (!readOnly) {
+      return mapping;
+    }
+
+    // Read-only mode: expose only non-mutating filesystem tools.
+    const readOnlyTools = new Set<string>([
+      'list_allowed_directories',
+      'list_directory',
+      'directory_tree',
+      'search_files',
+      'get_file_info',
+      'read_text_file',
+      'read_multiple_files',
+      'read_media_file',
+    ]);
+
+    return new Map(
+      Array.from(mapping.entries()).filter(([name]) => readOnlyTools.has(name)),
+    );
   }
 
   public getMcpConfig(_config: FilesystemMcpConfig): IMcpServerConfig {

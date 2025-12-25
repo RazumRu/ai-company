@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
@@ -30,13 +30,7 @@ describe('GitHub Tool Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
-  const createdGraphIds: string[] = [];
-
-  const registerGraph = (graphId: string) => {
-    if (!createdGraphIds.includes(graphId)) {
-      createdGraphIds.push(graphId);
-    }
-  };
+  let ghGraphId: string;
 
   const cleanupGraph = async (graphId: string) => {
     try {
@@ -201,32 +195,49 @@ describe('GitHub Tool Integration Tests', () => {
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
-  });
-
-  afterEach(async () => {
-    while (createdGraphIds.length > 0) {
-      const graphId = createdGraphIds.pop();
-      if (graphId) {
-        await cleanupGraph(graphId);
-      }
-    }
-  }, 120_000);
+    const graph = await graphsService.create(createGhToolGraphData());
+    ghGraphId = graph.id;
+    await graphsService.run(ghGraphId);
+    await waitForGraphStatus(ghGraphId, GraphStatus.Running, 300_000);
+  }, 360_000);
 
   afterAll(async () => {
+    if (ghGraphId) {
+      await cleanupGraph(ghGraphId);
+    }
     await app.close();
-  });
+  }, 360_000);
+
+  const uniqueThreadSubId = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ensureGraphRunning = async (graphId: string) => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
+    await graphsService.run(graphId);
+    await waitForGraphStatus(graphId, GraphStatus.Running, 300_000);
+  };
 
   describe('GitHub clone tool execution', () => {
     it(
-      'creates graph with GitHub tool and resource nodes',
+      'creates a graph with GitHub tool + runtime + resource nodes',
       { timeout: 120_000 },
       async () => {
-        const graphData = createGhToolGraphData();
-        const graph = await graphsService.create(graphData);
-        registerGraph(graph.id);
-
+        const graph = await graphsService.findById(ghGraphId);
         expect(graph.id).toBeDefined();
-        expect(graph.status).toBe(GraphStatus.Created);
+        expect([GraphStatus.Created, GraphStatus.Running]).toContain(
+          graph.status,
+        );
+        const nodeIds = graph.schema.nodes.map((n) => n.id);
+        expect(nodeIds).toEqual(
+          expect.arrayContaining([
+            TRIGGER_NODE_ID,
+            AGENT_NODE_ID,
+            GH_TOOL_NODE_ID,
+            RUNTIME_NODE_ID,
+            GITHUB_RESOURCE_NODE_ID,
+          ]),
+        );
       },
     );
 
@@ -234,21 +245,17 @@ describe('GitHub Tool Integration Tests', () => {
       'executes GitHub clone tool when agent requests repository clone',
       { timeout: 120000 },
       async () => {
-        const graphData = createGhToolGraphData();
-        const graph = await graphsService.create(graphData);
-        registerGraph(graph.id);
-
-        await graphsService.run(graph.id);
-        await waitForGraphStatus(graph.id, GraphStatus.Running);
+        await ensureGraphRunning(ghGraphId);
 
         const execution = await graphsService.executeTrigger(
-          graph.id,
+          ghGraphId,
           TRIGGER_NODE_ID,
           {
             messages: [
               'Clone the repository octocat/Hello-World. Use the gh_clone tool.',
             ],
             async: false,
+            threadSubId: uniqueThreadSubId('gh-clone'),
           },
         );
 

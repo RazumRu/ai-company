@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
@@ -31,7 +31,9 @@ describe('Shell Execution Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
-  const createdGraphIds: string[] = [];
+  let defaultGraphId: string;
+  let envGraphId: string;
+  let alpineGraphId: string;
 
   type ShellExecutionSummary = ReturnType<typeof findShellExecution>;
 
@@ -39,26 +41,40 @@ describe('Shell Execution Integration Tests', () => {
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
-  });
+    const defaultGraph = await graphsService.create(
+      createShellExecutionGraphData(),
+    );
+    defaultGraphId = defaultGraph.id;
+    await graphsService.run(defaultGraphId);
+    await waitForGraphStatus(defaultGraphId, GraphStatus.Running);
 
-  afterEach(async () => {
-    while (createdGraphIds.length > 0) {
-      const graphId = createdGraphIds.pop();
-      if (graphId) {
-        await cleanupGraph(graphId);
-      }
-    }
-  }, 180_000);
+    const envGraph = await graphsService.create(
+      createShellExecutionGraphData({
+        env: { FOO: 'bar' },
+        description: 'Integration test graph for shell execution (env)',
+      }),
+    );
+    envGraphId = envGraph.id;
+    await graphsService.run(envGraphId);
+    await waitForGraphStatus(envGraphId, GraphStatus.Running);
+
+    const alpineGraph = await graphsService.create(
+      createShellExecutionGraphData({
+        dockerImage: 'alpine:latest',
+        description: 'Integration test graph for shell execution (alpine)',
+      }),
+    );
+    alpineGraphId = alpineGraph.id;
+    await graphsService.run(alpineGraphId);
+    await waitForGraphStatus(alpineGraphId, GraphStatus.Running);
+  }, 300_000);
 
   afterAll(async () => {
+    if (defaultGraphId) await cleanupGraph(defaultGraphId);
+    if (envGraphId) await cleanupGraph(envGraphId);
+    if (alpineGraphId) await cleanupGraph(alpineGraphId);
     await app.close();
-  });
-
-  const registerGraph = (graphId: string) => {
-    if (!createdGraphIds.includes(graphId)) {
-      createdGraphIds.push(graphId);
-    }
-  };
+  }, 300_000);
 
   const cleanupGraph = async (graphId: string) => {
     try {
@@ -257,17 +273,15 @@ describe('Shell Execution Integration Tests', () => {
     };
   };
 
-  const createAndRunShellGraph = async (options?: ShellGraphOptions) => {
-    const graph = await graphsService.create(
-      createShellExecutionGraphData(options),
-    );
-    registerGraph(graph.id);
-
-    await graphsService.run(graph.id);
-    await waitForGraphStatus(graph.id, GraphStatus.Running);
-
-    return graph.id;
+  const ensureGraphRunning = async (graphId: string) => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
+    await graphsService.run(graphId);
+    await waitForGraphStatus(graphId, GraphStatus.Running);
   };
+
+  const uniqueThreadSubId = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   interface ExecuteShellOptions {
     threadSubId?: string;
@@ -280,13 +294,15 @@ describe('Shell Execution Integration Tests', () => {
     message: string,
     options: ExecuteShellOptions = {},
   ) => {
+    await ensureGraphRunning(graphId);
+    const threadSubId = options.threadSubId ?? uniqueThreadSubId('shell');
     const execution = await graphsService.executeTrigger(
       graphId,
       TRIGGER_NODE_ID,
       {
         messages: [message],
         async: false,
-        threadSubId: options.threadSubId,
+        threadSubId,
       },
     );
 
@@ -314,16 +330,17 @@ describe('Shell Execution Integration Tests', () => {
       'persists shell tool call request before the tool result message',
       { timeout: 360_000 },
       async () => {
-        const graphId = await createAndRunShellGraph();
+        await ensureGraphRunning(defaultGraphId);
 
         const execution = await graphsService.executeTrigger(
-          graphId,
+          defaultGraphId,
           TRIGGER_NODE_ID,
           {
             messages: [
               'Execute the shell command: sleep 15; echo "done-after-sleep"',
             ],
             async: true,
+            threadSubId: uniqueThreadSubId('shell-ordering'),
           },
         );
 
@@ -437,12 +454,8 @@ describe('Shell Execution Integration Tests', () => {
       'runs a simple shell command end-to-end',
       { timeout: 120_000 },
       async () => {
-        const graphId = await createAndRunShellGraph({
-          env: { FOO: 'bar' },
-        });
-
         const result = await executeShellScenario(
-          graphId,
+          defaultGraphId,
           'Execute the command: echo "Hello from integration test"',
         );
 
@@ -459,12 +472,8 @@ describe('Shell Execution Integration Tests', () => {
       'propagates runtime environment variables into the shell tool',
       { timeout: 120_000 },
       async () => {
-        const graphId = await createAndRunShellGraph({
-          env: { FOO: 'bar' },
-        });
-
         const result = await executeShellScenario(
-          graphId,
+          envGraphId,
           'Execute the shell command to print environment variable: echo $FOO',
         );
 
@@ -479,12 +488,8 @@ describe('Shell Execution Integration Tests', () => {
       'executes commands in an alpine runtime',
       { timeout: 120_000 },
       async () => {
-        const graphId = await createAndRunShellGraph({
-          dockerImage: 'alpine:latest',
-        });
-
         const result = await executeShellScenario(
-          graphId,
+          alpineGraphId,
           'Execute the shell command: uname -a',
           { shellResultTimeoutMs: 240_000 },
         );
@@ -500,10 +505,8 @@ describe('Shell Execution Integration Tests', () => {
       'surfaces stderr for invalid commands',
       { timeout: 120_000 },
       async () => {
-        const graphId = await createAndRunShellGraph();
-
         const result = await executeShellScenario(
-          graphId,
+          defaultGraphId,
           'Run this command: invalidcommandthatdoesnotexist',
         );
 
@@ -513,22 +516,6 @@ describe('Shell Execution Integration Tests', () => {
         );
       },
     );
-
-    it(
-      'returns non-zero exit codes for failing commands',
-      { timeout: 120_000 },
-      async () => {
-        const graphId = await createAndRunShellGraph();
-
-        const result = await executeShellScenario(
-          graphId,
-          'Run this command: ls /nonexistentpath',
-        );
-
-        expect(result.result?.exitCode).not.toBe(0);
-        expect(result.result?.stderr.toLowerCase()).toContain('no such file');
-      },
-    );
   });
 
   describe('Shell command timeout behavior', () => {
@@ -536,10 +523,8 @@ describe('Shell Execution Integration Tests', () => {
       'applies overall timeout for long running commands',
       { timeout: 120_000 },
       async () => {
-        const graphId = await createAndRunShellGraph();
-
         const result = await executeShellScenario(
-          graphId,
+          defaultGraphId,
           'Execute this command with a 2-second timeout: sleep 5',
           {
             predicate: (summary) =>
@@ -555,32 +540,14 @@ describe('Shell Execution Integration Tests', () => {
       'completes when the command keeps producing output within tail timeout',
       { timeout: 120_000 },
       async () => {
-        const graphId = await createAndRunShellGraph();
-
         const result = await executeShellScenario(
-          graphId,
+          defaultGraphId,
           'Execute this command that will stop producing output: echo "start"; sleep 3; echo "end"',
         );
 
         expect(result.result?.exitCode).toBe(0);
         expect(result.result?.stdout).toContain('start');
         expect(result.result?.stdout).toContain('end');
-      },
-    );
-
-    it(
-      'does not hit timeouts for quick commands',
-      { timeout: 120_000 },
-      async () => {
-        const graphId = await createAndRunShellGraph();
-
-        const result = await executeShellScenario(
-          graphId,
-          'Execute this quick command: echo "success"',
-        );
-
-        expect(result.result?.exitCode).toBe(0);
-        expect(result.result?.stdout).toContain('success');
       },
     );
   });

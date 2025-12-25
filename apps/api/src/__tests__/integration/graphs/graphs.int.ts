@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import { cloneDeep } from 'lodash';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { EntityUUIDSchema } from '../../../utils/dto/misc.dto';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -40,6 +40,7 @@ describe('Graphs Integration Tests', () => {
   let threadsService: ThreadsService;
   let graphRegistry: GraphRegistry;
   const createdGraphIds: string[] = [];
+  let commandGraphId: string;
 
   const registerGraph = (graphId: string) => {
     if (!createdGraphIds.includes(graphId)) {
@@ -159,18 +160,34 @@ describe('Graphs Integration Tests', () => {
     graphRegistry = app.get<GraphRegistry>(GraphRegistry);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     while (createdGraphIds.length > 0) {
       const graphId = createdGraphIds.pop();
       if (graphId) {
         await cleanupGraph(graphId);
       }
     }
-  });
-
-  afterAll(async () => {
     await app.close();
-  });
+  }, 180_000);
+
+  const uniqueThreadSubId = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ensureGraphRunning = async (graphId: string) => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
+    await graphsService.run(graphId);
+    await waitForGraphStatus(graphId, GraphStatus.Running);
+  };
+
+  const restartGraph = async (graphId: string) => {
+    try {
+      await graphsService.destroy(graphId);
+    } catch {
+      // best effort
+    }
+    await ensureGraphRunning(graphId);
+  };
 
   describe('graph creation', () => {
     it('creates a new graph with the default schema', async () => {
@@ -364,36 +381,35 @@ describe('Graphs Integration Tests', () => {
   });
 
   describe('graph updates', () => {
-    it('updates mutable fields without touching schema', async () => {
+    it('updates mutable fields (partial + full) without touching schema or version', async () => {
       const graph = await graphsService.create(createMockGraphData());
       registerGraph(graph.id);
 
-      const updatePayload: UpdateGraphDto = {
-        name: 'Updated Graph Name',
-        description: 'Updated description from integration test',
-        currentVersion: graph.version,
-      };
-
-      const response = await graphsService.update(graph.id, updatePayload);
-      expect(response.revision).toBeUndefined();
-      expect(response.graph.name).toBe(updatePayload.name);
-      expect(response.graph.description).toBe(updatePayload.description);
-      expect(response.graph.version).toBe(graph.version);
-    });
-
-    it('updates only provided fields and preserves others', async () => {
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
-
-      const updatePayload: UpdateGraphDto = {
+      const partialUpdate: UpdateGraphDto = {
         name: 'Partially Updated Graph',
         currentVersion: graph.version,
       };
 
-      const response = await graphsService.update(graph.id, updatePayload);
-      expect(response.graph.name).toBe(updatePayload.name);
-      expect(response.graph.description).toBe(graph.description);
-      expect(response.graph.version).toBe(graph.version);
+      const partialResponse = await graphsService.update(
+        graph.id,
+        partialUpdate,
+      );
+      expect(partialResponse.revision).toBeUndefined();
+      expect(partialResponse.graph.name).toBe(partialUpdate.name);
+      expect(partialResponse.graph.description).toBe(graph.description);
+      expect(partialResponse.graph.version).toBe(graph.version);
+
+      const fullUpdate: UpdateGraphDto = {
+        name: 'Updated Graph Name',
+        description: 'Updated description from integration test',
+        currentVersion: partialResponse.graph.version,
+      };
+
+      const fullResponse = await graphsService.update(graph.id, fullUpdate);
+      expect(fullResponse.revision).toBeUndefined();
+      expect(fullResponse.graph.name).toBe(fullUpdate.name);
+      expect(fullResponse.graph.description).toBe(fullUpdate.description);
+      expect(fullResponse.graph.version).toBe(graph.version);
     });
 
     it('throws when updating a non-existent graph', async () => {
@@ -410,7 +426,7 @@ describe('Graphs Integration Tests', () => {
       });
     });
 
-    it('increments version when schema changes on a stopped graph', async () => {
+    it('increments version on schema change and rejects stale edits (version conflict)', async () => {
       const graph = await graphsService.create(createMockGraphData());
       registerGraph(graph.id);
 
@@ -440,33 +456,8 @@ describe('Graphs Integration Tests', () => {
       expect((agentNode?.config as SimpleAgentSchemaType).instructions).toBe(
         'Schema update via integration test',
       );
-    });
 
-    it('rejects stale edits and reports version conflicts', async () => {
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
-
-      const firstSchema = cloneDeep(graph.schema);
-      firstSchema.nodes = firstSchema.nodes.map((node) =>
-        node.id === TEST_AGENT_NODE_ID
-          ? {
-              ...node,
-              config: {
-                ...(node.config as SimpleAgentSchemaType),
-                instructions: 'First schema update',
-              } satisfies SimpleAgentSchemaType,
-            }
-          : node,
-      );
-
-      const firstUpdate = await graphsService.update(graph.id, {
-        schema: firstSchema,
-        currentVersion: graph.version,
-      });
-
-      expect(firstUpdate.graph.version).toBe('1.0.1');
-
-      const staleSchema = cloneDeep(firstSchema);
+      const staleSchema = cloneDeep(updatedSchema);
       staleSchema.nodes = staleSchema.nodes.map((node) =>
         node.id === TEST_AGENT_NODE_ID
           ? {
@@ -492,7 +483,7 @@ describe('Graphs Integration Tests', () => {
   });
 
   describe('running graphs', () => {
-    it('runs a graph and registers it in the graph registry', async () => {
+    it('runs a graph, registers it, and prevents re-running while already running', async () => {
       const graph = await graphsService.create(createMockGraphData());
       registerGraph(graph.id);
 
@@ -501,6 +492,11 @@ describe('Graphs Integration Tests', () => {
 
       await waitForGraphStatus(graph.id, GraphStatus.Running);
       expect(graphRegistry.get(graph.id)).toBeDefined();
+
+      await expect(graphsService.run(graph.id)).rejects.toMatchObject({
+        errorCode: 'GRAPH_ALREADY_RUNNING',
+        statusCode: 400,
+      });
     });
 
     it('throws when trying to run a missing graph', async () => {
@@ -509,19 +505,6 @@ describe('Graphs Integration Tests', () => {
       ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_FOUND',
         statusCode: 404,
-      });
-    });
-
-    it('prevents running a graph that is already running', async () => {
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
-
-      await graphsService.run(graph.id);
-      await waitForGraphStatus(graph.id, GraphStatus.Running);
-
-      await expect(graphsService.run(graph.id)).rejects.toMatchObject({
-        errorCode: 'GRAPH_ALREADY_RUNNING',
-        statusCode: 400,
       });
     });
   });
@@ -603,61 +586,26 @@ describe('Graphs Integration Tests', () => {
     );
   });
 
-  describe('graph lifecycle', () => {
-    it(
-      'covers create -> update -> run -> destroy -> delete flow',
-      { timeout: 60000 },
-      async () => {
-        const graph = await graphsService.create(createMockGraphData());
-        registerGraph(graph.id);
-
-        const updatePayload: UpdateGraphDto = {
-          name: 'Lifecycle Graph',
-          description: 'Updated during lifecycle test',
-          currentVersion: graph.version,
-        };
-
-        const updateResponse = await graphsService.update(
-          graph.id,
-          updatePayload,
-        );
-        expect(updateResponse.graph.name).toBe(updatePayload.name);
-
-        const runResponse = await graphsService.run(graph.id);
-        expect(runResponse.status).toBe(GraphStatus.Running);
-        await waitForGraphStatus(graph.id, GraphStatus.Running);
-
-        const destroyResponse = await graphsService.destroy(graph.id);
-        expect(destroyResponse.status).toBe(GraphStatus.Stopped);
-
-        await graphsService.delete(graph.id);
-        unregisterGraph(graph.id);
-
-        await expect(graphsService.findById(graph.id)).rejects.toMatchObject({
-          errorCode: 'GRAPH_NOT_FOUND',
-          statusCode: 404,
-        });
-      },
-    );
-  });
-
   describe('destroying graphs with active executions', () => {
+    beforeAll(async () => {
+      const graph = await graphsService.create(createCommandGraphData());
+      commandGraphId = graph.id;
+      registerGraph(commandGraphId);
+    });
+
     it(
       'stops active execution and marks the thread as stopped',
       { timeout: 120000 },
       async () => {
-        const graph = await graphsService.create(createCommandGraphData());
-        registerGraph(graph.id);
-
-        await graphsService.run(graph.id);
-        await waitForGraphStatus(graph.id, GraphStatus.Running);
+        await restartGraph(commandGraphId);
 
         const execution = await graphsService.executeTrigger(
-          graph.id,
+          commandGraphId,
           TEST_TRIGGER_NODE_ID,
           {
             messages: ['Run this command: sleep 100 && echo "interrupt me"'],
             async: true,
+            threadSubId: uniqueThreadSubId('destroy-active'),
           },
         );
 
@@ -667,7 +615,7 @@ describe('Graphs Integration Tests', () => {
           60000,
         );
 
-        const destroyResponse = await graphsService.destroy(graph.id);
+        const destroyResponse = await graphsService.destroy(commandGraphId);
         expect(destroyResponse.status).toBe(GraphStatus.Stopped);
 
         const thread = await waitForThreadStatus(
@@ -719,24 +667,25 @@ describe('Graphs Integration Tests', () => {
       'stops multiple concurrent agent executions when destroyed',
       { timeout: 120000 },
       async () => {
-        const graph = await graphsService.create(createCommandGraphData());
-        registerGraph(graph.id);
-
-        await graphsService.run(graph.id);
-        await waitForGraphStatus(graph.id, GraphStatus.Running);
+        await restartGraph(commandGraphId);
 
         const executions = await Promise.all(
           ['First concurrent execution', 'Second concurrent execution'].map(
             (message) =>
-              graphsService.executeTrigger(graph.id, TEST_TRIGGER_NODE_ID, {
-                messages: [message],
-                async: true,
-              }),
+              graphsService.executeTrigger(
+                commandGraphId,
+                TEST_TRIGGER_NODE_ID,
+                {
+                  messages: [message],
+                  async: true,
+                  threadSubId: uniqueThreadSubId('destroy-concurrent'),
+                },
+              ),
           ),
         );
 
         await wait(1000);
-        await graphsService.destroy(graph.id);
+        await graphsService.destroy(commandGraphId);
 
         for (const execution of executions) {
           const thread = await waitForThreadStatus(execution.externalThreadId, [
@@ -754,15 +703,11 @@ describe('Graphs Integration Tests', () => {
       'allows destroy even when no agent is actively executing',
       { timeout: 120000 },
       async () => {
-        const graph = await graphsService.create(createCommandGraphData());
-        registerGraph(graph.id);
+        await restartGraph(commandGraphId);
 
-        await graphsService.run(graph.id);
-        await waitForGraphStatus(graph.id, GraphStatus.Running);
-
-        const destroyResponse = await graphsService.destroy(graph.id);
+        const destroyResponse = await graphsService.destroy(commandGraphId);
         expect(destroyResponse.status).toBe(GraphStatus.Stopped);
-        expect(graphRegistry.get(graph.id)).toBeUndefined();
+        expect(graphRegistry.get(commandGraphId)).toBeUndefined();
       },
     );
   });

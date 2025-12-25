@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
@@ -25,32 +25,26 @@ describe('Thread Stop Execution Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
-  const createdGraphIds: string[] = [];
+  let graphId: string;
 
   beforeAll(async () => {
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
-  });
 
-  afterEach(async () => {
-    while (createdGraphIds.length > 0) {
-      const graphId = createdGraphIds.pop();
-      if (graphId) {
-        await cleanupGraph(graphId);
-      }
-    }
+    const graph = await graphsService.create(createShellStopGraphData());
+    graphId = graph.id;
+
+    await graphsService.run(graphId);
+    await waitForGraphStatus(graphId, GraphStatus.Running);
   }, 180_000);
 
   afterAll(async () => {
-    await app.close();
-  });
-
-  const registerGraph = (graphId: string) => {
-    if (!createdGraphIds.includes(graphId)) {
-      createdGraphIds.push(graphId);
+    if (graphId) {
+      await cleanupGraph(graphId);
     }
-  };
+    await app.close();
+  }, 180_000);
 
   const cleanupGraph = async (graphId: string) => {
     try {
@@ -140,13 +134,12 @@ describe('Thread Stop Execution Integration Tests', () => {
     };
   };
 
-  const createAndRunGraph = async () => {
-    const graph = await graphsService.create(createShellStopGraphData());
-    registerGraph(graph.id);
+  const ensureGraphRunning = async () => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
 
-    await graphsService.run(graph.id);
-    await waitForGraphStatus(graph.id, GraphStatus.Running);
-    return graph.id;
+    await graphsService.run(graphId);
+    await waitForGraphStatus(graphId, GraphStatus.Running);
   };
 
   type ShellThreadMessage =
@@ -235,7 +228,8 @@ describe('Thread Stop Execution Integration Tests', () => {
     'stopThreadByExternalId aborts a running execution (ThreadUpdate stopped emitted by GraphStateManager)',
     { timeout: 300_000 },
     async () => {
-      const graphId = await createAndRunGraph();
+      await ensureGraphRunning();
+      const threadSubId = `stop-by-external-id-${Date.now()}`;
 
       const execution = await graphsService.executeTrigger(
         graphId,
@@ -243,7 +237,7 @@ describe('Thread Stop Execution Integration Tests', () => {
         {
           messages: ['Run this command: sleep 60'],
           async: true,
-          threadSubId: 'stop-by-external-id',
+          threadSubId,
         },
       );
 
@@ -283,7 +277,8 @@ describe('Thread Stop Execution Integration Tests', () => {
     'stopThread (by internal id) aborts a running execution',
     { timeout: 300_000 },
     async () => {
-      const graphId = await createAndRunGraph();
+      await ensureGraphRunning();
+      const threadSubId = `stop-by-internal-id-${Date.now()}`;
 
       const execution = await graphsService.executeTrigger(
         graphId,
@@ -291,7 +286,7 @@ describe('Thread Stop Execution Integration Tests', () => {
         {
           messages: ['Run this command: sleep 60'],
           async: true,
-          threadSubId: 'stop-by-internal-id',
+          threadSubId,
         },
       );
 
@@ -316,7 +311,7 @@ describe('Thread Stop Execution Integration Tests', () => {
     'can stop a running shell thread and then re-trigger the same thread to completion (preserves message history)',
     { timeout: 300_000 },
     async () => {
-      const graphId = await createAndRunGraph();
+      await ensureGraphRunning();
 
       const threadSubId = `stop-rerun-${Date.now()}`;
       const sleepMessage = 'Run this command: sleep 60';

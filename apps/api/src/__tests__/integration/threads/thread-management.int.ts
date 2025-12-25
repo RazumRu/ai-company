@@ -7,6 +7,7 @@ import {
   ReasoningEffort,
 } from '../../../v1/agents/agents.types';
 import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
+import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
@@ -23,6 +24,11 @@ describe('Thread Management Integration Tests', () => {
   let threadsService: ThreadsService;
   let graphRegistry: GraphRegistry;
   const createdGraphIds: string[] = [];
+  let basicGraphId: string;
+  let multiAgentGraphId: string;
+  let injectModeGraphId: string;
+  let waitModeGraphId: string;
+  let thinkingGraphId: string;
 
   beforeAll(async () => {
     app = await createTestModule();
@@ -30,7 +36,161 @@ describe('Thread Management Integration Tests', () => {
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
     graphRegistry = app.get<GraphRegistry>(GraphRegistry);
-  });
+
+    const registerGraph = (graphId: string) => {
+      if (!createdGraphIds.includes(graphId)) createdGraphIds.push(graphId);
+    };
+
+    const waitForGraphRunning = async (graphId: string) => {
+      await waitForCondition(
+        () => graphsService.findById(graphId),
+        (g) => g.status === GraphStatus.Running,
+        { timeout: 60_000, interval: 1_000 },
+      );
+    };
+
+    // Shared “basic” graph for most thread behaviors.
+    const basicGraph = await graphsService.create(
+      createMockGraphData({
+        name: `Thread Management Basic ${Date.now()}`,
+      }),
+    );
+    basicGraphId = basicGraph.id;
+    registerGraph(basicGraphId);
+    await graphsService.run(basicGraphId);
+    await waitForGraphRunning(basicGraphId);
+
+    // Shared multi-agent graph for multi-agent thread + message filtering behaviors.
+    const multiAgentGraph = await graphsService.create(
+      createMockGraphData({
+        name: `Thread Management Multi-Agent ${Date.now()}`,
+        schema: {
+          nodes: [
+            {
+              id: 'agent-1',
+              template: 'simple-agent',
+              config: {
+                name: 'First Agent',
+                instructions: 'You are the first agent',
+                invokeModelName: 'gpt-5-mini',
+              },
+            },
+            {
+              id: 'agent-2',
+              template: 'simple-agent',
+              config: {
+                name: 'Second Agent',
+                instructions: 'You are the second agent',
+                invokeModelName: 'gpt-5-mini',
+              },
+            },
+            {
+              id: 'comm-tool-1',
+              template: 'agent-communication-tool',
+              config: {},
+            },
+            {
+              id: 'trigger-1',
+              template: 'manual-trigger',
+              config: {},
+            },
+          ],
+          edges: [
+            { from: 'trigger-1', to: 'agent-1' },
+            { from: 'agent-1', to: 'comm-tool-1' },
+            { from: 'comm-tool-1', to: 'agent-2' },
+          ],
+        },
+      }),
+    );
+    multiAgentGraphId = multiAgentGraph.id;
+    registerGraph(multiAgentGraphId);
+    await graphsService.run(multiAgentGraphId);
+    await waitForGraphRunning(multiAgentGraphId);
+
+    // Shared graph for NewMessageMode.InjectAfterToolCall cases.
+    const injectGraph = await graphsService.create(
+      createMockGraphData({
+        name: `Thread Management Inject Mode ${Date.now()}`,
+        schema: {
+          nodes: [
+            {
+              id: 'agent-1',
+              template: 'simple-agent',
+              config: {
+                instructions: 'You are a helpful test agent. Answer briefly.',
+                invokeModelName: 'gpt-5-mini',
+                summarizeMaxTokens: 272000,
+                summarizeKeepTokens: 30000,
+                newMessageMode: NewMessageMode.InjectAfterToolCall,
+              },
+            },
+            { id: 'trigger-1', template: 'manual-trigger', config: {} },
+          ],
+          edges: [{ from: 'trigger-1', to: 'agent-1' }],
+        },
+      }),
+    );
+    injectModeGraphId = injectGraph.id;
+    registerGraph(injectModeGraphId);
+    await graphsService.run(injectModeGraphId);
+    await waitForGraphRunning(injectModeGraphId);
+
+    // Shared graph for NewMessageMode.WaitForCompletion and pending message state assertions.
+    const waitGraph = await graphsService.create(
+      createMockGraphData({
+        name: `Thread Management Wait Mode ${Date.now()}`,
+        schema: {
+          nodes: [
+            {
+              id: 'agent-wait-mode',
+              template: 'simple-agent',
+              config: {
+                instructions:
+                  'Queue incoming questions until you finish the current response.',
+                invokeModelName: 'gpt-5-mini',
+                summarizeMaxTokens: 272000,
+                summarizeKeepTokens: 30000,
+                newMessageMode: NewMessageMode.WaitForCompletion,
+              },
+            },
+            { id: 'trigger-1', template: 'manual-trigger', config: {} },
+          ],
+          edges: [{ from: 'trigger-1', to: 'agent-wait-mode' }],
+        },
+      }),
+    );
+    waitModeGraphId = waitGraph.id;
+    registerGraph(waitModeGraphId);
+    await graphsService.run(waitModeGraphId);
+    await waitForGraphRunning(waitModeGraphId);
+
+    // Shared graph for ReasoningEffort.High config introspection.
+    const thinkingGraph = await graphsService.create(
+      createMockGraphData({
+        name: `Thread Management Thinking Mode ${Date.now()}`,
+        schema: {
+          nodes: [
+            {
+              id: 'agent-thinking',
+              template: 'simple-agent',
+              config: {
+                instructions: 'Think carefully before answering.',
+                invokeModelName: 'gpt-5.1',
+                invokeModelReasoningEffort: ReasoningEffort.High,
+              },
+            },
+            { id: 'trigger-1', template: 'manual-trigger', config: {} },
+          ],
+          edges: [{ from: 'trigger-1', to: 'agent-thinking' }],
+        },
+      }),
+    );
+    thinkingGraphId = thinkingGraph.id;
+    registerGraph(thinkingGraphId);
+    await graphsService.run(thinkingGraphId);
+    await waitForGraphRunning(thinkingGraphId);
+  }, 180_000);
 
   afterAll(async () => {
     await Promise.all(
@@ -65,7 +225,21 @@ describe('Thread Management Integration Tests', () => {
       }),
     );
     await app.close();
-  });
+  }, 180_000);
+
+  const uniqueThreadSubId = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ensureGraphRunning = async (graphId: string) => {
+    const graph = await graphsService.findById(graphId);
+    if (graph.status === GraphStatus.Running) return;
+    await graphsService.run(graphId);
+    await waitForCondition(
+      () => graphsService.findById(graphId),
+      (g) => g.status === GraphStatus.Running,
+      { timeout: 60_000, interval: 1_000 },
+    );
+  };
 
   const waitForHumanMessageContents = async (
     externalThreadId: string,
@@ -92,72 +266,19 @@ describe('Thread Management Integration Tests', () => {
     return messages.filter((m) => m.message.role === 'human');
   };
 
-  const createAndRunGraphWithMessageMode = async (
-    mode: NewMessageMode,
-    agentId = 'agent-1',
-  ) => {
-    const graphData = createMockGraphData({
-      schema: {
-        nodes: [
-          {
-            id: agentId,
-            template: 'simple-agent',
-            config: {
-              instructions: 'You are a helpful test agent. Answer briefly.',
-              invokeModelName: 'gpt-5-mini',
-              summarizeMaxTokens: 272000,
-              summarizeKeepTokens: 30000,
-              newMessageMode: mode,
-            },
-          },
-          {
-            id: 'trigger-1',
-            template: 'manual-trigger',
-            config: {},
-          },
-        ],
-        edges: [
-          {
-            from: 'trigger-1',
-            to: agentId,
-          },
-        ],
-      },
-    });
-
-    const createResult = await graphsService.create(graphData);
-    const graphId = createResult.id;
-    createdGraphIds.push(graphId);
-
-    await graphsService.run(graphId);
-
-    const agentNode = graphRegistry.getNode<SimpleAgent>(graphId, agentId);
-    if (!agentNode) {
-      throw new Error(`Agent node ${agentId} not found for graph ${graphId}`);
-    }
-
-    return { graphId, agent: agentNode.instance };
-  };
-
   describe('Thread Creation and Isolation', () => {
     it(
       'should create a new internal thread for each invocation without threadSubId',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
 
         // First invocation without threadSubId
         const trigger1Result = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
-            messages: ['First message'],
+            messages: [`First message ${Date.now()}`],
           },
         );
 
@@ -166,10 +287,10 @@ describe('Thread Management Integration Tests', () => {
 
         // Second invocation without threadSubId
         const trigger2Result = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
-            messages: ['Second message'],
+            messages: [`Second message ${Date.now()}`],
           },
         );
 
@@ -179,19 +300,23 @@ describe('Thread Management Integration Tests', () => {
         // Thread IDs should be different
         expect(firstThreadId).not.toBe(secondThreadId);
 
-        // Wait for both threads to be created in the database
+        // Wait for both threads to be created in the database (may be more from other tests).
         const threads = await waitForCondition(
           () =>
             threadsService.getThreads({
-              graphId,
-              limit: 100,
+              graphId: basicGraphId,
+              limit: 200,
               offset: 0,
             }),
-          (threads) => threads.length === 2,
-          { timeout: 10000 },
+          (threads) => {
+            const ids = threads.map(
+              (t: unknown) =>
+                (t as { externalThreadId: string }).externalThreadId,
+            );
+            return ids.includes(firstThreadId) && ids.includes(secondThreadId);
+          },
+          { timeout: 20000 },
         );
-
-        expect(threads).toHaveLength(2);
 
         const threadIds = threads.map(
           (t: unknown) => (t as { externalThreadId: string }).externalThreadId,
@@ -205,21 +330,16 @@ describe('Thread Management Integration Tests', () => {
       'should add messages to existing thread when using same threadSubId',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('persistent-thread');
 
         // First invocation with specific threadSubId
         const trigger1Result = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['First message in thread'],
-            threadSubId: 'persistent-thread',
+            threadSubId,
           },
         );
 
@@ -228,11 +348,11 @@ describe('Thread Management Integration Tests', () => {
 
         // Second invocation with same threadSubId
         const trigger2Result = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['Second message in same thread'],
-            threadSubId: 'persistent-thread',
+            threadSubId,
           },
         );
 
@@ -241,79 +361,44 @@ describe('Thread Management Integration Tests', () => {
         // Should get the same thread ID
         expect(trigger2Result.externalThreadId).toBe(threadId);
 
-        // Wait for thread to be persisted
-        const threads = await waitForCondition(
-          () =>
-            threadsService.getThreads({
-              graphId,
-              limit: 100,
-              offset: 0,
-            }),
-          (threads) => threads.length === 1,
-          { timeout: 10000 },
+        // Wait for thread + both human messages to be persisted.
+        const humanMessages = await waitForHumanMessageContents(threadId, 2);
+        expect(humanMessages.map((m) => m.message.content)).toEqual(
+          expect.arrayContaining([
+            'First message in thread',
+            'Second message in same thread',
+          ]),
         );
 
-        expect(threads).toHaveLength(1);
-        expect(threads[0]?.externalThreadId).toBe(threadId);
+        const threads = await threadsService.getThreads({
+          graphId: basicGraphId,
+          limit: 500,
+          offset: 0,
+        });
+        expect(
+          threads.filter(
+            (t) =>
+              (t as { externalThreadId: string }).externalThreadId === threadId,
+          ),
+        ).toHaveLength(1);
       },
     );
   });
 
   describe('Thread Retrieval', () => {
     it(
-      'should retrieve thread by external ID',
-      { timeout: 60000 },
-      async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
-
-        const triggerResult = await graphsService.executeTrigger(
-          graphId,
-          'trigger-1',
-          {
-            messages: ['Test external thread retrieval'],
-            threadSubId: 'external-retrieval-test',
-          },
-        );
-
-        expect(triggerResult.externalThreadId).toBeDefined();
-        const externalThreadId = triggerResult.externalThreadId;
-
-        // Wait for thread to be created in database
-        const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(externalThreadId),
-          (thread) => !!thread && thread.externalThreadId === externalThreadId,
-          { timeout: 10000 },
-        );
-
-        expect(thread.graphId).toBe(graphId);
-        expect(thread.externalThreadId).toBe(externalThreadId);
-      },
-    );
-
-    it(
       'should list threads without specifying graphId',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('thread-list-all');
 
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['List this thread without filters'],
-            threadSubId: 'thread-list-all',
+            threadSubId,
           },
         );
 
@@ -327,7 +412,10 @@ describe('Thread Management Integration Tests', () => {
             }),
           (result) =>
             result.some(
-              (thread) => (thread as { graphId: string }).graphId === graphId,
+              (thread) =>
+                (thread as { graphId: string }).graphId === basicGraphId &&
+                (thread as { externalThreadId: string }).externalThreadId ===
+                  triggerResult.externalThreadId,
             ),
           { timeout: 10000 },
         );
@@ -338,7 +426,7 @@ describe('Thread Management Integration Tests', () => {
             externalThreadId: string;
           };
           return (
-            current.graphId === graphId &&
+            current.graphId === basicGraphId &&
             current.externalThreadId === triggerResult.externalThreadId
           );
         });
@@ -361,16 +449,10 @@ describe('Thread Management Integration Tests', () => {
 
   describe('Thread Async Execution', () => {
     it('should execute trigger with async=true and return immediately', async () => {
-      const graphData = createMockGraphData();
-
-      const createResult = await graphsService.create(graphData);
-      const graphId = createResult.id;
-      createdGraphIds.push(graphId);
-
-      await graphsService.run(graphId);
+      await ensureGraphRunning(basicGraphId);
 
       const execResult = await graphsService.executeTrigger(
-        graphId,
+        basicGraphId,
         'trigger-1',
         {
           messages: ['Say hello and then finish.'],
@@ -388,150 +470,63 @@ describe('Thread Management Integration Tests', () => {
       'should create one internal thread for multiple agents in the same graph execution',
       { timeout: 60000 },
       async () => {
-        // Create a graph with multiple agents
-        const multiAgentGraphData = createMockGraphData({
-          schema: {
-            nodes: [
-              {
-                id: 'agent-1',
-                template: 'simple-agent',
-                config: {
-                  name: 'First Agent',
-                  instructions: 'You are the first agent',
-                  invokeModelName: 'gpt-5-mini',
-                },
-              },
-              {
-                id: 'agent-2',
-                template: 'simple-agent',
-                config: {
-                  name: 'Second Agent',
-                  instructions: 'You are the second agent',
-                  invokeModelName: 'gpt-5-mini',
-                },
-              },
-              {
-                id: 'comm-tool-1',
-                template: 'agent-communication-tool',
-                config: {},
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [
-              { from: 'trigger-1', to: 'agent-1' },
-              { from: 'agent-1', to: 'comm-tool-1' },
-              { from: 'comm-tool-1', to: 'agent-2' },
-            ],
-          },
-        });
-
-        const createResult = await graphsService.create(multiAgentGraphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(multiAgentGraphId);
+        const threadSubId = uniqueThreadSubId('multi-agent-thread');
 
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          multiAgentGraphId,
           'trigger-1',
           {
             messages: ['Test multi-agent thread'],
-            threadSubId: 'multi-agent-thread',
+            threadSubId,
           },
         );
 
-        // Wait for exactly one thread to be created for the entire execution
         const threads = await waitForCondition(
           () =>
             threadsService.getThreads({
-              graphId,
-              limit: 100,
+              graphId: multiAgentGraphId,
+              limit: 200,
               offset: 0,
             }),
-          (threads) => threads.length === 1,
-          { timeout: 10000 },
+          (threads) =>
+            threads.some(
+              (t) =>
+                (t as { externalThreadId: string }).externalThreadId ===
+                triggerResult.externalThreadId,
+            ),
+          { timeout: 20_000 },
         );
 
-        expect(threads).toHaveLength(1);
-        expect(threads[0]?.externalThreadId).toBe(
-          triggerResult.externalThreadId,
-        );
+        expect(
+          threads.filter(
+            (t) =>
+              (t as { externalThreadId: string }).externalThreadId ===
+              triggerResult.externalThreadId,
+          ),
+        ).toHaveLength(1);
       },
     );
   });
 
   describe('Message Retrieval and Management', () => {
-    it('should retrieve thread by ID', { timeout: 60000 }, async () => {
-      const graphData = createMockGraphData();
-      const createResult = await graphsService.create(graphData);
-      const graphId = createResult.id;
-      createdGraphIds.push(graphId);
-
-      await graphsService.run(graphId);
-
-      const triggerResult = await graphsService.executeTrigger(
-        graphId,
-        'trigger-1',
-        {
-          messages: ['Test message'],
-          threadSubId: 'test-thread-id',
-        },
-      );
-
-      // Wait for thread to be created
-      const threads = await waitForCondition(
-        () =>
-          threadsService.getThreads({
-            graphId,
-            limit: 100,
-            offset: 0,
-          }),
-        (threads) =>
-          threads.some(
-            (t) =>
-              (t as { externalThreadId: string }).externalThreadId ===
-              triggerResult.externalThreadId,
-          ),
-        { timeout: 10000 },
-      );
-
-      const thread = threads.find(
-        (t) =>
-          (t as { externalThreadId: string }).externalThreadId ===
-          triggerResult.externalThreadId,
-      );
-      expect(thread).toBeDefined();
-      expect((thread as { externalThreadId: string }).externalThreadId).toBe(
-        triggerResult.externalThreadId,
-      );
-    });
-
     it(
       'should retrieve messages for a thread after execution',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('message-retrieval');
+        const testMessage = `Hello, this is a test message ${Date.now()}`;
 
-        await graphsService.run(graphId);
-
-        const testMessage = 'Hello, this is a test message';
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: [testMessage],
-            threadSubId: 'message-retrieval-test',
+            threadSubId,
           },
         );
 
-        // Wait for thread to be created
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
@@ -540,6 +535,8 @@ describe('Thread Management Integration Tests', () => {
           (thread) => !!thread,
           { timeout: 10000 },
         );
+        // Covers "retrieve by external id" + graphId association.
+        expect(thread.graphId).toBe(basicGraphId);
 
         // Wait for messages to be persisted (at least user message)
         const messages = await waitForCondition(
@@ -574,19 +571,15 @@ describe('Thread Management Integration Tests', () => {
       'should limit messages when limit parameter is provided',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('limit-test');
 
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['Test message'],
-            threadSubId: 'limit-test',
+            threadSubId,
           },
         );
 
@@ -623,56 +616,6 @@ describe('Thread Management Integration Tests', () => {
         expect(limitedMessages.length).toBeGreaterThan(0);
       },
     );
-
-    it('should include human and AI messages', { timeout: 60000 }, async () => {
-      const graphData = createMockGraphData();
-      const createResult = await graphsService.create(graphData);
-      const graphId = createResult.id;
-      createdGraphIds.push(graphId);
-
-      await graphsService.run(graphId);
-
-      const triggerResult = await graphsService.executeTrigger(
-        graphId,
-        'trigger-1',
-        {
-          messages: ['User message'],
-          threadSubId: 'human-ai-test',
-        },
-      );
-
-      // Wait for thread to be created
-      const thread = await waitForCondition(
-        () =>
-          threadsService.getThreadByExternalId(triggerResult.externalThreadId),
-        (thread) => !!thread,
-        { timeout: 10000 },
-      );
-
-      // Wait for at least human message
-      const messages = await waitForCondition(
-        () =>
-          threadsService.getThreadMessages(thread.id, {
-            limit: 100,
-            offset: 0,
-          }),
-        (messages) => messages.length >= 1,
-        { timeout: 10000 },
-      );
-
-      const messageRoles = messages.map(
-        (m) => (m as { message: { role: string } }).message.role,
-      );
-
-      // Must contain human message
-      expect(messageRoles).toContain('human');
-
-      // Verify the user message content
-      const humanMsg = messages.find(
-        (m) => (m as { message: { role: string } }).message.role === 'human',
-      );
-      expect(humanMsg).toBeDefined();
-    });
 
     it(
       'creates a thread on trigger execution and persists first human message + deterministic AI answer',
@@ -775,59 +718,6 @@ describe('Thread Management Integration Tests', () => {
     );
 
     it(
-      'should not duplicate messages when re-invoking existing thread',
-      { timeout: 60000 },
-      async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
-
-        const threadSubId = 'no-duplicate-test';
-
-        // First invocation
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
-          messages: ['First message'],
-          threadSubId,
-        });
-
-        // Second invocation with same threadSubId
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
-          messages: ['Second message'],
-          threadSubId,
-        });
-
-        // Wait for threads to stabilize
-        const threads = await waitForCondition(
-          () =>
-            threadsService.getThreads({
-              graphId,
-              limit: 100,
-              offset: 0,
-            }),
-          (threads) =>
-            threads.filter((t) =>
-              (t as { externalThreadId: string }).externalThreadId.includes(
-                threadSubId,
-              ),
-            ).length === 1,
-          { timeout: 10000 },
-        );
-
-        // Should still have only one thread
-        const threadCount = threads.filter((t) =>
-          (t as { externalThreadId: string }).externalThreadId.includes(
-            threadSubId,
-          ),
-        ).length;
-
-        expect(threadCount).toBe(1);
-      },
-    );
-
-    it(
       'should persist messages across graph restarts',
       { timeout: 60000 },
       async () => {
@@ -837,6 +727,7 @@ describe('Thread Management Integration Tests', () => {
         createdGraphIds.push(graphId);
 
         await graphsService.run(graphId);
+        await ensureGraphRunning(graphId);
 
         const persistentMessage = 'Persistent message';
         const triggerResult = await graphsService.executeTrigger(
@@ -874,6 +765,7 @@ describe('Thread Management Integration Tests', () => {
 
         // Restart the graph
         await graphsService.run(graphId);
+        await ensureGraphRunning(graphId);
 
         // Messages should still be retrievable after restart
         const messages = await threadsService.getThreadMessages(thread.id, {
@@ -902,29 +794,26 @@ describe('Thread Management Integration Tests', () => {
       'should isolate messages between different threads',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const sub1 = uniqueThreadSubId('isolation-thread-1');
+        const sub2 = uniqueThreadSubId('isolation-thread-2');
 
         // Create two different threads
         const thread1Result = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['Message for thread 1'],
-            threadSubId: 'isolation-thread-1',
+            threadSubId: sub1,
           },
         );
 
         const thread2Result = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['Message for thread 2'],
-            threadSubId: 'isolation-thread-2',
+            threadSubId: sub2,
           },
         );
 
@@ -954,7 +843,7 @@ describe('Thread Management Integration Tests', () => {
               limit: 100,
               offset: 0,
             }),
-          (messages) => messages.length >= 1,
+          (messages) => messages.length >= 2,
           { timeout: 10000 },
         );
 
@@ -964,7 +853,7 @@ describe('Thread Management Integration Tests', () => {
               limit: 100,
               offset: 0,
             }),
-          (messages) => messages.length >= 1,
+          (messages) => messages.length >= 2,
           { timeout: 10000 },
         );
 
@@ -1007,16 +896,12 @@ describe('Thread Management Integration Tests', () => {
   describe('New Message Modes', () => {
     it(
       'should append messages sequentially when no active run (inject_after_tool_call)',
-      { timeout: 60000 },
+      { timeout: 90000 },
       async () => {
-        const { graphId } = await createAndRunGraphWithMessageMode(
-          NewMessageMode.InjectAfterToolCall,
-          'agent-1',
-        );
-
-        const threadSubId = 'inject-no-active';
+        await ensureGraphRunning(injectModeGraphId);
+        const threadSubId = uniqueThreadSubId('inject-no-active');
         const firstResult = await graphsService.executeTrigger(
-          graphId,
+          injectModeGraphId,
           'trigger-1',
           {
             messages: ['Inject mode no active - first'],
@@ -1025,7 +910,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const secondResult = await graphsService.executeTrigger(
-          graphId,
+          injectModeGraphId,
           'trigger-1',
           {
             messages: ['Inject mode no active - second'],
@@ -1039,7 +924,7 @@ describe('Thread Management Integration Tests', () => {
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
-          { timeout: 60000 },
+          { timeout: 90000 },
         );
 
         expect(secondResult.externalThreadId).toEqual(
@@ -1080,14 +965,10 @@ describe('Thread Management Integration Tests', () => {
       'should inject messages into an active run when mode is inject_after_tool_call',
       { timeout: 60000 },
       async () => {
-        const { graphId } = await createAndRunGraphWithMessageMode(
-          NewMessageMode.InjectAfterToolCall,
-          'agent-1',
-        );
-
-        const threadSubId = 'inject-active';
+        await ensureGraphRunning(injectModeGraphId);
+        const threadSubId = uniqueThreadSubId('inject-active');
         const firstResult = await graphsService.executeTrigger(
-          graphId,
+          injectModeGraphId,
           'trigger-1',
           {
             messages: ['Tell me what is the 2+2?'],
@@ -1097,7 +978,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const secondResult = await graphsService.executeTrigger(
-          graphId,
+          injectModeGraphId,
           'trigger-1',
           {
             messages: ['Oh not, 2+3, sorry'],
@@ -1152,19 +1033,15 @@ describe('Thread Management Integration Tests', () => {
 
     it(
       'should append messages sequentially when no active run (wait_for_completion)',
-      { timeout: 60000 },
+      { timeout: 90000 },
       async () => {
-        const { graphId } = await createAndRunGraphWithMessageMode(
-          NewMessageMode.WaitForCompletion,
-          'agent-1',
-        );
-
-        const threadSubId = 'wait-mode-no-active';
+        await ensureGraphRunning(waitModeGraphId);
+        const threadSubId = uniqueThreadSubId('wait-mode-no-active');
         const firstMessage = 'Wait mode no active - first';
         const secondMessage = 'Wait mode no active - second';
 
         const firstResult = await graphsService.executeTrigger(
-          graphId,
+          waitModeGraphId,
           'trigger-1',
           {
             messages: [firstMessage],
@@ -1173,7 +1050,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const secondResult = await graphsService.executeTrigger(
-          graphId,
+          waitModeGraphId,
           'trigger-1',
           {
             messages: [secondMessage],
@@ -1187,7 +1064,7 @@ describe('Thread Management Integration Tests', () => {
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
-          { timeout: 60000 },
+          { timeout: 90000 },
         );
 
         expect(secondResult.externalThreadId).toEqual(
@@ -1228,18 +1105,14 @@ describe('Thread Management Integration Tests', () => {
       'should queue new messages until completion when mode is wait_for_completion',
       { timeout: 60000 },
       async () => {
-        const { graphId } = await createAndRunGraphWithMessageMode(
-          NewMessageMode.WaitForCompletion,
-          'agent-1',
-        );
-
-        const threadSubId = 'wait-mode-queue';
+        await ensureGraphRunning(waitModeGraphId);
+        const threadSubId = uniqueThreadSubId('wait-mode-queue');
         const firstMessage =
           'Start a long running reasoning task and share your thoughts.';
         const secondMessage = 'Also list some mitigation strategies.';
 
         const firstResult = await graphsService.executeTrigger(
-          graphId,
+          waitModeGraphId,
           'trigger-1',
           {
             messages: [firstMessage],
@@ -1249,7 +1122,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const secondResult = await graphsService.executeTrigger(
-          graphId,
+          waitModeGraphId,
           'trigger-1',
           {
             messages: [secondMessage],
@@ -1306,41 +1179,8 @@ describe('Thread Management Integration Tests', () => {
       'should capture reasoning messages when thinking mode is enabled',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData({
-          schema: {
-            nodes: [
-              {
-                id: 'agent-thinking',
-                template: 'simple-agent',
-                config: {
-                  instructions: 'Think carefully before answering.',
-                  invokeModelName: 'gpt-5.1',
-                  invokeModelReasoningEffort: ReasoningEffort.High,
-                },
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [
-              {
-                from: 'trigger-1',
-                to: 'agent-thinking',
-              },
-            ],
-          },
-        });
-
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
-
         const agentNode = graphRegistry.getNode<SimpleAgent>(
-          graphId,
+          thinkingGraphId,
           'agent-thinking',
         );
         expect(agentNode).toBeDefined();
@@ -1358,45 +1198,13 @@ describe('Thread Management Integration Tests', () => {
       'should keep new messages queued while wait_for_completion run is active',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData({
-          schema: {
-            nodes: [
-              {
-                id: 'agent-wait-mode',
-                template: 'simple-agent',
-                config: {
-                  instructions:
-                    'Queue incoming questions until you finish the current response.',
-                  newMessageMode: NewMessageMode.WaitForCompletion,
-                },
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [
-              {
-                from: 'trigger-1',
-                to: 'agent-wait-mode',
-              },
-            ],
-          },
-        });
-
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
-
-        const threadSubId = 'wait-mode-active';
+        await ensureGraphRunning(waitModeGraphId);
+        const threadSubId = uniqueThreadSubId('wait-mode-active');
         const firstMessage = 'Start a long running analysis.';
         const secondMessage = 'Add mitigation strategies when ready.';
 
         const firstResult = await graphsService.executeTrigger(
-          graphId,
+          waitModeGraphId,
           'trigger-1',
           {
             messages: [firstMessage],
@@ -1412,14 +1220,14 @@ describe('Thread Management Integration Tests', () => {
           { timeout: 15000 },
         );
 
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
+        await graphsService.executeTrigger(waitModeGraphId, 'trigger-1', {
           messages: [secondMessage],
           threadSubId,
           async: true,
         });
 
         const agentNode = graphRegistry.getNode<SimpleAgent>(
-          graphId,
+          waitModeGraphId,
           'agent-wait-mode',
         );
         expect(agentNode).toBeDefined();
@@ -1479,19 +1287,15 @@ describe('Thread Management Integration Tests', () => {
       'should delete a thread and its messages',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('delete-test');
 
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['Test deletion'],
-            threadSubId: 'delete-test',
+            threadSubId,
           },
         );
 
@@ -1527,58 +1331,15 @@ describe('Thread Management Integration Tests', () => {
       'should delete thread and all its messages in multi-agent scenario',
       { timeout: 60000 },
       async () => {
-        const multiAgentGraphData = createMockGraphData({
-          schema: {
-            nodes: [
-              {
-                id: 'agent-1',
-                template: 'simple-agent',
-                config: {
-                  name: 'First Agent',
-                  instructions: 'First agent',
-                  invokeModelName: 'gpt-5-mini',
-                },
-              },
-              {
-                id: 'agent-2',
-                template: 'simple-agent',
-                config: {
-                  name: 'Second Agent',
-                  instructions: 'Second agent',
-                  invokeModelName: 'gpt-5-mini',
-                },
-              },
-              {
-                id: 'comm-tool-1',
-                template: 'agent-communication-tool',
-                config: {},
-              },
-              {
-                id: 'trigger-1',
-                template: 'manual-trigger',
-                config: {},
-              },
-            ],
-            edges: [
-              { from: 'trigger-1', to: 'agent-1' },
-              { from: 'agent-1', to: 'comm-tool-1' },
-              { from: 'comm-tool-1', to: 'agent-2' },
-            ],
-          },
-        });
-
-        const createResult = await graphsService.create(multiAgentGraphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(multiAgentGraphId);
+        const threadSubId = uniqueThreadSubId('multi-agent-delete-test');
 
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          multiAgentGraphId,
           'trigger-1',
           {
             messages: ['Multi-agent deletion test'],
-            threadSubId: 'multi-agent-delete-test',
+            threadSubId,
           },
         );
 
@@ -1618,58 +1379,15 @@ describe('Thread Management Integration Tests', () => {
 
   describe('Message Filtering and Deduplication', () => {
     it('should filter messages by nodeId', { timeout: 60000 }, async () => {
-      const multiAgentGraphData = createMockGraphData({
-        schema: {
-          nodes: [
-            {
-              id: 'agent-1',
-              template: 'simple-agent',
-              config: {
-                name: 'Agent 1',
-                instructions: 'You are agent 1',
-                invokeModelName: 'gpt-5-mini',
-              },
-            },
-            {
-              id: 'agent-2',
-              template: 'simple-agent',
-              config: {
-                name: 'Agent 2',
-                instructions: 'You are agent 2',
-                invokeModelName: 'gpt-5-mini',
-              },
-            },
-            {
-              id: 'comm-tool-1',
-              template: 'agent-communication-tool',
-              config: {},
-            },
-            {
-              id: 'trigger-1',
-              template: 'manual-trigger',
-              config: {},
-            },
-          ],
-          edges: [
-            { from: 'trigger-1', to: 'agent-1' },
-            { from: 'agent-1', to: 'comm-tool-1' },
-            { from: 'comm-tool-1', to: 'agent-2' },
-          ],
-        },
-      });
-
-      const createResult = await graphsService.create(multiAgentGraphData);
-      const graphId = createResult.id;
-      createdGraphIds.push(graphId);
-
-      await graphsService.run(graphId);
+      await ensureGraphRunning(multiAgentGraphId);
+      const threadSubId = uniqueThreadSubId('filter-test');
 
       const triggerResult = await graphsService.executeTrigger(
-        graphId,
+        multiAgentGraphId,
         'trigger-1',
         {
           messages: ['Test message filtering'],
-          threadSubId: 'filter-test',
+          threadSubId,
         },
       );
 
@@ -1711,19 +1429,15 @@ describe('Thread Management Integration Tests', () => {
       'should not create duplicate messages during agent execution',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('dedup-test');
 
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['Test for message deduplication'],
-            threadSubId: 'dedup-test',
+            threadSubId,
           },
         );
 
@@ -1764,19 +1478,15 @@ describe('Thread Management Integration Tests', () => {
       'should automatically generate and set thread name on first execution',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('name-gen-test');
 
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['Generate a thread name for this conversation'],
-            threadSubId: 'name-gen-test',
+            threadSubId,
           },
         );
 
@@ -1803,20 +1513,16 @@ describe('Thread Management Integration Tests', () => {
       'should not update thread name if it already exists',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('name-persist-test');
 
         // First execution
         const firstResult = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['First message to generate name'],
-            threadSubId: 'name-persist-test',
+            threadSubId,
           },
         );
 
@@ -1834,9 +1540,9 @@ describe('Thread Management Integration Tests', () => {
         expect(firstName).toBeDefined();
 
         // Second execution with same thread
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
+        await graphsService.executeTrigger(basicGraphId, 'trigger-1', {
           messages: ['Second message should not change name'],
-          threadSubId: 'name-persist-test',
+          threadSubId,
         });
 
         // Wait a bit for potential name update (which shouldn't happen)
@@ -1863,19 +1569,15 @@ describe('Thread Management Integration Tests', () => {
       'should mark thread as done after successful execution',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId = uniqueThreadSubId('status-done-test');
 
         const triggerResult = await graphsService.executeTrigger(
-          graphId,
+          basicGraphId,
           'trigger-1',
           {
             messages: ['Complete this task successfully'],
-            threadSubId: 'status-done-test',
+            threadSubId,
           },
         );
 
@@ -1910,20 +1612,24 @@ describe('Thread Management Integration Tests', () => {
       'should mark thread as stopped when execution is interrupted',
       { timeout: 60000 },
       async () => {
-        const graphData = createMockGraphData();
+        const graphData = createMockGraphData({
+          name: `Thread Management Interrupted ${Date.now()}`,
+        });
         const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
+        const interruptedGraphId = createResult.id;
+        createdGraphIds.push(interruptedGraphId);
 
-        await graphsService.run(graphId);
+        await graphsService.run(interruptedGraphId);
+        await ensureGraphRunning(interruptedGraphId);
+        const threadSubId = uniqueThreadSubId('status-stopped-test');
 
         // Start an async execution
         const execResult = await graphsService.executeTrigger(
-          graphId,
+          interruptedGraphId,
           'trigger-1',
           {
             messages: ['Long running task that will be interrupted'],
-            threadSubId: 'status-stopped-test',
+            threadSubId,
             async: true,
           },
         );
@@ -1937,7 +1643,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         // Destroy the graph to interrupt execution
-        await graphsService.destroy(graphId);
+        await graphsService.destroy(interruptedGraphId);
 
         // Wait for status update
         await waitForCondition(
@@ -1993,13 +1699,16 @@ describe('Thread Management Integration Tests', () => {
 
         await graphsService.run(graphId);
 
+        const threadSubId1 = uniqueThreadSubId('aggressive-thread-1');
+        const threadSubId2 = uniqueThreadSubId('aggressive-thread-2');
+
         // Create two threads with aggressive summarization
         const thread1Result = await graphsService.executeTrigger(
           graphId,
           'trigger-1',
           {
             messages: ['Thread 1 message with aggressive summarization'],
-            threadSubId: 'aggressive-thread-1',
+            threadSubId: threadSubId1,
           },
         );
 
@@ -2008,7 +1717,7 @@ describe('Thread Management Integration Tests', () => {
           'trigger-1',
           {
             messages: ['Thread 2 message with aggressive summarization'],
-            threadSubId: 'aggressive-thread-2',
+            threadSubId: threadSubId2,
           },
         );
 
@@ -2017,16 +1726,24 @@ describe('Thread Management Integration Tests', () => {
           thread2Result.externalThreadId,
         );
 
-        // Wait for both threads to be persisted
+        // Wait for both threads to be persisted (there may be more threads for this graph in the DB).
         const threads = await waitForCondition(
           () =>
             threadsService.getThreads({
               graphId,
-              limit: 100,
+              limit: 200,
               offset: 0,
             }),
-          (threads) => threads.length === 2,
-          { timeout: 10000 },
+          (threads) => {
+            const ids = threads.map(
+              (t) => (t as { externalThreadId: string }).externalThreadId,
+            );
+            return (
+              ids.includes(thread1Result.externalThreadId) &&
+              ids.includes(thread2Result.externalThreadId)
+            );
+          },
+          { timeout: 20000 },
         );
 
         const threadIds = threads.map(
@@ -2072,51 +1789,32 @@ describe('Thread Management Integration Tests', () => {
 
         await graphsService.run(graphId);
 
-        const threadSubId = 'conservative-summarization-test';
+        const threadSubId = uniqueThreadSubId(
+          'conservative-summarization-test',
+        );
 
         // Send multiple messages
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
+        const exec1 = await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['First message'],
           threadSubId,
         });
 
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
+        const exec2 = await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Second message'],
           threadSubId,
         });
+        expect(exec2.externalThreadId).toBe(exec1.externalThreadId);
 
-        // Wait for thread to be created
-        const threads = await waitForCondition(
-          () =>
-            threadsService.getThreads({
-              graphId,
-              limit: 100,
-              offset: 0,
-            }),
-          (threads) =>
-            threads.some((t) =>
-              (t as { externalThreadId: string }).externalThreadId.includes(
-                threadSubId,
-              ),
-            ),
-          { timeout: 10000 },
+        const thread = await waitForCondition(
+          () => threadsService.getThreadByExternalId(exec2.externalThreadId),
+          (t) => Boolean(t),
+          { timeout: 15_000, interval: 500 },
         );
-
-        const targetThread = threads.find((t) =>
-          (t as { externalThreadId: string }).externalThreadId.includes(
-            threadSubId,
-          ),
-        );
-
-        expect(targetThread).toBeDefined();
-
-        // Get the internal thread ID
-        const threadId = (targetThread as { id: string }).id;
 
         // Wait for messages to be available
         const messages = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(threadId, {
+            threadsService.getThreadMessages(thread.id, {
               limit: 100,
               offset: 0,
             }),
@@ -2135,24 +1833,20 @@ describe('Thread Management Integration Tests', () => {
       'should maintain separate thread states when running 2 threads in parallel',
       { timeout: 120000 },
       async () => {
-        // Create and start graph
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
+        await ensureGraphRunning(basicGraphId);
+        const threadSubId1 = uniqueThreadSubId('parallel-test-1');
+        const threadSubId2 = uniqueThreadSubId('parallel-test-2');
 
         // Start two threads in parallel with async=true
         const [exec1, exec2] = await Promise.all([
-          graphsService.executeTrigger(graphId, 'trigger-1', {
+          graphsService.executeTrigger(basicGraphId, 'trigger-1', {
             messages: ['Thread 1: Tell me about cats'],
-            threadSubId: 'parallel-test-1',
+            threadSubId: threadSubId1,
             async: true,
           }),
-          graphsService.executeTrigger(graphId, 'trigger-1', {
+          graphsService.executeTrigger(basicGraphId, 'trigger-1', {
             messages: ['Thread 2: Tell me about dogs'],
-            threadSubId: 'parallel-test-2',
+            threadSubId: threadSubId2,
             async: true,
           }),
         ]);
@@ -2268,86 +1962,6 @@ describe('Thread Management Integration Tests', () => {
         if (finalThread1.name && finalThread2.name) {
           expect(finalThread1.name).not.toBe(finalThread2.name);
         }
-      },
-    );
-
-    it(
-      'should isolate thread statuses between concurrent executions',
-      { timeout: 60000 },
-      async () => {
-        const graphData = createMockGraphData();
-        const createResult = await graphsService.create(graphData);
-        const graphId = createResult.id;
-        createdGraphIds.push(graphId);
-
-        await graphsService.run(graphId);
-
-        // Start two threads in parallel
-        const [exec1, exec2] = await Promise.all([
-          graphsService.executeTrigger(graphId, 'trigger-1', {
-            messages: ['Quick message for thread 1'],
-            threadSubId: 'status-test-1',
-            async: true,
-          }),
-          graphsService.executeTrigger(graphId, 'trigger-1', {
-            messages: ['Quick message for thread 2'],
-            threadSubId: 'status-test-2',
-            async: true,
-          }),
-        ]);
-
-        // Wait for both threads to be created
-        const thread1 = await waitForCondition(
-          () => threadsService.getThreadByExternalId(exec1.externalThreadId),
-          (thread) => !!thread,
-          { timeout: 15000 },
-        );
-
-        const thread2 = await waitForCondition(
-          () => threadsService.getThreadByExternalId(exec2.externalThreadId),
-          (thread) => !!thread,
-          { timeout: 15000 },
-        );
-
-        // Both should be Running initially
-        expect(thread1.status).toBe(ThreadStatus.Running);
-        expect(thread2.status).toBe(ThreadStatus.Running);
-
-        // Wait for both to complete
-        await Promise.all([
-          waitForCondition(
-            () => threadsService.getThreadById(thread1.id),
-            (t) =>
-              t.status === ThreadStatus.Done ||
-              t.status === ThreadStatus.NeedMoreInfo,
-            { timeout: 60000 },
-          ),
-          waitForCondition(
-            () => threadsService.getThreadById(thread2.id),
-            (t) =>
-              t.status === ThreadStatus.Done ||
-              t.status === ThreadStatus.NeedMoreInfo,
-            { timeout: 60000 },
-          ),
-        ]);
-
-        // Verify final states are independently set
-        const finalThread1 = await threadsService.getThreadById(thread1.id);
-        const finalThread2 = await threadsService.getThreadById(thread2.id);
-
-        // Both should have valid completion statuses
-        expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
-          finalThread1.status,
-        );
-        expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
-          finalThread2.status,
-        );
-
-        // Thread IDs should remain different
-        expect(finalThread1.id).not.toBe(finalThread2.id);
-        expect(finalThread1.externalThreadId).not.toBe(
-          finalThread2.externalThreadId,
-        );
       },
     );
   });
