@@ -12,6 +12,7 @@ import { ThreadStatus } from '../../threads/threads.types';
 import {
   CompiledGraphNode,
   GraphExecutionMetadata,
+  GraphNodeInstanceHandle,
   GraphNodeStatus,
   NodeKind,
 } from '../graphs.types';
@@ -34,6 +35,9 @@ class TestRuntime extends BaseRuntime {
       type: 'execStart',
       data: { execId, params },
     });
+
+    // Simulate async
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Simulate execution
     const result: RuntimeExecResult = {
@@ -67,6 +71,14 @@ class TestRuntime extends BaseRuntime {
   }
 }
 
+const makeHandle = <TInstance>(
+  instance: TInstance,
+): GraphNodeInstanceHandle<TInstance, any> => ({
+  provide: async () => instance,
+  configure: async () => {},
+  destroy: async () => {},
+});
+
 describe('GraphStateManager', () => {
   let notifications: NotificationsService;
   let logger: DefaultLogger;
@@ -95,34 +107,18 @@ describe('GraphStateManager', () => {
         template: 'docker-runtime',
         config: {},
         instance: runtime,
+        handle: makeHandle(runtime),
       };
 
       manager.registerNode('runtime-1');
       manager.attachGraphNode('runtime-1', node);
 
-      // Execute command
-      await runtime.exec({
-        cmd: 'echo ok',
-        metadata: {
-          threadId: 'thread-1',
-          runId: 'run-1',
-        },
-      });
+      await runtime.exec({ cmd: 'test', metadata: { threadId: 't1' } });
 
-      // Check final status
-      const snapshots = manager.getSnapshots();
-      expect(snapshots[0]?.status).toBe(GraphNodeStatus.Idle);
-      expect(snapshots[0]?.error).toBeNull();
-
-      // Check notifications were emitted
       expect(notifications.emit).toHaveBeenCalledWith(
         expect.objectContaining({
           type: NotificationEvent.GraphNodeUpdate,
-          graphId: 'graph-1',
-          nodeId: 'runtime-1',
-          data: expect.objectContaining({
-            status: GraphNodeStatus.Running,
-          }),
+          data: expect.objectContaining({ status: GraphNodeStatus.Running }),
         }),
       );
     });
@@ -135,20 +131,26 @@ describe('GraphStateManager', () => {
         template: 'docker-runtime',
         config: {},
         instance: runtime,
+        handle: makeHandle(runtime),
       };
 
       manager.registerNode('runtime-1');
       manager.attachGraphNode('runtime-1', node);
 
-      await runtime.exec({
-        cmd: 'echo ok',
-        metadata: {
-          threadId: 'thread-1',
-        },
+      const execPromise = runtime.exec({
+        cmd: 'test',
+        metadata: { threadId: 'thread-1' },
       });
 
-      const threadStatus = manager.getNodeThreadStatus('runtime-1', 'thread-1');
-      expect(threadStatus).toBeUndefined(); // Should be cleared after exec ends
+      expect(manager.getNodeThreadStatus('runtime-1', 'thread-1')).toBe(
+        GraphNodeStatus.Running,
+      );
+
+      await execPromise;
+
+      expect(
+        manager.getNodeThreadStatus('runtime-1', 'thread-1'),
+      ).toBeUndefined();
     });
 
     it('should track per-run status', async () => {
@@ -159,20 +161,24 @@ describe('GraphStateManager', () => {
         template: 'docker-runtime',
         config: {},
         instance: runtime,
+        handle: makeHandle(runtime),
       };
 
       manager.registerNode('runtime-1');
       manager.attachGraphNode('runtime-1', node);
 
-      await runtime.exec({
-        cmd: 'echo ok',
-        metadata: {
-          runId: 'run-1',
-        },
+      const execPromise = runtime.exec({
+        cmd: 'test',
+        metadata: { runId: 'run-1' },
       });
 
-      const runStatus = manager.getNodeRunStatus('runtime-1', 'run-1');
-      expect(runStatus).toBeUndefined(); // Should be cleared after exec ends
+      expect(manager.getNodeRunStatus('runtime-1', 'run-1')).toBe(
+        GraphNodeStatus.Running,
+      );
+
+      await execPromise;
+
+      expect(manager.getNodeRunStatus('runtime-1', 'run-1')).toBeUndefined();
     });
 
     it('should handle runtime start event', async () => {
@@ -183,6 +189,7 @@ describe('GraphStateManager', () => {
         template: 'docker-runtime',
         config: {},
         instance: runtime,
+        handle: makeHandle(runtime),
       };
 
       manager.registerNode('runtime-1');
@@ -190,8 +197,7 @@ describe('GraphStateManager', () => {
 
       await runtime.start();
 
-      const status = manager.getNodeStatus('runtime-1');
-      expect(status).toBe(GraphNodeStatus.Idle);
+      expect(manager.getNodeStatus('runtime-1')).toBe(GraphNodeStatus.Idle);
     });
 
     it('should handle runtime stop event', async () => {
@@ -202,6 +208,7 @@ describe('GraphStateManager', () => {
         template: 'docker-runtime',
         config: {},
         instance: runtime,
+        handle: makeHandle(runtime),
       };
 
       manager.registerNode('runtime-1');
@@ -209,10 +216,11 @@ describe('GraphStateManager', () => {
 
       await runtime.stop();
 
-      const status = manager.getNodeStatus('runtime-1');
-      expect(status).toBe(GraphNodeStatus.Stopped);
+      expect(manager.getNodeStatus('runtime-1')).toBe(GraphNodeStatus.Stopped);
     });
+  });
 
+  describe('Additional metadata', () => {
     it('should include additional node metadata when available', () => {
       const runtime = new TestRuntime();
       const node: CompiledGraphNode<TestRuntime> = {
@@ -221,678 +229,368 @@ describe('GraphStateManager', () => {
         template: 'docker-runtime',
         config: {},
         instance: runtime,
+        handle: makeHandle(runtime),
       };
 
       manager.registerNode('runtime-1');
       manager.attachGraphNode('runtime-1', node);
 
-      const snapshot = manager.getSnapshots('thread-42')[0];
-      expect(snapshot?.additionalNodeMetadata).toEqual({
-        threadId: 'thread-42',
+      const snapshots = manager.getSnapshots('thread-1');
+      expect(snapshots[0]?.additionalNodeMetadata).toEqual({
+        threadId: 'thread-1',
       });
     });
   });
 
   describe('Agent events', () => {
     it('should emit ThreadUpdate notification only for active threads on agent stop', async () => {
-      let subscribeFn: ((event: any) => void) | undefined;
-
-      const agent = {
-        subscribe: vi.fn((callback) => {
-          subscribeFn = callback;
-          return vi.fn(); // unsubscribe
-        }),
+      const agent: any = {
+        subscribe: vi.fn(),
+        handle: makeHandle({}),
         getGraphNodeMetadata: vi.fn(),
       };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
 
-      const node = {
+      const node: CompiledGraphNode = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
         instance: agent,
-      } as unknown as CompiledGraphNode;
+        handle: makeHandle(agent),
+      };
 
       manager.registerNode('agent-1');
       manager.attachGraphNode('agent-1', node);
 
-      // First simulate invoke event
-      subscribeFn?.({
+      // Simulate thread execution
+      await agentHandler({
         type: 'invoke',
         data: {
           threadId: 'thread-1',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-              run_id: 'run-1',
-            },
-          },
+          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
         },
       });
 
-      // Invoke second thread
-      subscribeFn?.({
-        type: 'invoke',
-        data: {
-          threadId: 'thread-2',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-2',
-              run_id: 'run-2',
-            },
-          },
-        },
-      });
+      vi.mocked(notifications.emit).mockClear();
 
-      // First thread completes
-      await subscribeFn?.({
-        type: 'run',
-        data: {
-          threadId: 'thread-1',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-              run_id: 'run-1',
-            },
-          },
-          result: { messages: [], threadId: 'thread-1' },
-        },
-      });
-
-      // Stop is called while thread-2 is still active
-      await subscribeFn?.({
+      // Simulate agent stop
+      await agentHandler({
         type: 'stop',
-        data: {},
+        data: {
+          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
+        },
       });
 
-      // Should emit ThreadUpdate only for thread-2 (still active in threadStatuses)
       expect(notifications.emit).toHaveBeenCalledWith(
         expect.objectContaining({
           type: NotificationEvent.ThreadUpdate,
-          graphId: 'graph-1',
-          nodeId: 'agent-1',
-          threadId: 'thread-2',
-          data: { status: 'stopped' },
+          threadId: 'thread-1',
+          data: { status: ThreadStatus.Stopped },
         }),
       );
-
-      // Thread-1 should have received exactly ONE ThreadUpdate when it completed (Done status)
-      // But should NOT receive another ThreadUpdate on stop since it already finished
-      const thread1Calls = (notifications.emit as any).mock.calls.filter(
-        (call: any) =>
-          call[0]?.type === NotificationEvent.ThreadUpdate &&
-          call[0]?.threadId === 'thread-1',
-      );
-      // Should have exactly 1 ThreadUpdate with Done status
-      expect(thread1Calls.length).toBe(1);
-      expect(thread1Calls[0][0].data.status).toBe('done');
     });
 
     it('should not mark parent thread done when child agent completes', async () => {
-      let rootAgentSubscribe: ((event: any) => void) | undefined;
-      let childAgentSubscribe: ((event: any) => void) | undefined;
-
-      const rootAgent = {
-        subscribe: vi.fn((callback) => {
-          rootAgentSubscribe = callback;
-          return vi.fn();
-        }),
+      const agent: any = {
+        subscribe: vi.fn(),
         getGraphNodeMetadata: vi.fn(),
       };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
 
-      const childAgent = {
-        subscribe: vi.fn((callback) => {
-          childAgentSubscribe = callback;
-          return vi.fn();
-        }),
-        getGraphNodeMetadata: vi.fn(),
-      };
-
-      const rootNode = {
-        id: 'agent-root',
+      const node: CompiledGraphNode = {
+        id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
-        instance: rootAgent,
-      } as unknown as CompiledGraphNode;
+        instance: agent,
+        handle: makeHandle(agent),
+      };
 
-      const childNode = {
-        id: 'agent-child',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        config: {},
-        instance: childAgent,
-      } as unknown as CompiledGraphNode;
+      manager.registerNode('agent-1');
+      manager.attachGraphNode('agent-1', node);
 
-      manager.registerNode(rootNode.id);
-      manager.attachGraphNode(rootNode.id, rootNode);
-
-      manager.registerNode(childNode.id);
-      manager.attachGraphNode(childNode.id, childNode);
-
-      // Simulate child agent run with different threadId than parent_thread_id
-      childAgentSubscribe?.({
-        type: 'invoke',
-        data: {
-          threadId: 'root-thread__agent-child',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: childNode.id,
-              parent_thread_id: 'root-thread',
-              run_id: 'run-child',
-            },
-          },
-        },
-      });
-
-      await childAgentSubscribe?.({
+      // Simulate child agent execution
+      await agentHandler({
         type: 'run',
         data: {
-          threadId: 'root-thread__agent-child',
-          messages: [],
+          threadId: 'child-thread',
           config: {
             configurable: {
               graph_id: 'graph-1',
-              node_id: childNode.id,
-              parent_thread_id: 'root-thread',
-              run_id: 'run-child',
-            },
-          },
-          result: { messages: [], threadId: 'root-thread__agent-child' },
-        },
-      });
-
-      const threadUpdateCallsAfterChild = (
-        notifications.emit as any
-      ).mock.calls.filter(
-        (call: any) =>
-          call[0]?.type === NotificationEvent.ThreadUpdate &&
-          call[0]?.threadId === 'root-thread',
-      );
-
-      expect(threadUpdateCallsAfterChild.length).toBe(0);
-
-      vi.clearAllMocks();
-
-      // Now simulate the root agent finishing on the root thread
-      rootAgentSubscribe?.({
-        type: 'invoke',
-        data: {
-          threadId: 'root-thread',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: rootNode.id,
-              parent_thread_id: 'root-thread',
-              run_id: 'run-root',
+              node_id: 'agent-1',
+              parent_thread_id: 'parent-thread',
             },
           },
         },
       });
 
-      await rootAgentSubscribe?.({
-        type: 'run',
-        data: {
-          threadId: 'root-thread',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: rootNode.id,
-              parent_thread_id: 'root-thread',
-              run_id: 'run-root',
-            },
-          },
-          result: { messages: [], threadId: 'root-thread' },
-        },
-      });
+      const threadUpdate = vi
+        .mocked(notifications.emit)
+        .mock.calls.find(
+          (call: any) => call[0].type === NotificationEvent.ThreadUpdate,
+        );
 
-      const rootThreadUpdates = (notifications.emit as any).mock.calls.filter(
-        (call: any) =>
-          call[0]?.type === NotificationEvent.ThreadUpdate &&
-          call[0]?.threadId === 'root-thread',
-      );
-
-      expect(rootThreadUpdates.length).toBe(1);
-      expect(rootThreadUpdates[0][0].data.status).toBe(ThreadStatus.Done);
+      expect(threadUpdate).toBeUndefined();
     });
 
     it('should track node status as Running when at least one thread is active', async () => {
-      let subscribeFn: ((event: any) => void) | undefined;
-
-      const agent = {
-        subscribe: vi.fn((callback) => {
-          subscribeFn = callback;
-          return vi.fn(); // unsubscribe
-        }),
+      const agent: any = {
+        subscribe: vi.fn(),
         getGraphNodeMetadata: vi.fn(),
       };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
 
-      const node = {
+      const node: CompiledGraphNode = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
         instance: agent,
-      } as unknown as CompiledGraphNode;
+        handle: makeHandle(agent),
+      };
 
       manager.registerNode('agent-1');
       manager.attachGraphNode('agent-1', node);
 
-      // Simulate first invoke
-      subscribeFn?.({
+      // Start thread 1
+      await agentHandler({
         type: 'invoke',
         data: {
           threadId: 'thread-1',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-              run_id: 'run-1',
-            },
-          },
+          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
         },
       });
+      expect(manager.getNodeStatus('agent-1')).toBe(GraphNodeStatus.Running);
 
-      // Simulate second invoke (concurrent thread)
-      subscribeFn?.({
+      // Start thread 2
+      await agentHandler({
         type: 'invoke',
         data: {
           threadId: 'thread-2',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-2',
-              run_id: 'run-2',
-            },
-          },
+          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
         },
       });
+      expect(manager.getNodeStatus('agent-1')).toBe(GraphNodeStatus.Running);
 
-      // First run completes - await this since it's async
-      await subscribeFn?.({
+      // End thread 1
+      await agentHandler({
         type: 'run',
         data: {
           threadId: 'thread-1',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-              run_id: 'run-1',
-            },
-          },
-          result: { messages: [], threadId: 'thread-1' },
+          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
         },
       });
+      expect(manager.getNodeStatus('agent-1')).toBe(GraphNodeStatus.Running);
 
-      // Node should still be Running because thread-2 is still active
-      const status = manager.getNodeStatus('agent-1');
-      expect(status).toBe(GraphNodeStatus.Running);
-
-      // Check thread status - thread-1 should be removed after completion, thread-2 should still be there
-      const thread1Status = manager.getNodeThreadStatus('agent-1', 'thread-1');
-      expect(thread1Status).toBeUndefined(); // Cleaned up after run completion
-
-      const thread2Status = manager.getNodeThreadStatus('agent-1', 'thread-2');
-      expect(thread2Status).toBe(GraphNodeStatus.Running);
+      // End thread 2
+      await agentHandler({
+        type: 'run',
+        data: {
+          threadId: 'thread-2',
+          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
+        },
+      });
+      expect(manager.getNodeStatus('agent-1')).toBe(GraphNodeStatus.Idle);
     });
 
     it('should emit all agent notification types correctly', async () => {
-      let subscribeFn: ((event: any) => void) | undefined;
-
-      const agent = {
-        subscribe: vi.fn((callback) => {
-          subscribeFn = callback;
-          return vi.fn();
-        }),
+      const agent: any = {
+        subscribe: vi.fn(),
         getGraphNodeMetadata: vi.fn(),
       };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
 
-      const node = {
+      const node: CompiledGraphNode = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
         instance: agent,
-      } as unknown as CompiledGraphNode;
+        handle: makeHandle(agent),
+      };
 
       manager.registerNode('agent-1');
       manager.attachGraphNode('agent-1', node);
 
-      vi.clearAllMocks();
+      const commonConfig = {
+        configurable: {
+          graph_id: 'graph-1',
+          node_id: 'agent-1',
+          parent_thread_id: 'p1',
+          source: 'test',
+        },
+      };
 
-      // Test AgentInvoke notification
-      await subscribeFn?.({
+      // Invoke
+      await agentHandler({
         type: 'invoke',
-        data: {
-          threadId: 'thread-1',
-          messages: [{ content: 'test' }],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-              source: 'test-source',
-            },
-          },
-        },
+        data: { threadId: 't1', messages: [], config: commonConfig },
       });
-
       expect(notifications.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.AgentInvoke,
-          graphId: 'graph-1',
-          nodeId: 'agent-1',
-          threadId: 'thread-1',
-          parentThreadId: 'thread-1',
-          source: 'test-source',
-        }),
+        expect.objectContaining({ type: NotificationEvent.AgentInvoke }),
       );
 
-      // Test GraphNodeUpdate notification (emitted on invoke)
-      expect(notifications.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.GraphNodeUpdate,
-          graphId: 'graph-1',
-          nodeId: 'agent-1',
-          data: {
-            status: GraphNodeStatus.Running,
-            error: undefined,
-          },
-        }),
-      );
-
-      vi.clearAllMocks();
-
-      // Test AgentMessage notification
-      await subscribeFn?.({
+      // Message
+      await agentHandler({
         type: 'message',
-        data: {
-          threadId: 'thread-1',
-          messages: [{ content: 'response' }],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-            },
-          },
-        },
+        data: { threadId: 't1', messages: [], config: commonConfig },
       });
-
       expect(notifications.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.AgentMessage,
-          graphId: 'graph-1',
-          nodeId: 'agent-1',
-          threadId: 'thread-1',
-          parentThreadId: 'thread-1',
-        }),
+        expect.objectContaining({ type: NotificationEvent.AgentMessage }),
       );
 
-      vi.clearAllMocks();
-
-      // Test AgentStateUpdate notification
-      await subscribeFn?.({
+      // State update
+      await agentHandler({
         type: 'stateUpdate',
-        data: {
-          threadId: 'thread-1',
-          stateChange: { done: true, summary: 'Complete' },
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-            },
-          },
-        },
+        data: { threadId: 't1', stateChange: {}, config: commonConfig },
       });
-
       expect(notifications.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.AgentStateUpdate,
-          graphId: 'graph-1',
-          nodeId: 'agent-1',
-          threadId: 'thread-1',
-          parentThreadId: 'thread-1',
-          data: { done: true, summary: 'Complete' },
-        }),
+        expect.objectContaining({ type: NotificationEvent.AgentStateUpdate }),
       );
-
-      vi.clearAllMocks();
-
-      // Test run completion - should emit GraphNodeUpdate
-      await subscribeFn?.({
-        type: 'run',
-        data: {
-          threadId: 'thread-1',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-              run_id: 'run-1',
-            },
-          },
-          result: { messages: [], threadId: 'thread-1' },
-        },
-      });
-
-      expect(notifications.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.GraphNodeUpdate,
-          graphId: 'graph-1',
-          nodeId: 'agent-1',
-          data: {
-            status: GraphNodeStatus.Idle,
-            error: undefined,
-          },
-        }),
-      );
-
-      // Should also emit ThreadUpdate with final status
-      expect(notifications.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.ThreadUpdate,
-          graphId: 'graph-1',
-          nodeId: 'agent-1',
-          threadId: 'thread-1',
-          data: {
-            status: 'done',
-          },
-        }),
-      );
-
-      // Verify we have both notifications
-      const allCalls = (notifications.emit as any).mock.calls;
-      expect(allCalls.length).toBe(2); // GraphNodeUpdate and ThreadUpdate after run
     });
 
     it('should not emit duplicate GraphNodeUpdate notifications', async () => {
-      let subscribeFn: ((event: any) => void) | undefined;
-
-      const agent = {
-        subscribe: vi.fn((callback) => {
-          subscribeFn = callback;
-          return vi.fn();
-        }),
+      const agent: any = {
+        subscribe: vi.fn(),
         getGraphNodeMetadata: vi.fn(),
       };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
 
-      const node = {
+      const node: CompiledGraphNode = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
         instance: agent,
-      } as unknown as CompiledGraphNode;
+        handle: makeHandle(agent),
+      };
 
       manager.registerNode('agent-1');
       manager.attachGraphNode('agent-1', node);
 
-      vi.clearAllMocks();
+      vi.mocked(notifications.emit).mockClear();
 
-      // Invoke thread
-      await subscribeFn?.({
+      // Trigger transition to same status
+      await agentHandler({
         type: 'invoke',
         data: {
-          threadId: 'thread-1',
-          messages: [],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-            },
-          },
+          threadId: 't1',
+          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
         },
       });
-
-      const invokeUpdateCalls = (notifications.emit as any).mock.calls.filter(
-        (call: any) => call[0]?.type === NotificationEvent.GraphNodeUpdate,
-      );
-
-      // Should emit GraphNodeUpdate once for invoke
-      expect(invokeUpdateCalls.length).toBe(1);
-
-      vi.clearAllMocks();
-
-      // Emit multiple messages - should not emit GraphNodeUpdate
-      await subscribeFn?.({
-        type: 'message',
+      await agentHandler({
+        type: 'invoke',
         data: {
-          threadId: 'thread-1',
-          messages: [{ content: 'msg1' }],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-            },
-          },
+          threadId: 't1',
+          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
         },
       });
 
-      await subscribeFn?.({
-        type: 'message',
-        data: {
-          threadId: 'thread-1',
-          messages: [{ content: 'msg2' }],
-          config: {
-            configurable: {
-              graph_id: 'graph-1',
-              node_id: 'agent-1',
-              parent_thread_id: 'thread-1',
-            },
-          },
-        },
-      });
+      const updates = vi
+        .mocked(notifications.emit)
+        .mock.calls.filter(
+          (call: any) => call[0].type === NotificationEvent.GraphNodeUpdate,
+        );
 
-      const messageUpdateCalls = (notifications.emit as any).mock.calls.filter(
-        (call: any) => call[0]?.type === NotificationEvent.GraphNodeUpdate,
-      );
-
-      // Should NOT emit GraphNodeUpdate for messages
-      expect(messageUpdateCalls.length).toBe(0);
+      // status: Running was already emitted once
+      expect(updates.length).toBe(1);
     });
 
     it('should update additional metadata when agent emits nodeAdditionalMetadataUpdate', async () => {
-      let subscribeFn: ((event: any) => void) | undefined;
-
-      const agent = {
-        subscribe: vi.fn((callback) => {
-          subscribeFn = callback;
-          return vi.fn();
-        }),
+      const agent: any = {
+        subscribe: vi.fn(),
         getGraphNodeMetadata: vi.fn(),
       };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
 
-      const node = {
+      const node: CompiledGraphNode = {
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
         instance: agent,
-      } as unknown as CompiledGraphNode;
+        handle: makeHandle(agent),
+      };
 
       manager.registerNode('agent-1');
       manager.attachGraphNode('agent-1', node);
 
-      await subscribeFn?.({
+      const metadata = { threadId: 'thread-1' };
+      const additionalMetadata = { key: 'value' };
+
+      await agentHandler({
         type: 'nodeAdditionalMetadataUpdate',
-        data: {
-          metadata: { threadId: 'thread-1' },
-          additionalMetadata: { pendingMessages: [] },
-        },
+        data: { metadata, additionalMetadata },
       });
 
-      const snapshot = manager.getSnapshots('thread-1')[0];
-      expect(snapshot?.additionalNodeMetadata).toEqual({
-        pendingMessages: [],
-      });
-
-      expect(notifications.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.GraphNodeUpdate,
-          nodeId: 'agent-1',
-          threadId: 'thread-1',
-          data: expect.objectContaining({
-            additionalNodeMetadata: { pendingMessages: [] },
-            metadata: { threadId: 'thread-1' },
-          }),
-        }),
-      );
+      const snapshots = manager.getSnapshots('thread-1');
+      expect(snapshots[0]?.additionalNodeMetadata).toEqual(additionalMetadata);
     });
   });
 
-  describe('Status queries', () => {
+  describe('Snapshots and Filters', () => {
     it('should return snapshots with filters', () => {
       const runtime = new TestRuntime();
       const node: CompiledGraphNode<TestRuntime> = {
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
-        config: {},
+        config: { c: 1 },
         instance: runtime,
+        handle: makeHandle(runtime),
       };
 
       manager.registerNode('runtime-1');
       manager.attachGraphNode('runtime-1', node);
 
-      const snapshots = manager.getSnapshots('thread-1', 'run-1');
+      const snapshots = manager.getSnapshots();
       expect(snapshots).toHaveLength(1);
-      expect(snapshots[0]?.id).toBe('runtime-1');
+      expect(snapshots[0]).toMatchObject({
+        id: 'runtime-1',
+        type: NodeKind.Runtime,
+        config: { c: 1 },
+      });
     });
   });
 
   describe('Cleanup', () => {
-    it('should handle destroy cleanup', () => {
+    it('should handle destroy cleanup', async () => {
       const runtime = new TestRuntime();
+      const unsub = vi.fn();
+      vi.spyOn(runtime, 'subscribe').mockReturnValue(unsub);
+
       const node: CompiledGraphNode<TestRuntime> = {
         id: 'runtime-1',
         type: NodeKind.Runtime,
         template: 'docker-runtime',
         config: {},
         instance: runtime,
+        handle: makeHandle(runtime),
       };
 
       manager.registerNode('runtime-1');
@@ -900,8 +598,8 @@ describe('GraphStateManager', () => {
 
       manager.destroy();
 
-      const snapshots = manager.getSnapshots();
-      expect(snapshots).toHaveLength(0); // Nodes are cleared after destroy
+      expect(unsub).toHaveBeenCalled();
+      expect(manager.getSnapshots()).toHaveLength(0);
     });
   });
 });

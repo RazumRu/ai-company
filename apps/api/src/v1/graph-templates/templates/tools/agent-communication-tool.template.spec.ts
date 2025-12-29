@@ -8,11 +8,21 @@ import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import {
   CompiledGraphNode,
+  GraphNode,
+  GraphNodeInstanceHandle,
   GraphNodeStatus,
   NodeKind,
 } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { AgentCommunicationToolTemplate } from './agent-communication-tool.template';
+
+const makeHandle = <TInstance>(
+  instance: TInstance,
+): GraphNodeInstanceHandle<TInstance, any> => ({
+  provide: async () => instance,
+  configure: async () => {},
+  destroy: async () => {},
+});
 
 const buildCompiledNode = <TInstance>(options: {
   id: string;
@@ -23,6 +33,7 @@ const buildCompiledNode = <TInstance>(options: {
 }): CompiledGraphNode<TInstance> =>
   ({
     ...options,
+    handle: makeHandle(options.instance),
     config: options.config ?? {},
     getStatus: () => GraphNodeStatus.Idle,
   }) as unknown as CompiledGraphNode<TInstance>;
@@ -64,6 +75,10 @@ describe('AgentCommunicationToolTemplate', () => {
       type: NodeKind.SimpleAgent,
       template: 'simple-agent',
       instance: mockAgent,
+      config: {
+        name: 'Agent One',
+        description: 'Test agent one',
+      },
     });
 
     mockCommunicationToolGroup = {
@@ -104,241 +119,188 @@ describe('AgentCommunicationToolTemplate', () => {
     );
   });
 
-  describe('schema validation', () => {
+  describe('configuration', () => {
     it('should accept empty config', () => {
-      const validConfig = {};
-
-      expect(() => template.schema.parse(validConfig)).not.toThrow();
+      expect(() => template.schema.parse({})).not.toThrow();
     });
 
     it('should accept config with metadata', () => {
-      const validConfig = {
+      const config = {
         metadata: {
-          foo: 'bar',
-          count: 123,
+          key: 'value',
+          num: 123,
+          bool: true,
         },
       };
-
-      expect(() => template.schema.parse(validConfig)).not.toThrow();
+      expect(() => template.schema.parse(config)).not.toThrow();
     });
 
     it('should ignore legacy/unknown fields', () => {
       const config = {
-        metadata: { foo: 'bar' },
-        extra: 'value',
-        obsolete: true,
+        unknownField: 'value',
       };
-
       const parsed = template.schema.parse(config);
-      expect(parsed.metadata).toEqual({ foo: 'bar' });
-      expect(parsed).not.toHaveProperty('extra');
-      expect(parsed).not.toHaveProperty('obsolete');
+      expect(parsed).not.toHaveProperty('unknownField');
     });
   });
 
   describe('create', () => {
     it('should create communication tool group with communication_exec tool', async () => {
-      const agentNode = buildCompiledNode<SimpleAgent>({
-        id: 'agent-2',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        config: {
-          name: 'research-agent',
-          description: 'Agent for research tasks',
-          instructions: 'Test instructions',
-          invokeModelName: 'gpt-5-mini',
-        },
-        instance: mockAgent,
-      });
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+      };
+      const outputNodeIds = new Set(['agent-1']);
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['agent-2']);
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
-
-      const config = {};
-      const outputNodeIds = new Set(['agent-2']);
-
-      const builtTools = await template.create(
-        config,
-        new Set(),
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
         outputNodeIds,
-        {
-          graphId: 'test-graph',
-          nodeId: 'comm-tool',
-          version: '1.0.0',
-        },
-      );
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      expect(builtTools).toHaveLength(1);
-      expect(builtTools[0]?.name).toBe('communication_exec');
+      expect(mockCommunicationToolGroup.buildTools).toHaveBeenCalled();
+      const calls = vi.mocked(mockCommunicationToolGroup.buildTools).mock.calls;
+      expect(calls).toHaveLength(1);
+      const buildConfig = calls[0]![0] as any;
+      expect(buildConfig.agents).toHaveLength(1);
+      expect(buildConfig.agents[0].name).toBe('Agent One');
+      expect(buildConfig.agents[0].description).toBe('Test agent one');
     });
 
     it('should support multiple agents', async () => {
-      const agentNode1 = buildCompiledNode<SimpleAgent>({
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        config: {
-          name: 'research-agent',
-          description: 'Agent for research tasks',
-          instructions: 'Research instructions',
-          invokeModelName: 'gpt-5-mini',
-        },
-        instance: mockAgent,
-      });
-
-      const agentNode2 = buildCompiledNode<SimpleAgent>({
+      const agent2Node = buildCompiledNode({
         id: 'agent-2',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {
-          name: 'coding-agent',
-          description: 'Agent for coding tasks',
-          instructions: 'Coding instructions',
-          invokeModelName: 'gpt-5-mini',
-        },
         instance: mockAgent,
+        config: {
+          name: 'Agent Two',
+          description: 'Test agent two',
+        },
       });
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['agent-1', 'agent-2']);
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((graphId, nodeId) => {
-          if (nodeId === 'agent-1') return agentNode1;
-          if (nodeId === 'agent-2') return agentNode2;
-          return null;
-        });
+      vi.mocked(mockGraphRegistry.filterNodesByType).mockReturnValue([
+        'agent-1',
+        'agent-2',
+      ]);
+      vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
+        if (id === 'agent-1') return mockAgentNode;
+        if (id === 'agent-2') return agent2Node;
+        return undefined;
+      });
 
-      const config = {};
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+      };
       const outputNodeIds = new Set(['agent-1', 'agent-2']);
 
-      const builtTools = await template.create(
-        config,
-        new Set(),
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
         outputNodeIds,
-        {
-          graphId: 'test-graph',
-          nodeId: 'comm-tool',
-          version: '1.0.0',
-        },
-      );
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      expect(builtTools).toHaveLength(1);
-      expect(mockCommunicationToolGroup.buildTools).toHaveBeenCalledWith({
-        agents: expect.arrayContaining([
-          expect.objectContaining({
-            name: 'research-agent',
-            description: 'Agent for research tasks',
-          }),
-          expect.objectContaining({
-            name: 'coding-agent',
-            description: 'Agent for coding tasks',
-          }),
-        ]),
-      });
+      const calls = vi.mocked(mockCommunicationToolGroup.buildTools).mock.calls;
+      expect(calls).toHaveLength(1);
+      const buildConfig = calls[0]![0] as any;
+      expect(buildConfig.agents).toHaveLength(2);
+      expect(buildConfig.agents[0].name).toBe('Agent One');
+      expect(buildConfig.agents[1].name).toBe('Agent Two');
     });
 
     it('should throw error when agent config is missing name or description', async () => {
-      const agentNode = buildCompiledNode<SimpleAgent>({
+      const invalidAgentNode = buildCompiledNode({
         id: 'agent-1',
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
-        config: {
-          instructions: 'Test instructions',
-          invokeModelName: 'gpt-5-mini',
-        },
         instance: mockAgent,
+        config: {}, // missing name and description
       });
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['agent-1']);
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(invalidAgentNode);
 
-      const config = {};
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+      };
       const outputNodeIds = new Set(['agent-1']);
 
-      await expect(
-        template.create(config, new Set(), outputNodeIds, {
-          graphId: 'test-graph',
-          nodeId: 'comm-tool',
-          version: '1.0.0',
-        }),
-      ).rejects.toThrow('must have name and description configured');
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+      const instance = await handle.provide(init);
+
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        /must have name and description configured/,
+      );
     });
 
     it('should create tool with consistent thread ID behavior', async () => {
-      const agentNode = buildCompiledNode<SimpleAgent>({
-        id: 'agent-2',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        config: {
-          name: 'research-agent',
-          description: 'Agent for research tasks',
-          instructions: 'Test instructions',
-          invokeModelName: 'gpt-5-mini',
-        },
-        instance: mockAgent,
-      });
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+      };
+      const outputNodeIds = new Set(['agent-1']);
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['agent-2']);
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(agentNode);
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      const config = {};
-      const outputNodeIds = new Set(['agent-2']);
+      const buildToolsCalls = vi.mocked(mockCommunicationToolGroup.buildTools)
+        .mock.calls;
+      expect(buildToolsCalls).toHaveLength(1);
+      const buildConfig = buildToolsCalls[0]![0] as any;
+      expect(buildConfig.agents).toHaveLength(1);
+      const agentInfo = buildConfig.agents[0];
 
-      await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'comm-tool',
-        version: '1.0.0',
-      });
-
-      expect(mockCommunicationToolGroup.buildTools).toHaveBeenCalled();
-      const buildCall = vi.mocked(mockCommunicationToolGroup.buildTools).mock
-        .calls[0]![0];
-      const agentInfo = buildCall.agents[0]!;
-      const invokeAgent = agentInfo.invokeAgent;
-
-      // Test the invokeAgent function
-      const mockRunnableConfig = {
+      const toolConfig: RunnableConfig<BaseAgentConfigurable> = {
         configurable: {
-          thread_id: 'parent-thread-123',
-          parent_thread_id: 'root-thread-456',
-          graph_id: 'test-graph',
-          node_id: 'agent-1',
+          thread_id: 'parent-thread',
         },
-      } as RunnableConfig<BaseAgentConfigurable>;
+      };
 
-      const messages = ['Hello from Agent A'];
-      await invokeAgent(messages, mockRunnableConfig);
+      await agentInfo.invokeAgent(['Hello'], toolConfig as any);
 
-      // Verify the agent was called with the correct thread ID and metadata
-      expect(mockAgent.runOrAppend).toHaveBeenCalledTimes(1);
-      const [threadId, preparedMessages, configArg, runnableConfigArg] =
-        vi.mocked(mockAgent.runOrAppend).mock.calls[0]!;
+      expect(mockAgent.runOrAppend).toHaveBeenCalled();
+      const runOrAppendCalls = vi.mocked(mockAgent.runOrAppend).mock.calls;
+      expect(runOrAppendCalls).toHaveLength(1);
+      const args = runOrAppendCalls[0]!;
 
-      expect(threadId).toBe('root-thread-456__comm-tool__research-agent');
-      expect(configArg).toBeUndefined();
-      expect(runnableConfigArg).toEqual(
-        expect.objectContaining({
-          configurable: expect.objectContaining({
-            thread_id: 'root-thread-456__comm-tool__research-agent',
-            parent_thread_id: 'root-thread-456',
-            graph_id: 'test-graph',
-            node_id: 'agent-2',
-          }),
-        }),
-      );
+      const threadId = args[0] as string;
+      const messages = args[1] as any[];
+      const runConfig = args[3] as any;
 
-      expect(preparedMessages).toHaveLength(1);
-      expectAgentInstructionMessage(
-        preparedMessages[0] as HumanMessage,
-        'Hello from Agent A',
+      expect(threadId).toBe('parent-thread__tool-node__Agent One');
+      expect(messages).toHaveLength(1);
+      expect(runConfig.configurable.thread_id).toBe(threadId);
+      expect(runConfig.configurable.graph_id).toBe('graph-1');
+      expectAgentInstructionMessage(messages[0] as HumanMessage, 'Hello');
+      expect(runConfig.configurable.parent_thread_id).toBe('parent-thread');
+      expect(runConfig.configurable.thread_id).toBe(
+        'parent-thread__tool-node__Agent One',
       );
     });
   });

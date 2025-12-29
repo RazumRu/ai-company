@@ -11,6 +11,8 @@ export default mergeConfig(
       disableConsoleIntercept: true,
       include: ['src/**/*.spec.ts', 'src/**/*.int.ts'],
       projects: undefined,
+      fileParallelism: false,
+      maxWorkers: 2,
     },
   }),
 );

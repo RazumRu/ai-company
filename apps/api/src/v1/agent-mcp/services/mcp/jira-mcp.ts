@@ -2,7 +2,7 @@ import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
 
-import type { DockerRuntime } from '../../../runtime/services/docker-runtime';
+import type { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { IMcpServerConfig } from '../../agent-mcp.types';
 import { BaseMcp } from '../base-mcp';
 
@@ -23,7 +23,7 @@ export class JiraMcp extends BaseMcp<JiraMcpConfig> {
 
   public override async setup(
     config: JiraMcpConfig,
-    runtime: DockerRuntime,
+    runtime: BaseRuntime,
   ): Promise<void> {
     // Fast, deterministic auth guard for integration tests (and user errors)
     if (!config.jiraApiKey?.trim()) {

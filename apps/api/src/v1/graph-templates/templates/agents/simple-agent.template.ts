@@ -1,23 +1,21 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
 import { IBaseKnowledgeOutput } from '../../../agent-knowledge/agent-knowledge.types';
 import { SimpleKnowledge } from '../../../agent-knowledge/services/simple-knowledge';
 import type { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
-import { AgentFactoryService } from '../../../agents/services/agent-factory.service';
 import {
   SimpleAgent,
   SimpleAgentSchema,
 } from '../../../agents/services/agents/simple-agent';
+import type { GraphNode } from '../../../graphs/graphs.types';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import {
-  NodeBaseTemplateMetadata,
-  SimpleAgentNodeBaseTemplate,
-} from '../base-node.template';
+import { SimpleAgentNodeBaseTemplate } from '../base-node.template';
 
 export const SimpleAgentTemplateSchema = SimpleAgentSchema;
 
@@ -69,98 +67,104 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   ] as const;
 
   constructor(
-    private readonly agentFactoryService: AgentFactoryService,
+    private readonly moduleRef: ModuleRef,
     private readonly graphRegistry: GraphRegistry,
   ) {
     super();
   }
 
-  async create(
-    config: SimpleAgentTemplateSchemaType,
-    _inputNodeIds: Set<string>,
-    outputNodeIds: Set<string>,
-    metadata: NodeBaseTemplateMetadata,
-  ): Promise<SimpleAgent> {
-    const agent = await this.agentFactoryService.create(SimpleAgent);
+  public async create() {
+    return {
+      provide: async (_params: GraphNode<SimpleAgentTemplateSchemaType>) =>
+        this.createNewInstance(this.moduleRef, SimpleAgent),
+      configure: async (
+        params: GraphNode<SimpleAgentTemplateSchemaType>,
+        instance: SimpleAgent,
+      ) => {
+        const outputNodeIds = params.outputNodeIds;
+        const graphId = params.metadata.graphId;
+        const config = params.config;
 
-    // Collect all tools from connected nodes
-    const allTools: BuiltAgentTool[] = [];
-    const knowledgeBlocks: { id: string; content: string }[] = [];
-    const mcpOutputs: BaseMcp<unknown>[] = [];
+        // Collect all tools from connected nodes
+        const allTools: BuiltAgentTool[] = [];
+        const knowledgeBlocks: { id: string; content: string }[] = [];
+        const mcpOutputs: BaseMcp<unknown>[] = [];
 
-    for (const nodeId of outputNodeIds) {
-      const node = this.graphRegistry.getNode<
-        | BuiltAgentTool
-        | BuiltAgentTool[]
-        | DynamicStructuredTool
-        | DynamicStructuredTool[]
-        | SimpleKnowledge
-        | BaseMcp<unknown>
-      >(metadata.graphId, nodeId);
+        for (const nodeId of outputNodeIds) {
+          const node = this.graphRegistry.getNode<
+            | BuiltAgentTool
+            | BuiltAgentTool[]
+            | DynamicStructuredTool
+            | DynamicStructuredTool[]
+            | SimpleKnowledge
+            | BaseMcp<unknown>
+          >(graphId, nodeId);
 
-      if (!node) {
-        continue;
-      }
+          if (!node) {
+            continue;
+          }
 
-      if (node.type === NodeKind.Tool) {
-        const tools = Array.isArray(node.instance)
-          ? node.instance
-          : [node.instance];
+          const inst = node.instance;
 
-        tools.forEach((tool) => {
-          const builtTool = tool as BuiltAgentTool;
-          allTools.push(builtTool);
-          agent.addTool(builtTool);
-        });
-        continue;
-      }
+          if (node.type === NodeKind.Tool) {
+            const tools = Array.isArray(inst) ? inst : [inst];
+            tools.forEach((tool) => {
+              const builtTool = tool as BuiltAgentTool;
+              allTools.push(builtTool);
+            });
+            continue;
+          }
 
-      if (node.type === NodeKind.Knowledge) {
-        const content = this.extractKnowledgeContent(node);
-        if (content) {
-          knowledgeBlocks.push({ id: nodeId, content });
+          if (node.type === NodeKind.Knowledge) {
+            const content = this.extractKnowledgeContent(node);
+            if (content) {
+              knowledgeBlocks.push({ id: nodeId, content });
+            }
+            continue;
+          }
+
+          if (node.type === NodeKind.Mcp) {
+            const mcpService = inst as BaseMcp<unknown>;
+            if (mcpService) {
+              mcpOutputs.push(mcpService);
+            }
+          }
         }
-        continue;
-      }
 
-      if (node.type === NodeKind.Mcp) {
-        const mcpService = node.instance as BaseMcp<unknown>;
-        if (mcpService) {
-          mcpOutputs.push(mcpService);
-        }
-      }
-    }
+        // Replace wiring (idempotent)
+        instance.resetTools();
+        allTools.forEach((tool) => instance.addTool(tool));
 
-    const knowledgeInstructions =
-      this.collectKnowledgeInstructions(knowledgeBlocks);
+        const knowledgeInstructions =
+          this.collectKnowledgeInstructions(knowledgeBlocks);
+        const mcpInstructions = this.collectMcpInstructions(mcpOutputs);
 
-    const mcpInstructions = this.collectMcpInstructions(mcpOutputs);
+        instance.setConfig(config);
+        instance.setMcpServices(mcpOutputs);
+        await instance.initTools(config);
 
-    agent.setConfig(config);
-    agent.setMcpServices(mcpOutputs);
-    await agent.initTools(config);
+        const toolInstructions = this.collectToolInstructions(
+          instance.getTools() as BuiltAgentTool[],
+        );
 
-    // After the first build, the agent contains ALL tools (connected + MCP + finish).
-    // Now we can generate tool instructions in the same format as regular tools.
-    const toolInstructions = this.collectToolInstructions(
-      agent.getTools() as BuiltAgentTool[],
-    );
+        const finalConfig = {
+          ...config,
+          instructions: [
+            config.instructions,
+            knowledgeInstructions,
+            toolInstructions,
+            mcpInstructions,
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+        };
 
-    const finalConfig = {
-      ...config,
-      instructions: [
-        config.instructions,
-        knowledgeInstructions,
-        toolInstructions,
-        mcpInstructions,
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
+        instance.setConfig(finalConfig);
+      },
+      destroy: async (instance: SimpleAgent) => {
+        await instance.stop();
+      },
     };
-
-    agent.setConfig(finalConfig);
-
-    return agent;
   }
 
   private collectToolInstructions(tools: BuiltAgentTool[]): string | undefined {

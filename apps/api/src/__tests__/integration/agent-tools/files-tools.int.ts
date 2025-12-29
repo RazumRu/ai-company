@@ -131,8 +131,10 @@ describe('Files tools integration', () => {
 
     runtime = await runtimeProvider.provide({
       type: RuntimeType.Docker,
+    });
+
+    await runtime.start({
       image: environment.dockerRuntimeImage,
-      autostart: true,
       recreate: true,
       containerName: `files-tools-${Date.now()}`,
     });

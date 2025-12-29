@@ -1,16 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
+import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { RuntimeType } from '../../../runtime/runtime.types';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { DockerRuntime } from '../../../runtime/services/docker-runtime';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import {
-  NodeBaseTemplateMetadata,
-  RuntimeNodeBaseTemplate,
-} from '../base-node.template';
+import { RuntimeNodeBaseTemplate } from '../base-node.template';
 
 export const DockerRuntimeTemplateSchema = z
   .object({
@@ -54,10 +51,15 @@ export const DockerRuntimeTemplateSchema = z
   // Strip legacy/unknown fields so older configs remain valid.
   .strip();
 
+export type DockerRuntimeTemplateSchemaType = z.infer<
+  typeof DockerRuntimeTemplateSchema
+>;
+
 @Injectable()
 @RegisterTemplate()
 export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
-  typeof DockerRuntimeTemplateSchema
+  typeof DockerRuntimeTemplateSchema,
+  DockerRuntime
 > {
   readonly id = 'docker-runtime';
   readonly name = 'Docker';
@@ -92,12 +94,48 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
     super();
   }
 
-  async create(
-    config: z.infer<typeof DockerRuntimeTemplateSchema>,
-    _inputNodeIds: Set<string>,
-    _outputNodeIds: Set<string>,
-    metadata: NodeBaseTemplateMetadata,
-  ): Promise<BaseRuntime> {
+  public async create() {
+    let configuredOnce = false;
+
+    return {
+      provide: async (params: GraphNode<DockerRuntimeTemplateSchemaType>) => {
+        const config = params.config;
+
+        // RuntimeProvider currently returns BaseRuntime, but for RuntimeType.Docker it is DockerRuntime.
+        const runtime = (await this.runtimeProvider.provide({
+          type: config.runtimeType,
+        })) as DockerRuntime;
+
+        return runtime;
+      },
+      configure: async (
+        params: GraphNode<DockerRuntimeTemplateSchemaType>,
+        instance: DockerRuntime,
+      ) => {
+        await this.startOrRestartRuntime(params, instance, {
+          stopFirst: configuredOnce,
+        });
+        configuredOnce = true;
+      },
+      destroy: async (instance: DockerRuntime) => {
+        await Promise.race([
+          instance.stop(),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('Runtime stop timeout')), 15000),
+          ),
+        ]).catch(() => {});
+      },
+    };
+  }
+
+  private async startOrRestartRuntime(
+    params: GraphNode<DockerRuntimeTemplateSchemaType>,
+    runtime: DockerRuntime,
+    opts: { stopFirst: boolean },
+  ): Promise<void> {
+    const config = params.config;
+    const metadata = params.metadata;
+
     // Automatically add graph_id, node_id, and version labels for container management
     const systemLabels: Record<string, string> = {
       'ai-company/graph_id': metadata.graphId,
@@ -106,35 +144,37 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       'ai-company/dind': 'false',
     };
 
-    // Add temporary label if the graph is temporary
     if (metadata.temporary) {
       systemLabels['ai-company/temporary'] = 'true';
     }
 
-    // Merge user-provided labels with system labels (system labels take precedence)
     const mergedLabels = {
       ...config.labels,
       ...systemLabels,
     };
 
-    // Check if a container with matching labels already exists
     const existingContainer = await DockerRuntime.getByLabels(mergedLabels);
-
-    // Generate network name based on graph ID if not provided
     const networkName = `ai-company-${metadata.graphId}`;
     const containerName = `rt-${metadata.graphId}-${metadata.nodeId}`;
     const shouldRecreate = !existingContainer;
 
-    return await this.runtimeProvider.provide({
-      type: config.runtimeType,
+    if (opts.stopFirst) {
+      await Promise.race([
+        runtime.stop(),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('Runtime stop timeout')), 15000),
+        ),
+      ]).catch(() => {});
+    }
+
+    await runtime.start({
       image: config.image,
       env: config.env,
       labels: mergedLabels,
       initScript: config.initScript,
       initScriptTimeoutMs: config.initScriptTimeoutMs,
-      autostart: true, // Always start automatically
       recreate: shouldRecreate,
-      containerName, // Use graphId and nodeId for consistent container naming
+      containerName,
       network: networkName,
       enableDind: config.enableDind,
     });

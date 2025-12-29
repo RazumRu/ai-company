@@ -1,14 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
 import { IBaseKnowledgeOutput } from '../../../agent-knowledge/agent-knowledge.types';
 import { SimpleKnowledge } from '../../../agent-knowledge/services/simple-knowledge';
+import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import {
-  KnowledgeNodeBaseTemplate,
-  NodeBaseTemplateMetadata,
-} from '../base-node.template';
+import { KnowledgeNodeBaseTemplate } from '../base-node.template';
 
 export const SimpleKnowledgeTemplateSchema = z.object({
   content: z
@@ -54,16 +53,50 @@ export class SimpleKnowledgeTemplate extends KnowledgeNodeBaseTemplate<
 
   readonly outputs = [] as const;
 
-  constructor(private readonly simpleKnowledge: SimpleKnowledge) {
+  constructor(private readonly moduleRef: ModuleRef) {
     super();
   }
 
-  async create(
+  public async create() {
+    let knowledgeService: SimpleKnowledge;
+
+    return {
+      provide: async (params: GraphNode<SimpleKnowledgeTemplateSchemaType>) => {
+        knowledgeService = await this.createNewInstance(
+          this.moduleRef,
+          SimpleKnowledge,
+        );
+        // Setup must happen in configure(). Provide must be side-effect free.
+        return { content: '' };
+      },
+      configure: async (
+        params: GraphNode<SimpleKnowledgeTemplateSchemaType>,
+        instance: IBaseKnowledgeOutput,
+      ) => {
+        if (!knowledgeService) {
+          throw new Error('KNOWLEDGE_SERVICE_NOT_INITIALIZED');
+        }
+
+        const config = params.config;
+        const normalizedConfig = this.normalizeConfig(config);
+
+        if (knowledgeService.setup) {
+          await knowledgeService.setup(normalizedConfig);
+        }
+
+        const newData = await knowledgeService.getData(normalizedConfig);
+        // Update the instance in-place
+        Object.assign(instance, newData);
+      },
+      destroy: async (_instance: IBaseKnowledgeOutput) => {
+        // No cleanup needed
+      },
+    };
+  }
+
+  private normalizeConfig(
     config: SimpleKnowledgeTemplateSchemaType,
-    _inputNodeIds: Set<string>,
-    _outputNodeIds: Set<string>,
-    _metadata: NodeBaseTemplateMetadata,
-  ): Promise<IBaseKnowledgeOutput> {
+  ): SimpleKnowledgeTemplateSchemaType {
     const baseContent = config.content.trim();
     const repoNote = config.repository
       ? [
@@ -72,15 +105,9 @@ export class SimpleKnowledgeTemplate extends KnowledgeNodeBaseTemplate<
           'You may use these instructions when working with this repository, including when cloning or interacting with its copies.',
         ].join(' ')
       : undefined;
-    const normalizedConfig = {
+    return {
       ...config,
       content: [baseContent, repoNote].filter(Boolean).join('\n\n'),
     };
-
-    if (this.simpleKnowledge.setup) {
-      await this.simpleKnowledge.setup(normalizedConfig);
-    }
-
-    return this.simpleKnowledge.getData(normalizedConfig);
   }
 }

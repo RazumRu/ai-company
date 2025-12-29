@@ -33,8 +33,10 @@ describe('ShellTool persistent sessions (integration)', () => {
 
     runtime = await runtimeProvider.provide({
       type: RuntimeType.Docker,
+    });
+
+    await runtime.start({
       image: environment.dockerRuntimeImage,
-      autostart: true,
       recreate: true,
       containerName: `shell-session-${Date.now()}`,
     });

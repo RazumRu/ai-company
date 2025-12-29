@@ -13,7 +13,7 @@ import {
 } from '../base-tool';
 
 export interface ShellToolOptions {
-  runtime: BaseRuntime | (() => BaseRuntime);
+  runtime: BaseRuntime;
   env?: Record<string, string>;
   resourcesInformation?: string;
 }
@@ -152,8 +152,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   }
 
   private buildRuntimeInfo(runtime: ShellToolOptions['runtime']) {
-    const instance = typeof runtime === 'function' ? runtime() : runtime;
-    const info = instance?.getRuntimeInfo?.();
+    const info = runtime?.getRuntimeInfo?.();
 
     if (info) {
       return dedent`

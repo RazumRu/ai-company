@@ -331,6 +331,13 @@ describe('AiSuggestionsService (integration)', () => {
       });
       createdGraphs.push(graph.id);
 
+      const agentInstance = {} as unknown;
+      const toolInstance = {
+        name: 'Search',
+        description: 'Search the web',
+        __instructions: 'Use it wisely',
+      };
+
       graphRegistry.register(graph.id, {
         nodes: new Map([
           [
@@ -339,7 +346,12 @@ describe('AiSuggestionsService (integration)', () => {
               id: 'agent-1',
               type: NodeKind.SimpleAgent,
               template: 'simple-agent',
-              instance: {} as unknown,
+              instance: agentInstance,
+              handle: {
+                provide: async () => agentInstance,
+                configure: async () => undefined,
+                destroy: async () => undefined,
+              },
               config: { name: 'Primary agent', instructions: 'Do it' },
             },
           ],
@@ -349,10 +361,11 @@ describe('AiSuggestionsService (integration)', () => {
               id: 'tool-1',
               type: NodeKind.Tool,
               template: 'search-tool',
-              instance: {
-                name: 'Search',
-                description: 'Search the web',
-                __instructions: 'Use it wisely',
+              instance: toolInstance,
+              handle: {
+                provide: async () => toolInstance,
+                configure: async () => undefined,
+                destroy: async () => undefined,
               },
               config: {},
             },

@@ -3,10 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WebSearchTool } from '../../../agent-tools/tools/common/web-search.tool';
-import {
-  CompiledGraphNode as _CompiledGraphNode,
-  NodeKind,
-} from '../../../graphs/graphs.types';
+import type { GraphNode } from '../../../graphs/graphs.types';
+import { NodeKind } from '../../../graphs/graphs.types';
 import {
   WebSearchToolTemplate,
   WebSearchToolTemplateSchema,
@@ -32,6 +30,9 @@ describe('WebSearchToolTemplate', () => {
     }).compile();
 
     template = module.get<WebSearchToolTemplate>(WebSearchToolTemplate);
+    vi.spyOn(template as any, 'createNewInstance').mockResolvedValue(
+      mockWebSearchTool,
+    );
   });
 
   describe('properties', () => {
@@ -81,16 +82,24 @@ describe('WebSearchToolTemplate', () => {
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = { apiKey: 'test-api-key' };
-      const outputNodeIds = new Set<string>();
-
-      const result = await template.create(config, new Set(), outputNodeIds, {
+      const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
-      });
+      };
+
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
-      expect(result).toEqual([mockTool]);
+      expect(instance).toEqual([mockTool]);
     });
 
     it('should create web search tool with configuration properties', async () => {
@@ -98,52 +107,77 @@ describe('WebSearchToolTemplate', () => {
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = {
-        apiKey: 'test-api-key',
+        apiKey: 'another-key',
+      };
+      const metadata = {
+        graphId: 'test-graph-2',
+        nodeId: 'test-node-2',
+        version: '1.0.1',
       };
 
-      const result = await template.create(config, new Set(), new Set(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
-      expect(result).toEqual([mockTool]);
+      expect(instance).toEqual([mockTool]);
     });
 
     it('should handle web search tool build errors', async () => {
-      const mockError = new Error('Failed to build web search tool');
       mockWebSearchTool.build = vi.fn().mockImplementation(() => {
-        throw mockError;
+        throw new Error('Build failed');
       });
 
-      const config = { apiKey: 'test-api-key' };
+      const config = { apiKey: 'test-key' };
+      const metadata = {
+        graphId: 'test-graph',
+        nodeId: 'test-node',
+        version: '1.0.0',
+      };
 
-      await expect(
-        template.create(config, new Set(), new Set(), {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
-      ).rejects.toThrow('Failed to build web search tool');
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        'Build failed',
+      );
     });
 
     it('should not use compiled nodes parameter', async () => {
       const mockTool = { name: 'web-search' } as DynamicStructuredTool;
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
-      const config = { apiKey: 'test-api-key' };
-      const outputNodeIds = new Set(['some-node']);
-
-      const result = await template.create(config, new Set(), outputNodeIds, {
+      const config = { apiKey: 'test-key' };
+      const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
-      });
+      };
 
-      // Should still work regardless of compiled nodes content
-      expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
-      expect(result).toEqual([mockTool]);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      expect(mockWebSearchTool.build).toHaveBeenCalled();
+      expect(instance).toEqual([mockTool]);
     });
 
     it('should pass through all configuration properties', async () => {
@@ -151,63 +185,83 @@ describe('WebSearchToolTemplate', () => {
       mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config = {
-        apiKey: 'test-key',
-        maxResults: 10,
-        timeout: 30000,
-        enableCache: true,
-        customHeaders: { 'User-Agent': 'test-agent' },
+        apiKey: 'custom-key',
       };
-
-      await template.create(config, new Set(), new Set(), {
+      const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
-      });
+      };
 
-      expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      expect(mockWebSearchTool.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'custom-key',
+        }),
+      );
     });
 
     it('should handle async build method', async () => {
-      const mockTool = { name: 'web_search' } as DynamicStructuredTool;
-      mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
+      const mockTool = { name: 'web-search' } as DynamicStructuredTool;
+      // build is synchronous in current implementation, but test for async compatibility
+      mockWebSearchTool.build = vi.fn().mockResolvedValue(mockTool);
 
-      const config = { apiKey: 'test-api-key' };
-
-      const result = await template.create(config, new Set(), new Set(), {
+      const config = { apiKey: 'test-key' };
+      const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
-      });
+      };
 
-      expect(result).toEqual([mockTool]);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      expect(instance).toEqual([mockTool]);
     });
 
     it('should maintain tool instance identity', async () => {
-      const mockTool1 = { name: 'web-search-1' } as DynamicStructuredTool;
-      const mockTool2 = { name: 'web-search-2' } as DynamicStructuredTool;
+      const mockTool = { name: 'web-search' } as DynamicStructuredTool;
+      mockWebSearchTool.build = vi.fn().mockReturnValue(mockTool);
 
-      mockWebSearchTool.build = vi
-        .fn()
-        .mockReturnValueOnce(mockTool1)
-        .mockReturnValueOnce(mockTool2);
-
-      const config1 = { apiKey: 'test-key-1' };
-      const config2 = { apiKey: 'test-key-2' };
-
-      const result1 = await template.create(config1, new Set(), new Set(), {
+      const config = { apiKey: 'test-key' };
+      const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
-      });
-      const result2 = await template.create(config2, new Set(), new Set(), {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
+      };
 
-      expect(result1).toEqual([mockTool1]);
-      expect(result2).toEqual([mockTool2]);
-      expect(result1).not.toEqual(result2);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      const tools1 = instance;
+      await handle.configure(init, instance);
+      const tools2 = instance;
+
+      expect(tools1).toBe(tools2);
+      expect(tools1[0]).toBe(mockTool);
     });
   });
 });

@@ -1,11 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { BadRequestException as _BadRequestException } from '@packages/common';
 import {
   applyPatch,
   compare as diffSchemas,
   type Operation,
 } from 'fast-json-patch';
-import { cloneDeep, isEqual, isNil, isObject } from 'lodash';
+import { cloneDeep, isEqual } from 'lodash';
 
 import type { GraphSchemaType } from '../graphs.types';
 
@@ -25,13 +24,13 @@ export interface MergeResult {
 }
 
 /**
- * Service for performing 3-way merges on graph schemas
- * Implements conflict detection for concurrent edits
+ * Service for performing 3-way merges on graph schemas.
+ * Implements conflict detection for concurrent edits.
  */
 @Injectable()
 export class GraphMergeService {
   /**
-   * Perform a 3-way merge between base, head, and client schemas
+   * Perform a 3-way merge between base, head, and client schemas.
    *
    * @param baseSchema - The schema the client started from
    * @param headSchema - The current head schema (latest accepted)
@@ -43,21 +42,14 @@ export class GraphMergeService {
     headSchema: GraphSchemaType,
     clientSchema: GraphSchemaType,
   ): MergeResult {
-    // If head and client are the same, no merge needed
+    // Fast path: head and client are identical
     if (isEqual(headSchema, clientSchema)) {
       return { success: true, mergedSchema: clientSchema, conflicts: [] };
     }
 
-    // If base equals head, client changes apply cleanly
+    // Fast path: base equals head - client changes apply cleanly
     if (isEqual(baseSchema, headSchema)) {
-      const structuralCheck = this.checkStructuralIntegrity(clientSchema);
-      if (!structuralCheck.valid) {
-        return {
-          success: false,
-          conflicts: structuralCheck.conflicts || [],
-        };
-      }
-      return { success: true, mergedSchema: clientSchema, conflicts: [] };
+      return this.validateAndReturn(clientSchema);
     }
 
     // Calculate diffs
@@ -78,42 +70,44 @@ export class GraphMergeService {
     }
 
     // No conflicts - merge head changes with client changes
-    // Start with head schema and apply client's changes (base→client diff)
-    const mergedSchema = cloneDeep(headSchema);
+    const mergedSchema = this.applyMerge(headSchema, baseToClient);
 
-    // Apply client's changes on top of head using fast-json-patch
-    try {
-      applyPatch(mergedSchema, baseToClient);
-    } catch (error) {
-      return {
-        success: false,
-        conflicts: [
-          {
-            path: '/',
-            type: 'structural_break',
-            baseValue: baseSchema,
-            headValue: headSchema,
-            clientValue: clientSchema,
-            description: `Failed to apply merge: ${(error as Error).message}`,
-          },
-        ],
-      };
+    if (!mergedSchema) {
+      return { success: false, conflicts: [] };
     }
 
-    // Check structural integrity of merged result
-    const structuralCheck = this.checkStructuralIntegrity(mergedSchema);
+    return this.validateAndReturn(mergedSchema);
+  }
+
+  private validateAndReturn(schema: GraphSchemaType): MergeResult {
+    const structuralCheck = this.checkStructuralIntegrity(schema);
     if (!structuralCheck.valid) {
       return {
         success: false,
         conflicts: structuralCheck.conflicts || [],
       };
     }
+    return { success: true, mergedSchema: schema, conflicts: [] };
+  }
 
-    return { success: true, mergedSchema, conflicts: [] };
+  private applyMerge(
+    headSchema: GraphSchemaType,
+    baseToClient: Operation[],
+  ): GraphSchemaType | null {
+    const mergedSchema = cloneDeep(headSchema);
+
+    try {
+      applyPatch(mergedSchema, baseToClient);
+      return mergedSchema;
+    } catch {
+      // Merge application failed - return null to signal failure
+      // Caller will handle this as a structural conflict
+      return null;
+    }
   }
 
   /**
-   * Detect conflicts between base→head and base→client changes
+   * Detect conflicts between base→head and base→client changes.
    */
   private detectConflicts(
     baseSchema: GraphSchemaType,
@@ -124,33 +118,73 @@ export class GraphMergeService {
   ): MergeConflict[] {
     const conflicts: MergeConflict[] = [];
 
-    // Extract affected paths from each diff (keep exact paths, not normalized)
+    // Check for concurrent modifications
     const headPathsMap = new Map(baseToHead.map((op) => [op.path, op]));
     const clientPathsMap = new Map(baseToClient.map((op) => [op.path, op]));
 
-    // Find concurrent modifications
-    for (const [path, _clientOp] of clientPathsMap) {
-      const headOp = headPathsMap.get(path);
-      if (headOp) {
-        const baseValue = this.getValueAtPath(baseSchema, path);
-        const headValue = this.getValueAtPath(headSchema, path);
-        const clientValue = this.getValueAtPath(clientSchema, path);
-
-        // If both changed to the same value, it's not a conflict
-        if (!isEqual(headValue, clientValue)) {
-          conflicts.push({
-            path,
-            type: 'concurrent_modification',
-            baseValue,
-            headValue,
-            clientValue,
-            description: `Both head and client modified path: ${path}`,
-          });
+    for (const [path] of clientPathsMap) {
+      if (headPathsMap.has(path)) {
+        const conflict = this.createConcurrentModificationConflict(
+          path,
+          baseSchema,
+          headSchema,
+          clientSchema,
+        );
+        if (conflict) {
+          conflicts.push(conflict);
         }
       }
     }
 
-    // Check for deletion conflicts (client deletes what head modified)
+    // Check deletion conflicts
+    conflicts.push(
+      ...this.findDeletionConflicts(
+        baseSchema,
+        headSchema,
+        clientSchema,
+        baseToHead,
+        baseToClient,
+      ),
+    );
+
+    return conflicts;
+  }
+
+  private createConcurrentModificationConflict(
+    path: string,
+    baseSchema: GraphSchemaType,
+    headSchema: GraphSchemaType,
+    clientSchema: GraphSchemaType,
+  ): MergeConflict | null {
+    const baseValue = this.getValueAtPath(baseSchema, path);
+    const headValue = this.getValueAtPath(headSchema, path);
+    const clientValue = this.getValueAtPath(clientSchema, path);
+
+    // If both changed to the same value, not a conflict
+    if (isEqual(headValue, clientValue)) {
+      return null;
+    }
+
+    return {
+      path,
+      type: 'concurrent_modification',
+      baseValue,
+      headValue,
+      clientValue,
+      description: `Both head and client modified path: ${path}`,
+    };
+  }
+
+  private findDeletionConflicts(
+    baseSchema: GraphSchemaType,
+    headSchema: GraphSchemaType,
+    clientSchema: GraphSchemaType,
+    baseToHead: Operation[],
+    baseToClient: Operation[],
+  ): MergeConflict[] {
+    const conflicts: MergeConflict[] = [];
+
+    // Client deleted what head modified
     const deletedInClient = this.findDeletions(baseSchema, clientSchema);
     const modifiedInHead = new Set(
       baseToHead.filter((op) => op.op !== 'remove').map((op) => op.path),
@@ -169,15 +203,14 @@ export class GraphMergeService {
       }
     }
 
-    // Check for deletion conflicts (head deletes what client modified)
+    // Head deleted what client modified
     const deletedInHead = this.findDeletions(baseSchema, headSchema);
     const clientModifications = baseToClient.filter((op) => op.op !== 'remove');
 
     for (const deletedPath of deletedInHead) {
-      // Check if client modified this deleted item or any of its children
       const hasConflict = clientModifications.some(
         (op) =>
-          op.path === deletedPath || op.path.startsWith(deletedPath + '/'),
+          op.path === deletedPath || op.path.startsWith(`${deletedPath}/`),
       );
 
       if (hasConflict) {
@@ -196,20 +229,17 @@ export class GraphMergeService {
   }
 
   /**
-   * Check structural integrity of a schema
-   * Validates: referenced nodes exist in edges
-   * Note: Doesn't check for orphaned nodes as that's validated during compilation
+   * Check structural integrity of a schema.
+   * Validates that referenced nodes exist in edges.
+   * Note: Doesn't check for orphaned nodes as that's validated during compilation.
    */
   private checkStructuralIntegrity(schema: GraphSchemaType): {
     valid: boolean;
     conflicts?: MergeConflict[];
   } {
+    const nodeIds = new Set(schema.nodes.map((node) => node.id));
     const conflicts: MergeConflict[] = [];
 
-    // Build node ID set
-    const nodeIds = new Set(schema.nodes.map((node) => node.id));
-
-    // Check edges reference valid nodes
     for (const edge of schema.edges || []) {
       if (!nodeIds.has(edge.from)) {
         conflicts.push({
@@ -240,26 +270,18 @@ export class GraphMergeService {
   }
 
   /**
-   * Normalize a JSON Patch path for comparison
-   */
-  private normalizePath(path: string): string {
-    // Remove array indices to compare at object level
-    return path.replace(/\/\d+/g, '/*');
-  }
-
-  /**
-   * Get value at a JSON Patch path
+   * Get value at a JSON Patch path.
    */
   private getValueAtPath(obj: unknown, path: string): unknown {
     const parts = path.split('/').filter(Boolean);
     let current = obj;
 
     for (const part of parts) {
-      if (isNil(current)) {
+      if (current == null) {
         return undefined;
       }
 
-      if (isObject(current) && part in (current as Record<string, unknown>)) {
+      if (typeof current === 'object' && part in (current as object)) {
         current = (current as Record<string, unknown>)[part];
       } else {
         return undefined;
@@ -270,15 +292,13 @@ export class GraphMergeService {
   }
 
   /**
-   * Find paths that were deleted between base and target
+   * Find paths that were deleted between base and target.
    */
   private findDeletions(
     base: GraphSchemaType,
     target: GraphSchemaType,
   ): Set<string> {
     const deletions = new Set<string>();
-
-    // Check for deleted nodes using array indices (as used by JSON Patch)
     const targetNodeIds = new Set(target.nodes.map((n) => n.id));
 
     base.nodes.forEach((node, index) => {

@@ -97,6 +97,17 @@ export class GraphRegistry {
   }
 
   /**
+   * Convenience helper: returns the runtime instance for a node (via NodeHandle).
+   */
+  getNodeInstance<TInstance>(
+    graphId: string,
+    nodeId: string,
+  ): TInstance | undefined {
+    const node = this.getNode<TInstance>(graphId, nodeId);
+    return node?.instance;
+  }
+
+  /**
    * Gets multiple nodes from a graph by their IDs
    */
   getNodes<TInstance>(

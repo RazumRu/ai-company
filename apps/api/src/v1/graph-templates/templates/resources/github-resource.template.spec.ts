@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ResourceKind } from '../../../graph-resources/graph-resources.types';
 import {
   GithubResource,
-  IGithubResourceResourceOutput,
+  IGithubResourceOutput,
 } from '../../../graph-resources/services/github-resource';
+import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import {
   GithubResourceTemplate,
@@ -30,10 +32,22 @@ describe('GithubResourceTemplate', () => {
           provide: GithubResource,
           useValue: mockGithubResource,
         },
+        {
+          provide: DefaultLogger,
+          useValue: {
+            error: vi.fn(),
+            log: vi.fn(),
+            warn: vi.fn(),
+            debug: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
     template = module.get<GithubResourceTemplate>(GithubResourceTemplate);
+    vi.spyOn(template as any, 'createNewInstance').mockResolvedValue(
+      mockGithubResource,
+    );
   });
 
   describe('properties', () => {
@@ -136,7 +150,7 @@ describe('GithubResourceTemplate', () => {
         auth: false,
       };
 
-      const mockResourceOutput: IGithubResourceResourceOutput = {
+      const mockResourceOutput: IGithubResourceOutput = {
         patToken: 'ghp_1234567890abcdef',
         information: 'GitHub resource information',
         kind: ResourceKind.Shell,
@@ -160,16 +174,23 @@ describe('GithubResourceTemplate', () => {
         version: '1.0.0',
       };
 
-      const result = await template.create(
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
         config,
-        new Set(),
+        inputNodeIds: new Set(),
         outputNodeIds,
         metadata,
-      );
+      };
+
+      const instance = await handle.provide(init);
+      expect(mockGithubResource.setup).not.toHaveBeenCalled();
+      expect(mockGithubResource.getData).not.toHaveBeenCalled();
+
+      await handle.configure(init, instance);
 
       expect(mockGithubResource.setup).toHaveBeenCalledWith(config);
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);
-      expect(result).toBe(mockResourceOutput);
+      expect(instance).toEqual(mockResourceOutput);
     });
 
     it('should work without setup method', async () => {
@@ -178,7 +199,7 @@ describe('GithubResourceTemplate', () => {
         auth: false,
       };
 
-      const mockResourceOutput: IGithubResourceResourceOutput = {
+      const mockResourceOutput: IGithubResourceOutput = {
         patToken: 'ghp_1234567890abcdef',
         information: 'GitHub resource information',
         kind: ResourceKind.Shell,
@@ -203,15 +224,21 @@ describe('GithubResourceTemplate', () => {
         version: '1.0.0',
       };
 
-      const result = await template.create(
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
         config,
-        new Set(),
+        inputNodeIds: new Set(),
         outputNodeIds,
         metadata,
-      );
+      };
+
+      const instance = await handle.provide(init);
+      expect(mockGithubResource.getData).not.toHaveBeenCalled();
+
+      await handle.configure(init, instance);
 
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);
-      expect(result).toBe(mockResourceOutput);
+      expect(instance).toEqual(mockResourceOutput);
     });
 
     it('should handle setup errors', async () => {
@@ -223,16 +250,24 @@ describe('GithubResourceTemplate', () => {
       const setupError = new Error('Setup failed');
       vi.mocked(mockGithubResource.setup!).mockRejectedValue(setupError);
 
-      const outputNodeIds = new Set<string>();
       const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
       };
 
-      await expect(
-        template.create(config, new Set(), outputNodeIds, metadata),
-      ).rejects.toThrow('Setup failed');
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        'Setup failed',
+      );
     });
 
     it('should handle getData errors', async () => {
@@ -245,49 +280,50 @@ describe('GithubResourceTemplate', () => {
       vi.mocked(mockGithubResource.setup!).mockResolvedValue(undefined);
       vi.mocked(mockGithubResource.getData).mockRejectedValue(getDataError);
 
-      const outputNodeIds = new Set<string>();
       const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
       };
 
-      await expect(
-        template.create(config, new Set(), outputNodeIds, metadata),
-      ).rejects.toThrow('GetData failed');
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        'GetData failed',
+      );
     });
 
     it('should pass correct config to both setup and getData', async () => {
       const config = {
-        patToken: 'ghp_test_token_123',
-        auth: false,
-      };
-
-      const mockResourceOutput: IGithubResourceResourceOutput = {
-        patToken: 'ghp_test_token_123',
-        information: 'GitHub resource information',
-        kind: ResourceKind.Shell,
-        data: {
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_test_token_123',
-          },
-          initScript: ['echo "setup"'],
-        },
+        patToken: 'ghp_1234567890abcdef',
+        auth: true,
       };
 
       vi.mocked(mockGithubResource.setup!).mockResolvedValue(undefined);
-      vi.mocked(mockGithubResource.getData).mockResolvedValue(
-        mockResourceOutput,
-      );
+      vi.mocked(mockGithubResource.getData).mockResolvedValue({} as never);
 
-      const outputNodeIds = new Set<string>();
       const metadata = {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
       };
 
-      await template.create(config, new Set(), outputNodeIds, metadata);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
       expect(mockGithubResource.setup).toHaveBeenCalledWith(config);
       expect(mockGithubResource.getData).toHaveBeenCalledWith(config);

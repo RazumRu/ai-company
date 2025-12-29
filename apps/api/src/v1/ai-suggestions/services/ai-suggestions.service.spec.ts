@@ -8,6 +8,7 @@ import { GraphEntity } from '../../graphs/entity/graph.entity';
 import {
   CompiledGraph,
   GraphEdgeSchemaType,
+  GraphNodeInstanceHandle,
   GraphStatus,
   NodeKind,
 } from '../../graphs/graphs.types';
@@ -68,6 +69,14 @@ describe('AiSuggestionsService', () => {
     );
   });
 
+  const makeHandle = <TInstance, TConfig = unknown>(
+    instance: TInstance,
+  ): GraphNodeInstanceHandle<TInstance, TConfig> => ({
+    provide: async () => instance,
+    configure: async () => {},
+    destroy: async () => {},
+  });
+
   const buildGraph = (): GraphEntity =>
     ({
       id: 'graph-1',
@@ -109,6 +118,7 @@ describe('AiSuggestionsService', () => {
       id: 'agent-1',
       type: NodeKind.SimpleAgent,
       template: 'simple-agent',
+      handle: makeHandle({} as never),
       instance: {} as never,
       config: {
         name: 'Primary agent',
@@ -121,6 +131,11 @@ describe('AiSuggestionsService', () => {
       id: 'tool-1',
       type: NodeKind.Tool,
       template: 'search-tool',
+      handle: makeHandle({
+        name: 'Search',
+        description: 'Search the web',
+        __instructions: 'Use to gather facts.',
+      }),
       instance: {
         name: 'Search',
         description: 'Search the web',
@@ -159,6 +174,13 @@ describe('AiSuggestionsService', () => {
           __instructions: 'Use it',
         },
       ],
+      handle: makeHandle([
+        {
+          name: 'Sample Tool',
+          description: 'Does work',
+          __instructions: 'Use it',
+        },
+      ]),
     });
   };
 
@@ -301,7 +323,7 @@ describe('AiSuggestionsService', () => {
       });
       (graphRegistry.getNode as ReturnType<typeof vi.fn>).mockReturnValue({
         type: NodeKind.Knowledge,
-        instance: { content: 'Important facts' },
+        handle: makeHandle({ content: 'Important facts' }),
         config: { content: 'Important facts' },
       });
 
@@ -499,7 +521,7 @@ describe('AiSuggestionsService', () => {
               id: 'knowledge-1',
               type: NodeKind.Knowledge,
               template: 'simple-knowledge',
-              instance: { content: 'Existing knowledge' },
+              handle: makeHandle({ content: 'Existing knowledge' }),
               config: { content: 'Existing knowledge' },
             },
           ],

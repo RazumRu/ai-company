@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FilesToolGroup } from '../../../agent-tools/tools/common/files/files-tool-group';
 import {
   CompiledGraphNode,
+  GraphNode,
+  GraphNodeInstanceHandle,
   GraphNodeStatus,
   NodeKind,
 } from '../../../graphs/graphs.types';
@@ -15,6 +17,14 @@ import {
   FilesToolTemplate,
   FilesToolTemplateSchema,
 } from './files-tool.template';
+
+const makeHandle = <TInstance>(
+  instance: TInstance,
+): GraphNodeInstanceHandle<TInstance, any> => ({
+  provide: async () => instance,
+  configure: async () => {},
+  destroy: async () => {},
+});
 
 const buildMockNode = <TInstance = unknown>(options: {
   id: string;
@@ -26,6 +36,7 @@ const buildMockNode = <TInstance = unknown>(options: {
 }): CompiledGraphNode<TInstance> =>
   ({
     ...options,
+    handle: makeHandle(options.instance),
     config: options.config ?? {},
     getStatus: options.getStatus || (() => GraphNodeStatus.Idle),
   }) as unknown as CompiledGraphNode<TInstance>;
@@ -45,6 +56,7 @@ describe('FilesToolTemplate', () => {
       unregister: vi.fn(),
       get: vi.fn(),
       getNode: vi.fn(),
+      getNodeInstance: vi.fn(),
       filterNodesByType: vi.fn(),
       filterNodesByTemplate: vi.fn(),
       destroy: vi.fn(),
@@ -114,234 +126,148 @@ describe('FilesToolTemplate', () => {
 
   describe('schema validation', () => {
     it('should accept empty config', () => {
-      const config = {};
-
-      const parsed = FilesToolTemplateSchema.parse(config);
-      expect(parsed).toEqual({ includeEditActions: true });
+      expect(() => FilesToolTemplateSchema.parse({})).not.toThrow();
     });
 
     it('should ignore legacy/unknown fields', () => {
-      const config = { includeRepo: true, extra: 'value' };
+      const dataWithExtra = {
+        oldProperty: 'value',
+        extraField: 123,
+      };
 
-      const parsed = FilesToolTemplateSchema.parse(config);
+      const parsed = FilesToolTemplateSchema.parse(dataWithExtra);
       expect(parsed).toEqual({ includeEditActions: true });
-      expect(parsed).not.toHaveProperty('includeRepo');
-      expect(parsed).not.toHaveProperty('extra');
+      expect(parsed).not.toHaveProperty('oldProperty');
     });
   });
 
   describe('create', () => {
-    it('should create files tools with valid runtime node', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
+    const mockRuntimeId = 'runtime-1';
+    const mockGraphId = 'graph-1';
+    const mockMetadata = {
+      graphId: mockGraphId,
+      nodeId: 'tool-1',
+      version: '1',
+    };
+
+    let mockRuntime: BaseRuntime;
+
+    beforeEach(() => {
+      mockRuntime = {
         exec: vi.fn(),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-      });
 
-      const mockTools = [{ name: 'repo_list_files' } as DynamicStructuredTool];
+      vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
+        (_gid, _nodes, kind) =>
+          kind === NodeKind.Runtime ? [mockRuntimeId] : [],
+      );
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockImplementation((_graphId, nodeIds, type) => {
-          if (type === NodeKind.Runtime)
-            return Array.from(nodeIds).filter((id) => id === 'runtime-1');
-          return [];
-        });
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((_graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          return undefined;
-        });
-      mockFilesToolGroup.buildTools = vi.fn().mockReturnValue(mockTools);
+      vi.mocked(mockGraphRegistry.getNodeInstance).mockImplementation(
+        (_gid, nid) => (nid === mockRuntimeId ? mockRuntime : undefined),
+      );
+    });
 
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1']);
+    it('should create files tools with valid runtime node', async () => {
+      const mockTools = [{ name: 'read_file' }] as DynamicStructuredTool[];
+      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue(mockTools);
 
-      const result = await template.create(
-        FilesToolTemplateSchema.parse(config),
-        new Set(),
+      const outputNodeIds = new Set([mockRuntimeId]);
+      const config = { includeEditActions: true };
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
         outputNodeIds,
-        {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        },
-      );
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      expect(mockGraphRegistry.filterNodesByType).toHaveBeenCalledWith(
-        'test-graph',
-        outputNodeIds,
-        NodeKind.Runtime,
-      );
-      expect(mockGraphRegistry.getNode).toHaveBeenCalledWith(
-        'test-graph',
-        'runtime-1',
-      );
       expect(mockFilesToolGroup.buildTools).toHaveBeenCalled();
-      expect(result).toEqual(mockTools);
+      expect(instance).toEqual(mockTools);
     });
 
     it('should throw NotFoundException when runtime node is not found in output nodes', async () => {
-      mockGraphRegistry.filterNodesByType = vi.fn().mockReturnValue([]);
+      vi.mocked(mockGraphRegistry.filterNodesByType).mockReturnValue([]);
 
-      const config = {};
-      const outputNodeIds = new Set(['other-node']);
-
-      await expect(
-        template.create(
-          FilesToolTemplateSchema.parse(config),
-          new Set(),
-          outputNodeIds,
-          {
-            graphId: 'test-graph',
-            nodeId: 'test-node',
-            version: '1.0.0',
-          },
-        ),
-      ).rejects.toThrow(NotFoundException);
-      expect(mockGraphRegistry.filterNodesByType).toHaveBeenCalledWith(
-        'test-graph',
+      const config = { includeEditActions: false };
+      const handle = await template.create();
+      const outputNodeIds = new Set<string>();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
         outputNodeIds,
-        NodeKind.Runtime,
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        NotFoundException,
       );
     });
 
     it('should throw NotFoundException when runtime node does not exist in registry', async () => {
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['runtime-1']);
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(undefined);
+      vi.mocked(mockGraphRegistry.getNodeInstance).mockReturnValue(undefined);
 
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1']);
+      const outputNodeIds = new Set([mockRuntimeId]);
+      const config = { includeEditActions: false };
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
 
-      await expect(
-        template.create(
-          FilesToolTemplateSchema.parse(config),
-          new Set(),
-          outputNodeIds,
-          {
-            graphId: 'test-graph',
-            nodeId: 'test-node',
-            version: '1.0.0',
-          },
-        ),
-      ).rejects.toThrow(NotFoundException);
-      expect(mockGraphRegistry.getNode).toHaveBeenCalledWith(
-        'test-graph',
-        'runtime-1',
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        NotFoundException,
       );
     });
 
-    it('should use runtime getter function that fetches fresh instance on each invocation', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-      });
+    it('should use runtime from config', async () => {
+      const mockTools = [{ name: 'read_file' }] as DynamicStructuredTool[];
+      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue(mockTools);
 
-      const mockTools = [{ name: 'repo_list_files' } as DynamicStructuredTool];
-
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['runtime-1']);
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((_graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          return undefined;
-        });
-      mockFilesToolGroup.buildTools = vi.fn().mockReturnValue(mockTools);
-
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1']);
-
-      await template.create(
-        FilesToolTemplateSchema.parse(config),
-        new Set(),
+      const outputNodeIds = new Set([mockRuntimeId]);
+      const config = { includeEditActions: true };
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
         outputNodeIds,
-        {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        },
-      );
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      expect(mockFilesToolGroup.buildTools).toHaveBeenCalled();
-      const buildToolsCall = vi.mocked(mockFilesToolGroup.buildTools).mock
-        .calls[0]![0];
-      expect(buildToolsCall.runtime).toBeInstanceOf(Function);
+      const buildConfig = vi.mocked(mockFilesToolGroup.buildTools).mock
+        .calls[0]![0] as any;
 
-      // Verify the runtime getter function works
-      const runtimeGetter = buildToolsCall.runtime as () => BaseRuntime;
-      const fetchedRuntime = runtimeGetter();
-      expect(fetchedRuntime).toBe(mockRuntime);
+      expect(buildConfig.runtime).toBe(mockRuntime);
     });
 
-    it('should throw NotFoundException when runtime getter cannot find runtime node', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-      });
+    it('should throw NotFoundException when runtime node cannot be found in configure', async () => {
+      const mockTools = [{ name: 'read_file' }] as DynamicStructuredTool[];
+      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue(mockTools);
 
-      const mockTools = [{ name: 'repo_list_files' } as DynamicStructuredTool];
-
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['runtime-1']);
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((_graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          return undefined;
-        });
-      mockFilesToolGroup.buildTools = vi.fn().mockReturnValue(mockTools);
-
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1']);
-
-      await template.create(
-        FilesToolTemplateSchema.parse(config),
-        new Set(),
+      const outputNodeIds = new Set([mockRuntimeId]);
+      const config = { includeEditActions: true };
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
         outputNodeIds,
-        {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        },
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+
+      // Simulate runtime disappearing from registry
+      vi.mocked(mockGraphRegistry.getNodeInstance).mockReturnValue(undefined);
+
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        NotFoundException,
       );
-
-      // Now simulate runtime node being removed
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(undefined);
-
-      const buildToolsCall = vi.mocked(mockFilesToolGroup.buildTools).mock
-        .calls[0]![0];
-      const runtimeGetter = buildToolsCall.runtime as () => BaseRuntime;
-
-      expect(() => runtimeGetter()).toThrow(NotFoundException);
     });
   });
 });

@@ -151,6 +151,24 @@ describe('GraphRevisionService', () => {
           provide: GraphCompiler,
           useValue: {
             validateSchema: vi.fn(),
+            destroyNode: vi.fn(),
+            prepareNode: vi.fn().mockReturnValue({
+              template: { kind: 'runtime' },
+              validatedConfig: {},
+              init: {
+                inputNodeIds: new Set(),
+                outputNodeIds: new Set(),
+                metadata: {},
+              },
+            }),
+            createAndConfigureHandle: vi.fn().mockResolvedValue({
+              instance: {},
+              handle: {
+                provide: async () => ({}),
+                configure: vi.fn(),
+                destroy: vi.fn(),
+              },
+            }),
             templateRegistry: {
               getTemplate: vi.fn(),
             },
@@ -697,6 +715,11 @@ describe('GraphRevisionService', () => {
               template: 'docker-runtime',
               config: { image: 'python:3.11' },
               instance: {},
+              handle: {
+                provide: async () => ({}),
+                configure: vi.fn().mockResolvedValue(undefined),
+                destroy: vi.fn().mockResolvedValue(undefined),
+              },
             },
           ],
         ]),

@@ -34,10 +34,27 @@ export enum GraphRevisionStatus {
   Failed = 'failed',
 }
 
+export interface GraphNode<TConfig = unknown> {
+  config: TConfig;
+  inputNodeIds: Set<string>;
+  outputNodeIds: Set<string>;
+  metadata: GraphMetadataSchemaType & { nodeId: string };
+}
+
+export interface GraphNodeInstanceHandle<
+  TInstance = unknown,
+  TConfig = unknown,
+> {
+  provide(params: GraphNode<TConfig>): Promise<TInstance>;
+  configure(params: GraphNode<TConfig>, instance: TInstance): Promise<void>;
+  destroy(instance: TInstance): Promise<void>;
+}
+
 export interface CompiledGraphNode<TInstance = unknown, TConfig = unknown> {
   id: string;
   type: NodeKind;
   template: string;
+  handle: GraphNodeInstanceHandle<TInstance, TConfig>;
   instance: TInstance;
   config: TConfig;
 }

@@ -1,5 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { Injectable, Scope } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import { z } from 'zod';
 
@@ -24,10 +24,10 @@ export interface McpToolMetadata {
  * Lifecycle: setup() → discoverTools() → execute() → cleanup()
  * Cleanup is called explicitly by GraphCompiler, not by NestJS lifecycle
  */
-@Injectable({ scope: Scope.TRANSIENT })
+@Injectable()
 export abstract class BaseMcp<TConfig = unknown> {
   protected client?: Client;
-  protected runtime?: BaseRuntime | (() => BaseRuntime);
+  protected runtime?: BaseRuntime;
   protected logger: DefaultLogger;
   public config?: TConfig;
 
@@ -36,7 +36,7 @@ export abstract class BaseMcp<TConfig = unknown> {
   }
 
   protected getRuntimeInstance(): BaseRuntime | undefined {
-    return typeof this.runtime === 'function' ? this.runtime() : this.runtime;
+    return this.runtime;
   }
 
   /**
@@ -57,10 +57,7 @@ export abstract class BaseMcp<TConfig = unknown> {
    * Setup: Initialize SDK client with DockerExecTransport
    * Runs MCP server command inside the connected Docker runtime
    */
-  public async setup(
-    config: TConfig,
-    runtime: BaseRuntime | (() => BaseRuntime),
-  ): Promise<void> {
+  public async setup(config: TConfig, runtime: BaseRuntime): Promise<void> {
     this.runtime = runtime;
     this.config = config;
     const mcpConfig = this.getMcpConfig(config);
@@ -68,11 +65,10 @@ export abstract class BaseMcp<TConfig = unknown> {
     // Initialize transport using DockerRuntime.execStream
     const transport = new DockerExecTransport(
       () => {
-        const instance = this.getRuntimeInstance();
-        if (!instance) {
+        if (!this.runtime) {
           throw new Error('Runtime not available');
         }
-        return instance;
+        return this.runtime;
       },
       mcpConfig.command,
       mcpConfig.args,

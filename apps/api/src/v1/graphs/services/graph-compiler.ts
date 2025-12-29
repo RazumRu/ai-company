@@ -1,19 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, DefaultLogger } from '@packages/common';
 
-import { BaseMcp } from '../../agent-mcp/services/base-mcp';
-import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
-import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NodeConnection } from '../../graph-templates/templates/base-node.template';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
 import {
   CompiledGraph,
   CompiledGraphNode,
   GraphEdgeSchemaType,
   GraphMetadataSchemaType,
+  GraphNode,
   GraphNodeSchemaType,
   GraphSchemaType,
   GraphStatus,
@@ -39,38 +35,9 @@ export class GraphCompiler {
       throw new BadRequestException('GRAPH_DUPLICATE_NODE');
     }
 
-    if (schema.edges) {
-      const nodeIds = new Set(schema.nodes.map((n) => n.id));
-      for (const edge of schema.edges) {
-        if (!nodeIds.has(edge.from)) {
-          throw new BadRequestException(
-            'GRAPH_EDGE_NOT_FOUND',
-            `Edge references non-existent source node: ${edge.from}`,
-          );
-        }
-        if (!nodeIds.has(edge.to)) {
-          throw new BadRequestException(
-            'GRAPH_EDGE_NOT_FOUND',
-            `Edge references non-existent target node: ${edge.to}`,
-          );
-        }
-      }
-    }
-
-    for (const node of schema.nodes) {
-      if (!this.templateRegistry.hasTemplate(node.template)) {
-        throw new BadRequestException(
-          'TEMPLATE_NOT_REGISTERED',
-          `Template '${node.template}' is not registered`,
-        );
-      }
-      this.templateRegistry.validateTemplateConfig(node.template, node.config);
-    }
-
-    // Generic edge-based validation: every edge must be between existing nodes and
-    // must satisfy target's allowedTemplates rules
     const nodeMap = new Map(schema.nodes.map((n) => [n.id, n]));
     const edges = schema.edges || [];
+
     for (const edge of edges) {
       const from = nodeMap.get(edge.from);
       const to = nodeMap.get(edge.to);
@@ -87,17 +54,22 @@ export class GraphCompiler {
         );
       }
 
-      // Validate connection per target's constraints
       this.validateTemplateConnection(from.template, to.template);
     }
 
-    // Validate required connections: templates with required=true in allowedTemplates must have at least one connection
+    for (const node of schema.nodes) {
+      if (!this.templateRegistry.hasTemplate(node.template)) {
+        throw new BadRequestException(
+          'TEMPLATE_NOT_REGISTERED',
+          `Template '${node.template}' is not registered`,
+        );
+      }
+      this.templateRegistry.validateTemplateConfig(node.template, node.config);
+    }
+
     this.validateRequiredConnections(schema.nodes, edges);
   }
 
-  /**
-   * Validates that a template can connect to another template based on allowedTemplates and allowedTemplateKinds
-   */
   private validateTemplateConnection(
     sourceTemplateName: string,
     targetTemplateName: string,
@@ -108,11 +80,9 @@ export class GraphCompiler {
       this.templateRegistry.getTemplate(targetTemplateName);
 
     if (!sourceTemplate || !targetTemplate) {
-      return; // Let other validation handle missing templates
+      return;
     }
 
-    // Source template declares allowed outgoing connections with discriminated union
-    // outputs is now required - if empty array, no connections allowed
     if (sourceTemplate.outputs) {
       if (sourceTemplate.outputs.length === 0) {
         throw new BadRequestException(
@@ -122,7 +92,6 @@ export class GraphCompiler {
       }
 
       const isAllowed = sourceTemplate.outputs.some((rule: NodeConnection) => {
-        if (!rule || typeof rule !== 'object') return false;
         if (rule.type === 'template') return rule.value === targetTemplateName;
         if (rule.type === 'kind') return rule.value === targetTemplate.kind;
         return false;
@@ -139,8 +108,6 @@ export class GraphCompiler {
       }
     }
 
-    // Target template declares allowed incoming connections with discriminated union
-    // inputs is now required - if empty array, no connections allowed
     if (targetTemplate.inputs) {
       if (targetTemplate.inputs.length === 0) {
         throw new BadRequestException(
@@ -150,7 +117,6 @@ export class GraphCompiler {
       }
 
       const isAllowed = targetTemplate.inputs.some((rule: NodeConnection) => {
-        if (!rule || typeof rule !== 'object') return false;
         if (rule.type === 'template') return rule.value === sourceTemplateName;
         if (rule.type === 'kind') return rule.value === sourceTemplate.kind;
         return false;
@@ -168,9 +134,6 @@ export class GraphCompiler {
     }
   }
 
-  /**
-   * Validates that templates with required=true in outputs have at least one connection
-   */
   private validateRequiredConnections(
     nodes: GraphNodeSchemaType[],
     edges: GraphEdgeSchemaType[],
@@ -179,17 +142,15 @@ export class GraphCompiler {
 
     for (const node of nodes) {
       const template = this.templateRegistry.getTemplate(node.template);
-      if (!template || !template.outputs) {
+      if (!template?.outputs) {
         continue;
       }
 
-      // Find required connection rules
       const requiredRules = template.outputs.filter(
         (rule: NodeConnection) => rule.required === true,
       );
 
       for (const rule of requiredRules) {
-        // Check if this node has at least one connection matching the required rule
         const hasRequiredConnection = edges.some((edge) => {
           if (edge.from !== node.id) return false;
 
@@ -201,7 +162,6 @@ export class GraphCompiler {
           );
           if (!targetTemplate) return false;
 
-          // Check if the target matches the required rule
           if (rule.type === 'template') {
             return rule.value === targetNode.template;
           }
@@ -246,11 +206,9 @@ export class GraphCompiler {
     const stateManager = await this.graphStateFactory.create(graphId);
     const edges = schema.edges || [];
 
-    // Create the compiled graph structure early and register it
-    // This allows templates to look up nodes via GraphRegistry during compilation
     const compiledGraph: CompiledGraph = {
       nodes: compiledNodes,
-      edges: schema.edges || [],
+      edges,
       state: stateManager,
       destroy: async () => {
         await this.destroyGraph(compiledNodes);
@@ -259,7 +217,6 @@ export class GraphCompiler {
       status: GraphStatus.Compiling,
     };
 
-    // Register the graph before compiling nodes so templates can access it
     this.graphRegistry.register(graphId, compiledGraph);
 
     try {
@@ -275,55 +232,23 @@ export class GraphCompiler {
         );
         compiledNodes.set(node.id, compiledNode);
         stateManager.attachGraphNode(node.id, compiledNode);
-
-        // Node is now available in the registry for other templates to reference
       }
 
       this.graphRegistry.setStatus(graphId, GraphStatus.Running);
 
       return compiledGraph;
     } catch (error) {
-      // If compilation fails, unregister the graph
       this.graphRegistry.unregister(graphId);
       throw error;
     }
   }
 
-  /**
-   * Destroy a single node by calling its destroy/stop method
-   */
   async destroyNode(node: CompiledGraphNode): Promise<void> {
-    if (node.type === NodeKind.Trigger) {
-      const trigger = node.instance as BaseTrigger<unknown>;
-      if (trigger && typeof trigger.stop === 'function') {
-        await trigger.stop().catch((error: Error) => {
-          this.logger.error(error, `Failed to stop trigger ${node.id}`);
-        });
-      }
-    } else if (node.type === NodeKind.SimpleAgent) {
-      const agent = node.instance as SimpleAgent;
-      await agent.stop().catch((error: Error) => {
-        this.logger.error(error, `Failed to stop agent ${node.id}`);
-      });
-    } else if (node.type === NodeKind.Mcp) {
-      const mcp = node.instance as BaseMcp;
-      if (mcp && typeof mcp.cleanup === 'function') {
-        await mcp.cleanup().catch((error: Error) => {
-          this.logger.error(error, `Failed to cleanup MCP ${node.id}`);
-        });
-      }
-    } else if (node.type === NodeKind.Runtime) {
-      const runtime = node.instance as BaseRuntime;
-      if (runtime && typeof runtime.stop === 'function') {
-        await Promise.race([
-          runtime.stop(),
-          new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error('Runtime stop timeout')), 15000),
-          ),
-        ]).catch((error: Error) => {
-          this.logger.error(error, `Failed to stop runtime ${node.id}`);
-        });
-      }
+    try {
+      await node.handle.destroy(node.instance);
+    } catch (error) {
+      this.logger.error(error as Error, `Failed to destroy node ${node.id}`);
+      throw error;
     }
   }
 
@@ -361,15 +286,6 @@ export class GraphCompiler {
     await Promise.all(runtimeNodes.map((node) => this.destroyNode(node)));
   }
 
-  async destroyNotCompiledGraph(graph: GraphEntity): Promise<void> {
-    const runtimeNodes = graph.schema.nodes.filter(
-      (node) => node.template === 'docker-runtime',
-    );
-    if (runtimeNodes.length === 0) return;
-
-    await DockerRuntime.cleanupByLabels({ 'ai-company/graph_id': graph.id });
-  }
-
   private async compileNode(
     node: GraphNodeSchemaType,
     compiledNodes: Map<string, CompiledGraphNode>,
@@ -377,7 +293,42 @@ export class GraphCompiler {
     edges: GraphEdgeSchemaType[],
     stateManager: GraphStateManager,
   ): Promise<CompiledGraphNode> {
-    const config = this.templateRegistry.validateTemplateConfig(
+    const { template, validatedConfig, init } = this.prepareNode(
+      node,
+      compiledNodes,
+      metadata,
+      edges,
+    );
+
+    stateManager.registerNode(node.id);
+
+    const { handle, instance } = await this.createAndConfigureHandle(
+      template,
+      validatedConfig,
+      init,
+    );
+
+    return {
+      id: node.id,
+      type: template.kind,
+      template: node.template,
+      handle,
+      instance,
+      config: validatedConfig,
+    } satisfies CompiledGraphNode;
+  }
+
+  public prepareNode(
+    node: GraphNodeSchemaType,
+    compiledNodes: Map<string, CompiledGraphNode>,
+    metadata: GraphMetadataSchemaType,
+    edges: GraphEdgeSchemaType[],
+  ): {
+    template: NonNullable<ReturnType<TemplateRegistry['getTemplate']>>;
+    validatedConfig: unknown;
+    init: GraphNode<unknown>;
+  } {
+    const validatedConfig = this.templateRegistry.validateTemplateConfig(
       node.template,
       node.config,
     );
@@ -390,77 +341,89 @@ export class GraphCompiler {
       );
     }
 
-    // Create input and output node ID sets based on edge direction
+    const { inputNodeIds, outputNodeIds } = this.computeNodeConnections(
+      node.id,
+      compiledNodes,
+      edges,
+    );
+
+    const init: GraphNode<unknown> = {
+      config: validatedConfig,
+      inputNodeIds,
+      outputNodeIds,
+      metadata: {
+        ...metadata,
+        nodeId: node.id,
+      },
+    };
+
+    return { template, validatedConfig, init };
+  }
+
+  public async createAndConfigureHandle(
+    template: NonNullable<ReturnType<TemplateRegistry['getTemplate']>>,
+    validatedConfig: unknown,
+    init: GraphNode<unknown>,
+  ): Promise<{
+    handle: Awaited<ReturnType<typeof template.create>>;
+    instance: unknown;
+  }> {
+    const handle = await template.create();
+    const instance = await handle.provide(init);
+    await handle.configure(init, instance);
+    return { handle, instance };
+  }
+
+  private computeNodeConnections(
+    nodeId: string,
+    compiledNodes: Map<string, CompiledGraphNode>,
+    edges: GraphEdgeSchemaType[],
+  ): { inputNodeIds: Set<string>; outputNodeIds: Set<string> } {
     const inputNodeIds = new Set<string>();
     const outputNodeIds = new Set<string>();
 
-    // Find edges where this node is the source (outputs) or target (inputs)
-    const outgoingEdges = edges.filter((edge) => edge.from === node.id);
-    const incomingEdges = edges.filter((edge) => edge.to === node.id);
+    const outgoingEdges = edges.filter((edge) => edge.from === nodeId);
+    const incomingEdges = edges.filter((edge) => edge.to === nodeId);
 
-    // Add node IDs that connect to this node (its inputs)
     for (const edge of incomingEdges) {
       if (compiledNodes.has(edge.from)) {
         inputNodeIds.add(edge.from);
       }
     }
 
-    // Add node IDs that this node connects to (its outputs)
     for (const edge of outgoingEdges) {
       if (compiledNodes.has(edge.to)) {
         outputNodeIds.add(edge.to);
       }
     }
 
-    stateManager.registerNode(node.id);
-
-    const instance = await template.create(
-      config,
-      inputNodeIds,
-      outputNodeIds,
-      {
-        ...metadata,
-        nodeId: node.id,
-      },
-    );
-
-    return {
-      id: node.id,
-      type: template.kind,
-      template: node.template,
-      instance,
-      config,
-    } satisfies CompiledGraphNode;
+    return { inputNodeIds, outputNodeIds };
   }
 
-  /**
-   * Returns the build order for the graph nodes using a dependency-based topological sort.
-   * Throws if there are cycles.
-   */
   public getBuildOrder(schema: GraphSchemaType): GraphNodeSchemaType[] {
     const edges = schema.edges || [];
 
-    const dependsOn = new Map<string, Set<string>>();
-    const dependents = new Map<string, Set<string>>();
+    const outgoingEdgeCount = new Map<string, number>();
+    const incomingEdges = new Map<string, Set<string>>();
 
     for (const node of schema.nodes) {
-      dependsOn.set(node.id, new Set());
-      dependents.set(node.id, new Set());
+      outgoingEdgeCount.set(node.id, 0);
+      incomingEdges.set(node.id, new Set());
     }
 
+    // Edge semantics: edge.from depends on edge.to
+    // So we count outgoing edges (dependencies) and track incoming edges (dependents)
     for (const edge of edges) {
-      dependsOn.get(edge.from)!.add(edge.to);
-      dependents.get(edge.to)!.add(edge.from);
-    }
-
-    const inDegree = new Map<string, number>();
-    for (const node of schema.nodes) {
-      inDegree.set(node.id, dependsOn.get(node.id)!.size);
+      outgoingEdgeCount.set(
+        edge.from,
+        (outgoingEdgeCount.get(edge.from) || 0) + 1,
+      );
+      incomingEdges.get(edge.to)!.add(edge.from);
     }
 
     const queue: GraphNodeSchemaType[] = [];
     for (const node of schema.nodes) {
-      if (inDegree.get(node.id) === 0) {
+      if (outgoingEdgeCount.get(node.id) === 0) {
         queue.push(node);
       }
     }
@@ -471,12 +434,12 @@ export class GraphCompiler {
       const currentNode = queue.shift()!;
       buildOrder.push(currentNode);
 
-      const currentDependents = dependents.get(currentNode.id)!;
-      for (const dependentId of currentDependents) {
-        const newInDegree = inDegree.get(dependentId)! - 1;
-        inDegree.set(dependentId, newInDegree);
+      const dependents = incomingEdges.get(currentNode.id)!;
+      for (const dependentId of dependents) {
+        const newCount = outgoingEdgeCount.get(dependentId)! - 1;
+        outgoingEdgeCount.set(dependentId, newCount);
 
-        if (newInDegree === 0) {
+        if (newCount === 0) {
           const dependentNode = schema.nodes.find((n) => n.id === dependentId);
           if (dependentNode) {
             queue.push(dependentNode);

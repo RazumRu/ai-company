@@ -37,7 +37,6 @@ import {
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
-import { RegisterAgent } from '../../decorators/register-agent.decorator';
 import { GraphThreadState } from '../graph-thread-state';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InjectPendingNode } from '../nodes/inject-pending-node';
@@ -127,7 +126,6 @@ type ActiveRunEntry = {
 };
 
 @Injectable({ scope: Scope.TRANSIENT })
-@RegisterAgent()
 export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private graph?: CompiledStateGraph<BaseAgentState, Record<string, unknown>>;
   private graphThreadState?: GraphThreadState;
@@ -793,8 +791,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         content: msg.content,
         role: msg.type,
         additionalKwargs: msg.additional_kwargs,
-        createdAt:
-          msg.additional_kwargs?.created_at || new Date().toISOString(),
       })),
       reasoningChunks: Array.from(threadState.reasoningChunks.entries()).reduce(
         (res, [id, msg]) => {

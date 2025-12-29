@@ -18,7 +18,7 @@ export const GhBaseToolSchema = z.object({
 export type GhBaseToolSchemaType = z.infer<typeof GhBaseToolSchema>;
 
 export type GhBaseToolConfig = {
-  runtime: BaseRuntime | (() => BaseRuntime);
+  runtime: BaseRuntime;
   patToken: string;
 };
 

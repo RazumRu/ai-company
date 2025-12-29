@@ -5,6 +5,7 @@ import { Brackets } from 'typeorm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
+import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
@@ -17,7 +18,7 @@ import { GraphRestorationService } from './graph-restoration.service';
 // Mock DockerRuntime static method
 vi.mock('../../runtime/services/docker-runtime', () => ({
   DockerRuntime: {
-    cleanupByLabels: vi.fn(),
+    cleanupByLabels: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -93,12 +94,12 @@ describe('GraphRestorationService', () => {
 
     const mockGraphCompiler = {
       compile: vi.fn(),
-      destroyNotCompiledGraph: vi.fn(),
     };
 
     const mockGraphRegistry = {
       get: vi.fn(),
       register: vi.fn(),
+      getNodeInstance: vi.fn(),
     };
 
     const mockThreadsDao = {
@@ -292,22 +293,29 @@ describe('GraphRestorationService', () => {
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph2.id);
     });
 
-    it('should destroy temporary graphs using destroyNotCompiledGraph', async () => {
+    it('should destroy temporary graphs and cleanup Docker containers', async () => {
       // Arrange
       const temporaryGraph: GraphEntity = {
         ...mockGraph,
         id: 'temporary-graph-id',
         name: 'Temporary Graph',
         temporary: true,
+        schema: {
+          nodes: [
+            {
+              id: 'runtime-1',
+              template: 'docker-runtime',
+              config: {},
+            },
+          ],
+          edges: [],
+        },
       };
 
       vi.mocked(graphDao.getAll)
         .mockResolvedValueOnce([temporaryGraph])
         .mockResolvedValueOnce([]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
-      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockResolvedValue(
-        undefined,
-      );
 
       // Act
       await service.restoreRunningGraphs();
@@ -317,27 +325,37 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
-        temporaryGraph,
-      );
+      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
+        'ai-company/graph_id': temporaryGraph.id,
+      });
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       expect(graphRegistry.register).not.toHaveBeenCalled();
     });
 
-    it('should handle destroyNotCompiledGraph errors gracefully', async () => {
+    it('should handle Docker cleanup errors gracefully', async () => {
       // Arrange
       const temporaryGraph: GraphEntity = {
         ...mockGraph,
         id: 'temporary-graph-id',
         name: 'Temporary Graph',
         temporary: true,
+        schema: {
+          nodes: [
+            {
+              id: 'runtime-1',
+              template: 'docker-runtime',
+              config: {},
+            },
+          ],
+          edges: [],
+        },
       };
 
       vi.mocked(graphDao.getAll)
         .mockResolvedValueOnce([temporaryGraph])
         .mockResolvedValueOnce([]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
-      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockRejectedValue(
+      vi.mocked(DockerRuntime.cleanupByLabels).mockRejectedValueOnce(
         new Error('Destroy failed'),
       );
 
@@ -349,9 +367,9 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
-        temporaryGraph,
-      );
+      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
+        'ai-company/graph_id': temporaryGraph.id,
+      });
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       expect(graphRegistry.register).not.toHaveBeenCalled();
     });
@@ -363,6 +381,16 @@ describe('GraphRestorationService', () => {
         id: 'temporary-graph-id',
         name: 'Temporary Graph',
         temporary: true,
+        schema: {
+          nodes: [
+            {
+              id: 'runtime-1',
+              template: 'docker-runtime',
+              config: {},
+            },
+          ],
+          edges: [],
+        },
       };
       const permanentGraph: GraphEntity = {
         ...mockGraph,
@@ -378,9 +406,6 @@ describe('GraphRestorationService', () => {
       vi.mocked(graphRegistry.get)
         .mockReturnValueOnce(undefined)
         .mockReturnValueOnce(mockCompiledGraph);
-      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockResolvedValue(
-        undefined,
-      );
       vi.mocked(graphsService.run).mockResolvedValueOnce({
         id: permanentGraph.id,
         status: GraphStatus.Running,
@@ -394,10 +419,10 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      // Temporary graph should be destroyed using destroyNotCompiledGraph
-      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
-        temporaryGraph,
-      );
+      // Temporary graph should be destroyed
+      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
+        'ai-company/graph_id': temporaryGraph.id,
+      });
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       // Then permanent graph should be started via graphs service
       expect(graphsService.run).toHaveBeenCalledWith(permanentGraph.id);
@@ -410,13 +435,20 @@ describe('GraphRestorationService', () => {
         id: 'temporary-graph-id',
         name: 'Temporary Graph',
         temporary: true,
+        schema: {
+          nodes: [
+            {
+              id: 'runtime-1',
+              template: 'docker-runtime',
+              config: {},
+            },
+          ],
+          edges: [],
+        },
       };
       const deletionError = new Error('Deletion failed');
 
       mockGraphDaoLists([temporaryGraph], []);
-      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockResolvedValue(
-        undefined,
-      );
       vi.mocked(graphDao.deleteById).mockRejectedValue(deletionError);
 
       // Act
@@ -427,9 +459,9 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
-        temporaryGraph,
-      );
+      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
+        'ai-company/graph_id': temporaryGraph.id,
+      });
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       expect(logger.warn).toHaveBeenCalled();
     });
@@ -441,11 +473,21 @@ describe('GraphRestorationService', () => {
         id: 'temporary-graph-id',
         name: 'Temporary Graph',
         temporary: true,
+        schema: {
+          nodes: [
+            {
+              id: 'runtime-1',
+              template: 'docker-runtime',
+              config: {},
+            },
+          ],
+          edges: [],
+        },
       };
       const cleanupError = new Error('Container cleanup failed');
 
       mockGraphDaoLists([temporaryGraph], []);
-      vi.mocked(graphCompiler.destroyNotCompiledGraph).mockRejectedValue(
+      vi.mocked(DockerRuntime.cleanupByLabels).mockRejectedValueOnce(
         cleanupError,
       );
 
@@ -457,9 +499,9 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(graphCompiler.destroyNotCompiledGraph).toHaveBeenCalledWith(
-        temporaryGraph,
-      );
+      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
+        'ai-company/graph_id': temporaryGraph.id,
+      });
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
     });
 
@@ -477,6 +519,11 @@ describe('GraphRestorationService', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         instance: mockAgent,
+        handle: {
+          provide: async () => mockAgent,
+          configure: vi.fn(),
+          destroy: vi.fn(),
+        },
         config: {},
       };
 
@@ -618,6 +665,11 @@ describe('GraphRestorationService', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         instance: mockAgent,
+        handle: {
+          provide: async () => mockAgent,
+          configure: vi.fn(),
+          destroy: vi.fn(),
+        },
         config: {},
       };
 
@@ -712,6 +764,11 @@ describe('GraphRestorationService', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         instance: mockAgent,
+        handle: {
+          provide: async () => mockAgent,
+          configure: vi.fn(),
+          destroy: vi.fn(),
+        },
         config: {},
       };
 
@@ -803,6 +860,11 @@ describe('GraphRestorationService', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         instance: mockAgent,
+        handle: {
+          provide: async () => mockAgent,
+          configure: vi.fn(),
+          destroy: vi.fn(),
+        },
         config: {},
       };
 

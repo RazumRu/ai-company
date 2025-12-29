@@ -9,16 +9,10 @@ import { z } from 'zod';
 import { ManualTrigger } from '../../../agent-triggers/services/manual-trigger';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import {
-  CompiledGraphNode as _CompiledGraphNode,
-  NodeKind,
-} from '../../../graphs/graphs.types';
+import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import {
-  NodeBaseTemplateMetadata,
-  TriggerNodeBaseTemplate,
-} from '../base-node.template';
+import { TriggerNodeBaseTemplate } from '../base-node.template';
 
 /**
  * Manual trigger template schema
@@ -48,6 +42,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
       type: 'kind',
       value: NodeKind.SimpleAgent,
       multiple: true,
+      required: true,
     },
   ] as const;
 
@@ -59,100 +54,92 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
     super();
   }
 
-  async create(
-    config: ManualTriggerTemplateSchemaType,
-    _inputNodeIds: Set<string>,
-    outputNodeIds: Set<string>,
-    metadata: NodeBaseTemplateMetadata,
-  ): Promise<ManualTrigger> {
-    // Find agent node IDs from output connections
-    if (outputNodeIds.size === 0) {
-      throw new NotFoundException(
-        'AGENT_NOT_FOUND',
-        `No output connections found for trigger`,
-      );
-    }
-
-    // Get the first output node ID (should be an agent)
-    const agentNodeId = Array.from(outputNodeIds)[0]!;
-
-    // Create a new ManualTrigger instance
-    const manualTrigger = await this.moduleRef.resolve(
-      ManualTrigger,
-      undefined,
-      {
-        strict: false,
-      },
-    );
-
-    // Set the agent invocation function
-    manualTrigger.setInvokeAgent(
-      async (
-        messages: HumanMessage[],
-        runnableConfig: RunnableConfig<BaseAgentConfigurable>,
+  public async create() {
+    return {
+      provide: async (_params: GraphNode<ManualTriggerTemplateSchemaType>) =>
+        this.createNewInstance(this.moduleRef, ManualTrigger),
+      configure: async (
+        params: GraphNode<ManualTriggerTemplateSchemaType>,
+        instance: ManualTrigger,
       ) => {
-        // Look up the agent from the registry at runtime to get the current instance
-        const currentAgentNode = this.graphRegistry.getNode<SimpleAgent>(
-          metadata.graphId,
-          agentNodeId,
-        );
+        const outputNodeIds = params.outputNodeIds;
+        const metadata = params.metadata;
 
-        if (!currentAgentNode) {
+        if (outputNodeIds.size === 0) {
           throw new NotFoundException(
             'AGENT_NOT_FOUND',
-            `Agent node ${agentNodeId} not found in graph ${metadata.graphId}`,
+            `No output connections found for trigger`,
           );
         }
 
-        const agent = currentAgentNode.instance;
+        const agentNodeId = Array.from(outputNodeIds)[0]!;
 
-        const threadId = `${metadata.graphId}:${runnableConfig.configurable?.thread_id || v4()}`;
-        const checkpointNs = `${threadId}:${agentNodeId}`;
+        instance.setInvokeAgent(
+          async (
+            messages: HumanMessage[],
+            runnableConfig: RunnableConfig<BaseAgentConfigurable>,
+          ) => {
+            const currentAgentNode = this.graphRegistry.getNode<SimpleAgent>(
+              metadata.graphId,
+              agentNodeId,
+            );
 
-        // The threadId at trigger level becomes the parent_thread_id for all agents in this execution
-        const parentThreadId = threadId;
+            if (!currentAgentNode) {
+              throw new NotFoundException(
+                'AGENT_NOT_FOUND',
+                `Agent node ${agentNodeId} not found in graph ${metadata.graphId}`,
+              );
+            }
 
-        // Enrich runnableConfig with graph and node metadata
-        const enrichedConfig: RunnableConfig<BaseAgentConfigurable> = {
-          ...runnableConfig,
-          configurable: {
-            ...runnableConfig.configurable,
-            graph_id: metadata.graphId,
-            node_id: agentNodeId,
-            thread_id: threadId,
-            checkpoint_ns: checkpointNs,
-            parent_thread_id: parentThreadId,
-            source: `${this.name} (${this.kind})`,
+            const agent = currentAgentNode.instance;
+
+            const threadId = `${metadata.graphId}:${runnableConfig.configurable?.thread_id || v4()}`;
+            const checkpointNs = `${threadId}:${agentNodeId}`;
+            const parentThreadId = threadId;
+
+            const enrichedConfig: RunnableConfig<BaseAgentConfigurable> = {
+              ...runnableConfig,
+              configurable: {
+                ...runnableConfig.configurable,
+                graph_id: metadata.graphId,
+                node_id: agentNodeId,
+                thread_id: threadId,
+                checkpoint_ns: checkpointNs,
+                parent_thread_id: parentThreadId,
+                source: `${this.name} (${this.kind})`,
+              },
+            };
+
+            const promise = agent.runOrAppend(
+              threadId,
+              messages,
+              undefined,
+              enrichedConfig,
+            );
+
+            if (runnableConfig.configurable?.async) {
+              void promise.catch((err) => {
+                this.logger.error(err);
+              });
+
+              return {
+                messages: [],
+                threadId,
+                checkpointNs,
+              };
+            }
+
+            return await promise;
           },
-        };
-
-        const promise = agent.runOrAppend(
-          threadId,
-          messages,
-          undefined,
-          enrichedConfig,
         );
 
-        // Support async execution: if configurable.async is true, fire-and-forget
-        if (runnableConfig.configurable?.async) {
-          void promise.catch((err) => {
-            this.logger.error(err);
-          });
-
-          return {
-            messages: [],
-            threadId,
-            checkpointNs,
-          };
+        if (!instance.isStarted) {
+          await instance.start();
         }
-
-        return await promise;
       },
-    );
-
-    // Start the trigger
-    await manualTrigger.start();
-
-    return manualTrigger;
+      destroy: async (instance: ManualTrigger) => {
+        await instance.stop().catch(() => {});
+      },
+    };
   }
 }

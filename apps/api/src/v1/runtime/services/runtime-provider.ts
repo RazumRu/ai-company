@@ -20,21 +20,6 @@ export class RuntimeProvider {
     const runtime = this.resolveRuntime(opts);
     if (!runtime) throw new Error(`Runtime ${opts.type} is not supported`);
 
-    if (opts.autostart) {
-      await runtime.start({
-        image: opts.image,
-        env: opts.env,
-        workdir: opts.workdir,
-        labels: opts.labels,
-        initScript: opts.initScript,
-        initScriptTimeoutMs: opts.initScriptTimeoutMs,
-        containerName: opts.containerName,
-        network: opts.network,
-        enableDind: opts.enableDind,
-        recreate: opts.recreate,
-      });
-    }
-
     return runtime;
   }
 }

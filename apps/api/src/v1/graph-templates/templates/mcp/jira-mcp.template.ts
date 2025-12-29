@@ -1,16 +1,15 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
 import type { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { JiraMcp } from '../../../agent-mcp/services/mcp/jira-mcp';
+import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { DockerRuntime } from '../../../runtime/services/docker-runtime';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import {
-  McpNodeBaseTemplate,
-  NodeBaseTemplateMetadata,
-} from '../base-node.template';
+import { McpNodeBaseTemplate } from '../base-node.template';
 
 export const JiraMcpTemplateSchema = z.object({
   name: z.string().min(1).default('jira'),
@@ -42,40 +41,52 @@ export class JiraMcpTemplate extends McpNodeBaseTemplate<
   ] as const;
 
   constructor(
-    private readonly jiraMcp: JiraMcp,
+    private readonly moduleRef: ModuleRef,
     private readonly graphRegistry: GraphRegistry,
   ) {
     super();
   }
 
-  async create(
-    config: JiraMcpTemplateSchemaType,
-    _inputNodeIds: Set<string>,
-    outputNodeIds: Set<string>,
-    metadata: NodeBaseTemplateMetadata,
-  ): Promise<BaseMcp> {
-    // Find connected Runtime
-    const runtimeNodeId = Array.from(outputNodeIds).find((nodeId) => {
-      const node = this.graphRegistry.getNode(metadata.graphId, nodeId);
-      return node?.type === NodeKind.Runtime;
-    });
+  public async create() {
+    return {
+      provide: async (_params: GraphNode<JiraMcpTemplateSchemaType>) =>
+        this.createNewInstance(this.moduleRef, JiraMcp),
+      configure: async (
+        params: GraphNode<JiraMcpTemplateSchemaType>,
+        instance: JiraMcp,
+      ) => {
+        const graphId = params.metadata.graphId;
+        const outputNodeIds = params.outputNodeIds;
+        const config = params.config;
 
-    if (!runtimeNodeId) {
-      throw new Error('Jira MCP requires a Docker Runtime connection');
-    }
+        const runtimeNodeId = Array.from(outputNodeIds).find((nodeId) => {
+          const node = this.graphRegistry.getNode(graphId, nodeId);
+          return node?.type === NodeKind.Runtime;
+        });
 
-    const runtimeNode = this.graphRegistry.getNode<DockerRuntime>(
-      metadata.graphId,
-      runtimeNodeId,
-    );
+        if (!runtimeNodeId) {
+          throw new Error('Jira MCP requires a Docker Runtime connection');
+        }
 
-    if (!runtimeNode?.instance) {
-      throw new Error(`Runtime instance not found for node ${runtimeNodeId}`);
-    }
+        // Validate that runtime exists immediately during configuration
+        const runtime = this.graphRegistry.getNodeInstance<DockerRuntime>(
+          graphId,
+          runtimeNodeId,
+        );
+        if (!runtime) {
+          throw new Error(
+            `Runtime instance not found for node ${runtimeNodeId}`,
+          );
+        }
 
-    // Setup MCP service with runtime
-    await this.jiraMcp.setup(config, runtimeNode.instance);
+        // Reconfigure: cleanup then setup again
+        await instance.cleanup().catch(() => {});
 
-    return this.jiraMcp;
+        await instance.setup(config, runtime);
+      },
+      destroy: async (instance: JiraMcp) => {
+        await instance.cleanup().catch(() => {});
+      },
+    };
   }
 }

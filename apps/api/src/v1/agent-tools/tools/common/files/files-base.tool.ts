@@ -7,7 +7,7 @@ import { execRuntimeWithContext } from '../../../agent-tools.utils';
 import { BaseTool } from '../../base-tool';
 
 export type FilesBaseToolConfig = {
-  runtime: BaseRuntime | (() => BaseRuntime);
+  runtime: BaseRuntime;
 };
 
 @Injectable()

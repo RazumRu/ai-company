@@ -85,6 +85,7 @@ describe('Graph Templates Integration Tests', () => {
         type: 'kind',
         value: NodeKind.SimpleAgent,
         multiple: true,
+        required: true,
       },
     ]);
     expect(manualTrigger?.schema).toMatchObject({

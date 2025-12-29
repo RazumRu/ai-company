@@ -21,12 +21,18 @@ describe('GraphRegistry', () => {
     const nodes = new Map<string, CompiledGraphNode>();
 
     for (let i = 1; i <= nodeCount; i++) {
+      const instance = { mockInstance: `instance-${i}` };
       nodes.set(`node-${i}`, {
         id: `node-${i}`,
         type: i % 2 === 0 ? NodeKind.Runtime : NodeKind.Tool,
         template: i % 2 === 0 ? 'docker-runtime' : 'web-search-tool',
+        instance,
         config: {},
-        instance: { mockInstance: `instance-${i}` },
+        handle: {
+          provide: async () => instance,
+          configure: async () => {},
+          destroy: async () => {},
+        },
       });
     }
 
@@ -164,6 +170,7 @@ describe('GraphRegistry', () => {
         template: 'docker-runtime',
         config: {},
         instance: { mockInstance: 'instance-2' },
+        handle: expect.any(Object),
       });
     });
 
@@ -258,6 +265,7 @@ describe('GraphRegistry', () => {
 
     it('should handle graph with single node', () => {
       const graphId = 'single-node-graph';
+      const onlyInstance = { agent: 'test-agent' };
       const singleNodeGraph: CompiledGraph = {
         nodes: new Map([
           [
@@ -266,8 +274,13 @@ describe('GraphRegistry', () => {
               id: 'only-node',
               type: NodeKind.SimpleAgent,
               template: 'simple-agent',
+              instance: onlyInstance,
               config: {},
-              instance: { agent: 'test-agent' },
+              handle: {
+                provide: async () => onlyInstance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
         ]),
@@ -288,7 +301,8 @@ describe('GraphRegistry', () => {
         type: NodeKind.SimpleAgent,
         template: 'simple-agent',
         config: {},
-        instance: { agent: 'test-agent' },
+        instance: onlyInstance,
+        handle: expect.any(Object),
       });
     });
 
@@ -378,6 +392,10 @@ describe('GraphRegistry', () => {
   describe('type safety and node types', () => {
     it('should handle different node types correctly', () => {
       const graphId = 'mixed-types-graph';
+      const runtimeInstance = { container: 'docker-container' };
+      const toolInstance = { toolName: 'shell-tool' };
+      const agentInstance = { agentName: 'test-agent' };
+      const triggerInstance = { triggerType: 'manual' };
       const mixedGraph: CompiledGraph = {
         nodes: new Map([
           [
@@ -386,8 +404,13 @@ describe('GraphRegistry', () => {
               id: 'runtime-node',
               type: NodeKind.Runtime,
               template: 'docker-runtime',
+              instance: runtimeInstance,
               config: {},
-              instance: { container: 'docker-container' },
+              handle: {
+                provide: async () => runtimeInstance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
           [
@@ -396,8 +419,13 @@ describe('GraphRegistry', () => {
               id: 'tool-node',
               type: NodeKind.Tool,
               template: 'shell-tool',
+              instance: toolInstance,
               config: {},
-              instance: { toolName: 'shell-tool' },
+              handle: {
+                provide: async () => toolInstance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
           [
@@ -406,8 +434,13 @@ describe('GraphRegistry', () => {
               id: 'agent-node',
               type: NodeKind.SimpleAgent,
               template: 'simple-agent',
+              instance: agentInstance,
               config: {},
-              instance: { agentName: 'test-agent' },
+              handle: {
+                provide: async () => agentInstance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
           [
@@ -416,8 +449,13 @@ describe('GraphRegistry', () => {
               id: 'trigger-node',
               type: NodeKind.Trigger,
               template: 'manual-trigger',
+              instance: triggerInstance,
               config: {},
-              instance: { triggerType: 'manual' },
+              handle: {
+                provide: async () => triggerInstance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
         ]),
@@ -707,6 +745,9 @@ describe('GraphRegistry', () => {
 
     it('should work with complex node types', () => {
       const graphId = 'complex-graph';
+      const agent1Instance = { agent: 'agent-1' };
+      const agent2Instance = { agent: 'agent-2' };
+      const tool1Instance = { tool: 'tool-1' };
       const complexGraph: CompiledGraph = {
         nodes: new Map([
           [
@@ -715,8 +756,13 @@ describe('GraphRegistry', () => {
               id: 'agent-1',
               type: NodeKind.SimpleAgent,
               template: 'simple-agent',
+              instance: agent1Instance,
               config: {},
-              instance: { agent: 'agent-1' },
+              handle: {
+                provide: async () => agent1Instance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
           [
@@ -725,8 +771,13 @@ describe('GraphRegistry', () => {
               id: 'agent-2',
               type: NodeKind.SimpleAgent,
               template: 'simple-agent',
+              instance: agent2Instance,
               config: {},
-              instance: { agent: 'agent-2' },
+              handle: {
+                provide: async () => agent2Instance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
           [
@@ -735,8 +786,13 @@ describe('GraphRegistry', () => {
               id: 'tool-1',
               type: NodeKind.Tool,
               template: 'shell-tool',
+              instance: tool1Instance,
               config: {},
-              instance: { tool: 'tool-1' },
+              handle: {
+                provide: async () => tool1Instance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
         ]),
@@ -810,6 +866,9 @@ describe('GraphRegistry', () => {
 
     it('should work with mixed templates', () => {
       const graphId = 'mixed-graph';
+      const shell1Instance = { tool: 'shell-1' };
+      const shell2Instance = { tool: 'shell-2' };
+      const webSearchInstance = { tool: 'web-search-1' };
       const mixedGraph: CompiledGraph = {
         nodes: new Map([
           [
@@ -818,8 +877,13 @@ describe('GraphRegistry', () => {
               id: 'shell-1',
               type: NodeKind.Tool,
               template: 'shell-tool',
+              instance: shell1Instance,
               config: {},
-              instance: { tool: 'shell-1' },
+              handle: {
+                provide: async () => shell1Instance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
           [
@@ -828,8 +892,13 @@ describe('GraphRegistry', () => {
               id: 'shell-2',
               type: NodeKind.Tool,
               template: 'shell-tool',
+              instance: shell2Instance,
               config: {},
-              instance: { tool: 'shell-2' },
+              handle: {
+                provide: async () => shell2Instance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
           [
@@ -838,8 +907,13 @@ describe('GraphRegistry', () => {
               id: 'web-search-1',
               type: NodeKind.Tool,
               template: 'web-search-tool',
+              instance: webSearchInstance,
               config: {},
-              instance: { tool: 'web-search-1' },
+              handle: {
+                provide: async () => webSearchInstance,
+                configure: async () => {},
+                destroy: async () => {},
+              },
             },
           ],
         ]),
@@ -882,6 +956,11 @@ describe('GraphRegistry', () => {
         type: NodeKind.Tool,
         template: 'test-tool',
         instance: {},
+        handle: {
+          provide: async () => ({}),
+          configure: async () => {},
+          destroy: async () => {},
+        },
         config: {},
       } as CompiledGraphNode;
 
@@ -898,6 +977,11 @@ describe('GraphRegistry', () => {
         type: NodeKind.Tool,
         template: 'test-tool',
         instance: {},
+        handle: {
+          provide: async () => ({}),
+          configure: async () => {},
+          destroy: async () => {},
+        },
         config: {},
       } as CompiledGraphNode;
 
@@ -920,6 +1004,11 @@ describe('GraphRegistry', () => {
         type: NodeKind.Runtime,
         template: 'different-template',
         instance: {},
+        handle: {
+          provide: async () => ({}),
+          configure: async () => {},
+          destroy: async () => {},
+        },
         config: {},
       } as CompiledGraphNode;
 

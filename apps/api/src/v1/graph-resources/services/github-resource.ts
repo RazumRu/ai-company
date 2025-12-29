@@ -12,14 +12,14 @@ export interface GithubResourceConfig {
   auth?: boolean;
 }
 
-export interface IGithubResourceResourceOutput extends IShellResourceOutput {
+export interface IGithubResourceOutput extends IShellResourceOutput {
   patToken: string;
 }
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class GithubResource extends BaseResource<
   GithubResourceConfig,
-  IGithubResourceResourceOutput
+  IGithubResourceOutput
 > {
   constructor(logger: DefaultLogger) {
     super(logger);
@@ -27,7 +27,7 @@ export class GithubResource extends BaseResource<
 
   public async getData(
     config: GithubResourceConfig,
-  ): Promise<IGithubResourceResourceOutput> {
+  ): Promise<IGithubResourceOutput> {
     return {
       information: outdent`
         Purpose: Work with GitHub from shell via gh CLI (repos, branches, PRs, issues, workflows).

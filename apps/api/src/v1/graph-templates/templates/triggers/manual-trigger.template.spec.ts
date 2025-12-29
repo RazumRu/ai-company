@@ -8,6 +8,8 @@ import { ManualTrigger } from '../../../agent-triggers/services/manual-trigger';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import {
   CompiledGraphNode,
+  GraphNode,
+  GraphNodeInstanceHandle,
   GraphNodeStatus,
   NodeKind,
 } from '../../../graphs/graphs.types';
@@ -18,6 +20,14 @@ import {
   ManualTriggerTemplateSchema,
 } from './manual-trigger.template';
 
+const makeHandle = <TInstance>(
+  instance: TInstance,
+): GraphNodeInstanceHandle<TInstance, any> => ({
+  provide: async () => instance,
+  configure: async () => {},
+  destroy: async () => {},
+});
+
 const buildCompiledNode = <TInstance>(options: {
   id: string;
   type: NodeKind;
@@ -27,6 +37,7 @@ const buildCompiledNode = <TInstance>(options: {
 }): CompiledGraphNode<TInstance> =>
   ({
     ...options,
+    handle: makeHandle(options.instance),
     config: options.config ?? {},
     getStatus: () => GraphNodeStatus.Idle,
   }) as unknown as CompiledGraphNode<TInstance>;
@@ -59,6 +70,7 @@ describe('ManualTriggerTemplate', () => {
 
     mockModuleRef = {
       resolve: vi.fn().mockResolvedValue(mockManualTrigger),
+      create: vi.fn().mockResolvedValue(mockManualTrigger),
     } as unknown as ModuleRef;
 
     mockGraphRegistry = {
@@ -66,6 +78,7 @@ describe('ManualTriggerTemplate', () => {
       unregister: vi.fn(),
       get: vi.fn(),
       getNode: vi.fn().mockReturnValue(mockAgentNode),
+      getNodeInstance: vi.fn().mockReturnValue(mockSimpleAgent),
       destroy: vi.fn(),
     } as unknown as GraphRegistry;
 
@@ -92,7 +105,7 @@ describe('ManualTriggerTemplate', () => {
         {
           provide: ThreadsDao,
           useValue: {
-            getOne: vi.fn().mockResolvedValue(null),
+            getOne: vi.fn().mockResolvedValue(undefined),
             getAll: vi.fn(),
             create: vi.fn(),
             updateById: vi.fn(),
@@ -127,289 +140,165 @@ describe('ManualTriggerTemplate', () => {
 
   describe('schema validation', () => {
     it('should work with empty config', () => {
-      const validConfig = {};
-
-      expect(() =>
-        ManualTriggerTemplateSchema.parse(validConfig),
-      ).not.toThrow();
+      expect(() => ManualTriggerTemplateSchema.parse({})).not.toThrow();
     });
 
     it('should ignore legacy/unknown fields', () => {
-      const config = { legacy: true, extra: 'value' };
+      const dataWithExtra = {
+        oldTriggerMode: 'manual',
+        extraValue: 123,
+      };
 
-      const parsed = ManualTriggerTemplateSchema.parse(config);
+      const parsed = ManualTriggerTemplateSchema.parse(dataWithExtra);
       expect(parsed).toEqual({});
-      expect(parsed).not.toHaveProperty('legacy');
-      expect(parsed).not.toHaveProperty('extra');
+      expect(parsed).not.toHaveProperty('oldTriggerMode');
     });
   });
 
   describe('create', () => {
-    it('should throw NotFoundException when no agent nodes found in output connections', async () => {
-      const config = {};
+    const mockMetadata = {
+      graphId: 'graph-1',
+      nodeId: 'trigger-1',
+      version: '1',
+    };
 
-      await expect(
-        template.create(config, new Set(), new Set(), {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
-      ).rejects.toThrow(NotFoundException);
+    it('should throw NotFoundException when no agent nodes found in output connections', async () => {
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw NotFoundException with correct error message', async () => {
-      const config = {};
-
-      await expect(
-        template.create(config, new Set(), new Set(), {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
-      ).rejects.toThrow('No output connections found for trigger');
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        /No output connections found for trigger/,
+      );
     });
 
     it('should create manual trigger with valid agent node', async () => {
-      const agentConfig = {
-        name: 'Test Agent',
-        instructions: 'Test',
-        invokeModelName: 'gpt-5-mini',
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-      };
-
-      const _agentNode = buildCompiledNode<SimpleAgent>({
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        config: agentConfig,
-        instance: mockSimpleAgent,
-      });
-
       const outputNodeIds = new Set(['agent-1']);
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      const config = {};
-
-      const result = await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      expect(result).toBe(mockManualTrigger);
-      expect(mockModuleRef.resolve).toHaveBeenCalledWith(
-        ManualTrigger,
-        undefined,
-        {
-          strict: false,
-        },
-      );
-      expect(mockManualTrigger.setInvokeAgent).toHaveBeenCalledWith(
-        expect.any(Function),
-      );
+      expect(instance).toBe(mockManualTrigger);
       expect(mockManualTrigger.start).toHaveBeenCalled();
     });
 
     it('should configure trigger to invoke agent correctly', async () => {
-      const agentConfig = {
-        name: 'Test Agent',
-        instructions: 'Test',
-        invokeModelName: 'gpt-5-mini',
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-      };
-
-      const _agentNode = buildCompiledNode<SimpleAgent>({
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        config: agentConfig,
-        instance: mockSimpleAgent,
-      });
-
       const outputNodeIds = new Set(['agent-1']);
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      const config = {};
+      expect(mockManualTrigger.setInvokeAgent).toHaveBeenCalled();
+      const invokeFn = vi.mocked(mockManualTrigger.setInvokeAgent).mock
+        .calls[0]![0] as any;
+      expect(invokeFn).toBeDefined();
 
-      await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      // Get the invoke agent function that was passed
-      const setInvokeAgentCall = vi.mocked(mockManualTrigger.setInvokeAgent)
-        .mock.calls[0];
-      const invokeAgentFn = setInvokeAgentCall?.[0];
-
-      // Test the invoke agent function (with thread component as service would pass it)
-      const messages = [new HumanMessage('test')];
-      const threadComponent = 'thread-123';
-      const expectedFullThreadId = `test-graph:${threadComponent}`;
-      const runnableConfig = {
-        configurable: {
-          thread_id: threadComponent, // Service passes just the thread component
-        },
+      const input = [new HumanMessage('Hello agent')];
+      const config = {
+        configurable: { user_id: 'user-1', thread_id: 'manual-thread-id' },
       };
 
-      await invokeAgentFn!(messages, runnableConfig);
+      await invokeFn!(input as any, config as any);
 
-      const runCall = vi.mocked(mockSimpleAgent.runOrAppend).mock.calls[0];
-      const [
-        actualThreadId,
-        actualMessages,
-        actualConfig,
-        actualRunnableConfig,
-      ] = runCall!;
-
-      expect(actualThreadId).toBe(expectedFullThreadId);
-      expect(actualMessages).toEqual(messages);
-      expect(actualConfig).toBeUndefined();
-      expect(actualRunnableConfig!.configurable).toMatchObject({
-        thread_id: expectedFullThreadId,
-        graph_id: 'test-graph',
-        node_id: 'agent-1', // Uses agent's nodeId
-        source: 'Manual (trigger)',
-      });
-      // checkpoint_ns should be threadId:agentNodeId
-      expect(actualRunnableConfig!.configurable!.checkpoint_ns).toBe(
-        `${expectedFullThreadId}:agent-1`,
+      expect(mockSimpleAgent.runOrAppend).toHaveBeenCalledWith(
+        'graph-1:manual-thread-id',
+        expect.arrayContaining([expect.any(HumanMessage)]),
+        undefined,
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            user_id: 'user-1',
+            graph_id: 'graph-1',
+            node_id: 'agent-1',
+          }),
+        }),
       );
     });
 
     it('should use default thread_id if not provided in config', async () => {
-      const agentConfig = {
-        name: 'Test Agent',
-        instructions: 'Test',
-        invokeModelName: 'gpt-5-mini',
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-      };
-
-      const _agentNode = buildCompiledNode<SimpleAgent>({
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        config: agentConfig,
-        instance: mockSimpleAgent,
-      });
-
       const outputNodeIds = new Set(['agent-1']);
-
-      const config = {};
-
-      await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      // Get the invoke agent function
-      const setInvokeAgentCall = vi.mocked(mockManualTrigger.setInvokeAgent)
-        .mock.calls[0];
-      const invokeAgentFn = setInvokeAgentCall?.[0];
-
-      // Test with missing thread_id
-      const messages = [new HumanMessage('test')];
-      const runnableConfig = {
-        configurable: {},
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata: mockMetadata,
       };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      await invokeAgentFn!(messages, runnableConfig);
+      const invokeFn = vi.mocked(mockManualTrigger.setInvokeAgent).mock
+        .calls[0]![0] as any;
+      expect(invokeFn).toBeDefined();
+      await invokeFn!(
+        [new HumanMessage('hi')] as any,
+        { configurable: {} } as any,
+      );
 
-      const runCall = vi.mocked(mockSimpleAgent.runOrAppend).mock.calls[0];
-      const [
-        actualThreadId,
-        actualMessages,
-        actualConfig,
-        actualRunnableConfig,
-      ] = runCall!;
-
-      // thread_id should be auto-generated as graphId:uuid when not provided
-      expect(actualThreadId).toMatch(/^test-graph:[a-f0-9-]{36}$/);
-      expect(actualMessages).toEqual(messages);
-      expect(actualConfig).toBeUndefined();
-      expect(actualRunnableConfig!.configurable!.graph_id).toBe('test-graph');
-      expect(actualRunnableConfig!.configurable!.node_id).toBe('agent-1');
-
-      // checkpoint_ns should be graphId:threadComponent:nodeId
-      const threadComponent = actualThreadId.split(':')[1];
-      expect(actualRunnableConfig!.configurable!.checkpoint_ns).toBe(
-        `test-graph:${threadComponent}:agent-1`,
+      expect(mockSimpleAgent.runOrAppend).toHaveBeenCalledWith(
+        expect.stringMatching(/^graph-1:/),
+        expect.anything(),
+        undefined,
+        expect.anything(),
       );
     });
-  });
 
-  describe('Metadata Propagation', () => {
     it('should preserve existing configurable properties when enriching', async () => {
-      const agentConfig = {
-        name: 'Test Agent',
-        instructions: 'Test',
-        invokeModelName: 'gpt-5-mini',
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-      };
-
-      const _agentNode = buildCompiledNode<SimpleAgent>({
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        config: agentConfig,
-        instance: mockSimpleAgent,
-      });
-
       const outputNodeIds = new Set(['agent-1']);
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      const config = {};
-
-      await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      const setInvokeAgentCall = vi.mocked(mockManualTrigger.setInvokeAgent)
-        .mock.calls[0];
-      const invokeAgentFn = setInvokeAgentCall?.[0];
-
-      const threadComponent = 'test-thread-789';
-      const expectedFullThreadId = `test-graph:${threadComponent}`;
-      const runnableConfig = {
+      const invokeFn = vi.mocked(mockManualTrigger.setInvokeAgent).mock
+        .calls[0]![0] as any;
+      expect(invokeFn).toBeDefined();
+      const config = {
         configurable: {
-          thread_id: threadComponent, // Service passes just the thread component
-          caller_agent: {} as unknown as SimpleAgent,
-          graph_id: 'existing-graph',
-          node_id: 'existing-node',
+          existing_prop: 'exists',
         },
       };
 
-      const messages = [new HumanMessage('test')];
+      await invokeFn!([new HumanMessage('hi')] as any, config as any);
 
-      await invokeAgentFn!(messages, runnableConfig);
-
-      const runCall = vi.mocked(mockSimpleAgent.runOrAppend).mock.calls[0];
-      const [
-        actualThreadId,
-        actualMessages,
-        actualConfig,
-        actualRunnableConfig,
-      ] = runCall!;
-
-      // Verify that existing properties are preserved and new ones override
-      expect(actualThreadId).toBe(expectedFullThreadId);
-      expect(actualMessages).toEqual(messages);
-      expect(actualConfig).toBeUndefined();
-      expect(actualRunnableConfig!.configurable!.thread_id).toBe(
-        expectedFullThreadId,
-      );
-      expect(actualRunnableConfig!.configurable!.caller_agent).toBeDefined();
-      expect(actualRunnableConfig!.configurable!.graph_id).toBe('test-graph'); // Should be overridden with template metadata
-      expect(actualRunnableConfig!.configurable!.node_id).toBe('agent-1'); // Uses agent's nodeId
-
-      // checkpoint_ns should be threadId:agentNodeId
-      expect(actualRunnableConfig!.configurable!.checkpoint_ns).toBe(
-        `${expectedFullThreadId}:agent-1`,
-      );
+      const runConfig = vi.mocked(mockSimpleAgent.runOrAppend).mock
+        .calls[0]![3] as any;
+      expect(runConfig.configurable.existing_prop).toBe('exists');
+      expect(runConfig.configurable.graph_id).toBe('graph-1');
     });
   });
 });

@@ -7,15 +7,12 @@ import {
   GhToolGroup,
   GhToolType,
 } from '../../../agent-tools/tools/common/github/gh-tool-group';
-import { IGithubResourceResourceOutput } from '../../../graph-resources/services/github-resource';
-import { NodeKind } from '../../../graphs/graphs.types';
+import { IGithubResourceOutput } from '../../../graph-resources/services/github-resource';
+import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import {
-  NodeBaseTemplateMetadata,
-  ToolNodeBaseTemplate,
-} from '../base-node.template';
+import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const GhToolTemplateSchema = z
   .object({
@@ -71,111 +68,104 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
     super();
   }
 
-  async create(
-    config: z.infer<typeof GhToolTemplateSchema>,
-    _inputNodeIds: Set<string>,
-    outputNodeIds: Set<string>,
-    metadata: NodeBaseTemplateMetadata,
-  ): Promise<BuiltAgentTool[]> {
-    // Find runtime node from output nodes
-    const runtimeNodeIds = this.graphRegistry.filterNodesByType(
-      metadata.graphId,
-      outputNodeIds,
-      NodeKind.Runtime,
-    );
+  public async create() {
+    return {
+      provide: async (
+        _params: GraphNode<z.infer<typeof GhToolTemplateSchema>>,
+      ) => [],
+      configure: async (
+        params: GraphNode<z.infer<typeof GhToolTemplateSchema>>,
+        instance: BuiltAgentTool[],
+      ) => {
+        const graphId = params.metadata.graphId;
+        const outputNodeIds = params.outputNodeIds;
+        const config = params.config;
 
-    if (runtimeNodeIds.length === 0) {
-      throw new NotFoundException(
-        'NODE_NOT_FOUND',
-        `Runtime node not found in output nodes`,
-      );
-    }
-
-    const runtimeNode = this.graphRegistry.getNode<BaseRuntime>(
-      metadata.graphId,
-      runtimeNodeIds[0]!,
-    );
-
-    if (!runtimeNode) {
-      throw new NotFoundException(
-        'NODE_NOT_FOUND',
-        `Runtime node ${runtimeNodeIds[0]} not found`,
-      );
-    }
-
-    // Collect resource node IDs from output nodes
-    const resourceNodeIds = this.graphRegistry.filterNodesByTemplate(
-      metadata.graphId,
-      outputNodeIds,
-      'github-resource',
-    );
-
-    const ghResourceId = resourceNodeIds[0];
-
-    const ghResourceNode =
-      this.graphRegistry.getNode<IGithubResourceResourceOutput>(
-        metadata.graphId,
-        ghResourceId || '',
-      );
-
-    if (!ghResourceNode) {
-      throw new NotFoundException(
-        'RESOURCE_NOT_FOUND',
-        `No GitHub resource nodes found in output nodes`,
-      );
-    }
-
-    const initScript = ghResourceNode.instance.data.initScript;
-    const initScriptTimeout = ghResourceNode.instance.data.initScriptTimeout;
-    const patToken = ghResourceNode?.instance.patToken;
-    const resourceEnv = ghResourceNode.instance.data.env;
-
-    if (initScript) {
-      const res = await runtimeNode.instance.exec({
-        cmd: initScript,
-        timeoutMs: initScriptTimeout,
-        env: resourceEnv,
-      });
-
-      if (res.fail) {
-        throw new BadRequestException(
-          'INIT_SCRIPT_EXECUTION_FAILED',
-          `Init script execution failed: ${res.stderr}`,
-          { cmd: initScript, ...res },
-        );
-      }
-    }
-
-    // Store the runtime node ID to fetch fresh instance on each invocation
-    const runtimeNodeId = runtimeNodeIds[0]!;
-    const graphId = metadata.graphId;
-
-    // Parse config to get defaults applied
-    const parsedConfig = GhToolTemplateSchema.parse(config);
-
-    const tools: GhToolType[] | undefined = parsedConfig.cloneOnly
-      ? [GhToolType.CLONE]
-      : undefined;
-
-    return this.ghToolGroup.buildTools({
-      runtime: () => {
-        // Get fresh runtime instance from registry on each invocation
-        const currentRuntimeNode = this.graphRegistry.getNode<BaseRuntime>(
+        const runtimeNodeIds = this.graphRegistry.filterNodesByType(
           graphId,
-          runtimeNodeId,
+          outputNodeIds,
+          NodeKind.Runtime,
         );
 
-        if (!currentRuntimeNode) {
+        if (runtimeNodeIds.length === 0) {
           throw new NotFoundException(
-            'RUNTIME_NOT_FOUND',
-            `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
+            'NODE_NOT_FOUND',
+            `Runtime node not found in output nodes`,
           );
         }
 
-        return currentRuntimeNode.instance;
+        const runtimeNodeId = runtimeNodeIds[0]!;
+        const runtime = this.graphRegistry.getNodeInstance<BaseRuntime>(
+          graphId,
+          runtimeNodeId,
+        );
+        if (!runtime) {
+          throw new NotFoundException(
+            'NODE_NOT_FOUND',
+            `Runtime node ${runtimeNodeId} not found`,
+          );
+        }
+
+        const resourceNodeIds = this.graphRegistry.filterNodesByTemplate(
+          graphId,
+          outputNodeIds,
+          'github-resource',
+        );
+        const ghResourceId = resourceNodeIds[0];
+
+        const ghResourceNode =
+          this.graphRegistry.getNode<IGithubResourceOutput>(
+            graphId,
+            ghResourceId || '',
+          );
+
+        if (!ghResourceNode) {
+          throw new NotFoundException(
+            'RESOURCE_NOT_FOUND',
+            `No GitHub resource nodes found in output nodes`,
+          );
+        }
+
+        const ghResource = ghResourceNode.instance;
+
+        const initScript = ghResource.data.initScript;
+        const initScriptTimeout = ghResource.data.initScriptTimeout;
+        const patToken = ghResource.patToken;
+        const resourceEnv = ghResource.data.env;
+
+        if (initScript) {
+          const res = await runtime.exec({
+            cmd: initScript,
+            timeoutMs: initScriptTimeout,
+            env: resourceEnv,
+          });
+
+          if (res.fail) {
+            throw new BadRequestException(
+              'INIT_SCRIPT_EXECUTION_FAILED',
+              `Init script execution failed: ${res.stderr}`,
+              { cmd: initScript, ...res },
+            );
+          }
+        }
+
+        const parsedConfig = GhToolTemplateSchema.parse(config);
+        const tools: GhToolType[] | undefined = parsedConfig.cloneOnly
+          ? [GhToolType.CLONE]
+          : undefined;
+
+        instance.length = 0;
+        instance.push(
+          ...this.ghToolGroup.buildTools({
+            runtime,
+            patToken,
+            tools,
+          }),
+        );
       },
-      patToken,
-      tools,
-    });
+      destroy: async (instance: BuiltAgentTool[]) => {
+        instance.length = 0;
+      },
+    };
   }
 }

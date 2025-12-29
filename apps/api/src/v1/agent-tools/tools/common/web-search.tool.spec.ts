@@ -31,7 +31,7 @@ describe('WebSearchTool', () => {
       providers: [WebSearchTool],
     }).compile();
 
-    tool = module.get<WebSearchTool>(WebSearchTool);
+    tool = await module.resolve<WebSearchTool>(WebSearchTool);
   });
 
   describe('properties', () => {

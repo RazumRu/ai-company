@@ -878,7 +878,6 @@ describe('SimpleAgent', () => {
             content: 'pending',
             role: 'human',
             additionalKwargs: {},
-            createdAt: expect.any(String),
           },
         ],
         reasoningChunks: {},

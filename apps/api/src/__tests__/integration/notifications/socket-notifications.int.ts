@@ -1,7 +1,6 @@
 import { AIMessageChunk } from '@langchain/core/messages';
 import { INestApplication } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { BaseException } from '@packages/common';
 import { io, Socket } from 'socket.io-client';
 import {
   afterAll,

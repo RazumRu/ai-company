@@ -91,7 +91,7 @@ describe('Graph Revisions Integration Tests', () => {
 
   const getRuntime = (graphId: string, nodeId: string) => {
     const runtimeNode = graphRegistry.getNode<DockerRuntime>(graphId, nodeId);
-    if (!runtimeNode?.instance) {
+    if (!runtimeNode) {
       throw new Error(`Runtime node ${nodeId} not found in graph ${graphId}`);
     }
     return runtimeNode.instance;
@@ -99,7 +99,7 @@ describe('Graph Revisions Integration Tests', () => {
 
   const getMcpOutput = (graphId: string, nodeId: string) => {
     const mcpNode = graphRegistry.getNode<BaseMcp>(graphId, nodeId);
-    if (!mcpNode?.instance) {
+    if (!mcpNode) {
       throw new Error(`MCP node ${nodeId} not found in graph ${graphId}`);
     }
     return mcpNode.instance;
@@ -1585,6 +1585,167 @@ describe('Graph Revisions Integration Tests', () => {
     );
 
     it(
+      'keeps shell tool usable after runtime update revision (runtime reload) in the same thread',
+      { timeout: 180000 },
+      async () => {
+        const graphData: CreateGraphDto = {
+          name: `Shell runtime reload test ${Date.now()}`,
+          description:
+            'Shell tool should still execute commands after runtime reload revision',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  instructions: COMMAND_AGENT_INSTRUCTIONS,
+                  name: 'Test Agent',
+                  description: 'Test agent description',
+                  summarizeMaxTokens: 272000,
+                  summarizeKeepTokens: 30000,
+                  invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
+                  enforceToolUsage: false,
+                  maxIterations: 50,
+                } satisfies SimpleAgentSchemaType,
+              },
+              {
+                id: 'shell-1',
+                template: 'shell-tool',
+                config: {},
+              },
+              {
+                id: 'runtime-1',
+                template: 'docker-runtime',
+                config: {
+                  runtimeType: 'Docker',
+                  image: 'node:20',
+                  env: {
+                    TEST_VAR: 'original',
+                  },
+                },
+              },
+            ],
+            edges: [
+              { from: 'trigger-1', to: 'agent-1' },
+              { from: 'agent-1', to: 'shell-1' },
+              { from: 'shell-1', to: 'runtime-1' },
+            ],
+          },
+        };
+
+        const createResponse = await graphsService.create(graphData);
+        const graphId = createResponse.id;
+        createdGraphIds.push(graphId);
+        const currentVersion = createResponse.version;
+
+        await graphsService.run(graphId);
+        await waitForGraphToBeRunning(graphId);
+
+        const runtimeBefore = getRuntime(graphId, 'runtime-1');
+        const hostnameBefore = await getContainerHostname(runtimeBefore);
+
+        const threadSubId = `shell-reload-${Date.now()}`;
+        const firstResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Run this command: echo "before-reload"'],
+            async: false,
+            threadSubId,
+          },
+        );
+
+        const firstThread = await waitForThreadCompletion(
+          firstResult.externalThreadId,
+        );
+        expect(firstThread.status).toBe(ThreadStatus.Done);
+        const firstInternalThread = await threadsService.getThreadByExternalId(
+          firstResult.externalThreadId,
+        );
+
+        const firstMessages = await getThreadMessages(
+          firstResult.externalThreadId,
+        );
+        const firstShell = findShellExecution(firstMessages);
+        expect(firstShell.toolCallId).toBeDefined();
+        expect(firstShell.toolName).toBe('shell');
+        expect(firstShell.result?.exitCode).toBe(0);
+        expect(firstShell.result?.stdout).toContain('before-reload');
+
+        const updatedSchema = cloneDeep(graphData.schema);
+        updatedSchema.nodes = updatedSchema.nodes.map((node) =>
+          node.id === 'runtime-1'
+            ? {
+                ...node,
+                config: {
+                  ...node.config,
+                  // Force container recreate (image + env changes)
+                  image: 'node:20-slim',
+                  env: { TEST_VAR: 'updated' },
+                },
+              }
+            : node,
+        );
+
+        const updateResponse = await graphsService.update(graphId, {
+          schema: updatedSchema,
+          currentVersion,
+        });
+
+        expect(updateResponse.revision).toBeDefined();
+        const revisionId = updateResponse.revision!.id;
+
+        await waitForRevisionStatus(
+          graphId,
+          revisionId,
+          GraphRevisionStatus.Applied,
+          120000,
+        );
+        await waitForGraphToBeRunning(graphId, 120000);
+
+        const runtimeAfter = getRuntime(graphId, 'runtime-1');
+        const hostnameAfter = await getContainerHostname(runtimeAfter);
+        expect(hostnameAfter).not.toBe(hostnameBefore);
+
+        const secondResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Run this command: echo "after-reload"'],
+            async: false,
+            threadSubId,
+          },
+        );
+
+        const secondThread = await waitForThreadCompletion(
+          secondResult.externalThreadId,
+        );
+        expect(secondThread.status).toBe(ThreadStatus.Done);
+
+        const secondInternalThread = await threadsService.getThreadByExternalId(
+          secondResult.externalThreadId,
+        );
+        expect(secondInternalThread.id).toBe(firstInternalThread.id);
+
+        const secondMessages = await getThreadMessages(
+          secondResult.externalThreadId,
+        );
+        const secondShell = findShellExecution(secondMessages);
+        expect(secondShell.toolCallId).toBeDefined();
+        expect(secondShell.toolName).toBe('shell');
+        expect(secondShell.result?.exitCode).toBe(0);
+        expect(secondShell.result?.stdout).toContain('after-reload');
+      },
+    );
+
+    it(
       'removes runtime node and graph continues to work without it',
       { timeout: 120000 },
       async () => {
@@ -2183,7 +2344,7 @@ describe('Graph Revisions Integration Tests', () => {
         const mcpBefore = getMcpOutput(graphId, 'mcp-fs-1');
         const toolsBefore = await mcpBefore.discoverTools();
         const listDirToolBefore = toolsBefore.find(
-          (t) => t.name === 'list_directory',
+          (t: { name: string }) => t.name === 'list_directory',
         );
         expect(listDirToolBefore).toBeDefined();
         const beforeResult = await listDirToolBefore!.invoke({
@@ -2231,7 +2392,7 @@ describe('Graph Revisions Integration Tests', () => {
         const mcpAfter = getMcpOutput(graphId, 'mcp-fs-1');
         const toolsAfter = await mcpAfter.discoverTools();
         const listDirToolAfter = toolsAfter.find(
-          (t) => t.name === 'list_directory',
+          (t: { name: string }) => t.name === 'list_directory',
         );
         expect(listDirToolAfter).toBeDefined();
         const afterResult = await listDirToolAfter!.invoke({
@@ -2283,7 +2444,7 @@ describe('Graph Revisions Integration Tests', () => {
         const mcpBefore = getMcpOutput(graphId, 'mcp-fs-1');
         const toolsBefore = await mcpBefore.discoverTools();
         const listDirToolBefore = toolsBefore.find(
-          (t) => t.name === 'list_directory',
+          (t: { name: string }) => t.name === 'list_directory',
         );
         expect(listDirToolBefore).toBeDefined();
         const beforeResult = await listDirToolBefore!.invoke({
@@ -2325,7 +2486,7 @@ describe('Graph Revisions Integration Tests', () => {
         const mcpAfter = getMcpOutput(graphId, 'mcp-fs-1');
         const toolsAfter = await mcpAfter.discoverTools();
         const listDirToolAfter = toolsAfter.find(
-          (t) => t.name === 'list_directory',
+          (t: { name: string }) => t.name === 'list_directory',
         );
         expect(listDirToolAfter).toBeDefined();
         const afterResult = await listDirToolAfter!.invoke({

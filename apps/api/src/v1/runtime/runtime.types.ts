@@ -48,8 +48,6 @@ export enum RuntimeType {
   Docker = 'Docker',
 }
 
-export interface ProvideRuntimeParams extends RuntimeStartParams {
-  autostart?: boolean;
+export interface ProvideRuntimeParams {
   type: RuntimeType;
-  recreate?: boolean;
 }

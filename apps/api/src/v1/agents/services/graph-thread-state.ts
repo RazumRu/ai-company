@@ -1,4 +1,5 @@
 import { BaseMessage, ChatMessage } from '@langchain/core/messages';
+import { DefaultLogger } from '@packages/common';
 
 import { NewMessageMode } from '../agents.types';
 
@@ -18,12 +19,17 @@ export interface IGraphThreadStateData {
 type GraphThreadStateSubscriber = (
   threadId: string,
   nextState: IGraphThreadStateData,
-  previousState?: IGraphThreadStateData,
+  previousState: IGraphThreadStateData,
 ) => void;
 
 export class GraphThreadState {
   private stateByThread = new Map<string, IGraphThreadStateData>();
   private subscribers = new Set<GraphThreadStateSubscriber>();
+  private logger?: DefaultLogger;
+
+  constructor(logger?: DefaultLogger) {
+    this.logger = logger;
+  }
 
   private getDefaultState(): IGraphThreadStateData {
     return {
@@ -40,34 +46,8 @@ export class GraphThreadState {
     };
   }
 
-  private cloneState(state: IGraphThreadStateData): IGraphThreadStateData {
-    const reasoningChunksCopy = new Map<string, ChatMessage>();
-
-    for (const [key, value] of state.reasoningChunks) {
-      const msgClone = Object.assign(
-        Object.create(Object.getPrototypeOf(value)) as ChatMessage,
-        value,
-      );
-      reasoningChunksCopy.set(key, msgClone);
-    }
-
-    return {
-      pendingMessages: [...state.pendingMessages],
-      newMessageMode: state.newMessageMode,
-      reasoningChunks: reasoningChunksCopy,
-      inputTokens: state.inputTokens,
-      cachedInputTokens: state.cachedInputTokens,
-      outputTokens: state.outputTokens,
-      reasoningTokens: state.reasoningTokens,
-      totalTokens: state.totalTokens,
-      totalPrice: state.totalPrice,
-      currentContext: state.currentContext,
-    };
-  }
-
   public getByThread(threadId: string): IGraphThreadStateData {
-    const state = this.stateByThread.get(threadId) ?? this.getDefaultState();
-    return this.cloneState(state);
+    return this.stateByThread.get(threadId) ?? this.getDefaultState();
   }
 
   public subscribe(subscriber: GraphThreadStateSubscriber): () => void {
@@ -97,48 +77,48 @@ export class GraphThreadState {
       currentContext: patch.currentContext ?? prevState.currentContext,
     };
 
-    if (!this.hasStateChanged(prevState, nextState)) {
+    // No actual change - return previous state reference to avoid unnecessary updates
+    if (this.isEqual(prevState, nextState)) {
       return prevState;
     }
 
     this.stateByThread.set(threadId, nextState);
-
-    const safePrev = this.cloneState(prevState);
-    const safeNext = this.cloneState(nextState);
-
-    this.notifySubscribers(threadId, safeNext, safePrev);
+    this.notifySubscribers(threadId, nextState, prevState);
 
     return nextState;
   }
 
-  private hasStateChanged(
+  private isEqual(
     prev: IGraphThreadStateData,
     next: IGraphThreadStateData,
   ): boolean {
     return (
-      prev.newMessageMode !== next.newMessageMode ||
-      prev.pendingMessages !== next.pendingMessages ||
-      prev.reasoningChunks !== next.reasoningChunks ||
-      prev.inputTokens !== next.inputTokens ||
-      prev.cachedInputTokens !== next.cachedInputTokens ||
-      prev.outputTokens !== next.outputTokens ||
-      prev.reasoningTokens !== next.reasoningTokens ||
-      prev.totalTokens !== next.totalTokens ||
-      prev.totalPrice !== next.totalPrice ||
-      prev.currentContext !== next.currentContext
+      prev.newMessageMode === next.newMessageMode &&
+      prev.pendingMessages === next.pendingMessages &&
+      prev.reasoningChunks === next.reasoningChunks &&
+      prev.inputTokens === next.inputTokens &&
+      prev.cachedInputTokens === next.cachedInputTokens &&
+      prev.outputTokens === next.outputTokens &&
+      prev.reasoningTokens === next.reasoningTokens &&
+      prev.totalTokens === next.totalTokens &&
+      prev.totalPrice === next.totalPrice &&
+      prev.currentContext === next.currentContext
     );
   }
 
   private notifySubscribers(
     threadId: string,
     nextState: IGraphThreadStateData,
-    prevState?: IGraphThreadStateData,
+    prevState: IGraphThreadStateData,
   ) {
     for (const subscriber of this.subscribers) {
       try {
         subscriber(threadId, nextState, prevState);
-      } catch {
-        //
+      } catch (error) {
+        this.logger?.error(
+          error as Error,
+          'Error in GraphThreadState subscriber',
+        );
       }
     }
   }

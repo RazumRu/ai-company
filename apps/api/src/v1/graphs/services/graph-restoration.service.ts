@@ -106,7 +106,7 @@ export class GraphRestorationService {
 
     const deletionPromises = temporaryGraphs.map(async (graph) => {
       try {
-        await this.graphCompiler.destroyNotCompiledGraph(graph);
+        await this.cleanupNotCompiledGraphRuntimes(graph);
       } catch (error) {
         this.logger.warn(
           `Failed to destroy runtime containers for temporary graph ${graph.id}`,
@@ -135,6 +135,21 @@ export class GraphRestorationService {
     await Promise.allSettled(deletionPromises);
 
     this.logger.log('Temporary graphs destruction complete');
+  }
+
+  /**
+   * Cleans up Docker runtime containers for graphs that were not compiled.
+   * Used during temporary graph cleanup after server restart.
+   */
+  private async cleanupNotCompiledGraphRuntimes(
+    graph: GraphEntity,
+  ): Promise<void> {
+    const runtimeNodes = graph.schema.nodes.filter(
+      (node) => node.template === 'docker-runtime',
+    );
+    if (runtimeNodes.length === 0) return;
+
+    await DockerRuntime.cleanupByLabels({ 'ai-company/graph_id': graph.id });
   }
 
   /**

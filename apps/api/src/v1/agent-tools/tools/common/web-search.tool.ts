@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Scope } from '@nestjs/common';
 import { tavily } from '@tavily/core';
 import dedent from 'dedent';
 import { z } from 'zod';
@@ -45,7 +45,7 @@ type WebSearchOutput = {
 
 export type WebSearchToolConfig = { apiKey: string };
 
-@Injectable()
+@Injectable({ scope: Scope.TRANSIENT })
 export class WebSearchTool extends BaseTool<
   WebSearchToolSchemaType,
   WebSearchToolConfig,

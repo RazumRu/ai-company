@@ -101,6 +101,7 @@ describe('GraphsService', () => {
   });
 
   const createMockCompiledGraph = (): CompiledGraph => {
+    const instance = { container: 'test-container' };
     const nodes = new Map<string, CompiledGraphNode>([
       [
         'node-1',
@@ -109,7 +110,12 @@ describe('GraphsService', () => {
           type: NodeKind.Runtime,
           template: 'test-runtime',
           config: {},
-          instance: { container: 'test-container' },
+          instance,
+          handle: {
+            provide: async () => instance,
+            configure: vi.fn(),
+            destroy: vi.fn(),
+          },
         },
       ],
     ]);
@@ -1447,6 +1453,11 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        handle: {
+          provide: async () => mockTrigger,
+          configure: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn().mockResolvedValue(undefined),
+        },
         getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
@@ -1505,6 +1516,11 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        handle: {
+          provide: async () => mockTrigger,
+          configure: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn().mockResolvedValue(undefined),
+        },
         getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
@@ -1561,6 +1577,11 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        handle: {
+          provide: async () => mockTrigger,
+          configure: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn().mockResolvedValue(undefined),
+        },
         getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
@@ -1627,6 +1648,11 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        handle: {
+          provide: async () => mockTrigger,
+          configure: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn().mockResolvedValue(undefined),
+        },
         getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();
@@ -1726,6 +1752,11 @@ describe('GraphsService', () => {
         type: NodeKind.Trigger,
         template: 'manual-trigger',
         instance: mockTrigger,
+        handle: {
+          provide: async () => mockTrigger,
+          configure: vi.fn().mockResolvedValue(undefined),
+          destroy: vi.fn().mockResolvedValue(undefined),
+        },
         getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
       };
       const mockCompiledGraph = createMockCompiledGraph();

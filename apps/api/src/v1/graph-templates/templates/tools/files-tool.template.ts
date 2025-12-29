@@ -4,14 +4,11 @@ import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { FilesToolGroup } from '../../../agent-tools/tools/common/files/files-tool-group';
-import { NodeKind } from '../../../graphs/graphs.types';
+import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import {
-  NodeBaseTemplateMetadata,
-  ToolNodeBaseTemplate,
-} from '../base-node.template';
+import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const FilesToolTemplateSchema = z
   .object({
@@ -62,60 +59,59 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
     super();
   }
 
-  async create(
-    config: z.infer<typeof FilesToolTemplateSchema>,
-    _inputNodeIds: Set<string>,
-    outputNodeIds: Set<string>,
-    metadata: NodeBaseTemplateMetadata,
-  ): Promise<BuiltAgentTool[]> {
-    // Find runtime node from output nodes
-    const runtimeNodeIds = this.graphRegistry.filterNodesByType(
-      metadata.graphId,
-      outputNodeIds,
-      NodeKind.Runtime,
-    );
+  public async create() {
+    return {
+      provide: async (
+        _params: GraphNode<z.infer<typeof FilesToolTemplateSchema>>,
+      ) => {
+        return [];
+      },
+      configure: async (
+        params: GraphNode<z.infer<typeof FilesToolTemplateSchema>>,
+        instance: BuiltAgentTool[],
+      ) => {
+        const graphId = params.metadata.graphId;
+        const outputNodeIds = params.outputNodeIds;
+        const config = params.config;
 
-    if (runtimeNodeIds.length === 0) {
-      throw new NotFoundException(
-        'NODE_NOT_FOUND',
-        `Runtime node not found in output nodes`,
-      );
-    }
+        const runtimeNodeIds = this.graphRegistry.filterNodesByType(
+          graphId,
+          outputNodeIds,
+          NodeKind.Runtime,
+        );
 
-    const runtimeNode = this.graphRegistry.getNode<BaseRuntime>(
-      metadata.graphId,
-      runtimeNodeIds[0]!,
-    );
+        if (runtimeNodeIds.length === 0) {
+          throw new NotFoundException(
+            'NODE_NOT_FOUND',
+            `Runtime node not found in output nodes`,
+          );
+        }
 
-    if (!runtimeNode) {
-      throw new NotFoundException(
-        'NODE_NOT_FOUND',
-        `Runtime node ${runtimeNodeIds[0]} not found`,
-      );
-    }
+        const runtimeNodeId = runtimeNodeIds[0]!;
 
-    // Store the runtime node ID to fetch fresh instance on each invocation
-    const runtimeNodeId = runtimeNodeIds[0]!;
-    const graphId = metadata.graphId;
-
-    return this.filesToolGroup.buildTools({
-      runtime: () => {
-        // Get fresh runtime instance from registry on each invocation
-        const currentRuntimeNode = this.graphRegistry.getNode<BaseRuntime>(
+        // Validate that the runtime exists in the registry immediately during configuration
+        const runtime = this.graphRegistry.getNodeInstance<BaseRuntime>(
           graphId,
           runtimeNodeId,
         );
-
-        if (!currentRuntimeNode) {
+        if (!runtime) {
           throw new NotFoundException(
             'RUNTIME_NOT_FOUND',
             `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
           );
         }
 
-        return currentRuntimeNode.instance;
+        instance.length = 0;
+        instance.push(
+          ...this.filesToolGroup.buildTools({
+            runtime,
+            includeEditActions: config.includeEditActions,
+          }),
+        );
       },
-      includeEditActions: config.includeEditActions,
-    });
+      destroy: async (instance: BuiltAgentTool[]) => {
+        instance.length = 0;
+      },
+    };
   }
 }

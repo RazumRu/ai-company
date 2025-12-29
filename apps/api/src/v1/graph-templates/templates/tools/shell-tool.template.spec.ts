@@ -10,6 +10,8 @@ import {
 } from '../../../graph-resources/graph-resources.types';
 import {
   CompiledGraphNode,
+  GraphNode,
+  GraphNodeInstanceHandle,
   GraphNodeStatus,
   NodeKind,
 } from '../../../graphs/graphs.types';
@@ -19,6 +21,14 @@ import {
   ShellToolTemplate,
   ShellToolTemplateSchema,
 } from './shell-tool.template';
+
+const makeHandle = <TInstance>(
+  instance: TInstance,
+): GraphNodeInstanceHandle<TInstance, any> => ({
+  provide: async () => instance,
+  configure: async () => {},
+  destroy: async () => {},
+});
 
 const buildMockNode = <TInstance = unknown>(options: {
   id: string;
@@ -30,6 +40,7 @@ const buildMockNode = <TInstance = unknown>(options: {
 }): CompiledGraphNode<TInstance> =>
   ({
     ...options,
+    handle: makeHandle(options.instance),
     config: options.config ?? {},
     getStatus: options.getStatus || (() => GraphNodeStatus.Idle),
   }) as unknown as CompiledGraphNode<TInstance>;
@@ -49,6 +60,7 @@ describe('ShellToolTemplate', () => {
       unregister: vi.fn(),
       get: vi.fn(),
       getNode: vi.fn(),
+      getNodeInstance: vi.fn(),
       filterNodesByType: vi.fn(),
       destroy: vi.fn(),
     } as unknown as GraphRegistry;
@@ -118,785 +130,390 @@ describe('ShellToolTemplate', () => {
 
   describe('schema validation', () => {
     it('should accept empty config (no parameters needed)', () => {
-      const config = {};
-
-      expect(() => ShellToolTemplateSchema.parse(config)).not.toThrow();
+      expect(() => ShellToolTemplateSchema.parse({})).not.toThrow();
     });
 
     it('should ignore legacy/unknown fields', () => {
-      const config = { extra: true, oldFlag: 'value' };
+      const dataWithExtra = {
+        someOldField: true,
+        anotherExtra: 'value',
+      };
 
-      const parsed = ShellToolTemplateSchema.parse(config);
+      const parsed = ShellToolTemplateSchema.parse(dataWithExtra);
       expect(parsed).toEqual({});
-      expect(parsed).not.toHaveProperty('extra');
-      expect(parsed).not.toHaveProperty('oldFlag');
+      expect(parsed).not.toHaveProperty('someOldField');
     });
   });
 
   describe('create', () => {
-    it('should create shell tool with valid runtime node', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
+    const mockRuntimeNodeId = 'runtime-1';
+    const mockGraphId = 'graph-1';
+    const mockMetadata = {
+      graphId: mockGraphId,
+      nodeId: 'tool-1',
+      version: '1',
+    };
+
+    let mockRuntime: BaseRuntime;
+
+    beforeEach(() => {
+      mockRuntime = {
         exec: vi
           .fn()
-          .mockResolvedValue({ stdout: 'ok', stderr: '', fail: false }),
+          .mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
       } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'node:18',
-          enableDind: false,
-        },
-      });
+
+      vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
+        (_gid, _nodes, kind) =>
+          kind === NodeKind.Runtime ? [mockRuntimeNodeId] : [],
+      );
+
+      vi.mocked(mockGraphRegistry.getNodeInstance).mockImplementation(
+        (gid, nid) => (nid === mockRuntimeNodeId ? mockRuntime : null),
+      );
+    });
+
+    it('should create shell tool with valid runtime node', async () => {
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
+      vi.mocked(mockShellTool.build).mockReturnValue(mockTool);
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockImplementation((_graphId, nodeIds, type) => {
-          if (type === NodeKind.Runtime)
-            return Array.from(nodeIds).filter((id) => id === 'runtime-1');
-          return [];
-        });
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((_graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          return undefined;
-        });
-      mockShellTool.build = vi.fn().mockReturnValue(mockTool);
-
+      const outputNodeIds = new Set([mockRuntimeNodeId]);
       const config = {};
-      const outputNodeIds = new Set(['runtime-1']);
-
-      const result = await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      expect(mockGraphRegistry.filterNodesByType).toHaveBeenCalledWith(
-        'test-graph',
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
         outputNodeIds,
-        NodeKind.Runtime,
-      );
-      expect(mockGraphRegistry.getNode).toHaveBeenCalledWith(
-        'test-graph',
-        'runtime-1',
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {},
-        }),
-      );
-      expect(result).toEqual([mockTool]);
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      expect(mockShellTool.build).toHaveBeenCalled();
+      expect(instance).toEqual([mockTool]);
     });
 
     it('should throw NotFoundException when runtime node not found', async () => {
-      mockGraphRegistry.filterNodesByType = vi.fn().mockReturnValue([]); // No runtime IDs
+      vi.mocked(mockGraphRegistry.filterNodesByType).mockReturnValue([]);
 
       const config = {};
-      const outputNodeIds = new Set(['non-existent-runtime']);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
 
-      await expect(
-        template.create(config, new Set(), outputNodeIds, {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw NotFoundException with correct error message', async () => {
-      mockGraphRegistry.filterNodesByType = vi.fn().mockReturnValue([]); // No runtime IDs
+      vi.mocked(mockGraphRegistry.filterNodesByType).mockReturnValue([]);
 
       const config = {};
-      const outputNodeIds = new Set(['non-existent-runtime']);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
 
-      try {
-        await template.create(config, new Set(), outputNodeIds, {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        });
-        throw new Error('Expected NotFoundException to be thrown');
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(NotFoundException);
-        expect((error as NotFoundException).message).toContain(
-          'Runtime node not found in output nodes',
-        );
-      }
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        /Runtime node not found in output nodes/,
+      );
     });
 
     it('should handle shell tool build errors', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'node:18',
-          enableDind: false,
-        },
+      vi.mocked(mockShellTool.build).mockImplementation(() => {
+        throw new Error('Build failed');
       });
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['runtime-1']);
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(mockRuntimeNode);
-
-      const mockError = new Error('Failed to build shell tool');
-      mockShellTool.build = vi.fn().mockImplementation(() => {
-        throw mockError;
-      });
-
+      const outputNodeIds = new Set([mockRuntimeNodeId]);
       const config = {};
-      const outputNodeIds = new Set(['runtime-1']);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
 
-      await expect(
-        template.create(config, new Set(), outputNodeIds, {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
-      ).rejects.toThrow('Failed to build shell tool');
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        'Build failed',
+      );
     });
 
     it('should work with different runtime node IDs', async () => {
-      const mockRuntime1 = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      const mockRuntime2 = {
-        id: 'runtime-2',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-
-      const mockRuntimeNode1 = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime1,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'node:18',
-          enableDind: false,
-        },
-      });
-
-      const mockRuntimeNode2 = buildMockNode<BaseRuntime>({
-        id: 'runtime-2',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime2,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'python:3.11',
-          enableDind: true,
-        },
-      });
-
+      const customRuntimeId = 'custom-rt-999';
       const mockTool = { name: 'shell' } as DynamicStructuredTool;
-      mockShellTool.build = vi.fn().mockReturnValue(mockTool);
+      vi.mocked(mockShellTool.build).mockReturnValue(mockTool);
 
-      // Test with first runtime
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['runtime-1']);
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(mockRuntimeNode1);
-
-      const config1 = {};
-      const outputNodeIds1 = new Set(['runtime-1']);
-      await template.create(config1, new Set(), outputNodeIds1, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {},
-        }),
+      vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
+        (_gid, _nodes, kind) =>
+          kind === NodeKind.Runtime ? [customRuntimeId] : [],
+      );
+      vi.mocked(mockGraphRegistry.getNodeInstance).mockImplementation(
+        (_gid, nid) => (nid === customRuntimeId ? mockRuntime : null),
       );
 
-      // Test with second runtime
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['runtime-2']);
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(mockRuntimeNode2);
+      const outputNodeIds = new Set([customRuntimeId]);
+      const config = {};
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      const config2 = {};
-      const outputNodeIds2 = new Set(['runtime-2']);
-      await template.create(config2, new Set(), outputNodeIds2, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {},
-        }),
-      );
+      expect(mockShellTool.build).toHaveBeenCalled();
+      expect(instance).toEqual([mockTool]);
     });
 
     it('should handle null/undefined runtime node gracefully', async () => {
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockReturnValue(['runtime-1']);
-      mockGraphRegistry.getNode = vi.fn().mockReturnValue(undefined);
+      vi.mocked(mockGraphRegistry.getNodeInstance).mockReturnValue(null);
 
+      const outputNodeIds = new Set([mockRuntimeNodeId]);
       const config = {};
-      const outputNodeIds = new Set(['runtime-1']);
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata: mockMetadata,
+      };
+      const instance = await handle.provide(init);
 
-      await expect(
-        template.create(config, new Set(), outputNodeIds, {
-          graphId: 'test-graph',
-          nodeId: 'test-node',
-          version: '1.0.0',
-        }),
-      ).rejects.toThrow();
+      await expect(handle.configure(init, instance)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
-    it('should create shell tool with resources', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn().mockResolvedValue({
-          stdout: 'init completed',
-          stderr: '',
-          exitCode: 0,
-          fail: false,
-        }),
-      } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'node:18',
-          workdir: '/app',
-          enableDind: false,
-        },
-      });
-
+    describe('resource integration', () => {
+      const mockResourceId = 'res-1';
       const mockResourceOutput: IShellResourceOutput = {
-        information: 'GitHub resource information',
         kind: ResourceKind.Shell,
+        information: 'Resource info',
         data: {
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-          initScript: ['echo "setup"'],
-          initScriptTimeout: 60000,
+          env: { KEY: 'VALUE' },
+          initScript: 'echo init',
+          initScriptTimeout: 5000,
         },
-      };
-      const mockResourceNode = buildMockNode<IShellResourceOutput>({
-        id: 'resource-1',
-        type: NodeKind.Resource,
-        template: 'github-resource',
-        config: {},
-        instance: mockResourceOutput,
+      } as any;
+
+      beforeEach(() => {
+        vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
+          (_gid, nodes, kind) => {
+            if (kind === NodeKind.Runtime) return [mockRuntimeNodeId];
+            if (kind === NodeKind.Resource)
+              return Array.from(nodes).filter((id) => id === mockResourceId);
+            return [];
+          },
+        );
+
+        vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
+          if (id === mockResourceId) {
+            return buildMockNode({
+              id: mockResourceId,
+              type: NodeKind.Resource,
+              template: 'github-resource',
+              instance: mockResourceOutput,
+            });
+          }
+          return undefined;
+        });
       });
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockImplementation((graphId, nodeIds, type) => {
-          if (type === NodeKind.Runtime) {
-            return ['runtime-1'];
+      it('should create shell tool with resources', async () => {
+        const outputNodeIds = new Set([mockRuntimeNodeId, mockResourceId]);
+        const config = {};
+        const handle = await template.create();
+        const init: GraphNode<typeof config> = {
+          config,
+          inputNodeIds: new Set(),
+          outputNodeIds,
+          metadata: mockMetadata,
+        };
+        const instance = await handle.provide(init);
+        await handle.configure(init, instance);
+
+        expect(mockShellTool.build).toHaveBeenCalledWith(
+          expect.objectContaining({
+            env: { KEY: 'VALUE' },
+            resourcesInformation: expect.stringContaining('Resource info'),
+          }),
+        );
+      });
+
+      it('should ignore non-resource nodes in resourceNodeIds', async () => {
+        const otherNodeId = 'other-node';
+        vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
+          if (id === mockResourceId) {
+            return buildMockNode({
+              id: mockResourceId,
+              type: NodeKind.Resource,
+              template: 'github-resource',
+              instance: mockResourceOutput,
+            });
           }
-          if (type === NodeKind.Resource) {
-            return ['resource-1'];
+          if (id === otherNodeId) {
+            return buildMockNode({
+              id: otherNodeId,
+              type: NodeKind.SimpleAgent,
+              template: 'simple-agent',
+              instance: {},
+            });
           }
-          return [];
-        });
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          if (nodeId === 'resource-1') return mockResourceNode;
           return undefined;
         });
 
-      const mockTool = { name: 'shell' } as DynamicStructuredTool;
-      mockShellTool.build = vi.fn().mockReturnValue(mockTool);
+        const outputNodeIds = new Set([
+          mockRuntimeNodeId,
+          mockResourceId,
+          otherNodeId,
+        ]);
+        const config = {};
+        const handle = await template.create();
+        const init: GraphNode<typeof config> = {
+          config,
+          inputNodeIds: new Set(),
+          outputNodeIds,
+          metadata: mockMetadata,
+        };
+        const instance = await handle.provide(init);
+        await handle.configure(init, instance);
 
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1', 'resource-1']);
-
-      const result = await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
+        expect(mockGraphRegistry.filterNodesByType).toHaveBeenCalledWith(
+          mockGraphId,
+          outputNodeIds,
+          NodeKind.Resource,
+        );
       });
 
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-      expect(result).toEqual([mockTool]);
-    });
+      it('should handle missing resource nodes gracefully', async () => {
+        vi.mocked(mockGraphRegistry.getNode).mockReturnValue(undefined);
 
-    it('should ignore non-resource nodes in resourceNodeIds', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn().mockResolvedValue({
-          stdout: 'init completed',
-          stderr: '',
-          exitCode: 0,
-          fail: false,
-        }),
-      } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'node:18',
-          enableDind: false,
-        },
+        const outputNodeIds = new Set([mockRuntimeNodeId, mockResourceId]);
+        const config = {};
+        const handle = await template.create();
+        const init: GraphNode<typeof config> = {
+          config,
+          inputNodeIds: new Set(),
+          outputNodeIds,
+          metadata: mockMetadata,
+        };
+        const instance = await handle.provide(init);
+        await handle.configure(init, instance);
+
+        expect(mockShellTool.build).toHaveBeenCalledWith(
+          expect.objectContaining({
+            env: {},
+            resourcesInformation: '',
+          }),
+        );
       });
 
-      const mockResourceOutput: IShellResourceOutput = {
-        information: 'GitHub resource information',
-        kind: ResourceKind.Shell,
-        data: {
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
+      it('should execute init scripts from resources', async () => {
+        const outputNodeIds = new Set([mockRuntimeNodeId, mockResourceId]);
+        const config = {};
+        const handle = await template.create();
+        const init: GraphNode<typeof config> = {
+          config,
+          inputNodeIds: new Set(),
+          outputNodeIds,
+          metadata: mockMetadata,
+        };
+        const instance = await handle.provide(init);
+        await handle.configure(init, instance);
+
+        expect(mockRuntime.exec).toHaveBeenCalledWith(
+          expect.objectContaining({
+            cmd: 'echo init',
+            timeoutMs: 5000,
+            env: { KEY: 'VALUE' },
+          }),
+        );
+      });
+
+      it('should handle multiple resources with different init scripts', async () => {
+        const res2Id = 'res-2';
+        const res2Output = {
+          kind: ResourceKind.Shell,
+          information: 'Res 2 info',
+          data: {
+            env: { KEY2: 'VALUE2' },
+            initScript: 'echo init2',
           },
-          initScript: ['echo "setup"'],
-          initScriptTimeout: 60000,
-        },
-      };
-      const mockResourceNode = buildMockNode<IShellResourceOutput>({
-        id: 'resource-1',
-        type: NodeKind.Resource,
-        template: 'github-resource',
-        config: {},
-        instance: mockResourceOutput,
-      });
+        } as any;
 
-      const mockToolNode = buildMockNode({
-        id: 'tool-1',
-        type: NodeKind.Tool,
-        template: 'web-search-tool',
-        config: {},
-        instance: {} as DynamicStructuredTool,
-      });
+        vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
+          (_gid, nodes, kind) => {
+            if (kind === NodeKind.Runtime) return [mockRuntimeNodeId];
+            if (kind === NodeKind.Resource)
+              return Array.from(nodes).filter(
+                (id) => id === mockResourceId || id === res2Id,
+              );
+            return [];
+          },
+        );
 
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockImplementation((graphId, nodeIds, type) => {
-          if (type === NodeKind.Runtime) {
-            return ['runtime-1'];
+        vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
+          if (id === mockResourceId) {
+            return buildMockNode({
+              id: mockResourceId,
+              type: NodeKind.Resource,
+              template: 'github-resource',
+              instance: mockResourceOutput,
+            });
           }
-          if (type === NodeKind.Resource) {
-            return ['resource-1']; // Only resource, not tool
+          if (id === res2Id) {
+            return buildMockNode({
+              id: res2Id,
+              type: NodeKind.Resource,
+              template: 'github-resource',
+              instance: res2Output,
+            });
           }
-          return [];
-        });
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          if (nodeId === 'resource-1') return mockResourceNode;
-          if (nodeId === 'tool-1') return mockToolNode;
           return undefined;
         });
 
-      const mockTool = { name: 'shell' } as DynamicStructuredTool;
-      mockShellTool.build = vi.fn().mockReturnValue(mockTool);
+        const outputNodeIds = new Set([
+          mockRuntimeNodeId,
+          mockResourceId,
+          res2Id,
+        ]);
+        const config = {};
+        const handle = await template.create();
+        const init: GraphNode<typeof config> = {
+          config,
+          inputNodeIds: new Set(),
+          outputNodeIds,
+          metadata: mockMetadata,
+        };
+        const instance = await handle.provide(init);
+        await handle.configure(init, instance);
 
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1', 'resource-1', 'tool-1']);
-
-      const result = await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
+        expect(mockRuntime.exec).toHaveBeenCalledWith(
+          expect.objectContaining({ cmd: 'echo init' }),
+        );
+        expect(mockRuntime.exec).toHaveBeenCalledWith(
+          expect.objectContaining({ cmd: 'echo init2' }),
+        );
+        expect(mockShellTool.build).toHaveBeenCalledWith(
+          expect.objectContaining({
+            env: { KEY: 'VALUE', KEY2: 'VALUE2' },
+          }),
+        );
       });
-
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-      expect(result).toEqual([mockTool]);
-    });
-
-    it('should handle missing resource nodes gracefully', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn(),
-      } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'node:18',
-          enableDind: false,
-        },
-      });
-
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockImplementation((graphId, nodeIds, type) => {
-          if (type === NodeKind.Runtime) {
-            return ['runtime-1'];
-          }
-          if (type === NodeKind.Resource) {
-            return []; // No resources
-          }
-          return [];
-        });
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          return undefined;
-        });
-
-      const mockTool = { name: 'shell' } as DynamicStructuredTool;
-      mockShellTool.build = vi.fn().mockReturnValue(mockTool);
-
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1']);
-
-      const result = await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {}, // Empty object since resource doesn't exist
-        }),
-      );
-      expect(result).toEqual([mockTool]);
-    });
-
-    it('should execute init scripts from resources', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn().mockResolvedValue({
-          stdout: 'init completed',
-          stderr: '',
-          exitCode: 0,
-        }),
-      } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'node:18',
-          enableDind: false,
-        },
-      });
-
-      const mockResourceOutput: IShellResourceOutput = {
-        information: 'GitHub resource information',
-        kind: ResourceKind.Shell,
-        data: {
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-          initScript: ['echo "setup"', 'apt-get update'],
-          initScriptTimeout: 60000,
-        },
-      };
-      const mockResourceNode = buildMockNode<IShellResourceOutput>({
-        id: 'resource-1',
-        type: NodeKind.Resource,
-        template: 'github-resource',
-        config: {},
-        instance: mockResourceOutput,
-      });
-
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockImplementation((graphId, nodeIds, type) => {
-          if (type === NodeKind.Runtime) {
-            return ['runtime-1'];
-          }
-          if (type === NodeKind.Resource) {
-            return ['resource-1'];
-          }
-          return [];
-        });
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          if (nodeId === 'resource-1') return mockResourceNode;
-          return undefined;
-        });
-
-      const mockTool = { name: 'shell' } as DynamicStructuredTool;
-      mockShellTool.build = vi.fn().mockReturnValue(mockTool);
-
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1', 'resource-1']);
-
-      await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      // Verify that init scripts were executed
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: ['echo "setup"', 'apt-get update'],
-        timeoutMs: 60000,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-        },
-      });
-
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-          },
-        }),
-      );
-    });
-
-    it('should handle multiple resources with different init scripts', async () => {
-      const mockRuntime = {
-        id: 'runtime-1',
-        start: vi.fn(),
-        stop: vi.fn(),
-        exec: vi.fn().mockResolvedValue({
-          stdout: 'init completed',
-          stderr: '',
-          exitCode: 0,
-        }),
-      } as unknown as BaseRuntime;
-      const mockRuntimeNode = buildMockNode<BaseRuntime>({
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        instance: mockRuntime,
-        config: {
-          runtimeType: 'docker' as const,
-          image: 'node:18',
-          enableDind: true,
-        },
-      });
-
-      const mockResource1: IShellResourceOutput = {
-        information: 'GitHub resource',
-        kind: ResourceKind.Shell,
-        data: {
-          env: { GITHUB_PAT_TOKEN: 'ghp_token' },
-          initScript: ['echo "github setup"'],
-          initScriptTimeout: 60000,
-        },
-      };
-      const mockResource2: IShellResourceOutput = {
-        information: 'Another resource',
-        kind: ResourceKind.Shell,
-        data: {
-          env: { API_KEY: 'api_key' },
-          initScript: ['echo "api setup"', 'npm install'],
-          initScriptTimeout: 60000,
-        },
-      };
-
-      const mockResourceNode1 = {
-        id: 'resource-1',
-        type: NodeKind.Resource,
-        template: 'github-resource',
-        config: {},
-        instance: mockResource1,
-      };
-
-      const mockResourceNode2 = {
-        id: 'resource-2',
-        type: NodeKind.Resource,
-        template: 'api-resource',
-        config: {},
-        instance: mockResource2,
-      };
-
-      mockGraphRegistry.filterNodesByType = vi
-        .fn()
-        .mockImplementation((graphId, nodeIds, type) => {
-          if (type === NodeKind.Runtime) {
-            return ['runtime-1'];
-          }
-          if (type === NodeKind.Resource) {
-            return ['resource-1', 'resource-2'];
-          }
-          return [];
-        });
-      mockGraphRegistry.getNode = vi
-        .fn()
-        .mockImplementation((graphId, nodeId) => {
-          if (nodeId === 'runtime-1') return mockRuntimeNode;
-          if (nodeId === 'resource-1') return mockResourceNode1;
-          if (nodeId === 'resource-2') return mockResourceNode2;
-          return undefined;
-        });
-
-      const mockTool = { name: 'shell' } as DynamicStructuredTool;
-      mockShellTool.build = vi.fn().mockReturnValue(mockTool);
-
-      const config = {};
-      const outputNodeIds = new Set(['runtime-1', 'resource-1', 'resource-2']);
-
-      await template.create(config, new Set(), outputNodeIds, {
-        graphId: 'test-graph',
-        nodeId: 'test-node',
-        version: '1.0.0',
-      });
-
-      // Verify that init scripts were executed separately
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: ['echo "github setup"'],
-        timeoutMs: 60000,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-          API_KEY: 'api_key',
-        },
-      });
-      expect(mockRuntime.exec).toHaveBeenCalledWith({
-        cmd: ['echo "api setup"', 'npm install'],
-        timeoutMs: 60000,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token',
-          API_KEY: 'api_key',
-        },
-      });
-
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-            API_KEY: 'api_key',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-            API_KEY: 'api_key',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-            API_KEY: 'api_key',
-          },
-        }),
-      );
-      expect(mockShellTool.build).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtime: expect.any(Function),
-          env: {
-            GITHUB_PAT_TOKEN: 'ghp_token',
-            API_KEY: 'api_key',
-          },
-        }),
-      );
     });
   });
 });

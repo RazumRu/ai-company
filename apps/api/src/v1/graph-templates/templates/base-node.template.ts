@@ -1,3 +1,5 @@
+import type { ContextId, ModuleRef } from '@nestjs/core';
+import type { Class } from 'type-fest';
 import { z } from 'zod';
 
 import type { BaseMcp } from '../../agent-mcp/services/base-mcp';
@@ -5,7 +7,11 @@ import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { IBaseResourceOutput } from '../../graph-resources/graph-resources.types';
-import { GraphMetadataSchemaType, NodeKind } from '../../graphs/graphs.types';
+import {
+  GraphMetadataSchemaType,
+  GraphNodeInstanceHandle,
+  NodeKind,
+} from '../../graphs/graphs.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 
 export interface NodeBaseTemplateMetadata extends GraphMetadataSchemaType {
@@ -30,23 +36,36 @@ export abstract class NodeBaseTemplate<
   readonly outputs: readonly NodeConnection[] = [];
 
   /**
-   * Create a node instance.
-   * @param config - Validated configuration for the node
-   * @param inputNodeIds - Set of input node IDs (nodes that connect TO this node)
-   * @param outputNodeIds - Set of output node IDs (nodes that this node connects TO)
-   * @param metadata - Graph metadata including graphId for looking up nodes dynamically
+   * Create a per-graph node handle.
    */
-  abstract create(
-    config: z.infer<TConfig>,
-    inputNodeIds: Set<string>,
-    outputNodeIds: Set<string>,
-    metadata: NodeBaseTemplateMetadata,
-  ): Promise<TOutput>;
+  abstract create(): Promise<
+    GraphNodeInstanceHandle<TOutput, z.infer<TConfig>>
+  >;
+
+  /**
+   * Shared helper for templates to always create a new instance using Nest DI.
+   * Prefer this over constructor-injecting node instances, which causes cross-graph reuse.
+   */
+  protected async createNewInstance<T>(
+    moduleRef: ModuleRef,
+    cls: Class<T>,
+    ctx?: ContextId,
+  ): Promise<T> {
+    // Node instance classes are required to be Scope.TRANSIENT providers.
+    // That makes ModuleRef.resolve() return a new instance per call, while still using
+    // Nest's provider resolution graph (important for deep dependencies).
+    //
+    // NOTE: This requires the node instance class to be registered as a provider.
+    // We keep `strict: false` since templates may live in a different module than
+    // the node instance provider.
+    return await moduleRef.resolve(cls, ctx, { strict: false });
+  }
 }
 
 export abstract class RuntimeNodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
-> extends NodeBaseTemplate<TConfig, BaseRuntime> {
+  TInstance extends BaseRuntime,
+> extends NodeBaseTemplate<TConfig, TInstance> {
   readonly kind: NodeKind = NodeKind.Runtime;
 }
 

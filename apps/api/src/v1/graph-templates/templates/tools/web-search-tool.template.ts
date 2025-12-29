@@ -1,15 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { WebSearchTool } from '../../../agent-tools/tools/common/web-search.tool';
-import { CompiledGraphNode as _CompiledGraphNode } from '../../../graphs/graphs.types';
-import { NodeKind } from '../../../graphs/graphs.types';
+import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import {
-  NodeBaseTemplateMetadata,
-  ToolNodeBaseTemplate,
-} from '../base-node.template';
+import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const WebSearchToolTemplateSchema = z
   .object({
@@ -36,16 +33,32 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
     },
   ] as const;
 
-  constructor(private readonly webSearchTool: WebSearchTool) {
+  constructor(private readonly moduleRef: ModuleRef) {
     super();
   }
 
-  async create(
-    config: z.infer<typeof WebSearchToolTemplateSchema>,
-    _inputNodeIds: Set<string>,
-    _outputNodeIds: Set<string>,
-    _metadata: NodeBaseTemplateMetadata,
-  ): Promise<BuiltAgentTool[]> {
-    return [this.webSearchTool.build(config)];
+  public async create() {
+    const webSearchTool: WebSearchTool = await this.createNewInstance(
+      this.moduleRef,
+      WebSearchTool,
+    );
+
+    return {
+      provide: async (
+        _params: GraphNode<z.infer<typeof WebSearchToolTemplateSchema>>,
+      ) => {
+        return [];
+      },
+      configure: async (
+        params: GraphNode<z.infer<typeof WebSearchToolTemplateSchema>>,
+        instance: BuiltAgentTool[],
+      ) => {
+        instance.length = 0;
+        instance.push(await webSearchTool.build(params.config));
+      },
+      destroy: async (instance: BuiltAgentTool[]) => {
+        instance.length = 0;
+      },
+    };
   }
 }

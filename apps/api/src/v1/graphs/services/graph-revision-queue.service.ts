@@ -19,6 +19,7 @@ export class GraphRevisionQueueService
   private worker!: Worker<GraphRevisionJobData>;
   private redis!: IORedis;
   private processor?: (job: GraphRevisionJobData) => Promise<void>;
+  private queueName = 'graph-revisions';
 
   constructor(private readonly logger: DefaultLogger) {}
 
@@ -27,21 +28,18 @@ export class GraphRevisionQueueService
       maxRetriesPerRequest: null,
     });
 
-    this.queue = new Queue<GraphRevisionJobData>('graph-revisions', {
+    this.queue = new Queue<GraphRevisionJobData>(this.queueName, {
       connection: this.redis,
       defaultJobOptions: {
         removeOnComplete: 100,
         removeOnFail: 50,
         attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
+        backoff: { type: 'exponential' as const, delay: 2000 },
       },
     });
 
     this.worker = new Worker<GraphRevisionJobData>(
-      'graph-revisions',
+      this.queueName,
       this.processJob.bind(this),
       {
         connection: this.redis,
@@ -49,15 +47,7 @@ export class GraphRevisionQueueService
       },
     );
 
-    this.worker.on(
-      'failed',
-      (job: Job<GraphRevisionJobData> | undefined, err: Error) => {
-        this.logger.error(
-          err,
-          `Graph revision job ${job?.id} failed for graph ${job?.data.graphId}`,
-        );
-      },
-    );
+    this.worker.on('failed', this.handleJobFailure.bind(this));
   }
 
   setProcessor(processor: (job: GraphRevisionJobData) => Promise<void>): void {
@@ -69,13 +59,8 @@ export class GraphRevisionQueueService
   ): Promise<void> {
     await this.queue.add(
       'apply-revision',
-      {
-        revisionId: revision.id,
-        graphId: revision.graphId,
-      },
-      {
-        jobId: revision.id,
-      },
+      { revisionId: revision.id, graphId: revision.graphId },
+      { jobId: revision.id },
     );
   }
 
@@ -123,6 +108,16 @@ export class GraphRevisionQueueService
     }
 
     await this.processor(job.data);
+  }
+
+  private handleJobFailure(
+    job: Job<GraphRevisionJobData> | undefined,
+    err: Error,
+  ): void {
+    this.logger.error(
+      err,
+      `Graph revision job ${job?.id} failed for graph ${job?.data.graphId}`,
+    );
   }
 
   async onModuleDestroy(): Promise<void> {

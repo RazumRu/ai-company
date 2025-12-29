@@ -608,7 +608,9 @@ export class AiSuggestionsService {
         instructions?: string;
       };
       const instanceInstructions = (
-        node.instance as { currentConfig?: { instructions?: string } }
+        node.instance as {
+          currentConfig?: { instructions?: string };
+        }
       )?.currentConfig?.instructions;
 
       const instructions = (
@@ -675,9 +677,8 @@ export class AiSuggestionsService {
         return [];
       }
 
-      const tools = Array.isArray(toolNode.instance)
-        ? toolNode.instance
-        : [toolNode.instance];
+      const toolInstance = toolNode.instance;
+      const tools = Array.isArray(toolInstance) ? toolInstance : [toolInstance];
 
       return tools.map(
         (tool): ConnectedToolInfo => ({

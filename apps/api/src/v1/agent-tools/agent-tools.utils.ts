@@ -12,7 +12,7 @@ type JSONSchema = ReturnType<typeof z.toJSONSchema>;
 type UnknownObject = UnknownRecord;
 
 export const execRuntimeWithContext = async (
-  runtime: BaseRuntime | (() => BaseRuntime),
+  runtime: BaseRuntime,
   params: RuntimeExecParams,
   cfg: ToolRunnableConfig<BaseAgentConfigurable>,
 ) => {
@@ -23,9 +23,6 @@ export const execRuntimeWithContext = async (
     );
   }
 
-  // Get runtime instance (either directly or via getter function)
-  const instance = typeof runtime === 'function' ? runtime() : runtime;
-
   const threadId =
     cfg.configurable?.parent_thread_id ||
     cfg.configurable?.thread_id ||
@@ -33,7 +30,7 @@ export const execRuntimeWithContext = async (
   const runId = cfg.configurable?.run_id;
   const sessionId = threadId;
 
-  return instance.exec({
+  return runtime.exec({
     ...params,
     childWorkdir: `${threadId.replace(/:/g, '_')}`,
     createChildWorkdir: true,

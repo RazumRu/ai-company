@@ -80,6 +80,13 @@ export abstract class BaseAgent<
   }
 
   /**
+   * Reset (clear) the agent toolset.
+   */
+  public resetTools(): void {
+    this.tools.clear();
+  }
+
+  /**
    * Subscribe to agent events
    * Returns an unsubscriber function
    */

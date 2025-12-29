@@ -152,7 +152,7 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
         if (typeof prev === 'number') return current !== prev;
         return true;
       },
-      { timeout: 45_000, interval: 750 },
+      { timeout: 60_000, interval: 1000 },
     );
 
     return {

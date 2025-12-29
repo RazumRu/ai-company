@@ -1,14 +1,15 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
-import { IShellResourceOutput } from '../../../graph-resources/graph-resources.types';
-import { GithubResource } from '../../../graph-resources/services/github-resource';
-import { CompiledGraphNode as _CompiledGraphNode } from '../../../graphs/graphs.types';
-import { RegisterTemplate } from '../../decorators/register-template.decorator';
+import { ResourceKind } from '../../../graph-resources/graph-resources.types';
 import {
-  NodeBaseTemplateMetadata,
-  ResourceNodeBaseTemplate,
-} from '../base-node.template';
+  GithubResource,
+  IGithubResourceOutput,
+} from '../../../graph-resources/services/github-resource';
+import type { GraphNode } from '../../../graphs/graphs.types';
+import { RegisterTemplate } from '../../decorators/register-template.decorator';
+import { ResourceNodeBaseTemplate } from '../base-node.template';
 
 export const GithubResourceTemplateSchema = z
   .object({
@@ -26,11 +27,15 @@ export const GithubResourceTemplateSchema = z
   // Strip legacy/unknown fields so older configs remain valid.
   .strip();
 
+export type GithubResourceTemplateSchemaType = z.infer<
+  typeof GithubResourceTemplateSchema
+>;
+
 @Injectable()
 @RegisterTemplate()
 export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
   typeof GithubResourceTemplateSchema,
-  IShellResourceOutput
+  IGithubResourceOutput
 > {
   readonly id = 'github-resource';
   readonly name = 'GitHub';
@@ -51,20 +56,46 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
     },
   ] as const;
 
-  constructor(private readonly githubResource: GithubResource) {
+  constructor(private readonly moduleRef: ModuleRef) {
     super();
   }
 
-  async create(
-    config: z.infer<typeof GithubResourceTemplateSchema>,
-    _inputNodeIds: Set<string>,
-    _outputNodeIds: Set<string>,
-    _metadata: NodeBaseTemplateMetadata,
-  ): Promise<IShellResourceOutput> {
-    if (this.githubResource.setup) {
-      await this.githubResource.setup(config);
-    }
+  public async create() {
+    let resourceService: GithubResource;
 
-    return this.githubResource.getData(config);
+    return {
+      provide: async (params: GraphNode<GithubResourceTemplateSchemaType>) => {
+        resourceService = await this.createNewInstance(
+          this.moduleRef,
+          GithubResource,
+        );
+        // Setup must happen in configure(). Provide must be side-effect free.
+        return {
+          information: '',
+          kind: ResourceKind.Shell,
+          patToken: params.config.patToken,
+          data: {},
+        } satisfies IGithubResourceOutput;
+      },
+      configure: async (
+        params: GraphNode<GithubResourceTemplateSchemaType>,
+        instance: IGithubResourceOutput,
+      ) => {
+        if (!resourceService) {
+          throw new Error('RESOURCE_SERVICE_NOT_INITIALIZED');
+        }
+
+        const config = params.config;
+        if (resourceService.setup) {
+          await resourceService.setup(config);
+        }
+        const newData = await resourceService.getData(config);
+        // Update the instance in-place
+        Object.assign(instance, newData);
+      },
+      destroy: async (_instance: IGithubResourceOutput) => {
+        // No cleanup needed for resource
+      },
+    };
   }
 }
