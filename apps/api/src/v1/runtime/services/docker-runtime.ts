@@ -574,6 +574,74 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
+  private async getContainerIP(
+    container: Docker.Container,
+    networkName: string,
+  ) {
+    const st = await container.inspect();
+    const net = st.NetworkSettings?.Networks?.[networkName];
+    const ip = net?.IPAddress;
+    if (ip) return ip;
+
+    const first = Object.values(st.NetworkSettings?.Networks || {})[0] as
+      | { IPAddress?: string }
+      | undefined;
+
+    if (first?.IPAddress) return first.IPAddress;
+
+    throw new Error('DIND_IP_NOT_FOUND');
+  }
+
+  private async ensureNetworkAlias(
+    container: Docker.Container,
+    networkName: string,
+    alias: string,
+  ): Promise<void> {
+    const inspect: unknown = await container.inspect();
+    const isRecord = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null;
+
+    if (!isRecord(inspect)) {
+      throw new Error('Invalid container inspect result');
+    }
+
+    const containerId = inspect['Id'];
+    if (typeof containerId !== 'string' || !containerId) {
+      throw new Error('Container id not found');
+    }
+
+    const networkSettings = inspect['NetworkSettings'];
+    const networks =
+      isRecord(networkSettings) && isRecord(networkSettings['Networks'])
+        ? networkSettings['Networks']
+        : null;
+    const network =
+      networks && isRecord(networks[networkName])
+        ? networks[networkName]
+        : null;
+    const existingAliasesRaw = network ? network['Aliases'] : null;
+    const existingAliases = Array.isArray(existingAliasesRaw)
+      ? existingAliasesRaw.filter((v): v is string => typeof v === 'string')
+      : [];
+    if (existingAliases.includes(alias)) {
+      return;
+    }
+
+    const dockerNetwork = await this.getNetwork(networkName);
+    if (!dockerNetwork) {
+      throw new Error(`Network ${networkName} not found`);
+    }
+
+    if (network) {
+      await dockerNetwork.disconnect({ Container: containerId, Force: true });
+    }
+
+    await dockerNetwork.connect({
+      Container: containerId,
+      EndpointConfig: { Aliases: [alias] },
+    });
+  }
+
   private async getNetwork(
     networkName: string,
   ): Promise<Docker.Network | null> {
@@ -684,6 +752,7 @@ export class DockerRuntime extends BaseRuntime {
   private async startDindContainer(
     containerName: string,
     network: string,
+    networkAlias: string,
     labels?: Record<string, string>,
     recreate?: boolean,
   ): Promise<Docker.Container> {
@@ -700,6 +769,7 @@ export class DockerRuntime extends BaseRuntime {
       if (!inspect.State.Running) {
         await existingDind.start();
       }
+      await this.ensureNetworkAlias(existingDind, network, networkAlias);
       await this.waitForDindReady(existingDind);
       return existingDind;
     }
@@ -731,6 +801,13 @@ export class DockerRuntime extends BaseRuntime {
             '--host=tcp://0.0.0.0:2375',
             '--host=unix:///var/run/docker.sock',
           ],
+          NetworkingConfig: {
+            EndpointsConfig: {
+              [network]: {
+                Aliases: [networkAlias],
+              },
+            },
+          },
           HostConfig: {
             Privileged: true,
             NetworkMode: network,
@@ -742,6 +819,7 @@ export class DockerRuntime extends BaseRuntime {
 
     await dindContainer.start();
 
+    await this.ensureNetworkAlias(dindContainer, network, networkAlias);
     await this.waitForDindReady(dindContainer);
 
     return dindContainer;
@@ -796,17 +874,21 @@ export class DockerRuntime extends BaseRuntime {
 
     if (params?.enableDind) {
       const dindContainerName = `dind-${containerName}`;
+      const dindNetworkAlias = `dind-host-${containerName}`;
 
       this.dindContainer = await this.startDindContainer(
         dindContainerName,
         networkName,
+        dindNetworkAlias,
         params?.labels,
         params?.recreate,
       );
 
+      const dindIP = await this.getContainerIP(this.dindContainer, networkName);
+
       containerEnv = {
         ...containerEnv,
-        DOCKER_HOST: `tcp://dind-${containerName}:2375`,
+        DOCKER_HOST: `tcp://${dindIP}:2375`,
       };
     }
 

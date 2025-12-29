@@ -16,10 +16,36 @@ export class DockerExecTransport implements Transport {
   private stderr?: PassThrough;
   private closeStream?: () => void;
   private buffer = '';
+  private stderrTail = '';
+  private sawAnyMessage = false;
   private isConnected = false;
   onclose?: () => void;
   onerror?: (error: Error) => void;
   onmessage?: (message: unknown) => void;
+
+  private appendStderrTail(chunk: Buffer, maxBytes = 64 * 1024): void {
+    const next = chunk.toString('utf8');
+    if (!next) return;
+    if (!this.stderrTail) {
+      this.stderrTail =
+        next.length <= maxBytes ? next : next.slice(next.length - maxBytes);
+      return;
+    }
+    const combined = this.stderrTail + next;
+    this.stderrTail =
+      combined.length <= maxBytes
+        ? combined
+        : combined.slice(combined.length - maxBytes);
+  }
+
+  private buildEarlyCloseError(): Error {
+    const cmd = [this.command, ...this.args].join(' ');
+    const stderr = this.stderrTail.trim();
+    const suffix = stderr ? `\n\nstderr (tail):\n${stderr}` : '';
+    return new Error(
+      `MCP transport closed before handshake. Command: ${cmd}${suffix}`,
+    );
+  }
 
   constructor(
     private readonly getRuntimeInstance: () => BaseRuntime,
@@ -63,6 +89,10 @@ export class DockerExecTransport implements Transport {
     this.stderr = streams.stderr;
     this.closeStream = streams.close;
 
+    this.stderr!.on('data', (data: Buffer) => {
+      this.appendStderrTail(data);
+    });
+
     // stdout is already demuxed - just parse JSON-RPC line by line
     this.stdout!.on('data', (data: Buffer) => {
       this.buffer += data.toString();
@@ -73,6 +103,7 @@ export class DockerExecTransport implements Transport {
         if (line.trim()) {
           try {
             const message = JSON.parse(line) as unknown;
+            this.sawAnyMessage = true;
             if (this.onmessage) {
               this.onmessage(message);
             }
@@ -95,6 +126,13 @@ export class DockerExecTransport implements Transport {
     });
 
     this.stdin!.on('close', () => {
+      // If the underlying process exits before producing any MCP messages,
+      // surface stderr to avoid generic "connection closed" errors.
+      if (!this.sawAnyMessage && this.stderrTail.trim()) {
+        const err = this.buildEarlyCloseError();
+        this.logger.error(err, 'MCP transport closed early');
+        this.onerror?.(err);
+      }
       if (this.onclose) {
         this.onclose();
       }

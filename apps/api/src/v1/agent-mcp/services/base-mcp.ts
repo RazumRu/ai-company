@@ -86,7 +86,7 @@ export abstract class BaseMcp<TConfig = unknown> {
       },
     );
 
-    await this.connectWithTimeout(transport, 60_000);
+    await this.connectWithTimeout(transport, 120_000);
   }
 
   /**

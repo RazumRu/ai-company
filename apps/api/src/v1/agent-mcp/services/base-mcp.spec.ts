@@ -266,21 +266,29 @@ describe('BaseMcp', () => {
     it('should throw timeout error if connection takes too long', async () => {
       const config = {};
 
-      // Mock connect to delay longer than timeout
-      vi.spyOn(Client.prototype, 'connect').mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(resolve, 70_000); // Longer than 60s timeout
-          }),
-      );
+      vi.useFakeTimers();
+      try {
+        // Mock connect to never resolve (timeout should win)
+        vi.spyOn(Client.prototype, 'connect').mockImplementation(
+          () => new Promise<void>(() => {}),
+        );
 
-      await expect(testMcp.setup(config, mockRuntime)).rejects.toThrow(
-        'MCP initialization timed out after 60 seconds',
-      );
+        const setupPromise = testMcp.setup(config, mockRuntime);
+        const setupExpectation = expect(setupPromise).rejects.toThrow(
+          'MCP initialization timed out after 120 seconds',
+        );
 
-      // Verify client is cleaned up on timeout
-      expect((testMcp as any).client).toBeUndefined();
-    }, 65_000); // Test timeout longer than MCP timeout
+        // BaseMcp currently uses a 120s connect timeout.
+        await vi.advanceTimersByTimeAsync(120_000);
+
+        await setupExpectation;
+
+        // Verify client is cleaned up on timeout
+        expect((testMcp as any).client).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
 
     it('should cleanup client on connection error', async () => {
       const config = {};

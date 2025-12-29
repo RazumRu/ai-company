@@ -3,7 +3,6 @@ FROM node:24
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
-# core
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
   ca-certificates \
   git \
@@ -12,10 +11,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
   jq \
   python3 \
   python3-pip \
-  && ln -s /usr/bin/python3 /usr/bin/python
-
-# files tools
-RUN apt-get install -y --no-install-recommends \
+  gnupg \
   ripgrep \
   fd-find \
   autoconf \
@@ -25,17 +21,27 @@ RUN apt-get install -y --no-install-recommends \
   libjansson-dev \
   libyaml-dev \
   libxml2-dev \
+  && ln -s /usr/bin/python3 /usr/bin/python \
   && ln -s /usr/bin/fdfind /usr/local/bin/fd \
   && git clone https://github.com/universal-ctags/ctags.git /tmp/ctags \
   && cd /tmp/ctags && ./autogen.sh && ./configure --prefix=/usr && make && make install \
   && rm -rf /tmp/ctags
 
-# gh tools
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
   && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
   && printf "deb [arch=%s signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\n" "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/github-cli.list \
+  && install -m 0755 -d /etc/apt/keyrings \
+  && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+  && chmod a+r /etc/apt/keyrings/docker.gpg \
+  && printf "deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian %s stable\n" \
+    "$(dpkg --print-architecture)" "$( . /etc/os-release && echo "$VERSION_CODENAME" )" \
+    > /etc/apt/sources.list.d/docker.list \
   && apt-get update -y \
-  && apt-get install -y --no-install-recommends gh \
+  && apt-get install -y --no-install-recommends \
+    gh \
+    docker-ce-cli \
+    docker-buildx-plugin \
+    docker-compose-plugin \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
