@@ -20,8 +20,8 @@ type Keys = { threadId: string; checkpointNs: string; checkpointId?: string };
 @Injectable({ scope: Scope.TRANSIENT })
 export class PgCheckpointSaver extends BaseCheckpointSaver {
   constructor(
-    private graphCheckpointsDao: GraphCheckpointsDao,
-    private graphCheckpointsWritesDao: GraphCheckpointsWritesDao,
+    private readonly graphCheckpointsDao: GraphCheckpointsDao,
+    private readonly graphCheckpointsWritesDao: GraphCheckpointsWritesDao,
     @Optional() serde?: SerializerProtocol,
   ) {
     super(serde);

@@ -5,6 +5,13 @@ import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import type { GraphSchemaType } from '../graphs.types';
 import { GraphRevisionStatus } from '../graphs.types';
 
+export type GraphRevisionConfig = {
+  schema: GraphSchemaType;
+  name: string;
+  description: string | null;
+  temporary: boolean;
+};
+
 @Entity('graph_revisions')
 @Index(['graphId', 'toVersion']) // For finding revisions by version
 export class GraphRevisionEntity extends TimestampsEntity {
@@ -22,13 +29,13 @@ export class GraphRevisionEntity extends TimestampsEntity {
   toVersion!: string;
 
   @Column({ type: 'jsonb' })
-  configurationDiff!: Operation[];
+  configDiff!: Operation[];
 
   @Column({ type: 'jsonb' })
-  clientSchema!: GraphSchemaType;
+  clientConfig!: GraphRevisionConfig;
 
   @Column({ type: 'jsonb' })
-  newSchema!: GraphSchemaType;
+  newConfig!: GraphRevisionConfig;
 
   @Column({
     type: 'enum',

@@ -867,6 +867,7 @@ export class DockerRuntime extends BaseRuntime {
       this.container = null;
       this.containerWorkdir = null;
       this.sessions.clear();
+      this.createdWorkdirs.clear();
 
       if (this.dindContainer) {
         await DockerRuntime.stopByInstance(this.dindContainer);

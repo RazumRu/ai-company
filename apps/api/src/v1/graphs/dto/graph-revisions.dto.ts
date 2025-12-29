@@ -42,14 +42,23 @@ export const ConfigurationDiffSchema = z
   .array(JsonPatchOperationSchema)
   .describe('JSON Patch (RFC 6902) operations between old and new schemas');
 
+export const GraphRevisionConfigSchema = z.object({
+  schema: RealGraphSchema,
+  name: z.string(),
+  description: z.string().nullable(),
+  temporary: z.boolean(),
+});
+
 export const GraphRevisionSchema = z.object({
   id: z.uuid(),
   graphId: z.uuid(),
   baseVersion: z.string().describe('Version the client changes were based on'),
   toVersion: z.string().describe('New head version after this revision'),
-  configurationDiff: ConfigurationDiffSchema,
-  clientSchema: RealGraphSchema.describe('Schema submitted by the client'),
-  newSchema: RealGraphSchema.describe('Merged schema result'),
+  configDiff: ConfigurationDiffSchema,
+  clientConfig: GraphRevisionConfigSchema.describe(
+    'Config submitted by the client',
+  ),
+  newConfig: GraphRevisionConfigSchema.describe('Merged config result'),
   status: z.enum(GraphRevisionStatus),
   error: z.string().optional(),
   createdAt: z.iso.datetime(),

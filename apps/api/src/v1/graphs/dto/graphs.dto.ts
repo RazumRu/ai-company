@@ -282,7 +282,9 @@ export const UpdateGraphResponseSchema = z.object({
   graph: GraphSchema.describe('Updated graph'),
   revision: GraphRevisionSchema.optional()
     .nullable()
-    .describe('Created revision if graph was running/compiling'),
+    .describe(
+      'Created revision if update required applying non-metadata changes',
+    ),
 });
 
 export class UpdateGraphResponseDto extends createZodDto(

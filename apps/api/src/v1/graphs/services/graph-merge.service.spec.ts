@@ -207,5 +207,47 @@ describe('GraphMergeService', () => {
       expect(result.mergedSchema).toEqual(clientSchema);
       expect(result.conflicts).toHaveLength(0);
     });
+
+    it('should handle saving with no changes when all schemas are identical', () => {
+      const schema: GraphSchemaType = {
+        nodes: [
+          { id: 'node-1', template: 'test', config: { value: 'original' } },
+        ],
+        edges: [],
+      };
+
+      const result = service.mergeSchemas(schema, schema, schema);
+
+      expect(result.success).toBe(true);
+      expect(result.mergedSchema).toEqual(schema);
+      expect(result.conflicts).toHaveLength(0);
+    });
+
+    it('should handle saving with no changes when edges is undefined vs empty array', () => {
+      const baseSchema: GraphSchemaType = {
+        nodes: [
+          { id: 'node-1', template: 'test', config: { value: 'original' } },
+        ],
+      };
+
+      const headSchema: GraphSchemaType = {
+        nodes: [
+          { id: 'node-1', template: 'test', config: { value: 'original' } },
+        ],
+        edges: [],
+      };
+
+      const clientSchema: GraphSchemaType = {
+        nodes: [
+          { id: 'node-1', template: 'test', config: { value: 'original' } },
+        ],
+      };
+
+      const result = service.mergeSchemas(baseSchema, headSchema, clientSchema);
+
+      expect(result.success).toBe(true);
+      expect(result.mergedSchema).toBeDefined();
+      expect(result.conflicts).toHaveLength(0);
+    });
   });
 });

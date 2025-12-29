@@ -14,14 +14,18 @@ describe('JiraMcp', () => {
 
     const config = jiraMcp.getMcpConfig({
       name: 'jira',
+      jiraUrl: 'https://example.atlassian.net',
       jiraApiKey: 'test-key',
       jiraEmail: 'test@example.com',
     });
 
     expect(config.name).toBe('jira');
-    expect(config.command).toBe('npx');
-    expect(config.args).toContain('-y');
-    expect(config.args).toContain('mcp-remote');
+    expect(config.command).toBe('docker');
+    expect(config.args).toContain('run');
+    expect(config.args).toContain('ghcr.io/sooperset/mcp-atlassian:latest');
+    expect(config.env?.JIRA_URL).toBe('https://example.atlassian.net');
+    expect(config.env?.JIRA_USERNAME).toBe('test@example.com');
+    expect(config.env?.JIRA_API_TOKEN).toBe('test-key');
   });
 
   it('should include project key in config when provided', () => {
@@ -35,11 +39,12 @@ describe('JiraMcp', () => {
     const config = jiraMcp.getMcpConfig({
       name: 'jira',
       projectKey: 'PROJ',
+      jiraUrl: 'https://example.atlassian.net',
       jiraApiKey: 'test-key',
       jiraEmail: 'test@example.com',
     });
 
-    expect(config.env?.JIRA_PROJECT_KEY).toBe('PROJ');
+    expect(config.env?.JIRA_PROJECTS_FILTER).toBe('PROJ');
   });
 
   it('should generate detailed instructions', () => {
@@ -52,6 +57,7 @@ describe('JiraMcp', () => {
 
     const instructions = jiraMcp.getDetailedInstructions({
       name: 'jira',
+      jiraUrl: 'https://example.atlassian.net',
       jiraApiKey: 'test-key',
       jiraEmail: 'test@example.com',
     });

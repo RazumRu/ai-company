@@ -162,11 +162,17 @@ export class MessageTransformerService {
     if (typeof input === 'string') {
       try {
         const parsed = JSON.parse(input) as unknown;
+        if (Array.isArray(parsed)) {
+          return { data: parsed };
+        }
         if (isObject(parsed)) return parsed as Record<string, unknown>;
         return { message: parsed };
       } catch {
         return { message: input };
       }
+    }
+    if (Array.isArray(input)) {
+      return { data: input };
     }
     if (isObject(input)) return input as Record<string, unknown>;
     return { message: input };

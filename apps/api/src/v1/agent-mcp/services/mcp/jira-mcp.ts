@@ -8,6 +8,7 @@ import { BaseMcp } from '../base-mcp';
 
 export interface JiraMcpConfig {
   name: string;
+  jiraUrl: string;
   jiraApiKey: string;
   jiraEmail: string;
   projectKey?: string;
@@ -15,8 +16,6 @@ export interface JiraMcpConfig {
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class JiraMcp extends BaseMcp<JiraMcpConfig> {
-  private static readonly MCP_URL = 'https://mcp.atlassian.com/v1/sse';
-
   constructor(logger: DefaultLogger) {
     super(logger);
   }
@@ -26,6 +25,9 @@ export class JiraMcp extends BaseMcp<JiraMcpConfig> {
     runtime: BaseRuntime,
   ): Promise<void> {
     // Fast, deterministic auth guard for integration tests (and user errors)
+    if (!config.jiraUrl?.trim()) {
+      throw new Error('Jira MCP auth error: jiraUrl is required');
+    }
     if (!config.jiraApiKey?.trim()) {
       throw new Error('Jira MCP auth error: jiraApiKey is required');
     }
@@ -39,18 +41,26 @@ export class JiraMcp extends BaseMcp<JiraMcpConfig> {
   public getMcpConfig(config: JiraMcpConfig): IMcpServerConfig {
     return {
       name: config.name,
-      command: 'npx',
+      command: 'docker',
       args: [
-        '-y',
-        'mcp-remote',
-        JiraMcp.MCP_URL,
-        '--header',
-        'Authorization: Bearer ${JIRA_API_KEY}',
+        'run',
+        '--rm',
+        '-i',
+        '-e',
+        'JIRA_URL',
+        '-e',
+        'JIRA_USERNAME',
+        '-e',
+        'JIRA_API_TOKEN',
+        '-e',
+        'JIRA_PROJECTS_FILTER',
+        'ghcr.io/sooperset/mcp-atlassian:latest',
       ],
       env: {
-        JIRA_API_KEY: config.jiraApiKey,
-        JIRA_EMAIL: config.jiraEmail,
-        JIRA_PROJECT_KEY: config.projectKey || '',
+        JIRA_URL: config.jiraUrl,
+        JIRA_USERNAME: config.jiraEmail,
+        JIRA_API_TOKEN: config.jiraApiKey,
+        JIRA_PROJECTS_FILTER: config.projectKey || '',
       },
     };
   }

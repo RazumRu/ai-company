@@ -3,7 +3,8 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
-import { isEqual, isUndefined, omitBy } from 'lodash';
+import { isEqual, omit } from 'lodash';
+import { coerce, compare as compareSemver } from 'semver';
 import { EntityManager } from 'typeorm';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
@@ -25,6 +26,7 @@ import {
   UpdateGraphResponseDto,
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
+import type { GraphRevisionConfig } from '../entity/graph-revision.entity';
 import { GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
@@ -124,7 +126,8 @@ export class GraphsService {
     id: string,
     data: UpdateGraphDto,
   ): Promise<UpdateGraphResponseDto> {
-    const { currentVersion, schema, ...rest } = data;
+    const { currentVersion, metadata, schema, name, description, temporary } =
+      data;
 
     // Use transaction with row-level locking to prevent simultaneous updates
     let revisionToEnqueue: Pick<GraphRevisionDto, 'id' | 'graphId'> | null =
@@ -153,93 +156,94 @@ export class GraphsService {
           );
         }
 
-        // If schema is being updated and graph is running or compiling, queue the update
-        const schemaChanged = schema ? !isEqual(schema, graph.schema) : false;
-
-        if (
-          schema &&
-          (graph.status === GraphStatus.Running ||
-            graph.status === GraphStatus.Compiling)
-        ) {
-          this.graphCompiler.validateSchema(schema);
-
-          if (schemaChanged) {
-            // Apply non-schema updates immediately (e.g., name, description)
-            const nonSchemaUpdates = omitBy({ ...rest }, isUndefined);
-            if (Object.keys(nonSchemaUpdates).length > 0) {
-              await this.graphDao.updateById(
-                id,
-                nonSchemaUpdates,
-                entityManager,
-              );
-              // Refresh graph entity with updated fields
-              const refreshedGraph = await this.graphDao.getById(id);
-              if (!refreshedGraph) {
-                throw new NotFoundException('GRAPH_NOT_FOUND');
-              }
-              Object.assign(graph, refreshedGraph);
-            }
-
-            // Queue the schema update for live application with 3-way merge
-            // Note: Version will be incremented when the revision is applied, not now
-            // currentVersion is used both for validation (above) and as the base for the 3-way merge
-            const revision = await this.graphRevisionService.queueRevision(
-              graph,
-              currentVersion,
-              schema,
-              entityManager,
-              { enqueueImmediately: false },
-            );
-
-            revisionToEnqueue = {
-              id: revision.id,
-              graphId: revision.graphId,
-            };
-
-            // Return updated graph state with the created revision
-            return {
-              graph: this.prepareResponse(graph),
-              revision,
-            };
+        // Invariant repair: targetVersion must never be lower than version.
+        // If this happened due to legacy bugs or manual DB edits, clamp it before
+        // we compute the revision head (targetVersion) for new revisions.
+        if (this.isVersionLess(graph.targetVersion, graph.version)) {
+          const updated = await this.graphDao.updateById(
+            id,
+            { targetVersion: graph.version },
+            entityManager,
+          );
+          if (!updated) {
+            throw new NotFoundException('GRAPH_NOT_FOUND');
           }
+          graph.targetVersion = updated.targetVersion;
         }
 
-        const newVersion = schemaChanged
-          ? this.graphRevisionService.generateNextVersion(graph.version)
-          : undefined;
+        type GraphUpdateSnapshot = GraphRevisionConfig & {
+          metadata?: GraphEntity['metadata'];
+        };
 
-        const updatePayload = omitBy(
-          {
-            ...rest,
-            ...(schemaChanged && newVersion
-              ? {
-                  schema,
-                  version: newVersion,
-                  targetVersion: newVersion,
-                }
-              : {}),
-          },
-          isUndefined,
+        const baseGraph: GraphUpdateSnapshot = {
+          schema: graph.schema,
+          name: graph.name,
+          description: graph.description ?? null,
+          temporary: graph.temporary,
+          metadata: graph.metadata,
+        };
+
+        const nextGraph: GraphUpdateSnapshot = {
+          schema: schema ?? baseGraph.schema,
+          name: name ?? baseGraph.name,
+          description:
+            description !== undefined ? description : baseGraph.description,
+          temporary: temporary ?? baseGraph.temporary,
+          metadata: metadata !== undefined ? metadata : baseGraph.metadata,
+        };
+
+        const metadataChanged = !isEqual(
+          baseGraph.metadata,
+          nextGraph.metadata,
         );
 
-        if (Object.keys(updatePayload).length === 0) {
-          return { graph: this.prepareResponse(graph) };
-        }
-
-        const updated = await this.graphDao.updateById(
-          id,
-          updatePayload,
-          entityManager,
+        const revisionRelevantChanged = !isEqual(
+          omit(baseGraph, ['metadata']),
+          omit(nextGraph, ['metadata']),
         );
 
-        if (!updated) {
-          throw new NotFoundException('GRAPH_NOT_FOUND');
+        // Metadata is UI-only and is applied immediately (excluded from revisions).
+        if (metadataChanged) {
+          const updated = await this.graphDao.updateById(
+            id,
+            { metadata },
+            entityManager,
+          );
+          if (!updated) {
+            throw new NotFoundException('GRAPH_NOT_FOUND');
+          }
+          graph.metadata = updated.metadata;
         }
 
-        return { graph: this.prepareResponse(updated) };
+        if (revisionRelevantChanged) {
+          const { metadata: _ignored, ...nextConfig } = nextGraph;
+          const revision = await this.graphRevisionService.queueRevision(
+            graph,
+            currentVersion,
+            nextConfig,
+            entityManager,
+            { enqueueImmediately: false },
+          );
+
+          revisionToEnqueue = {
+            id: revision.id,
+            graphId: revision.graphId,
+          };
+
+          // Return updated graph state with the created revision
+          graph.targetVersion = revision.toVersion;
+          return {
+            graph: this.prepareResponse(graph),
+            revision,
+          };
+        }
+
+        // No revision-worthy changes (metadata-only or no-op).
+        return { graph: this.prepareResponse(graph) };
       },
     );
 
+    // Enqueue revision processing outside transaction
     if (revisionToEnqueue) {
       await this.graphRevisionService.enqueueRevisionProcessing(
         revisionToEnqueue,
@@ -247,6 +251,16 @@ export class GraphsService {
     }
 
     return response;
+  }
+
+  private isVersionLess(a: string, b: string): boolean {
+    const av = coerce(a)?.version;
+    const bv = coerce(b)?.version;
+    if (!av || !bv) {
+      // Best-effort: if we cannot parse semver, do not attempt to "fix" it here.
+      return false;
+    }
+    return compareSemver(av, bv) === -1;
   }
 
   async delete(id: string): Promise<void> {

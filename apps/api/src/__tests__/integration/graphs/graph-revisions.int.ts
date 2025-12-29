@@ -5,7 +5,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { BaseMcp } from '../../../v1/agent-mcp/services/base-mcp';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
-import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
+import {
+  SimpleAgent,
+  SimpleAgentSchemaType,
+} from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import {
   GraphNodeSchemaType,
@@ -171,6 +174,7 @@ describe('Graph Revisions Integration Tests', () => {
 
   const findShellExecution = (
     messages: ThreadMessageDto[],
+    options?: { cmdIncludes?: string },
   ): {
     toolName?: string;
     toolCallId?: string;
@@ -180,29 +184,49 @@ describe('Graph Revisions Integration Tests', () => {
       stderr: string;
     };
   } => {
-    const reversed = [...messages].reverse();
-
-    const aiMessage = reversed.find(
+    // ThreadsService returns messages in DESC order (newest first). We want the latest shell
+    // execution, so we must search in the returned order (do NOT reverse).
+    const aiEntries = messages.filter(
       (
-        message,
-      ): message is ThreadMessageDto & {
+        entry,
+      ): entry is ThreadMessageDto & {
         message: Extract<ThreadMessageDto['message'], { role: 'ai' }>;
       } =>
-        isAiThreadMessage(message.message) &&
-        Boolean(
-          message.message.toolCalls?.some(
-            (toolCall) => toolCall.name === 'shell',
-          ),
-        ),
-    )?.message;
+        isAiThreadMessage(entry.message) &&
+        Boolean(entry.message.toolCalls?.some((tc) => tc.name === 'shell')),
+    );
 
-    const shellMessage = reversed.find(
-      (
-        message,
-      ): message is ThreadMessageDto & {
-        message: Extract<ThreadMessageDto['message'], { role: 'tool-shell' }>;
-      } => isShellThreadMessage(message.message),
-    )?.message;
+    const selectShellCall = () => {
+      for (const aiEntry of aiEntries) {
+        for (const tc of aiEntry.message.toolCalls ?? []) {
+          if (tc.name !== 'shell') continue;
+          const cmd = (tc.args as { cmd?: unknown } | undefined)?.cmd;
+          if (options?.cmdIncludes) {
+            if (typeof cmd !== 'string' || !cmd.includes(options.cmdIncludes)) {
+              continue;
+            }
+          }
+
+          const shellEntry = messages.find(
+            (
+              entry,
+            ): entry is ThreadMessageDto & {
+              message: ShellThreadMessage;
+            } =>
+              isShellThreadMessage(entry.message) &&
+              entry.message.toolCallId === tc.id,
+          );
+
+          return {
+            aiMessage: aiEntry.message,
+            shellMessage: shellEntry?.message,
+          };
+        }
+      }
+      return { aiMessage: undefined, shellMessage: undefined };
+    };
+
+    const { aiMessage, shellMessage } = selectShellCall();
 
     const shellToolCall = aiMessage?.toolCalls?.find(
       (toolCall) => toolCall.name === 'shell',
@@ -892,47 +916,98 @@ describe('Graph Revisions Integration Tests', () => {
     },
   );
 
-  it('applies revision immediately for non-running graph', async () => {
-    const graphData = createMockGraphData();
+  it(
+    'creates and applies revision for non-running graph',
+    { timeout: 60000 },
+    async () => {
+      const graphData = createMockGraphData();
 
-    const createResponse = await graphsService.create(graphData);
-    const graphId = createResponse.id;
-    createdGraphIds.push(graphId);
+      const createResponse = await graphsService.create(graphData);
+      const graphId = createResponse.id;
+      createdGraphIds.push(graphId);
 
-    expect(createResponse.status).toBe(GraphStatus.Created);
-    const currentVersion = createResponse.version;
+      expect(createResponse.status).toBe(GraphStatus.Created);
+      const currentVersion = createResponse.version;
 
-    const updatedSchema = cloneDeep(createResponse.schema);
-    updatedSchema.nodes = updatedSchema.nodes.map((node) =>
-      node.id === TEST_AGENT_NODE_ID
-        ? {
-            ...node,
-            config: {
-              ...node.config,
-              instructions: 'Non-running graph instructions',
-            },
-          }
-        : node,
-    );
+      const updatedSchema = cloneDeep(createResponse.schema);
+      updatedSchema.nodes = updatedSchema.nodes.map((node) =>
+        node.id === TEST_AGENT_NODE_ID
+          ? {
+              ...node,
+              config: {
+                ...node.config,
+                instructions: 'Non-running graph instructions',
+              },
+            }
+          : node,
+      );
 
-    const updateResponse = await graphsService.update(graphId, {
-      schema: updatedSchema,
-      currentVersion,
-    });
+      const updateResponse = await graphsService.update(graphId, {
+        schema: updatedSchema,
+        currentVersion,
+      });
 
-    expect(updateResponse.revision).toBeUndefined();
+      // Should now create a revision even for non-running graphs
+      expect(updateResponse.revision).toBeDefined();
+      const revisionId = updateResponse.revision!.id;
 
-    const updatedGraph = await graphsService.findById(graphId);
-    expect(updatedGraph.version).not.toBe(currentVersion);
-    expect(updatedGraph.version).toBe(updatedGraph.targetVersion);
+      // Wait for revision to be applied
+      await waitForRevisionStatus(
+        graphId,
+        revisionId,
+        GraphRevisionStatus.Applied,
+        30000,
+      );
 
-    const agentNode = updatedGraph.schema.nodes.find(
-      (node: GraphNodeSchemaType) => node.id === TEST_AGENT_NODE_ID,
-    );
-    expect(agentNode?.config.instructions).toBe(
-      'Non-running graph instructions',
-    );
-  });
+      const updatedGraph = await graphsService.findById(graphId);
+      expect(updatedGraph.version).not.toBe(currentVersion);
+      expect(updatedGraph.version).toBe(updatedGraph.targetVersion);
+
+      const agentNode = updatedGraph.schema.nodes.find(
+        (node: GraphNodeSchemaType) => node.id === TEST_AGENT_NODE_ID,
+      );
+      expect(agentNode?.config.instructions).toBe(
+        'Non-running graph instructions',
+      );
+    },
+  );
+
+  it(
+    'creates and applies revision for name-only update (non-running graph)',
+    { timeout: 60000 },
+    async () => {
+      const graphData = createMockGraphData();
+
+      const createResponse = await graphsService.create(graphData);
+      const graphId = createResponse.id;
+      createdGraphIds.push(graphId);
+
+      expect(createResponse.status).toBe(GraphStatus.Created);
+      const currentVersion = createResponse.version;
+
+      const newName = `Renamed graph ${Date.now()}`;
+
+      const updateResponse = await graphsService.update(graphId, {
+        name: newName,
+        currentVersion,
+      });
+
+      expect(updateResponse.revision).toBeDefined();
+      const revisionId = updateResponse.revision!.id;
+
+      await waitForRevisionStatus(
+        graphId,
+        revisionId,
+        GraphRevisionStatus.Applied,
+        30000,
+      );
+
+      const updatedGraph = await graphsService.findById(graphId);
+      expect(updatedGraph.name).toBe(newName);
+      expect(updatedGraph.version).not.toBe(currentVersion);
+      expect(updatedGraph.version).toBe(updatedGraph.targetVersion);
+    },
+  );
 
   it(
     'handles graph deletion during revision processing',
@@ -1135,28 +1210,15 @@ describe('Graph Revisions Integration Tests', () => {
         const updatedSchema = cloneDeep(createResponse.schema);
         updatedSchema.edges = [];
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
+        await expect(
+          graphsService.update(graphId, {
+            schema: updatedSchema,
+            currentVersion,
+          }),
+        ).rejects.toMatchObject({
+          statusCode: 400,
+          errorCode: 'MISSING_REQUIRED_CONNECTION',
         });
-
-        expect(updateResponse.revision).toBeDefined();
-        const revisionId = updateResponse.revision!.id;
-
-        const failedRevision = await waitForRevisionStatus(
-          graphId,
-          revisionId,
-          GraphRevisionStatus.Failed,
-          90_000,
-        );
-
-        expect(failedRevision.status).toBe(GraphRevisionStatus.Failed);
-        expect(
-          failedRevision.error?.includes('No output connections found') ||
-            failedRevision.error?.includes(
-              "requires at least one connection to kind 'simpleAgent'",
-            ),
-        ).toBe(true);
       },
     );
 
@@ -1180,29 +1242,6 @@ describe('Graph Revisions Integration Tests', () => {
         const graphBeforeUpdate = await graphsService.findById(graphId);
         expect(graphBeforeUpdate.status).toBe(GraphStatus.Running);
 
-        const firstUpdateResponse = await graphsService.update(graphId, {
-          schema: invalidSchema,
-          currentVersion,
-        });
-
-        expect(firstUpdateResponse.revision).toBeDefined();
-        const firstRevisionId = firstUpdateResponse.revision!.id;
-
-        const failedRevision = await waitForRevisionStatus(
-          graphId,
-          firstRevisionId,
-          GraphRevisionStatus.Failed,
-          90_000,
-        );
-
-        expect(failedRevision.status).toBe(GraphRevisionStatus.Failed);
-        expect(
-          failedRevision.error?.includes('No output connections found') ||
-            failedRevision.error?.includes(
-              "requires at least one connection to kind 'simpleAgent'",
-            ),
-        ).toBe(true);
-
         const graphAfterFailed = await graphsService.findById(graphId);
         expect(graphAfterFailed.version).toBe(currentVersion);
         expect(graphAfterFailed.schema.edges).toHaveLength(1);
@@ -1223,6 +1262,18 @@ describe('Graph Revisions Integration Tests', () => {
             : node,
         );
 
+        // First update: invalid schema should be rejected before a revision is created.
+        await expect(
+          graphsService.update(graphId, {
+            schema: invalidSchema,
+            currentVersion,
+          }),
+        ).rejects.toMatchObject({
+          statusCode: 400,
+          errorCode: 'MISSING_REQUIRED_CONNECTION',
+        });
+
+        // Second update: valid schema should still apply as a live revision.
         const secondUpdateResponse = await graphsService.update(graphId, {
           schema: validSchema,
           currentVersion: currentVersionForSecond,
@@ -1240,9 +1291,7 @@ describe('Graph Revisions Integration Tests', () => {
         expect(appliedRevision.status).toBe(GraphRevisionStatus.Applied);
 
         const finalGraph = await graphsService.findById(graphId);
-
         expect(finalGraph.version).toBe(appliedRevision.toVersion);
-
         expect(finalGraph.schema.edges).toHaveLength(1);
         expect(finalGraph.schema.edges![0]).toEqual({
           from: 'trigger-1',
@@ -1513,7 +1562,9 @@ describe('Graph Revisions Integration Tests', () => {
         const firstMessages = await getThreadMessages(
           firstResult.externalThreadId,
         );
-        const firstShell = findShellExecution(firstMessages);
+        const firstShell = findShellExecution(firstMessages, {
+          cmdIncludes: 'echo "test1"',
+        });
         expect(firstShell.toolCallId).toBeDefined();
         expect(firstShell.toolName).toBe('shell');
         expect(firstShell.result).toBeDefined();
@@ -1575,7 +1626,9 @@ describe('Graph Revisions Integration Tests', () => {
         const secondMessages = await getThreadMessages(
           secondResult.externalThreadId,
         );
-        const secondShell = findShellExecution(secondMessages);
+        const secondShell = findShellExecution(secondMessages, {
+          cmdIncludes: 'echo "test2"',
+        });
         expect(secondShell.toolCallId).toBeDefined();
         expect(secondShell.toolName).toBe('shell');
         expect(secondShell.result).toBeDefined();
@@ -1673,7 +1726,9 @@ describe('Graph Revisions Integration Tests', () => {
         const firstMessages = await getThreadMessages(
           firstResult.externalThreadId,
         );
-        const firstShell = findShellExecution(firstMessages);
+        const firstShell = findShellExecution(firstMessages, {
+          cmdIncludes: 'echo "before-reload"',
+        });
         expect(firstShell.toolCallId).toBeDefined();
         expect(firstShell.toolName).toBe('shell');
         expect(firstShell.result?.exitCode).toBe(0);
@@ -1737,7 +1792,9 @@ describe('Graph Revisions Integration Tests', () => {
         const secondMessages = await getThreadMessages(
           secondResult.externalThreadId,
         );
-        const secondShell = findShellExecution(secondMessages);
+        const secondShell = findShellExecution(secondMessages, {
+          cmdIncludes: 'echo "after-reload"',
+        });
         expect(secondShell.toolCallId).toBeDefined();
         expect(secondShell.toolName).toBe('shell');
         expect(secondShell.result?.exitCode).toBe(0);
@@ -2494,6 +2551,277 @@ describe('Graph Revisions Integration Tests', () => {
         });
         expect(afterResult).toBeDefined();
         expect(afterResult.output).toBeDefined();
+      },
+    );
+
+    it(
+      'changes MCP readOnly mode and agent gets updated tools list',
+      { timeout: 180000 },
+      async () => {
+        const graphData: CreateGraphDto = {
+          name: `MCP readOnly mode test ${Date.now()}`,
+          description:
+            'Agent should get updated tools when MCP readOnly mode changes',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  instructions:
+                    'You are a filesystem assistant. List files and directories when asked.',
+                  name: 'Filesystem Agent',
+                  description: 'Agent with filesystem tools',
+                  summarizeMaxTokens: 272000,
+                  summarizeKeepTokens: 30000,
+                  invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
+                  enforceToolUsage: false,
+                  maxIterations: 50,
+                } satisfies SimpleAgentSchemaType,
+              },
+              {
+                id: 'runtime-1',
+                template: 'docker-runtime',
+                config: {
+                  runtimeType: 'Docker',
+                  image: 'node:20',
+                  env: {},
+                },
+              },
+              {
+                id: 'mcp-fs-1',
+                template: 'filesystem-mcp',
+                config: {
+                  readOnly: false,
+                },
+              },
+            ],
+            edges: [
+              { from: 'trigger-1', to: 'agent-1' },
+              { from: 'agent-1', to: 'mcp-fs-1' },
+              { from: 'mcp-fs-1', to: 'runtime-1' },
+            ],
+          },
+        };
+
+        const createResponse = await graphsService.create(graphData);
+        const graphId = createResponse.id;
+        createdGraphIds.push(graphId);
+        const currentVersion = createResponse.version;
+
+        await graphsService.run(graphId);
+        await waitForGraphToBeRunning(graphId);
+
+        // Verify agent has write tools initially (readOnly = false)
+        const agentBefore = graphRegistry.getNodeInstance<SimpleAgent>(
+          graphId,
+          'agent-1',
+        );
+        const toolsBefore = agentBefore?.getTools() ?? [];
+        const writeToolBefore = toolsBefore.find(
+          (t) => t.name === 'write_file',
+        );
+        const readToolBefore = toolsBefore.find(
+          (t) => t.name === 'read_text_file',
+        );
+        expect(writeToolBefore).toBeDefined();
+        expect(readToolBefore).toBeDefined();
+
+        // Change readOnly mode to true
+        const graph = await graphsService.findById(graphId);
+        const updatedSchema = cloneDeep(graph.schema);
+        const mcpNode = updatedSchema.nodes.find((n) => n.id === 'mcp-fs-1');
+        if (mcpNode) {
+          mcpNode.config = {
+            ...mcpNode.config,
+            readOnly: true,
+          };
+        }
+
+        const updateResponse = await graphsService.update(graphId, {
+          schema: updatedSchema,
+          currentVersion,
+        });
+
+        expect(updateResponse.revision).toBeDefined();
+        const revisionId = updateResponse.revision!.id;
+
+        await waitForRevisionStatus(
+          graphId,
+          revisionId,
+          GraphRevisionStatus.Applied,
+          120000,
+        );
+
+        await waitForGraphToBeRunning(graphId);
+
+        // Wait a bit for the reconfiguration to complete
+        await wait(5000);
+
+        // Verify the updated graph schema
+        const updatedGraph = await graphsService.findById(graphId);
+        const updatedMcpNode = updatedGraph.schema.nodes.find(
+          (node: GraphNodeSchemaType) => node.id === 'mcp-fs-1',
+        );
+        expect(updatedMcpNode?.config.readOnly).toBe(true);
+
+        // Verify agent's toolset is updated (write tools removed)
+        const agentAfter = graphRegistry.getNodeInstance<SimpleAgent>(
+          graphId,
+          'agent-1',
+        );
+        const toolsAfter = agentAfter?.getTools() ?? [];
+        const writeToolAfter = toolsAfter.find((t) => t.name === 'write_file');
+        const readToolAfter = toolsAfter.find(
+          (t) => t.name === 'read_text_file',
+        );
+        const listDirToolAfter = toolsAfter.find(
+          (t) => t.name === 'list_directory',
+        );
+
+        expect(writeToolAfter).toBeUndefined();
+        expect(readToolAfter).toBeDefined();
+        expect(listDirToolAfter).toBeDefined();
+
+        // Execute a trigger to verify the agent works with updated tools
+        const result = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['List files in /runtime-workspace'],
+            async: false,
+          },
+        );
+
+        const thread = await waitForThreadCompletion(result.externalThreadId);
+        expect([ThreadStatus.Done, ThreadStatus.NeedMoreInfo]).toContain(
+          thread.status,
+        );
+      },
+    );
+
+    it(
+      'applies revision immediately for non-running graph with MCP config change',
+      { timeout: 120000 },
+      async () => {
+        const graphData: CreateGraphDto = {
+          name: `MCP non-running graph test ${Date.now()}`,
+          description:
+            'MCP readOnly change should create revision even for non-running graph',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  instructions: 'You are a helpful assistant.',
+                  name: 'Test Agent',
+                  description: 'Test agent description',
+                  summarizeMaxTokens: 272000,
+                  summarizeKeepTokens: 30000,
+                  invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
+                  enforceToolUsage: false,
+                  maxIterations: 50,
+                } satisfies SimpleAgentSchemaType,
+              },
+              {
+                id: 'runtime-1',
+                template: 'docker-runtime',
+                config: {
+                  runtimeType: 'Docker',
+                  image: 'node:20',
+                  env: {},
+                },
+              },
+              {
+                id: 'mcp-fs-1',
+                template: 'filesystem-mcp',
+                config: {
+                  readOnly: false,
+                },
+              },
+            ],
+            edges: [
+              { from: 'trigger-1', to: 'agent-1' },
+              { from: 'agent-1', to: 'mcp-fs-1' },
+              { from: 'mcp-fs-1', to: 'runtime-1' },
+            ],
+          },
+        };
+
+        const createResponse = await graphsService.create(graphData);
+        const graphId = createResponse.id;
+        createdGraphIds.push(graphId);
+        const currentVersion = createResponse.version;
+
+        expect(createResponse.status).toBe(GraphStatus.Created);
+
+        // Change readOnly mode without running the graph
+        const updatedSchema = cloneDeep(graphData.schema);
+        const mcpNode = updatedSchema.nodes.find((n) => n.id === 'mcp-fs-1');
+        if (mcpNode) {
+          mcpNode.config = {
+            ...mcpNode.config,
+            readOnly: true,
+          };
+        }
+
+        const updateResponse = await graphsService.update(graphId, {
+          schema: updatedSchema,
+          currentVersion,
+        });
+
+        // Should create a revision even for non-running graph
+        expect(updateResponse.revision).toBeDefined();
+        const revisionId = updateResponse.revision!.id;
+
+        // Wait for revision to be applied
+        await waitForRevisionStatus(
+          graphId,
+          revisionId,
+          GraphRevisionStatus.Applied,
+          60000,
+        );
+
+        // Verify the schema was updated
+        const updatedGraph = await graphsService.findById(graphId);
+        expect(updatedGraph.version).not.toBe(currentVersion);
+        expect(updatedGraph.version).toBe(updatedGraph.targetVersion);
+
+        const updatedMcpNode = updatedGraph.schema.nodes.find(
+          (node: GraphNodeSchemaType) => node.id === 'mcp-fs-1',
+        );
+        expect(updatedMcpNode?.config.readOnly).toBe(true);
+
+        // Now run the graph and verify it works with the updated config
+        await graphsService.run(graphId);
+        await waitForGraphToBeRunning(graphId);
+
+        const mcp = getMcpOutput(graphId, 'mcp-fs-1');
+        const tools = await mcp.discoverTools();
+        const writeTool = tools.find(
+          (t: { name: string }) => t.name === 'write_file',
+        );
+        const readTool = tools.find(
+          (t: { name: string }) => t.name === 'read_text_file',
+        );
+
+        expect(writeTool).toBeUndefined();
+        expect(readTool).toBeDefined();
       },
     );
   });

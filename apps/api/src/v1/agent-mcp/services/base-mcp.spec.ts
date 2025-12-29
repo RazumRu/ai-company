@@ -3,6 +3,7 @@ import type { ListToolsResult } from '@modelcontextprotocol/sdk/types.js';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { IMcpServerConfig } from '../agent-mcp.types';
 import { BaseMcp, McpToolMetadata } from './base-mcp';
 
@@ -39,6 +40,7 @@ describe('BaseMcp', () => {
   beforeEach(() => {
     mockLogger = {
       log: vi.fn(),
+      warn: vi.fn(),
       error: vi.fn(),
     } as unknown as DefaultLogger;
 
@@ -237,6 +239,61 @@ describe('BaseMcp', () => {
       (testMcp as any).client = undefined;
 
       await expect(testMcp.cleanup()).resolves.not.toThrow();
+    });
+  });
+
+  describe('setup', () => {
+    let mockRuntime: BaseRuntime;
+
+    beforeEach(() => {
+      mockRuntime = {
+        execStream: vi.fn(),
+      } as unknown as BaseRuntime;
+
+      // Mock the Client constructor and connect method
+      vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+    });
+
+    it('should successfully connect within timeout', async () => {
+      const config = {};
+
+      await testMcp.setup(config, mockRuntime);
+
+      expect((testMcp as any).client).toBeDefined();
+      expect((testMcp as any).runtime).toBe(mockRuntime);
+    });
+
+    it('should throw timeout error if connection takes too long', async () => {
+      const config = {};
+
+      // Mock connect to delay longer than timeout
+      vi.spyOn(Client.prototype, 'connect').mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(resolve, 70_000); // Longer than 60s timeout
+          }),
+      );
+
+      await expect(testMcp.setup(config, mockRuntime)).rejects.toThrow(
+        'MCP initialization timed out after 60 seconds',
+      );
+
+      // Verify client is cleaned up on timeout
+      expect((testMcp as any).client).toBeUndefined();
+    }, 65_000); // Test timeout longer than MCP timeout
+
+    it('should cleanup client on connection error', async () => {
+      const config = {};
+      const connectionError = new Error('Connection failed');
+
+      vi.spyOn(Client.prototype, 'connect').mockRejectedValue(connectionError);
+
+      await expect(testMcp.setup(config, mockRuntime)).rejects.toThrow(
+        'Connection failed',
+      );
+
+      // Verify client is cleaned up on error
+      expect((testMcp as any).client).toBeUndefined();
     });
   });
 });

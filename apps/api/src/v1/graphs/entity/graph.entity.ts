@@ -35,7 +35,7 @@ export class GraphEntity extends TimestampsEntity {
   status!: GraphStatus;
 
   @Column({ type: 'jsonb', nullable: true })
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> | null;
 
   @Column({
     type: 'uuid',

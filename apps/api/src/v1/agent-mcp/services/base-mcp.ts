@@ -86,7 +86,37 @@ export abstract class BaseMcp<TConfig = unknown> {
       },
     );
 
-    await this.client.connect(transport);
+    await this.connectWithTimeout(transport, 60_000);
+  }
+
+  /**
+   * Connect client with timeout
+   */
+  private async connectWithTimeout(
+    transport: DockerExecTransport,
+    timeoutMs: number,
+  ): Promise<void> {
+    if (!this.client) {
+      throw new Error('MCP client not initialized');
+    }
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new Error(
+            `MCP initialization timed out after ${timeoutMs / 1000} seconds`,
+          ),
+        );
+      }, timeoutMs);
+    });
+
+    try {
+      await Promise.race([this.client.connect(transport), timeoutPromise]);
+    } catch (error) {
+      // Cleanup client on timeout or connection error
+      this.client = undefined;
+      throw error;
+    }
   }
 
   /**

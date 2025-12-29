@@ -11,12 +11,18 @@ import { DockerRuntime } from '../../../runtime/services/docker-runtime';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { McpNodeBaseTemplate } from '../base-node.template';
 
-export const JiraMcpTemplateSchema = z.object({
-  name: z.string().min(1).default('jira'),
-  jiraApiKey: z.string().min(1).describe('Jira API key'),
-  jiraEmail: z.string().email().describe('Jira account email'),
-  projectKey: z.string().optional().describe('Optional project key filter'),
-});
+export const JiraMcpTemplateSchema = z
+  .object({
+    name: z.string().min(1).default('jira'),
+    jiraUrl: z
+      .url()
+      .describe('Jira base URL (e.g. https://your-domain.atlassian.net)'),
+    jiraApiKey: z.string().min(1).describe('Jira API key'),
+    jiraEmail: z.string().email().describe('Jira account email'),
+    projectKey: z.string().optional().describe('Optional project key filter'),
+  })
+  // Strip legacy/unknown fields so older configs remain valid.
+  .strip();
 
 export type JiraMcpTemplateSchemaType = z.infer<typeof JiraMcpTemplateSchema>;
 

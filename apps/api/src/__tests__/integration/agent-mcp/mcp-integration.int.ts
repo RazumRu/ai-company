@@ -191,6 +191,7 @@ describe('MCP Integration Tests', () => {
         mcp.setup(
           {
             name: 'test-jira',
+            jiraUrl: 'https://example.atlassian.net',
             jiraApiKey: '',
             jiraEmail: 'test@example.com',
           },
