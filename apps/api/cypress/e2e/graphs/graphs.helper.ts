@@ -12,18 +12,33 @@ import { GraphDtoSchema } from '../../api-definitions/schemas.gen';
 import { generateRandomUUID, reqHeaders } from '../common.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 
+const isCreateGraphBodyLike = (
+  value: unknown,
+): value is Pick<CreateGraphDto, 'name' | 'schema'> => {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.name === 'string' && typeof record.schema === 'object';
+};
+
 export const createGraph = (data: CreateGraphDto, headers = reqHeaders) =>
   cy
     .request<GraphDto>({
       url: '/api/v1/graphs',
       method: 'POST',
       headers,
-      body: data,
+      body:
+        isCreateGraphBodyLike(data) && data.temporary === undefined
+          ? { ...data, temporary: true }
+          : data,
       failOnStatusCode: false,
     })
     .then((response) => {
       // Register the created graph for cleanup
       if (response.status === 201 && response.body?.id) {
+        expect(
+          response.body.temporary,
+          'graphs created by tests must be temporary',
+        ).to.equal(true);
         graphCleanup.registerGraph(response.body.id);
       }
       return response;

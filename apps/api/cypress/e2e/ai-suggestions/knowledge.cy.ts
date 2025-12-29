@@ -9,6 +9,7 @@ describe('AI Suggestions - knowledge content', () => {
   it('returns knowledge content for a new thread', () => {
     createGraph({
       name: 'Test Graph',
+      temporary: true,
       schema: {
         nodes: [
           {
@@ -62,6 +63,7 @@ describe('AI Suggestions - knowledge content', () => {
   it('continues knowledge suggestion conversation when threadId provided', () => {
     createGraph({
       name: 'Test Graph',
+      temporary: true,
       schema: {
         nodes: [
           {

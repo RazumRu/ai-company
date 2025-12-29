@@ -761,7 +761,7 @@ export const UpdateGraphResponseDtoSchema = {
             toVersion: {
               type: 'string',
             },
-            configurationDiff: {
+            configDiff: {
               type: 'array',
               items: {
                 oneOf: [
@@ -855,97 +855,141 @@ export const UpdateGraphResponseDtoSchema = {
                 ],
               },
             },
-            clientSchema: {
+            clientConfig: {
               type: 'object',
               properties: {
-                nodes: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      id: {
-                        type: 'string',
-                      },
-                      template: {
-                        type: 'string',
-                      },
-                      config: {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    nodes: {
+                      type: 'array',
+                      items: {
                         type: 'object',
-                        propertyNames: {
-                          type: 'string',
+                        properties: {
+                          id: {
+                            type: 'string',
+                          },
+                          template: {
+                            type: 'string',
+                          },
+                          config: {
+                            type: 'object',
+                            propertyNames: {
+                              type: 'string',
+                            },
+                            additionalProperties: {},
+                          },
                         },
-                        additionalProperties: {},
+                        required: ['id', 'template', 'config'],
                       },
                     },
-                    required: ['id', 'template', 'config'],
+                    edges: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          from: {
+                            type: 'string',
+                          },
+                          to: {
+                            type: 'string',
+                          },
+                          label: {
+                            type: 'string',
+                          },
+                        },
+                        required: ['from', 'to'],
+                      },
+                    },
                   },
+                  required: ['nodes'],
                 },
-                edges: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      from: {
-                        type: 'string',
-                      },
-                      to: {
-                        type: 'string',
-                      },
-                      label: {
-                        type: 'string',
-                      },
+                name: {
+                  type: 'string',
+                },
+                description: {
+                  anyOf: [
+                    {
+                      type: 'string',
                     },
-                    required: ['from', 'to'],
-                  },
+                    {
+                      type: 'null',
+                    },
+                  ],
+                },
+                temporary: {
+                  type: 'boolean',
                 },
               },
-              required: ['nodes'],
+              required: ['schema', 'name', 'description', 'temporary'],
             },
-            newSchema: {
+            newConfig: {
               type: 'object',
               properties: {
-                nodes: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      id: {
-                        type: 'string',
-                      },
-                      template: {
-                        type: 'string',
-                      },
-                      config: {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    nodes: {
+                      type: 'array',
+                      items: {
                         type: 'object',
-                        propertyNames: {
-                          type: 'string',
+                        properties: {
+                          id: {
+                            type: 'string',
+                          },
+                          template: {
+                            type: 'string',
+                          },
+                          config: {
+                            type: 'object',
+                            propertyNames: {
+                              type: 'string',
+                            },
+                            additionalProperties: {},
+                          },
                         },
-                        additionalProperties: {},
+                        required: ['id', 'template', 'config'],
                       },
                     },
-                    required: ['id', 'template', 'config'],
+                    edges: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          from: {
+                            type: 'string',
+                          },
+                          to: {
+                            type: 'string',
+                          },
+                          label: {
+                            type: 'string',
+                          },
+                        },
+                        required: ['from', 'to'],
+                      },
+                    },
                   },
+                  required: ['nodes'],
                 },
-                edges: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      from: {
-                        type: 'string',
-                      },
-                      to: {
-                        type: 'string',
-                      },
-                      label: {
-                        type: 'string',
-                      },
+                name: {
+                  type: 'string',
+                },
+                description: {
+                  anyOf: [
+                    {
+                      type: 'string',
                     },
-                    required: ['from', 'to'],
-                  },
+                    {
+                      type: 'null',
+                    },
+                  ],
+                },
+                temporary: {
+                  type: 'boolean',
                 },
               },
-              required: ['nodes'],
+              required: ['schema', 'name', 'description', 'temporary'],
             },
             status: {
               type: 'string',
@@ -972,9 +1016,9 @@ export const UpdateGraphResponseDtoSchema = {
             'graphId',
             'baseVersion',
             'toVersion',
-            'configurationDiff',
-            'clientSchema',
-            'newSchema',
+            'configDiff',
+            'clientConfig',
+            'newConfig',
             'status',
             'createdAt',
             'updatedAt',
@@ -1043,7 +1087,7 @@ export const GraphRevisionDtoSchema = {
     toVersion: {
       type: 'string',
     },
-    configurationDiff: {
+    configDiff: {
       type: 'array',
       items: {
         oneOf: [
@@ -1137,97 +1181,141 @@ export const GraphRevisionDtoSchema = {
         ],
       },
     },
-    clientSchema: {
+    clientConfig: {
       type: 'object',
       properties: {
-        nodes: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-              },
-              template: {
-                type: 'string',
-              },
-              config: {
+        schema: {
+          type: 'object',
+          properties: {
+            nodes: {
+              type: 'array',
+              items: {
                 type: 'object',
-                propertyNames: {
-                  type: 'string',
+                properties: {
+                  id: {
+                    type: 'string',
+                  },
+                  template: {
+                    type: 'string',
+                  },
+                  config: {
+                    type: 'object',
+                    propertyNames: {
+                      type: 'string',
+                    },
+                    additionalProperties: {},
+                  },
                 },
-                additionalProperties: {},
+                required: ['id', 'template', 'config'],
               },
             },
-            required: ['id', 'template', 'config'],
+            edges: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  from: {
+                    type: 'string',
+                  },
+                  to: {
+                    type: 'string',
+                  },
+                  label: {
+                    type: 'string',
+                  },
+                },
+                required: ['from', 'to'],
+              },
+            },
           },
+          required: ['nodes'],
         },
-        edges: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              from: {
-                type: 'string',
-              },
-              to: {
-                type: 'string',
-              },
-              label: {
-                type: 'string',
-              },
+        name: {
+          type: 'string',
+        },
+        description: {
+          anyOf: [
+            {
+              type: 'string',
             },
-            required: ['from', 'to'],
-          },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        temporary: {
+          type: 'boolean',
         },
       },
-      required: ['nodes'],
+      required: ['schema', 'name', 'description', 'temporary'],
     },
-    newSchema: {
+    newConfig: {
       type: 'object',
       properties: {
-        nodes: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-              },
-              template: {
-                type: 'string',
-              },
-              config: {
+        schema: {
+          type: 'object',
+          properties: {
+            nodes: {
+              type: 'array',
+              items: {
                 type: 'object',
-                propertyNames: {
-                  type: 'string',
+                properties: {
+                  id: {
+                    type: 'string',
+                  },
+                  template: {
+                    type: 'string',
+                  },
+                  config: {
+                    type: 'object',
+                    propertyNames: {
+                      type: 'string',
+                    },
+                    additionalProperties: {},
+                  },
                 },
-                additionalProperties: {},
+                required: ['id', 'template', 'config'],
               },
             },
-            required: ['id', 'template', 'config'],
+            edges: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  from: {
+                    type: 'string',
+                  },
+                  to: {
+                    type: 'string',
+                  },
+                  label: {
+                    type: 'string',
+                  },
+                },
+                required: ['from', 'to'],
+              },
+            },
           },
+          required: ['nodes'],
         },
-        edges: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              from: {
-                type: 'string',
-              },
-              to: {
-                type: 'string',
-              },
-              label: {
-                type: 'string',
-              },
+        name: {
+          type: 'string',
+        },
+        description: {
+          anyOf: [
+            {
+              type: 'string',
             },
-            required: ['from', 'to'],
-          },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        temporary: {
+          type: 'boolean',
         },
       },
-      required: ['nodes'],
+      required: ['schema', 'name', 'description', 'temporary'],
     },
     status: {
       type: 'string',
@@ -1254,9 +1342,9 @@ export const GraphRevisionDtoSchema = {
     'graphId',
     'baseVersion',
     'toVersion',
-    'configurationDiff',
-    'clientSchema',
-    'newSchema',
+    'configDiff',
+    'clientConfig',
+    'newConfig',
     'status',
     'createdAt',
     'updatedAt',

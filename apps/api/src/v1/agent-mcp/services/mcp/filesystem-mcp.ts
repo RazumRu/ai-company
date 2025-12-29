@@ -666,6 +666,7 @@ export class FilesystemMcp extends BaseMcp<FilesystemMcpConfig> {
     ### Filesystem MCP (@modelcontextprotocol/server-filesystem)
 
     Provides filesystem access inside allowed “root” directories.
+    This MCP server runs inside the connected Docker runtime (not on the API host machine), so it can only see files that exist in that runtime’s filesystem.
     Paths are expected to be absolute. If you try to read outside allowed roots, you’ll get denied.
 
     ### First Move (always)
@@ -697,6 +698,13 @@ export class FilesystemMcp extends BaseMcp<FilesystemMcpConfig> {
     - \`directory_tree\` (with excludes) to understand layout
     - \`search_files\` to locate candidate files
     - \`read_text_file\` to read only what you need (use head/tail for huge files)
+
+    **1.1) Shell tool working directory gotcha**
+    If you created files using the Shell tool with relative paths, they were likely created under a per-thread working directory:
+    \`/runtime-workspace/<threadId>\`
+    If you can’t find a file, either:
+    - list \`/runtime-workspace\` to locate your thread directory, or
+    - use absolute paths when creating files (recommended) under \`/runtime-workspace\`.
 
     **2) Prefer batch reads**
     Use \`read_multiple_files\` for small configs you almost always need together (package.json, tsconfig, eslint).

@@ -138,6 +138,43 @@ describe('MCP Integration Tests', () => {
       await mcp.cleanup();
     }, 60000);
 
+    it('should see files created via runtime shell after setup (no stale filesystem snapshot)', async () => {
+      const mcp = new FilesystemMcp(createLogger());
+      await mcp.setup({ readOnly: false }, runtime);
+
+      const tools = await mcp.discoverTools();
+      const listDirTool = tools.find((t) => t.name === 'list_directory');
+      const readFileTool = tools.find((t) => t.name === 'read_text_file');
+
+      expect(listDirTool).toBeDefined();
+      expect(readFileTool).toBeDefined();
+      if (!listDirTool || !readFileTool) {
+        await mcp.cleanup();
+        throw new Error('Expected filesystem MCP tools not found');
+      }
+
+      const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const dirPath = `/runtime-workspace/mcp-sync-${suffix}`;
+      const filePath = `${dirPath}/hello.txt`;
+      const fileContent = `hello-${suffix}`;
+
+      const createRes = await runtime.exec({
+        cmd: [
+          `mkdir -p '${dirPath}'`,
+          `printf '%s' '${fileContent}' > '${filePath}'`,
+        ],
+      });
+      expect(createRes.fail).toBe(false);
+
+      const listRes = await listDirTool.invoke({ path: dirPath });
+      expect(listRes.output).toContain('hello.txt');
+
+      const readRes = await readFileTool.invoke({ path: filePath });
+      expect(readRes.output).toContain(fileContent);
+
+      await mcp.cleanup();
+    }, 60000);
+
     it('should expose only read-only tools when readOnly: true', async () => {
       const mcp = new FilesystemMcp(createLogger());
 

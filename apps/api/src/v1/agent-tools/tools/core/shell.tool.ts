@@ -75,6 +75,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       ### Overview
       The shell tool executes arbitrary shell commands inside a prepared Docker runtime environment. It provides direct access to the command line for file operations, git commands, running tests, building projects, installing dependencies, and system inspection.
       Commands within the same thread share a persistent shell session (env and cwd changes persist across calls); session ids are handled automatically (keyed by threadId).
+      By default, commands execute in a per-thread working directory under \`/runtime-workspace/<threadId>\`. If you want other tools (like Filesystem MCP) to reliably find files, prefer absolute paths under \`/runtime-workspace\` (for example \`/runtime-workspace/shared/... \`).
 
       ### When to Use
       - **File operations**: Creating, moving, copying, deleting files and directories
@@ -97,8 +98,8 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
       **1. Set the working directory once per session (cwd persists):**
       \`\`\`bash
-      # First command in the thread: move to repo root
-      cd /repo && ls
+      # First command in the thread: move to the runtime workspace
+      cd /runtime-workspace && ls
 
       # Later commands in the same thread reuse that cwd automatically
       pnpm test
@@ -108,7 +109,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       **2. Use absolute paths when possible:**
       \`\`\`bash
       # Good
-      /repo/src/index.ts
+      /runtime-workspace/src/index.ts
 
       # Risky - depends on working directory
       src/index.ts
@@ -127,10 +128,10 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       **5. Use flags to constrain output:**
       \`\`\`bash
       # Good: Constrained
-      rg "TODO" --max-count=10 /repo/src
+      rg "TODO" --max-count=10 /runtime-workspace/src
 
       # Bad: Potentially huge output
-      rg "TODO" /repo
+      rg "TODO" /runtime-workspace
       \`\`\`
 
       ### Output Format

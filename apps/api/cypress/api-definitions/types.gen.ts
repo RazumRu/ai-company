@@ -526,7 +526,7 @@ export type UpdateGraphResponseDto = {
     temporary?: boolean | null;
   };
   /**
-   * Created revision if graph was running/compiling
+   * Created revision if update required applying non-metadata changes
    */
   revision?: {
     id: string;
@@ -542,7 +542,7 @@ export type UpdateGraphResponseDto = {
     /**
      * JSON Patch (RFC 6902) operations between old and new schemas
      */
-    configurationDiff: Array<
+    configDiff: Array<
       | {
           op: 'add';
           path: string;
@@ -574,74 +574,84 @@ export type UpdateGraphResponseDto = {
         }
     >;
     /**
-     * Schema submitted by the client
+     * Config submitted by the client
      */
-    clientSchema: {
-      nodes: Array<{
-        /**
-         * Unique identifier for this node
-         */
-        id: string;
-        /**
-         * Template id registered in TemplateRegistry
-         */
-        template: string;
-        /**
-         * Template-specific configuration
-         */
-        config: {
-          [key: string]: unknown;
-        };
-      }>;
-      edges?: Array<{
-        /**
-         * Source node ID
-         */
-        from: string;
-        /**
-         * Target node ID
-         */
-        to: string;
-        /**
-         * Optional edge label
-         */
-        label?: string;
-      }>;
+    clientConfig: {
+      schema: {
+        nodes: Array<{
+          /**
+           * Unique identifier for this node
+           */
+          id: string;
+          /**
+           * Template id registered in TemplateRegistry
+           */
+          template: string;
+          /**
+           * Template-specific configuration
+           */
+          config: {
+            [key: string]: unknown;
+          };
+        }>;
+        edges?: Array<{
+          /**
+           * Source node ID
+           */
+          from: string;
+          /**
+           * Target node ID
+           */
+          to: string;
+          /**
+           * Optional edge label
+           */
+          label?: string;
+        }>;
+      };
+      name: string;
+      description: string | null;
+      temporary: boolean;
     };
     /**
-     * Merged schema result
+     * Merged config result
      */
-    newSchema: {
-      nodes: Array<{
-        /**
-         * Unique identifier for this node
-         */
-        id: string;
-        /**
-         * Template id registered in TemplateRegistry
-         */
-        template: string;
-        /**
-         * Template-specific configuration
-         */
-        config: {
-          [key: string]: unknown;
-        };
-      }>;
-      edges?: Array<{
-        /**
-         * Source node ID
-         */
-        from: string;
-        /**
-         * Target node ID
-         */
-        to: string;
-        /**
-         * Optional edge label
-         */
-        label?: string;
-      }>;
+    newConfig: {
+      schema: {
+        nodes: Array<{
+          /**
+           * Unique identifier for this node
+           */
+          id: string;
+          /**
+           * Template id registered in TemplateRegistry
+           */
+          template: string;
+          /**
+           * Template-specific configuration
+           */
+          config: {
+            [key: string]: unknown;
+          };
+        }>;
+        edges?: Array<{
+          /**
+           * Source node ID
+           */
+          from: string;
+          /**
+           * Target node ID
+           */
+          to: string;
+          /**
+           * Optional edge label
+           */
+          label?: string;
+        }>;
+      };
+      name: string;
+      description: string | null;
+      temporary: boolean;
     };
     status: 'pending' | 'applying' | 'applied' | 'failed';
     error?: string;
@@ -690,7 +700,7 @@ export type GraphRevisionDto = {
   /**
    * JSON Patch (RFC 6902) operations between old and new schemas
    */
-  configurationDiff: Array<
+  configDiff: Array<
     | {
         op: 'add';
         path: string;
@@ -722,74 +732,84 @@ export type GraphRevisionDto = {
       }
   >;
   /**
-   * Schema submitted by the client
+   * Config submitted by the client
    */
-  clientSchema: {
-    nodes: Array<{
-      /**
-       * Unique identifier for this node
-       */
-      id: string;
-      /**
-       * Template id registered in TemplateRegistry
-       */
-      template: string;
-      /**
-       * Template-specific configuration
-       */
-      config: {
-        [key: string]: unknown;
-      };
-    }>;
-    edges?: Array<{
-      /**
-       * Source node ID
-       */
-      from: string;
-      /**
-       * Target node ID
-       */
-      to: string;
-      /**
-       * Optional edge label
-       */
-      label?: string;
-    }>;
+  clientConfig: {
+    schema: {
+      nodes: Array<{
+        /**
+         * Unique identifier for this node
+         */
+        id: string;
+        /**
+         * Template id registered in TemplateRegistry
+         */
+        template: string;
+        /**
+         * Template-specific configuration
+         */
+        config: {
+          [key: string]: unknown;
+        };
+      }>;
+      edges?: Array<{
+        /**
+         * Source node ID
+         */
+        from: string;
+        /**
+         * Target node ID
+         */
+        to: string;
+        /**
+         * Optional edge label
+         */
+        label?: string;
+      }>;
+    };
+    name: string;
+    description: string | null;
+    temporary: boolean;
   };
   /**
-   * Merged schema result
+   * Merged config result
    */
-  newSchema: {
-    nodes: Array<{
-      /**
-       * Unique identifier for this node
-       */
-      id: string;
-      /**
-       * Template id registered in TemplateRegistry
-       */
-      template: string;
-      /**
-       * Template-specific configuration
-       */
-      config: {
-        [key: string]: unknown;
-      };
-    }>;
-    edges?: Array<{
-      /**
-       * Source node ID
-       */
-      from: string;
-      /**
-       * Target node ID
-       */
-      to: string;
-      /**
-       * Optional edge label
-       */
-      label?: string;
-    }>;
+  newConfig: {
+    schema: {
+      nodes: Array<{
+        /**
+         * Unique identifier for this node
+         */
+        id: string;
+        /**
+         * Template id registered in TemplateRegistry
+         */
+        template: string;
+        /**
+         * Template-specific configuration
+         */
+        config: {
+          [key: string]: unknown;
+        };
+      }>;
+      edges?: Array<{
+        /**
+         * Source node ID
+         */
+        from: string;
+        /**
+         * Target node ID
+         */
+        to: string;
+        /**
+         * Optional edge label
+         */
+        label?: string;
+      }>;
+    };
+    name: string;
+    description: string | null;
+    temporary: boolean;
   };
   status: 'pending' | 'applying' | 'applied' | 'failed';
   error?: string;
