@@ -1,5 +1,6 @@
 import {
   AIMessage,
+  ChatMessage,
   HumanMessage,
   SystemMessage,
   ToolMessage,
@@ -83,6 +84,20 @@ describe('agents.utils', () => {
       expect(filtered).toHaveLength(0);
     });
 
+    it('should always filter out reasoning role messages (defense-in-depth)', () => {
+      const messages = [
+        new HumanMessage('User message'),
+        new ChatMessage('Reasoning message', 'reasoning'),
+        new AIMessage('Assistant message'),
+      ];
+
+      const filtered = filterMessagesForLlm(messages);
+
+      expect(filtered).toHaveLength(2);
+      expect(filtered[0]?.content).toBe('User message');
+      expect(filtered[1]?.content).toBe('Assistant message');
+    });
+
     it('should return empty array for empty input', () => {
       const filtered = filterMessagesForLlm([]);
       expect(filtered).toHaveLength(0);
@@ -148,6 +163,32 @@ describe('agents.utils', () => {
 
       const prepared = prepareMessagesForLlm(msgs);
       expect(prepared).toHaveLength(0);
+    });
+
+    it('should strip ids + metadata and flatten structured AI content', () => {
+      const ai = new AIMessage({
+        content: [
+          { type: 'text', text: 'Hello' },
+          // This simulates responses-style content blocks where a provider may include non-text blocks.
+          // We should not send structured blocks back to the model.
+          { type: 'reasoning', reasoning: 'secret', summary: 'n/a' } as any,
+          { type: 'text', text: 'World' },
+        ] as any,
+      });
+      (ai as any).id = 'rs_123';
+      (ai as any).response_metadata = { foo: 'bar' };
+      (ai as any).usage_metadata = { input_tokens: 1 };
+      ai.additional_kwargs = { run_id: 'run-1', hideForLlm: false };
+
+      const prepared = prepareMessagesForLlm([ai]);
+
+      expect(prepared).toHaveLength(1);
+      const out = prepared[0] as AIMessage;
+      expect((out as any).id).toBeUndefined();
+      expect((out as any).response_metadata).toBeUndefined();
+      expect((out as any).usage_metadata).toBeUndefined();
+      expect(out.additional_kwargs).toEqual({});
+      expect(out.content).toBe('Hello\nWorld');
     });
   });
 

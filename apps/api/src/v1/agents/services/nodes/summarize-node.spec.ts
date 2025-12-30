@@ -87,7 +87,7 @@ describe('SummarizeNode', () => {
       expect(mockGetNumTokens).not.toHaveBeenCalled();
     });
 
-    it('should return messages unchanged if total tokens <= maxTokens', async () => {
+    it('should return messages unchanged if currentContext is not available', async () => {
       const messages = [new HumanMessage('Test')];
       const state = createMockState({ messages, summary: '' });
 
@@ -108,6 +108,7 @@ describe('SummarizeNode', () => {
       const state = createMockState({
         messages,
         summary: '',
+        currentContext: 2000,
       });
 
       // Mock token counting - getNumTokens is called on each message content
@@ -154,6 +155,7 @@ describe('SummarizeNode', () => {
       const state = createMockState({
         messages,
         summary: '',
+        currentContext: 2000,
       });
 
       mockGetNumTokens.mockImplementation(async (text: string) => {
@@ -186,6 +188,7 @@ describe('SummarizeNode', () => {
       const state = createMockState({
         messages,
         summary: existingSummary,
+        currentContext: 0,
       });
 
       // Mock token counting to be under maxTokens
@@ -216,6 +219,7 @@ describe('SummarizeNode', () => {
       const state = createMockState({
         messages,
         summary: '',
+        currentContext: 2000,
       });
 
       // Mock token counting to exceed maxTokens
@@ -243,6 +247,37 @@ describe('SummarizeNode', () => {
       expect(summarySystemMessages.length).toBe(0);
     });
 
+    it('should trigger summarization based on currentContext (from LLM usage)', async () => {
+      const nodeWithTightBudget = new SummarizeNode(
+        mockLitellmService,
+        mockLlm,
+        {
+          maxTokens: 1000,
+          keepTokens: 0,
+        },
+      );
+      const messages = [
+        new HumanMessage('Message 1'),
+        new HumanMessage('Message 2'),
+        new HumanMessage('Message 3'),
+      ];
+      const state = createMockState({
+        messages,
+        summary: '',
+        currentContext: 1500,
+      });
+
+      mockInvoke.mockResolvedValue(new AIMessage('Summary'));
+
+      const result = await nodeWithTightBudget.invoke(
+        state,
+        createMockConfig(),
+      );
+
+      expect(result.summary).toBe('Summary');
+      expect(mockInvoke).toHaveBeenCalled();
+    });
+
     it('should handle keepTokens = 0 by keeping only last message', async () => {
       const nodeWithZeroKeep = new SummarizeNode(mockLitellmService, mockLlm, {
         maxTokens: 1000,
@@ -257,6 +292,7 @@ describe('SummarizeNode', () => {
       const state = createMockState({
         messages,
         summary: '',
+        currentContext: 2000,
       });
 
       mockGetNumTokens.mockImplementation(async (text: string) => {
@@ -293,6 +329,7 @@ describe('SummarizeNode', () => {
       const state = createMockState({
         messages,
         summary: '',
+        currentContext: 2000,
       });
 
       mockGetNumTokens.mockImplementation(async (text: string) => {

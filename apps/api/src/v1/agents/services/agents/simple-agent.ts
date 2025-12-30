@@ -513,6 +513,28 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
   }
 
+  /**
+   * Compute newly introduced messages for a replace-mode update.
+   *
+   * Replace-mode updates are used for history compaction (e.g. summarization) and may
+   * shorten the message list. In that case, naive `slice(beforeLen)` deltas miss new
+   * messages inserted during replacement.
+   *
+   * We treat messages as identical by object identity, which is stable for messages
+   * already present in the state. Nodes should avoid cloning existing messages when
+   * they only want to keep them.
+   */
+  private diffNewMessages(
+    prev: BaseMessage[],
+    next: BaseMessage[],
+  ): BaseMessage[] {
+    if (!next.length) return [];
+    if (!prev.length) return next;
+
+    const prevSet = new Set(prev);
+    return next.filter((m) => !prevSet.has(m));
+  }
+
   public getThreadTokenUsage(threadId: string): TokenUsage | null {
     if (!this.graphThreadState) {
       return null;
@@ -1019,6 +1041,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             if (!stateChange || typeof stateChange !== 'object') continue;
 
             const beforeLen = finalState.messages.length;
+            const prevMessages = finalState.messages;
             const prevState = { ...finalState };
 
             // Convert state change to final state for tracking
@@ -1031,12 +1054,19 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
               runRef.lastState = finalState;
             }
 
-            // Emit notification for new messages
-            await this.emitNewMessages(
-              finalState.messages.slice(beforeLen),
-              mergedConfig,
-              threadId,
-            );
+            // Emit notification for new messages.
+            //
+            // IMPORTANT:
+            // Some nodes (e.g. summarize) use `messages.mode = replace` to shrink the history.
+            // In that case, `slice(beforeLen)` can be empty even if the replacement introduced
+            // new messages (like a summary system marker). We compute a minimal "new messages"
+            // delta for replace-mode updates to avoid losing those messages and to avoid re-emitting
+            // the entire tail.
+            const newMessages =
+              stateChange.messages?.mode === 'replace'
+                ? this.diffNewMessages(prevMessages, finalState.messages)
+                : finalState.messages.slice(beforeLen);
+            await this.emitNewMessages(newMessages, mergedConfig, threadId);
 
             // Emit state update notification (only changed fields)
             await this.emitStateUpdate(

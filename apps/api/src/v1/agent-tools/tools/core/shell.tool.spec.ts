@@ -323,6 +323,41 @@ describe('ShellTool', () => {
       expect(result.exitCode).toBe(0);
     });
 
+    it('falls back to run_id for session/workdir when thread_id is missing', async () => {
+      const mockExecResult = {
+        stdout: 'ok',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = { runtime: mockRuntime };
+      const builtTool = tool.build(config);
+
+      await builtTool.invoke(
+        {
+          purpose: 'Testing run_id fallback',
+          cmd: 'pwd',
+        },
+        {
+          configurable: {
+            run_id: 'run-xyz',
+          },
+        } as ToolRunnableConfig<BaseAgentConfigurable>,
+      );
+
+      expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'run-xyz',
+          childWorkdir: 'run-xyz',
+          metadata: expect.objectContaining({
+            threadId: 'run-xyz',
+            runId: 'run-xyz',
+          }),
+        }),
+      );
+    });
+
     it('should return error when runtime is not provided', async () => {
       const builtTool = tool.build({
         runtime: null as unknown as BaseRuntime,

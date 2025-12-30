@@ -1,0 +1,108 @@
+import { AIMessageChunk, HumanMessage } from '@langchain/core/messages';
+import { ChatOpenAI } from '@langchain/openai';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { TokenUsage } from '../../../litellm/litellm.types';
+import type { LitellmService } from '../../../litellm/services/litellm.service';
+import type { BaseAgentState } from '../../agents.types';
+import { InvokeLlmNode } from './invoke-llm-node';
+
+describe('InvokeLlmNode', () => {
+  let node: InvokeLlmNode;
+  let mockLlm: ChatOpenAI;
+  let mockLitellm: Pick<
+    LitellmService,
+    | 'extractTokenUsageFromResponseWithPriceFallback'
+    | 'attachTokenUsageToMessage'
+  >;
+
+  beforeEach(() => {
+    mockLitellm = {
+      extractTokenUsageFromResponseWithPriceFallback: vi.fn(),
+      attachTokenUsageToMessage: vi.fn().mockResolvedValue(null),
+    } as unknown as Pick<
+      LitellmService,
+      | 'extractTokenUsageFromResponseWithPriceFallback'
+      | 'attachTokenUsageToMessage'
+    >;
+
+    const bindTools = vi.fn();
+
+    mockLlm = {
+      bindTools,
+      model: 'gpt-5-mini',
+    } as unknown as ChatOpenAI;
+
+    node = new InvokeLlmNode(
+      mockLitellm as unknown as LitellmService,
+      mockLlm,
+      [],
+      { systemPrompt: 'Test system prompt' },
+    );
+  });
+
+  const createState = (
+    overrides: Partial<BaseAgentState> = {},
+  ): BaseAgentState =>
+    ({
+      messages: [new HumanMessage('hi')],
+      summary: '',
+      toolsMetadata: {},
+      toolUsageGuardActivated: false,
+      toolUsageGuardActivatedCount: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      totalPrice: 0,
+      currentContext: 0,
+      ...overrides,
+    }) as BaseAgentState;
+
+  it('sets currentContext from provider-reported prompt tokens (inputTokens)', async () => {
+    const usage: TokenUsage = {
+      inputTokens: 123,
+      outputTokens: 7,
+      totalTokens: 130,
+    };
+
+    (
+      mockLitellm.extractTokenUsageFromResponseWithPriceFallback as any
+    ).mockResolvedValue(usage);
+
+    const llmRes: AIMessageChunk = {
+      id: 'msg-1',
+      content: 'ok',
+      contentBlocks: [],
+      response_metadata: {},
+      usage_metadata: {
+        input_tokens: 123,
+        output_tokens: 7,
+        total_tokens: 130,
+      },
+      tool_calls: [],
+    } as unknown as AIMessageChunk;
+
+    // bindTools isn't called until invoke(), so we set up the invoke mock via bindTools return value
+    (mockLlm as any).bindTools.mockReturnValueOnce({
+      invoke: vi.fn().mockResolvedValue(llmRes),
+    });
+
+    const res = await node.invoke(createState(), {
+      configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+    } as any);
+
+    expect(
+      mockLitellm.extractTokenUsageFromResponseWithPriceFallback,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gpt-5-mini',
+        usage_metadata: llmRes.usage_metadata,
+        response_metadata: llmRes.response_metadata,
+      }),
+    );
+
+    expect(res.currentContext).toBe(usage.inputTokens);
+  });
+});

@@ -18,6 +18,43 @@ function cloneMessage<T extends BaseMessage>(message: T): T {
   );
 }
 
+function sanitizeMessageForLlm<T extends BaseMessage>(message: T): T {
+  const clone = cloneMessage(message);
+
+  // The Responses API / LiteLLM can treat message `id` fields as references.
+  // We store ids for UI/traceability, but we should never send them back to the model.
+  if ('id' in (clone as unknown as Record<string, unknown>)) {
+    delete (clone as unknown as { id?: unknown }).id;
+  }
+
+  // Remove transport/provider metadata. These are useful for logs, but unsafe/unsupported
+  // to include in subsequent model calls.
+  if ('response_metadata' in (clone as unknown as Record<string, unknown>)) {
+    delete (clone as unknown as { response_metadata?: unknown })
+      .response_metadata;
+  }
+  if ('usage_metadata' in (clone as unknown as Record<string, unknown>)) {
+    delete (clone as unknown as { usage_metadata?: unknown }).usage_metadata;
+  }
+  if ('contentBlocks' in (clone as unknown as Record<string, unknown>)) {
+    delete (clone as unknown as { contentBlocks?: unknown }).contentBlocks;
+  }
+
+  // Clear any extra kwargs used for internal bookkeeping (run_id, UI flags, etc.).
+  clone.additional_kwargs = {};
+
+  // For AIMessage content, prefer flattening content blocks into plain text to avoid
+  // accidentally re-sending "reasoning" blocks or response-only structures.
+  if (clone instanceof AIMessage) {
+    const flattened = extractTextFromResponseContent(clone.content);
+    if (flattened !== undefined) {
+      clone.content = flattened;
+    }
+  }
+
+  return clone;
+}
+
 export function extractTextFromResponseContent(
   content: unknown,
 ): string | undefined {
@@ -107,7 +144,16 @@ export function markMessageHideForLlm<T extends BaseMessage>(message: T): T {
 }
 
 export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
-  return messages.filter((msg) => !msg.additional_kwargs?.hideForLlm);
+  return messages.filter((msg) => {
+    // Defense-in-depth: "reasoning" messages must never be sent back to the LLM,
+    // even if they were not explicitly marked with hideForLlm.
+    const role = (msg as unknown as { role?: unknown }).role;
+    if (role === 'reasoning') {
+      return false;
+    }
+
+    return !msg.additional_kwargs?.hideForLlm;
+  });
 }
 
 /**
@@ -141,9 +187,12 @@ export function cleanMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
  * Prepares messages for sending to the LLM.
  * - Filters out messages explicitly marked as "hideForLlm"
  * - Cleans dangling tool calls so the LLM sees a consistent tool-call trace
+ * - Strips provider-specific ids/metadata and flattens structured content
  */
 export function prepareMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
-  return cleanMessagesForLlm(filterMessagesForLlm(messages));
+  return cleanMessagesForLlm(filterMessagesForLlm(messages)).map((m) =>
+    sanitizeMessageForLlm(m),
+  );
 }
 
 export function convertChunkToMessage(chunk: AIMessageChunk): AIMessage {

@@ -1,4 +1,8 @@
-import { type AIMessageChunk, HumanMessage } from '@langchain/core/messages';
+import {
+  type AIMessageChunk,
+  HumanMessage,
+  SystemMessage,
+} from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { ChatOpenAI } from '@langchain/openai';
@@ -392,6 +396,95 @@ describe('SimpleAgent', () => {
         checkpointNs: undefined,
         needsMoreInfo: false,
       });
+    });
+
+    it('should emit summary system message even when summarize replace shrinks history', async () => {
+      const emitSpy = vi.spyOn(agent as any, 'emit');
+
+      const m1 = new HumanMessage('m1');
+      const m2 = new HumanMessage('m2');
+      const m3 = new HumanMessage('m3');
+      for (const m of [m1, m2, m3]) {
+        (m as any).additional_kwargs = { run_id: 'run-1' };
+      }
+
+      const summaryMsg = new SystemMessage(
+        'Summary updated: Previous messages have been summarized to manage context length.',
+      );
+      (summaryMsg as any).additional_kwargs = {
+        run_id: 'run-1',
+        hideForLlm: true,
+      };
+
+      async function* mockStream() {
+        yield [
+          'updates',
+          {
+            node1: {
+              messages: {
+                mode: 'append',
+                items: [m1, m2, m3],
+              },
+            },
+          },
+        ] as const;
+
+        // Shrink history via replace: old length is 3, new length is 2.
+        // This used to drop the new summary message because `slice(beforeLen)` becomes empty.
+        yield [
+          'updates',
+          {
+            summarize: {
+              messages: {
+                mode: 'replace',
+                items: [summaryMsg, m3],
+              },
+              summary: 'S',
+            },
+          },
+        ] as const;
+      }
+
+      const mockGraph = {
+        stream: vi.fn().mockReturnValue(mockStream()),
+      };
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+        maxIterations: 50,
+      };
+
+      await agent.run(
+        'thread-summarize-replace',
+        [new HumanMessage('Hello')],
+        config,
+        {
+          configurable: { run_id: 'run-1', graph_id: 'graph-1' },
+        } as unknown as RunnableConfig<BaseAgentConfigurable>,
+      );
+
+      const messageEvents = emitSpy.mock.calls
+        .map((c) => c[0] as AgentEventType)
+        .filter(
+          (e): e is Extract<AgentEventType, { type: 'message' }> =>
+            e?.type === 'message',
+        );
+
+      const hasSummarySystemMessage = messageEvents.some((e) =>
+        e.data.messages.some(
+          (m) =>
+            m instanceof SystemMessage &&
+            String((m as any).content).includes('Summary updated'),
+        ),
+      );
+      expect(hasSummarySystemMessage).toBe(true);
     });
 
     it('should handle custom runnable config', async () => {
