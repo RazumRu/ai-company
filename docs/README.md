@@ -71,7 +71,7 @@ cd apps/api && pnpm start:dev
 pnpm build
 pnpm build:tests
 pnpm lint:fix
-pnpm test
+pnpm test:unit
 pnpm test:e2e  # (server must be running)
 
 # Commit

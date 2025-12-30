@@ -191,4 +191,137 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       expect(aiMessageAfterStop!.tokenUsage?.totalTokens).toBeGreaterThan(0);
     },
   );
+
+  it(
+    'does not reset tokenUsage when a communication tool triggers nested agent runs (integration)',
+    { timeout: 240_000 },
+    async () => {
+      const graph = await graphsService.create({
+        name: `Thread token usage comm test ${Date.now()}`,
+        description:
+          'integration test ensuring token usage does not reset after communication tool calls',
+        temporary: true,
+        schema: {
+          nodes: [
+            { id: 'trigger-1', template: 'manual-trigger', config: {} },
+            {
+              id: 'agent-1',
+              template: 'simple-agent',
+              config: {
+                name: 'Caller Agent',
+                description: 'Calls the communication tool',
+                // Force a tool call so we exercise nested agent runs.
+                instructions:
+                  "For each user message: call the communication_exec tool once to ask agent 'Callee Agent' for a short answer, then reply to the user with the callee's answer in one sentence.",
+                invokeModelName: 'gpt-5-mini',
+                enforceToolUsage: false,
+                maxIterations: 5,
+                summarizeMaxTokens: 272000,
+                summarizeKeepTokens: 30000,
+              },
+            },
+            {
+              id: 'comm-tool-1',
+              template: 'agent-communication-tool',
+              config: {},
+            },
+            {
+              id: 'agent-2',
+              template: 'simple-agent',
+              config: {
+                name: 'Callee Agent',
+                description: 'Responds to the caller agent',
+                instructions: 'Answer briefly (1 sentence).',
+                invokeModelName: 'gpt-5-mini',
+                enforceToolUsage: false,
+                maxIterations: 3,
+                summarizeMaxTokens: 272000,
+                summarizeKeepTokens: 30000,
+              },
+            },
+          ],
+          edges: [
+            { from: 'trigger-1', to: 'agent-1' },
+            { from: 'agent-1', to: 'comm-tool-1' },
+            { from: 'comm-tool-1', to: 'agent-2' },
+          ],
+        },
+      });
+      createdGraphIds.push(graph.id);
+
+      await graphsService.run(graph.id);
+      await waitForCondition(
+        () => graphsService.findById(graph.id),
+        (g) => g.status === GraphStatus.Running,
+        { timeout: 60_000, interval: 1_000 },
+      );
+
+      const threadSubId = `token-usage-comm-${Date.now()}`;
+
+      const exec1 = await graphsService.executeTrigger(graph.id, 'trigger-1', {
+        messages: ['Please ask the callee agent: what is 2+2?'],
+        async: true,
+        threadSubId,
+      });
+
+      const thread1 = await waitForCondition(
+        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        (t) => Boolean(t),
+        { timeout: 30_000, interval: 1_000 },
+      );
+
+      // Ensure the communication tool actually ran (so we hit the "nested agent" path).
+      await waitForCondition(
+        () =>
+          threadsService.getThreadMessages(thread1.id, {
+            limit: 300,
+            offset: 0,
+          }),
+        (msgs) =>
+          msgs.some(
+            (m) =>
+              m.message.role === 'tool' &&
+              m.message.name === 'communication_exec',
+          ),
+        { timeout: 120_000, interval: 2_000 },
+      );
+
+      const usageAfterFirst = await waitForCondition(
+        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
+        { timeout: 120_000, interval: 2_000 },
+      );
+
+      const firstTotalTokens = usageAfterFirst.tokenUsage?.totalTokens ?? 0;
+      const firstTotalPrice = usageAfterFirst.tokenUsage?.totalPrice ?? 0;
+
+      // Nested agent usage should be attributed to the same external thread via parentThreadId.
+      expect(usageAfterFirst.tokenUsage?.byNode).toBeDefined();
+      expect(
+        usageAfterFirst.tokenUsage?.byNode?.['agent-2']?.totalTokens ?? 0,
+      ).toBeGreaterThan(0);
+
+      // Second message on the same thread: totals must not drop (no "reset").
+      await graphsService.executeTrigger(graph.id, 'trigger-1', {
+        messages: ['Ask again: what is 3+3?'],
+        async: true,
+        threadSubId,
+      });
+
+      const usageAfterSecond = await waitForCondition(
+        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        (t) => {
+          const total = t.tokenUsage?.totalTokens ?? 0;
+          return total >= firstTotalTokens && total > 0;
+        },
+        { timeout: 120_000, interval: 2_000 },
+      );
+
+      const secondTotalTokens = usageAfterSecond.tokenUsage?.totalTokens ?? 0;
+      const secondTotalPrice = usageAfterSecond.tokenUsage?.totalPrice ?? 0;
+
+      expect(secondTotalTokens).toBeGreaterThanOrEqual(firstTotalTokens);
+      expect(secondTotalPrice).toBeGreaterThanOrEqual(firstTotalPrice);
+    },
+  );
 });

@@ -2,6 +2,7 @@ import {
   AIMessage,
   AIMessageChunk,
   BaseMessage,
+  ChatMessage,
   SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
@@ -695,19 +696,30 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       return;
     }
 
-    const { reasoningChunks } = this.graphThreadState.getByThread(threadId);
-    const nextReasoningChunks = reasoningChunks;
-    const currentReasoningMessage = nextReasoningChunks.get(reasoningId);
+    const { reasoningChunks: prevReasoningChunks } =
+      this.graphThreadState.getByThread(threadId);
 
-    if (currentReasoningMessage) {
-      currentReasoningMessage.content =
-        (currentReasoningMessage.content || '') + reasoningText;
-    } else {
-      nextReasoningChunks.set(
-        reasoningId,
-        buildReasoningMessage(reasoningText, messageChunk.id),
-      );
-    }
+    // IMPORTANT:
+    // Some providers emit reasoning chunks with different `chunk.id` values even though they
+    // eventually get persisted as a single reasoning message. To avoid accumulating multiple
+    // "reasoning:*" entries in socket metadata, we keep reasoningChunks at max size 1 and
+    // migrate accumulated content when the id changes.
+    const combinedPreviousContent = Array.from(prevReasoningChunks.values())
+      .map((msg) => (typeof msg.content === 'string' ? msg.content : ''))
+      .join('');
+
+    const currentEntry = prevReasoningChunks.get(reasoningId);
+    const currentContent =
+      typeof currentEntry?.content === 'string' ? currentEntry.content : '';
+
+    const nextContent =
+      (currentEntry ? currentContent : combinedPreviousContent) + reasoningText;
+
+    const nextReasoningChunks = new Map<string, ChatMessage>();
+    nextReasoningChunks.set(
+      reasoningId,
+      buildReasoningMessage(nextContent, messageChunk.id),
+    );
 
     this.graphThreadState.applyForThread(threadId, {
       reasoningChunks: nextReasoningChunks,

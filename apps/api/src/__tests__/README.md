@@ -4,6 +4,10 @@ This directory contains integration tests for the API using Vitest.
 
 ## Overview
 
+> **Important (Agent environment)**: Integration tests are **not required** and are currently **not implemented/maintained for the agent environment**.
+>
+> The mandatory quality gate for day-to-day development is `pnpm run full-check` from repo root, which runs **unit tests**.
+
 Integration tests verify the interaction between different parts of the system by calling services directly without HTTP requests. This approach provides:
 
 - **Faster execution** - Direct service calls are faster than HTTP requests

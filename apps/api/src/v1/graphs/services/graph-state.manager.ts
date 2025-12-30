@@ -363,7 +363,9 @@ export class GraphStateManager {
       graphId: cfg?.graph_id || this.graphId,
       nodeId: cfg?.node_id || state.nodeId,
       threadId,
-      parentThreadId: cfg?.parent_thread_id || 'unknown',
+      // For root runs parent_thread_id is typically not set. We must still emit a stable key
+      // so downstream token/cost aggregation does not end up under a bogus "unknown" thread.
+      parentThreadId: cfg?.parent_thread_id ?? threadId,
       ...(runId ? { runId } : {}),
       source: cfg?.source,
       data: {
@@ -374,12 +376,13 @@ export class GraphStateManager {
 
   private async handleAgentMessage(data: AgentMessageEvent) {
     const cfg = data.config?.configurable;
+    const threadId = data.threadId;
     await this.notificationsService.emit({
       type: NotificationEvent.AgentMessage,
       graphId: cfg?.graph_id || this.graphId,
       nodeId: cfg?.node_id || 'unknown',
-      threadId: data.threadId,
-      parentThreadId: cfg?.parent_thread_id || 'unknown',
+      threadId,
+      parentThreadId: cfg?.parent_thread_id ?? threadId,
       data: {
         messages: serializeBaseMessages(data.messages),
       },
@@ -388,12 +391,13 @@ export class GraphStateManager {
 
   private async handleAgentStateUpdate(data: AgentStateUpdateEvent) {
     const cfg = data.config?.configurable;
+    const threadId = data.threadId;
     await this.notificationsService.emit({
       type: NotificationEvent.AgentStateUpdate,
       graphId: cfg?.graph_id || this.graphId,
       nodeId: cfg?.node_id || 'unknown',
-      threadId: data.threadId,
-      parentThreadId: cfg?.parent_thread_id || 'unknown',
+      threadId,
+      parentThreadId: cfg?.parent_thread_id ?? threadId,
       data: data.stateChange,
     });
   }

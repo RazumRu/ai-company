@@ -39,7 +39,12 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
     event: IAgentStateUpdateNotification,
   ): Promise<IAgentStateUpdateEnrichedNotification[]> {
     const { threadId, parentThreadId, graphId, data, nodeId } = event;
-    const externalThreadKey = parentThreadId ?? threadId;
+    // Some emitters historically used a sentinel 'unknown' string for missing parent thread id.
+    // Treat it as missing to avoid persisting token/cost usage under a bogus Redis key.
+    const externalThreadKey =
+      parentThreadId && parentThreadId !== 'unknown'
+        ? parentThreadId
+        : threadId;
 
     // Get graph owner for enriching notification
     const ownerId = await this.getGraphOwner(graphId);

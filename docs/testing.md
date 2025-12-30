@@ -5,7 +5,7 @@ This document explains how to run and write tests for the Ai company API project
 ## Overview
 
 The project uses two testing frameworks:
-- **Vitest** for unit tests and integration tests
+- **Vitest** for unit tests (and optional integration tests)
 - **Cypress** for E2E (end-to-end) tests
 
 ## Full project check (mandatory)
@@ -65,6 +65,11 @@ Examples:
 ## Integration Testing
 
 ### Overview
+
+> **Important (Agent environment)**: Integration tests are **not required** and are currently **not implemented/maintained for the agent environment**.
+>
+> - The mandatory quality gate is `pnpm run full-check`, which runs **unit tests only**.
+> - Run integration tests only when you are working locally with the full runtime/dependencies available and you specifically need that coverage.
 
 Integration tests are deep, comprehensive tests that verify the detailed behavior of business logic by calling services directly. They differ from E2E tests in purpose and scope:
 

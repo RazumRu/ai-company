@@ -23,6 +23,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
   let handler: AgentStateUpdateNotificationHandler;
   let _threadsDao: ThreadsDao;
   let _notificationsService: NotificationsService;
+  let threadTokenUsageCacheService: ThreadTokenUsageCacheService;
 
   const mockGraphId = 'graph-456';
   const mockNodeId = 'node-789';
@@ -114,6 +115,9 @@ describe('AgentStateUpdateNotificationHandler', () => {
     _threadsDao = module.get<ThreadsDao>(ThreadsDao);
     _notificationsService =
       module.get<NotificationsService>(NotificationsService);
+    threadTokenUsageCacheService = module.get<ThreadTokenUsageCacheService>(
+      ThreadTokenUsageCacheService,
+    );
   });
 
   describe('handle', () => {
@@ -158,6 +162,23 @@ describe('AgentStateUpdateNotificationHandler', () => {
           data: { summary: 'Thread summary' },
         },
       ]);
+    });
+
+    it("treats parentThreadId='unknown' as missing (prevents token usage resets)", async () => {
+      const notification = createMockNotification({
+        parentThreadId: 'unknown',
+        data: { totalPrice: 0.01, totalTokens: 123 },
+      });
+
+      await handler.handle(notification);
+
+      expect(
+        threadTokenUsageCacheService.upsertNodeTokenUsage,
+      ).toHaveBeenCalledWith(
+        mockThreadId,
+        mockNodeId,
+        expect.objectContaining({ totalPrice: 0.01, totalTokens: 123 }),
+      );
     });
 
     it('enriches agent state update when needsMoreInfo is set', async () => {

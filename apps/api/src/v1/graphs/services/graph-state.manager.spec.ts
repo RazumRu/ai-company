@@ -466,6 +466,85 @@ describe('GraphStateManager', () => {
       );
     });
 
+    it('should use threadId as parentThreadId for root agent events (no parent_thread_id)', async () => {
+      const agent: any = {
+        subscribe: vi.fn(),
+        getGraphNodeMetadata: vi.fn(),
+      };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
+
+      const node: CompiledGraphNode = {
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        config: {},
+        instance: agent,
+        handle: makeHandle(agent),
+      };
+
+      manager.registerNode('agent-1');
+      manager.attachGraphNode('agent-1', node);
+
+      vi.mocked(notifications.emit).mockClear();
+
+      const threadId = 'root-thread';
+      const cfg = {
+        configurable: {
+          graph_id: 'graph-1',
+          node_id: 'agent-1',
+          // parent_thread_id intentionally missing
+        },
+      };
+
+      await agentHandler({
+        type: 'invoke',
+        data: { threadId, messages: [], config: cfg },
+      });
+
+      await agentHandler({
+        type: 'message',
+        data: { threadId, messages: [], config: cfg },
+      });
+
+      await agentHandler({
+        type: 'stateUpdate',
+        data: { threadId, stateChange: { totalPrice: 0.01 }, config: cfg },
+      });
+
+      const agentInvoke = vi
+        .mocked(notifications.emit)
+        .mock.calls.find(
+          (c: any) => c[0]?.type === NotificationEvent.AgentInvoke,
+        )?.[0];
+      const agentMessage = vi
+        .mocked(notifications.emit)
+        .mock.calls.find(
+          (c: any) => c[0]?.type === NotificationEvent.AgentMessage,
+        )?.[0];
+      const agentStateUpdate = vi
+        .mocked(notifications.emit)
+        .mock.calls.find(
+          (c: any) => c[0]?.type === NotificationEvent.AgentStateUpdate,
+        )?.[0];
+
+      expect(agentInvoke).toMatchObject({
+        threadId,
+        parentThreadId: threadId,
+      });
+      expect(agentMessage).toMatchObject({
+        threadId,
+        parentThreadId: threadId,
+      });
+      expect(agentStateUpdate).toMatchObject({
+        threadId,
+        parentThreadId: threadId,
+      });
+    });
+
     it('should not emit duplicate GraphNodeUpdate notifications', async () => {
       const agent: any = {
         subscribe: vi.fn(),

@@ -1206,6 +1206,170 @@ describe('Socket Notifications Integration Tests', () => {
         }
       },
     );
+
+    it(
+      'should keep a single reasoningChunks entry when chunk ids change (merging content into the latest id)',
+      { timeout: 90000 },
+      async () => {
+        const graphId = baseGraphId;
+        await restartGraph(graphId);
+
+        const triggerResult = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Start reasoning id merge test'],
+            threadSubId: uniqueThreadSubId('reasoning-id-merge-thread'),
+            async: true,
+          },
+        );
+
+        const threadId = triggerResult.externalThreadId;
+        expect(threadId).toBeDefined();
+
+        await waitForCondition(
+          () =>
+            graphsService.getCompiledNodes(graphId, {
+              threadId,
+            }),
+          (snapshots) =>
+            snapshots.some(
+              (node) =>
+                node.id === 'agent-1' &&
+                node.status === GraphNodeStatus.Running,
+            ),
+          { timeout: 120_000, interval: 1_000 },
+        );
+
+        const agentNode = graphRegistry.getNode<SimpleAgent>(
+          graphId,
+          'agent-1',
+        );
+        if (!agentNode) {
+          throw new Error('Agent node agent-1 not found');
+        }
+
+        const agentInstance = agentNode.instance;
+        const agentInternals = agentInstance as unknown as {
+          handleReasoningChunk?: (tid: string, chunk: AIMessageChunk) => void;
+          graphThreadState?: GraphThreadState;
+        };
+
+        const handleReasoningChunk =
+          agentInternals.handleReasoningChunk?.bind(agentInstance);
+        if (!handleReasoningChunk) {
+          throw new Error('handleReasoningChunk is not available on agent');
+        }
+
+        const emitSpy = vi.spyOn(notificationsService, 'emit');
+        let processedCallIndex = 0;
+        const waitForNotification = async (
+          predicate: (event: Notification) => boolean,
+        ): Promise<Notification> => {
+          const timeoutAt = Date.now() + 10_000;
+          while (Date.now() < timeoutAt) {
+            for (
+              let i = processedCallIndex;
+              i < emitSpy.mock.calls.length;
+              i++
+            ) {
+              const [event] = emitSpy.mock.calls[i] as [Notification];
+              if (predicate(event)) {
+                processedCallIndex = i + 1;
+                return event;
+              }
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error('Timeout waiting for notification');
+        };
+
+        const firstChunk = {
+          id: 'run-first',
+          content: '',
+          contentBlocks: [
+            {
+              type: 'reasoning' as const,
+              reasoning: 'first reasoning',
+            },
+          ],
+          response_metadata: {},
+        } as AIMessageChunk;
+
+        const secondChunk = {
+          id: 'run-second',
+          content: '',
+          contentBlocks: [
+            {
+              type: 'reasoning' as const,
+              reasoning: 'second reasoning',
+            },
+          ],
+          response_metadata: {},
+        } as AIMessageChunk;
+
+        try {
+          handleReasoningChunk(threadId, firstChunk);
+          await waitForNotification(
+            (event) =>
+              event.type === NotificationEvent.GraphNodeUpdate &&
+              event.graphId === graphId &&
+              event.nodeId === 'agent-1' &&
+              !!(
+                event.data as {
+                  additionalNodeMetadata?: Record<string, { id: string }>;
+                }
+              )?.additionalNodeMetadata?.reasoningChunks,
+          );
+
+          handleReasoningChunk(threadId, secondChunk);
+          const notification = await waitForNotification(
+            (event) =>
+              event.type === NotificationEvent.GraphNodeUpdate &&
+              event.graphId === graphId &&
+              event.nodeId === 'agent-1' &&
+              !!(
+                event.data as {
+                  additionalNodeMetadata?: Record<string, { id: string }>;
+                }
+              )?.additionalNodeMetadata?.reasoningChunks,
+          );
+
+          const reasoningChunks =
+            (
+              notification.data as {
+                additionalNodeMetadata?: {
+                  reasoningChunks?: Record<
+                    string,
+                    { id: string; content: string }
+                  >;
+                };
+              }
+            )?.additionalNodeMetadata?.reasoningChunks ?? {};
+
+          const keys = Object.keys(reasoningChunks);
+          expect(keys).toHaveLength(1);
+          expect(keys[0]).toBe('reasoning:run-second');
+          expect(reasoningChunks['reasoning:run-second']?.id).toBe(
+            'reasoning:run-second',
+          );
+          expect(reasoningChunks['reasoning:run-second']?.content).toContain(
+            'first reasoning',
+          );
+          expect(reasoningChunks['reasoning:run-second']?.content).toContain(
+            'second reasoning',
+          );
+
+          const state = agentInternals.graphThreadState?.getByThread(threadId);
+          expect(state?.reasoningChunks.size).toBe(1);
+          expect(state?.reasoningChunks.get('reasoning:run-second')?.id).toBe(
+            'reasoning:run-second',
+          );
+        } finally {
+          emitSpy.mockRestore();
+        }
+      },
+    );
   });
 
   describe('Thread Notifications', () => {
