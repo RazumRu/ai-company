@@ -1,6 +1,7 @@
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { DefaultLogger } from '@packages/common';
 
+import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import {
   BaseAgentState,
   BaseAgentStateChange,
@@ -38,7 +39,14 @@ export class InjectPendingNode extends BaseNode<
 
     const shouldInject =
       mode === NewMessageMode.WaitForCompletion
-        ? state.done || state.needsMoreInfo
+        ? (() => {
+            const finishState = FinishTool.getStateFromToolsMetadata(
+              state.toolsMetadata,
+            );
+            if (finishState)
+              return finishState.done || finishState.needsMoreInfo;
+            return false;
+          })()
         : true;
 
     if (!shouldInject) {
@@ -56,8 +64,7 @@ export class InjectPendingNode extends BaseNode<
         mode: 'append',
         items: updatedMessages,
       },
-      done: false,
-      needsMoreInfo: false,
+      toolsMetadata: FinishTool.clearState(),
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
     };

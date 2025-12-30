@@ -8,8 +8,11 @@ export type BaseAgentStateMessagesUpdateValue = {
 export interface BaseAgentState {
   messages: BaseMessage[];
   summary: string;
-  done: boolean;
-  needsMoreInfo: boolean;
+  /**
+   * Per-tool metadata/state, keyed by tool name.
+   * Tools can update only their own entry via ToolInvokeResult.stateChange.
+   */
+  toolsMetadata: Record<string, Record<string, unknown>>;
   toolUsageGuardActivated: boolean;
   toolUsageGuardActivatedCount: number;
   /**

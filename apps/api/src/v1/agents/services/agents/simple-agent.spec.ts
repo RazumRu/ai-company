@@ -371,8 +371,7 @@ describe('SimpleAgent', () => {
         messages: {
           mode: 'append',
         },
-        done: false,
-        needsMoreInfo: false,
+        toolsMetadata: {},
         toolUsageGuardActivated: false,
         toolUsageGuardActivatedCount: 0,
       });
@@ -495,8 +494,7 @@ describe('SimpleAgent', () => {
     const buildState = () => ({
       messages: [],
       summary: '',
-      done: false,
-      needsMoreInfo: false,
+      toolsMetadata: {},
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
       inputTokens: 0,
@@ -562,7 +560,7 @@ describe('SimpleAgent', () => {
         messages: lastState.messages,
         threadId: 'thread-1',
         checkpointNs: undefined,
-        needsMoreInfo: lastState.needsMoreInfo,
+        needsMoreInfo: false,
       });
     });
 
@@ -894,8 +892,7 @@ describe('SimpleAgent', () => {
     const buildLastState = () => ({
       messages: [],
       summary: '',
-      done: false,
-      needsMoreInfo: false,
+      toolsMetadata: {},
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
       inputTokens: 0,

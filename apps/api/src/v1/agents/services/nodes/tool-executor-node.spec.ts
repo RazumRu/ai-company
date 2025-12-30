@@ -2,7 +2,6 @@ import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FinishToolResponse } from '../../../agent-tools/tools/core/finish.tool';
 import { BaseAgentState } from '../../agents.types';
 import { ToolExecutorNode } from './tool-executor-node';
 
@@ -61,8 +60,7 @@ describe('ToolExecutorNode', () => {
         messages: [],
         toolUsageGuardActivated: false,
         summary: '',
-        done: false,
-        needsMoreInfo: false,
+        toolsMetadata: {},
         toolUsageGuardActivatedCount: 0,
         inputTokens: 0,
         cachedInputTokens: 0,
@@ -374,7 +372,7 @@ describe('ToolExecutorNode', () => {
       );
     });
 
-    it('should handle FinishToolResponse and set done to true', async () => {
+    it('should persist finish stateChange', async () => {
       const toolCall = {
         id: 'call-1',
         name: 'finish',
@@ -390,20 +388,25 @@ describe('ToolExecutorNode', () => {
       });
 
       mockState.messages = [aiMessage];
-      mockState.done = false;
       mockFinishTool.invoke = vi.fn().mockResolvedValue({
-        output: new FinishToolResponse('Task completed successfully', false),
+        output: {
+          message: 'Task completed successfully',
+          needsMoreInfo: false,
+        },
+        stateChange: { done: true, needsMoreInfo: false },
       });
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.done).toBe(true);
+      expect(result.toolsMetadata).toEqual({
+        finish: { done: true, needsMoreInfo: false },
+      });
       expect(result.messages?.items?.[0]?.content).toBe(
         '{"message":"Task completed successfully","needsMoreInfo":false}',
       );
     });
 
-    it('should handle FinishToolResponse with needsMoreInfo and NOT set done to true', async () => {
+    it('should handle finish tool stateChange with needsMoreInfo and mirror it', async () => {
       const toolCall = {
         id: 'call-1',
         name: 'finish',
@@ -420,16 +423,19 @@ describe('ToolExecutorNode', () => {
       });
 
       mockState.messages = [aiMessage];
-      mockState.done = false;
-      mockState.needsMoreInfo = false;
       mockFinishTool.invoke = vi.fn().mockResolvedValue({
-        output: new FinishToolResponse('What is the target environment?', true),
+        output: {
+          message: 'What is the target environment?',
+          needsMoreInfo: true,
+        },
+        stateChange: { done: false, needsMoreInfo: true },
       });
 
       const result = await node.invoke(mockState, mockConfig);
 
-      expect(result.done).toBeUndefined(); // Should not set done when needsMoreInfo is true
-      expect(result.needsMoreInfo).toBe(true); // Should set needsMoreInfo to true
+      expect(result.toolsMetadata).toEqual({
+        finish: { done: false, needsMoreInfo: true },
+      });
       expect(result.messages?.items?.[0]?.content).toBe(
         '{"message":"What is the target environment?","needsMoreInfo":true}',
       );

@@ -29,6 +29,11 @@ export type ToolInvokeResult<TResult> = {
   messageMetadata?: {
     __title?: string;
   };
+  /**
+   * Optional tool-owned state update persisted into agent state by ToolExecutorNode.
+   * This is stored under `state.toolsMetadata[tool.name]`.
+   */
+  stateChange?: unknown;
 };
 
 export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
@@ -80,6 +85,11 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     args: TSchema,
     config: TConfig,
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
+    /**
+     * Current tool metadata for this tool only (i.e. `state.toolsMetadata[tool.name]`).
+     * Optional for backward compatibility and because tools may be stateless.
+     */
+    toolMetadata?: unknown,
   ): Promise<ToolInvokeResult<TResult>> | ToolInvokeResult<TResult>;
 
   public build(
@@ -121,10 +131,15 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     return tool(async (args, runnableConfig) => {
       const parsedArgs = this.validate(args);
 
+      const toolMetadata = (
+        runnableConfig as ToolRunnableConfig<BaseAgentConfigurable>
+      )?.configurable?.toolMetadata;
+
       return cb(
         parsedArgs,
         config,
         runnableConfig as ToolRunnableConfig<BaseAgentConfigurable>,
+        toolMetadata,
       );
     }, this.buildToolConfiguration(lgConfig)) as DynamicStructuredTool;
   }

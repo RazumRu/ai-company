@@ -8,6 +8,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
+import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
@@ -46,11 +47,14 @@ export class InvokeLlmNode extends BaseNode<
     state: BaseAgentState,
     cfg: LangGraphRunnableConfig<BaseAgentConfigurable>,
   ): Promise<BaseAgentStateChange> {
-    // Reset needsMoreInfo if there's a new human message in the state
-    // Check if the last message is a human message (new user input)
     const lastMessage = state.messages[state.messages.length - 1];
     const hasNewHumanMessage = lastMessage instanceof HumanMessage;
-    const shouldResetNeedsMoreInfo = hasNewHumanMessage && state.needsMoreInfo;
+
+    const finishState = FinishTool.getStateFromToolsMetadata(
+      state.toolsMetadata,
+    );
+    const shouldResetNeedsMoreInfo =
+      hasNewHumanMessage && Boolean(finishState?.needsMoreInfo);
 
     const runner = this.llm.bindTools(this.tools, {
       tool_choice: this.tools.length ? this.opts?.toolChoice : undefined,
@@ -125,7 +129,11 @@ export class InvokeLlmNode extends BaseNode<
             currentContext: threadUsage.inputTokens,
           }
         : {}),
-      ...(shouldResetNeedsMoreInfo ? { needsMoreInfo: false } : {}),
+      ...(shouldResetNeedsMoreInfo
+        ? {
+            toolsMetadata: FinishTool.clearState(),
+          }
+        : {}),
     };
   }
 

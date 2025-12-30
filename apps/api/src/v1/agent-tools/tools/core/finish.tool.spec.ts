@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { FinishTool, FinishToolResponse } from './finish.tool';
+import { FinishTool } from './finish.tool';
 
 describe('FinishTool', () => {
   let tool: FinishTool;
@@ -87,7 +87,7 @@ describe('FinishTool', () => {
       expect(builtTool.name).toBe('finish');
     });
 
-    it('should return FinishToolResponse with message', async () => {
+    it('should return output and stateChange with message', async () => {
       const builtTool = tool.build({});
       const message = 'Task completed successfully';
 
@@ -96,12 +96,11 @@ describe('FinishTool', () => {
         message,
       });
 
-      expect(result.output).toBeInstanceOf(FinishToolResponse);
-      expect((result.output as FinishToolResponse).message).toBe(message);
-      expect((result.output as FinishToolResponse).needsMoreInfo).toBe(false);
+      expect(result.output).toEqual({ message, needsMoreInfo: false });
+      expect(result.stateChange).toEqual({ done: true, needsMoreInfo: false });
     });
 
-    it('should return FinishToolResponse with needsMoreInfo', async () => {
+    it('should return output and stateChange with needsMoreInfo', async () => {
       const builtTool = tool.build({});
 
       const result = await builtTool.invoke({
@@ -110,11 +109,11 @@ describe('FinishTool', () => {
         needsMoreInfo: true,
       });
 
-      expect(result.output).toBeInstanceOf(FinishToolResponse);
-      expect((result.output as FinishToolResponse).message).toBe(
-        'What is the target environment?',
-      );
-      expect((result.output as FinishToolResponse).needsMoreInfo).toBe(true);
+      expect(result.output).toEqual({
+        message: 'What is the target environment?',
+        needsMoreInfo: true,
+      });
+      expect(result.stateChange).toEqual({ done: false, needsMoreInfo: true });
     });
 
     it('should default needsMoreInfo to false', async () => {
@@ -125,37 +124,13 @@ describe('FinishTool', () => {
         message: 'Task completed',
       });
 
-      expect(result.output).toBeInstanceOf(FinishToolResponse);
-      expect((result.output as FinishToolResponse).message).toBe(
-        'Task completed',
-      );
-      expect((result.output as FinishToolResponse).needsMoreInfo).toBe(false);
+      expect(result.output).toEqual({
+        message: 'Task completed',
+        needsMoreInfo: false,
+      });
+      expect(result.stateChange).toEqual({ done: true, needsMoreInfo: false });
     });
   });
 
-  describe('FinishToolResponse', () => {
-    it('should create instance with message', () => {
-      const message = 'Test message';
-      const response = new FinishToolResponse(message);
-
-      expect(response.message).toBe(message);
-      expect(response.needsMoreInfo).toBe(false);
-    });
-
-    it('should create instance with needsMoreInfo', () => {
-      const message = 'Need more info';
-      const response = new FinishToolResponse(message, true);
-
-      expect(response.message).toBe(message);
-      expect(response.needsMoreInfo).toBe(true);
-    });
-
-    it('should default needsMoreInfo to false', () => {
-      const message = 'Test message';
-      const response = new FinishToolResponse(message);
-
-      expect(response.message).toBe(message);
-      expect(response.needsMoreInfo).toBe(false);
-    });
-  });
+  // FinishToolResponse was removed in favor of `stateChange` + plain JSON output.
 });

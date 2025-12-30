@@ -50,8 +50,7 @@ describe('SummarizeNode', () => {
   ): BaseAgentState => ({
     messages: [],
     summary: '',
-    done: false,
-    needsMoreInfo: false,
+    toolsMetadata: {},
     toolUsageGuardActivated: false,
     toolUsageGuardActivatedCount: 0,
     inputTokens: 0,

@@ -251,7 +251,7 @@ export class AiSuggestionsService {
           'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
           "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools, MCP servers, and Knowledge sections information in your response. You can only refer to it if needed.",
           'Keep the result concise, actionable, and focused on how the agent should behave.',
-          'Return only the updated instructions text without extra commentary. No need to add information about Connected tools, MCP servers, and Knowledge sections',
+          'Return only the updated instructions text without extra commentary. You should never add to your message information about Connected tools, MCP servers, and Knowledge sections. It will be included to the user message, but you cannot duplicate it adn add it to your response if its marked as NEVER INCLUDE IT IN YOUR ANSWER',
         ].join('\n');
     const message = isContinuation
       ? (payload.userRequest || '').trim()

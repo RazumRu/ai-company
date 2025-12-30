@@ -12,8 +12,7 @@ describe('InjectPendingNode', () => {
   const baseState: BaseAgentState = {
     messages: [],
     summary: '',
-    done: false,
-    needsMoreInfo: false,
+    toolsMetadata: {},
     toolUsageGuardActivated: false,
     toolUsageGuardActivatedCount: 0,
     inputTokens: 0,
@@ -52,8 +51,9 @@ describe('InjectPendingNode', () => {
     expect(
       graphThreadState.getByThread('thread-1').pendingMessages,
     ).toHaveLength(0);
-    expect(result.done).toBe(false);
-    expect(result.needsMoreInfo).toBe(false);
+    expect(result.toolsMetadata).toEqual({
+      finish: { done: false, needsMoreInfo: false },
+    });
     expect(result.toolUsageGuardActivated).toBe(false);
     expect(result.toolUsageGuardActivatedCount).toBe(0);
   });
@@ -70,7 +70,9 @@ describe('InjectPendingNode', () => {
 
     const doneState: BaseAgentState = {
       ...baseState,
-      done: true,
+      toolsMetadata: {
+        finish: { done: true, needsMoreInfo: false },
+      },
     };
 
     const resultAfter = await node.invoke(doneState, cfg);
@@ -89,12 +91,15 @@ describe('InjectPendingNode', () => {
 
     const state: BaseAgentState = {
       ...baseState,
-      needsMoreInfo: true,
+      toolsMetadata: {
+        finish: { done: false, needsMoreInfo: true },
+      },
     };
 
     const result = await node.invoke(state, cfg);
     expect(result.messages?.items).toHaveLength(1);
-    expect(result.done).toBe(false);
-    expect(result.needsMoreInfo).toBe(false);
+    expect(result.toolsMetadata).toEqual({
+      finish: { done: false, needsMoreInfo: false },
+    });
   });
 });

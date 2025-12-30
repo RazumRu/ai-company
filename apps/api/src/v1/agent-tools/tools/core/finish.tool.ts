@@ -10,12 +10,17 @@ import {
   ToolInvokeResult,
 } from '../base-tool';
 
-export class FinishToolResponse {
-  constructor(
-    public message: string,
-    public needsMoreInfo: boolean = false,
-  ) {}
-}
+export type FinishToolOutput = {
+  message: string;
+  needsMoreInfo: boolean;
+};
+
+export type FinishToolState = {
+  done: boolean;
+  needsMoreInfo: boolean;
+};
+
+export type ToolsMetadata = Record<string, Record<string, unknown>>;
 
 export const FinishToolSchema = z.object({
   purpose: z
@@ -39,6 +44,24 @@ export type FinishToolSchemaType = z.infer<typeof FinishToolSchema>;
 
 @Injectable()
 export class FinishTool extends BaseTool<FinishToolSchemaType> {
+  public static readonly TOOL_NAME = 'finish' as const;
+
+  public static getStateFromToolsMetadata(
+    toolsMetadata: ToolsMetadata | undefined,
+  ) {
+    const raw = toolsMetadata?.[FinishTool.TOOL_NAME];
+
+    return raw;
+  }
+
+  public static setState(state: FinishToolState): ToolsMetadata {
+    return { [FinishTool.TOOL_NAME]: state };
+  }
+
+  public static clearState(): ToolsMetadata {
+    return FinishTool.setState({ done: false, needsMoreInfo: false });
+  }
+
   public name = 'finish';
   public description = `Signal task completion or request strictly necessary info. Always call this tool to end your turn. Set needsMoreInfo=false when done. Set needsMoreInfo=true only if a specific required input is missing and you cannot proceed; do not ask open-ended or speculative questions. If you can proceed using context or reasonable defaults, do so and state assumptions in message. If you must ask, send one concise, structured request listing the exact fields and acceptable formats. This is the only way to end your response.`;
 
@@ -153,7 +176,7 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       \`\`\`
 
       ### Output Format
-      Returns a FinishToolResponse that signals the agent's turn is complete.
+      Returns an object with \`message\` and \`needsMoreInfo\`. The agent runtime derives completion flags from tool state.
 
       ### Error Pattern
       NEVER end without calling finish:
@@ -178,12 +201,23 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
     args: FinishToolSchemaType,
     _config: Record<PropertyKey, unknown>,
     _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): ToolInvokeResult<FinishToolResponse> {
+    _toolMetadata?: unknown,
+  ): ToolInvokeResult<FinishToolOutput> {
     const title = this.generateTitle?.(args, _config);
 
+    const needsMoreInfo = Boolean(args.needsMoreInfo);
+    const stateChange: FinishToolState = {
+      done: !needsMoreInfo,
+      needsMoreInfo,
+    };
+
     return {
-      output: new FinishToolResponse(args.message, args.needsMoreInfo),
+      output: {
+        message: args.message,
+        needsMoreInfo,
+      },
       messageMetadata: { __title: title },
+      stateChange,
     };
   }
 }

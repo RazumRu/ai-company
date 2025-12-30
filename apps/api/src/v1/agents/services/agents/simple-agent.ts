@@ -170,13 +170,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         reducer: (left, right) => right ?? left,
         default: () => '',
       }),
-      done: Annotation<boolean, boolean>({
-        reducer: (left, right) => right ?? left,
-        default: () => false,
-      }),
-      needsMoreInfo: Annotation<boolean, boolean>({
-        reducer: (left, right) => right ?? left,
-        default: () => false,
+      toolsMetadata: Annotation<
+        Record<string, Record<string, unknown>>,
+        Record<string, Record<string, unknown>>
+      >({
+        reducer: (left, right) => (right ? { ...left, ...right } : left),
+        default: () => ({}),
       }),
       toolUsageGuardActivatedCount: Annotation<number, number>({
         reducer: (left, right) => right ?? left,
@@ -396,7 +395,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
           const hasPending = pendingMessages.length > 0;
           const mode = newMessageMode ?? NewMessageMode.InjectAfterToolCall;
-          const isComplete = s.done || s.needsMoreInfo;
+          const finishState = FinishTool.getStateFromToolsMetadata(
+            s.toolsMetadata,
+          );
+          const isComplete = Boolean(
+            finishState && (finishState.done || finishState.needsMoreInfo),
+          );
 
           if (!isComplete) {
             if (mode === NewMessageMode.InjectAfterToolCall && hasPending) {
@@ -432,8 +436,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     return {
       messages: [],
       summary: '',
-      done: false,
-      needsMoreInfo: false,
+      toolsMetadata: {},
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
       inputTokens: 0,
@@ -459,8 +462,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     return {
       messages: nextMessages,
       summary: change.summary ?? prev.summary,
-      done: change.done ?? prev.done,
-      needsMoreInfo: change.needsMoreInfo ?? prev.needsMoreInfo,
+      toolsMetadata: change.toolsMetadata
+        ? { ...prev.toolsMetadata, ...change.toolsMetadata }
+        : prev.toolsMetadata,
       toolUsageGuardActivated:
         change.toolUsageGuardActivated ?? prev.toolUsageGuardActivated,
       toolUsageGuardActivatedCount:
@@ -580,12 +584,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       stateChange.summary = nextState.summary;
     }
 
-    if (prevState.done !== nextState.done) {
-      stateChange.done = nextState.done;
-    }
-
-    if (prevState.needsMoreInfo !== nextState.needsMoreInfo) {
-      stateChange.needsMoreInfo = nextState.needsMoreInfo;
+    if (prevState.toolsMetadata !== nextState.toolsMetadata) {
+      stateChange.toolsMetadata = nextState.toolsMetadata;
     }
 
     if (
@@ -858,7 +858,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       messages: activeRun.lastState.messages,
       threadId,
       checkpointNs: activeRun.runnableConfig?.configurable?.checkpoint_ns,
-      needsMoreInfo: activeRun.lastState.needsMoreInfo,
+      needsMoreInfo:
+        FinishTool.getStateFromToolsMetadata(activeRun.lastState.toolsMetadata)
+          ?.needsMoreInfo === true,
     };
   }
 
@@ -968,8 +970,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           mode: 'append',
           items: updateMessages,
         },
-        done: false,
-        needsMoreInfo: false,
+        toolsMetadata: {},
         toolUsageGuardActivated: false,
         toolUsageGuardActivatedCount: 0,
       } satisfies BaseAgentStateChange,
@@ -1075,10 +1076,15 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       messages: finalState.messages,
       threadId,
       checkpointNs: mergedConfig?.configurable?.checkpoint_ns,
-      needsMoreInfo: finalState.needsMoreInfo,
+      needsMoreInfo:
+        FinishTool.getStateFromToolsMetadata(finalState.toolsMetadata)
+          ?.needsMoreInfo === true,
     };
 
-    const wasStopped = Boolean(runEntry.stopped) && !finalState.done;
+    const wasDone =
+      FinishTool.getStateFromToolsMetadata(finalState.toolsMetadata)?.done ===
+      true;
+    const wasStopped = Boolean(runEntry.stopped) && !wasDone;
     const stopError = wasStopped
       ? new Error(runEntry.stopReason ?? this.formatStoppedReason())
       : undefined;
@@ -1107,7 +1113,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   public async stop(): Promise<void> {
     for (const [runId, run] of this.activeRuns.entries()) {
       const graphId = run.runnableConfig?.configurable?.graph_id;
-      if (graphId && !run.lastState.done) {
+      const isDone =
+        FinishTool.getStateFromToolsMetadata(run.lastState.toolsMetadata)
+          ?.done === true;
+      if (graphId && !isDone) {
         const msg = markMessageHideForLlm(
           new SystemMessage(this.formatStoppedReason()),
         );
@@ -1165,7 +1174,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         continue;
       }
 
-      if (cfg?.graph_id && !run.lastState.done) {
+      const isDone =
+        FinishTool.getStateFromToolsMetadata(run.lastState.toolsMetadata)
+          ?.done === true;
+      if (cfg?.graph_id && !isDone) {
         const msg = markMessageHideForLlm(
           new SystemMessage(this.formatStoppedReason(reason)),
         );

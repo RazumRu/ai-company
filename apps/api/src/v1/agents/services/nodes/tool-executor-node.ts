@@ -8,7 +8,6 @@ import { DefaultLogger } from '@packages/common';
 import { keyBy } from 'lodash';
 
 import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
-import { FinishToolResponse } from '../../../agent-tools/tools/core/finish.tool';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
@@ -45,10 +44,8 @@ export class ToolExecutorNode extends BaseNode<
     }
 
     const toolsMap = keyBy(this.tools, 'name');
-    let done = false;
-    let needsMoreInfo = false;
 
-    const toolMessages: ToolMessage[] = await Promise.all(
+    const results = await Promise.all(
       calls.map(async (tc) => {
         const callId =
           tc.id ?? `missing_id_${Math.random().toString(36).slice(2)}`;
@@ -76,38 +73,27 @@ export class ToolExecutorNode extends BaseNode<
           });
 
         if (!tool) {
-          return makeErrorMsg(`Tool '${tc.name}' not found.`);
+          return {
+            toolName: tc.name,
+            toolMessage: makeErrorMsg(`Tool '${tc.name}' not found.`),
+            stateChange: undefined as unknown,
+          };
         }
 
         try {
+          const toolMetadata = state.toolsMetadata?.[tc.name];
           const rawResult = (await tool.invoke<
             unknown,
             ToolRunnableConfig<BaseAgentConfigurable>
           >(tc.args, {
-            configurable: cfg.configurable,
+            configurable: {
+              ...(cfg.configurable ?? {}),
+              ...(toolMetadata !== undefined ? { toolMetadata } : {}),
+            },
             signal: cfg.signal,
           })) as unknown;
-          const { output, messageMetadata } =
+          const { output, messageMetadata, stateChange } =
             rawResult as ToolInvokeResult<unknown>;
-
-          if (output instanceof FinishToolResponse) {
-            // Only set done=true if needsMoreInfo is false
-            // If needsMoreInfo is true, the agent needs user input and should stop
-            if (!output.needsMoreInfo) {
-              done = true;
-            } else {
-              // Set needsMoreInfo flag in state to stop execution
-              needsMoreInfo = true;
-            }
-
-            // Include needsMoreInfo flag in the tool message content
-            const toolResponse = {
-              message: output.message || 'Finished',
-              needsMoreInfo: output.needsMoreInfo,
-            };
-
-            return makeMsg(JSON.stringify(toolResponse), messageMetadata);
-          }
 
           const content =
             typeof output === 'string' ? output : JSON.stringify(output);
@@ -116,10 +102,18 @@ export class ToolExecutorNode extends BaseNode<
             const trimmed = content.slice(0, this.maxOutputChars);
             const suffix = `\n\n[output trimmed to ${this.maxOutputChars} characters from ${content.length}]`;
 
-            return makeMsg(`${trimmed}${suffix}`, messageMetadata);
+            return {
+              toolName: tc.name,
+              toolMessage: makeMsg(`${trimmed}${suffix}`, messageMetadata),
+              stateChange,
+            };
           }
 
-          return makeMsg(content, messageMetadata);
+          return {
+            toolName: tc.name,
+            toolMessage: makeMsg(content, messageMetadata),
+            stateChange,
+          };
         } catch (e) {
           const err = e as Error;
 
@@ -127,11 +121,27 @@ export class ToolExecutorNode extends BaseNode<
             toolName: tc.name,
             callId,
           });
-          return makeErrorMsg(
-            `Error executing tool '${tc.name}': ${err?.message || String(err)}`,
-          );
+          return {
+            toolName: tc.name,
+            toolMessage: makeErrorMsg(
+              `Error executing tool '${tc.name}': ${err?.message || String(err)}`,
+            ),
+            stateChange: undefined as unknown,
+          };
         }
       }),
+    );
+
+    const toolMessages = results.map((r) => r.toolMessage);
+
+    const toolsMetadataUpdate = results.reduce(
+      (acc, r) => {
+        if (r.stateChange !== undefined) {
+          acc[r.toolName] = r.stateChange as Record<string, unknown>;
+        }
+        return acc;
+      },
+      {} as Record<string, Record<string, unknown>>,
     );
 
     return {
@@ -139,10 +149,9 @@ export class ToolExecutorNode extends BaseNode<
         mode: 'append',
         items: updateMessagesListWithMetadata(toolMessages, cfg),
       },
-      // Only set done if it was explicitly set by finish tool
-      // If needsMoreInfo=true, done stays false and we don't set it
-      ...(done ? { done: true } : {}),
-      ...(needsMoreInfo ? { needsMoreInfo: true } : {}),
+      ...(Object.keys(toolsMetadataUpdate).length
+        ? { toolsMetadata: toolsMetadataUpdate }
+        : {}),
     };
   }
 }
