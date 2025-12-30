@@ -19,7 +19,7 @@ export class GraphRevisionQueueService
   private worker!: Worker<GraphRevisionJobData>;
   private redis!: IORedis;
   private processor?: (job: GraphRevisionJobData) => Promise<void>;
-  private queueName = 'graph-revisions';
+  private readonly queueName = `graph-revisions-${environment.env}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 

@@ -13,12 +13,13 @@ export class NotificationsService implements OnModuleDestroy {
 
   private redis: IORedis;
   private subscribers: ((notification: Notification) => Promise<void>)[] = [];
+  private readonly queueName = `notifications-${environment.env}`;
 
   constructor(private readonly logger: DefaultLogger) {
     this.redis = new IORedis(environment.redisUrl, {
       maxRetriesPerRequest: null,
     });
-    this.queue = new Queue('notifications', {
+    this.queue = new Queue(this.queueName, {
       connection: this.redis,
       defaultJobOptions: {
         removeOnComplete: 100,
@@ -32,7 +33,7 @@ export class NotificationsService implements OnModuleDestroy {
     });
 
     this.worker = new Worker<Notification>(
-      'notifications',
+      this.queueName,
       this.processJob.bind(this),
       {
         connection: this.redis,

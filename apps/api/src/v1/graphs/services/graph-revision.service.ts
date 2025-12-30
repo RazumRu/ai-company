@@ -36,6 +36,7 @@ import {
   GraphRevisionStatus,
   GraphSchemaType,
   GraphStatus,
+  NodeKind,
 } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphMergeService } from './graph-merge.service';
@@ -905,6 +906,12 @@ export class GraphRevisionService {
     compiledGraph: CompiledGraph,
   ): Promise<boolean> {
     if (!existingNode || existingNode.template !== nodeSchema.template) {
+      return false;
+    }
+
+    // Runtime nodes manage external resources (containers, networks, etc). For these,
+    // live revisions should rebuild from scratch instead of in-place reconfigure.
+    if (existingNode.type === NodeKind.Runtime) {
       return false;
     }
 
