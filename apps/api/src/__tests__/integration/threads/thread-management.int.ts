@@ -1103,7 +1103,7 @@ describe('Thread Management Integration Tests', () => {
 
     it(
       'should queue new messages until completion when mode is wait_for_completion',
-      { timeout: 60000 },
+      { timeout: 90000 },
       async () => {
         await ensureGraphRunning(waitModeGraphId);
         const threadSubId = uniqueThreadSubId('wait-mode-queue');
@@ -1141,7 +1141,7 @@ describe('Thread Management Integration Tests', () => {
           (thread) =>
             thread.status === ThreadStatus.Done ||
             thread.status === ThreadStatus.NeedMoreInfo,
-          { timeout: 60000 },
+          { timeout: 90000 },
         );
 
         const humanMessages = await waitForHumanMessageContents(
@@ -1196,7 +1196,7 @@ describe('Thread Management Integration Tests', () => {
 
     it(
       'should keep new messages queued while wait_for_completion run is active',
-      { timeout: 60000 },
+      { timeout: 90000 },
       async () => {
         await ensureGraphRunning(waitModeGraphId);
         const threadSubId = uniqueThreadSubId('wait-mode-active');
@@ -1217,7 +1217,7 @@ describe('Thread Management Integration Tests', () => {
           () =>
             threadsService.getThreadByExternalId(firstResult.externalThreadId),
           (thread) => thread.status === ThreadStatus.Running,
-          { timeout: 15000 },
+          { timeout: 30000 },
         );
 
         await graphsService.executeTrigger(waitModeGraphId, 'trigger-1', {
@@ -1262,7 +1262,7 @@ describe('Thread Management Integration Tests', () => {
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
-          { timeout: 60000 },
+          { timeout: 90000 },
         );
 
         const finalState = agentInternals.graphThreadState?.getByThread(

@@ -1382,10 +1382,15 @@ describe('Socket Notifications Integration Tests', () => {
 
         const graphId = baseGraphId;
 
-        const threadCreateEvents: unknown[] = [];
+        const threadSubId = uniqueThreadSubId('socket-thread-create');
 
-        socket.on('thread.create', (notification) => {
-          threadCreateEvents.push(notification);
+        const threadCreateEvents: ThreadCreateNotification[] = [];
+
+        socket.on('thread.create', (notification: unknown) => {
+          const typed = notification as ThreadCreateNotification;
+          if (typed.graphId === graphId) {
+            threadCreateEvents.push(typed);
+          }
         });
 
         socket.emit('subscribe_graph', { graphId });
@@ -1393,38 +1398,31 @@ describe('Socket Notifications Integration Tests', () => {
 
         await restartGraph(graphId);
 
-        const waitForThreadCreate = new Promise((resolve, reject) => {
-          const checkInterval = setInterval(() => {
-            if (threadCreateEvents.length > 0) {
-              clearInterval(checkInterval);
-              resolve(threadCreateEvents[0]);
-            }
-          }, 500);
-
-          setTimeout(() => {
-            clearInterval(checkInterval);
-            if (threadCreateEvents.length === 0) {
-              reject(
-                new Error('Timeout: No thread.create notification received'),
-              );
-            }
-          }, 30000);
-        });
-
-        const threadSubId = uniqueThreadSubId('socket-thread-create');
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
+        const execution = await graphsService.executeTrigger(graphId, 'trigger-1', {
           messages: ['Test message for thread creation'],
           threadSubId,
         });
 
-        await waitForThreadCreate;
+        const createdThreadId = execution.externalThreadId;
+        expect(createdThreadId).toBeDefined();
+        expect(createdThreadId).toBe(`${graphId}:${threadSubId}`);
+
+        await waitForCondition(
+          async () =>
+            threadCreateEvents.find((e) => e.threadId === createdThreadId),
+          (event) => !!event,
+          { timeout: 30_000, interval: 250 },
+        );
 
         // Verify thread create events with proper typing
         expect(threadCreateEvents.length).toBeGreaterThanOrEqual(1);
-        const typedEvent = threadCreateEvents[0] as ThreadCreateNotification;
+        const typedEvent = threadCreateEvents.find(
+          (e) => e.threadId === createdThreadId,
+        );
+        expect(typedEvent).toBeDefined();
         expect(typedEvent.type).toBe('thread.create');
         expect(typedEvent.graphId).toBe(graphId);
-        expect(typedEvent.threadId).toBe(`${graphId}:${threadSubId}`);
+        expect(typedEvent.threadId).toBe(createdThreadId);
       },
     );
 

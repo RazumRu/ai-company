@@ -382,34 +382,55 @@ describe('Graphs Integration Tests', () => {
 
   describe('graph updates', () => {
     it('updates mutable fields (partial + full) without touching schema or version', async () => {
-      const graph = await graphsService.create(createMockGraphData());
-      registerGraph(graph.id);
+      const graphForPartial = await graphsService.create(createMockGraphData());
+      const graphForFull = await graphsService.create(createMockGraphData());
+      registerGraph(graphForPartial.id);
+      registerGraph(graphForFull.id);
 
       const partialUpdate: UpdateGraphDto = {
         name: 'Partially Updated Graph',
-        currentVersion: graph.version,
+        currentVersion: graphForPartial.version,
       };
 
       const partialResponse = await graphsService.update(
-        graph.id,
+        graphForPartial.id,
         partialUpdate,
       );
-      expect(partialResponse.revision).toBeUndefined();
-      expect(partialResponse.graph.name).toBe(partialUpdate.name);
-      expect(partialResponse.graph.description).toBe(graph.description);
-      expect(partialResponse.graph.version).toBe(graph.version);
+      expect(partialResponse.revision).toBeDefined();
+      expect(partialResponse.graph.version).toBe(graphForPartial.version);
+      expect(partialResponse.graph.schema).toMatchObject(graphForPartial.schema);
+
+      // Mutable updates are represented as a revision (tracked & applied consistently).
+      expect(partialResponse.revision!.toVersion).toBe('1.0.1');
+      expect(partialResponse.graph.targetVersion).toBe('1.0.1');
+      expect(partialResponse.revision!.newConfig.name).toBe(partialUpdate.name);
+      expect(partialResponse.revision!.newConfig.description).toBe(
+        graphForPartial.description ?? null,
+      );
+      expect(partialResponse.revision!.newConfig.schema).toMatchObject(
+        graphForPartial.schema,
+      );
 
       const fullUpdate: UpdateGraphDto = {
         name: 'Updated Graph Name',
         description: 'Updated description from integration test',
-        currentVersion: partialResponse.graph.version,
+        currentVersion: graphForFull.version,
       };
 
-      const fullResponse = await graphsService.update(graph.id, fullUpdate);
-      expect(fullResponse.revision).toBeUndefined();
-      expect(fullResponse.graph.name).toBe(fullUpdate.name);
-      expect(fullResponse.graph.description).toBe(fullUpdate.description);
-      expect(fullResponse.graph.version).toBe(graph.version);
+      const fullResponse = await graphsService.update(graphForFull.id, fullUpdate);
+      expect(fullResponse.revision).toBeDefined();
+      expect(fullResponse.graph.version).toBe(graphForFull.version);
+      expect(fullResponse.graph.schema).toMatchObject(graphForFull.schema);
+
+      expect(fullResponse.revision!.toVersion).toBe('1.0.1');
+      expect(fullResponse.graph.targetVersion).toBe('1.0.1');
+      expect(fullResponse.revision!.newConfig.name).toBe(fullUpdate.name);
+      expect(fullResponse.revision!.newConfig.description).toBe(
+        fullUpdate.description ?? null,
+      );
+      expect(fullResponse.revision!.newConfig.schema).toMatchObject(
+        graphForFull.schema,
+      );
     });
 
     it('throws when updating a non-existent graph', async () => {
@@ -448,9 +469,14 @@ describe('Graphs Integration Tests', () => {
         currentVersion: graph.version,
       });
 
-      expect(response.graph.version).toBe('1.0.1');
+      // Schema edits create a revision and advance targetVersion (head), but the graph's applied
+      // version remains unchanged until the revision is applied by the background worker.
+      expect(response.revision).toBeDefined();
+      expect(response.graph.version).toBe('1.0.0');
       expect(response.graph.targetVersion).toBe('1.0.1');
-      const agentNode = response.graph.schema.nodes.find(
+
+      expect(response.revision!.toVersion).toBe('1.0.1');
+      const agentNode = response.revision!.newConfig.schema.nodes.find(
         (node: GraphNodeSchemaType) => node.id === TEST_AGENT_NODE_ID,
       );
       expect((agentNode?.config as SimpleAgentSchemaType).instructions).toBe(
@@ -476,7 +502,8 @@ describe('Graphs Integration Tests', () => {
           currentVersion: graph.version,
         }),
       ).rejects.toMatchObject({
-        errorCode: 'VERSION_CONFLICT',
+        // This is a stale edit against a newer head (targetVersion), so the merge should conflict.
+        errorCode: 'MERGE_CONFLICT',
         statusCode: 400,
       });
     });
