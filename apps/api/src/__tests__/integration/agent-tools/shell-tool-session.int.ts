@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
-import { ShellTool } from '../../../v1/agent-tools/tools/core/shell.tool';
+import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
 import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';

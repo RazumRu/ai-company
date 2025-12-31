@@ -38,7 +38,7 @@ type GhCloneToolOutput = {
 export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   public name = 'gh_clone';
   public description =
-    'Clone a GitHub repository into the running container using authenticated HTTPS. Optionally specify a branch or tag to checkout, and a depth for shallow cloning. Returns the path to the cloned repository.';
+    'Clone a GitHub repository into the running container using authenticated HTTPS.';
 
   protected override generateTitle(
     args: GhCloneToolSchemaType,
@@ -52,8 +52,6 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     _config: GhBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Clones a GitHub repository into the runtime environment using authenticated HTTPS via the GitHub CLI (gh). Authentication is handled automatically via configured PAT token.
@@ -68,8 +66,6 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       - Repository is already cloned → navigate to existing clone
       - Just need to view a file → consider GitHub API or web interface first
       - Repository requires special credentials not configured
-
-      ${parameterDocs}
 
       ### Best Practices
 
@@ -103,7 +99,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
 
       ### After Cloning
       1. Use the returned path for all subsequent operations
-      2. Run \`files_list\` to explore the repository structure
+      2. Run \`files_find_paths\` to explore the repository structure (e.g. \`{"dir":"/repo","pattern":"*","recursive":false}\`)
       3. Build tags index if working with a large codebase
       4. Use git commands via shell tool for further git operations
 
@@ -112,7 +108,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       **Clone and explore:**
       \`\`\`
       1. gh_clone → get path
-      2. files_list with returned path → see structure
+      2. files_find_paths with returned path → see structure
       3. files_read → examine key files
       \`\`\`
 
@@ -124,11 +120,6 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       4. gh_commit → commit changes
       5. gh_push → push to remote
       \`\`\`
-
-      ### Authentication Notes
-      - Uses configured GitHub PAT token automatically
-      - Token must have appropriate repository access
-      - Private repositories require token with repo scope
 
       ### Troubleshooting
       - "Not found" → Check owner/repo spelling, verify access permissions

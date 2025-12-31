@@ -30,7 +30,7 @@ type FilesDeleteToolOutput = {
 export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
   public name = 'files_delete';
   public description =
-    'Delete a file by absolute path. Intended for cleanup of generated or temporary files. Works with paths returned from files_list. Returns success or error message.';
+    'Delete a single file by absolute path (destructive; rejects directories).';
 
   protected override generateTitle(
     args: FilesDeleteToolSchemaType,
@@ -43,8 +43,6 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Removes a single file at the provided absolute path. Designed for cleaning up generated artifacts, temporary files, or test fixtures. Rejects directories to prevent accidental recursive deletion.
@@ -57,12 +55,10 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
       ### When NOT to Use
       - Deleting directories or large trees (not supported)
       - Modifying file contents → use files_apply_changes
-      - Listing or reading files → use files_list or files_read
-
-      ${parameterDocs}
+      - Listing or reading files → use files_find_paths or files_read
 
       ### Best Practices
-      - Always confirm the file path via files_list/files_read before deleting
+      - Always confirm the file path via files_find_paths/files_read before deleting
       - Avoid deleting shared project files unless you just created them
       - This tool only deletes files; it will fail on directories
 

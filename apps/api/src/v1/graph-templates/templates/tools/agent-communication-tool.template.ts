@@ -7,8 +7,8 @@ import type { JsonObject, JsonValue } from 'type-fest';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
-import { CommunicationToolGroup } from '../../../agent-tools/tools/core/communication/communication-tool-group';
-import { AgentInfo } from '../../../agent-tools/tools/core/communication/communication-tools.types';
+import { CommunicationToolGroup } from '../../../agent-tools/tools/common/communication/communication-tool-group';
+import { AgentInfo } from '../../../agent-tools/tools/common/communication/communication-tools.types';
 import { AgentOutput } from '../../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';

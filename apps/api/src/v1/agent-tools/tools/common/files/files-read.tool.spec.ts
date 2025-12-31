@@ -40,8 +40,8 @@ describe('FilesReadTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Read the contents of multiple files');
-      expect(tool.description).toContain('line ranges');
+      expect(tool.description).toContain('Read file contents');
+      expect(tool.description).toContain('line range');
     });
   });
 

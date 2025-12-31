@@ -37,7 +37,7 @@ function shQuote(value: string) {
 export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaType> {
   public name = 'files_write_file';
   public description =
-    'Write/overwrite a file at an absolute path with the provided full content. This is a full replace operation (destructive).';
+    'Write a file by full overwrite (destructive: replaces entire contents).';
 
   protected override generateTitle(
     args: FilesWriteFileToolSchemaType,
@@ -50,12 +50,9 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
     return dedent`
       ### Overview
       Overwrites an entire file with provided content (**destructive**). Prefer \`files_apply_changes\` for targeted edits; use this tool only when you intend to replace the whole file.
-
-      ${parameterDocs}
 
       ### When to Use
       - Creating a new file from scratch (and you have the full content)

@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ShellTool } from '../../../agent-tools/tools/core/shell.tool';
+import { ShellTool } from '../../../agent-tools/tools/common/shell.tool';
 import {
   IShellResourceOutput,
   ResourceKind,

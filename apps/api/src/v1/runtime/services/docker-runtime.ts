@@ -679,7 +679,7 @@ export class DockerRuntime extends BaseRuntime {
       const res = await this.exec({
         cmd,
         env,
-        timeoutMs: timeoutMs || 10 * 60_000,
+        timeoutMs: timeoutMs ?? 10 * 60_000,
       });
       if (res.fail) {
         throw new Error(`Init failed: ${res.stderr || res.stdout}`);

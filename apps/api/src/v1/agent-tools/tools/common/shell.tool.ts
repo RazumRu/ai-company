@@ -55,7 +55,7 @@ export interface ShellToolOutput {
 export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public name = 'shell';
   public description =
-    'Executes arbitrary shell commands inside the prepared Docker runtime. Use it for files, git, tests, builds, installs, inspection. Returns stdout, stderr, exitCode. If command output is expected to be large (e.g. rg, ls -R, test logs), consider constraining it with flags (-n, --max-count, specific paths) instead of dumping full repo logs.';
+    'Run arbitrary shell commands inside the runtime (output may be truncated).';
 
   protected override generateTitle(
     args: ShellToolSchemaType,
@@ -68,12 +68,11 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     config: ShellToolOptions,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
     const runtimeInfo = this.buildRuntimeInfo(config.runtime);
 
     return dedent`
       ### Overview
-      The shell tool executes arbitrary shell commands inside a prepared Docker runtime environment. It provides direct access to the command line for file operations, git commands, running tests, building projects, installing dependencies, and system inspection.
+      The shell tool executes arbitrary shell commands inside a prepared runtime environment. It provides direct access to the command line for file operations, git commands, running tests, building projects, installing dependencies, and system inspection.
       Commands within the same thread share a persistent shell session (env and cwd changes persist across calls); session ids are handled automatically (keyed by threadId).
       By default, commands execute in a per-thread working directory under \`/runtime-workspace/<threadId>\`. If you want other tools (like Filesystem MCP) to reliably find files, prefer absolute paths under \`/runtime-workspace\` (for example \`/runtime-workspace/shared/... \`).
 
@@ -87,12 +86,10 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
       ### When NOT to Use
       - For reading file contents → prefer files_read tool (better structured output)
-      - For listing files → prefer files_list tool (structured array output)
+      - For listing/finding paths → prefer files_find_paths tool (structured array output)
       - For searching text in files → prefer files_search_text tool (JSON structured results)
       - For applying file changes → prefer files_apply_changes tool (safer, atomic operations)
       - When a specialized tool exists for the operation (use specialized tools for better reliability)
-
-      ${parameterDocs}
 
       ### Best Practices
 
@@ -106,26 +103,17 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       git status
       \`\`\`
 
-      **2. Use absolute paths when possible:**
-      \`\`\`bash
-      # Good
-      /runtime-workspace/src/index.ts
-
-      # Risky - depends on working directory
-      src/index.ts
-      \`\`\`
-
-      **3. Quote paths with spaces:**
+      **2. Quote paths with spaces:**
       \`\`\`bash
       cat "/path/with spaces/file.txt"
       \`\`\`
 
-      **4. Chain commands safely with && to stop on first failure:**
+      **3. Chain commands safely with && to stop on first failure:**
       \`\`\`bash
       cd /repo && npm install && npm test
       \`\`\`
 
-      **5. Use flags to constrain output:**
+      **4. Use flags to constrain output:**
       \`\`\`bash
       # Good: Constrained
       rg "TODO" --max-count=10 /runtime-workspace/src

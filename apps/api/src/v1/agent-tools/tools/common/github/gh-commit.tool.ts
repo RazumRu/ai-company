@@ -43,7 +43,7 @@ type GhCommitToolOutput = {
 export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   public name = 'gh_commit';
   public description =
-    'Create a git (GitHub) commit locally with a semantic commit message. The commit message will be formatted as "{semanticType}: [AI] {title}" with an optional body. Use gh_push tool to push commits to the remote repository.';
+    'Create a git (GitHub) commit locally with a semantic commit message.';
 
   protected override generateTitle(
     args: GhCommitToolSchemaType,
@@ -56,8 +56,6 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
     _config: GhBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Creates a git commit with a standardized semantic commit message format. The commit message is automatically formatted as "{semanticType}: [AI] {title}" with an optional body for detailed description.
@@ -85,8 +83,6 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
       # Or stage by pattern
       git add "*.ts"
       \`\`\`
-
-      ${parameterDocs}
 
       **Good titles:**
       - "add user registration endpoint"

@@ -70,7 +70,7 @@ type FilesApplyChangesToolOutput = {
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Make selective edits to files using pattern matching instead of line numbers. Searches for oldText and replaces with newText. Supports multiple simultaneous edits, whitespace normalization, and indentation preservation. Use dryRun: true to preview changes before applying.';
+    'Apply targeted text edits to a file (pattern-based; oldText/newText; supports dryRun preview).';
 
   protected override generateTitle(
     args: FilesApplyChangesToolSchemaType,
@@ -93,309 +93,85 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
-      Makes selective edits using advanced pattern matching and formatting. Searches for text patterns and replaces them with new content. Features line-based and multi-line content matching, whitespace normalization with indentation preservation, and preview mode.
+      Applies targeted text edits to a file by replacing \`oldText\` with \`newText\`. Supports \`dryRun\` to preview a unified diff without modifying the file.
 
-      ### Why Use Pattern Matching
-      - **No line numbers needed**: Find text by content, not by counting lines
-      - **More reliable**: Doesn't break when file changes elsewhere
-      - **Better for LLMs**: Natural way to specify "replace this with that"
-      - **Safer**: Always preview with dryRun first
-      - **Multiple edits**: Apply several changes in one call
+      ### How matching works (important)
+      - This tool does **exact-match replacement by text block**. It is not a regex engine.
+      - Matching is based on **normalized whitespace** (each line is trimmed) so minor indentation differences are tolerated.
+      - Each \`oldText\` must match **exactly once** in the file:
+        - **0 matches** → you need to adjust \`oldText\` (it doesn’t exist as written).
+        - **>1 match** → you need to make \`oldText\` more specific (to avoid unintended edits).
+      - Indentation of the matched block is detected and applied to \`newText\` to preserve formatting.
 
       ### When to Use
-      - Modifying specific functions or code blocks by content
-      - Replacing patterns across a file
-      - Updating imports, configuration values, or constants
-      - Making multiple related changes at once
-      - Adding text to the beginning, middle, or end of a file
-      - Creating new files from scratch
-      - Any edit where you know what text to find (or file is empty)
+      - You want a precise change without overwriting the whole file
+      - You need to insert/replace a block identified by surrounding context text
+      - You want a safe preview diff first (\`dryRun: true\`)
 
       ### When NOT to Use
-      - Deleting entire files → use \`files_delete\`
-      - When oldText appears multiple times and you only want to change one → be more specific with oldText
-      - For binary files → not supported
+      - You want full overwrite of known final content → use \`files_write_file\` (destructive overwrite)
+      - You need to delete a file → use \`files_delete\` (destructive)
 
-      ${parameterDocs}
+      ### Best Practices
+      - Prefer running a \`dryRun\` first when editing important files.
+      - Make \`oldText\` unique by including **3–15 lines** of surrounding context around the change.
+      - Prefer copying the current block via \`files_read\` (or \`files_search_text\` then \`files_read\`) to avoid transcription mismatches.
+      - If you see “Found N matches”, add nearby lines (imports, function signature, surrounding comment) to make the block unique.
+      - If you need to change multiple places in one file, supply **multiple edits**; each must still match uniquely.
+      - If you want a full overwrite, use \`files_write_file\` instead.
 
-      ### How Pattern Matching Works
-
-      **1. Whitespace Normalization**
-      - Extra spaces/tabs are normalized for matching
-      - Indentation is detected and preserved in newText
-      - Leading/trailing whitespace is flexible
-
-      **2. Exact Substring Match**
-      - oldText must be a substring of file content (after normalization)
-      - Match is case-sensitive
-      - Must be unique in the file (will error if multiple matches)
-
-      **3. Indentation Preservation**
-      - Tool detects indentation of matched text
-      - Applies same indentation to newText
-      - Works with tabs or spaces
-
-      ### Best Practice: Always Use dryRun First
-
-      **Step 1: Preview with dryRun: true**
-      \`\`\`json
-      {
-        "path": "/repo/src/utils.ts",
-        "edits": [
-          {
-            "oldText": "function oldName() {\\n  return 'old';\\n}",
-            "newText": "function newName() {\\n  return 'new';\\n}"
-          }
-        ],
-        "dryRun": true
-      }
-      \`\`\`
-
-      Review the diff output to confirm changes are correct.
-
-      **Step 2: Apply with dryRun: false**
-      If the preview looks good, run again with \`dryRun: false\` (or omit it):
-      \`\`\`json
-      {
-        "path": "/repo/src/utils.ts",
-        "edits": [
-          {
-            "oldText": "function oldName() {\\n  return 'old';\\n}",
-            "newText": "function newName() {\\n  return 'new';\\n}"
-          }
-        ]
-      }
-      \`\`\`
+      ### Common workflow (recommended)
+      1. \`files_search_text\` to find the area (optional).
+      2. \`files_read\` around the relevant lines to copy an exact block.
+      3. \`files_apply_changes\` with \`dryRun: true\` to verify the diff.
+      4. \`files_apply_changes\` with \`dryRun: false\` (or omitted) to apply.
+      5. \`files_read\` again to confirm.
 
       ### Examples
+      **1) Preview a targeted replacement (dry run):**
+      \`\`\`json
+      {"path":"/repo/src/a.ts","edits":[{"oldText":"const x = 1;","newText":"const x = 2;"}],"dryRun":true}
+      \`\`\`
 
-      **Example 1: Simple function replacement**
+      **2) Apply a targeted replacement:**
+      \`\`\`json
+      {"path":"/repo/src/a.ts","edits":[{"oldText":"const x = 1;","newText":"const x = 2;"}]}
+      \`\`\`
+
+      **3) Replace a multi-line block (best practice: include context):**
       \`\`\`json
       {
-        "path": "/repo/src/calculator.ts",
+        "path": "/repo/src/a.ts",
         "edits": [
           {
-            "oldText": "function add(a, b) {\\n  return a + b;\\n}",
-            "newText": "function add(a: number, b: number): number {\\n  return a + b;\\n}"
+            "oldText": "export function add(a: number, b: number) {\\n  return a + b;\\n}",
+            "newText": "export function add(a: number, b: number) {\\n  return a + b;\\n}\\n\\nexport function sub(a: number, b: number) {\\n  return a - b;\\n}"
           }
         ],
         "dryRun": true
       }
       \`\`\`
 
-      **Example 2: Multiple edits at once**
+      **4) Create a new file (single edit with empty oldText):**
       \`\`\`json
-      {
-        "path": "/repo/src/config.ts",
-        "edits": [
-          {
-            "oldText": "const API_URL = 'http://localhost:3000'",
-            "newText": "const API_URL = 'https://api.production.com'"
-          },
-          {
-            "oldText": "const DEBUG = true",
-            "newText": "const DEBUG = false"
-          }
-        ]
-      }
+      {"path":"/repo/new.ts","edits":[{"oldText":"","newText":"export const ok = true;\\n"}]}
       \`\`\`
 
-      **Example 3: Replacing import statement**
-      \`\`\`json
-      {
-        "path": "/repo/src/components/Button.tsx",
-        "edits": [
-          {
-            "oldText": "import { OldButton } from './old-button'",
-            "newText": "import { NewButton } from './new-button'"
-          }
-        ]
-      }
-      \`\`\`
-
-      **Example 4: Using partial text for matching**
-      You don't need to include the entire function, just enough to uniquely identify it:
-      \`\`\`json
-      {
-        "path": "/repo/src/user.service.ts",
-        "edits": [
-          {
-            "oldText": "async getUserById(id: string) {\\n    return this.db.findOne({ id });",
-            "newText": "async getUserById(id: string) {\\n    return this.db.findOne({ id, active: true });"
-          }
-        ]
-      }
-      \`\`\`
-
-      **Example 5: Creating a new file (special case)**
-      To create a new file, provide empty oldText:
-      \`\`\`json
-      {
-        "path": "/repo/src/new-file.ts",
-        "edits": [
-          {
-            "oldText": "",
-            "newText": "export const hello = 'world';"
-          }
-        ]
-      }
-      \`\`\`
-
-      **Example 6: Adding text to the end of a file**
-      Read the file first, then include all current content in oldText:
-      \`\`\`json
-      {
-        "path": "/repo/src/utils.ts",
-        "edits": [
-          {
-            "oldText": "export function helper() {\\n  return true;\\n}",
-            "newText": "export function helper() {\\n  return true;\\n}\\n\\nexport function newHelper() {\\n  return false;\\n}"
-          }
-        ]
-      }
-      \`\`\`
-
-      **Example 7: Adding import to the beginning**
-      Read the file first, then prepend to existing content:
-      \`\`\`json
-      {
-        "path": "/repo/src/app.ts",
-        "edits": [
-          {
-            "oldText": "import { existing } from './existing';\\n\\nconst app = 'app';",
-            "newText": "import { existing } from './existing';\\nimport { newImport } from './new';\\n\\nconst app = 'app';"
-          }
-        ]
-      }
-      \`\`\`
-
-      **Example 8: Inserting in the middle of a file**
-      Find a unique marker and include surrounding context:
-      \`\`\`json
-      {
-        "path": "/repo/src/config.ts",
-        "edits": [
-          {
-            "oldText": "export const config = {\\n  api: 'http://localhost',\\n};",
-            "newText": "export const config = {\\n  api: 'http://localhost',\\n  timeout: 5000,\\n};"
-          }
-        ]
-      }
-      \`\`\`
-
-      **Example 9: Working with empty file**
-      For completely empty files, use empty oldText:
-      \`\`\`json
-      {
-        "path": "/repo/src/empty.ts",
-        "edits": [
-          {
-            "oldText": "",
-            "newText": "// First line of content\\nexport const data = 'value';"
-          }
-        ]
-      }
-      \`\`\`
+      ### Troubleshooting
+      - **“Could not find match”**: read the file and copy-paste the exact block into \`oldText\`; include more context.
+      - **“Found N matches”**: expand \`oldText\` with surrounding lines until it matches uniquely.
+      - **Large edits**: use \`dryRun\` first and keep changes small/atomic (one logical change per edit).
 
       ### Output Format
+      - On \`dryRun: true\`, the tool returns \`diff\`.
+      - On success, returns \`success: true\` and edit counters.
 
-      **Dry Run Output:**
+      Example:
       \`\`\`json
-      {
-        "success": true,
-        "appliedEdits": 0,
-        "totalEdits": 2,
-        "diff": "@@ -10,3 +10,3 @@\\n-const API_URL = 'localhost'\\n+const API_URL = 'production'\\n@@ -25,2 +25,2 @@\\n-const DEBUG = true\\n+const DEBUG = false"
-      }
+      { "success": true, "appliedEdits": 1, "totalEdits": 1, "diff": "@@ -1,1 +1,1 @@\\n-const x = 1;\\n+const x = 2;" }
       \`\`\`
-
-      **Applied Output:**
-      \`\`\`json
-      {
-        "success": true,
-        "appliedEdits": 2,
-        "totalEdits": 2
-      }
-      \`\`\`
-
-      **Error Output:**
-      \`\`\`json
-      {
-        "success": false,
-        "error": "Edit 0: Could not find unique match for oldText. Found 3 matches."
-      }
-      \`\`\`
-
-      ### Error Handling
-
-      **"Could not find match"**
-      - oldText doesn't exist in file
-      - Check file content with \`files_read\` first
-      - Verify text matches exactly (case-sensitive)
-
-      **"Found multiple matches"**
-      - oldText appears more than once in file
-      - Include more context in oldText to make it unique
-      - Add surrounding lines or more specific content
-
-      **"File not found"**
-      - Path is incorrect
-      - Use \`files_list\` to find correct path
-      - Check if file was moved or deleted
-
-      ### Adding Text Without Replacing
-
-      The tool supports three ways to add text:
-
-      **1. To a New/Empty File**
-      Use empty oldText:
-      \`\`\`json
-      {
-        "path": "/repo/new.ts",
-        "edits": [{ "oldText": "", "newText": "new content" }]
-      }
-      \`\`\`
-
-      **2. To the Beginning**
-      Read file first, then prepend to current content in newText:
-      \`\`\`json
-      {
-        "oldText": "current content",
-        "newText": "new line at top\\ncurrent content"
-      }
-      \`\`\`
-
-      **3. To the End**
-      Read file first, then append to current content in newText:
-      \`\`\`json
-      {
-        "oldText": "current content",
-        "newText": "current content\\nnew line at bottom"
-      }
-      \`\`\`
-
-      **4. In the Middle**
-      Find unique marker, include it in both oldText and newText with additions:
-      \`\`\`json
-      {
-        "oldText": "line before\\nline after",
-        "newText": "line before\\nNEW LINE HERE\\nline after"
-      }
-      \`\`\`
-
-      ### Tips for Success
-
-      1. **Read first**: Always use \`files_read\` to see current content before editing (unless creating new file)
-      2. **Preview always**: Use \`dryRun: true\` to verify changes before applying
-      3. **Be specific**: Include enough context in oldText to avoid multiple matches
-      4. **Mind whitespace**: Don't worry too much about exact spacing - normalization handles it
-      5. **Batch edits**: Multiple independent edits can be done in one call
-      6. **Check output**: Review diff in dry run to ensure changes are correct
-      7. **For additions**: Remember to read file first to get current content (except for new files)
     `;
   }
 

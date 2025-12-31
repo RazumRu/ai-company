@@ -31,7 +31,7 @@ export const FilesSearchTextToolSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Optional absolute file path to search in. If provided, searches only in this specific file. Can be used directly with paths returned from files_list.',
+      'Optional absolute file path to search in. If provided, searches only in this specific file. Can be used directly with paths returned from files_find_paths.',
     ),
   includeGlobs: z
     .array(z.string())
@@ -83,7 +83,7 @@ function shQuote(s: string) {
 export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchemaType> {
   public name = 'files_search_text';
   public description =
-    'Search for text patterns in repository files using ripgrep (rg). Supports regex patterns, file filtering with globs, and searching in specific files. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns JSON-formatted search results with file paths, line numbers, and matched text (capped at 30 matches).';
+    'Search file contents with ripgrep (regex) and return structured matches.';
 
   protected override generateTitle(
     args: FilesSearchTextToolSchemaType,
@@ -99,8 +99,6 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Searches for text patterns across files using ripgrep (rg), one of the fastest text search tools available. Returns structured JSON results with file paths, line numbers, and matched content. If \`dir\` is omitted, the search runs in the current working directory of the persistent shell session (e.g., after \`shell\` tool cd).
@@ -114,10 +112,8 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
 
       ### When NOT to Use
       - When you know the exact file → use files_read directly
-      - For listing files without searching content → use files_list
+      - For listing files without searching content → use files_find_paths
       - For symbol-based search (functions, classes) → consider files_search_tags if tags index exists
-
-      ${parameterDocs}
 
       ### query examples
       **Literal search:**

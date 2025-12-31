@@ -36,7 +36,7 @@ type GhBranchToolOutput = {
 export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
   public name = 'gh_branch';
   public description =
-    'Create a new git (GitHub) branch locally with a semantic branch name. The branch name will be formatted as "{semanticType}/{title}" where title is converted to lowercase with dashes.';
+    'Create a new git (GitHub) branch locally with a semantic branch name.';
 
   protected override generateTitle(
     args: GhBranchToolSchemaType,
@@ -49,8 +49,6 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
     _config: GhBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Creates a new git branch with a standardized semantic naming convention. Automatically formats the branch name as "{semanticType}/{title-in-kebab-case}".
@@ -65,8 +63,6 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
       - You want a custom branch name format → use shell with \`git checkout -b\`
       - Just switching to existing branch → use shell with \`git checkout\`
       - Repository not yet cloned → use \`gh_clone\` first
-
-      ${parameterDocs}
 
       ### Best Practices
 

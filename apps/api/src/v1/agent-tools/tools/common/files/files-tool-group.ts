@@ -11,10 +11,9 @@ import { FilesBuildTagsTool } from './files-build-tags.tool';
 import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
-import { FilesListTool } from './files-list.tool';
+import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
-import { FilesSearchFilesTool } from './files-search-files.tool';
 import { FilesSearchTagsTool } from './files-search-tags.tool';
 import { FilesSearchTextTool } from './files-search-text.tool';
 import { FilesWriteFileTool } from './files-write-file.tool';
@@ -30,8 +29,7 @@ export type FilesToolGroupConfig = FilesBaseToolConfig & {
 @Injectable()
 export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
   constructor(
-    private readonly filesListTool: FilesListTool,
-    private readonly filesSearchFilesTool: FilesSearchFilesTool,
+    private readonly filesFindPathsTool: FilesFindPathsTool,
     private readonly filesDirectoryTreeTool: FilesDirectoryTreeTool,
     private readonly filesReadTool: FilesReadTool,
     private readonly filesSearchTextTool: FilesSearchTextTool,
@@ -52,8 +50,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
   ): BuiltAgentTool[] {
     const includeEditActions = config.includeEditActions ?? true;
     const tools: BuiltAgentTool[] = [
-      this.filesListTool.build(config, lgConfig),
-      this.filesSearchFilesTool.build(config, lgConfig),
+      this.filesFindPathsTool.build(config, lgConfig),
       this.filesDirectoryTreeTool.build(config, lgConfig),
       this.filesReadTool.build(config, lgConfig),
       this.filesSearchTextTool.build(config, lgConfig),

@@ -34,18 +34,6 @@ describe('WebSearchTool', () => {
     tool = await module.resolve<WebSearchTool>(WebSearchTool);
   });
 
-  describe('properties', () => {
-    it('should have correct name', () => {
-      expect(tool.name).toBe('web_search');
-    });
-
-    it('should have correct description', () => {
-      expect(tool.description).toBe(
-        'Search the web for up-to-date information and return top results. For deeper results set searchDepth="advanced".',
-      );
-    });
-  });
-
   describe('schema', () => {
     it('should validate required query field', () => {
       const validData = {

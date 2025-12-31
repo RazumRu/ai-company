@@ -34,8 +34,7 @@ type FilesBuildTagsToolOutput = {
 @Injectable()
 export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaType> {
   public name = 'files_build_tags';
-  public description =
-    'Build a ctags index for a repository directory. Creates a JSON-formatted tags file that can be used for symbol searching. Takes a directory path and an alias to name the tags file. This tool needs to be called when the repository is initialized and when files are changed to keep the index up to date.';
+  public description = 'Build a ctags index (JSON) for fast symbol search.';
 
   protected override generateTitle(
     args: FilesBuildTagsToolSchemaType,
@@ -49,90 +48,47 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
-      Generates a ctags index file for a codebase, enabling fast symbol-based searches. The index includes functions, classes, methods, variables, and other language constructs. This is a prerequisite for using \`files_search_tags\`. If \`dir\` is omitted, indexing runs in the current working directory of the persistent shell session (e.g., after \`cd\` via shell).
+      Builds a \`ctags\` index in JSON format for fast, precise symbol lookups. This enables \`files_search_tags\` to find definitions (classes/functions/methods) without noisy text search.
 
       ### When to Use
-      - At the start of working with a new repository (one-time setup)
-      - After making significant changes to the codebase structure
-      - Before using \`files_search_tags\` to search for symbols
-      - When you need to navigate a large codebase efficiently
+      - You’re starting work in a new/large repo and want fast “jump to definition”
+      - You plan to use \`files_search_tags\` repeatedly
+      - Text search is too noisy or slow for symbol discovery
 
       ### When NOT to Use
-      - For simple text search → use \`files_search_text\`
-      - When the index is already built and files haven't changed
-      - For small projects where text search is sufficient
-
-      ${parameterDocs}
+      - You only need plain content search/usages → use \`files_search_text\`
+      - The repo is small and \`files_search_text\` is already fast enough
 
       ### Best Practices
+      - Use a stable \`alias\` per repo (e.g. "project") so you can reuse it across many \`files_search_tags\` calls.
+      - Rebuild tags after large refactors or when definitions aren’t found (the index is not automatically updated).
+      - If you already \`cd\`’d into the repo using \`shell\`, omit \`dir\` to use the persistent session cwd.
 
-      **1. Build once per repository:**
+      ### Examples
+      **1) Build tags for a repo:**
       \`\`\`json
-        // At the start of your session
-        {"dir": "/repo", "alias": "project"}
-
-        // Already cd /repo via shell: omit dir
-        {"alias": "project"}
+      {"dir":"/repo","alias":"project"}
       \`\`\`
 
-      **2. Use meaningful aliases:**
+      **2) Build tags for current directory (after \`shell\` cd):**
       \`\`\`json
-        // Good: Descriptive
-        {"dir": "/repo/apps/api", "alias": "api-service"}
-
-        // Avoid: Generic
-        {"dir": "/repo/apps/api", "alias": "tags"}
-      \`\`\`
-
-      **3. Rebuild after major changes:**
-      If you've added new files or restructured the codebase, rebuild:
-      \`\`\`json
-        {"dir": "/repo", "alias": "project"}  // Same alias overwrites old index
+      {"alias":"project"}
       \`\`\`
 
       ### Output Format
       Success:
       \`\`\`json
-        {
-          "success": true,
-          "tagsFile": "/tmp/thread-id/project.json"
-        }
+      { "success": true, "tagsFile": "/tmp/<threadId>/project.json" }
       \`\`\`
-
       Error:
       \`\`\`json
-        {
-          "error": "ctags: command not found"
-        }
+      { "error": "Failed to build tags" }
       \`\`\`
 
-      ### Supported Languages
-      Ctags supports 40+ languages including:
-      - JavaScript/TypeScript
-      - Python
-      - Java
-      - Go
-      - Rust
-      - C/C++
-      - Ruby
-      - PHP
-      - And many more
-
-      ### After Building
-      Use \`files_search_tags\` to search the index:
-      \`\`\`json
-        {"dir": "/repo", "alias": "project", "query": "handleSubmit", "exactMatch": true}
-      \`\`\`
-
-      ### Performance Notes
-      - Indexing is fast (typically seconds for medium projects)
-      - Index is stored in temp directory (persistent within session)
-      - Larger projects may take longer to index
-      - Re-running with same alias updates the existing index
+      ### Next Step
+      After building, use \`files_search_tags\` with the same \`alias\` to query symbols.
     `;
   }
 

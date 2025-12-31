@@ -50,7 +50,7 @@ type FilesSearchTagsToolOutput = {
 export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchemaType> {
   public name = 'files_search_tags';
   public description =
-    'Search for symbols in a ctags index file. Supports both exact name matching and regex pattern matching. Returns matching tag entries as JSON.';
+    'Search symbol definitions in a previously built ctags index (names only).';
 
   protected override generateTitle(
     args: FilesSearchTagsToolSchemaType,
@@ -65,8 +65,6 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Searches a previously built ctags index for symbol definitions. Faster and more precise than text search for finding function, class, and variable definitions. Requires prior \`files_build_tags\` call. If \`dir\` is omitted, runs in the current working directory of the persistent shell session (e.g., after \`cd\` via shell).
@@ -82,8 +80,6 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
       - Searching for text content (not symbols) → use \`files_search_text\`
       - Finding usages of a symbol → use \`files_search_text\`
       - Looking for comments or strings → use \`files_search_text\`
-
-      ${parameterDocs}
 
       ### Best Practices
 

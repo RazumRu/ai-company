@@ -37,7 +37,8 @@ describe('FilesDeleteTool', () => {
   describe('properties', () => {
     it('should have correct name and description', () => {
       expect(tool.name).toBe('files_delete');
-      expect(tool.description).toContain('Delete a file');
+      expect(tool.description).toContain('Delete a single file');
+      expect(tool.description).toContain('destructive');
     });
   });
 

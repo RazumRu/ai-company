@@ -41,8 +41,6 @@ describe('FilesBuildTagsTool', () => {
 
     it('should have correct description', () => {
       expect(tool.description).toContain('Build a ctags index');
-      expect(tool.description).toContain('repository is initialized');
-      expect(tool.description).toContain('files are changed');
     });
   });
 

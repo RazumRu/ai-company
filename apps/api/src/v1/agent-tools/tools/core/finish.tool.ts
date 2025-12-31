@@ -63,7 +63,8 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
   }
 
   public name = 'finish';
-  public description = `Signal task completion or request strictly necessary info. Always call this tool to end your turn. Set needsMoreInfo=false when done. Set needsMoreInfo=true only if a specific required input is missing and you cannot proceed; do not ask open-ended or speculative questions. If you can proceed using context or reasonable defaults, do so and state assumptions in message. If you must ask, send one concise, structured request listing the exact fields and acceptable formats. This is the only way to end your response.`;
+  public description =
+    'End the agent turn by signaling completion or requesting required missing input.';
 
   protected override generateTitle(
     args: FinishToolSchemaType,
@@ -76,8 +77,6 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
     _config: Record<PropertyKey, unknown>,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       The finish tool is the ONLY way to properly end your turn. Every response must conclude with a finish call, either signaling completion or requesting essential information.
@@ -91,8 +90,6 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       ### When NOT to Use
       - Never skip this tool - it must be called at the end of every turn
       - Don't call it in the middle of work - finish your current operations first
-
-      ${parameterDocs}
 
       ### \`message\` example
 
@@ -153,27 +150,11 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       }
       \`\`\`
 
-      **4. State assumptions when made:**
-      \`\`\`json
-      {
-        "message": "Completed the database migration.\\n\\n**Assumptions made:**\\n- Used PostgreSQL syntax (detected from existing migrations)\\n- Set default value to current timestamp for createdAt\\n- Made email field unique based on the model definition\\n\\nPlease review the migration before running it.",
-        "needsMoreInfo": false
-      }
-      \`\`\`
-
       ### Question Guidelines
       Only ask when ALL of these are true:
       1. The information is strictly required to proceed
       2. You cannot make a reasonable assumption
       3. Getting it wrong would be irreversible or very problematic
-
-      Ask only ONE structured question at a time:
-      \`\`\`json
-      {
-        "message": "I need the AWS region for deployment. Please specify one of:\\n- us-east-1\\n- us-west-2\\n- eu-west-1\\n- ap-southeast-1",
-        "needsMoreInfo": true
-      }
-      \`\`\`
 
       ### Output Format
       Returns an object with \`message\` and \`needsMoreInfo\`. The agent runtime derives completion flags from tool state.

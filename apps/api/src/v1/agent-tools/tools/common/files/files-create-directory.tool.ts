@@ -32,8 +32,7 @@ function shQuote(value: string) {
 @Injectable()
 export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectoryToolSchemaType> {
   public name = 'files_create_directory';
-  public description =
-    'Create a directory (and parent directories) at the specified absolute path.';
+  public description = 'Create a directory (mkdir -p) at an absolute path.';
 
   protected override generateTitle(
     args: FilesCreateDirectoryToolSchemaType,
@@ -46,12 +45,9 @@ export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectory
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
     return dedent`
       ### Overview
       Creates a directory using \`mkdir -p\` (including parent directories). Safe to call if the directory already exists.
-
-      ${parameterDocs}
 
       ### When to Use
       - Before writing a new file into a new folder (with \`files_write_file\` or \`files_apply_changes\`)

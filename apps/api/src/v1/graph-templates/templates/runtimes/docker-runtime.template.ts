@@ -38,9 +38,8 @@ export const DockerRuntimeTemplateSchema = z
       .number()
       .positive()
       .optional()
-      .describe(
-        'Timeout in milliseconds for initialization script execution (default: 600000)',
-      ),
+      .default(600_000)
+      .describe(`Timeout in milliseconds for initialization script execution`),
     enableDind: z
       .boolean()
       .optional()

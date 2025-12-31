@@ -36,7 +36,7 @@ type GhPushToolOutput = {
 export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   public name = 'gh_push';
   public description =
-    'Push commits from a local git (GitHub) repository to a remote repository. Optionally specify the remote name and branch name.';
+    'Push commits from a local git (GitHub) repository to a remote repository.';
 
   protected override generateTitle(
     args: GhPushToolSchemaType,
@@ -51,8 +51,6 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     _config: GhBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Pushes local commits to the remote GitHub repository. Uses the configured authentication automatically for secure push access.
@@ -67,8 +65,6 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       - No commits exist → create commits with \`gh_commit\` first
       - On a protected branch → may need to use PR workflow
       - Unpushed changes need review → wait for confirmation
-
-      ${parameterDocs}
 
       ### Best Practices
 
@@ -138,18 +134,6 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
 
       ### First-Time Branch Push
       For new branches that don't exist on remote, the tool handles this automatically. The branch will be created on the remote.
-
-      ### Force Push (Not Recommended)
-      This tool doesn't support force push. If you need to force push (be careful!), use shell:
-      \`\`\`bash
-      cd /repo && git push --force origin branch-name
-      \`\`\`
-      Warning: Force push can lose commit history on the remote.
-
-      ### Authentication
-      - Uses configured GitHub PAT token
-      - Token must have \`repo\` scope for pushing
-      - Private repos require appropriate access
 
       ### Troubleshooting
       - "No commits to push" → Create commits first with \`gh_commit\`

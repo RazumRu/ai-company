@@ -53,14 +53,12 @@ export class WebSearchTool extends BaseTool<
 > {
   public name = 'web_search';
   public description =
-    'Search the web for up-to-date information and return top results. For deeper results set searchDepth="advanced".';
+    'Search the web for up-to-date information and return top results.';
 
   public getDetailedInstructions(
     _config: WebSearchToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Searches the web using Tavily search engine to find current, relevant information. Returns structured results with titles, URLs, and content snippets.
@@ -76,15 +74,6 @@ export class WebSearchTool extends BaseTool<
       - Information is available in the codebase → use \`files_search_text\`
       - You need to access a specific URL → use shell with curl/wget
       - Looking for code in the current project → use file tools
-
-      ${parameterDocs}
-      ### Parameters
-
-      **Avoid vague queries:**
-      \`\`\`json
-      {"query": "how to code"}  // Too vague
-      {"query": "JavaScript"}   // Too broad
-      \`\`\`
 
       ### Best Practices
 

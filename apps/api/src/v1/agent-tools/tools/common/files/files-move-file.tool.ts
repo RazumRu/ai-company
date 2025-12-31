@@ -37,7 +37,7 @@ function shQuote(value: string) {
 export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType> {
   public name = 'files_move_file';
   public description =
-    'Move or rename a file (source → destination). Creates the destination parent directory if needed.';
+    'Move/rename a file (source → destination); creates destination parent directories.';
 
   protected override generateTitle(
     args: FilesMoveFileToolSchemaType,
@@ -52,12 +52,9 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
     return dedent`
       ### Overview
       Moves/renames a file using \`mv\`. Ensures the destination directory exists (\`mkdir -p\` parent).
-
-      ${parameterDocs}
 
       ### When to Use
       - Renaming a file (same directory)

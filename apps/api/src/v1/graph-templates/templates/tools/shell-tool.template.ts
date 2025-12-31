@@ -3,7 +3,7 @@ import { BadRequestException, NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
-import { ShellTool } from '../../../agent-tools/tools/core/shell.tool';
+import { ShellTool } from '../../../agent-tools/tools/common/shell.tool';
 import {
   IBaseResourceOutput,
   IShellResourceOutput,

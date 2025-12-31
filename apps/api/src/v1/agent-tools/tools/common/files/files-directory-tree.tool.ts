@@ -86,7 +86,7 @@ function renderTree(node: TreeNode, prefix = ''): string[] {
 export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeToolSchemaType> {
   public name = 'files_directory_tree';
   public description =
-    'Generate a tree view of a directory (files + folders). Useful for getting an overview of project structure before searching/editing.';
+    'Generate a tree overview of a directory (structure; not content search).';
 
   protected override generateTitle(
     args: FilesDirectoryTreeToolSchemaType,
@@ -100,56 +100,37 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
-      Produces a recursive tree view (files + folders) for a directory. Use this to understand structure before searching/editing.
-
-      ${parameterDocs}
+      Generates a readable directory tree (structure only; not a content search). Uses \`fd\` to enumerate files/dirs and renders a compact tree string.
 
       ### When to Use
-      - Getting a quick overview of an unfamiliar repository
-      - Finding “where things live” before using \`files_search_text\`
-      - Verifying generated files landed in the directory you expected
+      - Getting a quick “what’s in here?” overview before deciding what to read/search
+      - Sharing a lightweight structure snapshot (especially with \`maxDepth\`)
+      - Understanding monorepo/package layout at a glance
 
       ### When NOT to Use
-      - You want “find files by glob” → use \`files_search_files\`
-      - You want “search content inside files” → use \`files_search_text\`
-      - You only need a couple of known files → just \`files_read\`
+      - You need exact paths matching a glob → use \`files_find_paths\`
+      - You need to search file contents → use \`files_search_text\`
 
       ### Best Practices
-      - Always exclude huge folders (deps/build outputs) unless you explicitly need them.
-      - Use \`maxDepth\` to avoid producing an enormous tree on big repos.
-      - Follow up with \`files_search_files\` or \`files_search_text\` once you know the right subdirectory.
+      - Start with a shallow \`maxDepth\` (e.g. 3–5) and increase only if needed.
+      - Add \`excludePatterns\` to avoid huge folders (build outputs, dependencies, caches).
 
       ### Examples
-      **1) Small project overview:**
+      **1) Repo overview (shallow):**
       \`\`\`json
-      { "path": "/repo" }
+      {"path":"/repo","maxDepth":4}
       \`\`\`
 
-      **2) Large repo overview (recommended defaults + depth cap):**
+      **2) Deeper tree for a subfolder while excluding junk:**
       \`\`\`json
-      {
-        "path": "/repo",
-        "maxDepth": 4,
-        "excludePatterns": ["node_modules/**", "dist/**", "build/**", "coverage/**", ".turbo/**", ".git/**"]
-      }
-      \`\`\`
-
-      **3) Focus a subdirectory:**
-      \`\`\`json
-      { "path": "/repo/apps/api", "maxDepth": 6, "excludePatterns": ["node_modules/**", "dist/**"] }
+      {"path":"/repo/apps/api","maxDepth":6,"excludePatterns":["node_modules/**","dist/**","build/**","coverage/**"]}
       \`\`\`
 
       ### Output Format
-      \`\`\`text
-      repo
-      ├── src
-      │   ├── index.ts
-      │   └── utils.ts
-      └── package.json
+      \`\`\`json
+      { "tree": "repo\n├── apps\n│   └── api\n└── packages\n" }
       \`\`\`
     `;
   }

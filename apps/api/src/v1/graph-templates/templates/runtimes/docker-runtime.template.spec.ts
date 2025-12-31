@@ -69,6 +69,7 @@ describe('DockerRuntimeTemplate', () => {
     it('should create runtime instance in provide and start it exactly once in configure', async () => {
       const config = {
         runtimeType: RuntimeType.Docker,
+        initScriptTimeoutMs: 60_000,
         image: 'test-image',
       };
 
@@ -111,6 +112,7 @@ describe('DockerRuntimeTemplate', () => {
     it('should include system labels (and temporary label when provided)', async () => {
       const config = {
         runtimeType: RuntimeType.Docker,
+        initScriptTimeoutMs: 60_000,
         image: 'test-image',
       };
 
@@ -145,6 +147,7 @@ describe('DockerRuntimeTemplate', () => {
     it('should stop first on subsequent configure calls (no double-start on initial compile)', async () => {
       const config = {
         runtimeType: RuntimeType.Docker,
+        initScriptTimeoutMs: 60_000,
         image: 'test-image',
       };
 

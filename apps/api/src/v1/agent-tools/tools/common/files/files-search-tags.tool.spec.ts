@@ -40,10 +40,8 @@ describe('FilesSearchTagsTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Search for symbols');
+      expect(tool.description).toContain('Search symbol definitions');
       expect(tool.description).toContain('ctags index');
-      expect(tool.description).toContain('exact name matching');
-      expect(tool.description).toContain('regex pattern');
     });
   });
 

@@ -63,7 +63,8 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should have meaningful description', () => {
-      expect(tool.description).toContain('pattern matching');
+      expect(tool.description).toContain('targeted text edits');
+      expect(tool.description).toContain('dryRun');
       expect(tool.description).toContain('oldText');
       expect(tool.description).toContain('newText');
     });
@@ -382,8 +383,8 @@ describe('FilesApplyChangesTool', () => {
       const instructions = tool.getDetailedInstructions(mockConfig);
 
       expect(instructions).toBeDefined();
-      expect(instructions).toContain('Overview');
-      expect(instructions).toContain('pattern matching');
+      expect(instructions).toContain('### Overview');
+      expect(instructions).toContain('### When to Use');
       expect(instructions).toContain('dryRun');
       expect(instructions).toContain('oldText');
       expect(instructions).toContain('newText');

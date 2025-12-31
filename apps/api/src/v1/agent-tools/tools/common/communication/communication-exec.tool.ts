@@ -55,7 +55,6 @@ export class CommunicationExecTool extends BaseTool<
     config: BaseCommunicationToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
     const availableAgents = config?.agents?.length
       ? config.agents
           .map((agent) => `####${agent.name}\n${agent.description}\n`)
@@ -79,8 +78,6 @@ export class CommunicationExecTool extends BaseTool<
       - You can handle the task yourself → work directly
       - You don't know which agent to use → pick from Connected Agents above
       - Task is too simple → direct execution is faster
-
-      ${parameterDocs}
 
       ### \`message\` examples
 

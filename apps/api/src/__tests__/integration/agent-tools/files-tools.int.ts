@@ -8,11 +8,11 @@ import { environment } from '../../../environments';
 import { FilesApplyChangesTool } from '../../../v1/agent-tools/tools/common/files/files-apply-changes.tool';
 import { FilesBuildTagsTool } from '../../../v1/agent-tools/tools/common/files/files-build-tags.tool';
 import { FilesDeleteTool } from '../../../v1/agent-tools/tools/common/files/files-delete.tool';
-import { FilesListTool } from '../../../v1/agent-tools/tools/common/files/files-list.tool';
+import { FilesFindPathsTool } from '../../../v1/agent-tools/tools/common/files/files-find-paths.tool';
 import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-read.tool';
 import { FilesSearchTagsTool } from '../../../v1/agent-tools/tools/common/files/files-search-tags.tool';
 import { FilesSearchTextTool } from '../../../v1/agent-tools/tools/common/files/files-search-text.tool';
-import { ShellTool } from '../../../v1/agent-tools/tools/core/shell.tool';
+import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
@@ -78,7 +78,7 @@ describe('Files tools integration', () => {
   let moduleRef: TestingModule;
   let runtime: BaseRuntime;
   let runtimeProvider: RuntimeProvider;
-  let filesListTool: FilesListTool;
+  let filesFindPathsTool: FilesFindPathsTool;
   let filesReadTool: FilesReadTool;
   let filesSearchTextTool: FilesSearchTextTool;
   let filesApplyChangesTool: FilesApplyChangesTool;
@@ -107,7 +107,7 @@ describe('Files tools integration', () => {
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
       providers: [
-        FilesListTool,
+        FilesFindPathsTool,
         FilesReadTool,
         FilesSearchTextTool,
         FilesApplyChangesTool,
@@ -120,7 +120,7 @@ describe('Files tools integration', () => {
     }).compile();
 
     runtimeProvider = moduleRef.get(RuntimeProvider);
-    filesListTool = moduleRef.get(FilesListTool);
+    filesFindPathsTool = moduleRef.get(FilesFindPathsTool);
     filesReadTool = moduleRef.get(FilesReadTool);
     filesSearchTextTool = moduleRef.get(FilesSearchTextTool);
     filesApplyChangesTool = moduleRef.get(FilesApplyChangesTool);
@@ -181,7 +181,7 @@ describe('Files tools integration', () => {
 
       expect(insertResult.success).toBe(true);
 
-      const { output: listResult } = await filesListTool.invoke(
+      const { output: listResult } = await filesFindPathsTool.invoke(
         { dir: WORKSPACE_DIR, pattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -267,7 +267,7 @@ describe('Files tools integration', () => {
       // Write a file into the thread workspace (default child workdir)
       const filePath = await writeSampleFile('cwd-file.ts');
 
-      const { output: listResult } = await filesListTool.invoke(
+      const { output: listResult } = await filesFindPathsTool.invoke(
         { pattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -317,8 +317,8 @@ describe('Files tools integration', () => {
       expect(cdRes.exitCode).toBe(0);
       expect(cdRes.stdout.trim()).toBe(customDir);
 
-      // Use files_list without dir to rely on current session cwd
-      const { output: listRes } = await filesListTool.invoke(
+      // Use files_find_paths without dir to rely on current session cwd
+      const { output: listRes } = await filesFindPathsTool.invoke(
         { pattern: '*.txt' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -352,8 +352,8 @@ describe('Files tools integration', () => {
       expect(setCwd.exitCode).toBe(0);
       expect(setCwd.stdout.trim()).toBe('/tmp');
 
-      // Run files_list with an explicit dir (subshell) and ensure cwd remains /tmp
-      const { output: listResult } = await filesListTool.invoke(
+      // Run files_find_paths with an explicit dir (subshell) and ensure cwd remains /tmp
+      const { output: listResult } = await filesFindPathsTool.invoke(
         { dir: WORKSPACE_DIR, pattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
@@ -389,8 +389,8 @@ describe('Files tools integration', () => {
 
       expect(createResult.success).toBe(true);
 
-      const { output: listAfterCreate } = await filesListTool.invoke(
-        { dir: nestedDir, pattern: fileName },
+      const { output: listAfterCreate } = await filesFindPathsTool.invoke(
+        { dir: nestedDir, pattern: fileName, recursive: false },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -405,8 +405,8 @@ describe('Files tools integration', () => {
 
       expect(deleteResult.success).toBe(true);
 
-      const { output: listAfterDelete } = await filesListTool.invoke(
-        { dir: nestedDir, pattern: fileName },
+      const { output: listAfterDelete } = await filesFindPathsTool.invoke(
+        { dir: nestedDir, pattern: fileName, recursive: false },
         { runtime },
         RUNNABLE_CONFIG,
       );

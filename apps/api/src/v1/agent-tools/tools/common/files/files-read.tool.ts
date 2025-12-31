@@ -18,7 +18,7 @@ export const FilesReadToolSchema = z.object({
     .array(z.string().min(1))
     .min(1)
     .describe(
-      'Absolute paths to files. Can use paths directly from `files_list` output.',
+      'Absolute paths to files. Can use paths directly from `files_find_paths` output.',
     ),
   startLine: z
     .number()
@@ -60,7 +60,7 @@ function shQuote(value: string) {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read the contents of multiple files using absolute paths. Optionally read specific line ranges using startLine and endLine parameters (applied to all files). The filePaths parameter expects absolute paths (can be used directly with paths returned from files_list). Returns per-file content and line counts.';
+    'Read file contents by absolute path (optionally with a line range).';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,
@@ -81,8 +81,6 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const parameterDocs = this.getSchemaParameterDocs(this.schema);
-
     return dedent`
       ### Overview
       Reads file contents from the filesystem. Supports reading entire files or specific line ranges. Returns structured output with content and metadata.
@@ -96,10 +94,8 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
 
       ### When NOT to Use
       - For binary files (images, compiled code) → use shell tool with appropriate commands
-      - When you just need to check if a file exists → use \`files_list\` with the file path
+      - When you just need to locate/confirm a path → use \`files_find_paths\`
       - When searching for content across many files → use \`files_search_text\` first
-
-      ${parameterDocs}
 
       ### Best Practices
 
@@ -150,12 +146,12 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       3. Use \`files_apply_changes\` with precise line numbers
 
       **Exploring a codebase:**
-      1. Use \`files_list\` to discover files
+      1. Use \`files_find_paths\` to discover files
       2. Use \`files_search_text\` to find relevant sections
       3. Use \`files_read\` with line ranges to examine specific parts
 
       ### Error Handling
-      - File not found: Check the path is correct, use \`files_list\` to verify
+      - File not found: Check the path is correct, use \`files_find_paths\` to discover/confirm the path
       - Permission denied: File may be in a protected location
       - Line range errors: Ensure startLine <= endLine and both are positive
     `;
