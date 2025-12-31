@@ -158,18 +158,20 @@ describe('Files tools integration', () => {
 
       // Read file first
       const { output: initialRead } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
+
+      const initialContent = initialRead.files?.[0]?.content || '';
 
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
           path: filePath,
           edits: [
             {
-              oldText: initialRead.content || '',
-              newText: '// Integration header\n' + (initialRead.content || ''),
+              oldText: initialContent,
+              newText: '// Integration header\n' + initialContent,
             },
           ],
         },
@@ -190,16 +192,15 @@ describe('Files tools integration', () => {
       expect(listResult.files).toContain(filePath);
 
       const { output: readResult } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
       expect(readResult.error).toBeUndefined();
-      expect(readResult.content?.startsWith('// Integration header')).toBe(
-        true,
-      );
-      expect(readResult.content?.includes('export function greet')).toBe(true);
+      const readContent = readResult.files?.[0]?.content;
+      expect(readContent?.startsWith('// Integration header')).toBe(true);
+      expect(readContent?.includes('export function greet')).toBe(true);
 
       const { output: searchResult } = await filesSearchTextTool.invoke(
         { filePath, query: 'HelperService' },
@@ -329,12 +330,12 @@ describe('Files tools integration', () => {
 
       // Read the file from the custom directory
       const { output: readRes } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
       expect(readRes.error).toBeUndefined();
-      expect(readRes.content?.trim()).toBe(content);
+      expect(readRes.files?.[0]?.content?.trim()).toBe(content);
     },
   );
 
@@ -456,15 +457,16 @@ describe('Files tools integration', () => {
 
       // Verify the replacement
       const { output: readResult } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(readResult.content).toContain('newFunction');
-      expect(readResult.content).toContain("return 'new value'");
-      expect(readResult.content).not.toContain('oldFunction');
-      expect(readResult.content).toContain("export const config = 'old'"); // Other content unchanged
+      const contentAfter = readResult.files?.[0]?.content || '';
+      expect(contentAfter).toContain('newFunction');
+      expect(contentAfter).toContain("return 'new value'");
+      expect(contentAfter).not.toContain('oldFunction');
+      expect(contentAfter).toContain("export const config = 'old'"); // Other content unchanged
     },
   );
 
@@ -490,10 +492,11 @@ describe('Files tools integration', () => {
 
       // Read current content
       const { output: readBefore } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
+      const beforeContent = readBefore.files?.[0]?.content || '';
 
       // Insert import at the beginning
       const { output: insertResult } = await filesApplyChangesTool.invoke(
@@ -501,8 +504,8 @@ describe('Files tools integration', () => {
           path: filePath,
           edits: [
             {
-              oldText: readBefore.content || '',
-              newText: `import { newImport } from './new';\n\n${readBefore.content || ''}`,
+              oldText: beforeContent,
+              newText: `import { newImport } from './new';\n\n${beforeContent}`,
             },
           ],
         },
@@ -514,14 +517,15 @@ describe('Files tools integration', () => {
 
       // Verify the insertion
       const { output: readAfter } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(readAfter.content).toContain("import { newImport } from './new'");
-      expect(readAfter.content?.indexOf('import')).toBe(0); // At the very beginning
-      expect(readAfter.content).toContain('export const data');
+      const inserted = readAfter.files?.[0]?.content || '';
+      expect(inserted).toContain("import { newImport } from './new'");
+      expect(inserted.indexOf('import')).toBe(0); // At the very beginning
+      expect(inserted).toContain('export const data');
     },
   );
 
@@ -547,10 +551,11 @@ describe('Files tools integration', () => {
 
       // Read current content
       const { output: readBefore } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
+      const beforeContent = readBefore.files?.[0]?.content || '';
 
       // Append new function at the end
       const { output: appendResult } = await filesApplyChangesTool.invoke(
@@ -558,8 +563,8 @@ describe('Files tools integration', () => {
           path: filePath,
           edits: [
             {
-              oldText: readBefore.content || '',
-              newText: `${readBefore.content || ''}\n\nexport function newFunction() {\n  return 'new';\n}`,
+              oldText: beforeContent,
+              newText: `${beforeContent}\n\nexport function newFunction() {\n  return 'new';\n}`,
             },
           ],
         },
@@ -571,17 +576,18 @@ describe('Files tools integration', () => {
 
       // Verify the append
       const { output: readAfter } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(readAfter.content).toContain('export const first');
-      expect(readAfter.content).toContain('export function existing');
-      expect(readAfter.content).toContain('export function newFunction');
+      const afterAppend = readAfter.files?.[0]?.content || '';
+      expect(afterAppend).toContain('export const first');
+      expect(afterAppend).toContain('export function existing');
+      expect(afterAppend).toContain('export function newFunction');
 
       // Verify order - newFunction should be at the end
-      const lines = readAfter.content?.split('\n') || [];
+      const lines = afterAppend.split('\n');
       const newFunctionIndex = lines.findIndex((l) =>
         l.includes('newFunction'),
       );
@@ -629,17 +635,18 @@ describe('Files tools integration', () => {
 
       // Verify the insertion
       const { output: readAfter } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(readAfter.content).toContain('api:');
-      expect(readAfter.content).toContain('timeout: 5000');
-      expect(readAfter.content).toContain('port:');
+      const afterMid = readAfter.files?.[0]?.content || '';
+      expect(afterMid).toContain('api:');
+      expect(afterMid).toContain('timeout: 5000');
+      expect(afterMid).toContain('port:');
 
       // Verify order - timeout should be between api and port
-      const lines = readAfter.content?.split('\n') || [];
+      const lines = afterMid.split('\n');
       const apiIndex = lines.findIndex((l) => l.includes('api:'));
       const timeoutIndex = lines.findIndex((l) => l.includes('timeout:'));
       const portIndex = lines.findIndex((l) => l.includes('port:'));
@@ -669,12 +676,12 @@ describe('Files tools integration', () => {
 
       // Verify it's empty
       const { output: readEmpty } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(readEmpty.content).toBe('');
+      expect(readEmpty.files?.[0]?.content).toBe('');
 
       // Add content to the empty file
       const { output: addResult } = await filesApplyChangesTool.invoke(
@@ -695,13 +702,14 @@ describe('Files tools integration', () => {
 
       // Verify content was added
       const { output: readAfter } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(readAfter.content).toContain('// First line');
-      expect(readAfter.content).toContain("export const value = 'data'");
+      const after = readAfter.files?.[0]?.content || '';
+      expect(after).toContain('// First line');
+      expect(after).toContain("export const value = 'data'");
     },
   );
 
@@ -749,13 +757,14 @@ describe('Files tools integration', () => {
 
       // Verify file wasn't changed
       const { output: readAfterDryRun } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(readAfterDryRun.content).toContain('original');
-      expect(readAfterDryRun.content).not.toContain('modified');
+      const afterDryRun = readAfterDryRun.files?.[0]?.content || '';
+      expect(afterDryRun).toContain('original');
+      expect(afterDryRun).not.toContain('modified');
 
       // Now apply for real
       const { output: applyResult } = await filesApplyChangesTool.invoke(
@@ -778,13 +787,14 @@ describe('Files tools integration', () => {
 
       // Verify file was changed
       const { output: readAfterApply } = await filesReadTool.invoke(
-        { filePath },
+        { filePaths: [filePath] },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(readAfterApply.content).toContain('modified');
-      expect(readAfterApply.content).not.toContain('original');
+      const afterApply = readAfterApply.files?.[0]?.content || '';
+      expect(afterApply).toContain('modified');
+      expect(afterApply).not.toContain('original');
     },
   );
 });

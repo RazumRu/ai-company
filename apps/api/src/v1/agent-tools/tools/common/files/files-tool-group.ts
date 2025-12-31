@@ -8,11 +8,16 @@ import { BaseToolGroup } from '../../base-tool-group';
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
 import { FilesBuildTagsTool } from './files-build-tags.tool';
+import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
+import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
 import { FilesListTool } from './files-list.tool';
+import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
+import { FilesSearchFilesTool } from './files-search-files.tool';
 import { FilesSearchTagsTool } from './files-search-tags.tool';
 import { FilesSearchTextTool } from './files-search-text.tool';
+import { FilesWriteFileTool } from './files-write-file.tool';
 
 export type FilesToolGroupConfig = FilesBaseToolConfig & {
   /**
@@ -26,10 +31,15 @@ export type FilesToolGroupConfig = FilesBaseToolConfig & {
 export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
   constructor(
     private readonly filesListTool: FilesListTool,
+    private readonly filesSearchFilesTool: FilesSearchFilesTool,
+    private readonly filesDirectoryTreeTool: FilesDirectoryTreeTool,
     private readonly filesReadTool: FilesReadTool,
     private readonly filesSearchTextTool: FilesSearchTextTool,
     private readonly filesBuildTagsTool: FilesBuildTagsTool,
     private readonly filesSearchTagsTool: FilesSearchTagsTool,
+    private readonly filesCreateDirectoryTool: FilesCreateDirectoryTool,
+    private readonly filesMoveFileTool: FilesMoveFileTool,
+    private readonly filesWriteFileTool: FilesWriteFileTool,
     private readonly filesApplyChangesTool: FilesApplyChangesTool,
     private readonly filesDeleteTool: FilesDeleteTool,
   ) {
@@ -43,6 +53,8 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     const includeEditActions = config.includeEditActions ?? true;
     const tools: BuiltAgentTool[] = [
       this.filesListTool.build(config, lgConfig),
+      this.filesSearchFilesTool.build(config, lgConfig),
+      this.filesDirectoryTreeTool.build(config, lgConfig),
       this.filesReadTool.build(config, lgConfig),
       this.filesSearchTextTool.build(config, lgConfig),
       this.filesBuildTagsTool.build(config, lgConfig),
@@ -51,6 +63,9 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
 
     if (includeEditActions) {
       tools.push(
+        this.filesCreateDirectoryTool.build(config, lgConfig),
+        this.filesMoveFileTool.build(config, lgConfig),
+        this.filesWriteFileTool.build(config, lgConfig),
         this.filesApplyChangesTool.build(config, lgConfig),
         this.filesDeleteTool.build(config, lgConfig),
       );

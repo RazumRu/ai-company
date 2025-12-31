@@ -219,18 +219,7 @@ describe('SimpleAgentTemplate', () => {
       expect(parsed.invokeModelReasoningEffort).toBe(ReasoningEffort.High);
     });
 
-    it('should accept temperature field', () => {
-      const config = {
-        name: 'Agent',
-        description: 'Desc',
-        instructions: 'Prompt',
-        invokeModelName: 'gpt-4o',
-        // Note: SimpleAgentSchema doesn't actually have temperature field yet,
-        // it seems I added it in previous turn but it's not in the attached file.
-        // I will remove this test for now if it's not in the actual schema.
-      };
-      // expect(() => SimpleAgentTemplateSchema.parse(config)).not.toThrow();
-    });
+    // Note: temperature is not part of the schema yet.
   });
 
   describe('create', () => {

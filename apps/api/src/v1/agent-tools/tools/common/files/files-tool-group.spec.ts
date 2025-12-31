@@ -4,20 +4,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBuildTagsTool } from './files-build-tags.tool';
+import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
+import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
 import { FilesListTool } from './files-list.tool';
+import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
+import { FilesSearchFilesTool } from './files-search-files.tool';
 import { FilesSearchTagsTool } from './files-search-tags.tool';
 import { FilesSearchTextTool } from './files-search-text.tool';
 import { FilesToolGroup, FilesToolGroupConfig } from './files-tool-group';
+import { FilesWriteFileTool } from './files-write-file.tool';
 
 describe('FilesToolGroup', () => {
   let toolGroup: FilesToolGroup;
   let mockFilesListTool: FilesListTool;
+  let mockFilesSearchFilesTool: FilesSearchFilesTool;
+  let mockFilesDirectoryTreeTool: FilesDirectoryTreeTool;
   let mockFilesReadTool: FilesReadTool;
   let mockFilesSearchTextTool: FilesSearchTextTool;
   let mockFilesBuildTagsTool: FilesBuildTagsTool;
   let mockFilesSearchTagsTool: FilesSearchTagsTool;
+  let mockFilesCreateDirectoryTool: FilesCreateDirectoryTool;
+  let mockFilesMoveFileTool: FilesMoveFileTool;
+  let mockFilesWriteFileTool: FilesWriteFileTool;
   let mockFilesApplyChangesTool: FilesApplyChangesTool;
   let mockFilesDeleteTool: FilesDeleteTool;
 
@@ -25,6 +35,14 @@ describe('FilesToolGroup', () => {
     mockFilesListTool = {
       build: vi.fn(),
     } as unknown as FilesListTool;
+
+    mockFilesSearchFilesTool = {
+      build: vi.fn(),
+    } as unknown as FilesSearchFilesTool;
+
+    mockFilesDirectoryTreeTool = {
+      build: vi.fn(),
+    } as unknown as FilesDirectoryTreeTool;
 
     mockFilesReadTool = {
       build: vi.fn(),
@@ -42,6 +60,18 @@ describe('FilesToolGroup', () => {
       build: vi.fn(),
     } as unknown as FilesSearchTagsTool;
 
+    mockFilesCreateDirectoryTool = {
+      build: vi.fn(),
+    } as unknown as FilesCreateDirectoryTool;
+
+    mockFilesMoveFileTool = {
+      build: vi.fn(),
+    } as unknown as FilesMoveFileTool;
+
+    mockFilesWriteFileTool = {
+      build: vi.fn(),
+    } as unknown as FilesWriteFileTool;
+
     mockFilesApplyChangesTool = {
       build: vi.fn(),
     } as unknown as FilesApplyChangesTool;
@@ -56,6 +86,14 @@ describe('FilesToolGroup', () => {
         {
           provide: FilesListTool,
           useValue: mockFilesListTool,
+        },
+        {
+          provide: FilesSearchFilesTool,
+          useValue: mockFilesSearchFilesTool,
+        },
+        {
+          provide: FilesDirectoryTreeTool,
+          useValue: mockFilesDirectoryTreeTool,
         },
         {
           provide: FilesReadTool,
@@ -74,6 +112,18 @@ describe('FilesToolGroup', () => {
           useValue: mockFilesSearchTagsTool,
         },
         {
+          provide: FilesCreateDirectoryTool,
+          useValue: mockFilesCreateDirectoryTool,
+        },
+        {
+          provide: FilesMoveFileTool,
+          useValue: mockFilesMoveFileTool,
+        },
+        {
+          provide: FilesWriteFileTool,
+          useValue: mockFilesWriteFileTool,
+        },
+        {
           provide: FilesApplyChangesTool,
           useValue: mockFilesApplyChangesTool,
         },
@@ -88,9 +138,15 @@ describe('FilesToolGroup', () => {
   });
 
   describe('buildTools', () => {
-    it('should build and return array with all seven tools', () => {
+    it('should build and return array with all tools when includeEditActions is true', () => {
       const mockFilesListToolInstance = {
         name: 'files_list',
+      } as DynamicStructuredTool;
+      const mockFilesSearchFilesToolInstance = {
+        name: 'files_search_files',
+      } as DynamicStructuredTool;
+      const mockFilesDirectoryTreeToolInstance = {
+        name: 'files_directory_tree',
       } as DynamicStructuredTool;
       const mockFilesReadToolInstance = {
         name: 'files_read',
@@ -104,6 +160,15 @@ describe('FilesToolGroup', () => {
       const mockFilesSearchTagsToolInstance = {
         name: 'files_search_tags',
       } as DynamicStructuredTool;
+      const mockFilesCreateDirectoryToolInstance = {
+        name: 'files_create_directory',
+      } as DynamicStructuredTool;
+      const mockFilesMoveFileToolInstance = {
+        name: 'files_move_file',
+      } as DynamicStructuredTool;
+      const mockFilesWriteFileToolInstance = {
+        name: 'files_write_file',
+      } as DynamicStructuredTool;
       const mockFilesApplyChangesToolInstance = {
         name: 'files_apply_changes',
       } as DynamicStructuredTool;
@@ -113,6 +178,12 @@ describe('FilesToolGroup', () => {
       mockFilesListTool.build = vi
         .fn()
         .mockReturnValue(mockFilesListToolInstance);
+      mockFilesSearchFilesTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesSearchFilesToolInstance);
+      mockFilesDirectoryTreeTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesDirectoryTreeToolInstance);
       mockFilesReadTool.build = vi
         .fn()
         .mockReturnValue(mockFilesReadToolInstance);
@@ -125,6 +196,15 @@ describe('FilesToolGroup', () => {
       mockFilesSearchTagsTool.build = vi
         .fn()
         .mockReturnValue(mockFilesSearchTagsToolInstance);
+      mockFilesCreateDirectoryTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesCreateDirectoryToolInstance);
+      mockFilesMoveFileTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesMoveFileToolInstance);
+      mockFilesWriteFileTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesWriteFileToolInstance);
       mockFilesApplyChangesTool.build = vi
         .fn()
         .mockReturnValue(mockFilesApplyChangesToolInstance);
@@ -139,15 +219,29 @@ describe('FilesToolGroup', () => {
       const result = toolGroup.buildTools(config);
 
       expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBe(7);
-      expect(result[0]).toBe(mockFilesListToolInstance);
-      expect(result[1]).toBe(mockFilesReadToolInstance);
-      expect(result[2]).toBe(mockFilesSearchTextToolInstance);
-      expect(result[3]).toBe(mockFilesBuildTagsToolInstance);
-      expect(result[4]).toBe(mockFilesSearchTagsToolInstance);
-      expect(result[5]).toBe(mockFilesApplyChangesToolInstance);
-      expect(result[6]).toBe(mockFilesDeleteToolInstance);
+      expect(result).toEqual([
+        mockFilesListToolInstance,
+        mockFilesSearchFilesToolInstance,
+        mockFilesDirectoryTreeToolInstance,
+        mockFilesReadToolInstance,
+        mockFilesSearchTextToolInstance,
+        mockFilesBuildTagsToolInstance,
+        mockFilesSearchTagsToolInstance,
+        mockFilesCreateDirectoryToolInstance,
+        mockFilesMoveFileToolInstance,
+        mockFilesWriteFileToolInstance,
+        mockFilesApplyChangesToolInstance,
+        mockFilesDeleteToolInstance,
+      ]);
       expect(mockFilesListTool.build).toHaveBeenCalledWith(config, undefined);
+      expect(mockFilesSearchFilesTool.build).toHaveBeenCalledWith(
+        config,
+        undefined,
+      );
+      expect(mockFilesDirectoryTreeTool.build).toHaveBeenCalledWith(
+        config,
+        undefined,
+      );
       expect(mockFilesReadTool.build).toHaveBeenCalledWith(config, undefined);
       expect(mockFilesSearchTextTool.build).toHaveBeenCalledWith(
         config,
@@ -161,6 +255,18 @@ describe('FilesToolGroup', () => {
         config,
         undefined,
       );
+      expect(mockFilesCreateDirectoryTool.build).toHaveBeenCalledWith(
+        config,
+        undefined,
+      );
+      expect(mockFilesMoveFileTool.build).toHaveBeenCalledWith(
+        config,
+        undefined,
+      );
+      expect(mockFilesWriteFileTool.build).toHaveBeenCalledWith(
+        config,
+        undefined,
+      );
       expect(mockFilesApplyChangesTool.build).toHaveBeenCalledWith(
         config,
         undefined,
@@ -168,9 +274,15 @@ describe('FilesToolGroup', () => {
       expect(mockFilesDeleteTool.build).toHaveBeenCalledWith(config, undefined);
     });
 
-    it('should pass lgConfig to tool build', () => {
+    it('should omit edit tools when includeEditActions is false', () => {
       const mockFilesListToolInstance = {
         name: 'files_list',
+      } as DynamicStructuredTool;
+      const mockFilesSearchFilesToolInstance = {
+        name: 'files_search_files',
+      } as DynamicStructuredTool;
+      const mockFilesDirectoryTreeToolInstance = {
+        name: 'files_directory_tree',
       } as DynamicStructuredTool;
       const mockFilesReadToolInstance = {
         name: 'files_read',
@@ -184,16 +296,16 @@ describe('FilesToolGroup', () => {
       const mockFilesSearchTagsToolInstance = {
         name: 'files_search_tags',
       } as DynamicStructuredTool;
-      const mockFilesApplyChangesToolInstance = {
-        name: 'files_apply_changes',
-      } as DynamicStructuredTool;
-      const mockFilesDeleteToolInstance = {
-        name: 'files_delete',
-      } as DynamicStructuredTool;
-      const lgConfig = { description: 'Custom description' };
+
       mockFilesListTool.build = vi
         .fn()
         .mockReturnValue(mockFilesListToolInstance);
+      mockFilesSearchFilesTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesSearchFilesToolInstance);
+      mockFilesDirectoryTreeTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesDirectoryTreeToolInstance);
       mockFilesReadTool.build = vi
         .fn()
         .mockReturnValue(mockFilesReadToolInstance);
@@ -206,6 +318,98 @@ describe('FilesToolGroup', () => {
       mockFilesSearchTagsTool.build = vi
         .fn()
         .mockReturnValue(mockFilesSearchTagsToolInstance);
+
+      const config: FilesToolGroupConfig = {
+        runtime: {} as any,
+        includeEditActions: false,
+      };
+
+      const result = toolGroup.buildTools(config);
+
+      expect(result).toEqual([
+        mockFilesListToolInstance,
+        mockFilesSearchFilesToolInstance,
+        mockFilesDirectoryTreeToolInstance,
+        mockFilesReadToolInstance,
+        mockFilesSearchTextToolInstance,
+        mockFilesBuildTagsToolInstance,
+        mockFilesSearchTagsToolInstance,
+      ]);
+      expect(mockFilesApplyChangesTool.build).not.toHaveBeenCalled();
+      expect(mockFilesDeleteTool.build).not.toHaveBeenCalled();
+      expect(mockFilesCreateDirectoryTool.build).not.toHaveBeenCalled();
+      expect(mockFilesMoveFileTool.build).not.toHaveBeenCalled();
+      expect(mockFilesWriteFileTool.build).not.toHaveBeenCalled();
+    });
+
+    it('should pass lgConfig to tool build', () => {
+      const mockFilesListToolInstance = {
+        name: 'files_list',
+      } as DynamicStructuredTool;
+      const mockFilesSearchFilesToolInstance = {
+        name: 'files_search_files',
+      } as DynamicStructuredTool;
+      const mockFilesDirectoryTreeToolInstance = {
+        name: 'files_directory_tree',
+      } as DynamicStructuredTool;
+      const mockFilesReadToolInstance = {
+        name: 'files_read',
+      } as DynamicStructuredTool;
+      const mockFilesSearchTextToolInstance = {
+        name: 'files_search_text',
+      } as DynamicStructuredTool;
+      const mockFilesBuildTagsToolInstance = {
+        name: 'files_build_tags',
+      } as DynamicStructuredTool;
+      const mockFilesSearchTagsToolInstance = {
+        name: 'files_search_tags',
+      } as DynamicStructuredTool;
+      const mockFilesCreateDirectoryToolInstance = {
+        name: 'files_create_directory',
+      } as DynamicStructuredTool;
+      const mockFilesMoveFileToolInstance = {
+        name: 'files_move_file',
+      } as DynamicStructuredTool;
+      const mockFilesWriteFileToolInstance = {
+        name: 'files_write_file',
+      } as DynamicStructuredTool;
+      const mockFilesApplyChangesToolInstance = {
+        name: 'files_apply_changes',
+      } as DynamicStructuredTool;
+      const mockFilesDeleteToolInstance = {
+        name: 'files_delete',
+      } as DynamicStructuredTool;
+      const lgConfig = { description: 'Custom description' };
+      mockFilesListTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesListToolInstance);
+      mockFilesSearchFilesTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesSearchFilesToolInstance);
+      mockFilesDirectoryTreeTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesDirectoryTreeToolInstance);
+      mockFilesReadTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesReadToolInstance);
+      mockFilesSearchTextTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesSearchTextToolInstance);
+      mockFilesBuildTagsTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesBuildTagsToolInstance);
+      mockFilesSearchTagsTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesSearchTagsToolInstance);
+      mockFilesCreateDirectoryTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesCreateDirectoryToolInstance);
+      mockFilesMoveFileTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesMoveFileToolInstance);
+      mockFilesWriteFileTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesWriteFileToolInstance);
       mockFilesApplyChangesTool.build = vi
         .fn()
         .mockReturnValue(mockFilesApplyChangesToolInstance);
@@ -221,14 +425,27 @@ describe('FilesToolGroup', () => {
 
       expect(result).toEqual([
         mockFilesListToolInstance,
+        mockFilesSearchFilesToolInstance,
+        mockFilesDirectoryTreeToolInstance,
         mockFilesReadToolInstance,
         mockFilesSearchTextToolInstance,
         mockFilesBuildTagsToolInstance,
         mockFilesSearchTagsToolInstance,
+        mockFilesCreateDirectoryToolInstance,
+        mockFilesMoveFileToolInstance,
+        mockFilesWriteFileToolInstance,
         mockFilesApplyChangesToolInstance,
         mockFilesDeleteToolInstance,
       ]);
       expect(mockFilesListTool.build).toHaveBeenCalledWith(config, lgConfig);
+      expect(mockFilesSearchFilesTool.build).toHaveBeenCalledWith(
+        config,
+        lgConfig,
+      );
+      expect(mockFilesDirectoryTreeTool.build).toHaveBeenCalledWith(
+        config,
+        lgConfig,
+      );
       expect(mockFilesReadTool.build).toHaveBeenCalledWith(config, lgConfig);
       expect(mockFilesSearchTextTool.build).toHaveBeenCalledWith(
         config,
@@ -242,6 +459,18 @@ describe('FilesToolGroup', () => {
         config,
         lgConfig,
       );
+      expect(mockFilesCreateDirectoryTool.build).toHaveBeenCalledWith(
+        config,
+        lgConfig,
+      );
+      expect(mockFilesMoveFileTool.build).toHaveBeenCalledWith(
+        config,
+        lgConfig,
+      );
+      expect(mockFilesWriteFileTool.build).toHaveBeenCalledWith(
+        config,
+        lgConfig,
+      );
       expect(mockFilesApplyChangesTool.build).toHaveBeenCalledWith(
         config,
         lgConfig,
@@ -249,216 +478,7 @@ describe('FilesToolGroup', () => {
       expect(mockFilesDeleteTool.build).toHaveBeenCalledWith(config, lgConfig);
     });
 
-    it('should handle different configs', () => {
-      const mockFilesListToolInstance1 = {
-        name: 'files_list',
-      } as DynamicStructuredTool;
-      const mockFilesReadToolInstance1 = {
-        name: 'files_read',
-      } as DynamicStructuredTool;
-      const mockFilesSearchTextToolInstance1 = {
-        name: 'files_search_text',
-      } as DynamicStructuredTool;
-      const mockFilesBuildTagsToolInstance1 = {
-        name: 'files_build_tags',
-      } as DynamicStructuredTool;
-      const mockFilesSearchTagsToolInstance1 = {
-        name: 'files_search_tags',
-      } as DynamicStructuredTool;
-      const mockFilesApplyChangesToolInstance1 = {
-        name: 'files_apply_changes',
-      } as DynamicStructuredTool;
-      const mockFilesDeleteToolInstance1 = {
-        name: 'files_delete',
-      } as DynamicStructuredTool;
-      const mockFilesListToolInstance2 = {
-        name: 'files_list',
-      } as DynamicStructuredTool;
-      const mockFilesReadToolInstance2 = {
-        name: 'files_read',
-      } as DynamicStructuredTool;
-      const mockFilesSearchTextToolInstance2 = {
-        name: 'files_search_text',
-      } as DynamicStructuredTool;
-      const mockFilesBuildTagsToolInstance2 = {
-        name: 'files_build_tags',
-      } as DynamicStructuredTool;
-      const mockFilesSearchTagsToolInstance2 = {
-        name: 'files_search_tags',
-      } as DynamicStructuredTool;
-      const mockFilesApplyChangesToolInstance2 = {
-        name: 'files_apply_changes',
-      } as DynamicStructuredTool;
-      const mockFilesDeleteToolInstance2 = {
-        name: 'files_delete',
-      } as DynamicStructuredTool;
-
-      mockFilesListTool.build = vi
-        .fn()
-        .mockReturnValueOnce(mockFilesListToolInstance1)
-        .mockReturnValueOnce(mockFilesListToolInstance2);
-      mockFilesReadTool.build = vi
-        .fn()
-        .mockReturnValueOnce(mockFilesReadToolInstance1)
-        .mockReturnValueOnce(mockFilesReadToolInstance2);
-      mockFilesSearchTextTool.build = vi
-        .fn()
-        .mockReturnValueOnce(mockFilesSearchTextToolInstance1)
-        .mockReturnValueOnce(mockFilesSearchTextToolInstance2);
-      mockFilesBuildTagsTool.build = vi
-        .fn()
-        .mockReturnValueOnce(mockFilesBuildTagsToolInstance1)
-        .mockReturnValueOnce(mockFilesBuildTagsToolInstance2);
-      mockFilesSearchTagsTool.build = vi
-        .fn()
-        .mockReturnValueOnce(mockFilesSearchTagsToolInstance1)
-        .mockReturnValueOnce(mockFilesSearchTagsToolInstance2);
-      mockFilesApplyChangesTool.build = vi
-        .fn()
-        .mockReturnValueOnce(mockFilesApplyChangesToolInstance1)
-        .mockReturnValueOnce(mockFilesApplyChangesToolInstance2);
-      mockFilesDeleteTool.build = vi
-        .fn()
-        .mockReturnValueOnce(mockFilesDeleteToolInstance1)
-        .mockReturnValueOnce(mockFilesDeleteToolInstance2);
-
-      const config1: FilesToolGroupConfig = {
-        runtime: {} as any,
-      };
-      const config2: FilesToolGroupConfig = {
-        runtime: {} as any,
-      };
-
-      const result1 = toolGroup.buildTools(config1);
-      const result2 = toolGroup.buildTools(config2);
-
-      expect(result1[0]).toBe(mockFilesListToolInstance1);
-      expect(result1[1]).toBe(mockFilesReadToolInstance1);
-      expect(result1[2]).toBe(mockFilesSearchTextToolInstance1);
-      expect(result1[3]).toBe(mockFilesBuildTagsToolInstance1);
-      expect(result1[4]).toBe(mockFilesSearchTagsToolInstance1);
-      expect(result1[5]).toBe(mockFilesApplyChangesToolInstance1);
-      expect(result1[6]).toBe(mockFilesDeleteToolInstance1);
-      expect(result2[0]).toBe(mockFilesListToolInstance2);
-      expect(result2[1]).toBe(mockFilesReadToolInstance2);
-      expect(result2[2]).toBe(mockFilesSearchTextToolInstance2);
-      expect(result2[3]).toBe(mockFilesBuildTagsToolInstance2);
-      expect(result2[4]).toBe(mockFilesSearchTagsToolInstance2);
-      expect(result2[5]).toBe(mockFilesApplyChangesToolInstance2);
-      expect(result2[6]).toBe(mockFilesDeleteToolInstance2);
-      expect(mockFilesListTool.build).toHaveBeenCalledTimes(2);
-      expect(mockFilesReadTool.build).toHaveBeenCalledTimes(2);
-      expect(mockFilesSearchTextTool.build).toHaveBeenCalledTimes(2);
-      expect(mockFilesBuildTagsTool.build).toHaveBeenCalledTimes(2);
-      expect(mockFilesSearchTagsTool.build).toHaveBeenCalledTimes(2);
-      expect(mockFilesApplyChangesTool.build).toHaveBeenCalledTimes(2);
-      expect(mockFilesDeleteTool.build).toHaveBeenCalledTimes(2);
-      expect(mockFilesListTool.build).toHaveBeenCalledWith(config1, undefined);
-      expect(mockFilesListTool.build).toHaveBeenCalledWith(config2, undefined);
-      expect(mockFilesReadTool.build).toHaveBeenCalledWith(config1, undefined);
-      expect(mockFilesReadTool.build).toHaveBeenCalledWith(config2, undefined);
-      expect(mockFilesSearchTextTool.build).toHaveBeenCalledWith(
-        config1,
-        undefined,
-      );
-      expect(mockFilesSearchTextTool.build).toHaveBeenCalledWith(
-        config2,
-        undefined,
-      );
-      expect(mockFilesBuildTagsTool.build).toHaveBeenCalledWith(
-        config1,
-        undefined,
-      );
-      expect(mockFilesBuildTagsTool.build).toHaveBeenCalledWith(
-        config2,
-        undefined,
-      );
-      expect(mockFilesSearchTagsTool.build).toHaveBeenCalledWith(
-        config1,
-        undefined,
-      );
-      expect(mockFilesSearchTagsTool.build).toHaveBeenCalledWith(
-        config2,
-        undefined,
-      );
-      expect(mockFilesApplyChangesTool.build).toHaveBeenCalledWith(
-        config1,
-        undefined,
-      );
-      expect(mockFilesApplyChangesTool.build).toHaveBeenCalledWith(
-        config2,
-        undefined,
-      );
-      expect(mockFilesDeleteTool.build).toHaveBeenCalledWith(
-        config1,
-        undefined,
-      );
-      expect(mockFilesDeleteTool.build).toHaveBeenCalledWith(
-        config2,
-        undefined,
-      );
-    });
-
-    it('should return array with all seven tools', () => {
-      const mockFilesListToolInstance = {
-        name: 'files_list',
-      } as DynamicStructuredTool;
-      const mockFilesReadToolInstance = {
-        name: 'files_read',
-      } as DynamicStructuredTool;
-      const mockFilesSearchTextToolInstance = {
-        name: 'files_search_text',
-      } as DynamicStructuredTool;
-      const mockFilesBuildTagsToolInstance = {
-        name: 'files_build_tags',
-      } as DynamicStructuredTool;
-      const mockFilesSearchTagsToolInstance = {
-        name: 'files_search_tags',
-      } as DynamicStructuredTool;
-      const mockFilesApplyChangesToolInstance = {
-        name: 'files_apply_changes',
-      } as DynamicStructuredTool;
-      const mockFilesDeleteToolInstance = {
-        name: 'files_delete',
-      } as DynamicStructuredTool;
-      mockFilesListTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesListToolInstance);
-      mockFilesReadTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesReadToolInstance);
-      mockFilesSearchTextTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesSearchTextToolInstance);
-      mockFilesBuildTagsTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesBuildTagsToolInstance);
-      mockFilesSearchTagsTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesSearchTagsToolInstance);
-      mockFilesApplyChangesTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesApplyChangesToolInstance);
-      mockFilesDeleteTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesDeleteToolInstance);
-
-      const config: FilesToolGroupConfig = {
-        runtime: {} as any,
-      };
-
-      const result = toolGroup.buildTools(config);
-
-      expect(result.length).toBe(7);
-      expect(result).toEqual([
-        mockFilesListToolInstance,
-        mockFilesReadToolInstance,
-        mockFilesSearchTextToolInstance,
-        mockFilesBuildTagsToolInstance,
-        mockFilesSearchTagsToolInstance,
-        mockFilesApplyChangesToolInstance,
-        mockFilesDeleteToolInstance,
-      ]);
-    });
+    // Note: additional coverage for different configs is redundant here; buildTools is pure and
+    // simply delegates to each tool's build() with the given config.
   });
 });

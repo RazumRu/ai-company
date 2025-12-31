@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
@@ -13,11 +14,11 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesReadToolSchema = z.object({
-  filePath: z
-    .string()
+  filePaths: z
+    .array(z.string().min(1))
     .min(1)
     .describe(
-      'Absolute path to the file. Can use paths directly from `files_list` output.',
+      'Absolute paths to files. Can use paths directly from `files_list` output.',
     ),
   startLine: z
     .number()
@@ -39,28 +40,41 @@ export const FilesReadToolSchema = z.object({
 
 export type FilesReadToolSchemaType = z.infer<typeof FilesReadToolSchema>;
 
-type FilesReadToolOutput = {
+type FilesReadToolFileOutput = {
+  filePath: string;
   error?: string;
   content?: string;
   lineCount?: number;
 };
 
+type FilesReadToolOutput = {
+  error?: string;
+  files?: FilesReadToolFileOutput[];
+};
+
+function shQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 @Injectable()
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read the contents of a file using an absolute path. Optionally read specific line ranges using startLine and endLine parameters. The filePath parameter expects an absolute path (can be used directly with paths returned from files_list). Returns the file content and line count.';
+    'Read the contents of multiple files using absolute paths. Optionally read specific line ranges using startLine and endLine parameters (applied to all files). The filePaths parameter expects absolute paths (can be used directly with paths returned from files_list). Returns per-file content and line counts.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    const name = basename(args.filePath);
+    const first = args.filePaths[0];
+    const name = first ? basename(first) : 'files';
     const range =
       args.startLine !== undefined && args.endLine !== undefined
         ? ` lines ${args.startLine}-${args.endLine}`
         : '';
-    return `Reading ${name}${range}`;
+    const suffix =
+      args.filePaths.length > 1 ? ` (+${args.filePaths.length - 1} more)` : '';
+    return `Reading ${name}${suffix}${range}`;
   }
 
   public getDetailedInstructions(
@@ -94,33 +108,37 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       \`\`\`json
         // First, find the relevant section using files_search_text
         // Then read just that section
-        {"filePath": "/repo/large-file.ts", "startLine": 0, "endLine": 500}
+        {"filePaths": ["/repo/large-file.ts"], "startLine": 1, "endLine": 500}
       \`\`\`
 
       **2. Read context around found matches:**
       After \`files_search_text\` finds a match at line 150:
       \`\`\`json
-        {"filePath": "/repo/src/utils.ts", "startLine": 140, "endLine": 170}
+        {"filePaths": ["/repo/src/utils.ts"], "startLine": 140, "endLine": 170}
       \`\`\`
 
       **3. Read configuration files completely:**
       Config files are usually small and need full context:
       \`\`\`json
-        {"filePath": "/repo/tsconfig.json"}
+        {"filePaths": ["/repo/tsconfig.json", "/repo/package.json"]}
       \`\`\`
 
       ### Output Format
       \`\`\`json
         {
-          "content": "file content here...",
-          "lineCount": 150
+          "files": [
+            { "filePath": "/repo/tsconfig.json", "content": "file content here...", "lineCount": 150 },
+            { "filePath": "/repo/package.json", "content": "file content here...", "lineCount": 42 }
+          ]
         }
       \`\`\`
 
       Or on error:
       \`\`\`json
         {
-          "error": "cat: /path/to/file: No such file or directory"
+          "files": [
+            { "filePath": "/path/to/file", "error": "cat: /path/to/file: No such file or directory" }
+          ]
         }
       \`\`\`
 
@@ -148,6 +166,10 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       target: 'draft-7',
       reused: 'ref',
     }) as ReturnType<typeof z.toJSONSchema>;
+  }
+
+  protected createMarker(): string {
+    return randomUUID();
   }
 
   public async invoke(
@@ -189,20 +211,32 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       };
     }
 
-    const fullFilePath = `${args.filePath}`;
+    const marker = this.createMarker();
+    const beginPrefix = `__AI_FILES_READ_BEGIN_${marker}__`;
+    const exitPrefix = `__AI_FILES_READ_EXIT_${marker}__`;
+    const payloadPrefix = `__AI_FILES_READ_PAYLOAD_${marker}__`;
+    const endPrefix = `__AI_FILES_READ_END_${marker}__`;
 
-    let cmd: string;
-    if (args.startLine !== undefined && args.endLine !== undefined) {
-      // Use sed to read specific line range
-      cmd = `sed -n '${args.startLine},${args.endLine}p' "${fullFilePath}"`;
-    } else {
-      // Use cat to read entire file
-      cmd = `cat "${fullFilePath}"`;
+    const readCmd =
+      args.startLine !== undefined && args.endLine !== undefined
+        ? (filePath: string) =>
+            `sed -n '${args.startLine},${args.endLine}p' ${shQuote(filePath)}`
+        : (filePath: string) => `cat ${shQuote(filePath)}`;
+
+    const scriptParts: string[] = ['set +e'];
+    for (let i = 0; i < args.filePaths.length; i++) {
+      const filePath = args.filePaths[i];
+      if (!filePath) continue;
+      const idx = String(i);
+      const cmd = readCmd(filePath);
+      scriptParts.push(
+        `__out="$({ ${cmd}; } 2>&1)"; __ec=$?; printf "%s\\n" "${beginPrefix}${idx}"; printf "%s\\n" "${exitPrefix}${idx}:$__ec"; printf "%s\\n" "${payloadPrefix}${idx}"; printf "%s" "$__out"; printf "\\n%s\\n" "${endPrefix}${idx}"`,
+      );
     }
 
     const res = await this.execCommand(
       {
-        cmd,
+        cmd: scriptParts.join('; '),
       },
       config,
       cfg,
@@ -211,20 +245,78 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     if (res.exitCode !== 0) {
       return {
         output: {
-          error: res.stderr || res.stdout || 'Failed to read file',
+          error: res.stderr || res.stdout || 'Failed to read files',
         },
         messageMetadata,
       };
     }
 
-    const content = res.stdout;
-    const lineCount = content.split('\n').length;
+    const files: FilesReadToolFileOutput[] = [];
+    const stdoutLines = res.stdout.split('\n');
+
+    for (let i = 0; i < args.filePaths.length; i++) {
+      const filePath = args.filePaths[i];
+      if (!filePath) continue;
+      const idx = String(i);
+      const beginLine = `${beginPrefix}${idx}`;
+      const endLine = `${endPrefix}${idx}`;
+      const payloadLine = `${payloadPrefix}${idx}`;
+      const exitLinePrefix = `${exitPrefix}${idx}:`;
+
+      const beginIdx = stdoutLines.indexOf(beginLine);
+      if (beginIdx === -1) {
+        files.push({
+          filePath,
+          error: 'Failed to parse tool output (missing begin marker)',
+        });
+        continue;
+      }
+
+      const exitLine = stdoutLines[beginIdx + 1];
+      const payloadMarker = stdoutLines[beginIdx + 2];
+      if (!exitLine || !exitLine.startsWith(exitLinePrefix)) {
+        files.push({
+          filePath,
+          error: 'Failed to parse tool output (missing exit marker)',
+        });
+        continue;
+      }
+      if (payloadMarker !== payloadLine) {
+        files.push({
+          filePath,
+          error: 'Failed to parse tool output (missing payload marker)',
+        });
+        continue;
+      }
+
+      const endIdx = stdoutLines.indexOf(endLine, beginIdx + 3);
+      if (endIdx === -1) {
+        files.push({
+          filePath,
+          error: 'Failed to parse tool output (missing end marker)',
+        });
+        continue;
+      }
+
+      const exitCodeRaw = exitLine.slice(exitLinePrefix.length).trim();
+      const exitCode = Number.parseInt(exitCodeRaw || '1', 10);
+      const payload = stdoutLines.slice(beginIdx + 3, endIdx).join('\n');
+
+      if (exitCode !== 0) {
+        files.push({
+          filePath,
+          error: payload || 'Failed to read file',
+        });
+        continue;
+      }
+
+      const content = payload;
+      const lineCount = content.split('\n').length;
+      files.push({ filePath, content, lineCount });
+    }
 
     return {
-      output: {
-        content,
-        lineCount,
-      },
+      output: { files },
       messageMetadata,
     };
   }

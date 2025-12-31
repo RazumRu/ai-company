@@ -81,6 +81,10 @@ export const ThreadMessageSchema = z.object({
 // Get threads query parameters
 export const GetThreadsQuerySchema = z.object({
   graphId: z.uuid().describe('Filter by graph ID').optional(),
+  statuses: z
+    .array(z.enum(ThreadStatus))
+    .optional()
+    .describe('Filter by thread statuses'),
   limit: z.coerce
     .number()
     .int()

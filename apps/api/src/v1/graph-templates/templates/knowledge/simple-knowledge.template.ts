@@ -61,7 +61,9 @@ export class SimpleKnowledgeTemplate extends KnowledgeNodeBaseTemplate<
     let knowledgeService: SimpleKnowledge;
 
     return {
-      provide: async (params: GraphNode<SimpleKnowledgeTemplateSchemaType>) => {
+      provide: async (
+        _params: GraphNode<SimpleKnowledgeTemplateSchemaType>,
+      ) => {
         knowledgeService = await this.createNewInstance(
           this.moduleRef,
           SimpleKnowledge,

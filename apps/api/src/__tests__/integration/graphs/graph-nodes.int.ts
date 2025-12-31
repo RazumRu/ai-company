@@ -309,7 +309,6 @@ describe('Graph Nodes Integration Tests', () => {
     { timeout: 120_000 },
     async () => {
       await ensureGraphRunning(basicGraphId);
-      const graph = await graphsService.findById(basicGraphId);
 
       const execution = await graphsService.executeTrigger(
         basicGraphId,

@@ -231,7 +231,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
 
       ### After Finding Matches
       1. Note the file paths and line numbers from results
-      2. Use files_read with startLine/endLine to see surrounding context
+      2. Use files_read with filePaths + startLine/endLine to see surrounding context
       3. Use files_apply_changes to make modifications if needed
 
       ### Error Handling

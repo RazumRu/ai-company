@@ -5,7 +5,6 @@ import { z } from 'zod';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NodeBaseTemplate } from '../../graph-templates/templates/base-node.template';
-import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphSchemaType, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';

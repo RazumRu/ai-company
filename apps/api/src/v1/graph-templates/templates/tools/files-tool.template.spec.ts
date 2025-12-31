@@ -4,42 +4,13 @@ import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FilesToolGroup } from '../../../agent-tools/tools/common/files/files-tool-group';
-import {
-  CompiledGraphNode,
-  GraphNode,
-  GraphNodeInstanceHandle,
-  GraphNodeStatus,
-  NodeKind,
-} from '../../../graphs/graphs.types';
+import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import {
   FilesToolTemplate,
   FilesToolTemplateSchema,
 } from './files-tool.template';
-
-const makeHandle = <TInstance>(
-  instance: TInstance,
-): GraphNodeInstanceHandle<TInstance, any> => ({
-  provide: async () => instance,
-  configure: async () => {},
-  destroy: async () => {},
-});
-
-const buildMockNode = <TInstance = unknown>(options: {
-  id: string;
-  type: NodeKind;
-  template: string;
-  instance: TInstance;
-  config?: unknown;
-  getStatus?: () => GraphNodeStatus;
-}): CompiledGraphNode<TInstance> =>
-  ({
-    ...options,
-    handle: makeHandle(options.instance),
-    config: options.config ?? {},
-    getStatus: options.getStatus || (() => GraphNodeStatus.Idle),
-  }) as unknown as CompiledGraphNode<TInstance>;
 
 describe('FilesToolTemplate', () => {
   let template: FilesToolTemplate;

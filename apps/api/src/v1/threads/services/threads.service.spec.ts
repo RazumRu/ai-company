@@ -206,6 +206,32 @@ describe('ThreadsService', () => {
       });
     });
 
+    it('should pass statuses filter to DAO when provided', async () => {
+      const mockThreads = [
+        createMockThreadEntity({ status: ThreadStatus.Done }),
+      ];
+
+      vi.spyOn(threadsDao, 'getAll').mockResolvedValue(mockThreads);
+
+      const query: GetThreadsQueryDto = {
+        graphId: mockGraphId,
+        statuses: [ThreadStatus.Done],
+        limit: 50,
+        offset: 0,
+      };
+
+      await service.getThreads(query);
+
+      expect(threadsDao.getAll).toHaveBeenCalledWith({
+        createdBy: mockUserId,
+        graphId: mockGraphId,
+        statuses: [ThreadStatus.Done],
+        limit: 50,
+        offset: 0,
+        order: { updatedAt: 'DESC' },
+      });
+    });
+
     it('should return threads across all graphs when graphId is omitted', async () => {
       const mockThreads = [
         createMockThreadEntity(),
