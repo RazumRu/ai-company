@@ -29,10 +29,11 @@ function sanitizeMessageForLlm<T extends BaseMessage>(message: T): T {
 
   // Remove transport/provider metadata. These are useful for logs, but unsafe/unsupported
   // to include in subsequent model calls.
-  if ('response_metadata' in (clone as unknown as Record<string, unknown>)) {
-    delete (clone as unknown as { response_metadata?: unknown })
-      .response_metadata;
-  }
+  //
+  // Note: @langchain/openai's completions converter currently assumes `response_metadata`
+  // exists and is an object. Keep an empty object to avoid runtime crashes while still
+  // stripping provider-specific fields.
+  (clone as unknown as { response_metadata?: unknown }).response_metadata = {};
   if ('usage_metadata' in (clone as unknown as Record<string, unknown>)) {
     delete (clone as unknown as { usage_metadata?: unknown }).usage_metadata;
   }
@@ -105,6 +106,10 @@ export function updateMessageWithMetadata(
 
   const clone = cloneMessage(message);
 
+  // @langchain/openai's completions converter currently assumes response_metadata exists.
+  // Ensure we always have an object here (even for system/human/tool messages).
+  (clone as unknown as { response_metadata?: unknown }).response_metadata = {};
+
   const prev: UnknownRecord = isPlainObject(clone.additional_kwargs as unknown)
     ? (clone.additional_kwargs as UnknownRecord)
     : {};
@@ -163,23 +168,70 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
  * This prevents sending "dangling" tool calls to the LLM (e.g. after trimming context).
  */
 export function cleanMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
-  const toolIds = new Set(
+  const toolResultIds = new Set(
     messages
       .filter((m) => m instanceof ToolMessage)
       .map((m) => (m as ToolMessage).tool_call_id),
   );
 
+  const getToolCallIdsFromAiMessage = (m: AIMessage): string[] => {
+    const ids: string[] = [];
+
+    // LangChain-native (preferred)
+    if (Array.isArray(m.tool_calls)) {
+      for (const tc of m.tool_calls) {
+        if (tc && typeof tc.id === 'string' && tc.id.length > 0) {
+          ids.push(tc.id);
+        }
+      }
+    }
+
+    // OpenAI/LiteLLM transport compatibility: tool_calls can be placed in additional_kwargs
+    const kwToolCalls = (m.additional_kwargs as { tool_calls?: unknown })
+      ?.tool_calls;
+    if (Array.isArray(kwToolCalls)) {
+      for (const tc of kwToolCalls) {
+        const id = (tc as { id?: unknown })?.id;
+        if (typeof id === 'string' && id.length > 0) {
+          ids.push(id);
+        }
+      }
+    }
+
+    return Array.from(new Set(ids));
+  };
+
+  // First pass: decide which tool-calling AI messages are safe to keep.
+  // (All tool calls must have matching tool results present in the same list.)
+  const safeAiToolCallIds = new Set<string>();
+  const keepAiMessage = new WeakSet<AIMessage>();
+
+  for (const m of messages) {
+    if (!(m instanceof AIMessage)) continue;
+
+    const callIds = getToolCallIdsFromAiMessage(m);
+    if (callIds.length === 0) {
+      keepAiMessage.add(m);
+      continue;
+    }
+
+    const allAnswered = callIds.every((id) => toolResultIds.has(id));
+    if (allAnswered) {
+      keepAiMessage.add(m);
+      for (const id of callIds) safeAiToolCallIds.add(id);
+    }
+  }
+
+  // Second pass: filter out dangling tool calls AND dangling tool results.
+  // ToolMessages without a matching tool call must not be sent to the model (invalid chat trace).
   return messages.filter((m) => {
-    if (!(m instanceof AIMessage)) {
-      return true;
+    if (m instanceof AIMessage) {
+      return keepAiMessage.has(m);
     }
-
-    const toolCalls = m.tool_calls;
-    if (!toolCalls?.length) {
-      return true;
+    if (m instanceof ToolMessage) {
+      return safeAiToolCallIds.has(m.tool_call_id);
     }
-
-    return toolCalls.every((tc) => toolIds.has(tc.id ?? ''));
+    return true;
   });
 }
 

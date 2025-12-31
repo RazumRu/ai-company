@@ -2,12 +2,14 @@ import {
   AIMessage,
   HumanMessage,
   SystemMessage,
+  ToolMessage,
 } from '@langchain/core/messages';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import { MockedFunction } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState } from '../../agents.types';
 import { BaseAgentConfigurable } from './base-node';
 import { SummarizeNode } from './summarize-node';
@@ -17,31 +19,31 @@ vi.mock('@langchain/openai');
 describe('SummarizeNode', () => {
   let node: SummarizeNode;
   let mockLlm: ChatOpenAI;
+  const extractTokenUsageFromResponseWithPriceFallbackMock = vi
+    .fn()
+    .mockResolvedValue(null);
+  const countTokensMock = vi.fn().mockResolvedValue(0);
   const mockLitellmService = {
     extractTokenUsageFromResponse: vi.fn().mockReturnValue(null),
-    extractTokenUsageFromResponseWithPriceFallback: vi
-      .fn()
-      .mockResolvedValue(null),
+    extractTokenUsageFromResponseWithPriceFallback:
+      extractTokenUsageFromResponseWithPriceFallbackMock,
     estimateThreadTotalPriceFromModelRates: vi.fn().mockResolvedValue(null),
-  } as unknown as never;
+    countTokens: countTokensMock,
+  } as unknown as LitellmService;
   let mockInvoke: MockedFunction<(messages: unknown[]) => Promise<AIMessage>>;
-  let mockGetNumTokens: MockedFunction<(text: string) => Promise<number>>;
 
   beforeEach(async () => {
     mockInvoke = vi.fn() as MockedFunction<
       (messages: unknown[]) => Promise<AIMessage>
     >;
-    mockGetNumTokens = vi.fn() as MockedFunction<
-      (text: string) => Promise<number>
-    >;
     mockLlm = {
       invoke: mockInvoke,
-      getNumTokens: mockGetNumTokens,
     } as unknown as ChatOpenAI;
 
     node = new SummarizeNode(mockLitellmService, mockLlm, {
       maxTokens: 1000,
       keepTokens: 500,
+      tokenCountModel: 'gpt-5.1',
     });
   });
 
@@ -76,6 +78,7 @@ describe('SummarizeNode', () => {
       const nodeWithZeroMax = new SummarizeNode(mockLitellmService, mockLlm, {
         maxTokens: 0,
         keepTokens: 500,
+        tokenCountModel: 'gpt-5.1',
       });
       const messages = [new HumanMessage('Test')];
       const state = createMockState({ messages });
@@ -84,14 +87,14 @@ describe('SummarizeNode', () => {
 
       // No summarization/changes should be applied at all
       expect(result).toEqual({});
-      expect(mockGetNumTokens).not.toHaveBeenCalled();
+      expect(countTokensMock).not.toHaveBeenCalled();
     });
 
     it('should return messages unchanged if currentContext is not available', async () => {
       const messages = [new HumanMessage('Test')];
-      const state = createMockState({ messages, summary: '' });
+      const state = createMockState({ messages });
 
-      mockGetNumTokens.mockResolvedValue(100);
+      countTokensMock.mockResolvedValue(100);
 
       const result = await node.invoke(state, createMockConfig());
 
@@ -100,28 +103,30 @@ describe('SummarizeNode', () => {
       expect(mockInvoke).not.toHaveBeenCalled();
     });
 
-    it('should add system message when summarization occurs', async () => {
+    it('should update state.summary when summarization occurs (scheme A)', async () => {
       const messages = Array.from(
         { length: 10 },
         (_, i) => new HumanMessage(`Message ${i}`),
       );
       const state = createMockState({
         messages,
-        summary: '',
         currentContext: 2000,
       });
 
-      // Mock token counting - getNumTokens is called on each message content
+      // Mock token counting - countTokens is called on each message content
       // For messages, return high token count per message to exceed maxTokens
       // For summary strings, return string length
-      mockGetNumTokens.mockImplementation(async (text: string) => {
-        // Check if this is a message content (starts with "Message")
-        if (typeof text === 'string' && text.startsWith('Message')) {
-          return 200; // High token count per message
-        }
-        // For summary or other strings
-        return text.length;
-      });
+      countTokensMock.mockImplementation(
+        async (_model: string, text: unknown) => {
+          const s = String(text ?? '');
+          // Check if this is a message content (starts with "Message")
+          if (s.startsWith('Message')) {
+            return 200; // High token count per message
+          }
+          // For summary or other strings
+          return s.length;
+        },
+      );
 
       // Mock the fold operation to return a new summary
       const newSummary = 'Summarized conversation';
@@ -129,106 +134,90 @@ describe('SummarizeNode', () => {
 
       const result = await node.invoke(state, createMockConfig());
 
-      expect(result.summary).toBe(newSummary);
       expect(result.messages?.items).toBeDefined();
       const returnedMessages = result.messages?.items || [];
 
-      // Check that a system message was added indicating summarization
-      const systemMessages = returnedMessages.filter(
-        (m) => m instanceof SystemMessage,
-      );
-      expect(systemMessages.length).toBeGreaterThan(0);
-      const summarySystemMessage = systemMessages.find((m) =>
-        m.content.toString().includes('Summary updated'),
-      );
-      expect(summarySystemMessage).toBeDefined();
-      expect(summarySystemMessage?.content).toContain(
-        'Previous messages have been summarized',
+      expect(
+        returnedMessages.some(
+          (m) =>
+            typeof m.content === 'string' &&
+            String(m.content).startsWith('Conversation summary:\n'),
+        ),
+      ).toBe(false);
+      expect(result.summary).toBe(newSummary);
+      expect(countTokensMock).toHaveBeenCalledWith(
+        'gpt-5.1',
+        expect.anything(),
       );
     });
 
-    it('should mark summary message with hideForLlm flag', async () => {
+    it('should store summary in state.summary without adding a summary message (scheme A)', async () => {
       const messages = Array.from(
         { length: 10 },
         (_, i) => new HumanMessage(`Message ${i}`),
       );
       const state = createMockState({
         messages,
-        summary: '',
         currentContext: 2000,
       });
 
-      mockGetNumTokens.mockImplementation(async (text: string) => {
-        if (typeof text === 'string' && text.startsWith('Message')) {
-          return 200;
-        }
-        return text.length;
-      });
+      countTokensMock.mockImplementation(
+        async (_model: string, text: unknown) => {
+          const s = String(text ?? '');
+          if (s.startsWith('Message')) {
+            return 200;
+          }
+          return s.length;
+        },
+      );
 
       const newSummary = 'Summarized conversation';
       mockInvoke.mockResolvedValue(new AIMessage(newSummary));
 
       const result = await node.invoke(state, createMockConfig());
 
-      expect(result.messages?.items).toBeDefined();
-      const returnedMessages = result.messages?.items || [];
-
-      const summarySystemMessage = returnedMessages.find(
-        (m) =>
-          m instanceof SystemMessage &&
-          m.content.toString().includes('Summary updated'),
-      );
-      expect(summarySystemMessage).toBeDefined();
-      expect(summarySystemMessage?.additional_kwargs?.hideForLlm).toBe(true);
+      expect(result.summary).toBe(newSummary);
     });
 
-    it('should not add system message when summary does not change', async () => {
-      const existingSummary = 'Existing summary';
+    it('should not include a summary message when fold returns empty summary', async () => {
       const messages = [new HumanMessage('Test')];
       const state = createMockState({
         messages,
-        summary: existingSummary,
-        currentContext: 0,
+        currentContext: 2000,
       });
 
-      // Mock token counting to be under maxTokens
-      // Total = messages tokens + summary tokens should be <= maxTokens
-      mockGetNumTokens.mockImplementation(async (text: string | unknown[]) => {
-        if (typeof text === 'string') {
-          return text.length; // Summary length
-        }
-        return 10; // Messages tokens - small to stay under maxTokens
-      });
+      mockInvoke.mockResolvedValue(new AIMessage(''));
 
       const result = await node.invoke(state, createMockConfig());
 
-      // When under maxTokens, summary is not returned in the change
-      // The summary should remain unchanged in the state
-      expect(result.summary).toBeUndefined(); // Summary not changed, so not in result
       const returnedMessages = result.messages?.items || [];
-      const summarySystemMessages = returnedMessages.filter(
-        (m) =>
-          m instanceof SystemMessage &&
-          m.content.toString().includes('Summary updated'),
-      );
-      expect(summarySystemMessages.length).toBe(0);
+      expect(
+        returnedMessages.some(
+          (m) =>
+            typeof m.content === 'string' &&
+            String(m.content).startsWith('Conversation summary:\n'),
+        ),
+      ).toBe(false);
+      expect(result.summary).toBe('');
     });
 
-    it('should not add system message when summary is empty', async () => {
+    it('should not include summary message when fold returns empty summary (older messages exist)', async () => {
       const messages = [new HumanMessage('Test message with enough tokens')];
       const state = createMockState({
         messages,
-        summary: '',
         currentContext: 2000,
       });
 
       // Mock token counting to exceed maxTokens
-      mockGetNumTokens.mockImplementation(async (text: string) => {
-        if (typeof text === 'string' && text.includes('Test message')) {
-          return 2000; // High token count to exceed maxTokens
-        }
-        return text.length;
-      });
+      countTokensMock.mockImplementation(
+        async (_model: string, text: unknown) => {
+          const s = String(text ?? '');
+          if (s.includes('Test message')) {
+            return 2000; // High token count to exceed maxTokens
+          }
+          return s.length;
+        },
+      );
 
       // Mock fold to return empty summary (simulating no older messages scenario)
       // But actually, if there are older messages, fold will be called
@@ -238,13 +227,14 @@ describe('SummarizeNode', () => {
       const result = await node.invoke(state, createMockConfig());
 
       const returnedMessages = result.messages?.items || [];
-      const summarySystemMessages = returnedMessages.filter(
-        (m) =>
-          m instanceof SystemMessage &&
-          m.content.toString().includes('Summary updated'),
-      );
-      // Summary is empty, so no system message should be added
-      expect(summarySystemMessages.length).toBe(0);
+      expect(
+        returnedMessages.some(
+          (m) =>
+            typeof m.content === 'string' &&
+            String(m.content).startsWith('Conversation summary:\n'),
+        ),
+      ).toBe(false);
+      expect(result.summary).toBe('');
     });
 
     it('should trigger summarization based on currentContext (from LLM usage)', async () => {
@@ -254,6 +244,7 @@ describe('SummarizeNode', () => {
         {
           maxTokens: 1000,
           keepTokens: 0,
+          tokenCountModel: 'gpt-5.1',
         },
       );
       const messages = [
@@ -263,7 +254,6 @@ describe('SummarizeNode', () => {
       ];
       const state = createMockState({
         messages,
-        summary: '',
         currentContext: 1500,
       });
 
@@ -274,14 +264,16 @@ describe('SummarizeNode', () => {
         createMockConfig(),
       );
 
-      expect(result.summary).toBe('Summary');
       expect(mockInvoke).toHaveBeenCalled();
+      expect(result.messages?.mode).toBe('replace');
+      expect(result.summary).toBe('Summary');
     });
 
     it('should handle keepTokens = 0 by keeping only last message', async () => {
       const nodeWithZeroKeep = new SummarizeNode(mockLitellmService, mockLlm, {
         maxTokens: 1000,
         keepTokens: 0,
+        tokenCountModel: 'gpt-5.1',
       });
 
       const messages = [
@@ -291,23 +283,26 @@ describe('SummarizeNode', () => {
       ];
       const state = createMockState({
         messages,
-        summary: '',
         currentContext: 2000,
       });
 
-      mockGetNumTokens.mockImplementation(async (text: string) => {
-        if (typeof text === 'string' && text.startsWith('Message')) {
-          return 500; // High token count per message to exceed maxTokens
-        }
-        return text.length;
-      });
+      countTokensMock.mockImplementation(
+        async (_model: string, text: unknown) => {
+          const s = String(text ?? '');
+          if (s.startsWith('Message')) {
+            return 500; // High token count per message to exceed maxTokens
+          }
+          return s.length;
+        },
+      );
 
       mockInvoke.mockResolvedValue(new AIMessage('Summary'));
 
       const result = await nodeWithZeroKeep.invoke(state, createMockConfig());
 
-      expect(result.summary).toBe('Summary');
       expect(mockInvoke).toHaveBeenCalled();
+      const returnedMessages = result.messages?.items || [];
+      expect(returnedMessages.at(-1)?.content).toBe('Message 3');
     });
 
     it('should use custom systemNote when provided', async () => {
@@ -319,6 +314,7 @@ describe('SummarizeNode', () => {
           maxTokens: 1000,
           keepTokens: 500,
           systemNote: customSystemNote,
+          tokenCountModel: 'gpt-5.1',
         },
       );
 
@@ -328,16 +324,18 @@ describe('SummarizeNode', () => {
       );
       const state = createMockState({
         messages,
-        summary: '',
         currentContext: 2000,
       });
 
-      mockGetNumTokens.mockImplementation(async (text: string) => {
-        if (typeof text === 'string' && text.startsWith('Message')) {
-          return 200; // High token count per message to exceed maxTokens
-        }
-        return text.length;
-      });
+      countTokensMock.mockImplementation(
+        async (_model: string, text: unknown) => {
+          const s = String(text ?? '');
+          if (s.startsWith('Message')) {
+            return 200; // High token count per message to exceed maxTokens
+          }
+          return s.length;
+        },
+      );
 
       mockInvoke.mockResolvedValue(new AIMessage('Summary'));
 
@@ -349,6 +347,365 @@ describe('SummarizeNode', () => {
       const firstCall = invokeCalls[0]?.[0] as SystemMessage[];
       const systemMessage = firstCall?.find((m) => m instanceof SystemMessage);
       expect(systemMessage?.content).toBe(customSystemNote);
+    });
+
+    it('should never fold system prompts, and should use state.summary for delta-folding', async () => {
+      const state = createMockState({
+        summary: 'Older summary',
+        messages: [
+          new SystemMessage('Pinned system'),
+          new HumanMessage('Old human 1'),
+          new HumanMessage('Old human 2'),
+          new HumanMessage('Tail human'),
+        ],
+        currentContext: 2000,
+      });
+
+      // Force tail to be only the last human message so older includes the two "Old human" messages.
+      const nodeWithSmallKeep = new SummarizeNode(mockLitellmService, mockLlm, {
+        maxTokens: 1000,
+        keepTokens: 1,
+        tokenCountModel: 'gpt-5.1',
+      });
+      countTokensMock.mockResolvedValue(1);
+      mockInvoke.mockResolvedValue(new AIMessage('Updated summary'));
+
+      await nodeWithSmallKeep.invoke(state, createMockConfig());
+
+      const invokeCalls = mockInvoke.mock.calls;
+      expect(invokeCalls.length).toBeGreaterThan(0);
+      const callMessages = invokeCalls[0]?.[0] as unknown[];
+      const human = callMessages.find((m) => m instanceof HumanMessage) as
+        | HumanMessage
+        | undefined;
+      expect(human).toBeDefined();
+      // The previous summary should be passed as TEXT in the prompt, not as a message
+      expect(String(human?.content)).toContain(
+        'Previous summary:\nOlder summary',
+      );
+      // The older messages should be folded in
+      expect(String(human?.content)).toContain('HUMAN: Old human 1');
+      expect(String(human?.content)).toContain('HUMAN: Old human 2');
+    });
+
+    it('should skip summarization when pending tool calls exist', async () => {
+      const aiMsgWithToolCall = new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_123',
+            name: 'test_tool',
+            args: { arg: 'value' },
+            type: 'tool_call',
+          },
+        ],
+      });
+
+      const state = createMockState({
+        messages: [
+          new HumanMessage('Test'),
+          aiMsgWithToolCall,
+          // No ToolMessage yet - pending!
+        ],
+        currentContext: 2000,
+      });
+
+      const result = await node.invoke(state, createMockConfig());
+
+      // Should not summarize - pending tool call
+      expect(result).toEqual({});
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it('should allow summarization when all tool calls have results', async () => {
+      const aiMsgWithToolCall = new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_123',
+            name: 'test_tool',
+            args: { arg: 'value' },
+            type: 'tool_call',
+          },
+        ],
+      });
+
+      const toolResult = new ToolMessage({
+        content: 'Tool result',
+        tool_call_id: 'call_123',
+      });
+
+      const state = createMockState({
+        messages: [
+          new HumanMessage('Test message 1'),
+          new HumanMessage('Test message 2'),
+          new HumanMessage('Test message 3'),
+          aiMsgWithToolCall,
+          toolResult,
+          new HumanMessage('Another message'),
+        ],
+        currentContext: 2000,
+      });
+
+      // Mock token counting to trigger summarization
+      countTokensMock.mockImplementation(
+        async (_model: string, text: unknown) => {
+          const s = String(text ?? '');
+          if (s.includes('Test message')) {
+            return 500; // High token count to exceed maxTokens
+          }
+          return 50;
+        },
+      );
+      mockInvoke.mockResolvedValue(new AIMessage('Summary'));
+
+      const result = await node.invoke(state, createMockConfig());
+
+      // Should summarize - all tool calls have results
+      expect(mockInvoke).toHaveBeenCalled();
+      expect(result.messages).toBeDefined();
+    });
+
+    it('should preserve tool-call atomicity when trimming', async () => {
+      const aiMsgWithToolCall = new AIMessage({
+        content: 'Calling tool',
+        tool_calls: [
+          {
+            id: 'call_456',
+            name: 'test_tool',
+            args: { arg: 'value' },
+            type: 'tool_call',
+          },
+        ],
+      });
+
+      const toolResult = new ToolMessage({
+        content: 'Tool result',
+        tool_call_id: 'call_456',
+      });
+
+      const state = createMockState({
+        messages: [
+          new HumanMessage('Old message 1'),
+          new HumanMessage('Old message 2'),
+          aiMsgWithToolCall,
+          toolResult,
+          new HumanMessage('Recent message'),
+        ],
+        currentContext: 2000,
+      });
+
+      // Set up token counting to force trimming
+      countTokensMock.mockImplementation(
+        async (_model: string, text: unknown) => {
+          const s = String(text ?? '');
+          if (s.includes('Old message')) {
+            return 500;
+          }
+          return 50;
+        },
+      );
+
+      mockInvoke.mockResolvedValue(new AIMessage('Summary'));
+
+      const result = await node.invoke(state, createMockConfig());
+
+      const returnedMessages = result.messages?.items || [];
+
+      // If the AI message with tool call is in the result, its tool result must also be present
+      const hasAiMsg = returnedMessages.some(
+        (m) => m instanceof AIMessage && m.content === 'Calling tool',
+      );
+      const hasToolResult = returnedMessages.some(
+        (m) => m instanceof ToolMessage && m.tool_call_id === 'call_456',
+      );
+
+      if (hasAiMsg) {
+        expect(hasToolResult).toBe(true);
+      }
+    });
+
+    it('should keep a full tool-roundtrip block when keepTokens = 0 and tool result is the last message', async () => {
+      const nodeWithZeroKeep = new SummarizeNode(mockLitellmService, mockLlm, {
+        maxTokens: 1000,
+        keepTokens: 0,
+        tokenCountModel: 'gpt-5.1',
+      });
+
+      const aiMsgWithToolCall = new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_keep0',
+            name: 'test_tool',
+            args: { arg: 'value' },
+            type: 'tool_call',
+          },
+        ],
+      });
+
+      const toolResult = new ToolMessage({
+        content: 'Tool result',
+        tool_call_id: 'call_keep0',
+      });
+
+      const state = createMockState({
+        messages: [
+          new HumanMessage('Old message'),
+          aiMsgWithToolCall,
+          toolResult,
+        ],
+        currentContext: 2000,
+      });
+
+      mockInvoke.mockResolvedValue(new AIMessage('Summary'));
+      countTokensMock.mockResolvedValue(1);
+
+      const result = await nodeWithZeroKeep.invoke(state, createMockConfig());
+
+      const returnedMessages = result.messages?.items || [];
+      expect(returnedMessages.some((m) => m instanceof ToolMessage)).toBe(true);
+      expect(
+        returnedMessages.some(
+          (m) => m instanceof ToolMessage && m.tool_call_id === 'call_keep0',
+        ),
+      ).toBe(true);
+      expect(
+        returnedMessages.some(
+          (m) =>
+            m instanceof AIMessage &&
+            Array.isArray(m.tool_calls) &&
+            m.tool_calls.some((tc) => tc.id === 'call_keep0'),
+        ),
+      ).toBe(true);
+    });
+
+    it('should handle multiple tool calls in a single AI message', async () => {
+      const aiMsgWithMultipleToolCalls = new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_1',
+            name: 'tool_1',
+            args: {},
+            type: 'tool_call',
+          },
+          {
+            id: 'call_2',
+            name: 'tool_2',
+            args: {},
+            type: 'tool_call',
+          },
+        ],
+      });
+
+      const toolResult1 = new ToolMessage({
+        content: 'Result 1',
+        tool_call_id: 'call_1',
+      });
+
+      // Missing call_2 result - pending!
+      const state = createMockState({
+        messages: [
+          new HumanMessage('Test'),
+          aiMsgWithMultipleToolCalls,
+          toolResult1,
+        ],
+        currentContext: 2000,
+      });
+
+      const result = await node.invoke(state, createMockConfig());
+
+      // Should not summarize - one tool call is still pending
+      expect(result).toEqual({});
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it('should detect pending tool calls in additional_kwargs.tool_calls', async () => {
+      const aiMsgWithToolCallInKwargs = new AIMessage({
+        content: '',
+        additional_kwargs: {
+          tool_calls: [
+            {
+              id: 'call_456',
+              type: 'function',
+              function: { name: 'test_tool', arguments: '{}' },
+            },
+          ],
+        },
+      });
+
+      const state = createMockState({
+        messages: [new HumanMessage('Test'), aiMsgWithToolCallInKwargs],
+        currentContext: 2000,
+      });
+
+      const result = await node.invoke(state, createMockConfig());
+
+      // Should not summarize - pending tool call in additional_kwargs
+      expect(result).toEqual({});
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it('should return token usage deltas for accumulation (not reset existing stats)', async () => {
+      const messages = Array.from(
+        { length: 10 },
+        (_, i) => new HumanMessage(`Message ${i}`),
+      );
+      const state = createMockState({
+        messages,
+        currentContext: 2000,
+        // Existing accumulated usage in state - these should NOT be reset
+        inputTokens: 1000,
+        cachedInputTokens: 500,
+        outputTokens: 300,
+        reasoningTokens: 50,
+        totalTokens: 1350,
+        totalPrice: 0.05,
+      });
+
+      // Mock token counting to trigger summarization
+      countTokensMock.mockImplementation(
+        async (_model: string, text: unknown) => {
+          const s = String(text ?? '');
+          if (s.startsWith('Message')) {
+            return 200; // High token count to exceed maxTokens
+          }
+          return 50;
+        },
+      );
+
+      // Mock the summarization call to return usage
+      const mockUsage = {
+        inputTokens: 100,
+        cachedInputTokens: 20,
+        outputTokens: 30,
+        reasoningTokens: 10,
+        totalTokens: 140,
+        totalPrice: 0.002,
+      };
+
+      mockInvoke.mockResolvedValue(new AIMessage('Summary'));
+      extractTokenUsageFromResponseWithPriceFallbackMock.mockResolvedValue(
+        mockUsage,
+      );
+
+      const result = await node.invoke(state, createMockConfig());
+
+      // Verify that we return the DELTA (usage from the summarization call),
+      // NOT the total. The state reducer will add this to existing values.
+      expect(result.inputTokens).toBe(100); // Delta, not 1100
+      expect(result.cachedInputTokens).toBe(20); // Delta, not 520
+      expect(result.outputTokens).toBe(30); // Delta, not 330
+      expect(result.reasoningTokens).toBe(10); // Delta, not 60
+      expect(result.totalTokens).toBe(140); // Delta, not 1490
+      expect(result.totalPrice).toBe(0.002); // Delta, not 0.052
+
+      // Note: The actual accumulation happens in the LangGraph state reducer,
+      // which uses: reducer: (left, right) => left + (right ?? 0)
+      // So when LangGraph processes this return value, it will do:
+      // newInputTokens = 1000 + 100 = 1100
+      // newOutputTokens = 300 + 30 = 330, etc.
     });
   });
 });

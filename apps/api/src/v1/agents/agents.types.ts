@@ -7,6 +7,10 @@ export type BaseAgentStateMessagesUpdateValue = {
 
 export interface BaseAgentState {
   messages: BaseMessage[];
+  /**
+   * Running conversation summary (memory).
+   * Important: this is state only; it must not be stored as a synthetic message in `messages`.
+   */
   summary: string;
   /**
    * Per-tool metadata/state, keyed by tool name.

@@ -58,8 +58,8 @@ describe('ToolExecutorNode', () => {
     beforeEach(() => {
       mockState = {
         messages: [],
-        toolUsageGuardActivated: false,
         summary: '',
+        toolUsageGuardActivated: false,
         toolsMetadata: {},
         toolUsageGuardActivatedCount: 0,
         inputTokens: 0,

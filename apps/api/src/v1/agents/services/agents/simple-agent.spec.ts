@@ -1,8 +1,4 @@
-import {
-  type AIMessageChunk,
-  HumanMessage,
-  SystemMessage,
-} from '@langchain/core/messages';
+import { type AIMessageChunk, HumanMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { ChatOpenAI } from '@langchain/openai';
@@ -398,7 +394,7 @@ describe('SimpleAgent', () => {
       });
     });
 
-    it('should emit summary system message even when summarize replace shrinks history', async () => {
+    it('should not emit synthetic summary messages when summarize replace shrinks history (scheme A)', async () => {
       const emitSpy = vi.spyOn(agent as any, 'emit');
 
       const m1 = new HumanMessage('m1');
@@ -407,14 +403,6 @@ describe('SimpleAgent', () => {
       for (const m of [m1, m2, m3]) {
         (m as any).additional_kwargs = { run_id: 'run-1' };
       }
-
-      const summaryMsg = new SystemMessage(
-        'Summary updated: Previous messages have been summarized to manage context length.',
-      );
-      (summaryMsg as any).additional_kwargs = {
-        run_id: 'run-1',
-        hideForLlm: true,
-      };
 
       async function* mockStream() {
         yield [
@@ -430,16 +418,15 @@ describe('SimpleAgent', () => {
         ] as const;
 
         // Shrink history via replace: old length is 3, new length is 2.
-        // This used to drop the new summary message because `slice(beforeLen)` becomes empty.
+        // Scheme A: summarization never inserts a summary message into history.
         yield [
           'updates',
           {
             summarize: {
               messages: {
                 mode: 'replace',
-                items: [summaryMsg, m3],
+                items: [m3],
               },
-              summary: 'S',
             },
           },
         ] as const;
@@ -477,14 +464,14 @@ describe('SimpleAgent', () => {
             e?.type === 'message',
         );
 
-      const hasSummarySystemMessage = messageEvents.some((e) =>
+      const hasSyntheticSummaryMessage = messageEvents.some((e) =>
         e.data.messages.some(
           (m) =>
-            m instanceof SystemMessage &&
-            String((m as any).content).includes('Summary updated'),
+            typeof (m as any)?.content === 'string' &&
+            (m as any).content.startsWith('Conversation summary:\n'),
         ),
       );
-      expect(hasSummarySystemMessage).toBe(true);
+      expect(hasSyntheticSummaryMessage).toBe(false);
     });
 
     it('should handle custom runnable config', async () => {

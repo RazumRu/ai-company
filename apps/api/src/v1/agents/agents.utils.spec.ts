@@ -141,6 +141,50 @@ describe('agents.utils', () => {
       expect(cleaned).toHaveLength(2);
     });
 
+    it('should remove ToolMessages that do not have a matching tool call', () => {
+      const msgs = [
+        new HumanMessage('hi'),
+        new ToolMessage({
+          tool_call_id: 'call-orphan',
+          name: 'tool',
+          content: 'orphan result',
+        }),
+      ];
+
+      const cleaned = cleanMessagesForLlm(msgs);
+      expect(cleaned).toHaveLength(1);
+      expect(cleaned[0]).toBeInstanceOf(HumanMessage);
+    });
+
+    it('should consider tool calls in additional_kwargs.tool_calls for cleaning', () => {
+      const toolCallId = 'call-kw';
+      const aiWithKwToolCall = new AIMessage({
+        content: '',
+        additional_kwargs: {
+          tool_calls: [
+            {
+              id: toolCallId,
+              type: 'function',
+              function: { name: 'tool', arguments: '{}' },
+            },
+          ],
+        },
+      });
+
+      const cleaned1 = cleanMessagesForLlm([aiWithKwToolCall]);
+      expect(cleaned1).toHaveLength(0);
+
+      const cleaned2 = cleanMessagesForLlm([
+        aiWithKwToolCall,
+        new ToolMessage({
+          tool_call_id: toolCallId,
+          name: 'tool',
+          content: 'ok',
+        }),
+      ]);
+      expect(cleaned2).toHaveLength(2);
+    });
+
     it('should keep non-tool-calling AI messages unchanged', () => {
       const msgs = [new AIMessage('hello'), new HumanMessage('hi')];
       const cleaned = cleanMessagesForLlm(msgs);
@@ -185,7 +229,7 @@ describe('agents.utils', () => {
       expect(prepared).toHaveLength(1);
       const out = prepared[0] as AIMessage;
       expect((out as any).id).toBeUndefined();
-      expect((out as any).response_metadata).toBeUndefined();
+      expect((out as any).response_metadata).toEqual({});
       expect((out as any).usage_metadata).toBeUndefined();
       expect(out.additional_kwargs).toEqual({});
       expect(out.content).toBe('Hello\nWorld');

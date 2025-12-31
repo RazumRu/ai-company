@@ -168,7 +168,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         default: () => [],
       }),
       summary: Annotation<string, string>({
-        reducer: (left, right) => right ?? left,
+        reducer: (left, right) => (right !== undefined ? right : left),
         default: () => '',
       }),
       toolsMetadata: Annotation<
@@ -265,6 +265,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         {
           maxTokens: config.summarizeMaxTokens,
           keepTokens: config.summarizeKeepTokens,
+          tokenCountModel: config.invokeModelName,
         },
         this.logger,
       );
@@ -602,10 +603,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     // Build state change object with only changed fields
     const stateChange: Partial<BaseAgentState> = {};
-
-    if (prevState.summary !== nextState.summary) {
-      stateChange.summary = nextState.summary;
-    }
 
     if (prevState.toolsMetadata !== nextState.toolsMetadata) {
       stateChange.toolsMetadata = nextState.toolsMetadata;
