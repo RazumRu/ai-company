@@ -165,7 +165,7 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     return z.toJSONSchema(FilesReadToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   protected createMarker(): string {

@@ -156,7 +156,7 @@ export class FilesListTool extends FilesBaseTool<FilesListToolSchemaType> {
     return z.toJSONSchema(FilesListToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public async invoke(

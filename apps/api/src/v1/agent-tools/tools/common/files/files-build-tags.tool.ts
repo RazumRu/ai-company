@@ -140,7 +140,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
     return z.toJSONSchema(FilesBuildTagsToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public async invoke(

@@ -167,7 +167,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     return z.toJSONSchema(ShellToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public async invoke(

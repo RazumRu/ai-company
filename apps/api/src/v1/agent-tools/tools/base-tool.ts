@@ -5,7 +5,6 @@ import {
 } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import Ajv from 'ajv';
-import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 import {
@@ -13,7 +12,11 @@ import {
   getSchemaParameterDocs,
 } from '../agent-tools.utils';
 
-export type JSONSchema = ReturnType<typeof z.toJSONSchema>;
+// NOTE: Zod v4's `z.toJSONSchema` is overloaded (schema vs registry), so
+// `ReturnType<typeof z.toJSONSchema>` resolves to the registry overload.
+// We only use the *schema* overload and pass the produced JSON schema to Ajv,
+// so we keep this type as a generic "JSON schema-like object".
+export type JSONSchema = Record<string, unknown>;
 
 export type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
   description?: string;

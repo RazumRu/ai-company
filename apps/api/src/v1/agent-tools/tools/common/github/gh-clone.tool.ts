@@ -141,7 +141,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     return z.toJSONSchema(GhCloneToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public async invoke(

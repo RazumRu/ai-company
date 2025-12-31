@@ -194,7 +194,7 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
     return z.toJSONSchema(FinishToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public invoke(

@@ -162,7 +162,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     return z.toJSONSchema(GhPushToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   private buildCommand(cmd: string, path?: string): string {

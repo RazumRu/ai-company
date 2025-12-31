@@ -128,7 +128,7 @@ export class FilesSearchFilesTool extends FilesBaseTool<FilesSearchFilesToolSche
     return z.toJSONSchema(FilesSearchFilesToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public async invoke(

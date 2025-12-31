@@ -2,13 +2,15 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { BadRequestException } from '@packages/common';
 import { isPlainObject } from 'lodash';
 import type { UnknownRecord } from 'type-fest';
-import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../agents/services/nodes/base-node';
 import { RuntimeExecParams } from '../runtime/runtime.types';
 import { BaseRuntime } from '../runtime/services/base-runtime';
 
-type JSONSchema = ReturnType<typeof z.toJSONSchema>;
+// NOTE: Zod v4's `z.toJSONSchema` is overloaded (schema vs registry), so
+// `ReturnType<typeof z.toJSONSchema>` resolves to the registry overload.
+// Here we only pass around "JSON schema-like" objects.
+type JSONSchema = Record<string, unknown>;
 type UnknownObject = UnknownRecord;
 
 export const execRuntimeWithContext = async (

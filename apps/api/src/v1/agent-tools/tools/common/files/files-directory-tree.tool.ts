@@ -158,7 +158,7 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
     return z.toJSONSchema(FilesDirectoryTreeToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public async invoke(

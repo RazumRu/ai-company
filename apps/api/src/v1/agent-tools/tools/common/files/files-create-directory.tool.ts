@@ -83,7 +83,7 @@ export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectory
     return z.toJSONSchema(FilesCreateDirectoryToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public async invoke(

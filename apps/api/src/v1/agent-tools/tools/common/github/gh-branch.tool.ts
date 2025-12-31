@@ -137,7 +137,7 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
     return z.toJSONSchema(GhBranchToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   /**

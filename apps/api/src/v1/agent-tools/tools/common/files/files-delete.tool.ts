@@ -83,7 +83,7 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
     return z.toJSONSchema(FilesDeleteToolSchema, {
       target: 'draft-7',
       reused: 'ref',
-    }) as ReturnType<typeof z.toJSONSchema>;
+    });
   }
 
   public async invoke(
