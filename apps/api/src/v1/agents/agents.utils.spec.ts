@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildReasoningMessage,
   cleanMessagesForLlm,
+  convertChunkToMessage,
   extractTextFromResponseContent,
   filterMessagesForLlm,
   markMessageHideForLlm,
@@ -357,6 +358,44 @@ describe('agents.utils', () => {
       expect(msg.id).toBe('reasoning:parent-123');
       expect(msg.additional_kwargs?.hideForLlm).toBe(true);
       expect(msg.additional_kwargs?.reasoningId).toBe('reasoning:parent-123');
+    });
+  });
+
+  describe('convertChunkToMessage', () => {
+    it('should extract tool calls from additional_kwargs.tool_calls (OpenAI shape)', () => {
+      const chunk = {
+        id: 'run-1',
+        name: undefined,
+        content: '',
+        contentBlocks: [],
+        response_metadata: {},
+        tool_calls: [],
+        invalid_tool_calls: [],
+        usage_metadata: undefined,
+        additional_kwargs: {
+          tool_calls: [
+            {
+              id: 'call_123',
+              type: 'function',
+              function: {
+                name: 'finish',
+                arguments: '{"purpose":"x","message":"y","needsMoreInfo":true}',
+              },
+              index: 0,
+            },
+          ],
+        },
+      } as any;
+
+      const msg = convertChunkToMessage(chunk);
+      const toolCalls = msg.tool_calls ?? [];
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0]?.name).toBe('finish');
+      expect(toolCalls[0]?.args).toEqual({
+        purpose: 'x',
+        message: 'y',
+        needsMoreInfo: true,
+      });
     });
   });
 });

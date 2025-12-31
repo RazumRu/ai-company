@@ -2,6 +2,7 @@ import { AIMessage, SystemMessage } from '@langchain/core/messages';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { DefaultLogger } from '@packages/common';
 
+import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
@@ -28,7 +29,7 @@ export class ToolUsageGuardNode extends BaseNode<
     cfg: LangGraphRunnableConfig<BaseAgentConfigurable>,
   ): Promise<BaseAgentStateChange> {
     if (!this.g.getRestrictOutput()) {
-      return {};
+      return { toolUsageGuardActivated: false };
     }
 
     const last = state.messages[state.messages.length - 1];
@@ -36,7 +37,7 @@ export class ToolUsageGuardNode extends BaseNode<
     const hasToolCalls = (lastAI?.tool_calls?.length || 0) > 0;
 
     if (hasToolCalls) {
-      return {};
+      return { toolUsageGuardActivated: false };
     }
 
     const max = this.g.getRestrictionMaxInjections();
@@ -44,7 +45,27 @@ export class ToolUsageGuardNode extends BaseNode<
     const canInject = max === 0 || injectedSoFar < max;
 
     if (!canInject) {
-      return {};
+      this.logger?.warn(
+        `Tool usage guard reached max injections (${max}); allowing graph to end without a tool call.`,
+      );
+      const terminalMsg = new SystemMessage({
+        content:
+          'Tool usage guard reached the maximum number of retries. The model returned an empty response without any tool calls, so this run is being ended to avoid an infinite loop. Please retry, or verify your model/provider supports tool calling for this configuration.',
+      });
+
+      return {
+        messages: {
+          mode: 'append',
+          items: updateMessagesListWithMetadata([terminalMsg], cfg),
+        },
+        toolsMetadata: FinishTool.setState({
+          done: false,
+          needsMoreInfo: true,
+        }),
+        toolUsageGuardActivated: false,
+        // Keep the count as-is so the state reflects we hit the cap.
+        toolUsageGuardActivatedCount: injectedSoFar,
+      };
     }
 
     const restrictionMessage = this.g.getRestrictionMessage();

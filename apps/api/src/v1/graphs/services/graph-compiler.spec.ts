@@ -122,6 +122,10 @@ describe('GraphCompiler', () => {
         {
           provide: GraphRegistry,
           useValue: {
+            getOrCompile: vi.fn(
+              async (_graphId: string, factory: () => Promise<unknown>) =>
+                factory(),
+            ),
             register: vi.fn(),
             unregister: vi.fn(),
             setStatus: vi.fn(),

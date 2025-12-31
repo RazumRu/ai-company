@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
 import { DataSource, In } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { GraphCheckpointWritesEntity } from '../entity/graph-chekpoints-writes.entity';
 
@@ -29,6 +30,35 @@ export class GraphCheckpointsWritesDao extends BaseDao<
 
   constructor(dataSource: DataSource) {
     super(dataSource);
+  }
+
+  async upsertWriteByKey(
+    data: Pick<
+      GraphCheckpointWritesEntity,
+      | 'threadId'
+      | 'checkpointNs'
+      | 'checkpointId'
+      | 'taskId'
+      | 'idx'
+      | 'channel'
+      | 'type'
+      | 'value'
+    >,
+  ): Promise<void> {
+    await this.getQueryBuilder()
+      .insert()
+      .values(data as QueryDeepPartialEntity<GraphCheckpointWritesEntity>)
+      .orUpdate({
+        conflict_target: [
+          'threadId',
+          'checkpointNs',
+          'checkpointId',
+          'taskId',
+          'idx',
+        ],
+        overwrite: ['channel', 'type', 'value'],
+      })
+      .execute();
   }
 
   protected applySearchParams(
@@ -65,7 +95,7 @@ export class GraphCheckpointsWritesDao extends BaseDao<
       });
     }
 
-    if (params?.idx) {
+    if (typeof params?.idx === 'number') {
       builder.andWhere({
         idx: params.idx,
       });

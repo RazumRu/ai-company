@@ -101,6 +101,56 @@ describe('GraphRegistry', () => {
     });
   });
 
+  describe('getOrCompile', () => {
+    it('should de-duplicate concurrent compiles for same graphId', async () => {
+      const graphId = 'compile-graph';
+      const compiledGraph = createMockCompiledGraph(2, GraphStatus.Compiling);
+
+      const factory = vi.fn(async () => {
+        // simulate some async work before registration happens
+        await Promise.resolve();
+        registry.register(graphId, compiledGraph);
+        registry.setStatus(graphId, GraphStatus.Running);
+        return compiledGraph;
+      });
+
+      const [a, b] = await Promise.all([
+        registry.getOrCompile(graphId, factory),
+        registry.getOrCompile(graphId, factory),
+      ]);
+
+      expect(factory).toHaveBeenCalledTimes(1);
+      expect(a).toBe(compiledGraph);
+      expect(b).toBe(compiledGraph);
+    });
+
+    it('should return already registered graph when status is Running', async () => {
+      const graphId = 'already-running-graph';
+      const compiledGraph = createMockCompiledGraph(2, GraphStatus.Running);
+
+      registry.register(graphId, compiledGraph);
+
+      const factory = vi.fn(async () => createMockCompiledGraph(1));
+      const result = await registry.getOrCompile(graphId, factory);
+
+      expect(factory).not.toHaveBeenCalled();
+      expect(result).toBe(compiledGraph);
+    });
+
+    it('should throw when graph exists in Compiling status but no in-flight compile is tracked', async () => {
+      const graphId = 'stuck-compiling-graph';
+      const compiledGraph = createMockCompiledGraph(1, GraphStatus.Compiling);
+
+      registry.register(graphId, compiledGraph);
+
+      const factory = vi.fn(async () => compiledGraph);
+      await expect(registry.getOrCompile(graphId, factory)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(factory).not.toHaveBeenCalled();
+    });
+  });
+
   describe('unregister', () => {
     it('should unregister an existing graph', () => {
       const graphId = 'test-graph-1';

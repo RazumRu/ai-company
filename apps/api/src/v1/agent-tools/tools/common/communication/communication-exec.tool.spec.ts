@@ -169,6 +169,40 @@ describe('CommunicationExecTool', () => {
         'Agent "non-existent-agent" not found. Check available connected agents in tool instructions.',
       );
     });
+
+    it('should resolve agent name when tool is invoked without role suffix', async () => {
+      const mockInvokeAgent = vi
+        .fn()
+        .mockResolvedValue({ response: 'response from Elias' });
+
+      const agents: AgentInfo[] = [
+        {
+          name: 'Elias Rainer (Software Architect)',
+          description: 'Architecture and research',
+          invokeAgent: mockInvokeAgent,
+        },
+      ];
+
+      const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: { thread_id: 'test-thread' },
+      };
+
+      const { output: result } = await tool.invoke(
+        {
+          message: 'Please draft a spec',
+          purpose: 'Spec request',
+          agent: 'Elias Rainer',
+        },
+        { agents },
+        mockRunnableConfig,
+      );
+
+      expect(mockInvokeAgent).toHaveBeenCalledWith(
+        ['Please draft a spec'],
+        mockRunnableConfig,
+      );
+      expect(result).toEqual({ response: 'response from Elias' });
+    });
   });
 
   describe('build', () => {

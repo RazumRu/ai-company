@@ -14,6 +14,36 @@ import { CompiledGraph, CompiledGraphNode, GraphStatus } from '../graphs.types';
 @Injectable()
 export class GraphRegistry {
   private readonly graphs = new Map<string, CompiledGraph>();
+  private readonly compiling = new Map<string, Promise<CompiledGraph>>();
+
+  async getOrCompile(
+    graphId: string,
+    factory: () => Promise<CompiledGraph>,
+  ): Promise<CompiledGraph> {
+    const inFlight = this.compiling.get(graphId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const existing = this.graphs.get(graphId);
+    if (existing) {
+      if (existing.status === GraphStatus.Compiling) {
+        throw new BadRequestException(
+          'GRAPH_COMPILING',
+          `Graph ${graphId} is currently compiling`,
+        );
+      }
+      return existing;
+    }
+
+    const p = factory().finally(() => {
+      this.compiling.delete(graphId);
+    });
+
+    this.compiling.set(graphId, p);
+
+    return p;
+  }
 
   /**
    * Registers a compiled graph in the registry

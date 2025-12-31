@@ -13,24 +13,30 @@ import { PgCheckpointSaver } from './pg-checkpoint-saver';
 
 describe('PgCheckpointSaver', () => {
   let service: PgCheckpointSaver;
-  let mockGraphCheckpointsDao: any;
-  let mockGraphCheckpointsWritesDao: any;
+  let mockGraphCheckpointsDao: {
+    getOne: ReturnType<typeof vi.fn>;
+    getAll: ReturnType<typeof vi.fn>;
+    hardDelete: ReturnType<typeof vi.fn>;
+    upsertByCheckpointKey: ReturnType<typeof vi.fn>;
+  };
+  let mockGraphCheckpointsWritesDao: {
+    getAll: ReturnType<typeof vi.fn>;
+    hardDelete: ReturnType<typeof vi.fn>;
+    upsertWriteByKey: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     mockGraphCheckpointsDao = {
       getOne: vi.fn(),
-      create: vi.fn(),
-      updateById: vi.fn(),
       getAll: vi.fn(),
       hardDelete: vi.fn(),
+      upsertByCheckpointKey: vi.fn(),
     };
 
     mockGraphCheckpointsWritesDao = {
       getAll: vi.fn(),
-      getOne: vi.fn(),
-      create: vi.fn(),
-      updateById: vi.fn(),
       hardDelete: vi.fn(),
+      upsertWriteByKey: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -78,14 +84,17 @@ describe('PgCheckpointSaver', () => {
         parents: {},
       };
 
-      vi.mocked(mockGraphCheckpointsDao.getOne).mockResolvedValue(null);
-      vi.mocked(mockGraphCheckpointsDao.create).mockResolvedValue({
-        id: 'db-id',
-      });
-
       await service.put(config, checkpoint, metadata);
 
-      expect(mockGraphCheckpointsDao.create).toHaveBeenCalled();
+      expect(
+        mockGraphCheckpointsDao.upsertByCheckpointKey,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: 'test-thread-123',
+          checkpointNs: 'test-ns',
+          checkpointId: 'checkpoint-123',
+        }),
+      );
     });
   });
 
@@ -106,41 +115,35 @@ describe('PgCheckpointSaver', () => {
 
       const taskId = 'task-123';
 
-      vi.mocked(mockGraphCheckpointsWritesDao.getOne).mockResolvedValue(null);
-      vi.mocked(mockGraphCheckpointsWritesDao.create).mockResolvedValue({
-        id: 'db-id',
-      });
-
       await service.putWrites(config, writes, taskId);
 
-      expect(mockGraphCheckpointsWritesDao.create).toHaveBeenCalledTimes(2);
-    });
-
-    it('should update existing writes', async () => {
-      const config: RunnableConfig = {
-        configurable: {
-          thread_id: 'test-thread-123',
-          checkpoint_ns: 'test-ns',
-          checkpoint_id: 'checkpoint-123',
-        },
-      };
-
-      const writes: PendingWrite[] = [
-        ['messages', { content: 'Hello world', type: 'human' }],
-      ];
-
-      const taskId = 'task-123';
-
-      vi.mocked(mockGraphCheckpointsWritesDao.getOne).mockResolvedValue({
-        id: 'existing-id',
-      });
-      vi.mocked(mockGraphCheckpointsWritesDao.updateById).mockResolvedValue({
-        id: 'existing-id',
-      });
-
-      await service.putWrites(config, writes, taskId);
-
-      expect(mockGraphCheckpointsWritesDao.updateById).toHaveBeenCalledTimes(1);
+      expect(
+        mockGraphCheckpointsWritesDao.upsertWriteByKey,
+      ).toHaveBeenCalledTimes(2);
+      expect(
+        mockGraphCheckpointsWritesDao.upsertWriteByKey,
+      ).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          threadId: 'test-thread-123',
+          checkpointNs: 'test-ns',
+          checkpointId: 'checkpoint-123',
+          taskId,
+          idx: 0,
+        }),
+      );
+      expect(
+        mockGraphCheckpointsWritesDao.upsertWriteByKey,
+      ).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          threadId: 'test-thread-123',
+          checkpointNs: 'test-ns',
+          checkpointId: 'checkpoint-123',
+          taskId,
+          idx: 1,
+        }),
+      );
     });
   });
 });

@@ -1398,10 +1398,14 @@ describe('Socket Notifications Integration Tests', () => {
 
         await restartGraph(graphId);
 
-        const execution = await graphsService.executeTrigger(graphId, 'trigger-1', {
-          messages: ['Test message for thread creation'],
-          threadSubId,
-        });
+        const execution = await graphsService.executeTrigger(
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Test message for thread creation'],
+            threadSubId,
+          },
+        );
 
         const createdThreadId = execution.externalThreadId;
         expect(createdThreadId).toBeDefined();
@@ -1419,7 +1423,11 @@ describe('Socket Notifications Integration Tests', () => {
         const typedEvent = threadCreateEvents.find(
           (e) => e.threadId === createdThreadId,
         );
-        expect(typedEvent).toBeDefined();
+        if (!typedEvent) {
+          throw new Error(
+            `Expected thread.create event for ${createdThreadId}`,
+          );
+        }
         expect(typedEvent.type).toBe('thread.create');
         expect(typedEvent.graphId).toBe(graphId);
         expect(typedEvent.threadId).toBe(createdThreadId);

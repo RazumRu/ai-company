@@ -1,6 +1,7 @@
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 import { isEqual } from 'lodash';
+import { v4 as uuidv4 } from 'uuid';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import {
@@ -351,7 +352,7 @@ export class GraphStateManager {
     const cfg = data.config?.configurable;
     const threadId = data.threadId;
     const runId = cfg?.run_id;
-    const execId = `${threadId || 'no-thread'}-${runId || 'no-run'}-${Date.now()}`;
+    const execId = uuidv4();
 
     state.activeExecutions.set(execId, { threadId, runId });
     state.baseStatus = GraphNodeStatus.Running;
@@ -509,7 +510,7 @@ export class GraphStateManager {
           const cfg = event.data.config?.configurable;
           const threadId = cfg?.thread_id ?? cfg?.parent_thread_id;
           const runId = cfg?.run_id;
-          const execId = `${threadId || 'no-thread'}-${runId || 'no-run'}-${Date.now()}`;
+          const execId = uuidv4();
 
           state.activeExecutions.set(execId, { threadId, runId });
           state.baseStatus = GraphNodeStatus.Running;

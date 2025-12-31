@@ -200,47 +200,49 @@ export class GraphCompiler {
 
     const graphId = metadata.graphId || 'unknown';
 
-    this.validateSchema(schema);
+    return this.graphRegistry.getOrCompile(graphId, async () => {
+      this.validateSchema(schema);
 
-    const compiledNodes = new Map<string, CompiledGraphNode>();
-    const stateManager = await this.graphStateFactory.create(graphId);
-    const edges = schema.edges || [];
+      const compiledNodes = new Map<string, CompiledGraphNode>();
+      const stateManager = await this.graphStateFactory.create(graphId);
+      const edges = schema.edges || [];
 
-    const compiledGraph: CompiledGraph = {
-      nodes: compiledNodes,
-      edges,
-      state: stateManager,
-      destroy: async () => {
-        await this.destroyGraph(compiledNodes);
-        stateManager.destroy();
-      },
-      status: GraphStatus.Compiling,
-    };
+      const compiledGraph: CompiledGraph = {
+        nodes: compiledNodes,
+        edges,
+        state: stateManager,
+        destroy: async () => {
+          await this.destroyGraph(compiledNodes);
+          stateManager.destroy();
+        },
+        status: GraphStatus.Compiling,
+      };
 
-    this.graphRegistry.register(graphId, compiledGraph);
+      this.graphRegistry.register(graphId, compiledGraph);
 
-    try {
-      const buildOrder = this.getBuildOrder(schema);
+      try {
+        const buildOrder = this.getBuildOrder(schema);
 
-      for (const node of buildOrder) {
-        const compiledNode = await this.compileNode(
-          node,
-          compiledNodes,
-          metadata,
-          edges,
-          stateManager,
-        );
-        compiledNodes.set(node.id, compiledNode);
-        stateManager.attachGraphNode(node.id, compiledNode);
+        for (const node of buildOrder) {
+          const compiledNode = await this.compileNode(
+            node,
+            compiledNodes,
+            metadata,
+            edges,
+            stateManager,
+          );
+          compiledNodes.set(node.id, compiledNode);
+          stateManager.attachGraphNode(node.id, compiledNode);
+        }
+
+        this.graphRegistry.setStatus(graphId, GraphStatus.Running);
+
+        return compiledGraph;
+      } catch (error) {
+        this.graphRegistry.unregister(graphId);
+        throw error;
       }
-
-      this.graphRegistry.setStatus(graphId, GraphStatus.Running);
-
-      return compiledGraph;
-    } catch (error) {
-      this.graphRegistry.unregister(graphId);
-      throw error;
-    }
+    });
   }
 
   async destroyNode(node: CompiledGraphNode): Promise<void> {

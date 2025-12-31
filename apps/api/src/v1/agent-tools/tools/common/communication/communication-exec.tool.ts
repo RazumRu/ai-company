@@ -10,7 +10,10 @@ import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
 } from '../../base-tool';
-import { BaseCommunicationToolConfig } from './communication-tools.types';
+import {
+  AgentInfo,
+  BaseCommunicationToolConfig,
+} from './communication-tools.types';
 
 export const CommunicationExecSchema = z.object({
   message: z
@@ -43,6 +46,51 @@ export class CommunicationExecTool extends BaseTool<
   public name = 'communication_exec';
   public description =
     'Send a message to a specific agent. Connected agents are listed in the instructions.';
+
+  private normalizeAgentName(name: string): string {
+    // Normalize for matching:
+    // - trim
+    // - case-insensitive
+    // - drop role suffix in parentheses: "Elias Rainer (Software Architect)" -> "Elias Rainer"
+    return name
+      .trim()
+      .replace(/\s*\([^)]*\)\s*$/, '')
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+  }
+
+  private resolveAgent(
+    requested: string,
+    config: BaseCommunicationToolConfig,
+  ): AgentInfo | undefined {
+    if (!config?.agents?.length) return undefined;
+
+    // 1) Exact match (current behavior)
+    const exact = config.agents.find((a) => a.name === requested);
+    if (exact) return exact;
+
+    // 2) Case-insensitive exact match
+    const lower = requested.trim().toLowerCase();
+    const ciExact = config.agents.find(
+      (a) => a.name.trim().toLowerCase() === lower,
+    );
+    if (ciExact) return ciExact;
+
+    // 3) Normalized match (strip role suffix, collapse spaces)
+    const normRequested = this.normalizeAgentName(requested);
+    const normMatches = config.agents.filter(
+      (a) => this.normalizeAgentName(a.name) === normRequested,
+    );
+    if (normMatches.length === 1) return normMatches[0];
+
+    // 4) Prefix match on normalized name (helps when model sends just first/last name)
+    const prefixMatches = config.agents.filter((a) =>
+      this.normalizeAgentName(a.name).startsWith(normRequested),
+    );
+    if (prefixMatches.length === 1) return prefixMatches[0];
+
+    return undefined;
+  }
 
   protected override generateTitle(
     args: CommunicationExecSchemaType,
@@ -182,9 +230,7 @@ export class CommunicationExecTool extends BaseTool<
       );
     }
 
-    const targetAgent = config.agents.find(
-      (agent) => agent.name === args.agent,
-    );
+    const targetAgent = this.resolveAgent(args.agent, config);
 
     if (!targetAgent) {
       throw new BadRequestException(

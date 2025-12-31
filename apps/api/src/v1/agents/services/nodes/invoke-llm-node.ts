@@ -82,6 +82,7 @@ export class InvokeLlmNode extends BaseNode<
     );
 
     const res = await runner.invoke(messages);
+
     const preparedRes = convertChunkToMessage(res);
     this.attachToolCallTitles(preparedRes);
 

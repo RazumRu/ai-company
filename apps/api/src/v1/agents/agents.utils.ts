@@ -5,6 +5,7 @@ import {
   ContentBlock,
 } from '@langchain/core/messages';
 import { BaseMessage, ToolMessage } from '@langchain/core/messages';
+import type { InvalidToolCall, ToolCall } from '@langchain/core/messages/tool';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { isPlainObject } from 'lodash';
 import type { UnknownRecord } from 'type-fest';
@@ -248,14 +249,78 @@ export function prepareMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
 }
 
 export function convertChunkToMessage(chunk: AIMessageChunk): AIMessage {
+  // Some providers (or older LangChain conversions) may store tool calls under
+  // `additional_kwargs.tool_calls` in the OpenAI shape:
+  // { id, type: "function", function: { name, arguments: "json" }, index }
+  // If we ignore this, tools never execute and the tool-usage-guard loops forever.
+  const additionalKwargs = (chunk as unknown as { additional_kwargs?: unknown })
+    .additional_kwargs as Record<string, unknown> | undefined;
+
+  const normalizeOpenAiToolCalls = (calls: unknown): ToolCall[] => {
+    if (!Array.isArray(calls)) return [];
+    return calls
+      .map((c) => {
+        const obj = c as Record<string, unknown>;
+        const fn = obj.function as Record<string, unknown> | undefined;
+        const name = fn?.name;
+        const argsRaw = fn?.arguments;
+        if (typeof name !== 'string') return undefined;
+
+        let args: UnknownRecord = {};
+        if (typeof argsRaw === 'string') {
+          try {
+            const parsed = JSON.parse(argsRaw) as unknown;
+            args =
+              parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+                ? (parsed as UnknownRecord)
+                : { __raw: parsed };
+          } catch {
+            args = { __raw: argsRaw };
+          }
+        } else if (argsRaw !== undefined) {
+          args =
+            argsRaw && typeof argsRaw === 'object' && !Array.isArray(argsRaw)
+              ? (argsRaw as UnknownRecord)
+              : { __raw: argsRaw };
+        }
+
+        return {
+          id: typeof obj.id === 'string' ? obj.id : undefined,
+          name,
+          args,
+          type: 'tool_call',
+        } satisfies ToolCall;
+      })
+      .filter(Boolean) as ToolCall[];
+  };
+
+  const toolCallsFromChunk: ToolCall[] = Array.isArray(chunk.tool_calls)
+    ? (chunk.tool_calls as ToolCall[])
+    : [];
+  const toolCallsFromAdditional = normalizeOpenAiToolCalls(
+    additionalKwargs?.tool_calls,
+  );
+  const toolCalls: ToolCall[] =
+    toolCallsFromChunk.length > 0
+      ? toolCallsFromChunk
+      : toolCallsFromAdditional;
+
+  const invalidToolCalls: InvalidToolCall[] | undefined = Array.isArray(
+    chunk.invalid_tool_calls,
+  )
+    ? (chunk.invalid_tool_calls as InvalidToolCall[])
+    : Array.isArray(additionalKwargs?.invalid_tool_calls)
+      ? (additionalKwargs?.invalid_tool_calls as InvalidToolCall[])
+      : undefined;
+
   return new AIMessage({
     id: chunk.id,
     name: chunk.name,
     content: chunk.content,
     contentBlocks: chunk.contentBlocks,
     response_metadata: chunk.response_metadata ?? {},
-    tool_calls: chunk.tool_calls ?? [],
-    invalid_tool_calls: chunk.invalid_tool_calls,
+    tool_calls: toolCalls,
+    invalid_tool_calls: invalidToolCalls,
     usage_metadata: chunk.usage_metadata,
   });
 }

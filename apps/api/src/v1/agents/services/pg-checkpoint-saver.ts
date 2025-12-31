@@ -195,35 +195,19 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       throw new Error('Mismatched types');
     }
 
-    const existing = await this.graphCheckpointsDao.getOne({
+    const parentCheckpointId =
+      ((config.configurable as Record<string, unknown> | undefined)
+        ?.checkpoint_id as string | undefined) ?? null;
+
+    await this.graphCheckpointsDao.upsertByCheckpointKey({
       threadId,
       checkpointNs,
       checkpointId: id,
-      limit: 1,
+      parentCheckpointId,
+      type: typeA,
+      checkpoint: Buffer.from(chk),
+      metadata: Buffer.from(meta),
     });
-
-    if (existing) {
-      await this.graphCheckpointsDao.updateById(existing.id, {
-        parentCheckpointId:
-          ((config.configurable as Record<string, unknown> | undefined)
-            ?.checkpoint_id as string | undefined) ?? null,
-        type: typeA,
-        checkpoint: Buffer.from(chk),
-        metadata: Buffer.from(meta),
-      });
-    } else {
-      await this.graphCheckpointsDao.create({
-        threadId,
-        checkpointNs,
-        checkpointId: id,
-        parentCheckpointId:
-          ((config.configurable as Record<string, unknown> | undefined)
-            ?.checkpoint_id as string | undefined) ?? null,
-        type: typeA,
-        checkpoint: Buffer.from(chk),
-        metadata: Buffer.from(meta),
-      });
-    }
 
     // Note: We do NOT emit notifications from put() to avoid duplicates.
     // Notifications are only emitted from putWrites() which contains the new messages.
@@ -250,32 +234,16 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
     await Promise.all(
       writes.map(async ([channel, value], idx) => {
         const [type, ser] = await this.serde.dumpsTyped(value);
-        const existing = await this.graphCheckpointsWritesDao.getOne({
+        await this.graphCheckpointsWritesDao.upsertWriteByKey({
           threadId,
           checkpointNs,
           checkpointId,
           taskId,
           idx,
-          limit: 1,
+          channel,
+          type,
+          value: Buffer.from(ser),
         });
-        if (existing) {
-          await this.graphCheckpointsWritesDao.updateById(existing.id, {
-            channel,
-            type,
-            value: Buffer.from(ser),
-          });
-        } else {
-          await this.graphCheckpointsWritesDao.create({
-            threadId,
-            checkpointNs,
-            checkpointId,
-            taskId,
-            idx,
-            channel,
-            type,
-            value: Buffer.from(ser),
-          });
-        }
       }),
     );
   }

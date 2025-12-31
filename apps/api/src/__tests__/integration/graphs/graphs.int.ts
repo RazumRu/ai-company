@@ -398,7 +398,9 @@ describe('Graphs Integration Tests', () => {
       );
       expect(partialResponse.revision).toBeDefined();
       expect(partialResponse.graph.version).toBe(graphForPartial.version);
-      expect(partialResponse.graph.schema).toMatchObject(graphForPartial.schema);
+      expect(partialResponse.graph.schema).toMatchObject(
+        graphForPartial.schema,
+      );
 
       // Mutable updates are represented as a revision (tracked & applied consistently).
       expect(partialResponse.revision!.toVersion).toBe('1.0.1');
@@ -417,7 +419,10 @@ describe('Graphs Integration Tests', () => {
         currentVersion: graphForFull.version,
       };
 
-      const fullResponse = await graphsService.update(graphForFull.id, fullUpdate);
+      const fullResponse = await graphsService.update(
+        graphForFull.id,
+        fullUpdate,
+      );
       expect(fullResponse.revision).toBeDefined();
       expect(fullResponse.graph.version).toBe(graphForFull.version);
       expect(fullResponse.graph.schema).toMatchObject(graphForFull.schema);
