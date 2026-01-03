@@ -13,12 +13,12 @@ import {
 } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-export const FilesReadToolSchema = z.object({
-  filePaths: z
-    .array(z.string().min(1))
+const FilesReadToolReadSchema = z.object({
+  filePath: z
+    .string()
     .min(1)
     .describe(
-      'Absolute paths to files. Can use paths directly from `files_find_paths` output.',
+      'Absolute path to a file. Can use paths directly from `files_find_paths` output.',
     ),
   startLine: z
     .number()
@@ -35,6 +35,15 @@ export const FilesReadToolSchema = z.object({
     .optional()
     .describe(
       'Optional ending line number (1-based). Must be provided if startLine is provided.',
+    ),
+});
+
+export const FilesReadToolSchema = z.object({
+  reads: z
+    .array(FilesReadToolReadSchema)
+    .min(1)
+    .describe(
+      'Files to read. Each item can optionally specify its own line range.',
     ),
 });
 
@@ -66,14 +75,15 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     args: FilesReadToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    const first = args.filePaths[0];
+    const first = args.reads[0]?.filePath;
     const name = first ? basename(first) : 'files';
     const range =
-      args.startLine !== undefined && args.endLine !== undefined
-        ? ` lines ${args.startLine}-${args.endLine}`
+      args.reads[0]?.startLine !== undefined &&
+      args.reads[0]?.endLine !== undefined
+        ? ` lines ${args.reads[0].startLine}-${args.reads[0].endLine}`
         : '';
     const suffix =
-      args.filePaths.length > 1 ? ` (+${args.filePaths.length - 1} more)` : '';
+      args.reads.length > 1 ? ` (+${args.reads.length - 1} more)` : '';
     return `Reading ${name}${suffix}${range}`;
   }
 
@@ -104,19 +114,19 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       \`\`\`json
         // First, find the relevant section using files_search_text
         // Then read just that section
-        {"filePaths": ["/repo/large-file.ts"], "startLine": 1, "endLine": 500}
+        {"reads": [{"filePath": "/repo/large-file.ts", "startLine": 1, "endLine": 500}]}
       \`\`\`
 
       **2. Read context around found matches:**
       After \`files_search_text\` finds a match at line 150:
       \`\`\`json
-        {"filePaths": ["/repo/src/utils.ts"], "startLine": 140, "endLine": 170}
+        {"reads": [{"filePath": "/repo/src/utils.ts", "startLine": 140, "endLine": 170}]}
       \`\`\`
 
       **3. Read configuration files completely:**
       Config files are usually small and need full context:
       \`\`\`json
-        {"filePaths": ["/repo/tsconfig.json", "/repo/package.json"]}
+        {"reads": [{"filePath": "/repo/tsconfig.json"}, {"filePath": "/repo/package.json"}]}
       \`\`\`
 
       ### Output Format
@@ -175,36 +185,40 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   ): Promise<ToolInvokeResult<FilesReadToolOutput>> {
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
-    // Validate that if startLine is provided, endLine must also be provided
-    if (args.startLine !== undefined && args.endLine === undefined) {
-      return {
-        output: {
-          error: 'endLine must be provided when startLine is specified',
-        },
-        messageMetadata,
-      };
-    }
 
-    if (args.endLine !== undefined && args.startLine === undefined) {
-      return {
-        output: {
-          error: 'startLine must be provided when endLine is specified',
-        },
-        messageMetadata,
-      };
-    }
+    for (const read of args.reads) {
+      const hasStart = read.startLine !== undefined;
+      const hasEnd = read.endLine !== undefined;
+      if (hasStart && !hasEnd) {
+        return {
+          output: {
+            error: `endLine must be provided when startLine is specified (file: ${read.filePath})`,
+          },
+          messageMetadata,
+        };
+      }
 
-    if (
-      args.startLine !== undefined &&
-      args.endLine !== undefined &&
-      args.startLine > args.endLine
-    ) {
-      return {
-        output: {
-          error: 'startLine must be less than or equal to endLine',
-        },
-        messageMetadata,
-      };
+      if (!hasStart && hasEnd) {
+        return {
+          output: {
+            error: `startLine must be provided when endLine is specified (file: ${read.filePath})`,
+          },
+          messageMetadata,
+        };
+      }
+
+      if (
+        read.startLine !== undefined &&
+        read.endLine !== undefined &&
+        read.startLine > read.endLine
+      ) {
+        return {
+          output: {
+            error: `startLine must be less than or equal to endLine (file: ${read.filePath})`,
+          },
+          messageMetadata,
+        };
+      }
     }
 
     const marker = this.createMarker();
@@ -213,18 +227,16 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     const payloadPrefix = `__AI_FILES_READ_PAYLOAD_${marker}__`;
     const endPrefix = `__AI_FILES_READ_END_${marker}__`;
 
-    const readCmd =
-      args.startLine !== undefined && args.endLine !== undefined
-        ? (filePath: string) =>
-            `sed -n '${args.startLine},${args.endLine}p' ${shQuote(filePath)}`
-        : (filePath: string) => `cat ${shQuote(filePath)}`;
-
     const scriptParts: string[] = ['set +e'];
-    for (let i = 0; i < args.filePaths.length; i++) {
-      const filePath = args.filePaths[i];
+    for (let i = 0; i < args.reads.length; i++) {
+      const read = args.reads[i];
+      const filePath = read?.filePath;
       if (!filePath) continue;
       const idx = String(i);
-      const cmd = readCmd(filePath);
+      const cmd =
+        read.startLine !== undefined && read.endLine !== undefined
+          ? `sed -n '${read.startLine},${read.endLine}p' ${shQuote(filePath)}`
+          : `cat ${shQuote(filePath)}`;
       scriptParts.push(
         `__out="$({ ${cmd}; } 2>&1)"; __ec=$?; printf "%s\\n" "${beginPrefix}${idx}"; printf "%s\\n" "${exitPrefix}${idx}:$__ec"; printf "%s\\n" "${payloadPrefix}${idx}"; printf "%s" "$__out"; printf "\\n%s\\n" "${endPrefix}${idx}"`,
       );
@@ -250,8 +262,9 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     const files: FilesReadToolFileOutput[] = [];
     const stdoutLines = res.stdout.split('\n');
 
-    for (let i = 0; i < args.filePaths.length; i++) {
-      const filePath = args.filePaths[i];
+    for (let i = 0; i < args.reads.length; i++) {
+      const read = args.reads[i];
+      const filePath = read?.filePath;
       if (!filePath) continue;
       const idx = String(i);
       const beginLine = `${beginPrefix}${idx}`;

@@ -165,7 +165,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
       ### After Finding Definitions
       1. Get the file path and line number from results
-      2. Use \`files_read\` with startLine/endLine to view the full implementation
+      2. Use \`files_read\` with startLine/endLine on the specific read item to view the full implementation
       3. Use \`files_search_text\` to find all usages of the symbol
 
       ### Troubleshooting

@@ -86,7 +86,7 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
       \`\`\`
       3) \`files_read\`:
       \`\`\`json
-      { "filePaths": ["/repo/generated/output.json"] }
+      { "reads": [{ "filePath": "/repo/generated/output.json" }] }
       \`\`\`
 
       ### Output Format

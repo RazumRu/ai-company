@@ -158,7 +158,7 @@ describe('Files tools integration', () => {
 
       // Read file first
       const { output: initialRead } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -192,7 +192,7 @@ describe('Files tools integration', () => {
       expect(listResult.files).toContain(filePath);
 
       const { output: readResult } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -330,7 +330,7 @@ describe('Files tools integration', () => {
 
       // Read the file from the custom directory
       const { output: readRes } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -457,7 +457,7 @@ describe('Files tools integration', () => {
 
       // Verify the replacement
       const { output: readResult } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -492,7 +492,7 @@ describe('Files tools integration', () => {
 
       // Read current content
       const { output: readBefore } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -517,7 +517,7 @@ describe('Files tools integration', () => {
 
       // Verify the insertion
       const { output: readAfter } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -551,7 +551,7 @@ describe('Files tools integration', () => {
 
       // Read current content
       const { output: readBefore } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -576,7 +576,7 @@ describe('Files tools integration', () => {
 
       // Verify the append
       const { output: readAfter } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -635,7 +635,7 @@ describe('Files tools integration', () => {
 
       // Verify the insertion
       const { output: readAfter } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -676,7 +676,7 @@ describe('Files tools integration', () => {
 
       // Verify it's empty
       const { output: readEmpty } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -702,7 +702,7 @@ describe('Files tools integration', () => {
 
       // Verify content was added
       const { output: readAfter } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -757,7 +757,7 @@ describe('Files tools integration', () => {
 
       // Verify file wasn't changed
       const { output: readAfterDryRun } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -787,7 +787,7 @@ describe('Files tools integration', () => {
 
       // Verify file was changed
       const { output: readAfterApply } = await filesReadTool.invoke(
-        { filePaths: [filePath] },
+        { reads: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
