@@ -261,6 +261,8 @@ describe('SimpleAgent', () => {
     });
   });
 
+  // (no tests here) message emission de-dupe is handled by correct state seeding in run()
+
   describe('addTool', () => {
     it('should add tool to tools map', () => {
       const mockTool = {

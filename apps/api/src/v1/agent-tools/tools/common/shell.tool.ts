@@ -171,8 +171,18 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       ? Object.fromEntries(data.env.map((v) => [v.key, v.value]))
       : {};
 
-    // Merge config env with provided env (provided env takes precedence)
-    const mergedEnv = { ...configEnv, ...providedEnv };
+    // Default env to prevent ANSI-colored output from commands like pnpm/vitest.
+    // This keeps logs readable in UIs that don't interpret ANSI escapes, while still
+    // allowing callers to override these values when needed.
+    const defaultEnv: Record<string, string> = {
+      NO_COLOR: '1',
+      FORCE_COLOR: '0',
+      CLICOLOR: '0',
+      TERM: 'dumb',
+    };
+
+    // Merge default env with config env and provided env (provided env takes precedence)
+    const mergedEnv = { ...defaultEnv, ...configEnv, ...providedEnv };
 
     // Extract non-runtime fields from data before passing to runtime.exec
     const { purpose: _purpose, maxOutputLength, ...execData } = data;

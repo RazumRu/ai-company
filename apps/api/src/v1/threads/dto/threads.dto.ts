@@ -1,8 +1,11 @@
+import { zodQueryArray } from '@packages/http-server';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import { MessageSchema } from '../../graphs/dto/graphs.dto';
 import { ThreadStatus } from '../threads.types';
+
+const ThreadStatusesQuerySchema = zodQueryArray(z.enum(ThreadStatus));
 
 export const TokenUsageSchema = z.object({
   inputTokens: z.number().describe('Input tokens'),
@@ -81,10 +84,9 @@ export const ThreadMessageSchema = z.object({
 // Get threads query parameters
 export const GetThreadsQuerySchema = z.object({
   graphId: z.uuid().describe('Filter by graph ID').optional(),
-  statuses: z
-    .array(z.enum(ThreadStatus))
-    .optional()
-    .describe('Filter by thread statuses'),
+  statuses: ThreadStatusesQuerySchema.optional().describe(
+    'Filter by thread statuses',
+  ),
   limit: z.coerce
     .number()
     .int()

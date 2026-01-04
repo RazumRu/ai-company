@@ -959,6 +959,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       messages,
       mergedConfig,
     );
+    const inputMessageSet = new Set(updateMessages);
 
     // Calculate token usage for input messages (e.g., human messages)
     const model = config.invokeModelName || 'gpt-5.1';
@@ -982,7 +983,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     const abortController = new AbortController();
 
-    let finalState: BaseAgentState = this.buildInitialState();
+    const initialState: BaseAgentState = this.buildInitialState();
+    // Seed state with the initial input messages before consuming the LangGraph stream.
+    // Otherwise the first stream update can re-introduce the same input and we'd emit it twice.
+    let finalState: BaseAgentState = {
+      ...initialState,
+      messages: updateMessages,
+    };
 
     // Track active run for cancellation and status updates
     const runEntry: ActiveRunEntry = {
@@ -1016,11 +1023,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     await this.emitNewMessages(updateMessages, mergedConfig, threadId);
 
     await this.emitStateUpdate(
+      initialState,
       finalState,
-      {
-        ...finalState,
-        messages: updateMessages,
-      },
       mergedConfig,
       threadId,
     );
@@ -1112,7 +1116,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
 
     const result = {
-      messages: finalState.messages,
+      // Preserve historical behavior: the AgentOutput is the *new* messages produced by the run,
+      // not the initial user input we already provided to the graph.
+      messages: finalState.messages.filter((m) => !inputMessageSet.has(m)),
       threadId,
       checkpointNs: mergedConfig?.configurable?.checkpoint_ns,
       needsMoreInfo:
