@@ -1,7 +1,6 @@
 import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
-import { Brackets } from 'typeorm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
@@ -10,7 +9,7 @@ import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
-import { GraphStatus, NodeKind } from '../graphs.types';
+import { GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRestorationService } from './graph-restoration.service';
@@ -104,6 +103,7 @@ describe('GraphRestorationService', () => {
 
     const mockThreadsDao = {
       getAll: vi.fn(),
+      updateById: vi.fn(),
     };
 
     const mockGraphCheckpointsDao = {
@@ -505,37 +505,8 @@ describe('GraphRestorationService', () => {
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
     });
 
-    it('should resume interrupted threads after restoring a graph', async () => {
+    it('should stop interrupted threads after restoring a graph', async () => {
       // Arrange
-      const mockAgent = {
-        run: vi.fn().mockResolvedValue({
-          messages: [],
-          threadId: 'test-graph-id:thread-1',
-        }),
-      };
-
-      const mockAgentNode = {
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        instance: mockAgent,
-        handle: {
-          provide: async () => mockAgent,
-          configure: vi.fn(),
-          destroy: vi.fn(),
-        },
-        config: {},
-      };
-
-      const mockCompiledGraphWithAgent = {
-        nodes: new Map([['agent-1', mockAgentNode]]),
-        edges: [],
-        state: {
-          getSnapshots: vi.fn(),
-        },
-        destroy: vi.fn(),
-      };
-
       const mockThread = {
         id: 'thread-uuid-1',
         graphId: 'test-graph-id',
@@ -547,48 +518,20 @@ describe('GraphRestorationService', () => {
       };
 
       mockGraphDaoLists([], [mockGraph]);
-      const registryGetMock = vi.mocked(graphRegistry.get);
-      let firstCall = true;
-      registryGetMock.mockImplementation((graphId: string) => {
-        if (graphId === mockGraph.id) {
-          if (firstCall) {
-            firstCall = false;
-            return undefined;
-          }
-          return mockCompiledGraphWithAgent;
-        }
-        return undefined;
-      });
+      vi.mocked(graphRegistry.get)
+        .mockReturnValueOnce(undefined)
+        .mockReturnValueOnce(mockCompiledGraph);
       vi.mocked(graphsService.run).mockResolvedValueOnce({
         id: mockGraph.id,
         status: GraphStatus.Running,
       } as any);
       vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([
-        {
-          threadId: mockThread.externalThreadId,
-          checkpointNs: '',
-          checkpointId: 'chk-empty',
-        } as any,
-        {
-          threadId: mockThread.externalThreadId,
-          checkpointNs: `${mockThread.externalThreadId}:agent-1`,
-          checkpointId: 'chk-123',
-        } as any,
-      ]);
+      vi.mocked(threadsDao.updateById).mockResolvedValue(mockThread as any);
 
       // Act
       await service.restoreRunningGraphs();
 
-      // Give some time for async thread resumption to start
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
       // Assert
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
-      });
       expect(graphDao.getAll).toHaveBeenCalledTimes(2);
       expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
@@ -598,30 +541,9 @@ describe('GraphRestorationService', () => {
         graphId: 'test-graph-id',
         status: ThreadStatus.Running,
       });
-      expect(graphCheckpointsDao.getAll).toHaveBeenCalledWith(
-        expect.objectContaining({
-          order: { createdAt: 'DESC' },
-          limit: 20,
-          customCondition: expect.any(Brackets),
-        }),
-      );
-      expect(mockAgent.run).toHaveBeenCalledWith(
-        'test-graph-id:thread-1',
-        [],
-        undefined,
-        {
-          configurable: expect.objectContaining({
-            graph_id: 'test-graph-id',
-            node_id: 'agent-1',
-            parent_thread_id: 'test-graph-id:thread-1',
-            thread_id: 'test-graph-id:thread-1',
-            source: 'graph-restoration',
-            checkpoint_ns: `${mockThread.externalThreadId}:agent-1`,
-            checkpoint_id: 'chk-123',
-            async: true,
-          }),
-        },
-      );
+      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-uuid-1', {
+        status: ThreadStatus.Stopped,
+      });
     });
 
     it('should handle no interrupted threads gracefully', async () => {
@@ -649,43 +571,25 @@ describe('GraphRestorationService', () => {
         graphId: 'test-graph-id',
         status: ThreadStatus.Running,
       });
+      expect(threadsDao.updateById).not.toHaveBeenCalled();
     });
 
-    it('should extract node ID from thread ID with node suffix', async () => {
+    it('should stop multiple interrupted threads', async () => {
       // Arrange
-      const mockAgent = {
-        run: vi.fn().mockResolvedValue({
-          messages: [],
-          threadId: 'test-graph-id:thread-1__agent-1',
-        }),
-      };
-
-      const mockAgentNode = {
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        instance: mockAgent,
-        handle: {
-          provide: async () => mockAgent,
-          configure: vi.fn(),
-          destroy: vi.fn(),
-        },
-        config: {},
-      };
-
-      const mockCompiledGraphWithAgent = {
-        nodes: new Map([['agent-1', mockAgentNode]]),
-        edges: [],
-        state: {
-          getSnapshots: vi.fn(),
-        },
-        destroy: vi.fn(),
-      };
-
-      const mockThread = {
+      const mockThread1 = {
         id: 'thread-uuid-1',
         graphId: 'test-graph-id',
-        externalThreadId: 'test-graph-id:thread-1__agent-1',
+        externalThreadId: 'test-graph-id:thread-1',
+        createdBy: 'test-user',
+        status: ThreadStatus.Running,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const mockThread2 = {
+        id: 'thread-uuid-2',
+        graphId: 'test-graph-id',
+        externalThreadId: 'test-graph-id:thread-2',
         createdBy: 'test-user',
         status: ThreadStatus.Running,
         createdAt: new Date(),
@@ -693,190 +597,34 @@ describe('GraphRestorationService', () => {
       };
 
       mockGraphDaoLists([], [mockGraph]);
-      const registryGetMockNodeSuffix = vi.mocked(graphRegistry.get);
-      let firstCallNodeSuffix = true;
-      registryGetMockNodeSuffix.mockImplementation((graphId: string) => {
-        if (graphId === mockGraph.id) {
-          if (firstCallNodeSuffix) {
-            firstCallNodeSuffix = false;
-            return undefined;
-          }
-          return mockCompiledGraphWithAgent;
-        }
-        return undefined;
-      });
+      vi.mocked(graphRegistry.get)
+        .mockReturnValueOnce(undefined)
+        .mockReturnValueOnce(mockCompiledGraph);
       vi.mocked(graphsService.run).mockResolvedValueOnce({
         id: mockGraph.id,
         status: GraphStatus.Running,
       } as any);
-      vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([
-        {
-          threadId: mockThread.externalThreadId,
-          checkpointNs: '',
-          checkpointId: 'chk-empty',
-        } as any,
-        {
-          threadId: mockThread.externalThreadId,
-          checkpointNs: `${mockThread.externalThreadId}:agent-1`,
-          checkpointId: 'chk-456',
-        } as any,
+      vi.mocked(threadsDao.getAll).mockResolvedValue([
+        mockThread1,
+        mockThread2,
       ]);
+      vi.mocked(threadsDao.updateById).mockResolvedValue(mockThread1 as any);
 
       // Act
       await service.restoreRunningGraphs();
 
-      // Give some time for async thread resumption to start
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
       // Assert
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      expect(threadsDao.updateById).toHaveBeenCalledTimes(2);
+      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-uuid-1', {
+        status: ThreadStatus.Stopped,
       });
-      expect(mockAgent.run).toHaveBeenCalledWith(
-        'test-graph-id:thread-1__agent-1',
-        [],
-        undefined,
-        {
-          configurable: expect.objectContaining({
-            node_id: 'agent-1',
-            checkpoint_ns: `${mockThread.externalThreadId}:agent-1`,
-            checkpoint_id: 'chk-456',
-            async: true,
-          }),
-        },
-      );
+      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-uuid-2', {
+        status: ThreadStatus.Stopped,
+      });
     });
 
-    it('should resume using checkpoint threadId when it differs from stored external id', async () => {
+    it('should handle thread stopping errors gracefully', async () => {
       // Arrange
-      const mockAgent = {
-        run: vi.fn().mockResolvedValue({
-          messages: [],
-          threadId: 'test-graph-id:root-thread__agent-1',
-        }),
-      };
-
-      const mockAgentNode = {
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        instance: mockAgent,
-        handle: {
-          provide: async () => mockAgent,
-          configure: vi.fn(),
-          destroy: vi.fn(),
-        },
-        config: {},
-      };
-
-      const mockCompiledGraphWithAgent = {
-        nodes: new Map([['agent-1', mockAgentNode]]),
-        edges: [],
-        state: {
-          getSnapshots: vi.fn(),
-        },
-        destroy: vi.fn(),
-      };
-
-      const mockThread = {
-        id: 'thread-uuid-1',
-        graphId: 'test-graph-id',
-        externalThreadId: 'test-graph-id:root-thread',
-        createdBy: 'test-user',
-        status: ThreadStatus.Running,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const checkpointThreadId = `${mockThread.externalThreadId}__agent-1`;
-
-      mockGraphDaoLists([], [mockGraph]);
-      const registryGetMockNodeMismatch = vi.mocked(graphRegistry.get);
-      let firstCallNodeMismatch = true;
-      registryGetMockNodeMismatch.mockImplementation((graphId: string) => {
-        if (graphId === mockGraph.id) {
-          if (firstCallNodeMismatch) {
-            firstCallNodeMismatch = false;
-            return undefined;
-          }
-          return mockCompiledGraphWithAgent;
-        }
-        return undefined;
-      });
-      vi.mocked(graphsService.run).mockResolvedValueOnce({
-        id: mockGraph.id,
-        status: GraphStatus.Running,
-      } as any);
-      vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([
-        {
-          threadId: checkpointThreadId,
-          checkpointNs: `${checkpointThreadId}:agent-1`,
-          checkpointId: 'chk-789',
-        } as any,
-      ]);
-
-      // Act
-      await service.restoreRunningGraphs();
-
-      // Give some time for async thread resumption to start
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Assert
-      expect(graphCheckpointsDao.getAll).toHaveBeenCalledWith(
-        expect.objectContaining({
-          order: { createdAt: 'DESC' },
-          limit: 20,
-          customCondition: expect.any(Brackets),
-        }),
-      );
-      expect(mockAgent.run).toHaveBeenCalledWith(
-        checkpointThreadId,
-        [],
-        undefined,
-        {
-          configurable: expect.objectContaining({
-            parent_thread_id: mockThread.externalThreadId,
-            thread_id: checkpointThreadId,
-            checkpoint_ns: `${checkpointThreadId}:agent-1`,
-            checkpoint_id: 'chk-789',
-            async: true,
-          }),
-        },
-      );
-    });
-
-    it('should handle thread resumption errors gracefully', async () => {
-      // Arrange
-      const mockAgent = {
-        run: vi.fn().mockRejectedValue(new Error('Resume failed')),
-      };
-
-      const mockAgentNode = {
-        id: 'agent-1',
-        type: NodeKind.SimpleAgent,
-        template: 'simple-agent',
-        instance: mockAgent,
-        handle: {
-          provide: async () => mockAgent,
-          configure: vi.fn(),
-          destroy: vi.fn(),
-        },
-        config: {},
-      };
-
-      const mockCompiledGraphWithAgent = {
-        nodes: new Map([['agent-1', mockAgentNode]]),
-        edges: [],
-        state: {
-          getSnapshots: vi.fn(),
-        },
-        destroy: vi.fn(),
-      };
-
       const mockThread = {
         id: 'thread-uuid-1',
         graphId: 'test-graph-id',
@@ -888,44 +636,23 @@ describe('GraphRestorationService', () => {
       };
 
       mockGraphDaoLists([], [mockGraph]);
-      const registryGetMockError = vi.mocked(graphRegistry.get);
-      let firstCallError = true;
-      registryGetMockError.mockImplementation((graphId: string) => {
-        if (graphId === mockGraph.id) {
-          if (firstCallError) {
-            firstCallError = false;
-            return undefined;
-          }
-          return mockCompiledGraphWithAgent;
-        }
-        return undefined;
-      });
+      vi.mocked(graphRegistry.get)
+        .mockReturnValueOnce(undefined)
+        .mockReturnValueOnce(mockCompiledGraph);
       vi.mocked(graphsService.run).mockResolvedValueOnce({
         id: mockGraph.id,
         status: GraphStatus.Running,
       } as any);
       vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
-      vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([
-        {
-          threadId: mockThread.externalThreadId,
-          checkpointNs: '',
-          checkpointId: 'chk-empty',
-        } as any,
-        {
-          threadId: mockThread.externalThreadId,
-          checkpointNs: `${mockThread.externalThreadId}:agent-1`,
-          checkpointId: 'chk-999',
-        } as any,
-      ]);
+      vi.mocked(threadsDao.updateById).mockRejectedValue(
+        new Error('Database error'),
+      );
 
-      // Act
-      await service.restoreRunningGraphs();
-
-      // Give some time for async thread resumption to complete
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Assert - should not throw, but log error
-      expect(mockAgent.run).toHaveBeenCalled();
+      // Act & Assert - should not throw, but handle error gracefully
+      await expect(service.restoreRunningGraphs()).resolves.not.toThrow();
+      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-uuid-1', {
+        status: ThreadStatus.Stopped,
+      });
     });
   });
 });

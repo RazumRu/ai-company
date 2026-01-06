@@ -201,9 +201,11 @@ export class DockerRuntime extends BaseRuntime {
       return '';
     }
 
+    // Export environment variables so they persist for child processes
+    // This ensures tools like pnpm/vitest inherit color-disabling flags
     return `${Object.entries(env)
-      .map(([k, v]) => `${k}=${this.shellEscape(v)}`)
-      .join(' ')} `;
+      .map(([k, v]) => `export ${k}=${this.shellEscape(v)}`)
+      .join('; ')}; `;
   }
 
   private async ensureSession(

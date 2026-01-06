@@ -143,11 +143,15 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     // Default env to prevent ANSI-colored output from commands like pnpm/vitest.
     // This keeps logs readable in UIs that don't interpret ANSI escapes, while still
     // allowing callers to override these values when needed.
+    // CI=true and NODE_ENV=test make many tools (vitest, jest, pnpm, etc.) disable colors.
     const defaultEnv: Record<string, string> = {
       NO_COLOR: '1',
       FORCE_COLOR: '0',
       CLICOLOR: '0',
+      CLICOLOR_FORCE: '0',
       TERM: 'dumb',
+      CI: 'true',
+      NODE_NO_WARNINGS: '1', // Suppress Node.js warnings that might contain ANSI
     };
 
     // Merge default env with config env and provided env (provided env takes precedence)

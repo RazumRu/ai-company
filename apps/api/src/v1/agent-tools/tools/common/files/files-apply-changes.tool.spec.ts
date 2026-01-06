@@ -131,32 +131,32 @@ describe('FilesApplyChangesTool', () => {
     });
   });
 
-  describe('detectIndentation', () => {
+  describe('detectIndentationFromBlock', () => {
     it('should detect spaces indentation', () => {
-      const result = tool['detectIndentation']('    code');
+      const result = tool['detectIndentationFromBlock']('    code');
       expect(result).toBe('    ');
     });
 
     it('should detect tabs indentation', () => {
-      const result = tool['detectIndentation']('\t\tcode');
+      const result = tool['detectIndentationFromBlock']('\t\tcode');
       expect(result).toBe('\t\t');
     });
 
     it('should return empty string for no indentation', () => {
-      const result = tool['detectIndentation']('code');
+      const result = tool['detectIndentationFromBlock']('code');
       expect(result).toBe('');
     });
   });
 
   describe('applyIndentation', () => {
-    it('should apply indentation to each line', () => {
+    it('should apply indentation to all lines including first', () => {
       const result = tool['applyIndentation']('line1\nline2\nline3', '  ');
-      expect(result).toBe('line1\n  line2\n  line3');
+      expect(result).toBe('  line1\n  line2\n  line3');
     });
 
     it('should not indent empty lines', () => {
       const result = tool['applyIndentation']('line1\n\nline3', '  ');
-      expect(result).toBe('line1\n\n  line3');
+      expect(result).toBe('  line1\n\n  line3');
     });
 
     it('should return original if no indentation', () => {
@@ -354,9 +354,8 @@ describe('FilesApplyChangesTool', () => {
 
       const result = tool['applyEdits'](fileContent, matches, edits);
 
-      // First line of replacement gets the indentation of original,
-      // subsequent lines also get indented
-      expect(result).toBe('line1\nmod2\n  mod2line2\nline3');
+      // All lines of replacement get the indentation of the matched location
+      expect(result).toBe('line1\n  mod2\n  mod2line2\nline3');
     });
 
     it('should handle multiline replacements', () => {

@@ -1295,7 +1295,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
    * This aborts any active runs whose thread_id or parent_thread_id matches the provided threadId.
    */
   public async stopThread(threadId: string, reason?: string): Promise<void> {
-    for (const [runId, run] of this.activeRuns.entries()) {
+    for (const [_runId, run] of this.activeRuns.entries()) {
       const cfg = run.runnableConfig?.configurable;
       const runThreadId = run.threadId;
       const parentThreadId = cfg?.parent_thread_id;
@@ -1381,7 +1381,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         // noop
       }
 
-      this.activeRuns.delete(runId);
+      // DO NOT delete from activeRuns here - let the stream's finally block handle cleanup
+      // This ensures the stopped flag is checked and proper events are emitted
     }
   }
 

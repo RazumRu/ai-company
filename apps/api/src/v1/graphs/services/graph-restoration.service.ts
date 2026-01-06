@@ -1,17 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
-import { Brackets } from 'typeorm';
 
-import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
-import { GraphCheckpointEntity } from '../../agents/entity/graph-chekpoints.entity';
-import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
-import { CompiledGraphNode, GraphStatus, NodeKind } from '../graphs.types';
+import { GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphsService } from './graphs.service';
@@ -32,7 +28,6 @@ export class GraphRestorationService {
     private readonly graphCompiler: GraphCompiler,
     private readonly graphRegistry: GraphRegistry,
     private readonly threadsDao: ThreadsDao,
-    private readonly graphCheckpointsDao: GraphCheckpointsDao,
     private readonly moduleRef: ModuleRef,
     private readonly logger: DefaultLogger,
   ) {}
@@ -171,8 +166,8 @@ export class GraphRestorationService {
       // Use the run method from GraphsService
       await graphsService.run(id);
 
-      // Resume interrupted threads
-      await this.resumeInterruptedThreads(id);
+      // Stop interrupted threads instead of resuming them
+      await this.stopInterruptedThreads(id);
 
       this.logger.log(`Successfully restored graph ${id}`);
     } catch (error) {
@@ -189,10 +184,11 @@ export class GraphRestorationService {
   }
 
   /**
-   * Resumes all interrupted threads for a restored graph
-   * This allows agents to continue their work from where they left off before server restart
+   * Stops all interrupted threads for a restored graph
+   * Threads that were running before server restart are marked as stopped
+   * Users can manually restart them if needed
    */
-  private async resumeInterruptedThreads(graphId: string): Promise<void> {
+  private async stopInterruptedThreads(graphId: string): Promise<void> {
     try {
       // Get all running threads for this graph
       const runningThreads = await this.threadsDao.getAll({
@@ -204,254 +200,32 @@ export class GraphRestorationService {
         return;
       }
 
-      const compiledGraph = this.graphRegistry.get(graphId);
-      if (!compiledGraph) {
-        this.logger.warn(
-          `Cannot resume threads: Graph ${graphId} not found in registry`,
-        );
-        return;
-      }
-
-      // Resume each thread
-      const resumePromises = runningThreads.map((thread) =>
-        this.resumeThread(graphId, thread.externalThreadId, compiledGraph),
+      this.logger.log(
+        `Stopping ${runningThreads.length} interrupted thread(s) for graph ${graphId}`,
+        {
+          graphId,
+          threadIds: runningThreads.map((t) => t.externalThreadId),
+        },
       );
 
-      await Promise.allSettled(resumePromises);
-    } catch (error) {
-      this.logger.error(
-        error instanceof Error ? error : new Error(String(error)),
-        `Failed to resume interrupted threads for graph ${graphId}`,
-      );
-      // Don't throw - graph restoration should succeed even if thread resumption fails
-    }
-  }
-
-  /**
-   * Resumes a single thread by invoking the agent to continue from its last checkpoint
-   */
-  private async resumeThread(
-    graphId: string,
-    externalThreadId: string,
-    compiledGraph: ReturnType<GraphRegistry['get']>,
-  ): Promise<void> {
-    try {
-      if (!compiledGraph) {
-        this.logger.warn(`Cannot resume thread: Graph not found`);
-        return;
-      }
-
-      let checkpoints: GraphCheckpointEntity[] = [];
-      try {
-        checkpoints = await this.graphCheckpointsDao.getAll({
-          order: { createdAt: 'DESC' },
-          limit: 20,
-          customCondition: new Brackets((qb) =>
-            qb
-              .where(`${this.graphCheckpointsDao.alias}.threadId = :threadId`, {
-                threadId: externalThreadId,
-              })
-              .orWhere(
-                `${this.graphCheckpointsDao.alias}.threadId LIKE :threadPrefix`,
-                { threadPrefix: `${externalThreadId}__%` },
-              ),
-          ),
-        });
-      } catch (error) {
-        this.logger.warn(
-          `Failed to load checkpoint metadata for thread ${externalThreadId}`,
-          {
-            graphId,
-            threadId: externalThreadId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
-        return;
-      }
-
-      const latestCheckpoint = this.findLatestAgentCheckpoint(
-        checkpoints,
-        compiledGraph,
+      // Update all running threads to stopped status
+      const updatePromises = runningThreads.map((thread) =>
+        this.threadsDao.updateById(thread.id, {
+          status: ThreadStatus.Stopped,
+        }),
       );
 
-      let resumeThreadId = externalThreadId;
-      const threadIdParts = latestCheckpoint
-        ? latestCheckpoint.threadId.split(':')
-        : externalThreadId.split(':');
-      if (threadIdParts.length < 2) {
-        this.logger.warn(
-          `Invalid thread ID format: ${externalThreadId}, cannot resume`,
-        );
-        return;
-      }
-
-      let checkpointNs: string | undefined;
-      let checkpointId: string | undefined;
-      let agentNodeId: string | null = null;
-
-      if (latestCheckpoint) {
-        checkpointNs = latestCheckpoint.checkpointNs;
-        checkpointId = latestCheckpoint.checkpointId;
-        agentNodeId = latestCheckpoint.agentNodeId;
-        resumeThreadId = latestCheckpoint.threadId;
-      }
-
-      if (!agentNodeId) {
-        const threadSubId = resumeThreadId.split(':').slice(1).join(':');
-        const nodeIdMatch = threadSubId.match(/__([^_]+)$/);
-        if (nodeIdMatch?.[1]) {
-          agentNodeId = nodeIdMatch[1];
-        }
-      }
-
-      if (!agentNodeId) {
-        for (const [nodeId, node] of compiledGraph.nodes.entries()) {
-          if (node.type === NodeKind.SimpleAgent) {
-            agentNodeId = nodeId;
-            break;
-          }
-        }
-      }
-
-      if (!agentNodeId) {
-        this.logger.warn(
-          `No agent node found to resume thread ${externalThreadId}`,
-        );
-        return;
-      }
-
-      if (!checkpointNs && agentNodeId) {
-        const matchingCheckpoint = checkpoints.find((cp) => {
-          const ns = cp.checkpointNs?.trim();
-          if (!ns) return false;
-          return this.extractNodeIdFromCheckpointNs(ns) === agentNodeId;
-        });
-        if (matchingCheckpoint) {
-          checkpointNs = matchingCheckpoint.checkpointNs?.trim();
-          checkpointId = matchingCheckpoint.checkpointId || undefined;
-        }
-      }
-
-      if (!checkpointNs) {
-        this.logger.warn(
-          `No checkpoint namespace found for thread ${externalThreadId}, skipping resume`,
-          {
-            graphId,
-            nodeId: agentNodeId,
-            threadId: externalThreadId,
-          },
-        );
-        return;
-      }
-
-      const agentNode = compiledGraph.nodes.get(agentNodeId);
-      if (!agentNode || agentNode.type !== NodeKind.SimpleAgent) {
-        this.logger.warn(
-          `Agent node ${agentNodeId} not found or invalid type for thread ${externalThreadId}`,
-        );
-        return;
-      }
-
-      const simpleAgentNode = agentNode as CompiledGraphNode<SimpleAgent>;
-      const agent = simpleAgentNode.instance;
-
-      if (!agent) {
-        this.logger.warn(
-          `Agent instance not available for node ${agentNodeId}, thread ${externalThreadId}`,
-        );
-        return;
-      }
+      await Promise.allSettled(updatePromises);
 
       this.logger.log(
-        `Resuming thread ${externalThreadId} on agent node ${agentNodeId}`,
-        {
-          graphId,
-          nodeId: agentNodeId,
-          threadId: resumeThreadId,
-          checkpointNs,
-          checkpointId,
-        },
+        `Successfully stopped ${runningThreads.length} interrupted thread(s) for graph ${graphId}`,
       );
-
-      // Resume the agent with empty messages to continue from checkpoint
-      // LangGraph will automatically load from the last checkpoint and continue
-      void agent
-        .run(resumeThreadId, [], undefined, {
-          configurable: {
-            graph_id: graphId,
-            node_id: agentNodeId,
-            parent_thread_id: externalThreadId,
-            thread_id: resumeThreadId,
-            source: 'graph-restoration',
-            checkpoint_ns: checkpointNs,
-            async: true,
-            ...(checkpointId ? { checkpoint_id: checkpointId } : {}),
-          },
-        })
-        .catch((error: Error) => {
-          this.logger.error(
-            error,
-            `Failed to resume thread ${externalThreadId}`,
-            {
-              graphId,
-              nodeId: agentNodeId,
-              threadId: externalThreadId,
-            },
-          );
-        });
     } catch (error) {
       this.logger.error(
         error instanceof Error ? error : new Error(String(error)),
-        `Error resuming thread ${externalThreadId}`,
-        {
-          graphId,
-          threadId: externalThreadId,
-        },
+        `Failed to stop interrupted threads for graph ${graphId}`,
       );
+      // Don't throw - graph restoration should succeed even if thread stopping fails
     }
-  }
-
-  private findLatestAgentCheckpoint(
-    checkpoints: GraphCheckpointEntity[],
-    compiledGraph: ReturnType<GraphRegistry['get']>,
-  ):
-    | {
-        checkpointNs: string;
-        checkpointId?: string;
-        agentNodeId: string;
-        threadId: string;
-      }
-    | undefined {
-    if (!compiledGraph) {
-      return undefined;
-    }
-
-    for (const cp of checkpoints) {
-      const ns = cp.checkpointNs?.trim();
-      if (!ns) continue;
-
-      const agentNodeId = this.extractNodeIdFromCheckpointNs(ns);
-      if (!agentNodeId) continue;
-
-      const node = compiledGraph.nodes.get(agentNodeId);
-      if (node?.type === NodeKind.SimpleAgent) {
-        return {
-          checkpointNs: ns,
-          checkpointId: cp.checkpointId || undefined,
-          agentNodeId,
-          threadId: cp.threadId,
-        };
-      }
-    }
-
-    return undefined;
-  }
-
-  private extractNodeIdFromCheckpointNs(ns?: string | null): string | null {
-    if (!ns) return null;
-    const segments = ns.split(':');
-    if (segments.length === 0) return null;
-    const candidate = segments[segments.length - 1];
-    return candidate && candidate.length > 0 ? candidate : null;
   }
 }

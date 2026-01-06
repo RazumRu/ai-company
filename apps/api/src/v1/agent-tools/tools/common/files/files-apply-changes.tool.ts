@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { randomBytes } from 'node:crypto';
 import { basename, dirname } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
@@ -16,15 +17,12 @@ import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 export const FilesApplyChangesToolEditSchema = z.object({
   oldText: z
     .string()
-    .min(1)
     .describe(
-      'Text to search for (can be substring). Whitespace is normalized for matching.',
+      'Text block to search for. Matching uses whitespace-normalized exact block match. Empty string means create/overwrite file (only allowed when it is the single edit).',
     ),
   newText: z
     .string()
-    .describe(
-      'Text to replace with. Indentation will be preserved from original.',
-    ),
+    .describe('Text to replace with. Indentation will be preserved.'),
 });
 
 const FilesApplyChangesToolSchemaBase = z.object({
@@ -41,8 +39,6 @@ const FilesApplyChangesToolSchemaBase = z.object({
 
 export const FilesApplyChangesToolSchema = FilesApplyChangesToolSchemaBase;
 
-// Use `z.input<>` so callers can omit defaulted fields like `dryRun`.
-// (Defaults are still applied at runtime via Ajv useDefaults + JSON schema "default".)
 export type FilesApplyChangesToolSchemaType = z.input<
   typeof FilesApplyChangesToolSchema
 >;
@@ -98,7 +94,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       Applies targeted text edits by replacing \`oldText\` with \`newText\`. Supports \`dryRun\` to preview diff without modifying.
 
       ### How matching works
-      Exact-match replacement with normalized whitespace (trimmed lines). Each \`oldText\` must match exactly once: 0 matches = adjust text; >1 match = add more context. Indentation auto-detected and preserved.
+      Whitespace-normalized exact block match: trailing whitespace and common leading indentation are stripped, but relative indentation within blocks is preserved. Each \`oldText\` must match exactly once: 0 matches = adjust text; >1 match = add more context. Indentation auto-detected and preserved from the matched file location.
 
       ### When to Use
       Precise changes without overwriting whole file, insert/replace blocks, safe preview with \`dryRun: true\`.
@@ -106,61 +102,102 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       ### When NOT to Use
       For full overwrite → use \`files_write_file\`. For file deletion → use \`files_delete\`.
 
+      ### CRITICAL: Preventing Common Errors
+
+      **Error: "Found N matches for oldText"**
+      - CAUSE: Your \`oldText\` appears multiple times in the file
+      - FIX: Add MORE surrounding context (5-10 lines before/after the change)
+      - EXAMPLE: If editing line 38 in providers array, include lines 34-42 to distinguish from exports array
+
+      **Error: "Could not find match for oldText"**
+      - CAUSE: Your \`oldText\` doesn't exactly match file content (even with whitespace normalization)
+      - FIX: Use \`files_read\` FIRST to copy the EXACT text, then modify only what needs to change
+      - NEVER guess or type code from memory - always copy from file first
+
       ### Best Practices
-      Run \`dryRun\` first for important files. Make \`oldText\` unique with 3-15 lines of context. Copy exact blocks via \`files_read\`. If "Found N matches", add nearby lines (imports, function signature) to make unique. For multiple edits in one file, supply multiple edits array.
+      1. **ALWAYS** use \`files_read\` first to get exact text
+      2. **ALWAYS** include 5-10 lines of context around your change
+      3. For edits in arrays/lists (providers, imports, exports), include the unique element before/after
+      4. Run \`dryRun: true\` first to verify match
+      5. If error occurs, read file again and include MORE context
+      6. Multiple edits must not overlap (same line in multiple edits), but adjacent edits are allowed
 
       ### Workflow
-      1. \`files_search_text\` or \`files_read\` to find/copy exact block
+      1. \`files_read\` to copy exact block (REQUIRED)
       2. \`files_apply_changes\` with \`dryRun: true\` to verify
       3. \`files_apply_changes\` with \`dryRun: false\` to apply
 
       ### Examples
-      **1. Preview single edit (dry run):**
+      **1. BAD - Not enough context (will fail if pattern repeats):**
       \`\`\`json
-      {"path":"/repo/src/a.ts","edits":[{"oldText":"const x = 1;","newText":"const x = 2;"}],"dryRun":true}
+      {"path":"/repo/module.ts","edits":[{"oldText":"    GhBranchTool,\\n    GhPushTool,","newText":"    GhBranchTool,\\n    GhPushTool,\\n    GhCreatePRTool,"}]}
       \`\`\`
 
-      **2. Multi-line edit with context (best practice):**
+      **2. GOOD - Sufficient context (unique match):**
       \`\`\`json
       {
-        "path": "/repo/src/utils.ts",
+        "path": "/repo/module.ts",
         "edits": [{
-          "oldText": "export function add(a: number, b: number) {\\n  return a + b;\\n}",
-          "newText": "export function add(a: number, b: number): number {\\n  return a + b;\\n}"
+          "oldText": "    CommunicationToolGroup,\\n    GhCloneTool,\\n    GhCommitTool,\\n    GhBranchTool,\\n    GhPushTool,\\n    GhToolGroup,\\n    FilesFindPathsTool,",
+          "newText": "    CommunicationToolGroup,\\n    GhCloneTool,\\n    GhCommitTool,\\n    GhBranchTool,\\n    GhPushTool,\\n    GhCreatePRTool,\\n    GhToolGroup,\\n    FilesFindPathsTool,"
         }]
       }
       \`\`\`
 
       **3. Multiple edits in one file:**
       \`\`\`json
-      {"path":"/repo/config.ts","edits":[{"oldText":"version: 1","newText":"version: 2"},{"oldText":"debug: false","newText":"debug: true"}]}
+      {"path":"/repo/config.ts","edits":[{"oldText":"export const VERSION = 1;\\nexport const NAME = 'app';","newText":"export const VERSION = 2;\\nexport const NAME = 'app';"},{"oldText":"export const DEBUG = false;\\nexport const LOG_LEVEL = 'info';","newText":"export const DEBUG = true;\\nexport const LOG_LEVEL = 'info';"}]}
       \`\`\`
     `;
   }
 
-  private normalizeWhitespace(text: string): string {
-    return text
-      .split('\n')
-      .map((line) => line.trim())
-      .join('\n')
-      .trim();
+  private shQuote(s: string): string {
+    return `'${s.replace(/'/g, `'\\''`)}'`;
   }
 
-  private detectIndentation(line: string): string {
+  private normalizeWhitespace(text: string): string {
+    // Normalize line endings
+    const normalized = text.replace(/\r\n/g, '\n');
+
+    // Remove trailing whitespace from each line, but preserve leading spaces
+    const lines = normalized
+      .split('\n')
+      .map((line) => line.replace(/[ \t]+$/g, ''));
+
+    // Strip common indentation to preserve relative indentation
+    return this.stripCommonIndent(lines.join('\n')).trim();
+  }
+
+  private detectIndentationFromBlock(text: string): string {
+    const line = text
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .find((l) => l.trim().length > 0);
+    if (!line) return '';
     const match = line.match(/^(\s+)/);
     return match && match[1] ? match[1] : '';
   }
 
+  private stripCommonIndent(text: string): string {
+    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const nonEmpty = lines.filter((l) => l.trim().length > 0);
+    if (nonEmpty.length === 0) return lines.join('\n');
+    const indents = nonEmpty.map((l) => l?.match(/^(\s*)/)?.[1]?.length ?? 0);
+    const minIndent = Math.min(...indents);
+    if (minIndent === 0) return lines.join('\n');
+    return lines
+      .map((l) => (l.trim().length ? l.slice(minIndent) : l))
+      .join('\n');
+  }
+
   private applyIndentation(text: string, indentation: string): string {
-    if (!indentation) return text;
-    return text
-      .split('\n')
-      .map((line, index) => {
-        // Don't indent empty lines or first line if original wasn't indented
-        if (line.trim() === '' || (index === 0 && !text.startsWith('\n'))) {
-          return line;
-        }
-        return indentation + line;
+    const stripped = this.stripCommonIndent(text).replace(/\r\n/g, '\n');
+    if (!indentation) return stripped;
+    const lines = stripped.split('\n');
+    return lines
+      .map((line) => {
+        // Apply indentation to all non-empty lines
+        return line.trim() === '' ? line : indentation + line;
       })
       .join('\n');
   }
@@ -169,7 +206,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     fileContent: string,
     edits: FilesApplyChangesToolEditSchemaType[],
   ): { matches: EditMatch[]; errors: string[] } {
-    const lines = fileContent.split('\n');
+    const lines = fileContent.replace(/\r\n/g, '\n').split('\n');
     const matches: EditMatch[] = [];
     const errors: string[] = [];
 
@@ -180,7 +217,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         continue;
       }
 
-      // Special case: empty oldText means we're creating/replacing entire file
       if (edit.oldText === '') {
         continue;
       }
@@ -191,7 +227,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
       const foundMatches: EditMatch[] = [];
 
-      // Search through file for matches
       for (
         let lineIndex = 0;
         lineIndex <= lines.length - searchLineCount;
@@ -206,27 +241,33 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         );
 
         if (normalizedCandidate === normalizedOldText) {
-          const lineAtIndex = lines[lineIndex];
-          const indentation = lineAtIndex
-            ? this.detectIndentation(lineAtIndex)
-            : '';
+          const candidateBlock = candidateLines.join('\n');
+          const indentation = this.detectIndentationFromBlock(candidateBlock);
           foundMatches.push({
             editIndex,
             startLine: lineIndex,
             endLine: lineIndex + searchLineCount - 1,
-            matchedText: candidateLines.join('\n'),
+            matchedText: candidateBlock,
             indentation,
           });
         }
       }
 
       if (foundMatches.length === 0) {
+        const previewLines = normalizedOldText.split('\n').slice(0, 3);
+        const preview =
+          previewLines.length < searchLines.length
+            ? `${previewLines.join('\\n')}...`
+            : normalizedOldText;
         errors.push(
-          `Edit ${editIndex}: Could not find match for oldText in file.`,
+          `Edit ${editIndex}: Could not find match for oldText in file. Searched for (normalized): "${preview}". TIP: Use files_read to copy the EXACT text from the file, then modify only what needs to change. Don't guess or type from memory.`,
         );
       } else if (foundMatches.length > 1) {
+        const matchLocations = foundMatches
+          .map((m) => `lines ${m.startLine + 1}-${m.endLine + 1}`)
+          .join(', ');
         errors.push(
-          `Edit ${editIndex}: Found ${foundMatches.length} matches for oldText. Please be more specific to match uniquely.`,
+          `Edit ${editIndex}: Found ${foundMatches.length} matches for oldText at ${matchLocations}. TIP: Add MORE surrounding context (5-10 lines before/after) to make the match unique. Include nearby unique elements like function names, imports, or comments.`,
         );
       } else if (foundMatches[0]) {
         matches.push(foundMatches[0]);
@@ -261,7 +302,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         `@@ -${match.startLine + 1},${match.endLine - match.startLine + 1} +${match.startLine + 1},${newTextLines} @@`,
       );
 
-      // Context before
       for (let i = startContext; i < match.startLine; i++) {
         const line = originalLines[i];
         if (line !== undefined) {
@@ -269,7 +309,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         }
       }
 
-      // Old lines
       for (let i = match.startLine; i <= match.endLine; i++) {
         const line = originalLines[i];
         if (line !== undefined) {
@@ -277,7 +316,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         }
       }
 
-      // New lines
       if (edit) {
         const newTextWithIndent = this.applyIndentation(
           edit.newText,
@@ -288,7 +326,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         }
       }
 
-      // Context after
       for (let i = match.endLine + 1; i <= endContext; i++) {
         const line = originalLines[i];
         if (line !== undefined) {
@@ -305,10 +342,8 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     matches: EditMatch[],
     edits: FilesApplyChangesToolEditSchemaType[],
   ): string {
-    const lines = fileContent.split('\n');
+    const lines = fileContent.replace(/\r\n/g, '\n').split('\n');
 
-    // Sort matches by startLine in descending order to apply from bottom to top
-    // This prevents line number shifts from affecting subsequent edits
     const sortedMatches = [...matches].sort(
       (a, b) => b.startLine - a.startLine,
     );
@@ -323,7 +358,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       );
       const newLines = newTextWithIndent.split('\n');
 
-      // Replace lines from startLine to endLine with new lines
       lines.splice(
         match.startLine,
         match.endLine - match.startLine + 1,
@@ -342,11 +376,21 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
 
-    // Special case: if all edits have empty oldText, we're creating a new file
     const isNewFile = args.edits.every((edit) => edit.oldText === '');
+    const hasAnyEmptyOldText = args.edits.some((edit) => edit.oldText === '');
+
+    if (hasAnyEmptyOldText && !(isNewFile && args.edits.length === 1)) {
+      return {
+        output: {
+          success: false,
+          error:
+            'Invalid edits: oldText="" is only allowed when it is the single edit to create/overwrite a file.',
+        },
+        messageMetadata,
+      };
+    }
 
     if (isNewFile && args.edits.length === 1) {
-      // Creating new file
       const firstEdit = args.edits[0];
       if (!firstEdit) {
         return {
@@ -360,22 +404,26 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       const newContent = firstEdit.newText;
 
       if (args.dryRun) {
+        const diffLines = newContent
+          .split('\n')
+          .map((line) => `+${line}`)
+          .join('\n');
         return {
           output: {
             success: true,
             appliedEdits: 0,
             totalEdits: 1,
-            diff: `New file:\n+${newContent.split('\n').join('\n+')}`,
+            diff: `New file:\n${diffLines}`,
           },
           messageMetadata,
         };
       }
 
-      // Use base64 encoding to safely handle special characters
       const parentDir = dirname(args.path);
       const contentBase64 = Buffer.from(newContent, 'utf8').toString('base64');
-      const tempFile = `${args.path}.tmp.${Date.now()}`;
-      const cmd = `mkdir -p "${parentDir}" && echo '${contentBase64}' | base64 -d > "${tempFile}" && mv "${tempFile}" "${args.path}"`;
+      const tempFile = `${args.path}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
+
+      const cmd = `mkdir -p ${this.shQuote(parentDir)} && printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.path)}`;
 
       const writeResult = await this.execCommand(
         {
@@ -405,12 +453,8 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       };
     }
 
-    // Read the file
-    const readResult = await this.execCommand(
-      { cmd: `cat "${args.path}"` },
-      config,
-      cfg,
-    );
+    const p = this.shQuote(args.path);
+    const readResult = await this.execCommand({ cmd: `cat ${p}` }, config, cfg);
 
     if (readResult.exitCode !== 0) {
       return {
@@ -424,7 +468,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     const fileContent = readResult.stdout;
 
-    // Find all matches
     const { matches, errors } = this.findMatches(fileContent, args.edits);
 
     if (errors.length > 0) {
@@ -437,11 +480,27 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       };
     }
 
-    // Generate diff
-    const originalLines = fileContent.split('\n');
+    // Validate no overlapping edits
+    const sortedMatches = [...matches].sort(
+      (a, b) => a.startLine - b.startLine,
+    );
+    for (let i = 0; i < sortedMatches.length - 1; i++) {
+      const current = sortedMatches[i];
+      const next = sortedMatches[i + 1];
+      if (current && next && current.endLine >= next.startLine) {
+        return {
+          output: {
+            success: false,
+            error: `Overlapping edits detected: Edit ${current.editIndex} (lines ${current.startLine + 1}-${current.endLine + 1}) overlaps with Edit ${next.editIndex} (lines ${next.startLine + 1}-${next.endLine + 1}). Edits must target non-overlapping ranges.`,
+          },
+          messageMetadata,
+        };
+      }
+    }
+
+    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
     const diff = this.generateDiff(originalLines, matches, args.edits);
 
-    // If dry run, return diff without applying
     if (args.dryRun) {
       return {
         output: {
@@ -454,15 +513,13 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       };
     }
 
-    // Apply edits
     const modifiedContent = this.applyEdits(fileContent, matches, args.edits);
 
-    // Write modified content back to file using base64 encoding
     const contentBase64 = Buffer.from(modifiedContent, 'utf8').toString(
       'base64',
     );
-    const tempFile = `${args.path}.tmp.${Date.now()}`;
-    const cmd = `echo '${contentBase64}' | base64 -d > "${tempFile}" && mv "${tempFile}" "${args.path}"`;
+    const tempFile = `${args.path}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
+    const cmd = `printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.path)}`;
 
     const writeResult = await this.execCommand(
       {
@@ -487,6 +544,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         success: true,
         appliedEdits: matches.length,
         totalEdits: args.edits.length,
+        diff,
       },
       messageMetadata,
     };
