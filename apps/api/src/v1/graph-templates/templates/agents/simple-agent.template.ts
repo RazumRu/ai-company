@@ -164,9 +164,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     };
   }
 
-  private collectToolInstructions(
-    tools: BuiltAgentTool[],
-  ): string | undefined {
+  private collectToolInstructions(tools: BuiltAgentTool[]): string | undefined {
     const toolBlocks = tools
       .filter((tool): tool is BuiltAgentTool => Boolean(tool))
       .map((tool) => {

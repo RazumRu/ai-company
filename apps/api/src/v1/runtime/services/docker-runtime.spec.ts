@@ -74,4 +74,65 @@ describe('DockerRuntime (sessions)', () => {
     expect(commandArg.script).toContain('echo $FOO');
     expect(result).toEqual(mockResult);
   });
+
+  it('prepends cd command when cwd is provided in session execution', async () => {
+    const enqueueSpy = vi
+      .spyOn(runtimeSessionApi, 'enqueueSessionCommand')
+      .mockImplementation((_session: unknown, command: any) => {
+        command.resolve(mockResult);
+      });
+
+    vi.spyOn(runtimeSessionApi, 'ensureSession').mockResolvedValue({
+      id: 'sess-cwd',
+      workdir: '/runtime-workspace',
+      exec: {} as never,
+      inputStream: { write: vi.fn() } as never,
+      stdoutStream: new PassThrough(),
+      stderrStream: new PassThrough(),
+      stdoutBuffer: '',
+      stderrBuffer: '',
+      queue: [],
+      busy: false,
+    });
+
+    const result = await runtimeSessionApi.execInSession(
+      { cmd: 'ls', sessionId: 'sess-cwd', cwd: '/app/src' },
+      '/runtime-workspace',
+    );
+
+    const [, commandArg] = enqueueSpy.mock.calls[0]!;
+    expect(commandArg.script).toContain('cd "/app/src"');
+    expect(commandArg.script).toContain('ls');
+    expect(result).toEqual(mockResult);
+  });
+
+  it('handles cwd with spaces and special characters in session execution', async () => {
+    const enqueueSpy = vi
+      .spyOn(runtimeSessionApi, 'enqueueSessionCommand')
+      .mockImplementation((_session: unknown, command: any) => {
+        command.resolve(mockResult);
+      });
+
+    vi.spyOn(runtimeSessionApi, 'ensureSession').mockResolvedValue({
+      id: 'sess-cwd-special',
+      workdir: '/runtime-workspace',
+      exec: {} as never,
+      inputStream: { write: vi.fn() } as never,
+      stdoutStream: new PassThrough(),
+      stderrStream: new PassThrough(),
+      stdoutBuffer: '',
+      stderrBuffer: '',
+      queue: [],
+      busy: false,
+    });
+
+    const result = await runtimeSessionApi.execInSession(
+      { cmd: 'pwd', sessionId: 'sess-cwd-special', cwd: '/path with spaces' },
+      '/runtime-workspace',
+    );
+
+    const [, commandArg] = enqueueSpy.mock.calls[0]!;
+    expect(commandArg.script).toContain('cd "/path with spaces"');
+    expect(result).toEqual(mockResult);
+  });
 });

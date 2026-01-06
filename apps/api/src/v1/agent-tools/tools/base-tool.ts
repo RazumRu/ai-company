@@ -50,7 +50,11 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
 
   protected generateTitle?(args: TSchema, config: TConfig): string;
 
-  private ajv = new Ajv({ useDefaults: true, coerceTypes: true });
+  private ajv = new Ajv({
+    useDefaults: true,
+    coerceTypes: true,
+    removeAdditional: true,
+  });
 
   protected getSchemaParameterDocs(schema: JSONSchema) {
     return getSchemaParameterDocs(schema);

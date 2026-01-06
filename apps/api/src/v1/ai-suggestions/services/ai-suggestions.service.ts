@@ -251,7 +251,8 @@ export class AiSuggestionsService {
           'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
           "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools, MCP servers, and Knowledge sections information in your response. You can only refer to it if needed.",
           'Keep the result concise, actionable, and focused on how the agent should behave.',
-          'Return only the updated instructions text without extra commentary. You should never add to your message information about Connected tools, MCP servers, and Knowledge sections. It will be included to the user message, but you cannot duplicate it adn add it to your response if its marked as NEVER INCLUDE IT IN YOUR ANSWER',
+          'Return only the updated instructions text without extra commentary.',
+          'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
         ].join('\n');
     const message = isContinuation
       ? (payload.userRequest || '').trim()
@@ -839,15 +840,25 @@ export class AiSuggestionsService {
           .join('\n\n')
       : 'No connected tools available.';
 
-    const mcpSection = mcpInstructions
-      ? `Connected MCP servers (NEVER INCLUDE IT IN YOUR ANSWER):\n${mcpInstructions}`
+    const toolsBlock = [
+      '<<<REFERENCE_ONLY_CONNECTED_TOOLS>>>',
+      toolsSection,
+      '<<<END_REFERENCE_ONLY_CONNECTED_TOOLS>>>',
+    ].join('\n');
+
+    const mcpBlock = mcpInstructions
+      ? [
+          '<<<REFERENCE_ONLY_MCP>>>',
+          mcpInstructions,
+          '<<<END_REFERENCE_ONLY_MCP>>>',
+        ].join('\n')
       : undefined;
 
     return [
       `User request:\n${userRequest}`,
       `Current instructions:\n${currentInstructions}`,
-      `Connected tools (NEVER INCLUDE IT IN YOUR ANSWER):\n${toolsSection}`,
-      mcpSection,
+      toolsBlock,
+      mcpBlock,
       'Provide the full updated instructions. Do not include a preamble.',
     ]
       .filter(Boolean)

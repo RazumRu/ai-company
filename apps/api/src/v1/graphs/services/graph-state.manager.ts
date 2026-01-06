@@ -362,7 +362,7 @@ export class GraphStateManager {
           }
           this.emitNodeUpdate(
             state,
-            event.data.metadata.threadId,
+            event.data.metadata.threadId ?? undefined,
             event.data.metadata.runId,
           );
         }
@@ -396,8 +396,8 @@ export class GraphStateManager {
       graphId: cfg?.graph_id || this.graphId,
       nodeId: cfg?.node_id || state.nodeId,
       threadId,
-      // For root runs parent_thread_id is typically not set. We must still emit a stable key
-      // so downstream token/cost aggregation does not end up under a bogus "unknown" thread.
+      // For root runs parent_thread_id is typically not set. We still emit a stable key
+      // so downstream token/cost aggregation is consistently keyed to the root thread.
       parentThreadId: cfg?.parent_thread_id ?? threadId,
       ...(runId ? { runId } : {}),
       source: cfg?.source,
@@ -466,7 +466,7 @@ export class GraphStateManager {
         graphId: this.graphId,
         nodeId: state.nodeId,
         threadId,
-        parentThreadId: parentThreadId || 'unknown',
+        ...(parentThreadId ? { parentThreadId } : {}),
         data: { status: finalStatus },
       });
     }
@@ -480,7 +480,7 @@ export class GraphStateManager {
 
   private async handleAgentStop(state: NodeState, data: AgentStopEvent) {
     const cfg = data.config?.configurable;
-    const parentThreadId = cfg?.parent_thread_id || 'unknown';
+    const parentThreadId = cfg?.parent_thread_id;
 
     // Get all active threads before clearing
     const activeThreads = Array.from(
@@ -498,7 +498,7 @@ export class GraphStateManager {
         graphId: this.graphId,
         nodeId: state.nodeId,
         threadId,
-        parentThreadId,
+        ...(parentThreadId ? { parentThreadId } : {}),
         data: { status: ThreadStatus.Stopped },
       });
     }

@@ -61,96 +61,37 @@ export class WebSearchTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Searches the web using Tavily search engine to find current, relevant information. Returns structured results with titles, URLs, and content snippets.
+      Searches web using Tavily to find current information. Returns structured results with titles, URLs, and content snippets.
 
       ### When to Use
-      - Finding current documentation for libraries or frameworks
-      - Looking up error messages and solutions
-      - Researching best practices and patterns
-      - Finding recent news or updates
-      - Getting information not available in local codebase
+      Finding current documentation, error solutions, best practices, recent news, or information not in local codebase.
 
       ### When NOT to Use
-      - Information is available in the codebase → use \`files_search_text\`
-      - You need to access a specific URL → use shell with curl/wget
-      - Looking for code in the current project → use file tools
+      Info available in codebase → use files_search_text. For specific URL → use shell with curl/wget. For local code → use file tools.
 
       ### Best Practices
+      Include tech versions when relevant. Include error messages verbatim. Use domain filters (includeDomains) for authoritative sources. Add year for time-sensitive topics.
 
-      **1. Include technology versions when relevant:**
+      ### Examples
+      **1. Version-specific query:**
       \`\`\`json
       {"query": "React 18 Suspense data fetching example"}
-      {"query": "Node.js 20 native fetch API usage"}
       \`\`\`
 
-      **2. Include error messages verbatim:**
+      **2. Error search:**
       \`\`\`json
       {"query": "error TS2339: Property 'map' does not exist on type 'unknown'"}
       \`\`\`
 
-      **3. Use domain filters for authoritative sources:**
+      **3. Domain-filtered search:**
       \`\`\`json
-      {
-        "query": "PostgreSQL JSONB indexing",
-        "includeDomains": ["postgresql.org", "stackoverflow.com", "github.com"]
-      }
+      {"query": "PostgreSQL JSONB indexing", "includeDomains": ["postgresql.org", "stackoverflow.com"]}
       \`\`\`
 
-      **4. Add year for time-sensitive topics:**
+      **4. Deep research:**
       \`\`\`json
-      {"query": "Next.js 14 app router conventions 2024"}
+      {"query": "TypeScript monorepo best practices 2024", "searchDepth": "advanced", "maxResults": 10}
       \`\`\`
-
-      ### Output Format
-      \`\`\`json
-      {
-        "answer": "Brief AI-generated answer if available...",
-        "results": [
-          {
-            "title": "React Hooks Documentation",
-            "url": "https://react.dev/reference/react",
-            "content": "Snippet of relevant content from the page..."
-          },
-          {
-            "title": "Understanding useEffect",
-            "url": "https://blog.example.com/use-effect",
-            "content": "Another relevant snippet..."
-          }
-        ]
-      }
-      \`\`\`
-
-      ### Common Patterns
-
-      **Finding library documentation:**
-      \`\`\`json
-      {"query": "axios interceptors documentation example", "includeDomains": ["axios-http.com", "github.com"]}
-      \`\`\`
-
-      **Troubleshooting errors:**
-      \`\`\`json
-      {"query": "ECONNREFUSED 127.0.0.1 docker node.js", "searchDepth": "advanced"}
-      \`\`\`
-
-      **Researching best practices:**
-      \`\`\`json
-      {"query": "TypeScript monorepo structure best practices 2024", "searchDepth": "advanced", "maxResults": 10}
-      \`\`\`
-
-      **Finding examples:**
-      \`\`\`json
-      {"query": "NestJS guards example implementation", "includeDomains": ["nestjs.com", "github.com"]}
-      \`\`\`
-
-      ### Using Results
-      1. Review the \`answer\` field for a quick summary
-      2. Scan result titles and snippets for relevance
-      3. Note URLs for reference
-      4. Use shell with curl if you need full page content
-      5. Apply learned information to the task at hand
-
-      ### Rate Limiting
-      Be mindful of search frequency. Batch related queries logically rather than making many small searches.
     `;
   }
 

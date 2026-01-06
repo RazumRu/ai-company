@@ -285,7 +285,7 @@ describe('ThreadUpdateNotificationHandler', () => {
       expect(result).toEqual([]);
     });
 
-    it('treats "unknown" parentThreadId as missing and uses threadId as external key', async () => {
+    it('treats missing parentThreadId as missing and uses threadId as external key', async () => {
       const thread = createMockThreadEntity({ status: ThreadStatus.Running });
       const updatedThread = {
         ...thread,
@@ -294,7 +294,7 @@ describe('ThreadUpdateNotificationHandler', () => {
       } satisfies ThreadEntity;
 
       const notification = createMockNotification({
-        parentThreadId: 'unknown',
+        parentThreadId: undefined,
         data: { status: ThreadStatus.Done },
       });
 
@@ -384,19 +384,9 @@ describe('ThreadUpdateNotificationHandler', () => {
         mockThreadId,
       );
 
-      // With Math.max merge strategy, we take the max of cache and DB values
-      // because the cache already contains accumulated values from LangGraph checkpoints
       expect(updateSpy).toHaveBeenCalledWith(thread.id, {
         status: ThreadStatus.Done,
-        tokenUsage: {
-          inputTokens: 10, // Math.max(2, 10)
-          outputTokens: 5, // Math.max(1, 5)
-          totalTokens: 15, // Math.max(3, 15)
-          totalPrice: 0.01, // Math.max(0.002, 0.01)
-          byNode: {
-            agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-          },
-        },
+        tokenUsage: flushedUsage,
       });
     });
   });

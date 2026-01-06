@@ -190,7 +190,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
       expect(output).toEqual({
@@ -249,7 +249,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
       expect(output).toEqual({
@@ -293,7 +293,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
       expect(output).toEqual({
@@ -368,7 +368,6 @@ describe('ShellTool', () => {
           sessionId: 'run-xyz',
           childWorkdir: 'run-xyz',
           metadata: expect.objectContaining({
-            threadId: 'run-xyz',
             runId: 'run-xyz',
           }),
         }),
@@ -460,7 +459,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
     });
@@ -494,7 +493,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
     });
@@ -536,7 +535,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
     });
@@ -575,7 +574,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
     });
@@ -607,7 +606,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
     });
@@ -639,7 +638,7 @@ describe('ShellTool', () => {
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
-          metadata: expect.objectContaining({ threadId: 'unknown' }),
+          metadata: expect.any(Object),
         }),
       );
     });

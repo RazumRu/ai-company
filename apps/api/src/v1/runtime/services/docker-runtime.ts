@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Duplex, PassThrough } from 'node:stream';
 
 import { BadRequestException } from '@packages/common';
+import dedent from 'dedent';
 import Docker from 'dockerode';
 
 import { environment } from '../../../environments';
@@ -852,6 +853,19 @@ export class DockerRuntime extends BaseRuntime {
       this.container = existingContainer;
       this.containerWorkdir = this.getWorkdir(params?.workdir);
 
+      // Restore DinD container reference if enabled
+      if (params?.enableDind) {
+        const dindContainerName = `dind-${containerName}`;
+        const existingDind = await this.getByName(dindContainerName);
+        if (existingDind) {
+          const dindInspect = await existingDind.inspect();
+          if (!dindInspect.State.Running) {
+            await existingDind.start();
+          }
+          this.dindContainer = existingDind;
+        }
+      }
+
       this.emit({
         type: 'start',
         data: { params: params || {} },
@@ -1032,9 +1046,20 @@ export class DockerRuntime extends BaseRuntime {
 
     const execId = randomUUID();
 
-    const cmd = Array.isArray(params.cmd)
-      ? ['sh', '-lc', params.cmd.join(' && ')]
-      : ['sh', '-lc', params.cmd];
+    // Prepare command with optional cwd prefix
+    let cmdString: string;
+    if (Array.isArray(params.cmd)) {
+      cmdString = params.cmd.join(' && ');
+    } else {
+      cmdString = params.cmd;
+    }
+
+    // If cwd is provided, prepend cd command
+    if (params.cwd) {
+      cmdString = `cd ${JSON.stringify(params.cwd)} && ${cmdString}`;
+    }
+
+    const cmd = ['sh', '-lc', cmdString];
     const abortController = new AbortController();
 
     if (params.signal) {
@@ -1198,9 +1223,14 @@ export class DockerRuntime extends BaseRuntime {
     const sessionId = params.sessionId as string;
     const session = await this.ensureSession(sessionId, workdir, env);
     const envPrefix = this.buildEnvPrefix(params.env);
-    const userCmd = Array.isArray(params.cmd)
+    let userCmd = Array.isArray(params.cmd)
       ? params.cmd.join(' && ')
       : params.cmd;
+
+    // If cwd is provided, prepend cd command
+    if (params.cwd) {
+      userCmd = `cd ${JSON.stringify(params.cwd)} && ${userCmd}`;
+    }
 
     const script = `${envPrefix}${userCmd || ':'}`;
 
@@ -1280,12 +1310,11 @@ export class DockerRuntime extends BaseRuntime {
 
   public override getRuntimeInfo(): string {
     const runtimeImage = this.image ?? environment.dockerRuntimeImage;
-    const infoLines = [
-      `Runtime type: ${RuntimeType.Docker}`,
-      runtimeImage ? `Runtime image: ${runtimeImage}` : null,
-      `DIND available: ${this.dindContainer ? 'yes' : 'no'}`,
-    ].filter(Boolean);
 
-    return infoLines.join('\n');
+    return dedent`
+      Runtime type: ${RuntimeType.Docker}
+      ${runtimeImage ? `Runtime image: ${runtimeImage}` : ''}
+      DIND available: ${this.dindContainer ? 'yes' : 'no'}
+    `;
   }
 }

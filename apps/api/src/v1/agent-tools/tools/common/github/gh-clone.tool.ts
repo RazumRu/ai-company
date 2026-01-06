@@ -25,6 +25,13 @@ export const GhCloneToolSchema = GhBaseToolSchema.extend({
     .nullable()
     .optional()
     .describe('Shallow clone depth (omit for full clone).'),
+  workdir: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'Optional working directory path where the repository should be cloned. If not provided, clones to the default location.',
+    ),
 });
 
 export type GhCloneToolSchemaType = z.infer<typeof GhCloneToolSchema>;
@@ -54,77 +61,32 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Clones a GitHub repository into the runtime environment using authenticated HTTPS via the GitHub CLI (gh). Authentication is handled automatically via configured PAT token.
+      Clones GitHub repository using authenticated HTTPS via gh CLI. Returns path for subsequent operations.
 
       ### When to Use
-      - Setting up a new project to work on
-      - Getting access to a repository's code
-      - Starting work on a specific branch or tag
-      - Creating a working copy for modifications
+      Setting up new project to work on, getting repo code, starting work on specific branch.
 
       ### When NOT to Use
-      - Repository is already cloned → navigate to existing clone
-      - Just need to view a file → consider GitHub API or web interface first
-      - Repository requires special credentials not configured
+      Repo already cloned → navigate to existing. Just viewing file → use GitHub API/web. Special credentials needed → configure first.
 
-      ### Best Practices
-
-      **1. Use shallow clones for large repositories:**
+      ### Examples
+      **1. Shallow clone (large repos):**
       \`\`\`json
       {"owner": "chromium", "repo": "chromium", "depth": 1}
       \`\`\`
 
-      **2. Clone specific branches when needed:**
+      **2. Specific branch:**
       \`\`\`json
-      {"owner": "owner", "repo": "project", "branch": "main"}
+      {"owner": "facebook", "repo": "react", "branch": "main"}
       \`\`\`
 
-      **3. Remember the cloned path for subsequent operations:**
-      The output includes the path - use this for all file and git operations.
-
-      ### Output Format
-      Success:
+      **3. Custom location:**
       \`\`\`json
-      {
-        "path": "/workspace/project-name"
-      }
-      \`\`\`
-
-      Error:
-      \`\`\`json
-      {
-        "error": "Could not resolve to a Repository with the name 'owner/repo'."
-      }
+      {"owner": "user", "repo": "project", "workdir": "/custom/path/project"}
       \`\`\`
 
       ### After Cloning
-      1. Use the returned path for all subsequent operations
-      2. Run \`files_find_paths\` to explore the repository structure (e.g. \`{"dir":"/repo","pattern":"*","recursive":false}\`)
-      3. Build tags index if working with a large codebase
-      4. Use git commands via shell tool for further git operations
-
-      ### Common Patterns
-
-      **Clone and explore:**
-      \`\`\`
-      1. gh_clone → get path
-      2. files_find_paths with returned path → see structure
-      3. files_read → examine key files
-      \`\`\`
-
-      **Clone for making changes:**
-      \`\`\`
-      1. gh_clone → get working copy
-      2. gh_branch → create feature branch
-      3. Make changes with files_apply_changes
-      4. gh_commit → commit changes
-      5. gh_push → push to remote
-      \`\`\`
-
-      ### Troubleshooting
-      - "Not found" → Check owner/repo spelling, verify access permissions
-      - Slow clone → Use depth parameter for faster shallow clone
-      - Authentication error → Verify PAT token is configured correctly
+      Use returned path for all operations. Run files_find_paths to explore structure. Use shell for git commands.
     `;
   }
 
@@ -144,6 +106,11 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     const messageMetadata = { __title: title };
 
     const cmd = [`gh repo clone ${args.owner}/${args.repo}`];
+
+    // Add workdir if specified
+    if (args.workdir) {
+      cmd.push(args.workdir);
+    }
 
     if (args.branch || args.depth) {
       cmd.push('--');
@@ -174,9 +141,14 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       };
     }
 
+    // Determine the clone path: use workdir if provided, otherwise default to execPath/repo
+    const clonePath = args.workdir
+      ? args.workdir
+      : path.join(res.execPath || '', args.repo);
+
     return {
       output: {
-        path: path.join(res.execPath || '', args.repo),
+        path: clonePath,
       },
       messageMetadata,
     };

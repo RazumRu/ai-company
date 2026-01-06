@@ -53,92 +53,30 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Pushes local commits to the remote GitHub repository. Uses the configured authentication automatically for secure push access.
+      Pushes local commits to remote GitHub repository using configured authentication.
 
       ### When to Use
-      - After creating one or more commits locally
-      - When you're ready to share changes with the remote repository
-      - Before creating a pull request
-      - After completing a feature or fix
+      After creating commits locally. When ready to share changes or create PR.
 
       ### When NOT to Use
-      - No commits exist → create commits with \`gh_commit\` first
-      - On a protected branch → may need to use PR workflow
-      - Unpushed changes need review → wait for confirmation
+      No commits exist → use gh_commit first. Protected branch → may need PR workflow. Changes need review → wait for confirmation.
 
       ### Best Practices
+      Push feature branches, not main (may be blocked). Verify current branch before pushing with shell: \`git branch --show-current\`.
 
-      **1. Push after commits are ready:**
-      \`\`\`
-      1. Make all intended changes
-      2. Stage and commit with gh_commit
-      3. Review commits if needed (git log)
-      4. Push once ready
-      \`\`\`
-
-      **2. Push feature branches, not main:**
+      ### Examples
+      **1. Push feature branch:**
       \`\`\`json
-      // Good: Push feature branch
       {"path": "/repo", "branch": "feat/add-authentication"}
-
-      // Caution: Direct push to main may be blocked
-      {"path": "/repo", "branch": "main"}
       \`\`\`
 
-      **3. Verify branch before pushing:**
-      Use shell to check current branch:
-      \`\`\`bash
-      cd /repo && git branch --show-current
-      \`\`\`
-
-      **Push from current directory (after shell cd /repo):**
+      **2. After cd into repo:**
       \`\`\`json
-        {"branch": "feat/add-authentication"}
+      {"branch": "feat/add-search"}
       \`\`\`
 
-      ### Output Format
-      Success:
-      \`\`\`json
-      {
-        "success": true
-      }
-      \`\`\`
-
-      Error:
-      \`\`\`json
-      {
-        "success": false,
-        "error": "error: failed to push some refs to 'origin'"
-      }
-      \`\`\`
-
-      ### Common Errors and Solutions
-
-      | Error | Cause | Solution |
-      |-------|-------|----------|
-      | "rejected - non-fast-forward" | Remote has new commits | Pull first, resolve conflicts |
-      | "Permission denied" | Auth issue | Check PAT token permissions |
-      | "protected branch" | Branch protection rules | Create PR instead |
-      | "no upstream branch" | New branch not tracked | Use -u flag via shell |
-
-      ### Complete Workflow
-      \`\`\`
-      1. gh_clone → Get repository
-      2. gh_branch → Create feature branch
-      3. Make changes with files_apply_changes
-      4. Stage with shell: git add -A
-      5. gh_commit → Commit changes
-      6. gh_push → Push to remote
-      7. Create PR on GitHub
-      \`\`\`
-
-      ### First-Time Branch Push
-      For new branches that don't exist on remote, the tool handles this automatically. The branch will be created on the remote.
-
-      ### Troubleshooting
-      - "No commits to push" → Create commits first with \`gh_commit\`
-      - "Remote rejected" → Check branch protection or permission issues
-      - "Connection refused" → Check network and GitHub status
+      ### Common Errors
+      "rejected - non-fast-forward" → Pull first. "Permission denied" → Check PAT token. "protected branch" → Create PR instead
     `;
   }
 

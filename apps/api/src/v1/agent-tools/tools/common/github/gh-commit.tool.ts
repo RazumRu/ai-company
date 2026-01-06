@@ -58,108 +58,34 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Creates a git commit with a standardized semantic commit message format. The commit message is automatically formatted as "{semanticType}: [AI] {title}" with an optional body for detailed description.
+      Creates git commit with semantic format: "{semanticType}: [AI] {title}". Requires staged changes first.
 
       ### When to Use
-      - After staging changes with \`git add\`
-      - When you have modifications ready to be committed
-      - Following semantic commit conventions
-      - Creating atomic commits for specific changes
+      After staging changes with git add. For semantic commits with atomic changes.
 
       ### When NOT to Use
-      - No changes are staged → use shell with \`git add\` first
-      - You need a custom commit message format → use shell with \`git commit -m\`
-      - Just want to push → use \`gh_push\` (commits must exist first)
+      No changes staged → use shell with git add first. Custom format needed → use shell with git commit -m. Just pushing → use gh_push.
 
       ### Prerequisites
-      **Changes must be staged before committing!**
-      \`\`\`bash
-      # Stage all changes
-      git add .
-
-      # Or stage specific files
-      git add src/file1.ts src/file2.ts
-
-      # Or stage by pattern
-      git add "*.ts"
-      \`\`\`
-
-      **Good titles:**
-      - "add user registration endpoint"
-      - "fix null pointer in parser"
-      - "update README with setup instructions"
-
-      **Avoid:**
-      - "fix bug" (too vague)
-      - "update code" (not descriptive)
-      - "WIP" (incomplete work)
+      **Must stage changes first!** Use shell: \`git add .\` or \`git add src/file.ts\`
 
       ### Best Practices
+      Write meaningful titles: "add user auth endpoint" (good) vs "fix bug" (too vague). Use body for context when needed. Make atomic commits (related changes together).
 
-      **1. Stage before committing:**
-      Use shell tool to stage changes:
-      \`\`\`bash
-      cd /repo && git add -A
-      \`\`\`
-
-      **2. Make atomic commits:**
-      Commit related changes together, unrelated changes separately.
-
-      **3. Write meaningful titles:**
+      ### Examples
+      **1. Simple commit:**
       \`\`\`json
-      // Good
-      {"semanticType": "fix", "title": "prevent duplicate form submissions", "path": "/repo"}
-
-      // Bad
-      {"semanticType": "fix", "title": "fix issue", "path": "/repo"}
+      {"semanticType": "feat", "title": "add search filters", "path": "/repo"}
       \`\`\`
 
-      **Current directory example (after shell cd /repo and staging):**
+      **2. With body:**
       \`\`\`json
-      {"semanticType": "feat", "title": "add search filters"}
+      {"semanticType": "refactor", "title": "extract validation logic", "body": "Reduces duplication\\n- Created validation/ dir\\n- Updated imports", "path": "/repo"}
       \`\`\`
 
-      **4. Use body for context:**
+      **3. After cd into repo:**
       \`\`\`json
-      {
-        "semanticType": "refactor",
-        "title": "extract validation into separate module",
-        "body": "Motivation: Reduce code duplication across controllers.\\nChanges:\\n- Created validation/ directory\\n- Moved all validators\\n- Updated imports",
-        "path": "/repo"
-      }
-      \`\`\`
-
-      ### Output Format
-      Success:
-      \`\`\`json
-      {
-        "success": true,
-        "commitHash": "a1b2c3d4e5f6789..."
-      }
-      \`\`\`
-
-      Error (no staged changes):
-      \`\`\`json
-      {
-        "success": false,
-        "error": "No staged changes to commit. Please stage your changes first using \`git add\`."
-      }
-      \`\`\`
-
-      ### Common Workflow
-      \`\`\`
-      1. Make changes with files_apply_changes
-      2. Stage changes: shell with "git add -A" or specific files
-      3. gh_commit → Create commit
-      4. gh_push → Push to remote
-      \`\`\`
-
-      ### Commit Message Format
-      The final message format is:
-      \`\`\`
-      {semanticType}: [AI] {title}
-
-      {body if provided}
+      {"semanticType": "fix", "title": "prevent duplicate submissions"}
       \`\`\`
 
       Example:

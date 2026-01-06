@@ -18,6 +18,12 @@ export interface RuntimeExecParams {
   childWorkdir?: string;
   env?: Record<string, string>;
   /**
+   * Optional working directory to cd into before executing the command.
+   * Can be absolute or relative. If provided, automatically prepends `cd <cwd> && `
+   * to the command, eliminating the need for manual cd wrappers in tools.
+   */
+  cwd?: string;
+  /**
    * Optional AbortSignal to cancel an in-flight execution.
    * When aborted, runtimes should best-effort stop the underlying process and
    * return an exit code 124 (timeout/aborted).

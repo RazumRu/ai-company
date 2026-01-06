@@ -356,6 +356,7 @@ describe('LitellmService (utils)', () => {
       });
 
       expect(usage).toEqual({
+        currentContext: 2,
         inputTokens: 2,
         outputTokens: 3,
         totalTokens: 5,
@@ -374,6 +375,7 @@ describe('LitellmService (utils)', () => {
         response_metadata: { response_cost: 0.123 },
       });
       expect(usage2).toEqual({
+        currentContext: 1,
         inputTokens: 1,
         outputTokens: 1,
         totalTokens: 2,

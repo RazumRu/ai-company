@@ -102,35 +102,26 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
   ): string {
     return dedent`
       ### Overview
-      Generates a readable directory tree (structure only; not a content search). Uses \`fd\` to enumerate files/dirs and renders a compact tree string.
+      Generates readable directory tree (structure only). Uses fd to enumerate files/dirs.
 
       ### When to Use
-      - Getting a quick “what’s in here?” overview before deciding what to read/search
-      - Sharing a lightweight structure snapshot (especially with \`maxDepth\`)
-      - Understanding monorepo/package layout at a glance
+      Quick "what's in here?" overview before reading/searching. Understanding monorepo/package layout at a glance.
 
       ### When NOT to Use
-      - You need exact paths matching a glob → use \`files_find_paths\`
-      - You need to search file contents → use \`files_search_text\`
+      For exact paths matching glob → use files_find_paths. For searching contents → use files_search_text.
 
       ### Best Practices
-      - Start with a shallow \`maxDepth\` (e.g. 3–5) and increase only if needed.
-      - Add \`excludePatterns\` to avoid huge folders (build outputs, dependencies, caches).
+      Start with shallow maxDepth (3-5). Add excludePatterns to avoid large folders (build outputs, node_modules, caches).
 
       ### Examples
-      **1) Repo overview (shallow):**
+      **1. Repo overview (shallow):**
       \`\`\`json
       {"path":"/repo","maxDepth":4}
       \`\`\`
 
-      **2) Deeper tree for a subfolder while excluding junk:**
+      **2. Subfolder with exclusions:**
       \`\`\`json
-      {"path":"/repo/apps/api","maxDepth":6,"excludePatterns":["node_modules/**","dist/**","build/**","coverage/**"]}
-      \`\`\`
-
-      ### Output Format
-      \`\`\`json
-      { "tree": "repo\n├── apps\n│   └── api\n└── packages\n" }
+      {"path":"/repo/apps/api","maxDepth":6,"excludePatterns":["node_modules/**","dist/**","build/**"]}
       \`\`\`
     `;
   }

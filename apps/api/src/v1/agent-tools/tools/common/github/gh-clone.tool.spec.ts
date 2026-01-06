@@ -124,6 +124,24 @@ describe('GhCloneTool', () => {
       };
       expect(() => tool.validate(invalidData)).toThrow();
     });
+
+    it('should validate optional workdir field', () => {
+      const validData = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+        workdir: '/custom/path/Hello-World',
+      };
+      expect(() => tool.validate(validData)).not.toThrow();
+    });
+
+    it('should accept null workdir', () => {
+      const validData = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+        workdir: null,
+      };
+      expect(() => tool.validate(validData)).not.toThrow();
+    });
   });
 
   describe('invoke', () => {
@@ -380,6 +398,118 @@ describe('GhCloneTool', () => {
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
         {
           cmd: 'gh repo clone octocat/Hello-World',
+        },
+        mockConfig,
+        mockCfg,
+      );
+    });
+
+    it('should clone repository to custom workdir', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+        workdir: '/custom/path/my-project',
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.path).toBe('/custom/path/my-project');
+      expect(result.error).toBeUndefined();
+      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
+        {
+          cmd: 'gh repo clone octocat/Hello-World /custom/path/my-project',
+        },
+        mockConfig,
+        mockCfg,
+      );
+    });
+
+    it('should clone repository to custom workdir with branch', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+        workdir: '/custom/path/my-project',
+        branch: 'develop',
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.path).toBe('/custom/path/my-project');
+      expect(result.error).toBeUndefined();
+      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
+        {
+          cmd: 'gh repo clone octocat/Hello-World /custom/path/my-project -- --branch develop',
+        },
+        mockConfig,
+        mockCfg,
+      );
+    });
+
+    it('should clone repository to custom workdir with depth', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+        workdir: '/custom/path/my-project',
+        depth: 1,
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.path).toBe('/custom/path/my-project');
+      expect(result.error).toBeUndefined();
+      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
+        {
+          cmd: 'gh repo clone octocat/Hello-World /custom/path/my-project -- --depth 1',
+        },
+        mockConfig,
+        mockCfg,
+      );
+    });
+
+    it('should clone repository to custom workdir with branch and depth', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+        workdir: '/custom/path/my-project',
+        branch: 'main',
+        depth: 1,
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.path).toBe('/custom/path/my-project');
+      expect(result.error).toBeUndefined();
+      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
+        {
+          cmd: 'gh repo clone octocat/Hello-World /custom/path/my-project -- --branch main --depth 1',
         },
         mockConfig,
         mockCfg,

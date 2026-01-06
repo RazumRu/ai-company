@@ -51,81 +51,32 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Creates a new git branch with a standardized semantic naming convention. Automatically formats the branch name as "{semanticType}/{title-in-kebab-case}".
+      Creates new git branch with semantic naming: "{semanticType}/{title-in-kebab-case}".
 
       ### When to Use
-      - Starting work on a new feature or fix
-      - Creating a branch before making any changes
-      - Following git flow or semantic branching conventions
-      - Setting up for a future pull request
+      Starting work on feature/fix. Creating branch before making changes. Setting up for future PR.
 
       ### When NOT to Use
-      - You want a custom branch name format → use shell with \`git checkout -b\`
-      - Just switching to existing branch → use shell with \`git checkout\`
-      - Repository not yet cloned → use \`gh_clone\` first
+      Want custom format → use shell with git checkout -b. Switching to existing branch → use shell with git checkout. Repo not cloned → use gh_clone first.
 
       ### Best Practices
+      Choose appropriate semantic type (feat, fix, refactor). Use descriptive titles. Keep titles concise for readable branch names.
 
-      **1. Choose appropriate semantic type:**
+      ### Examples
+      **1. Feature branch:**
       \`\`\`json
-        // Feature work
-        {"semanticType": "feat", "title": "Add OAuth Support"}
-
-        // Bug fix
-        {"semanticType": "fix", "title": "Resolve Null Pointer in Parser"}
-
-        // Refactoring
-        {"semanticType": "refactor", "title": "Extract Validation Logic"}
+      {"semanticType": "feat", "title": "Add OAuth Support", "path": "/repo"}
       \`\`\`
 
-      **2. Use descriptive titles:**
+      **2. Bug fix:**
       \`\`\`json
-        // Good: Specific and clear
-        {"semanticType": "feat", "title": "Add Export to PDF Functionality"}
-
-        // Avoid: Vague
-        {"semanticType": "feat", "title": "Update Code"}
+      {"semanticType": "fix", "title": "Resolve Null Pointer", "path": "/repo"}
       \`\`\`
 
-      **3. Keep titles concise:**
-      The title will become part of the branch name, so keep it reasonably short.
-
-      **Current directory example (after shell cd into repo):**
+      **3. After cd into repo:**
       \`\`\`json
-        {"semanticType": "feat", "title": "Add OAuth Support"}
+      {"semanticType": "refactor", "title": "Extract Validation Logic"}
       \`\`\`
-
-      ### Output Format
-      Success:
-      \`\`\`json
-        {
-          "success": true,
-          "branchName": "feat/add-user-authentication"
-        }
-      \`\`\`
-
-      Error:
-      \`\`\`json
-        {
-          "success": false,
-          "error": "Failed to checkout base branch 'main': fatal: not a git repository"
-        }
-      \`\`\`
-
-      ### Common Workflow
-      \`\`\`
-      1. gh_clone → Clone the repository
-      2. gh_branch → Create feature branch
-      3. Make changes using files_apply_changes
-      4. gh_commit → Commit changes
-      5. gh_push → Push branch to remote
-      6. Create PR via GitHub
-      \`\`\`
-
-      ### Troubleshooting
-      - "Not a git repository" → Ensure path points to a cloned repo
-      - "Branch already exists" → Choose a different title or use shell to checkout existing
-      - "Failed to checkout base" → Verify the base branch exists
     `;
   }
 

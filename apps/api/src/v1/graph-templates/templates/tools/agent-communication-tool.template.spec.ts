@@ -269,7 +269,8 @@ describe('AgentCommunicationToolTemplate', () => {
       const instance = await handle.provide(init);
       await handle.configure(init, instance);
 
-      const buildCalls = vi.mocked(mockCommunicationToolGroup.buildTools).mock.calls;
+      const buildCalls = vi.mocked(mockCommunicationToolGroup.buildTools).mock
+        .calls;
       expect(buildCalls).toHaveLength(1);
       const buildConfig = buildCalls[0]![0] as any;
       expect(buildConfig.agents).toHaveLength(1);

@@ -47,30 +47,17 @@ export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectory
   ): string {
     return dedent`
       ### Overview
-      Creates a directory using \`mkdir -p\` (including parent directories). Safe to call if the directory already exists.
+      Creates directory using mkdir -p (including parents). Safe if directory already exists.
 
       ### When to Use
-      - Before writing a new file into a new folder (with \`files_write_file\` or \`files_apply_changes\`)
-      - Creating folder structure for generated code or fixtures
+      Before writing file into new folder (with files_write_file/files_apply_changes). Creating folder structure for generated code or fixtures.
 
       ### When NOT to Use
-      - Creating files → use \`files_write_file\` or \`files_apply_changes\`
-      - Renaming/moving → use \`files_move_file\`
+      For creating files → use files_write_file or files_apply_changes. For renaming/moving → use files_move_file.
 
-      ### Examples
-      **Create a nested directory:**
+      ### Example
       \`\`\`json
-      { "path": "/repo/generated/client" }
-      \`\`\`
-
-      ### Output Format
-      Success:
-      \`\`\`json
-      { "success": true }
-      \`\`\`
-      Error:
-      \`\`\`json
-      { "success": false, "error": "..." }
+      {"path": "/repo/generated/client"}
       \`\`\`
     `;
   }

@@ -52,10 +52,13 @@ export const execRuntimeWithContext = async (
     createChildWorkdir: true,
     sessionId,
     signal: cfg.signal,
+    cwd: params.cwd, // Pass through cwd if provided
     metadata: {
-      threadId: executionKey,
-      runId,
-      parentThreadId: cfg.configurable?.parent_thread_id,
+      ...(threadIdFromCfg ? { threadId: threadIdFromCfg } : {}),
+      ...(runId ? { runId } : {}),
+      ...(cfg.configurable?.parent_thread_id
+        ? { parentThreadId: cfg.configurable.parent_thread_id }
+        : {}),
     },
   });
 };

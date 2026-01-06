@@ -165,9 +165,9 @@ describe('AgentStateUpdateNotificationHandler', () => {
       ]);
     });
 
-    it("treats parentThreadId='unknown' as missing (prevents token usage resets)", async () => {
+    it('treats missing parentThreadId as missing (prevents token usage resets)', async () => {
       const notification = createMockNotification({
-        parentThreadId: 'unknown',
+        parentThreadId: undefined,
         data: { totalPrice: 0.01, totalTokens: 123 },
       });
 

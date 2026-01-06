@@ -50,9 +50,11 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     const ownerId = await this.getGraphOwner(event.graphId);
     const out: IAgentMessageEnrichedNotification[] = [];
 
+    const externalThreadKey = event.parentThreadId ?? event.threadId;
+
     // Find the internal thread by internalThreadId passed from the event
     const internalThread = await this.threadsDao.getOne({
-      externalThreadId: event.parentThreadId,
+      externalThreadId: externalThreadKey,
     });
 
     if (!internalThread) {

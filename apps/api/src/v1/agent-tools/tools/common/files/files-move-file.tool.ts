@@ -54,36 +54,23 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
   ): string {
     return dedent`
       ### Overview
-      Moves/renames a file using \`mv\`. Ensures the destination directory exists (\`mkdir -p\` parent).
+      Moves/renames file using mv. Creates destination parent directories automatically.
 
       ### When to Use
-      - Renaming a file (same directory)
-      - Moving a file into a new folder
-      - Organizing generated outputs
+      Renaming file (same directory) or moving file to new folder.
 
       ### When NOT to Use
-      - Copying (this tool moves; it does not copy)
-      - Editing content → use \`files_apply_changes\` or \`files_write_file\`
+      For copying (this moves, not copies). For editing content → use files_apply_changes or files_write_file.
 
       ### Examples
-      **1) Rename a file:**
+      **1. Rename:**
       \`\`\`json
-      { "source": "/repo/src/old-name.ts", "destination": "/repo/src/new-name.ts" }
+      {"source": "/repo/src/old-name.ts", "destination": "/repo/src/new-name.ts"}
       \`\`\`
 
-      **2) Move to a new folder:**
+      **2. Move:**
       \`\`\`json
-      { "source": "/repo/tmp/output.json", "destination": "/repo/generated/output.json" }
-      \`\`\`
-
-      ### Output Format
-      Success:
-      \`\`\`json
-      { "success": true }
-      \`\`\`
-      Error:
-      \`\`\`json
-      { "success": false, "error": "..." }
+      {"source": "/repo/tmp/output.json", "destination": "/repo/generated/output.json"}
       \`\`\`
     `;
   }
