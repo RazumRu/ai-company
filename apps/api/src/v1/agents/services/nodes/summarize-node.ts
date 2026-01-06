@@ -16,6 +16,7 @@ import {
   cleanMessagesForLlm,
   extractTextFromResponseContent,
   filterMessagesForLlm,
+  markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
@@ -73,9 +74,15 @@ export class SummarizeNode extends BaseNode<
     // - keep system messages as-is (never fold them)
     // - remove hidden-for-LLM messages
     // - remove dangling tool-call traces
-    const promptVisible = cleanMessagesForLlm(
+    const promptVisibleRaw = cleanMessagesForLlm(
       filterMessagesForLlm(state.messages),
     );
+
+    // Drop transient/internal messages from compaction so they don't get pinned forever.
+    const promptVisible = promptVisibleRaw.filter((m) => {
+      const kw = m.additional_kwargs as unknown as Record<string, unknown>;
+      return kw.__hideForSummary !== true && kw.hideForSummary !== true;
+    });
 
     const pinnedSystem = promptVisible.filter(
       (m) => m instanceof SystemMessage,
@@ -99,68 +106,85 @@ export class SummarizeNode extends BaseNode<
     // We pin system messages outside this budget and never fold them.
     // First pass: fold (previous summary text + older non-system messages), then size the raw tail
     // so that (summary + tail) ~= keepTokens.
-    const rawTail1 = await this.trimLastRespectingToolCalls(
+    const messagesForKeep = await this.trimLastRespectingToolCalls(
       candidates,
       keepTokens,
     );
-    const rawOlder1 = candidates.slice(0, candidates.length - rawTail1.length);
+    let messagesForSummarize = candidates.slice(
+      0,
+      candidates.length - messagesForKeep.length,
+    );
+
+    // If the provider reports we're over budget, we must fold *something* even if our
+    // local token estimator says everything fits into keepTokens. Force folding of
+    // the older part while preserving the newest message block.
+    if (messagesForSummarize.length === 0) {
+      const split = this.splitKeepingLastBlock(candidates);
+      if (split) {
+        messagesForSummarize = split.older;
+      }
+    }
+
+    // If there's nothing eligible to fold (e.g. only one block exists), we still
+    // return the summary field so downstream consumers don't treat it as "unset".
+    if (messagesForSummarize.length === 0) {
+      return { summary: state.summary };
+    }
 
     // Step 6: Update summary using delta-folding
     // Pass previous summary as TEXT, not as message
-    const firstFold = rawOlder1.length
-      ? await this.fold(state.summary, rawOlder1)
-      : { summary: state.summary ?? '', usage: null };
+    const summaryData = await this.fold(state.summary, messagesForSummarize);
 
-    const summary1 = (firstFold.summary ?? '').trim();
-    const summaryMessageContent = summary1
-      ? `Conversation summary:\n${summary1}`
-      : '';
-    const summaryTokens = await this.safeGetNumTokens(summaryMessageContent);
+    // Step 7: Write back state atomically
+    const summaryMarker = this.buildHiddenSummaryMarker(summaryData.summary);
 
-    // Step 7: Recompute tail budget and re-trim
-    const tailBudget2 = Math.max(0, keepTokens - summaryTokens);
-    const rawTail2 = await this.trimLastRespectingToolCalls(
-      candidates,
-      tailBudget2,
-    );
-
-    // Second pass: if tail shrank compared to the initial pass, fold the additional removed raw
-    // messages into the summary via delta-folding (not by re-including the summary as a message)
-    const rawOlder2 = candidates.slice(0, candidates.length - rawTail2.length);
-    const extraRaw = rawOlder2.slice(rawOlder1.length);
-    const secondFold = extraRaw.length
-      ? await this.fold(summary1, extraRaw)
-      : { summary: summary1, usage: null };
-
-    const finalSummary = (secondFold.summary ?? '').trim();
-
-    // Accumulate token usage from all summarization calls
-    // Important: We must return the TOTAL usage from all fold operations
-    // so it gets added to the accumulated state via the additive reducer
-    const totalUsage = this.accumulateUsage(firstFold.usage, secondFold.usage);
-
-    // Step 8: Write back state atomically
-    const messagesToReturn: BaseMessage[] = [...pinnedSystem, ...rawTail2];
+    const messagesToReturn: BaseMessage[] = [
+      ...(summaryMarker ? [summaryMarker] : []),
+      ...pinnedSystem,
+      ...messagesForKeep,
+    ];
 
     return {
       messages: {
         mode: 'replace',
         items: updateMessagesListWithMetadata(messagesToReturn, cfg),
       },
-      summary: finalSummary,
+      // Keep raw summary text in state; InvokeLlmNode formats it into an LLM-facing memory message.
+      summary: summaryData.summary,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
-      ...(totalUsage
-        ? {
-            inputTokens: totalUsage.inputTokens,
-            cachedInputTokens: totalUsage.cachedInputTokens ?? 0,
-            outputTokens: totalUsage.outputTokens,
-            reasoningTokens: totalUsage.reasoningTokens ?? 0,
-            totalTokens: totalUsage.totalTokens,
-            totalPrice: totalUsage.totalPrice ?? 0,
-          }
-        : {}),
+      ...(summaryData.usage || {}),
     };
+  }
+
+  private buildHiddenSummaryMarker(summary: string): BaseMessage | null {
+    const trimmed = summary.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    // UI-only marker. The actual summary text is stored in `state.summary`.
+    const msg = new SystemMessage('Conversation history was summarized.');
+    msg.additional_kwargs = {
+      ...(msg.additional_kwargs ?? {}),
+      __hideForSummary: true,
+    };
+    return markMessageHideForLlm(msg);
+  }
+
+  private splitKeepingLastBlock(
+    messages: BaseMessage[],
+  ): { older: BaseMessage[]; tail: BaseMessage[] } | null {
+    const blocks = this.identifyMessageBlocks(messages);
+    if (blocks.length <= 1) {
+      return null;
+    }
+    const tail = blocks[blocks.length - 1]!.messages;
+    const older = blocks.slice(0, -1).flatMap((b) => b.messages);
+    if (older.length === 0) {
+      return null;
+    }
+    return { older, tail };
   }
 
   /**
@@ -209,38 +233,6 @@ export class SummarizeNode extends BaseNode<
     } catch {
       return Math.max(0, Math.ceil(text.length / 4));
     }
-  }
-
-  /**
-   * Accumulate token usage from multiple operations
-   * Returns the sum of all usages, or null if all are null
-   */
-  private accumulateUsage(...usages: (TokenUsage | null)[]): TokenUsage | null {
-    const validUsages = usages.filter((u): u is TokenUsage => u !== null);
-    if (validUsages.length === 0) {
-      return null;
-    }
-
-    return validUsages.reduce(
-      (acc, usage) => ({
-        inputTokens: acc.inputTokens + usage.inputTokens,
-        cachedInputTokens:
-          (acc.cachedInputTokens ?? 0) + (usage.cachedInputTokens ?? 0),
-        outputTokens: acc.outputTokens + usage.outputTokens,
-        reasoningTokens:
-          (acc.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0),
-        totalTokens: acc.totalTokens + usage.totalTokens,
-        totalPrice: (acc.totalPrice ?? 0) + (usage.totalPrice ?? 0),
-      }),
-      {
-        inputTokens: 0,
-        cachedInputTokens: 0,
-        outputTokens: 0,
-        reasoningTokens: 0,
-        totalTokens: 0,
-        totalPrice: 0,
-      },
-    );
   }
 
   /**

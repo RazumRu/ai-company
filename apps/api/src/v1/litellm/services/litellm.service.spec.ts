@@ -11,7 +11,7 @@ describe('LitellmService (utils)', () => {
       vi.clearAllMocks();
     });
 
-    it('returns null when usage_metadata is missing or not an object', () => {
+    it('returns null when usage_metadata is missing or not an object AND response_metadata.usage is absent', () => {
       const svc = createSvc();
       expect(
         svc.extractTokenUsageFromResponse({
@@ -26,6 +26,31 @@ describe('LitellmService (utils)', () => {
           response_metadata: {},
         }),
       ).toBeNull();
+    });
+
+    it('extracts token usage from response_metadata.usage when usage_metadata is missing', () => {
+      const svc = createSvc();
+      const result = svc.extractTokenUsageFromResponse({
+        usage_metadata: undefined,
+        response_metadata: {
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            total_tokens: 20,
+            prompt_tokens_details: { cached_tokens: 3 },
+            completion_tokens_details: { reasoning_tokens: 2 },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        inputTokens: 10,
+        cachedInputTokens: 3,
+        outputTokens: 5,
+        reasoningTokens: 2,
+        totalTokens: 20,
+        currentContext: 10,
+      });
     });
 
     it('extracts token usage fields and prefers usage_metadata.total_tokens', () => {
@@ -47,6 +72,7 @@ describe('LitellmService (utils)', () => {
         outputTokens: 5,
         reasoningTokens: 2,
         totalTokens: 20,
+        currentContext: 10,
       });
     });
 
@@ -67,6 +93,7 @@ describe('LitellmService (utils)', () => {
         inputTokens: 1,
         outputTokens: 2,
         totalTokens: 3,
+        currentContext: 1,
         totalPrice: 0.9,
       });
     });
@@ -90,6 +117,7 @@ describe('LitellmService (utils)', () => {
         inputTokens: 2,
         outputTokens: 3,
         totalTokens: 5,
+        currentContext: 2,
         totalPrice: 1.23,
       });
     });
@@ -113,6 +141,7 @@ describe('LitellmService (utils)', () => {
         inputTokens: 2,
         outputTokens: 3,
         totalTokens: 5,
+        currentContext: 2,
       });
     });
   });

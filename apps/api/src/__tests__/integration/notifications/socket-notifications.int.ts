@@ -1877,4 +1877,186 @@ describe('Socket Notifications Integration Tests', () => {
       },
     );
   });
+
+  describe('Token and Cost Usage Accumulation', () => {
+    it(
+      'should accumulate token and cost usage across multiple invocations on the same thread',
+      { timeout: 120_000 },
+      async () => {
+        await ensureGraphRunning(baseGraphId);
+
+        socket = createSocketConnection(TEST_USER_ID);
+        await waitForSocketConnection(socket);
+
+        socket.emit('subscribe_graph', { graphId: baseGraphId });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const agentStateNotifications: AgentStateUpdateNotification[] = [];
+        const threadUpdateNotifications: ThreadUpdateNotification[] = [];
+
+        // Listen for agent.state.update notifications
+        socket.on(
+          'agent.state.update',
+          (notification: AgentStateUpdateNotification) => {
+            if (
+              notification.data?.totalTokens !== undefined &&
+              notification.data.totalTokens > 0
+            ) {
+              agentStateNotifications.push(notification);
+            }
+          },
+        );
+
+        // Listen for thread.update notifications
+        socket.on('thread.update', (notification: ThreadUpdateNotification) => {
+          threadUpdateNotifications.push(notification);
+        });
+
+        const threadSubId = uniqueThreadSubId('token-cost-test');
+
+        // ========== FIRST INVOCATION ==========
+        const firstExecution = await graphsService.executeTrigger(
+          baseGraphId,
+          'trigger-1',
+          {
+            messages: [
+              'Please tell me about artificial intelligence and machine learning.',
+            ],
+            threadSubId,
+            async: true,
+          },
+        );
+        const externalThreadId = firstExecution.externalThreadId;
+
+        // Wait for first invocation to have notifications
+        await waitForCondition(
+          async () => agentStateNotifications,
+          (notifs) => notifs.length > 0,
+          { timeout: 60_000, interval: 500 },
+        );
+
+        // Get max values from first invocation notifications
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const firstInvocationNotifications = [...agentStateNotifications];
+        let firstMaxTotalTokens = 0;
+        let firstMaxTotalPrice = 0;
+        for (const notif of firstInvocationNotifications) {
+          if ((notif.data.totalTokens ?? 0) > firstMaxTotalTokens) {
+            firstMaxTotalTokens = notif.data.totalTokens ?? 0;
+          }
+          if ((notif.data.totalPrice ?? 0) > firstMaxTotalPrice) {
+            firstMaxTotalPrice = notif.data.totalPrice ?? 0;
+          }
+        }
+
+        expect(firstMaxTotalTokens).toBeGreaterThan(0);
+        expect(firstMaxTotalPrice).toBeGreaterThan(0);
+
+        // Wait for thread to complete
+        await waitForCondition(
+          async () => threadUpdateNotifications,
+          (notifs) =>
+            notifs.some(
+              (n) =>
+                n.data.status === ThreadStatus.Done ||
+                n.data.status === ThreadStatus.Stopped,
+            ),
+          { timeout: 60_000, interval: 500 },
+        );
+
+        // Get the thread from database after first invocation completes
+        const thread1 =
+          await threadsService.getThreadByExternalId(externalThreadId);
+
+        // Verify DB has token usage after first invocation
+        expect(thread1.tokenUsage).toBeDefined();
+        expect(thread1.tokenUsage?.totalTokens).toBeGreaterThan(0);
+        expect(thread1.tokenUsage?.totalPrice).toBeGreaterThan(0);
+
+        const firstDbTotalTokens = thread1.tokenUsage?.totalTokens ?? 0;
+        const firstDbTotalPrice = thread1.tokenUsage?.totalPrice ?? 0;
+
+        // Socket notifications should match DB values (roughly)
+        expect(firstMaxTotalTokens).toBeGreaterThanOrEqual(
+          firstDbTotalTokens * 0.9,
+        );
+        expect(firstMaxTotalPrice).toBeGreaterThanOrEqual(
+          firstDbTotalPrice * 0.9,
+        );
+
+        // Clear notifications for second invocation
+        agentStateNotifications.length = 0;
+        threadUpdateNotifications.length = 0;
+
+        // ========== SECOND INVOCATION (Same Thread) ==========
+        await graphsService.executeTrigger(baseGraphId, 'trigger-1', {
+          messages: ['hi'],
+          threadSubId,
+          async: true,
+        });
+
+        // Wait for second invocation to have notifications
+        await waitForCondition(
+          async () => agentStateNotifications,
+          (notifs) => notifs.length > 0,
+          { timeout: 60_000, interval: 500 },
+        );
+
+        // Wait for thread to complete second invocation BEFORE collecting final notification values
+        await waitForCondition(
+          async () => threadUpdateNotifications,
+          (notifs) =>
+            notifs.some(
+              (n) =>
+                n.data.status === ThreadStatus.Done ||
+                n.data.status === ThreadStatus.Stopped,
+            ),
+          { timeout: 60_000, interval: 500 },
+        );
+
+        // Get max values from second invocation notifications (after thread is done)
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const secondInvocationNotifications = [...agentStateNotifications];
+        let secondMaxTotalTokens = 0;
+        let secondMaxTotalPrice = 0;
+        for (const notif of secondInvocationNotifications) {
+          if ((notif.data.totalTokens ?? 0) > secondMaxTotalTokens) {
+            secondMaxTotalTokens = notif.data.totalTokens ?? 0;
+          }
+          if ((notif.data.totalPrice ?? 0) > secondMaxTotalPrice) {
+            secondMaxTotalPrice = notif.data.totalPrice ?? 0;
+          }
+        }
+
+        // CRITICAL: Second invocation notifications should show ACCUMULATED values
+        // They should be HIGHER than first invocation values
+        expect(secondMaxTotalTokens).toBeGreaterThan(firstMaxTotalTokens);
+        expect(secondMaxTotalPrice).toBeGreaterThan(firstMaxTotalPrice);
+
+        // Get the thread from database after second invocation completes
+        const thread2 =
+          await threadsService.getThreadByExternalId(externalThreadId);
+
+        // Verify DB has accumulated token usage after second invocation
+        expect(thread2.tokenUsage).toBeDefined();
+        expect(thread2.tokenUsage?.totalTokens).toBeGreaterThan(
+          firstDbTotalTokens,
+        );
+        expect(thread2.tokenUsage?.totalPrice).toBeGreaterThan(
+          firstDbTotalPrice,
+        );
+
+        const secondDbTotalTokens = thread2.tokenUsage?.totalTokens ?? 0;
+        const secondDbTotalPrice = thread2.tokenUsage?.totalPrice ?? 0;
+
+        // Socket notifications should match final DB values (roughly)
+        expect(secondMaxTotalTokens).toBeGreaterThanOrEqual(
+          secondDbTotalTokens * 0.9,
+        );
+        expect(secondMaxTotalPrice).toBeGreaterThanOrEqual(
+          secondDbTotalPrice * 0.9,
+        );
+      },
+    );
+  });
 });

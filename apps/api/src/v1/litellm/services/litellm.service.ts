@@ -103,9 +103,10 @@ export class LitellmService {
   }
 
   extractMessageTokenUsageFromAdditionalKwargs(
-    additionalKwargs?: { tokenUsage?: unknown } | null,
+    additionalKwargs?: Record<string, unknown> | null,
   ): MessageTokenUsage | null {
-    const maybe = additionalKwargs?.tokenUsage;
+    const maybe =
+      additionalKwargs?.__tokenUsage ?? additionalKwargs?.tokenUsage;
     if (!maybe || typeof maybe !== 'object') {
       return null;
     }
@@ -170,43 +171,85 @@ export class LitellmService {
     usage_metadata?: unknown;
     response_metadata?: unknown;
   }): TokenUsage | null {
+    const responseMetadata =
+      res.response_metadata && typeof res.response_metadata === 'object'
+        ? (res.response_metadata as Record<string, unknown>)
+        : null;
+
+    // Primary: LangChain usage_metadata (preferred when present)
     const usageMetadata = res.usage_metadata;
-    if (!usageMetadata || typeof usageMetadata !== 'object') {
+    const usage =
+      usageMetadata && typeof usageMetadata === 'object'
+        ? (usageMetadata as Record<string, unknown>)
+        : null;
+
+    // Fallback: some providers (e.g. Azure/OpenAI transport) attach usage under response_metadata.usage
+    const responseUsage =
+      responseMetadata?.usage && typeof responseMetadata.usage === 'object'
+        ? (responseMetadata.usage as Record<string, unknown>)
+        : null;
+
+    if (!usage && !responseUsage) {
       return null;
     }
 
-    const usage = usageMetadata as Record<string, unknown>;
+    const inputTokens =
+      (usage ? this.readNumber(usage.input_tokens) : undefined) ??
+      (responseUsage
+        ? this.readNumber(responseUsage.prompt_tokens)
+        : undefined) ??
+      0;
+    const outputTokens =
+      (usage ? this.readNumber(usage.output_tokens) : undefined) ??
+      (responseUsage
+        ? this.readNumber(responseUsage.completion_tokens)
+        : undefined) ??
+      0;
 
-    const inputTokens = this.readNumber(usage.input_tokens) ?? 0;
-    const outputTokens = this.readNumber(usage.output_tokens) ?? 0;
+    const cachedInputTokens = (() => {
+      const inputTokensDetails = usage?.input_tokens_details;
+      if (inputTokensDetails && typeof inputTokensDetails === 'object') {
+        return this.readNumber(
+          (inputTokensDetails as Record<string, unknown>).cached_tokens,
+        );
+      }
+      const promptDetails = responseUsage?.prompt_tokens_details;
+      if (promptDetails && typeof promptDetails === 'object') {
+        return this.readNumber(
+          (promptDetails as Record<string, unknown>).cached_tokens,
+        );
+      }
+      return undefined;
+    })();
 
-    const inputTokensDetails = usage.input_tokens_details;
-    const cachedInputTokens =
-      inputTokensDetails && typeof inputTokensDetails === 'object'
-        ? this.readNumber(
-            (inputTokensDetails as Record<string, unknown>).cached_tokens,
-          )
-        : undefined;
-
-    const reasoningTokens =
-      usage.output_tokens_details &&
-      typeof usage.output_tokens_details === 'object'
-        ? this.readNumber(
-            (usage.output_tokens_details as Record<string, unknown>)
-              .reasoning_tokens,
-          )
-        : undefined;
+    const reasoningTokens = (() => {
+      const outputDetails = usage?.output_tokens_details;
+      if (outputDetails && typeof outputDetails === 'object') {
+        return this.readNumber(
+          (outputDetails as Record<string, unknown>).reasoning_tokens,
+        );
+      }
+      const completionDetails = responseUsage?.completion_tokens_details;
+      if (completionDetails && typeof completionDetails === 'object') {
+        return this.readNumber(
+          (completionDetails as Record<string, unknown>).reasoning_tokens,
+        );
+      }
+      return undefined;
+    })();
 
     const totalTokens =
-      this.readNumber(usage.total_tokens) ??
+      (usage ? this.readNumber(usage.total_tokens) : undefined) ??
+      (responseUsage
+        ? this.readNumber(responseUsage.total_tokens)
+        : undefined) ??
       inputTokens + outputTokens + (reasoningTokens ?? 0);
 
     // Cost comes only from LiteLLM proxy metadata if present.
-    const responseMetadata = res.response_metadata;
     let totalPrice: number | undefined;
 
-    if (responseMetadata && typeof responseMetadata === 'object') {
-      const meta = responseMetadata as Record<string, unknown>;
+    if (responseMetadata) {
+      const meta = responseMetadata;
       totalPrice ??=
         this.readNumber(meta.response_cost) ??
         this.readNumber(
@@ -217,10 +260,11 @@ export class LitellmService {
 
     return {
       inputTokens,
-      cachedInputTokens,
       outputTokens,
-      reasoningTokens,
       totalTokens,
+      currentContext: inputTokens,
+      ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
       ...(totalPrice !== undefined ? { totalPrice } : {}),
     };
   }
@@ -378,9 +422,11 @@ export class LitellmService {
   ): Promise<MessageTokenUsage | null> {
     const skipIfExists = options?.skipIfExists ?? true;
 
-    // Skip if message already has tokenUsage
-    if (skipIfExists && message.additional_kwargs?.tokenUsage) {
-      return message.additional_kwargs.tokenUsage as MessageTokenUsage;
+    const existing =
+      message.additional_kwargs?.__tokenUsage ??
+      message.additional_kwargs?.tokenUsage;
+    if (skipIfExists && existing && typeof existing === 'object') {
+      return existing as MessageTokenUsage;
     }
 
     // Calculate token count for this message
@@ -422,7 +468,7 @@ export class LitellmService {
     // Attach to additional_kwargs
     message.additional_kwargs = {
       ...(message.additional_kwargs ?? {}),
-      tokenUsage,
+      __tokenUsage: tokenUsage,
     };
 
     return tokenUsage;

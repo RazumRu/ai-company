@@ -70,16 +70,18 @@ export class InvokeLlmNode extends BaseNode<
         )
       : null;
 
-    const messages: BaseMessage[] = updateMessagesListWithMetadata(
-      [
-        new SystemMessage(
-          this.opts?.systemPrompt || 'You are a helpful AI assistant.',
-        ),
-        ...(summaryMemoryMessage ? [summaryMemoryMessage] : []),
-        ...prepareMessagesForLlm(state.messages),
-      ],
-      cfg,
-    );
+    const preparedMessages = prepareMessagesForLlm(state.messages);
+
+    // Messages sent to the LLM should be sanitized without internal metadata.
+    // DO NOT call updateMessagesListWithMetadata here as it adds back internal tracking data
+    // (__runId, __createdAt) that the LLM doesn't need and might interfere with the request.
+    const messages: BaseMessage[] = [
+      new SystemMessage(
+        this.opts?.systemPrompt || 'You are a helpful AI assistant.',
+      ),
+      ...(summaryMemoryMessage ? [summaryMemoryMessage] : []),
+      ...preparedMessages,
+    ];
 
     const res = await runner.invoke(messages);
 
@@ -122,19 +124,7 @@ export class InvokeLlmNode extends BaseNode<
 
     return {
       messages: { mode: 'append', items: [...reasoningMessages, ...out] },
-      ...(threadUsage
-        ? {
-            inputTokens: threadUsage.inputTokens,
-            cachedInputTokens: threadUsage.cachedInputTokens ?? 0,
-            outputTokens: threadUsage.outputTokens,
-            reasoningTokens: threadUsage.reasoningTokens ?? 0,
-            totalTokens: threadUsage.totalTokens,
-            totalPrice: threadUsage.totalPrice ?? 0,
-            // Snapshot of actual request context size, as reported by the provider.
-            // This must represent what we *sent* to the LLM for this invocation.
-            currentContext: threadUsage.inputTokens,
-          }
-        : {}),
+      ...(threadUsage || {}),
       ...(shouldResetNeedsMoreInfo
         ? {
             toolsMetadata: FinishTool.clearState(),

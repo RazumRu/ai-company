@@ -92,6 +92,7 @@ describe('ThreadUpdateNotificationHandler', () => {
       name: thread.name ?? null,
       source: thread.source ?? null,
       metadata: thread.metadata ?? {},
+      tokenUsage: thread.tokenUsage ?? null,
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
     });
@@ -282,6 +283,121 @@ describe('ThreadUpdateNotificationHandler', () => {
       const result = await handler.handle(notification);
 
       expect(result).toEqual([]);
+    });
+
+    it('treats "unknown" parentThreadId as missing and uses threadId as external key', async () => {
+      const thread = createMockThreadEntity({ status: ThreadStatus.Running });
+      const updatedThread = {
+        ...thread,
+        status: ThreadStatus.Done,
+        updatedAt: new Date('2024-01-01T00:00:01Z'),
+      } satisfies ThreadEntity;
+
+      const notification = createMockNotification({
+        parentThreadId: 'unknown',
+        data: { status: ThreadStatus.Done },
+      });
+
+      const getOneSpy = vi
+        .spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(thread)
+        .mockResolvedValueOnce(updatedThread);
+
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+
+      const result = await handler.handle(notification);
+
+      expect(getOneSpy).toHaveBeenNthCalledWith(1, {
+        externalThreadId: mockThreadId,
+        graphId: mockGraphId,
+      });
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('accumulates token usage in DB when thread completes multiple times', async () => {
+      const thread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        tokenUsage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          totalPrice: 0.01,
+          byNode: {
+            agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          },
+        },
+      });
+
+      const flushedUsage = {
+        inputTokens: 2,
+        outputTokens: 1,
+        totalTokens: 3,
+        totalPrice: 0.002,
+        byNode: {
+          agentA: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
+        },
+      };
+
+      const updatedThread = {
+        ...thread,
+        status: ThreadStatus.Done,
+        tokenUsage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          totalPrice: 0.01,
+          byNode: {
+            agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          },
+        },
+        updatedAt: new Date('2024-01-01T00:00:01Z'),
+      } satisfies ThreadEntity;
+
+      const notification = createMockNotification({
+        data: { status: ThreadStatus.Done },
+      });
+
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(thread)
+        .mockResolvedValueOnce(updatedThread);
+
+      const updateSpy = vi
+        .spyOn(threadsDao, 'updateById')
+        .mockResolvedValue(updatedThread);
+
+      const cacheService = (
+        handler as unknown as {
+          threadTokenUsageCacheService: {
+            flushThreadTokenUsage: ReturnType<typeof vi.fn>;
+          };
+        }
+      ).threadTokenUsageCacheService;
+
+      cacheService.flushThreadTokenUsage = vi
+        .fn()
+        .mockResolvedValue(flushedUsage);
+
+      await handler.handle(notification);
+
+      expect(cacheService.flushThreadTokenUsage).toHaveBeenCalledWith(
+        mockThreadId,
+      );
+
+      // With Math.max merge strategy, we take the max of cache and DB values
+      // because the cache already contains accumulated values from LangGraph checkpoints
+      expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+        status: ThreadStatus.Done,
+        tokenUsage: {
+          inputTokens: 10, // Math.max(2, 10)
+          outputTokens: 5, // Math.max(1, 5)
+          totalTokens: 15, // Math.max(3, 15)
+          totalPrice: 0.01, // Math.max(0.002, 0.01)
+          byNode: {
+            agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          },
+        },
+      });
     });
   });
 });

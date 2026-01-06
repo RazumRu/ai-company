@@ -59,8 +59,8 @@ describe('MessageTransformerService', () => {
         toolCalls: undefined,
         runId: 'run-1',
         additionalKwargs: expect.objectContaining({
-          isAgentInstructionMessage: true,
-          run_id: 'run-1',
+          __isAgentInstructionMessage: true,
+          __runId: 'run-1',
         }),
       } as AIMessageDto);
     });
@@ -78,7 +78,7 @@ describe('MessageTransformerService', () => {
         role: 'system',
         content: 'System instruction',
         runId: 'run-1',
-        additionalKwargs: { context: 'test', run_id: 'run-1' },
+        additionalKwargs: { __context: 'test', __runId: 'run-1' },
       } as SystemMessageDto);
     });
 
@@ -134,7 +134,7 @@ describe('MessageTransformerService', () => {
           },
         ],
         runId: 'run-1',
-        additionalKwargs: { run_id: 'run-1' },
+        additionalKwargs: { __runId: 'run-1' },
       } as AIMessageDto);
     });
 
@@ -195,7 +195,7 @@ describe('MessageTransformerService', () => {
       expect(result).toEqual({
         role: 'reasoning',
         content: 'Detailed reasoning steps',
-        additionalKwargs: { hideForLlm: true },
+        additionalKwargs: { __hideForLlm: true },
         runId: null,
       } as ReasoningMessageDto);
     });
@@ -219,8 +219,8 @@ describe('MessageTransformerService', () => {
         id: 'reasoning:parent-42',
         runId: null,
         additionalKwargs: {
-          hideForLlm: true,
-          reasoningId: 'reasoning:parent-42',
+          __hideForLlm: true,
+          __reasoningId: 'reasoning:parent-42',
         },
       } as ReasoningMessageDto);
     });
@@ -248,7 +248,7 @@ describe('MessageTransformerService', () => {
         runId: 'run-1',
         additionalKwargs: {
           __title: 'Search in internet: cats',
-          run_id: 'run-1',
+          __runId: 'run-1',
         },
       } as ToolMessageDto);
     });
@@ -280,7 +280,7 @@ describe('MessageTransformerService', () => {
         },
         toolCallId: 'call-shell-1',
         runId: 'run-1',
-        additionalKwargs: { run_id: 'run-1' },
+        additionalKwargs: { __runId: 'run-1' },
       } as ShellToolMessageDto);
     });
 

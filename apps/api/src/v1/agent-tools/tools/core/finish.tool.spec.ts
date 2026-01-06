@@ -20,7 +20,9 @@ describe('FinishTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('End the agent turn');
+      expect(tool.description).toContain(
+        'End your work by signaling completion',
+      );
     });
   });
 

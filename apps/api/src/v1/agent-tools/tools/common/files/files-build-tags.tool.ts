@@ -53,6 +53,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       Builds a \`ctags\` index in JSON format for fast, precise symbol lookups. This enables \`files_search_tags\` to find definitions (classes/functions/methods) without noisy text search.
 
       ### When to Use
+      - **Before starting work in a repo/session**: build tags once up front to index the repo for fast navigation
       - You’re starting work in a new/large repo and want fast “jump to definition”
       - You plan to use \`files_search_tags\` repeatedly
       - Text search is too noisy or slow for symbol discovery
@@ -62,8 +63,10 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       - The repo is small and \`files_search_text\` is already fast enough
 
       ### Best Practices
+      - **Always build tags at the start of work** (per repo + per session/thread) before doing code exploration, then use \`files_search_tags\` for symbol discovery.
       - Use a stable \`alias\` per repo (e.g. "project") so you can reuse it across many \`files_search_tags\` calls.
-      - Rebuild tags after large refactors or when definitions aren’t found (the index is not automatically updated).
+      - **Rebuild tags after you change files** (especially renames/new files/added or removed symbols) because the index is **not** automatically updated.
+      - Rebuild tags after large refactors or when definitions aren’t found.
       - If you already \`cd\`’d into the repo using \`shell\`, omit \`dir\` to use the persistent session cwd.
 
       ### Examples

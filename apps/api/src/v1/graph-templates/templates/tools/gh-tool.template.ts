@@ -31,7 +31,7 @@ export const GhToolTemplateSchema = z
 @Injectable()
 @RegisterTemplate()
 export class GhToolTemplate extends ToolNodeBaseTemplate<
-  typeof GhToolTemplateSchema
+  typeof GhToolTemplateSchema,
 > {
   readonly id = 'gh-tool';
   readonly name = 'GitHub Tools';

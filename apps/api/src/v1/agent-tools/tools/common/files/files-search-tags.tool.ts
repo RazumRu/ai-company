@@ -77,11 +77,14 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
       ### When NOT to Use
       - Tags index hasn't been built → call \`files_build_tags\` first
+      - You changed repo files since building tags → rebuild tags first (the index is not automatically updated)
       - Searching for text content (not symbols) → use \`files_search_text\`
       - Finding usages of a symbol → use \`files_search_text\`
       - Looking for comments or strings → use \`files_search_text\`
 
       ### Best Practices
+      - **Always run \`files_build_tags\` once at the start of work** (per repo + per session/thread), then prefer this tool for symbol definitions.
+      - **Rebuild tags after file changes** (new/removed/renamed files, symbol changes) before relying on results.
 
       **1. Use exact match for known symbols:**
       \`\`\`json
@@ -170,7 +173,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
       ### Troubleshooting
       - "No matches" → Verify alias is correct, tags are built
-      - Wrong results → Check if tags need to be rebuilt after code changes
+      - Wrong/stale results → Rebuild tags after code changes (new files/symbols/renames)
       - Symbol not found → May not be indexed (check language support)
     `;
   }

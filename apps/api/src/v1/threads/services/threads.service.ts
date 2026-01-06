@@ -226,7 +226,8 @@ export class ThreadsService {
         );
 
       for (const thread of runningThreads) {
-        out.set(thread.id, redisResults.get(thread.externalThreadId) ?? null);
+        const usage = redisResults.get(thread.externalThreadId) ?? null;
+        out.set(thread.id, usage);
       }
     }
 

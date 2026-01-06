@@ -31,19 +31,36 @@ export class ThreadTokenUsageCacheService {
     value: Partial<TokenUsage> | null | undefined,
   ): TokenUsage {
     const v = value ?? {};
+
+    const inputTokens = typeof v.inputTokens === 'number' ? v.inputTokens : 0;
+    const outputTokens =
+      typeof v.outputTokens === 'number' ? v.outputTokens : 0;
+    const totalTokens = typeof v.totalTokens === 'number' ? v.totalTokens : 0;
+
+    const cachedInputTokens =
+      typeof v.cachedInputTokens === 'number' ? v.cachedInputTokens : undefined;
+    const reasoningTokens =
+      typeof v.reasoningTokens === 'number' ? v.reasoningTokens : undefined;
+    const totalPrice =
+      typeof v.totalPrice === 'number' ? v.totalPrice : undefined;
+    const currentContext =
+      typeof v.currentContext === 'number' ? v.currentContext : undefined;
+
     return {
-      inputTokens: typeof v.inputTokens === 'number' ? v.inputTokens : 0,
-      cachedInputTokens:
-        typeof v.cachedInputTokens === 'number'
-          ? v.cachedInputTokens
-          : undefined,
-      outputTokens: typeof v.outputTokens === 'number' ? v.outputTokens : 0,
-      reasoningTokens:
-        typeof v.reasoningTokens === 'number' ? v.reasoningTokens : undefined,
-      totalTokens: typeof v.totalTokens === 'number' ? v.totalTokens : 0,
-      totalPrice: typeof v.totalPrice === 'number' ? v.totalPrice : undefined,
-      currentContext:
-        typeof v.currentContext === 'number' ? v.currentContext : undefined,
+      inputTokens,
+      // Only include optional fields if they're > 0
+      ...(cachedInputTokens !== undefined && cachedInputTokens > 0
+        ? { cachedInputTokens }
+        : {}),
+      outputTokens,
+      ...(reasoningTokens !== undefined && reasoningTokens > 0
+        ? { reasoningTokens }
+        : {}),
+      totalTokens,
+      ...(totalPrice !== undefined && totalPrice > 0 ? { totalPrice } : {}),
+      ...(currentContext !== undefined && currentContext > 0
+        ? { currentContext }
+        : {}),
     };
   }
 
@@ -141,6 +158,7 @@ export class ThreadTokenUsageCacheService {
   /**
    * Upsert token usage for a single node within a thread.
    * This is used from state update notifications where only a subset of fields is present.
+   * Uses "max" strategy for cumulative counters to prevent resets from stale updates.
    */
   async upsertNodeTokenUsage(
     externalThreadId: string,
@@ -168,7 +186,22 @@ export class ThreadTokenUsageCacheService {
           )
         : this.normalizeTokenUsage(undefined);
 
-      const merged = this.normalizeTokenUsage({ ...existing, ...patch });
+      // Simply use the patch values - agent state now properly accumulates across runs
+      const merged = this.normalizeTokenUsage({
+        inputTokens: patch.inputTokens ?? existing.inputTokens,
+        cachedInputTokens:
+          patch.cachedInputTokens ?? existing.cachedInputTokens ?? 0,
+        outputTokens: patch.outputTokens ?? existing.outputTokens,
+        reasoningTokens: patch.reasoningTokens ?? existing.reasoningTokens ?? 0,
+        totalTokens: patch.totalTokens ?? existing.totalTokens,
+        totalPrice: patch.totalPrice ?? existing.totalPrice ?? 0,
+        // currentContext is a snapshot, use the latest non-zero value
+        currentContext:
+          patch.currentContext !== undefined && patch.currentContext > 0
+            ? patch.currentContext
+            : existing.currentContext,
+      });
+
       await this.cacheService.hset(key, nodeId, JSON.stringify(merged));
       await this.cacheService.expire(key, this.TTL_SECONDS);
     } catch (error) {

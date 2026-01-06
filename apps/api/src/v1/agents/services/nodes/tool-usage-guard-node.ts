@@ -34,9 +34,12 @@ export class ToolUsageGuardNode extends BaseNode<
 
     const last = state.messages[state.messages.length - 1];
     const lastAI = last instanceof AIMessage ? last : undefined;
-    const hasToolCalls = (lastAI?.tool_calls?.length || 0) > 0;
+    const hasFinishToolCall =
+      lastAI?.tool_calls?.some(
+        (toolCall) => toolCall.name === FinishTool.TOOL_NAME,
+      ) ?? false;
 
-    if (hasToolCalls) {
+    if (hasFinishToolCall) {
       return { toolUsageGuardActivated: false };
     }
 
@@ -73,6 +76,10 @@ export class ToolUsageGuardNode extends BaseNode<
     const msg = new SystemMessage({
       content: restrictionMessage,
     });
+    msg.additional_kwargs = {
+      ...(msg.additional_kwargs ?? {}),
+      __hideForSummary: true,
+    };
     return {
       messages: {
         mode: 'append',

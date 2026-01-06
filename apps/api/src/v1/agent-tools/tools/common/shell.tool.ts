@@ -72,67 +72,36 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
     return dedent`
       ### Overview
-      The shell tool executes arbitrary shell commands inside a prepared runtime environment. It provides direct access to the command line for file operations, git commands, running tests, building projects, installing dependencies, and system inspection.
-      Commands within the same thread share a persistent shell session (env and cwd changes persist across calls); session ids are handled automatically (keyed by threadId).
-      By default, commands execute in a per-thread working directory under \`/runtime-workspace/<threadId>\`. If you want other tools (like Filesystem MCP) to reliably find files, prefer absolute paths under \`/runtime-workspace\` (for example \`/runtime-workspace/shared/... \`).
+      Executes shell commands in runtime environment. Commands within same thread share persistent session (env/cwd persist). Default cwd: \`/runtime-workspace/<threadId>\`. Use absolute paths under \`/runtime-workspace\` for cross-tool compatibility.
 
       ### When to Use
-      - **File operations**: Creating, moving, copying, deleting files and directories
-      - **Git operations**: Cloning repos, checking out branches, viewing diffs, committing changes
-      - **Build & test**: Running build commands, executing test suites, linting code
-      - **Package management**: Installing dependencies (npm, pip, apt, etc.)
-      - **System inspection**: Checking disk space, viewing processes, inspecting environment
-      - **Custom scripts**: Running project-specific scripts or one-off commands
+      File/git operations, build/test/install commands, system inspection, custom scripts, or when specialized tools don't exist.
 
       ### When NOT to Use
-      - For reading file contents → prefer files_read tool (better structured output)
-      - For listing/finding paths → prefer files_find_paths tool (structured array output)
-      - For searching text in files → prefer files_search_text tool (JSON structured results)
-      - For applying file changes → prefer files_apply_changes tool (safer, atomic operations)
-      - When a specialized tool exists for the operation (use specialized tools for better reliability)
+      For reading/finding/searching/editing files → use specialized file tools (better structured output, safer operations).
 
       ### Best Practices
-
-      **1. Set the working directory once per session (cwd persists):**
+      **1. Set cwd once (persists across calls):**
       \`\`\`bash
-      # First command in the thread: move to the runtime workspace
       cd /runtime-workspace && ls
-
-      # Later commands in the same thread reuse that cwd automatically
-      pnpm test
-      git status
       \`\`\`
 
-      **2. Quote paths with spaces:**
-      \`\`\`bash
-      cat "/path/with spaces/file.txt"
-      \`\`\`
-
-      **3. Chain commands safely with && to stop on first failure:**
+      **2. Chain commands safely:**
       \`\`\`bash
       cd /repo && npm install && npm test
       \`\`\`
 
-      **4. Use flags to constrain output:**
+      **3. Quote paths with spaces:**
       \`\`\`bash
-      # Good: Constrained
-      rg "TODO" --max-count=10 /runtime-workspace/src
-
-      # Bad: Potentially huge output
-      rg "TODO" /runtime-workspace
+      cat "/path/with spaces/file.txt"
       \`\`\`
 
-      ### Output Format
-      Returns:
-      - \`exitCode\`: 0 for success, non-zero for failure
-      - \`stdout\`: Standard output (trimmed to maxOutputLength)
-      - \`stderr\`: Standard error output
+      **4. Constrain output to avoid token waste:**
+      \`\`\`bash
+      rg "TODO" --max-count=10 /workspace/src
+      \`\`\`
 
-      ### Error Handling
-      - Always check exitCode before assuming success
-      - Read stderr for error details when exitCode != 0
-      - Retry transient failures (network, locks) with backoff
-      - Don't ignore errors - report them and adjust strategy
+      Always check exitCode (0=success, non-zero=failure) before assuming success.
 
       ${runtimeInfo || ''}
 

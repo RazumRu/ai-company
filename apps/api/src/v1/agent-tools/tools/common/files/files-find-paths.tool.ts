@@ -92,52 +92,37 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Finds file paths by glob using \`fd\` and returns **absolute paths**. This tool searches by **path/name only** (it does not search file contents).
+      Finds file paths by glob using fd. Returns absolute paths. Searches by path/name only (not file contents).
 
       ### When to Use
-      - Discover files by glob before reading/editing (feed results into \`files_read\` / \`files_apply_changes\`)
-      - List “only this directory” by setting \`recursive: false\`
-      - Quickly locate config files (e.g. \`**/tsconfig*.json\`, \`**/*.env*\`, \`package.json\`)
+      Discover files by glob before reading/editing. List directory with \`recursive: false\`. Locate config files (tsconfig*.json, *.env*, package.json).
 
       ### When NOT to Use
-      - Searching inside files → use \`files_search_text\`
-      - Getting a visual structure overview → use \`files_directory_tree\`
+      Searching inside files → use files_search_text. Visual structure overview → use files_directory_tree.
 
       ### Best Practices
-      - Prefer \`recursive: false\` + \`pattern: "*"\` to get a quick directory listing without walking the whole tree.
-      - Keep patterns specific (e.g. \`**/*.ts\` instead of \`*\`) to avoid huge result sets.
-      - If results include junk, add \`excludePatterns\` (defaults exclude common folders like \`node_modules/**\`, \`dist/**\`, etc.).
-      - If you only want the first N results, lower \`maxResults\` to reduce output.
+      Use \`recursive: false\` + \`pattern: "*"\` for quick directory listing. Keep patterns specific (e.g. **/*.ts) to avoid huge results. Add excludePatterns if results include junk (defaults exclude node_modules/**, dist/**, build/**, coverage/**, .turbo/**, .next/**, etc.). Lower maxResults to reduce output.
 
       ### Examples
-      **1) Find TypeScript files (recursive):**
+      **1. Find all TypeScript files recursively:**
       \`\`\`json
-      {"dir":"/repo","pattern":"**/*.ts"}
+      {"dir": "/repo", "pattern": "**/*.ts"}
       \`\`\`
 
-      **2) List only this directory (non-recursive):**
+      **2. List only current directory (non-recursive):**
       \`\`\`json
-      {"dir":"/repo","pattern":"*","recursive":false}
+      {"dir": "/repo/src", "pattern": "*", "recursive": false}
       \`\`\`
 
-      **3) Find tsconfig variants and ignore build output:**
+      **3. Find config files with exclusions:**
       \`\`\`json
-      {"dir":"/repo","pattern":"**/tsconfig*.json","excludePatterns":["node_modules/**","dist/**","build/**"]}
+      {"pattern": "**/tsconfig*.json", "excludePatterns": ["node_modules/**", "dist/**"]}
       \`\`\`
 
-      ### Output Format
+      **4. Limited results with max depth:**
       \`\`\`json
-      {
-        "files": ["/abs/path/a.ts","/abs/path/b.ts"],
-        "cwd": "/abs/path",
-        "returned": 2,
-        "truncated": false,
-        "nextCursor": null
-      }
+      {"dir": "/repo", "pattern": "*.test.ts", "maxDepth": 3, "maxResults": 50}
       \`\`\`
-
-      Notes:
-      - \`truncated: true\` means more matches existed than \`maxResults\`.
     `;
   }
 

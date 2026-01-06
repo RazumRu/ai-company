@@ -64,7 +64,7 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
 
   public name = 'finish';
   public description =
-    'End the agent turn by signaling completion or requesting required missing input.';
+    'End your work by signaling completion or requesting required missing input. Call this tool ONLY when you are completely done with all tasks - do not call it alongside other tools.';
 
   protected override generateTitle(
     args: FinishToolSchemaType,
@@ -79,94 +79,40 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      The finish tool is the ONLY way to properly end your turn. Every response must conclude with a finish call, either signaling completion or requesting essential information.
+      Call ONCE when completely done to end work or request required info. This is the ONLY way to properly end your work.
 
       ### When to Use
-      - **ALWAYS** - every turn must end with this tool
-      - When task is complete and you have results to report
-      - When you cannot proceed without specific required information
-      - After making all intended changes for this turn
+      All tasks complete and have results to report, OR cannot proceed without specific required information.
 
       ### When NOT to Use
-      - Never skip this tool - it must be called at the end of every turn
-      - Don't call it in the middle of work - finish your current operations first
-
-      ### \`message\` example
-
-      **For completion (needsMoreInfo: false):**
-      \`\`\`json
-      {
-        "message": "Successfully implemented the user registration endpoint. Changes made:\\n- Created POST /api/users/register\\n- Added email validation\\n- Integrated with database\\n- Added unit tests\\n\\nThe endpoint is ready for testing.",
-        "needsMoreInfo": false
-      }
-      \`\`\`
-
-      **For requesting info (needsMoreInfo: true):**
-      \`\`\`json
-      {
-        "message": "To proceed, I need the following:\\n\\n1. Repository URL (format: owner/repo or full GitHub URL)\\n2. Target branch name (default: main if not specified)\\n\\nPlease provide these details.",
-        "needsMoreInfo": true
-      }
-      \`\`\`
+      Don't call mid-work, alongside other tools, or before completing ALL work.
 
       ### Best Practices
+      Prefer completion over asking (use defaults/assumptions). If asking, be specific about what's needed with examples. In \`message\`, summarize accomplishments clearly or ask precise questions. Set \`needsMoreInfo: true\` only when information is strictly required and cannot be reasonably assumed.
 
-      **1. Always prefer completion over asking:**
-      Try to complete the task using context, defaults, or reasonable assumptions.
+      ### Workflow
+      1. Call tools → 2. See results → 3. Call more tools if needed → 4. Call finish ONCE when done (not alongside other tools)
+
+      ### Examples
+      **Completion:**
       \`\`\`json
-      // Good: Make assumptions and proceed
-      {
-        "message": "Completed the task. I assumed the default database port 5432 since it wasn't specified.",
-        "needsMoreInfo": false
-      }
-
-      // Avoid: Asking when you can assume
-      {
-        "message": "What database port should I use?",
-        "needsMoreInfo": true
-      }
+      {"purpose": "Report completion", "message": "Successfully implemented user auth endpoint. Changes:\\n- Created POST /api/auth/login\\n- Added JWT validation\\n- Added tests\\n\\nReady for testing.", "needsMoreInfo": false}
       \`\`\`
 
-      **2. If you must ask, be specific:**
+      **Requesting info:**
       \`\`\`json
-      // Good: Specific, actionable question
-      {
-        "message": "To create the API key, I need:\\n\\n• Service name (e.g., 'payment-service')\\n• Permission level: 'read', 'write', or 'admin'\\n\\nPlease provide both values.",
-        "needsMoreInfo": true
-      }
-
-      // Bad: Vague question
-      {
-        "message": "What should I do next?",
-        "needsMoreInfo": true
-      }
+      {"purpose": "Request required info", "message": "Need the API key to proceed. Please provide the production API key.", "needsMoreInfo": true}
       \`\`\`
 
-      **3. Summarize accomplishments clearly:**
-      \`\`\`json
-      {
-        "message": "### Completed Tasks\\n\\n1. ✅ Created new component at /src/components/Button.tsx\\n2. ✅ Added unit tests\\n3. ✅ Updated exports in index.ts\\n\\n### Files Modified\\n- src/components/Button.tsx (created)\\n- src/components/Button.test.tsx (created)\\n- src/components/index.ts (updated)\\n\\nThe component is ready for use.",
-        "needsMoreInfo": false
-      }
+      **WRONG - calling alongside other tools:**
+      \`\`\`
+      [files_read(...), files_write(...), finish(...)]  ❌
       \`\`\`
 
-      ### Question Guidelines
-      Only ask when ALL of these are true:
-      1. The information is strictly required to proceed
-      2. You cannot make a reasonable assumption
-      3. Getting it wrong would be irreversible or very problematic
-
-      ### Output Format
-      Returns an object with \`message\` and \`needsMoreInfo\`. The agent runtime derives completion flags from tool state.
-
-      ### Error Pattern
-      NEVER end without calling finish:
+      **CORRECT - call tools, then finish separately:**
       \`\`\`
-      // WRONG: Ending without finish
-      Made the changes you requested.
-
-      // CORRECT: Always use finish tool
-      {"purpose": "Report completion", "message": "Made the changes you requested.", "needsMoreInfo": false}
+      Turn 1: [files_read(...), files_write(...)]
+      Turn 2: [finish(...)]  ✓
       \`\`\`
     `;
   }

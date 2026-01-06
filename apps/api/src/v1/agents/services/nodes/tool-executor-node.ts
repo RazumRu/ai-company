@@ -144,14 +144,17 @@ export class ToolExecutorNode extends BaseNode<
       {} as Record<string, Record<string, unknown>>,
     );
 
+    const messagesWithMetadata = updateMessagesListWithMetadata(
+      toolMessages,
+      cfg,
+    );
+
     return {
       messages: {
         mode: 'append',
-        items: updateMessagesListWithMetadata(toolMessages, cfg),
+        items: messagesWithMetadata,
       },
-      ...(Object.keys(toolsMetadataUpdate).length
-        ? { toolsMetadata: toolsMetadataUpdate }
-        : {}),
+      toolsMetadata: toolsMetadataUpdate,
     };
   }
 }

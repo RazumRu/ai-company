@@ -108,10 +108,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
           if (node.type === NodeKind.Tool) {
             const tools = Array.isArray(inst) ? inst : [inst];
-            tools.forEach((tool) => {
-              const builtTool = tool as BuiltAgentTool;
-              allTools.push(builtTool);
-            });
+            tools.forEach((tool) => allTools.push(tool as BuiltAgentTool));
             continue;
           }
 
@@ -167,8 +164,10 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     };
   }
 
-  private collectToolInstructions(tools: BuiltAgentTool[]): string | undefined {
-    const blocks = tools
+  private collectToolInstructions(
+    tools: BuiltAgentTool[],
+  ): string | undefined {
+    const toolBlocks = tools
       .filter((tool): tool is BuiltAgentTool => Boolean(tool))
       .map((tool) => {
         if (!tool.__instructions) {
@@ -179,11 +178,11 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       })
       .filter((block): block is string => Boolean(block));
 
-    if (!blocks.length) {
+    if (!toolBlocks.length) {
       return undefined;
     }
 
-    return ['## Tool Instructions', ...blocks].join('\n\n');
+    return ['## Tool Instructions', ...toolBlocks].join('\n\n');
   }
 
   private extractKnowledgeContent(node: CompiledGraphNode): string | undefined {

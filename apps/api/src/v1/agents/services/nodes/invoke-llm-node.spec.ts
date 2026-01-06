@@ -65,6 +65,7 @@ describe('InvokeLlmNode', () => {
       inputTokens: 123,
       outputTokens: 7,
       totalTokens: 130,
+      currentContext: 123,
     };
 
     (

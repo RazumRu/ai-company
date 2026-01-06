@@ -334,7 +334,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           {
             getRestrictOutput: () => true,
             getRestrictionMessage: () =>
-              "You must call a tool before finishing. If you have completed the task or have a final answer, call the 'finish' tool. If you need more information from the user, call the 'finish' tool with needsMoreInfo set to true and include your question in the message. Never provide a direct text response without calling a tool first.",
+              "You must call the 'finish' tool to end your response. If you have completed the task or have a final answer, call the 'finish' tool with needsMoreInfo=false. If you need more information from the user, call the 'finish' tool with needsMoreInfo=true and include your question in the message.",
             getRestrictionMaxInjections: () => 3,
           },
           this.logger,
@@ -347,10 +347,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           .addConditionalEdges(
             'invoke_llm',
             (s) => {
-              return ((s.messages.at(-1) as AIMessage)?.tool_calls?.length ??
-                0) > 0
-                ? 'tools'
-                : 'tool_usage_guard';
+              const lastMsg = s.messages.at(-1) as AIMessage;
+              const hasAnyToolCall = (lastMsg?.tool_calls?.length ?? 0) > 0;
+              // If ANY tool was called, execute them. Otherwise check with guard.
+              return hasAnyToolCall ? 'tools' : 'tool_usage_guard';
             },
             { tools: 'tools', tool_usage_guard: 'tool_usage_guard' },
           )
@@ -358,7 +358,44 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             'tool_usage_guard',
             (s) => (s.toolUsageGuardActivated ? 'invoke_llm' : END),
             { invoke_llm: 'invoke_llm', [END]: END },
-          );
+          )
+          .addConditionalEdges(
+            'tools',
+            (s, cfg) => {
+              const threadId = String(cfg.configurable?.thread_id ?? '');
+              const { pendingMessages, newMessageMode } =
+                graphThreadState.getByThread(threadId);
+
+              const hasPending = pendingMessages.length > 0;
+              const mode = newMessageMode ?? NewMessageMode.InjectAfterToolCall;
+              const finishState = FinishTool.getStateFromToolsMetadata(
+                s.toolsMetadata,
+              );
+              const isComplete = Boolean(
+                finishState && (finishState.done || finishState.needsMoreInfo),
+              );
+
+              if (!isComplete) {
+                if (mode === NewMessageMode.InjectAfterToolCall && hasPending) {
+                  return 'inject_pending';
+                }
+                // Allow agent to continue working - route back to summarize
+                return 'summarize';
+              }
+
+              if (hasPending) {
+                return 'inject_pending';
+              }
+
+              return END;
+            },
+            {
+              inject_pending: 'inject_pending',
+              summarize: 'summarize',
+              [END]: END,
+            },
+          )
+          .addEdge('inject_pending', 'summarize');
       } else {
         g.addConditionalEdges(
           'invoke_llm',
@@ -385,45 +422,44 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             inject_pending: 'inject_pending',
             [END]: END,
           },
-        );
+        )
+          .addConditionalEdges(
+            'tools',
+            (s, cfg) => {
+              const threadId = String(cfg.configurable?.thread_id ?? '');
+              const { pendingMessages, newMessageMode } =
+                graphThreadState.getByThread(threadId);
+
+              const hasPending = pendingMessages.length > 0;
+              const mode = newMessageMode ?? NewMessageMode.InjectAfterToolCall;
+              const finishState = FinishTool.getStateFromToolsMetadata(
+                s.toolsMetadata,
+              );
+              const isComplete = Boolean(
+                finishState && (finishState.done || finishState.needsMoreInfo),
+              );
+
+              if (!isComplete) {
+                if (mode === NewMessageMode.InjectAfterToolCall && hasPending) {
+                  return 'inject_pending';
+                }
+                return 'summarize';
+              }
+
+              if (hasPending) {
+                return 'inject_pending';
+              }
+
+              return END;
+            },
+            {
+              inject_pending: 'inject_pending',
+              summarize: 'summarize',
+              [END]: END,
+            },
+          )
+          .addEdge('inject_pending', 'summarize');
       }
-
-      g.addConditionalEdges(
-        'tools',
-        (s, cfg) => {
-          const threadId = String(cfg.configurable?.thread_id ?? '');
-          const { pendingMessages, newMessageMode } =
-            graphThreadState.getByThread(threadId);
-
-          const hasPending = pendingMessages.length > 0;
-          const mode = newMessageMode ?? NewMessageMode.InjectAfterToolCall;
-          const finishState = FinishTool.getStateFromToolsMetadata(
-            s.toolsMetadata,
-          );
-          const isComplete = Boolean(
-            finishState && (finishState.done || finishState.needsMoreInfo),
-          );
-
-          if (!isComplete) {
-            if (mode === NewMessageMode.InjectAfterToolCall && hasPending) {
-              return 'inject_pending';
-            }
-
-            return 'summarize';
-          }
-
-          if (hasPending) {
-            return 'inject_pending';
-          }
-
-          return END;
-        },
-        {
-          inject_pending: 'inject_pending',
-          summarize: 'summarize',
-          [END]: END,
-        },
-      ).addEdge('inject_pending', 'summarize');
 
       this.graph = g.compile({
         checkpointer: this.checkpointer,
@@ -432,23 +468,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
 
     return this.graph;
-  }
-
-  private buildInitialState(): BaseAgentState {
-    return {
-      messages: [],
-      summary: '',
-      toolsMetadata: {},
-      toolUsageGuardActivated: false,
-      toolUsageGuardActivatedCount: 0,
-      inputTokens: 0,
-      cachedInputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      totalTokens: 0,
-      totalPrice: 0,
-      currentContext: 0,
-    };
   }
 
   private applyChange(
@@ -491,7 +510,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     if (!rc?.configurable?.graph_id) return;
     const runId = rc.configurable.run_id;
 
-    const fresh = messages.filter((m) => m.additional_kwargs?.run_id === runId);
+    const fresh = messages.filter((m) => {
+      const kw = m.additional_kwargs as unknown as Record<string, unknown>;
+      return kw.__runId === runId || kw.run_id === runId;
+    });
 
     if (fresh.length > 0) {
       const model = this.currentConfig?.invokeModelName;
@@ -653,6 +675,17 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     // Only emit if there are changes
     if (Object.keys(stateChange).length === 0) return;
+
+    // Always include a full token/cost snapshot in every AgentStateUpdate emission.
+    // Consumers should be able to treat this event as "current truth" and not have to
+    // merge partial diffs while defaulting missing fields to zero.
+    stateChange.inputTokens = nextState.inputTokens;
+    stateChange.cachedInputTokens = nextState.cachedInputTokens;
+    stateChange.outputTokens = nextState.outputTokens;
+    stateChange.reasoningTokens = nextState.reasoningTokens;
+    stateChange.totalTokens = nextState.totalTokens;
+    stateChange.totalPrice = nextState.totalPrice;
+    stateChange.currentContext = nextState.currentContext;
 
     this.emit({
       type: 'stateUpdate',
@@ -983,13 +1016,70 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     const abortController = new AbortController();
 
-    const initialState: BaseAgentState = this.buildInitialState();
-    // Seed state with the initial input messages before consuming the LangGraph stream.
-    // Otherwise the first stream update can re-introduce the same input and we'd emit it twice.
-    let finalState: BaseAgentState = {
-      ...initialState,
+    // Load checkpoint state BEFORE streaming to get accumulated token/cost values
+    // LangGraph checkpointer stores the full state including our custom fields
+    let initialState: BaseAgentState = {
       messages: updateMessages,
+      summary: '',
+      toolsMetadata: {},
+      toolUsageGuardActivated: false,
+      toolUsageGuardActivatedCount: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      totalPrice: 0,
+      currentContext: 0,
     };
+
+    // Try to load checkpoint state for accumulated values
+    try {
+      if (
+        g.checkpointer &&
+        typeof g.checkpointer === 'object' &&
+        'getTuple' in g.checkpointer
+      ) {
+        const checkpointTuple = await g.checkpointer.getTuple(mergedConfig);
+        if (
+          checkpointTuple &&
+          typeof checkpointTuple === 'object' &&
+          'checkpoint' in checkpointTuple
+        ) {
+          const checkpoint = checkpointTuple.checkpoint;
+          if (
+            checkpoint &&
+            typeof checkpoint === 'object' &&
+            'channel_values' in checkpoint
+          ) {
+            const checkpointState =
+              checkpoint.channel_values as unknown as BaseAgentState;
+            // Use checkpoint's accumulated values, but keep new messages
+            initialState = {
+              ...initialState,
+              inputTokens: checkpointState.inputTokens || 0,
+              cachedInputTokens: checkpointState.cachedInputTokens || 0,
+              outputTokens: checkpointState.outputTokens || 0,
+              reasoningTokens: checkpointState.reasoningTokens || 0,
+              totalTokens: checkpointState.totalTokens || 0,
+              totalPrice: checkpointState.totalPrice || 0,
+              currentContext: checkpointState.currentContext || 0,
+            };
+          }
+        }
+      }
+    } catch (error) {
+      // If we can't load checkpoint, just start with zeros (first run)
+      this.logger.debug(
+        'Could not load checkpoint, starting with zero counters',
+        {
+          threadId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+
+    let finalState: BaseAgentState = initialState;
 
     // Track active run for cancellation and status updates
     const runEntry: ActiveRunEntry = {
@@ -1008,7 +1098,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           mode: 'append',
           items: updateMessages,
         },
-        toolsMetadata: {},
+        toolsMetadata: FinishTool.clearState(),
         toolUsageGuardActivated: false,
         toolUsageGuardActivatedCount: 0,
       } satisfies BaseAgentStateChange,
@@ -1019,15 +1109,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       },
     );
 
-    // initial state push for first user message
+    // Emit initial messages notification
     await this.emitNewMessages(updateMessages, mergedConfig, threadId);
-
-    await this.emitStateUpdate(
-      initialState,
-      finalState,
-      mergedConfig,
-      threadId,
-    );
 
     try {
       for await (const event of stream) {
@@ -1115,14 +1198,17 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       this.clearReasoningState(threadId);
     }
 
+    // If no updates were received, finalState will still be null - use runEntry.lastState as fallback
+    const stateForResult = finalState || runEntry.lastState;
+
     const result = {
       // Preserve historical behavior: the AgentOutput is the *new* messages produced by the run,
       // not the initial user input we already provided to the graph.
-      messages: finalState.messages.filter((m) => !inputMessageSet.has(m)),
+      messages: stateForResult.messages.filter((m) => !inputMessageSet.has(m)),
       threadId,
       checkpointNs: mergedConfig?.configurable?.checkpoint_ns,
       needsMoreInfo:
-        FinishTool.getStateFromToolsMetadata(finalState.toolsMetadata)
+        FinishTool.getStateFromToolsMetadata(stateForResult.toolsMetadata)
           ?.needsMoreInfo === true,
     };
 

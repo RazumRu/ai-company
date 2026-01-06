@@ -41,6 +41,9 @@ interface NodeState {
   // Execution tracking - unified instead of separate thread/run/exec maps
   activeExecutions: Map<string, ExecutionContext>;
 
+  // Thread to run mapping - persists after execution completes
+  threadToRunMap: Map<string, string>;
+
   // Metadata storage - unified lookup
   metadata: {
     base?: Record<string, unknown>;
@@ -79,6 +82,7 @@ export class GraphStateManager {
       baseStatus: GraphNodeStatus.Starting,
       error: null,
       activeExecutions: new Map(),
+      threadToRunMap: new Map(),
       metadata: {
         base: undefined,
         byThread: new Map(),
@@ -166,9 +170,24 @@ export class GraphStateManager {
       .filter((state) => state.node)
       .map((state) => {
         const node = state.node!;
-        const status = this.computeDisplayStatus(state, threadId, runId);
-        const metadata = this.buildExecutionMetadata(threadId, runId);
-        const additionalNodeMetadata = this.getMetadata(state, threadId, runId);
+
+        // If we have threadId but no runId, try to look it up from the mapping
+        let effectiveRunId = runId;
+        if (threadId && !runId) {
+          effectiveRunId = state.threadToRunMap.get(threadId);
+        }
+
+        const status = this.computeDisplayStatus(
+          state,
+          threadId,
+          effectiveRunId,
+        );
+        const metadata = this.buildExecutionMetadata(threadId, effectiveRunId);
+        const additionalNodeMetadata = this.getMetadata(
+          state,
+          threadId,
+          effectiveRunId,
+        );
 
         return {
           id: node.id,
@@ -227,6 +246,7 @@ export class GraphStateManager {
 
   private clearNodeState(state: NodeState) {
     state.activeExecutions.clear();
+    state.threadToRunMap.clear();
     state.metadata.byThread.clear();
     state.metadata.byRun.clear();
     state.metadata.base = undefined;
@@ -268,6 +288,12 @@ export class GraphStateManager {
           threadId: meta?.threadId,
           runId: meta?.runId,
         });
+
+        // Store threadId -> runId mapping
+        if (meta?.threadId && meta?.runId) {
+          state.threadToRunMap.set(meta.threadId, meta.runId);
+        }
+
         state.baseStatus = GraphNodeStatus.Running;
 
         this.emitNodeUpdate(state);
@@ -355,6 +381,12 @@ export class GraphStateManager {
     const execId = uuidv4();
 
     state.activeExecutions.set(execId, { threadId, runId });
+
+    // Store threadId -> runId mapping
+    if (threadId && runId) {
+      state.threadToRunMap.set(threadId, runId);
+    }
+
     state.baseStatus = GraphNodeStatus.Running;
 
     this.emitNodeUpdate(state, threadId, runId);
@@ -651,6 +683,11 @@ export class GraphStateManager {
     data: AgentNodeAdditionalMetadataUpdateEvent,
   ): boolean {
     const { threadId, runId } = data.metadata;
+
+    // Store threadId -> runId mapping
+    if (threadId && runId) {
+      state.threadToRunMap.set(threadId, runId);
+    }
 
     if (threadId) {
       const prev = state.metadata.byThread.get(threadId);

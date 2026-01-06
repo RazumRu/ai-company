@@ -153,7 +153,7 @@ describe('ThreadTokenUsageCacheService', () => {
   });
 
   describe('flushThreadTokenUsage', () => {
-    it('should retrieve token usage and delete from Redis', async () => {
+    it('should retrieve token usage without deleting from Redis', async () => {
       const threadId = 'thread-123';
       const tokenUsage = {
         inputTokens: 300,
@@ -182,6 +182,8 @@ describe('ThreadTokenUsageCacheService', () => {
         totalTokens: expect.any(Number),
         byNode: expect.any(Object),
       });
+      // Cache should be deleted after flushing to DB (when thread completes)
+      // Accumulation happens via LangGraph checkpoints during running threads
       expect(mockCacheService.del).toHaveBeenCalledWith(
         'thread:thread-123:tokens',
       );
@@ -203,6 +205,99 @@ describe('ThreadTokenUsageCacheService', () => {
 
       expect(result).toBeNull();
       expect(mockLogger.error).toHaveBeenCalled();
+    });
+  });
+
+  describe('upsertNodeTokenUsage', () => {
+    it('should accumulate token usage across multiple updates on the same thread', async () => {
+      const threadId = 'thread-123';
+      const nodeId = 'node-1';
+
+      // First update: initial tokens from first message
+      mockCacheService.hget.mockResolvedValue(null);
+      await service.upsertNodeTokenUsage(threadId, nodeId, {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        totalPrice: 0.01,
+        currentContext: 100,
+      });
+
+      expect(mockCacheService.hset).toHaveBeenCalledWith(
+        'thread:thread-123:tokens',
+        nodeId,
+        JSON.stringify({
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          totalPrice: 0.01,
+          currentContext: 100,
+        }),
+      );
+
+      // Second update: accumulated tokens from second message (agent checkpoint loaded previous state)
+      mockCacheService.hget.mockResolvedValue(
+        JSON.stringify({
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          totalPrice: 0.01,
+          currentContext: 100,
+        } satisfies TokenUsage),
+      );
+
+      await service.upsertNodeTokenUsage(threadId, nodeId, {
+        inputTokens: 25,
+        outputTokens: 15,
+        totalTokens: 40,
+        totalPrice: 0.03,
+        currentContext: 200,
+      });
+
+      expect(mockCacheService.hset).toHaveBeenCalledWith(
+        'thread:thread-123:tokens',
+        nodeId,
+        JSON.stringify({
+          inputTokens: 25,
+          outputTokens: 15,
+          totalTokens: 40,
+          totalPrice: 0.03,
+          currentContext: 200,
+        }),
+      );
+    });
+
+    it('should update counters when patch contains larger totals', async () => {
+      const threadId = 'thread-123';
+      const nodeId = 'node-1';
+
+      mockCacheService.hget.mockResolvedValue(
+        JSON.stringify({
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+        } satisfies TokenUsage),
+      );
+
+      await service.upsertNodeTokenUsage(threadId, nodeId, {
+        inputTokens: 12,
+        outputTokens: 7,
+        totalTokens: 19,
+        totalPrice: 0.02,
+        currentContext: 200,
+      });
+
+      expect(mockCacheService.hset).toHaveBeenCalledWith(
+        'thread:thread-123:tokens',
+        nodeId,
+        JSON.stringify({
+          inputTokens: 12,
+          outputTokens: 7,
+          totalTokens: 19,
+          totalPrice: 0.02,
+          currentContext: 200,
+        }),
+      );
     });
   });
 

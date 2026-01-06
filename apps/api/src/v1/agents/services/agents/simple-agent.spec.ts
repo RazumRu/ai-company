@@ -403,7 +403,7 @@ describe('SimpleAgent', () => {
       const m2 = new HumanMessage('m2');
       const m3 = new HumanMessage('m3');
       for (const m of [m1, m2, m3]) {
-        (m as any).additional_kwargs = { run_id: 'run-1' };
+        (m as any).additional_kwargs = { __runId: 'run-1' };
       }
 
       async function* mockStream() {
@@ -634,7 +634,7 @@ describe('SimpleAgent', () => {
 
       const threadState = graphThreadState.getByThread('thread-1');
       expect(threadState.pendingMessages).toHaveLength(1);
-      expect(threadState.pendingMessages[0]?.additional_kwargs?.run_id).toBe(
+      expect(threadState.pendingMessages[0]?.additional_kwargs?.__runId).toBe(
         'run-1',
       );
 

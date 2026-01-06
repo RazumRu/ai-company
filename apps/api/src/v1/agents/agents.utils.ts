@@ -10,7 +10,25 @@ import { RunnableConfig } from '@langchain/core/runnables';
 import { isPlainObject } from 'lodash';
 import type { UnknownRecord } from 'type-fest';
 
+import type { MessageAdditionalKwargs } from '../notifications/notifications.types';
 import { BaseAgentConfigurable } from './services/nodes/base-node';
+
+function getMessageKwargs(msg: BaseMessage): MessageAdditionalKwargs {
+  const raw = msg.additional_kwargs as unknown;
+  return isPlainObject(raw) ? (raw as MessageAdditionalKwargs) : {};
+}
+
+export function getMessageRunId(msg: BaseMessage): string | undefined {
+  const k = getMessageKwargs(msg);
+  const v = k.__runId ?? (k as { run_id?: unknown }).run_id;
+  return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+export function isHiddenForLlm(msg: BaseMessage): boolean {
+  const k = getMessageKwargs(msg);
+  const v = k.__hideForLlm ?? (k as { hideForLlm?: unknown }).hideForLlm;
+  return v === true;
+}
 
 function cloneMessage<T extends BaseMessage>(message: T): T {
   return Object.assign(
@@ -100,7 +118,7 @@ export function updateMessageWithMetadata(
   const currentKwargs = message.additional_kwargs as unknown;
   if (
     isPlainObject(currentKwargs) &&
-    typeof (currentKwargs as UnknownRecord).run_id === 'string'
+    typeof getMessageRunId(message) === 'string'
   ) {
     return message;
   }
@@ -111,14 +129,14 @@ export function updateMessageWithMetadata(
   // Ensure we always have an object here (even for system/human/tool messages).
   (clone as unknown as { response_metadata?: unknown }).response_metadata = {};
 
-  const prev: UnknownRecord = isPlainObject(clone.additional_kwargs as unknown)
-    ? (clone.additional_kwargs as UnknownRecord)
-    : {};
+  const prev = getMessageKwargs(clone);
   clone.additional_kwargs = {
     ...prev,
-    run_id: runnableConfig?.configurable?.run_id,
-    created_at:
-      (typeof prev.created_at === 'string' && prev.created_at) ||
+    __runId: runnableConfig?.configurable?.run_id,
+    __createdAt:
+      (typeof prev.__createdAt === 'string' && prev.__createdAt) ||
+      (typeof (prev as { created_at?: unknown }).created_at === 'string' &&
+        (prev as { created_at?: string }).created_at) ||
       new Date().toISOString(),
   };
 
@@ -138,12 +156,10 @@ export function markMessageHideForLlm<T extends BaseMessage>(message: T): T {
     message,
   );
 
-  const prev: UnknownRecord = isPlainObject(clone.additional_kwargs as unknown)
-    ? (clone.additional_kwargs as UnknownRecord)
-    : {};
+  const prev = getMessageKwargs(clone);
   clone.additional_kwargs = {
     ...prev,
-    hideForLlm: true,
+    __hideForLlm: true,
   };
 
   return clone;
@@ -158,7 +174,7 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
       return false;
     }
 
-    return !msg.additional_kwargs?.hideForLlm;
+    return !isHiddenForLlm(msg);
   });
 }
 
@@ -335,7 +351,7 @@ export function buildReasoningMessage(
     msg.id = reasoningId;
     msg.additional_kwargs = {
       ...(msg.additional_kwargs ?? {}),
-      reasoningId,
+      __reasoningId: reasoningId,
     };
   }
 

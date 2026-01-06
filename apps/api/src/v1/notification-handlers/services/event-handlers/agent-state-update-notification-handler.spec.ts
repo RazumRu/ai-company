@@ -98,6 +98,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
           provide: ThreadTokenUsageCacheService,
           useValue: {
             upsertNodeTokenUsage: vi.fn().mockResolvedValue(undefined),
+            getThreadTokenUsage: vi.fn().mockResolvedValue(null),
           },
         },
         {

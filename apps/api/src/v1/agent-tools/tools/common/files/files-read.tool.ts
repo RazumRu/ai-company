@@ -93,77 +93,30 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Reads file contents from the filesystem. Supports reading entire files or specific line ranges. Returns structured output with content and metadata.
+      Reads file contents from the filesystem. Supports reading entire files or specific line ranges.
 
       ### When to Use
-      - Reading source code files to understand implementation
-      - Examining configuration files (package.json, tsconfig.json, etc.)
-      - Reviewing specific sections of large files
-      - Getting file content before making modifications
-      - Reading documentation or README files
+      Reading source code, config files (package.json, tsconfig.json), or getting file content before modifications.
 
       ### When NOT to Use
-      - For binary files (images, compiled code) → use shell tool with appropriate commands
-      - When you just need to locate/confirm a path → use \`files_find_paths\`
-      - When searching for content across many files → use \`files_search_text\` first
+      For binary files → use shell tool. To locate paths → use \`files_find_paths\`. To search content across files → use \`files_search_text\`.
 
       ### Best Practices
-
       **1. Read targeted sections for large files:**
-      Instead of reading a 5000-line file:
       \`\`\`json
-        // First, find the relevant section using files_search_text
-        // Then read just that section
-        {"reads": [{"filePath": "/repo/large-file.ts", "startLine": 1, "endLine": 500}]}
+      {"reads": [{"filePath": "/repo/large-file.ts", "startLine": 100, "endLine": 150}]}
       \`\`\`
 
-      **2. Read context around found matches:**
-      After \`files_search_text\` finds a match at line 150:
+      **2. Read multiple files at once:**
       \`\`\`json
-        {"reads": [{"filePath": "/repo/src/utils.ts", "startLine": 140, "endLine": 170}]}
+      {"reads": [{"filePath": "/repo/tsconfig.json"}, {"filePath": "/repo/package.json"}]}
       \`\`\`
 
-      **3. Read configuration files completely:**
-      Config files are usually small and need full context:
+      **3. Read context around found matches:**
+      After \`files_search_text\` finds match at line 150, read surrounding context:
       \`\`\`json
-        {"reads": [{"filePath": "/repo/tsconfig.json"}, {"filePath": "/repo/package.json"}]}
+      {"reads": [{"filePath": "/repo/src/utils.ts", "startLine": 140, "endLine": 170}]}
       \`\`\`
-
-      ### Output Format
-      \`\`\`json
-        {
-          "files": [
-            { "filePath": "/repo/tsconfig.json", "content": "file content here...", "lineCount": 150 },
-            { "filePath": "/repo/package.json", "content": "file content here...", "lineCount": 42 }
-          ]
-        }
-      \`\`\`
-
-      Or on error:
-      \`\`\`json
-        {
-          "files": [
-            { "filePath": "/path/to/file", "error": "cat: /path/to/file: No such file or directory" }
-          ]
-        }
-      \`\`\`
-
-      ### Common Patterns
-
-      **Reading before editing:**
-      1. Read the file to understand current content
-      2. Identify the exact lines to modify
-      3. Use \`files_apply_changes\` with precise line numbers
-
-      **Exploring a codebase:**
-      1. Use \`files_find_paths\` to discover files
-      2. Use \`files_search_text\` to find relevant sections
-      3. Use \`files_read\` with line ranges to examine specific parts
-
-      ### Error Handling
-      - File not found: Check the path is correct, use \`files_find_paths\` to discover/confirm the path
-      - Permission denied: File may be in a protected location
-      - Line range errors: Ensure startLine <= endLine and both are positive
     `;
   }
 

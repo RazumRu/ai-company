@@ -75,6 +75,7 @@ export interface GraphNodeStateSnapshot {
   error?: string | null;
   threadId?: string;
   runId?: string;
+  metadata?: GraphExecutionMetadata;
   additionalNodeMetadata?: Record<string, unknown>;
 }
 

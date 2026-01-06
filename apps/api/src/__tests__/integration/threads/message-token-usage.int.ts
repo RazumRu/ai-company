@@ -81,9 +81,11 @@ describe('Message token usage (integration)', () => {
     const human = new HumanMessage('hi');
     const ai = new AIMessage('hello');
     human.additional_kwargs = {
-      tokenUsage: { totalTokens: 2, totalPrice: 0.01 },
+      __tokenUsage: { totalTokens: 2, totalPrice: 0.01 },
     };
-    ai.additional_kwargs = { tokenUsage: { totalTokens: 3, totalPrice: 0.02 } };
+    ai.additional_kwargs = {
+      __tokenUsage: { totalTokens: 3, totalPrice: 0.02 },
+    };
 
     const serializedMessages = serializeBaseMessages([human, ai]);
 

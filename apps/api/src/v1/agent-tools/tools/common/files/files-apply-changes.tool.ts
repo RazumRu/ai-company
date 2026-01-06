@@ -95,82 +95,45 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): string {
     return dedent`
       ### Overview
-      Applies targeted text edits to a file by replacing \`oldText\` with \`newText\`. Supports \`dryRun\` to preview a unified diff without modifying the file.
+      Applies targeted text edits by replacing \`oldText\` with \`newText\`. Supports \`dryRun\` to preview diff without modifying.
 
-      ### How matching works (important)
-      - This tool does **exact-match replacement by text block**. It is not a regex engine.
-      - Matching is based on **normalized whitespace** (each line is trimmed) so minor indentation differences are tolerated.
-      - Each \`oldText\` must match **exactly once** in the file:
-        - **0 matches** → you need to adjust \`oldText\` (it doesn’t exist as written).
-        - **>1 match** → you need to make \`oldText\` more specific (to avoid unintended edits).
-      - Indentation of the matched block is detected and applied to \`newText\` to preserve formatting.
+      ### How matching works
+      Exact-match replacement with normalized whitespace (trimmed lines). Each \`oldText\` must match exactly once: 0 matches = adjust text; >1 match = add more context. Indentation auto-detected and preserved.
 
       ### When to Use
-      - You want a precise change without overwriting the whole file
-      - You need to insert/replace a block identified by surrounding context text
-      - You want a safe preview diff first (\`dryRun: true\`)
+      Precise changes without overwriting whole file, insert/replace blocks, safe preview with \`dryRun: true\`.
 
       ### When NOT to Use
-      - You want full overwrite of known final content → use \`files_write_file\` (destructive overwrite)
-      - You need to delete a file → use \`files_delete\` (destructive)
+      For full overwrite → use \`files_write_file\`. For file deletion → use \`files_delete\`.
 
       ### Best Practices
-      - Prefer running a \`dryRun\` first when editing important files.
-      - Make \`oldText\` unique by including **3–15 lines** of surrounding context around the change.
-      - Prefer copying the current block via \`files_read\` (or \`files_search_text\` then \`files_read\`) to avoid transcription mismatches.
-      - If you see “Found N matches”, add nearby lines (imports, function signature, surrounding comment) to make the block unique.
-      - If you need to change multiple places in one file, supply **multiple edits**; each must still match uniquely.
-      - If you want a full overwrite, use \`files_write_file\` instead.
+      Run \`dryRun\` first for important files. Make \`oldText\` unique with 3-15 lines of context. Copy exact blocks via \`files_read\`. If "Found N matches", add nearby lines (imports, function signature) to make unique. For multiple edits in one file, supply multiple edits array.
 
-      ### Common workflow (recommended)
-      1. \`files_search_text\` to find the area (optional).
-      2. \`files_read\` around the relevant lines to copy an exact block.
-      3. \`files_apply_changes\` with \`dryRun: true\` to verify the diff.
-      4. \`files_apply_changes\` with \`dryRun: false\` (or omitted) to apply.
-      5. \`files_read\` again to confirm.
+      ### Workflow
+      1. \`files_search_text\` or \`files_read\` to find/copy exact block
+      2. \`files_apply_changes\` with \`dryRun: true\` to verify
+      3. \`files_apply_changes\` with \`dryRun: false\` to apply
 
       ### Examples
-      **1) Preview a targeted replacement (dry run):**
+      **1. Preview single edit (dry run):**
       \`\`\`json
       {"path":"/repo/src/a.ts","edits":[{"oldText":"const x = 1;","newText":"const x = 2;"}],"dryRun":true}
       \`\`\`
 
-      **2) Apply a targeted replacement:**
-      \`\`\`json
-      {"path":"/repo/src/a.ts","edits":[{"oldText":"const x = 1;","newText":"const x = 2;"}]}
-      \`\`\`
-
-      **3) Replace a multi-line block (best practice: include context):**
+      **2. Multi-line edit with context (best practice):**
       \`\`\`json
       {
-        "path": "/repo/src/a.ts",
-        "edits": [
-          {
-            "oldText": "export function add(a: number, b: number) {\\n  return a + b;\\n}",
-            "newText": "export function add(a: number, b: number) {\\n  return a + b;\\n}\\n\\nexport function sub(a: number, b: number) {\\n  return a - b;\\n}"
-          }
-        ],
-        "dryRun": true
+        "path": "/repo/src/utils.ts",
+        "edits": [{
+          "oldText": "export function add(a: number, b: number) {\\n  return a + b;\\n}",
+          "newText": "export function add(a: number, b: number): number {\\n  return a + b;\\n}"
+        }]
       }
       \`\`\`
 
-      **4) Create a new file (single edit with empty oldText):**
+      **3. Multiple edits in one file:**
       \`\`\`json
-      {"path":"/repo/new.ts","edits":[{"oldText":"","newText":"export const ok = true;\\n"}]}
-      \`\`\`
-
-      ### Troubleshooting
-      - **“Could not find match”**: read the file and copy-paste the exact block into \`oldText\`; include more context.
-      - **“Found N matches”**: expand \`oldText\` with surrounding lines until it matches uniquely.
-      - **Large edits**: use \`dryRun\` first and keep changes small/atomic (one logical change per edit).
-
-      ### Output Format
-      - On \`dryRun: true\`, the tool returns \`diff\`.
-      - On success, returns \`success: true\` and edit counters.
-
-      Example:
-      \`\`\`json
-      { "success": true, "appliedEdits": 1, "totalEdits": 1, "diff": "@@ -1,1 +1,1 @@\\n-const x = 1;\\n+const x = 2;" }
+      {"path":"/repo/config.ts","edits":[{"oldText":"version: 1","newText":"version: 2"},{"oldText":"debug: false","newText":"debug: true"}]}
       \`\`\`
     `;
   }

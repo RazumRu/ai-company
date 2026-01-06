@@ -137,13 +137,13 @@ describe('SummarizeNode', () => {
       expect(result.messages?.items).toBeDefined();
       const returnedMessages = result.messages?.items || [];
 
-      expect(
-        returnedMessages.some(
-          (m) =>
-            typeof m.content === 'string' &&
-            String(m.content).startsWith('Conversation summary:\n'),
-        ),
-      ).toBe(false);
+      const summaryMsg = returnedMessages.find(
+        (m) =>
+          m instanceof SystemMessage &&
+          m.content === 'Conversation history was summarized.',
+      ) as SystemMessage | undefined;
+      expect(summaryMsg).toBeDefined();
+      expect(summaryMsg?.additional_kwargs?.__hideForLlm).toBe(true);
       expect(result.summary).toBe(newSummary);
       expect(countTokensMock).toHaveBeenCalledWith(
         'gpt-5.1',
@@ -177,6 +177,16 @@ describe('SummarizeNode', () => {
       const result = await node.invoke(state, createMockConfig());
 
       expect(result.summary).toBe(newSummary);
+
+      const returnedMessages = result.messages?.items || [];
+      const summaryMsg = returnedMessages.find(
+        (m) =>
+          m instanceof SystemMessage &&
+          m.content === 'Conversation history was summarized.',
+      ) as SystemMessage | undefined;
+
+      expect(summaryMsg).toBeDefined();
+      expect(summaryMsg?.additional_kwargs?.__hideForLlm).toBe(true);
     });
 
     it('should not include a summary message when fold returns empty summary', async () => {
@@ -194,8 +204,8 @@ describe('SummarizeNode', () => {
       expect(
         returnedMessages.some(
           (m) =>
-            typeof m.content === 'string' &&
-            String(m.content).startsWith('Conversation summary:\n'),
+            m instanceof SystemMessage &&
+            m.content === 'Conversation history was summarized.',
         ),
       ).toBe(false);
       expect(result.summary).toBe('');
@@ -230,8 +240,8 @@ describe('SummarizeNode', () => {
       expect(
         returnedMessages.some(
           (m) =>
-            typeof m.content === 'string' &&
-            String(m.content).startsWith('Conversation summary:\n'),
+            m instanceof SystemMessage &&
+            m.content === 'Conversation history was summarized.',
         ),
       ).toBe(false);
       expect(result.summary).toBe('');
@@ -267,6 +277,33 @@ describe('SummarizeNode', () => {
       expect(mockInvoke).toHaveBeenCalled();
       expect(result.messages?.mode).toBe('replace');
       expect(result.summary).toBe('Summary');
+    });
+
+    it('should still fold at least one block when currentContext exceeds maxTokens but local keepTokens trimming keeps everything', async () => {
+      const nodeWithLargeKeep = new SummarizeNode(mockLitellmService, mockLlm, {
+        maxTokens: 1000,
+        keepTokens: 10_000,
+        tokenCountModel: 'gpt-5.1',
+      });
+
+      const state = createMockState({
+        summary: '',
+        messages: [new HumanMessage('Old message'), new HumanMessage('Newest')],
+        currentContext: 2000,
+      });
+
+      // Make token estimator think both messages fit comfortably into keepTokens.
+      countTokensMock.mockResolvedValue(1);
+      mockInvoke.mockResolvedValue(new AIMessage('Summary'));
+
+      const result = await nodeWithLargeKeep.invoke(state, createMockConfig());
+
+      expect(mockInvoke).toHaveBeenCalled();
+      expect(result.summary).toBe('Summary');
+
+      // We should keep at least the last message (tail) after compaction.
+      const returnedMessages = result.messages?.items || [];
+      expect(returnedMessages.at(-1)?.content).toBe('Newest');
     });
 
     it('should handle keepTokens = 0 by keeping only last message', async () => {
@@ -386,6 +423,54 @@ describe('SummarizeNode', () => {
       // The older messages should be folded in
       expect(String(human?.content)).toContain('HUMAN: Old human 1');
       expect(String(human?.content)).toContain('HUMAN: Old human 2');
+    });
+
+    it('should drop tool-usage-guard system messages (__hideForSummary) during compaction so they are not pinned', async () => {
+      const pinned = new SystemMessage('Pinned system');
+      const toolUsageGuard = new SystemMessage(
+        "You must call a tool before finishing. Call the 'finish' tool.",
+      );
+      toolUsageGuard.additional_kwargs = { __hideForSummary: true };
+
+      const state = createMockState({
+        messages: [
+          pinned,
+          new HumanMessage('Old human 1'),
+          toolUsageGuard,
+          new HumanMessage('Tail human'),
+        ],
+        currentContext: 2000,
+      });
+
+      // Force compaction to happen and make the tail small so "Old human 1" folds.
+      const nodeWithSmallKeep = new SummarizeNode(mockLitellmService, mockLlm, {
+        maxTokens: 1000,
+        keepTokens: 1,
+        tokenCountModel: 'gpt-5.1',
+      });
+      countTokensMock.mockResolvedValue(1);
+      mockInvoke.mockResolvedValue(new AIMessage('Updated summary'));
+
+      const result = await nodeWithSmallKeep.invoke(state, createMockConfig());
+
+      const returnedMessages = result.messages?.items || [];
+
+      // Pinned system stays.
+      expect(
+        returnedMessages.some(
+          (m) => m instanceof SystemMessage && m.content === 'Pinned system',
+        ),
+      ).toBe(true);
+
+      // Tool-usage-guard system message is dropped (not pinned, not kept).
+      expect(
+        returnedMessages.some(
+          (m) =>
+            m instanceof SystemMessage &&
+            typeof m.content === 'string' &&
+            m.content.includes('You must call a tool before finishing'),
+        ),
+      ).toBe(false);
     });
 
     it('should skip summarization when pending tool calls exist', async () => {

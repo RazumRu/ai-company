@@ -68,19 +68,32 @@ export interface SerializedBaseMessage {
   additional_kwargs?: MessageAdditionalKwargs;
 }
 
-export type MessageAdditionalKwargs = {
-  run_id?: string;
-  thread_id?: string;
+/**
+ * Message metadata stored in `BaseMessage.additional_kwargs`.
+ *
+ * Conventions:
+ * - Our internal/custom fields use `__` prefix.
+ * - Our internal/custom fields use camelCase.
+ * - Provider/tool transport fields may also be present (no enforced naming).
+ */
+export type MessageAdditionalKwargs = Record<string, unknown> & {
+  __runId?: string;
+  __threadId?: string;
+  __createdAt?: string;
   __model?: string;
   __title?: string;
+
   // Used by message transformer for reasoning + LLM visibility controls
-  reasoningId?: string;
-  hideForLlm?: boolean;
-  isAgentInstructionMessage?: boolean;
-  context?: unknown;
+  __reasoningId?: string;
+  __hideForLlm?: boolean;
+  __hideForSummary?: boolean;
+  __isAgentInstructionMessage?: boolean;
+
+  __context?: unknown;
+
   // Per-message token usage (totalTokens + totalPrice only)
-  // Full TokenUsage breakdown belongs to thread-level state, not individual messages
-  tokenUsage?: MessageTokenUsage;
+  // Full TokenUsage breakdown belongs to thread-level state, not individual messages.
+  __tokenUsage?: MessageTokenUsage;
 };
 
 export enum NotificationEvent {

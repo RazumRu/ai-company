@@ -39,11 +39,17 @@ export class MessageTransformerService {
     const rawAdditionalKwargs = msg.additional_kwargs;
     const additionalKwargs =
       this.normalizeAdditionalKwargs(rawAdditionalKwargs);
-    const runId =
-      typeof additionalKwargs?.run_id === 'string'
-        ? additionalKwargs.run_id
-        : null;
-    const isAgentInstruction = !!additionalKwargs?.isAgentInstructionMessage;
+    const runId = (() => {
+      const v =
+        additionalKwargs?.__runId ??
+        (additionalKwargs as unknown as { run_id?: unknown })?.run_id;
+      return typeof v === 'string' && v.length > 0 ? v : null;
+    })();
+    const isAgentInstruction = Boolean(
+      additionalKwargs?.__isAgentInstructionMessage ??
+      (additionalKwargs as unknown as { isAgentInstructionMessage?: unknown })
+        ?.isAgentInstructionMessage,
+    );
     const contentStr = this.normalizeContent(msg.content);
 
     switch (messageType) {
@@ -64,10 +70,13 @@ export class MessageTransformerService {
 
       case 'ChatMessage': {
         const role = typeof msg.role === 'string' ? msg.role : undefined;
-        const reasoningId =
-          (typeof msg.id === 'string' ? msg.id : undefined) ||
-          rawAdditionalKwargs?.reasoningId ||
-          undefined;
+        const reasoningId = (() => {
+          const fromId = typeof msg.id === 'string' ? msg.id : undefined;
+          if (fromId) return fromId;
+          const raw = rawAdditionalKwargs as unknown as Record<string, unknown>;
+          const v = raw?.__reasoningId ?? raw?.reasoningId;
+          return typeof v === 'string' && v.length > 0 ? v : undefined;
+        })();
 
         if (role === 'reasoning') {
           return {
@@ -182,8 +191,56 @@ export class MessageTransformerService {
     v: unknown,
   ): Record<string, unknown> | undefined {
     const obj = isObject(v) ? (v as Record<string, unknown>) : undefined;
-    if (obj && Object.keys(obj).length) return obj;
-    return undefined;
+    if (!obj || !Object.keys(obj).length) return undefined;
+
+    // Normalize legacy keys to the canonical `__*` camelCase format.
+    // We keep provider/tool transport fields untouched.
+    const normalized: Record<string, unknown> = { ...obj };
+
+    const mapString = (legacyKey: string, nextKey: string): void => {
+      if (typeof normalized[nextKey] === 'string' && normalized[nextKey]) {
+        delete normalized[legacyKey];
+        return;
+      }
+      const v = normalized[legacyKey];
+      if (typeof v === 'string' && v) {
+        normalized[nextKey] = v;
+      }
+      delete normalized[legacyKey];
+    };
+
+    const mapBool = (legacyKey: string, nextKey: string): void => {
+      if (typeof normalized[nextKey] === 'boolean') {
+        delete normalized[legacyKey];
+        return;
+      }
+      const v = normalized[legacyKey];
+      if (typeof v === 'boolean') {
+        normalized[nextKey] = v;
+      }
+      delete normalized[legacyKey];
+    };
+
+    mapString('run_id', '__runId');
+    mapString('thread_id', '__threadId');
+    mapString('created_at', '__createdAt');
+    mapString('reasoningId', '__reasoningId');
+
+    mapBool('hideForLlm', '__hideForLlm');
+    mapBool('hideForSummary', '__hideForSummary');
+    mapBool('isAgentInstructionMessage', '__isAgentInstructionMessage');
+
+    if (normalized['__tokenUsage'] === undefined && normalized['tokenUsage']) {
+      normalized['__tokenUsage'] = normalized['tokenUsage'];
+    }
+    delete normalized['tokenUsage'];
+
+    if (normalized['__context'] === undefined && normalized['context']) {
+      normalized['__context'] = normalized['context'];
+    }
+    delete normalized['context'];
+
+    return normalized;
   }
 
   private mapToolCalls(toolCalls: RawToolCall[]): {

@@ -52,51 +52,18 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Overwrites an entire file with provided content (**destructive**). Prefer \`files_apply_changes\` for targeted edits; use this tool only when you intend to replace the whole file.
+      Overwrites entire file (**destructive**). Prefer \`files_apply_changes\` for targeted edits.
 
-      ### When to Use
-      - Creating a new file from scratch (and you have the full content)
-      - Replacing a generated file entirely (regenerate then overwrite)
-      - Writing small config files where full overwrite is intended
+      ### When to Use / NOT to Use
+      Use for: new files from scratch, full regeneration of files, small config overwrites.
+      Don't use for: targeted edits (use \`files_apply_changes\`), deletion (use \`files_delete\`), append/insert snippets (use \`files_apply_changes\`).
 
-      ### When NOT to Use
-      - Small/targeted edits → use \`files_apply_changes\` (safer)
-      - You only need to append/insert a snippet → use \`files_apply_changes\`
-      - You need to delete a file → use \`files_delete\`
+      ### Best Practice
+      Read file first with \`files_read\` before overwriting to avoid data loss. Create parent directories first using \`files_create_directory\` if needed.
 
-      ### Best Practices
-      - If modifying an existing file, read it first with \`files_read\` to avoid accidental loss.
-      - For multi-step generation, create directories first using \`files_create_directory\`.
-      - Keep overwrites intentional and scoped; don’t overwrite large files unless necessary.
-
-      ### Examples
-      **1) Create/overwrite a small file:**
+      ### Example
       \`\`\`json
-      { "path": "/repo/README.generated.md", "content": "# Generated\\n\\nDo not edit by hand.\\n" }
-      \`\`\`
-
-      **2) Workflow (mkdir → write → verify):**
-      1) \`files_create_directory\`:
-      \`\`\`json
-      { "path": "/repo/generated" }
-      \`\`\`
-      2) \`files_write_file\`:
-      \`\`\`json
-      { "path": "/repo/generated/output.json", "content": "{\\n  \\"ok\\": true\\n}\\n" }
-      \`\`\`
-      3) \`files_read\`:
-      \`\`\`json
-      { "reads": [{ "filePath": "/repo/generated/output.json" }] }
-      \`\`\`
-
-      ### Output Format
-      Success:
-      \`\`\`json
-      { "success": true }
-      \`\`\`
-      Error:
-      \`\`\`json
-      { "success": false, "error": "..." }
+      {"path": "/repo/config.json", "content": "{\\n  \\"version\\": \\"2.0\\"\\n}"}
       \`\`\`
     `;
   }

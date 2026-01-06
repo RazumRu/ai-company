@@ -25,7 +25,7 @@ describe('agents.utils', () => {
       const message = new SystemMessage('Test message');
       const marked = markMessageHideForLlm(message);
 
-      expect(marked.additional_kwargs?.hideForLlm).toBe(true);
+      expect(marked.additional_kwargs?.__hideForLlm).toBe(true);
       expect(marked.content).toBe('Test message');
     });
 
@@ -34,7 +34,7 @@ describe('agents.utils', () => {
       message.additional_kwargs = { custom: 'value' };
       const marked = markMessageHideForLlm(message);
 
-      expect(marked.additional_kwargs?.hideForLlm).toBe(true);
+      expect(marked.additional_kwargs?.__hideForLlm).toBe(true);
       expect(marked.additional_kwargs?.custom).toBe('value');
     });
 
@@ -42,8 +42,8 @@ describe('agents.utils', () => {
       const message = new SystemMessage('Test message');
       const marked = markMessageHideForLlm(message);
 
-      expect(message.additional_kwargs?.hideForLlm).toBeUndefined();
-      expect(marked.additional_kwargs?.hideForLlm).toBe(true);
+      expect(message.additional_kwargs?.__hideForLlm).toBeUndefined();
+      expect(marked.additional_kwargs?.__hideForLlm).toBe(true);
     });
   });
 
@@ -223,7 +223,7 @@ describe('agents.utils', () => {
       (ai as any).id = 'rs_123';
       (ai as any).response_metadata = { foo: 'bar' };
       (ai as any).usage_metadata = { input_tokens: 1 };
-      ai.additional_kwargs = { run_id: 'run-1', hideForLlm: false };
+      ai.additional_kwargs = { __runId: 'run-1', __hideForLlm: false };
 
       const prepared = prepareMessagesForLlm([ai]);
 
@@ -234,6 +234,45 @@ describe('agents.utils', () => {
       expect((out as any).usage_metadata).toBeUndefined();
       expect(out.additional_kwargs).toEqual({});
       expect(out.content).toBe('Hello\nWorld');
+    });
+
+    it('should preserve ToolMessage content and tool_call_id for LLM', () => {
+      const toolCallId = 'call-123';
+      const toolContent = 'Tool execution result';
+      const msgs = [
+        new HumanMessage('Run tool'),
+        new AIMessage({
+          content: 'calling tool',
+          tool_calls: [
+            {
+              id: toolCallId,
+              name: 'test_tool',
+              args: { param: 'value' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+        new ToolMessage({
+          tool_call_id: toolCallId,
+          name: 'test_tool',
+          content: toolContent,
+          additional_kwargs: {
+            __model: 'gpt-4',
+            __tokenUsage: { totalTokens: 10 },
+          },
+        }),
+      ];
+
+      const prepared = prepareMessagesForLlm(msgs);
+
+      expect(prepared).toHaveLength(3);
+      const toolMsg = prepared[2] as ToolMessage;
+      expect(toolMsg).toBeInstanceOf(ToolMessage);
+      expect(toolMsg.tool_call_id).toBe(toolCallId);
+      expect(toolMsg.name).toBe('test_tool');
+      expect(toolMsg.content).toBe(toolContent);
+      // additional_kwargs should be cleared for safety, but core properties must remain
+      expect(toolMsg.additional_kwargs).toEqual({});
     });
   });
 
@@ -248,12 +287,12 @@ describe('agents.utils', () => {
 
       const updated = updateMessageWithMetadata(message, config as any);
 
-      expect(updated.additional_kwargs?.run_id).toBe('test-run-123');
+      expect(updated.additional_kwargs?.__runId).toBe('test-run-123');
     });
 
     it('should not overwrite existing run_id', () => {
       const message = new HumanMessage('Test');
-      message.additional_kwargs = { run_id: 'existing-run' };
+      message.additional_kwargs = { __runId: 'existing-run' };
 
       const config = {
         configurable: {
@@ -263,7 +302,7 @@ describe('agents.utils', () => {
 
       const updated = updateMessageWithMetadata(message, config as any);
 
-      expect(updated.additional_kwargs?.run_id).toBe('existing-run');
+      expect(updated.additional_kwargs?.__runId).toBe('existing-run');
     });
   });
 
@@ -310,7 +349,7 @@ describe('agents.utils', () => {
 
       expect(updated).toHaveLength(3);
       updated.forEach((msg) => {
-        expect(msg.additional_kwargs?.run_id).toBe('test-run-123');
+        expect(msg.additional_kwargs?.__runId).toBe('test-run-123');
       });
     });
   });
@@ -326,8 +365,8 @@ describe('agents.utils', () => {
 
       const updated = updateMessageWithMetadata(message, config as any);
 
-      expect(updated.additional_kwargs?.hideForLlm).toBe(true);
-      expect(updated.additional_kwargs?.run_id).toBe('test-run-123');
+      expect(updated.additional_kwargs?.__hideForLlm).toBe(true);
+      expect(updated.additional_kwargs?.__runId).toBe('test-run-123');
     });
 
     it('should filter hideForLlm messages even after metadata update', () => {
@@ -356,8 +395,8 @@ describe('agents.utils', () => {
 
       expect(msg.role).toBe('reasoning');
       expect(msg.id).toBe('reasoning:parent-123');
-      expect(msg.additional_kwargs?.hideForLlm).toBe(true);
-      expect(msg.additional_kwargs?.reasoningId).toBe('reasoning:parent-123');
+      expect(msg.additional_kwargs?.__hideForLlm).toBe(true);
+      expect(msg.additional_kwargs?.__reasoningId).toBe('reasoning:parent-123');
     });
   });
 
