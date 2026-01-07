@@ -11,10 +11,12 @@ import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
 } from '../../base-tool';
-import {
-  FilesApplyChangesTool,
-  FilesApplyChangesToolEditSchemaType,
-} from './files-apply-changes.tool';
+import { FilesApplyChangesTool } from './files-apply-changes.tool';
+
+type EditOperation = {
+  oldText: string;
+  newText: string;
+};
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 const FilesEditToolSchema = z.object({
@@ -392,10 +394,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     fileContent: string,
     hunks: ParsedHunk[],
   ): {
-    edits?: FilesApplyChangesToolEditSchemaType[];
+    edits?: EditOperation[];
     error?: { code: ErrorCode; details: string; suggestedAction: string };
   } {
-    const edits: FilesApplyChangesToolEditSchemaType[] = [];
+    const edits: EditOperation[] = [];
     const fileLines = fileContent.split('\n');
 
     for (const hunk of hunks) {
@@ -542,7 +544,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
   private checkLimits(
     fileContent: string,
-    edits: FilesApplyChangesToolEditSchemaType[],
+    edits: EditOperation[],
   ): {
     ok: boolean;
     errorCode?: ErrorCode;
@@ -769,39 +771,47 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       };
     }
 
-    // 7. Apply using FilesApplyChangesTool logic
-    const applyResult = await this.filesApplyChangesTool.invoke(
-      {
-        filePath: args.filePath,
-        edits,
-      },
-      config,
-      cfg,
-    );
+    // 7. Apply edits sequentially using FilesApplyChangesTool
+    let appliedCount = 0;
+    let allDiffs = '';
 
-    if (!applyResult.output.success) {
-      return {
-        output: {
-          success: false,
-          error: formatError(
-            applyResult.output.error || 'Failed to apply changes',
-            'Try files_apply_changes with manual oldText/newText',
-          ),
+    for (const edit of edits) {
+      const applyResult = await this.filesApplyChangesTool.invoke(
+        {
           filePath: args.filePath,
+          oldText: edit.oldText,
+          newText: edit.newText,
         },
-        messageMetadata,
-      };
+        config,
+        cfg,
+      );
+
+      if (!applyResult.output.success) {
+        return {
+          output: {
+            success: false,
+            error: formatError(
+              applyResult.output.error || 'Failed to apply changes',
+              'Try files_apply_changes with manual oldText/newText',
+            ),
+            filePath: args.filePath,
+          },
+          messageMetadata,
+        };
+      }
+
+      appliedCount += applyResult.output.appliedEdits || 0;
+      if (applyResult.output.diff) {
+        allDiffs += (allDiffs ? '\n' : '') + applyResult.output.diff;
+      }
     }
 
     return {
       output: {
         success: true,
         filePath: args.filePath,
-        diff: this.truncateDiff(
-          applyResult.output.diff || '',
-          LIMITS.MAX_DIFF_BYTES,
-        ),
-        appliedHunks: applyResult.output.appliedEdits || 0,
+        diff: this.truncateDiff(allDiffs, LIMITS.MAX_DIFF_BYTES),
+        appliedHunks: appliedCount,
       },
       messageMetadata,
     };

@@ -98,7 +98,8 @@ describe('Files tools integration', () => {
     const { output: result } = await filesApplyChangesTool.invoke(
       {
         filePath,
-        edits: [{ oldText: '', newText: SAMPLE_TS_CONTENT }],
+        oldText: '',
+        newText: SAMPLE_TS_CONTENT,
       },
       { runtime },
       RUNNABLE_CONFIG,
@@ -178,12 +179,8 @@ describe('Files tools integration', () => {
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: initialContent,
-              newText: '// Integration header\n' + initialContent,
-            },
-          ],
+          oldText: initialContent,
+          newText: '// Integration header\n' + initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -312,7 +309,8 @@ describe('Files tools integration', () => {
       const { output: applyRes } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: content }],
+          oldText: '',
+          newText: content,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -391,7 +389,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: content }],
+          oldText: '',
+          newText: content,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -446,7 +445,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -458,12 +458,8 @@ describe('Files tools integration', () => {
       const { output: replaceResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: `export function oldFunction() {\n  return 'old value';\n}`,
-              newText: `export function newFunction() {\n  return 'new value';\n}`,
-            },
-          ],
+          oldText: `export function oldFunction() {\n  return 'old value';\n}`,
+          newText: `export function newFunction() {\n  return 'new value';\n}`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -499,7 +495,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -519,12 +516,8 @@ describe('Files tools integration', () => {
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: beforeContent,
-              newText: `import { newImport } from './new';\n\n${beforeContent}`,
-            },
-          ],
+          oldText: beforeContent,
+          newText: `import { newImport } from './new';\n\n${beforeContent}`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -558,7 +551,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -578,12 +572,8 @@ describe('Files tools integration', () => {
       const { output: appendResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: beforeContent,
-              newText: `${beforeContent}\n\nexport function newFunction() {\n  return 'new';\n}`,
-            },
-          ],
+          oldText: beforeContent,
+          newText: `${beforeContent}\n\nexport function newFunction() {\n  return 'new';\n}`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -625,7 +615,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -637,12 +628,8 @@ describe('Files tools integration', () => {
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`,
-              newText: `export const config = {\n  api: 'http://localhost',\n  timeout: 5000,\n  port: 3000,\n};`,
-            },
-          ],
+          oldText: `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`,
+          newText: `export const config = {\n  api: 'http://localhost',\n  timeout: 5000,\n  port: 3000,\n};`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -683,7 +670,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: '' }],
+          oldText: '',
+          newText: '',
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -704,12 +692,8 @@ describe('Files tools integration', () => {
       const { output: addResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: '',
-              newText: `// First line\nexport const value = 'data';`,
-            },
-          ],
+          oldText: '',
+          newText: `// First line\nexport const value = 'data';`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -742,7 +726,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -754,12 +739,8 @@ describe('Files tools integration', () => {
       const { output: applyResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: `export function test() {\n  return 'original';\n}`,
-              newText: `export function test() {\n  return 'modified';\n}`,
-            },
-          ],
+          oldText: `export function test() {\n  return 'original';\n}`,
+          newText: `export function test() {\n  return 'modified';\n}`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -991,7 +972,8 @@ export class HelperService {
       await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -1058,7 +1040,8 @@ export function calculate(a: number, b: number) {`,
       await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -1068,12 +1051,8 @@ export function calculate(a: number, b: number) {`,
       await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: `export const value = 'initial';`,
-              newText: `export const value = 'modified';`,
-            },
-          ],
+          oldText: `export const value = 'initial';`,
+          newText: `export const value = 'modified';`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -1113,7 +1092,8 @@ export const other`,
       await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -1162,7 +1142,8 @@ export const other`,
       await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: largeContent }],
+          oldText: '',
+          newText: largeContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
