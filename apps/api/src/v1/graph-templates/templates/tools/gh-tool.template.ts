@@ -72,10 +72,10 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
     return {
       provide: async (
         _params: GraphNode<z.infer<typeof GhToolTemplateSchema>>,
-      ) => [],
+      ) => ({ tools: [] }),
       configure: async (
         params: GraphNode<z.infer<typeof GhToolTemplateSchema>>,
-        instance: BuiltAgentTool[],
+        instance: { tools: BuiltAgentTool[]; instructions?: string },
       ) => {
         const graphId = params.metadata.graphId;
         const outputNodeIds = params.outputNodeIds;
@@ -154,17 +154,20 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
           ? [GhToolType.CLONE]
           : undefined;
 
-        instance.length = 0;
-        instance.push(
-          ...this.ghToolGroup.buildTools({
+        const { tools: builtTools, instructions } = this.ghToolGroup.buildTools(
+          {
             runtime,
             patToken,
             tools,
-          }),
+          },
         );
+
+        instance.tools.length = 0;
+        instance.tools.push(...builtTools);
+        instance.instructions = instructions;
       },
-      destroy: async (instance: BuiltAgentTool[]) => {
-        instance.length = 0;
+      destroy: async (instance: { tools: BuiltAgentTool[] }) => {
+        instance.tools.length = 0;
       },
     };
   }

@@ -33,7 +33,7 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     super();
   }
 
-  public buildTools(
+  protected buildToolsInternal(
     config: GhToolGroupConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): BuiltAgentTool[] {

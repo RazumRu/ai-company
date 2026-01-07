@@ -87,13 +87,16 @@ describe('AgentCommunicationToolTemplate', () => {
     });
 
     mockCommunicationToolGroup = {
-      buildTools: vi.fn().mockImplementation((_config) => [
-        {
-          name: 'communication_exec',
-          description: 'Send a message to a specific agent',
-          invoke: vi.fn(),
-        },
-      ]),
+      buildTools: vi.fn().mockImplementation((_config) => ({
+        tools: [
+          {
+            name: 'communication_exec',
+            description: 'Send a message to a specific agent',
+            invoke: vi.fn(),
+          },
+        ],
+        instructions: undefined,
+      })),
     } as unknown as CommunicationToolGroup;
 
     mockGraphRegistry = {

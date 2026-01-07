@@ -47,17 +47,18 @@ export class WebSearchToolTemplate extends ToolNodeBaseTemplate<
       provide: async (
         _params: GraphNode<z.infer<typeof WebSearchToolTemplateSchema>>,
       ) => {
-        return [];
+        return { tools: [] };
       },
       configure: async (
         params: GraphNode<z.infer<typeof WebSearchToolTemplateSchema>>,
-        instance: BuiltAgentTool[],
+        instance: { tools: BuiltAgentTool[]; instructions?: string },
       ) => {
-        instance.length = 0;
-        instance.push(await webSearchTool.build(params.config));
+        instance.tools.length = 0;
+        instance.tools.push(await webSearchTool.build(params.config));
+        instance.instructions = undefined; // No group instructions for single tool
       },
-      destroy: async (instance: BuiltAgentTool[]) => {
-        instance.length = 0;
+      destroy: async (instance: { tools: BuiltAgentTool[] }) => {
+        instance.tools.length = 0;
       },
     };
   }

@@ -66,10 +66,10 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
         _params: GraphNode<
           z.infer<typeof AgentCommunicationToolTemplateSchema>
         >,
-      ) => [],
+      ) => ({ tools: [] }),
       configure: async (
         params: GraphNode<z.infer<typeof AgentCommunicationToolTemplateSchema>>,
-        instance: BuiltAgentTool[],
+        instance: { tools: BuiltAgentTool[]; instructions?: string },
       ) => {
         const outputNodeIds = params.outputNodeIds;
         const metadata = params.metadata;
@@ -246,15 +246,16 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
           };
         });
 
-        instance.length = 0;
-        instance.push(
-          ...this.communicationToolGroup.buildTools({
-            agents: agentInfos,
-          }),
-        );
+        const { tools, instructions } = this.communicationToolGroup.buildTools({
+          agents: agentInfos,
+        });
+
+        instance.tools.length = 0;
+        instance.tools.push(...tools);
+        instance.instructions = instructions;
       },
-      destroy: async (instance: BuiltAgentTool[]) => {
-        instance.length = 0;
+      destroy: async (instance: { tools: BuiltAgentTool[] }) => {
+        instance.tools.length = 0;
       },
     };
   }

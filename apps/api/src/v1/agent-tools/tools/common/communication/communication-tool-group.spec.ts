@@ -28,10 +28,10 @@ describe('CommunicationToolGroup', () => {
         },
       ];
 
-      const tools = toolGroup.buildTools({ agents });
+      const result = toolGroup.buildTools({ agents });
 
-      expect(tools).toHaveLength(1);
-      expect(tools[0]?.name).toBe('communication_exec');
+      expect(result.tools).toHaveLength(1);
+      expect(result.tools[0]?.name).toBe('communication_exec');
     });
 
     it('should pass config to tool', () => {
@@ -51,17 +51,17 @@ describe('CommunicationToolGroup', () => {
         },
       ];
 
-      const tools = toolGroup.buildTools({ agents });
+      const result = toolGroup.buildTools({ agents });
 
       // Tool should be properly configured
-      expect(tools[0]).toBeDefined();
+      expect(result.tools[0]).toBeDefined();
     });
 
     it('should work with empty agents array', () => {
-      const tools = toolGroup.buildTools({ agents: [] });
+      const result = toolGroup.buildTools({ agents: [] });
 
-      expect(tools).toHaveLength(1);
-      expect(tools[0]?.name).toBe('communication_exec');
+      expect(result.tools).toHaveLength(1);
+      expect(result.tools[0]?.name).toBe('communication_exec');
     });
 
     it('should pass lgConfig to tool', () => {
@@ -79,10 +79,10 @@ describe('CommunicationToolGroup', () => {
         description: 'Custom description',
       };
 
-      const tools = toolGroup.buildTools({ agents }, lgConfig);
+      const result = toolGroup.buildTools({ agents }, lgConfig);
 
-      expect(tools).toHaveLength(1);
-      expect(tools[0]).toBeDefined();
+      expect(result.tools).toHaveLength(1);
+      expect(result.tools[0]).toBeDefined();
     });
   });
 });

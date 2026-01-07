@@ -99,7 +99,7 @@ describe('WebSearchToolTemplate', () => {
       await handle.configure(init, instance);
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
-      expect(instance).toEqual([mockTool]);
+      expect(instance.tools).toEqual([mockTool]);
     });
 
     it('should create web search tool with configuration properties', async () => {
@@ -126,7 +126,7 @@ describe('WebSearchToolTemplate', () => {
       await handle.configure(init, instance);
 
       expect(mockWebSearchTool.build).toHaveBeenCalledWith(config);
-      expect(instance).toEqual([mockTool]);
+      expect(instance.tools).toEqual([mockTool]);
     });
 
     it('should handle web search tool build errors', async () => {
@@ -177,7 +177,7 @@ describe('WebSearchToolTemplate', () => {
       await handle.configure(init, instance);
 
       expect(mockWebSearchTool.build).toHaveBeenCalled();
-      expect(instance).toEqual([mockTool]);
+      expect(instance.tools).toEqual([mockTool]);
     });
 
     it('should pass through all configuration properties', async () => {
@@ -232,7 +232,7 @@ describe('WebSearchToolTemplate', () => {
       const instance = await handle.provide(init);
       await handle.configure(init, instance);
 
-      expect(instance).toEqual([mockTool]);
+      expect(instance.tools).toEqual([mockTool]);
     });
 
     it('should maintain tool instance identity', async () => {
@@ -261,7 +261,7 @@ describe('WebSearchToolTemplate', () => {
       const tools2 = instance;
 
       expect(tools1).toBe(tools2);
-      expect(tools1[0]).toBe(mockTool);
+      expect(tools1.tools[0]).toBe(mockTool);
     });
   });
 });

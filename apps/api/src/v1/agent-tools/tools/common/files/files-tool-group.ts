@@ -44,7 +44,43 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     super();
   }
 
-  public buildTools(
+  public getDetailedInstructions(
+    config: FilesToolGroupConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
+  ): string {
+    const includeEditActions = config.includeEditActions ?? true;
+    const workdir = config.runtime.getWorkdir();
+
+    const lines: string[] = [
+      `You have access to file system tools for working with the repository at: ${workdir}`,
+      '',
+      '**Workflow (important):**',
+      '1) Run `files_build_tags` for the repo (or relevant subpaths) before you rely on tag search.',
+      '2) Use `files_search_tags` to quickly jump to relevant files/symbols.',
+      '3) If tags are not enough, use `files_search_text` and/or `files_directory_tree` to locate code.',
+      '4) Use `files_read` to inspect exact code before making changes.',
+      includeEditActions
+        ? '5) Apply edits with `files_apply_changes` (prefer minimal, precise diffs).'
+        : '5) (Read-only) Do not attempt file modifications.',
+      includeEditActions
+        ? '6) After ANY file changes, rebuild tags with `files_build_tags` BEFORE using `files_search_tags` again.'
+        : '6) If the repo changes externally, rebuild tags before using `files_search_tags` again.',
+      '',
+      '**Available Operations:**',
+      includeEditActions
+        ? '- Read/search + create/modify/move/delete files and directories'
+        : '- Read/search only (edit actions disabled)',
+      '- Build/search semantic tags for faster navigation',
+      '',
+      '**Notes:**',
+      '- Tag search results can become stale after edits; rebuilding tags is required for correctness.',
+      '- Prefer tags for large repos; fall back to text search when needed.',
+    ];
+
+    return lines.filter(Boolean).join('\n');
+  }
+
+  protected buildToolsInternal(
     config: FilesToolGroupConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): BuiltAgentTool[] {

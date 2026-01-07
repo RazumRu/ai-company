@@ -64,11 +64,11 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
       provide: async (
         _params: GraphNode<z.infer<typeof FilesToolTemplateSchema>>,
       ) => {
-        return [];
+        return { tools: [] };
       },
       configure: async (
         params: GraphNode<z.infer<typeof FilesToolTemplateSchema>>,
-        instance: BuiltAgentTool[],
+        instance: { tools: BuiltAgentTool[]; instructions?: string },
       ) => {
         const graphId = params.metadata.graphId;
         const outputNodeIds = params.outputNodeIds;
@@ -101,16 +101,17 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
           );
         }
 
-        instance.length = 0;
-        instance.push(
-          ...this.filesToolGroup.buildTools({
-            runtime,
-            includeEditActions: config.includeEditActions,
-          }),
-        );
+        const { tools, instructions } = this.filesToolGroup.buildTools({
+          runtime,
+          includeEditActions: config.includeEditActions,
+        });
+
+        instance.tools.length = 0;
+        instance.tools.push(...tools);
+        instance.instructions = instructions;
       },
-      destroy: async (instance: BuiltAgentTool[]) => {
-        instance.length = 0;
+      destroy: async (instance: { tools: BuiltAgentTool[] }) => {
+        instance.tools.length = 0;
       },
     };
   }

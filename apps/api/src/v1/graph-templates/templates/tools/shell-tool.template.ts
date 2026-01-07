@@ -63,10 +63,10 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     return {
       provide: async (
         _params: GraphNode<z.infer<typeof ShellToolTemplateSchema>>,
-      ) => [],
+      ) => ({ tools: [] }),
       configure: async (
         params: GraphNode<z.infer<typeof ShellToolTemplateSchema>>,
-        instance: BuiltAgentTool[],
+        instance: { tools: BuiltAgentTool[]; instructions?: string },
       ) => {
         const graphId = params.metadata.graphId;
         const outputNodeIds = params.outputNodeIds;
@@ -125,17 +125,18 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
           }
         }
 
-        instance.length = 0;
-        instance.push(
+        instance.tools.length = 0;
+        instance.tools.push(
           this.shellTool.build({
             runtime,
             env,
             resourcesInformation,
           }),
         );
+        instance.instructions = undefined; // No group instructions for single tool
       },
-      destroy: async (instance: BuiltAgentTool[]) => {
-        instance.length = 0;
+      destroy: async (instance: { tools: BuiltAgentTool[] }) => {
+        instance.tools.length = 0;
       },
     };
   }

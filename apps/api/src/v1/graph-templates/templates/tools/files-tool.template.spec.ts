@@ -140,7 +140,10 @@ describe('FilesToolTemplate', () => {
 
     it('should create files tools with valid runtime node', async () => {
       const mockTools = [{ name: 'read_file' }] as DynamicStructuredTool[];
-      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue(mockTools);
+      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue({
+        tools: mockTools,
+        instructions: undefined,
+      });
 
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = { includeEditActions: true };
@@ -155,7 +158,7 @@ describe('FilesToolTemplate', () => {
       await handle.configure(init, instance);
 
       expect(mockFilesToolGroup.buildTools).toHaveBeenCalled();
-      expect(instance).toEqual(mockTools);
+      expect(instance.tools).toEqual(mockTools);
     });
 
     it('should throw NotFoundException when runtime node is not found in output nodes', async () => {
@@ -198,7 +201,10 @@ describe('FilesToolTemplate', () => {
 
     it('should use runtime from config', async () => {
       const mockTools = [{ name: 'read_file' }] as DynamicStructuredTool[];
-      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue(mockTools);
+      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue({
+        tools: mockTools,
+        instructions: undefined,
+      });
 
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = { includeEditActions: true };
@@ -220,7 +226,10 @@ describe('FilesToolTemplate', () => {
 
     it('should throw NotFoundException when runtime node cannot be found in configure', async () => {
       const mockTools = [{ name: 'read_file' }] as DynamicStructuredTool[];
-      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue(mockTools);
+      vi.mocked(mockFilesToolGroup.buildTools).mockReturnValue({
+        tools: mockTools,
+        instructions: undefined,
+      });
 
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = { includeEditActions: true };

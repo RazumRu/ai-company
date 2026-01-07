@@ -74,11 +74,12 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBe(3);
-      expect(result[0]).toBe(mockCloneTool);
-      expect(result[1]).toBe(mockCommitTool);
-      expect(result[2]).toBe(mockBranchTool);
+      expect(result.tools).toBeDefined();
+      expect(Array.isArray(result.tools)).toBe(true);
+      expect(result.tools.length).toBe(3);
+      expect(result.tools[0]).toBe(mockCloneTool);
+      expect(result.tools[1]).toBe(mockCommitTool);
+      expect(result.tools[2]).toBe(mockBranchTool);
       expect(mockGhCloneTool.build).toHaveBeenCalledWith(config, undefined);
       expect(mockGhCommitTool.build).toHaveBeenCalledWith(config, undefined);
       expect(mockGhBranchTool.build).toHaveBeenCalledWith(config, undefined);
@@ -101,7 +102,11 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config, lgConfig);
 
-      expect(result).toEqual([mockCloneTool, mockCommitTool, mockBranchTool]);
+      expect(result.tools).toEqual([
+        mockCloneTool,
+        mockCommitTool,
+        mockBranchTool,
+      ]);
       expect(mockGhCloneTool.build).toHaveBeenCalledWith(config, lgConfig);
       expect(mockGhCommitTool.build).toHaveBeenCalledWith(config, lgConfig);
       expect(mockGhBranchTool.build).toHaveBeenCalledWith(config, lgConfig);
@@ -123,10 +128,10 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.length).toBe(3);
-      expect(result[0]).toBe(mockCloneTool);
-      expect(result[1]).toBe(mockCommitTool);
-      expect(result[2]).toBe(mockBranchTool);
+      expect(result.tools.length).toBe(3);
+      expect(result.tools[0]).toBe(mockCloneTool);
+      expect(result.tools[1]).toBe(mockCommitTool);
+      expect(result.tools[2]).toBe(mockBranchTool);
     });
 
     it('should handle different configs', () => {
@@ -164,12 +169,12 @@ describe('GhToolGroup', () => {
       const result1 = toolGroup.buildTools(config1);
       const result2 = toolGroup.buildTools(config2);
 
-      expect(result1[0]).toBe(mockCloneTool1);
-      expect(result1[1]).toBe(mockCommitTool1);
-      expect(result1[2]).toBe(mockBranchTool1);
-      expect(result2[0]).toBe(mockCloneTool2);
-      expect(result2[1]).toBe(mockCommitTool2);
-      expect(result2[2]).toBe(mockBranchTool2);
+      expect(result1.tools[0]).toBe(mockCloneTool1);
+      expect(result1.tools[1]).toBe(mockCommitTool1);
+      expect(result1.tools[2]).toBe(mockBranchTool1);
+      expect(result2.tools[0]).toBe(mockCloneTool2);
+      expect(result2.tools[1]).toBe(mockCommitTool2);
+      expect(result2.tools[2]).toBe(mockBranchTool2);
       expect(mockGhCloneTool.build).toHaveBeenCalledTimes(2);
       expect(mockGhCommitTool.build).toHaveBeenCalledTimes(2);
       expect(mockGhBranchTool.build).toHaveBeenCalledTimes(2);
@@ -191,8 +196,12 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.length).toBe(3);
-      expect(result).toEqual([mockCloneTool, mockCommitTool, mockBranchTool]);
+      expect(result.tools.length).toBe(3);
+      expect(result.tools).toEqual([
+        mockCloneTool,
+        mockCommitTool,
+        mockBranchTool,
+      ]);
     });
 
     it('should build only specified tools', () => {
@@ -209,8 +218,8 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.length).toBe(2);
-      expect(result).toEqual([mockCloneTool, mockCommitTool]);
+      expect(result.tools.length).toBe(2);
+      expect(result.tools).toEqual([mockCloneTool, mockCommitTool]);
       expect(mockGhBranchTool.build).not.toHaveBeenCalled();
     });
 
@@ -226,8 +235,8 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.length).toBe(1);
-      expect(result).toEqual([mockCommitTool]);
+      expect(result.tools.length).toBe(1);
+      expect(result.tools).toEqual([mockCommitTool]);
       expect(mockGhCloneTool.build).not.toHaveBeenCalled();
       expect(mockGhBranchTool.build).not.toHaveBeenCalled();
     });
@@ -241,8 +250,8 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.length).toBe(0);
-      expect(result).toEqual([]);
+      expect(result.tools.length).toBe(0);
+      expect(result.tools).toEqual([]);
       expect(mockGhCloneTool.build).not.toHaveBeenCalled();
       expect(mockGhCommitTool.build).not.toHaveBeenCalled();
       expect(mockGhBranchTool.build).not.toHaveBeenCalled();
@@ -264,8 +273,12 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.length).toBe(3);
-      expect(result).toEqual([mockBranchTool, mockCloneTool, mockCommitTool]);
+      expect(result.tools.length).toBe(3);
+      expect(result.tools).toEqual([
+        mockBranchTool,
+        mockCloneTool,
+        mockCommitTool,
+      ]);
     });
 
     it('should build PUSH tool when specified', () => {
@@ -280,8 +293,8 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.length).toBe(1);
-      expect(result).toEqual([mockPushTool]);
+      expect(result.tools.length).toBe(1);
+      expect(result.tools).toEqual([mockPushTool]);
       expect(mockGhPushTool.build).toHaveBeenCalledWith(config, undefined);
       expect(mockGhCloneTool.build).not.toHaveBeenCalled();
       expect(mockGhCommitTool.build).not.toHaveBeenCalled();
@@ -311,8 +324,8 @@ describe('GhToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.length).toBe(4);
-      expect(result).toEqual([
+      expect(result.tools.length).toBe(4);
+      expect(result.tools).toEqual([
         mockCloneTool,
         mockCommitTool,
         mockBranchTool,

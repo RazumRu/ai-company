@@ -14,7 +14,7 @@ export class CommunicationToolGroup extends BaseToolGroup<BaseCommunicationToolC
     super();
   }
 
-  public buildTools(
+  protected buildToolsInternal(
     config: BaseCommunicationToolConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): BuiltAgentTool[] {

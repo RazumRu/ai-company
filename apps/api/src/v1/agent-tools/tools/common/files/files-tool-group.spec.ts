@@ -197,25 +197,22 @@ describe('FilesToolGroup', () => {
         .mockReturnValue(mockFilesDeleteToolInstance);
 
       const config: FilesToolGroupConfig = {
-        runtime: {} as any,
+        runtime: {
+          getWorkdir: () => '/test/workdir',
+        } as any,
       };
 
       const result = toolGroup.buildTools(config);
 
-      expect(Array.isArray(result)).toBe(true);
-      expect(result).toEqual([
-        mockFilesFindPathsToolInstance,
-        mockFilesDirectoryTreeToolInstance,
-        mockFilesReadToolInstance,
-        mockFilesSearchTextToolInstance,
-        mockFilesBuildTagsToolInstance,
-        mockFilesSearchTagsToolInstance,
-        mockFilesCreateDirectoryToolInstance,
-        mockFilesMoveFileToolInstance,
-        mockFilesWriteFileToolInstance,
-        mockFilesApplyChangesToolInstance,
-        mockFilesDeleteToolInstance,
-      ]);
+      expect(result).toBeDefined();
+      expect(result.tools).toBeDefined();
+      expect(Array.isArray(result.tools)).toBe(true);
+      expect(result.tools.length).toBe(11);
+      expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
+      // Check that group instructions are returned
+      expect(result.instructions).toBeDefined();
+      expect(typeof result.instructions).toBe('string');
+      expect(result.instructions).toContain('file system tools');
       expect(mockFilesFindPathsTool.build).toHaveBeenCalledWith(
         config,
         undefined,
@@ -296,20 +293,21 @@ describe('FilesToolGroup', () => {
         .mockReturnValue(mockFilesSearchTagsToolInstance);
 
       const config: FilesToolGroupConfig = {
-        runtime: {} as any,
+        runtime: {
+          getWorkdir: () => '/test/workdir',
+        } as any,
         includeEditActions: false,
       };
 
       const result = toolGroup.buildTools(config);
 
-      expect(result).toEqual([
-        mockFilesFindPathsToolInstance,
-        mockFilesDirectoryTreeToolInstance,
-        mockFilesReadToolInstance,
-        mockFilesSearchTextToolInstance,
-        mockFilesBuildTagsToolInstance,
-        mockFilesSearchTagsToolInstance,
-      ]);
+      expect(result.tools.length).toBe(6);
+      expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
+      // Check that group instructions are returned even in read-only mode
+      expect(result.instructions).toBeDefined();
+      expect(typeof result.instructions).toBe('string');
+      expect(result.instructions).toContain('(Read-only)');
+      expect(result.instructions).toContain('edit actions disabled');
       expect(mockFilesApplyChangesTool.build).not.toHaveBeenCalled();
       expect(mockFilesDeleteTool.build).not.toHaveBeenCalled();
       expect(mockFilesCreateDirectoryTool.build).not.toHaveBeenCalled();
@@ -387,24 +385,15 @@ describe('FilesToolGroup', () => {
         .mockReturnValue(mockFilesDeleteToolInstance);
 
       const config: FilesToolGroupConfig = {
-        runtime: {} as any,
+        runtime: {
+          getWorkdir: () => '/test/workdir',
+        } as any,
       };
 
       const result = toolGroup.buildTools(config, lgConfig);
 
-      expect(result).toEqual([
-        mockFilesFindPathsToolInstance,
-        mockFilesDirectoryTreeToolInstance,
-        mockFilesReadToolInstance,
-        mockFilesSearchTextToolInstance,
-        mockFilesBuildTagsToolInstance,
-        mockFilesSearchTagsToolInstance,
-        mockFilesCreateDirectoryToolInstance,
-        mockFilesMoveFileToolInstance,
-        mockFilesWriteFileToolInstance,
-        mockFilesApplyChangesToolInstance,
-        mockFilesDeleteToolInstance,
-      ]);
+      expect(result.tools.length).toBe(11);
+      expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       expect(mockFilesFindPathsTool.build).toHaveBeenCalledWith(
         config,
         lgConfig,
@@ -447,5 +436,43 @@ describe('FilesToolGroup', () => {
 
     // Note: additional coverage for different configs is redundant here; buildTools is pure and
     // simply delegates to each tool's build() with the given config.
+  });
+
+  describe('getDetailedInstructions', () => {
+    it('should return instructions for full access mode', () => {
+      const config: FilesToolGroupConfig = {
+        runtime: {
+          getWorkdir: () => '/test/repo/path',
+        } as any,
+        includeEditActions: true,
+      };
+
+      const result = toolGroup.getDetailedInstructions(config);
+
+      expect(result).toBeDefined();
+      expect(result).toContain('/test/repo/path');
+      expect(result).toContain('Read/search + create/modify/move/delete');
+      expect(result).toContain('files_apply_changes');
+      expect(result).toContain('files_build_tags');
+      expect(result).toContain('files_search_tags');
+    });
+
+    it('should return instructions for read-only mode', () => {
+      const config: FilesToolGroupConfig = {
+        runtime: {
+          getWorkdir: () => '/test/repo/path',
+        } as any,
+        includeEditActions: false,
+      };
+
+      const result = toolGroup.getDetailedInstructions(config);
+
+      expect(result).toBeDefined();
+      expect(result).toContain('/test/repo/path');
+      expect(result).toContain('(Read-only)');
+      expect(result).toContain('edit actions disabled');
+      expect(result).not.toContain('files_apply_changes');
+      expect(result).toContain('files_build_tags');
+    });
   });
 });

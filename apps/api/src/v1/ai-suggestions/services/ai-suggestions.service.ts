@@ -9,6 +9,7 @@ import { SimpleKnowledgeConfig } from '../../agent-knowledge/services/simple-kno
 import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { ToolNodeOutput } from '../../graph-templates/templates/base-node.template';
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import { MessageDto } from '../../graphs/dto/graphs.dto';
 import { GraphEntity } from '../../graphs/entity/graph.entity';
@@ -166,7 +167,7 @@ export class AiSuggestionsService {
       },
       {
         model: 'openai/gpt-5.2',
-        reasoning: { effort: 'high' },
+        reasoning: { effort: 'medium' },
         previous_response_id: payload.threadId,
       },
     );
@@ -270,7 +271,7 @@ export class AiSuggestionsService {
       },
       {
         model: 'openai/gpt-5.2',
-        reasoning: { effort: 'high' },
+        reasoning: { effort: 'medium' },
         previous_response_id: threadId,
       },
     );
@@ -338,7 +339,7 @@ export class AiSuggestionsService {
       },
       {
         model: 'openai/gpt-5.2',
-        reasoning: { effort: 'high' },
+        reasoning: { effort: 'medium' },
         previous_response_id: threadId,
       },
     );
@@ -670,21 +671,25 @@ export class AiSuggestionsService {
     );
 
     return toolNodeIds.flatMap((toolNodeId) => {
-      const toolNode = this.graphRegistry.getNode<
-        BuiltAgentTool | BuiltAgentTool[]
-      >(graphId, toolNodeId);
+      const toolNode = this.graphRegistry.getNode<ToolNodeOutput>(
+        graphId,
+        toolNodeId,
+      );
 
       if (!toolNode || toolNode.type !== NodeKind.Tool) {
         return [];
       }
 
-      const toolInstance = toolNode.instance;
-      const tools = Array.isArray(toolInstance) ? toolInstance : [toolInstance];
+      // Tool nodes now return ToolNodeOutput { tools: BuiltAgentTool[]; instructions?: string }.
+      // Be defensive to support legacy states/mocks and partially-configured graphs.
+      const tools = (
+        (toolNode.instance?.tools as (BuiltAgentTool | undefined)[]) ?? []
+      ).filter((t): t is BuiltAgentTool => Boolean(t));
 
       return tools.map(
         (tool): ConnectedToolInfo => ({
           name: tool.name,
-          description: tool.description,
+          description: tool.description ?? '',
           instructions: tool.__instructions,
         }),
       );

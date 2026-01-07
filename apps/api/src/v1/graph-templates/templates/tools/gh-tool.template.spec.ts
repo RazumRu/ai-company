@@ -46,7 +46,9 @@ describe('GhToolTemplate', () => {
 
   beforeEach(async () => {
     mockGhToolGroup = {
-      buildTools: vi.fn().mockReturnValue([]),
+      buildTools: vi
+        .fn()
+        .mockReturnValue({ tools: [], instructions: undefined }),
     } as unknown as GhToolGroup;
 
     mockGraphRegistry = {
@@ -207,7 +209,10 @@ describe('GhToolTemplate', () => {
 
     it('should create GitHub tools with valid runtime and resource nodes', async () => {
       const mockTools = [{ name: 'gh-tool' }] as DynamicStructuredTool[];
-      vi.mocked(mockGhToolGroup.buildTools).mockReturnValue(mockTools);
+      vi.mocked(mockGhToolGroup.buildTools).mockReturnValue({
+        tools: mockTools,
+        instructions: undefined,
+      });
 
       const outputNodeIds = new Set([mockRuntimeId, mockResourceId]);
       const config = { cloneOnly: false };
@@ -227,7 +232,7 @@ describe('GhToolTemplate', () => {
           tools: undefined,
         }),
       );
-      expect(instance).toEqual(mockTools);
+      expect(instance.tools).toEqual(mockTools);
       expect(mockRuntime.exec).toHaveBeenCalled();
     });
 

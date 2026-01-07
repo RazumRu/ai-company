@@ -24,11 +24,6 @@ export type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
 
 export type BuiltAgentTool = DynamicStructuredTool & {
   __instructions?: string;
-  /**
-   * Optional group-level instructions. Populated by tool groups (e.g. FilesToolGroup)
-   * so agents can receive guidance beyond per-tool instructions.
-   */
-  __toolGroupInstructions?: string[];
   __titleFromArgs?: (args: unknown) => string | undefined;
 };
 

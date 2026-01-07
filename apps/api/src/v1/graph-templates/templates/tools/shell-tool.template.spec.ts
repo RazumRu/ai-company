@@ -190,7 +190,7 @@ describe('ShellToolTemplate', () => {
       await handle.configure(init, instance);
 
       expect(mockShellTool.build).toHaveBeenCalled();
-      expect(instance).toEqual([mockTool]);
+      expect(instance.tools).toEqual([mockTool]);
     });
 
     it('should throw NotFoundException when runtime node not found', async () => {
@@ -276,7 +276,7 @@ describe('ShellToolTemplate', () => {
       await handle.configure(init, instance);
 
       expect(mockShellTool.build).toHaveBeenCalled();
-      expect(instance).toEqual([mockTool]);
+      expect(instance.tools).toEqual([mockTool]);
     });
 
     it('should handle null/undefined runtime node gracefully', async () => {

@@ -15,7 +15,10 @@ import type { GraphNode } from '../../../graphs/graphs.types';
 import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
-import { SimpleAgentNodeBaseTemplate } from '../base-node.template';
+import {
+  SimpleAgentNodeBaseTemplate,
+  ToolNodeOutput,
+} from '../base-node.template';
 
 export const SimpleAgentTemplateSchema = SimpleAgentSchema;
 
@@ -87,6 +90,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
         // Collect all tools from connected nodes
         const allTools: BuiltAgentTool[] = [];
+        const toolGroupInstructions: string[] = [];
         const knowledgeBlocks: { id: string; content: string }[] = [];
         const mcpOutputs: BaseMcp<unknown>[] = [];
 
@@ -94,6 +98,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
           const node = this.graphRegistry.getNode<
             | BuiltAgentTool
             | BuiltAgentTool[]
+            | ToolNodeOutput
             | DynamicStructuredTool
             | DynamicStructuredTool[]
             | SimpleKnowledge
@@ -107,8 +112,18 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
           const inst = node.instance;
 
           if (node.type === NodeKind.Tool) {
-            const tools = Array.isArray(inst) ? inst : [inst];
-            tools.forEach((tool) => allTools.push(tool as BuiltAgentTool));
+            // Handle new ToolNodeOutput format
+            if (inst && typeof inst === 'object' && 'tools' in inst) {
+              const toolNodeOutput = inst as ToolNodeOutput;
+              allTools.push(...toolNodeOutput.tools);
+              if (toolNodeOutput.instructions) {
+                toolGroupInstructions.push(toolNodeOutput.instructions);
+              }
+            } else {
+              // Backward compatibility: handle old format
+              const tools = Array.isArray(inst) ? inst : [inst];
+              tools.forEach((tool) => allTools.push(tool as BuiltAgentTool));
+            }
             continue;
           }
 
@@ -143,12 +158,16 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         const toolInstructions = this.collectToolInstructions(
           instance.getTools() as BuiltAgentTool[],
         );
+        const toolGroupInstructionsText = this.collectToolGroupInstructions(
+          toolGroupInstructions,
+        );
 
         const finalConfig = {
           ...config,
           instructions: [
             config.instructions,
             knowledgeInstructions,
+            toolGroupInstructionsText,
             toolInstructions,
             mcpInstructions,
           ]
@@ -165,6 +184,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
   }
 
   private collectToolInstructions(tools: BuiltAgentTool[]): string | undefined {
+    // Collect individual tool instructions
     const toolBlocks = tools
       .filter((tool): tool is BuiltAgentTool => Boolean(tool))
       .map((tool) => {
@@ -181,6 +201,16 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     }
 
     return ['## Tool Instructions', ...toolBlocks].join('\n\n');
+  }
+
+  private collectToolGroupInstructions(
+    instructions: string[],
+  ): string | undefined {
+    if (!instructions.length) {
+      return undefined;
+    }
+
+    return ['## Tool Group Instructions', ...instructions].join('\n\n');
   }
 
   private extractKnowledgeContent(node: CompiledGraphNode): string | undefined {

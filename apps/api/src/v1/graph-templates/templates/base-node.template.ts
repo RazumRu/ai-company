@@ -14,10 +14,6 @@ import {
 } from '../../graphs/graphs.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 
-export interface NodeBaseTemplateMetadata extends GraphMetadataSchemaType {
-  nodeId: string;
-}
-
 export type NodeConnection =
   | { type: 'kind'; value: NodeKind; required?: boolean; multiple: boolean }
   | { type: 'template'; value: string; required?: boolean; multiple: boolean };
@@ -69,9 +65,14 @@ export abstract class RuntimeNodeBaseTemplate<
   readonly kind: NodeKind = NodeKind.Runtime;
 }
 
+export type ToolNodeOutput = {
+  tools: BuiltAgentTool[];
+  instructions?: string;
+};
+
 export abstract class ToolNodeBaseTemplate<
   TConfig extends z.ZodTypeAny,
-> extends NodeBaseTemplate<TConfig, BuiltAgentTool[]> {
+> extends NodeBaseTemplate<TConfig, ToolNodeOutput> {
   readonly kind: NodeKind = NodeKind.Tool;
 }
 
