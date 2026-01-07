@@ -13,8 +13,8 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesMoveFileToolSchema = z.object({
-  source: z.string().min(1).describe('Absolute path to the source file.'),
-  destination: z
+  sourcePath: z.string().min(1).describe('Absolute path to the source file.'),
+  destinationPath: z
     .string()
     .min(1)
     .describe('Absolute path to the destination file path.'),
@@ -43,8 +43,8 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
     args: FilesMoveFileToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    const src = basename(args.source);
-    const dst = basename(args.destination);
+    const src = basename(args.sourcePath);
+    const dst = basename(args.destinationPath);
     return src === dst ? `Moving ${src}` : `Renaming ${src} → ${dst}`;
   }
 
@@ -65,12 +65,12 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
       ### Examples
       **1. Rename:**
       \`\`\`json
-      {"source": "/repo/src/old-name.ts", "destination": "/repo/src/new-name.ts"}
+      {"sourcePath": "/repo/src/old-name.ts", "destinationPath": "/repo/src/new-name.ts"}
       \`\`\`
 
       **2. Move:**
       \`\`\`json
-      {"source": "/repo/tmp/output.json", "destination": "/repo/generated/output.json"}
+      {"sourcePath": "/repo/tmp/output.json", "destinationPath": "/repo/generated/output.json"}
       \`\`\`
     `;
   }
@@ -91,9 +91,9 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
     const messageMetadata = { __title: title };
 
     const cmd = [
-      `__destDir=$(dirname -- ${shQuote(args.destination)})`,
+      `__destDir=$(dirname -- ${shQuote(args.destinationPath)})`,
       'mkdir -p "$__destDir"',
-      `mv -- ${shQuote(args.source)} ${shQuote(args.destination)}`,
+      `mv -- ${shQuote(args.sourcePath)} ${shQuote(args.destinationPath)}`,
     ].join(' && ');
 
     const res = await this.execCommand({ cmd }, config, cfg);

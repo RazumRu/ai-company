@@ -22,25 +22,44 @@ export const ShellToolSchema = z.object({
   purpose: z
     .string()
     .min(1)
-    .describe('Brief reason for using this tool. Keep it short (< 120 chars).'),
-  cmd: z.string(),
-  timeoutMs: z.number().int().positive().optional().default(300_000),
-  tailTimeoutMs: z.number().int().positive().optional().default(60_000),
-  env: z
+    .describe(
+      'Why you need to run this command (keep it brief, under 120 characters)',
+    ),
+  command: z.string().min(1).describe('The shell command to execute'),
+  timeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .default(300_000)
+    .describe(
+      'Maximum time to wait in milliseconds (default: 300000 = 5 minutes)',
+    ),
+  tailTimeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .default(60_000)
+    .describe(
+      'Time to keep listening after command finishes in milliseconds (default: 60000 = 1 minute)',
+    ),
+  environmentVariables: z
     .array(
       z.object({
-        key: z.string(),
-        value: z.string(),
+        name: z.string().describe('Environment variable name'),
+        value: z.string().describe('Environment variable value'),
       }),
     )
-    .optional(),
+    .optional()
+    .describe('Environment variables to set for this command'),
   maxOutputLength: z
     .number()
     .int()
     .positive()
     .default(10_000)
     .describe(
-      'Maximum length of output. If output exceeds this length, only the last N characters will be returned. Useful to prevent context size increase. Default: 10000.',
+      'Maximum characters to return. If output exceeds this, only the last N characters are kept (default: 10000)',
     ),
 });
 export type ShellToolSchemaType = z.infer<typeof ShellToolSchema>;
@@ -136,8 +155,10 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     const configEnv = config.env || {};
 
     // Convert provided env array to object
-    const providedEnv = data.env
-      ? Object.fromEntries(data.env.map((v) => [v.key, v.value]))
+    const providedEnv = data.environmentVariables
+      ? Object.fromEntries(
+          data.environmentVariables.map((v) => [v.name, v.value]),
+        )
       : {};
 
     // Default env to prevent ANSI-colored output from commands like pnpm/vitest.
@@ -158,7 +179,13 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     const mergedEnv = { ...defaultEnv, ...configEnv, ...providedEnv };
 
     // Extract non-runtime fields from data before passing to runtime.exec
-    const { purpose: _purpose, maxOutputLength, ...execData } = data;
+    const {
+      purpose: _purpose,
+      maxOutputLength,
+      command,
+      timeoutMs,
+      tailTimeoutMs,
+    } = data;
 
     // Trim output to last N characters if it exceeds maxOutputLength
     const trimOutput = (output: string): string => {
@@ -174,7 +201,9 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       const res = await execRuntimeWithContext(
         config.runtime,
         {
-          ...execData,
+          cmd: command,
+          timeoutMs,
+          tailTimeoutMs,
           env: mergedEnv,
         },
         cfg,
@@ -184,7 +213,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         res.exitCode === 124
           ? trimOutput(
               `${res.stderr ? `${res.stderr}\n` : ''}Command timed out after ${
-                (res.timeout || execData.timeoutMs) ?? 'the configured'
+                (res.timeout || timeoutMs) ?? 'the configured'
               } ms (exit code 124).`,
             )
           : trimOutput(res.stderr);

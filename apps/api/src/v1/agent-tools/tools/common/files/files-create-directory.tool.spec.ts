@@ -32,7 +32,7 @@ describe('FilesCreateDirectoryTool', () => {
     });
 
     const { output } = await tool.invoke(
-      { path: '/repo/new-dir' },
+      { directoryPath: '/repo/new-dir' },
       mockConfig,
       cfg,
     );

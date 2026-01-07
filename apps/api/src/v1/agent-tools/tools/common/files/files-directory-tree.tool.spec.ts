@@ -27,7 +27,7 @@ describe('FilesDirectoryTreeTool', () => {
 
   it('validates schema', () => {
     const valid: FilesDirectoryTreeToolSchemaType = {
-      path: '/repo',
+      directoryPath: '/repo',
       maxDepth: 3,
     };
     expect(() => FilesDirectoryTreeToolSchema.parse(valid)).not.toThrow();
@@ -45,7 +45,11 @@ describe('FilesDirectoryTreeTool', () => {
       execPath: '/runtime-workspace/t',
     });
 
-    const { output } = await tool.invoke({ path: '/repo' }, mockConfig, cfg);
+    const { output } = await tool.invoke(
+      { directoryPath: '/repo' },
+      mockConfig,
+      cfg,
+    );
 
     expect(output.error).toBeUndefined();
     expect(output.tree).toContain('repo');

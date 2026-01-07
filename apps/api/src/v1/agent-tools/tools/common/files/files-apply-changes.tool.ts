@@ -26,7 +26,7 @@ export const FilesApplyChangesToolEditSchema = z.object({
 });
 
 const FilesApplyChangesToolSchemaBase = z.object({
-  path: z.string().min(1).describe('Absolute path to the file to edit'),
+  filePath: z.string().min(1).describe('Absolute path to the file to edit'),
   edits: z
     .array(FilesApplyChangesToolEditSchema)
     .min(1)
@@ -72,7 +72,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     args: FilesApplyChangesToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    const name = basename(args.path);
+    const name = basename(args.filePath);
     const editsCount = args.edits.length;
     const dryRunText = args.dryRun ? ' (preview)' : '';
     return `Editing ${name} (${editsCount} edit${editsCount > 1 ? 's' : ''})${dryRunText}`;
@@ -130,13 +130,13 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       ### Examples
       **1. BAD - Not enough context (will fail if pattern repeats):**
       \`\`\`json
-      {"path":"/repo/module.ts","edits":[{"oldText":"    GhBranchTool,\\n    GhPushTool,","newText":"    GhBranchTool,\\n    GhPushTool,\\n    GhCreatePRTool,"}]}
+      {"filePath":"/repo/module.ts","edits":[{"oldText":"    GhBranchTool,\\n    GhPushTool,","newText":"    GhBranchTool,\\n    GhPushTool,\\n    GhCreatePRTool,"}]}
       \`\`\`
 
       **2. GOOD - Sufficient context (unique match):**
       \`\`\`json
       {
-        "path": "/repo/module.ts",
+        "filePath": "/repo/module.ts",
         "edits": [{
           "oldText": "    CommunicationToolGroup,\\n    GhCloneTool,\\n    GhCommitTool,\\n    GhBranchTool,\\n    GhPushTool,\\n    GhToolGroup,\\n    FilesFindPathsTool,",
           "newText": "    CommunicationToolGroup,\\n    GhCloneTool,\\n    GhCommitTool,\\n    GhBranchTool,\\n    GhPushTool,\\n    GhCreatePRTool,\\n    GhToolGroup,\\n    FilesFindPathsTool,"
@@ -146,7 +146,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
       **3. Multiple edits in one file:**
       \`\`\`json
-      {"path":"/repo/config.ts","edits":[{"oldText":"export const VERSION = 1;\\nexport const NAME = 'app';","newText":"export const VERSION = 2;\\nexport const NAME = 'app';"},{"oldText":"export const DEBUG = false;\\nexport const LOG_LEVEL = 'info';","newText":"export const DEBUG = true;\\nexport const LOG_LEVEL = 'info';"}]}
+      {"filePath":"/repo/config.ts","edits":[{"oldText":"export const VERSION = 1;\\nexport const NAME = 'app';","newText":"export const VERSION = 2;\\nexport const NAME = 'app';"},{"oldText":"export const DEBUG = false;\\nexport const LOG_LEVEL = 'info';","newText":"export const DEBUG = true;\\nexport const LOG_LEVEL = 'info';"}]}
       \`\`\`
     `;
   }
@@ -419,11 +419,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         };
       }
 
-      const parentDir = dirname(args.path);
+      const parentDir = dirname(args.filePath);
       const contentBase64 = Buffer.from(newContent, 'utf8').toString('base64');
-      const tempFile = `${args.path}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
+      const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
 
-      const cmd = `mkdir -p ${this.shQuote(parentDir)} && printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.path)}`;
+      const cmd = `mkdir -p ${this.shQuote(parentDir)} && printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
 
       const writeResult = await this.execCommand(
         {
@@ -453,7 +453,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       };
     }
 
-    const p = this.shQuote(args.path);
+    const p = this.shQuote(args.filePath);
     const readResult = await this.execCommand({ cmd: `cat ${p}` }, config, cfg);
 
     if (readResult.exitCode !== 0) {
@@ -518,8 +518,8 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     const contentBase64 = Buffer.from(modifiedContent, 'utf8').toString(
       'base64',
     );
-    const tempFile = `${args.path}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-    const cmd = `printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.path)}`;
+    const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
+    const cmd = `printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
 
     const writeResult = await this.execCommand(
       {

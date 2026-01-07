@@ -35,32 +35,32 @@ describe('WebSearchTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required query field', () => {
+    it('should validate required searchQuery field', () => {
       const validData = {
-        query: 'test search',
+        searchQuery: 'test search',
       };
       expect(() => tool.validate(validData)).not.toThrow();
     });
 
-    it('should reject empty query', () => {
+    it('should reject empty searchQuery', () => {
       const invalidData = {
-        query: '',
+        searchQuery: '',
       };
       expect(() => tool.validate(invalidData)).toThrow();
     });
 
-    it('should reject missing query', () => {
+    it('should reject missing searchQuery', () => {
       const invalidData = {};
       expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate searchDepth enum', () => {
       const validBasic = {
-        query: 'test',
+        searchQuery: 'test',
         searchDepth: 'basic',
       };
       const validAdvanced = {
-        query: 'test',
+        searchQuery: 'test',
         searchDepth: 'advanced',
       };
 
@@ -70,7 +70,7 @@ describe('WebSearchTool', () => {
 
     it('should reject invalid searchDepth', () => {
       const invalidData = {
-        query: 'test',
+        searchQuery: 'test',
         searchDepth: 'invalid',
       };
       expect(() => tool.validate(invalidData)).toThrow();
@@ -78,7 +78,7 @@ describe('WebSearchTool', () => {
 
     it('should default searchDepth to basic', () => {
       const data = {
-        query: 'test',
+        searchQuery: 'test',
       };
       const parsed = tool.validate(data);
       expect(parsed.searchDepth).toBe('basic');
@@ -86,24 +86,24 @@ describe('WebSearchTool', () => {
 
     it('should validate optional arrays', () => {
       const validData = {
-        query: 'test',
-        includeDomains: ['example.com', 'test.org'],
-        excludeDomains: ['spam.com'],
+        searchQuery: 'test',
+        onlyFromDomains: ['example.com', 'test.org'],
+        skipDomains: ['spam.com'],
       };
       expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should validate maxResults range', () => {
       const validMin = {
-        query: 'test',
+        searchQuery: 'test',
         maxResults: 1,
       };
       const validMax = {
-        query: 'test',
+        searchQuery: 'test',
         maxResults: 20,
       };
       const validMid = {
-        query: 'test',
+        searchQuery: 'test',
         maxResults: 10,
       };
 
@@ -114,11 +114,11 @@ describe('WebSearchTool', () => {
 
     it('should reject maxResults out of range', () => {
       const tooSmall = {
-        query: 'test',
+        searchQuery: 'test',
         maxResults: 0,
       };
       const tooLarge = {
-        query: 'test',
+        searchQuery: 'test',
         maxResults: 21,
       };
 
@@ -151,7 +151,7 @@ describe('WebSearchTool', () => {
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
       const { output: result, messageMetadata } = await builtTool.invoke({
-        query: 'test search',
+        searchQuery: 'test search',
       });
 
       expect(mockTavilyClient.search).toHaveBeenCalledWith('test search', {
@@ -186,10 +186,10 @@ describe('WebSearchTool', () => {
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
       const { output: result } = await builtTool.invoke({
-        query: 'advanced search',
+        searchQuery: 'advanced search',
         searchDepth: 'advanced',
-        includeDomains: ['example.com'],
-        excludeDomains: ['spam.com'],
+        onlyFromDomains: ['example.com'],
+        skipDomains: ['spam.com'],
         maxResults: 5,
       });
 
@@ -221,7 +221,7 @@ describe('WebSearchTool', () => {
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
       const { output: result } = await builtTool.invoke({
-        query: 'no results query',
+        searchQuery: 'no results query',
       });
 
       expect(result).toEqual({
@@ -239,7 +239,7 @@ describe('WebSearchTool', () => {
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
       const { output: result } = await builtTool.invoke({
-        query: 'undefined results query',
+        searchQuery: 'undefined results query',
       });
 
       expect(result).toEqual({
@@ -256,7 +256,7 @@ describe('WebSearchTool', () => {
 
       await expect(
         builtTool.invoke({
-          query: 'error query',
+          searchQuery: 'error query',
         }),
       ).rejects.toThrow('Search API error');
     });
@@ -279,7 +279,7 @@ describe('WebSearchTool', () => {
 
       const builtTool = tool.build({ apiKey: 'test-api-key' });
       const { output: result } = await builtTool.invoke({
-        query: 'test search',
+        searchQuery: 'test search',
       });
 
       expect(result.results[0]).toEqual({

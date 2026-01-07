@@ -14,10 +14,15 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesWriteFileToolSchema = z.object({
-  path: z.string().min(1).describe('Absolute path to the file to write.'),
-  content: z
+  filePath: z
     .string()
-    .describe('Full file content to write. This overwrites the whole file.'),
+    .min(1)
+    .describe('Absolute path to the file you want to write.'),
+  fileContent: z
+    .string()
+    .describe(
+      'Full content to write to the file. Note: This will overwrite any existing contents.',
+    ),
 });
 
 export type FilesWriteFileToolSchemaType = z.infer<
@@ -43,7 +48,7 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
     args: FilesWriteFileToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    return `Writing ${basename(args.path)}`;
+    return `Writing ${basename(args.filePath)}`;
   }
 
   public getDetailedInstructions(
@@ -63,7 +68,7 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
 
       ### Example
       \`\`\`json
-      {"path": "/repo/config.json", "content": "{\\n  \\"version\\": \\"2.0\\"\\n}"}
+      {"filePath": "/repo/config.json", "fileContent": "{\\n  \\"version\\": \\"2.0\\"\\n}"}
       \`\`\`
     `;
   }
@@ -83,14 +88,16 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
 
-    const parentDir = dirname(args.path);
-    const tempFile = `${args.path}.tmp.${Date.now()}`;
-    const contentBase64 = Buffer.from(args.content, 'utf8').toString('base64');
+    const parentDir = dirname(args.filePath);
+    const tempFile = `${args.filePath}.tmp.${Date.now()}`;
+    const contentBase64 = Buffer.from(args.fileContent, 'utf8').toString(
+      'base64',
+    );
 
     const cmd = [
       `mkdir -p ${shQuote(parentDir)}`,
       `echo ${shQuote(contentBase64)} | base64 -d > ${shQuote(tempFile)}`,
-      `mv -- ${shQuote(tempFile)} ${shQuote(args.path)}`,
+      `mv -- ${shQuote(tempFile)} ${shQuote(args.filePath)}`,
     ].join(' && ');
 
     const res = await this.execCommand({ cmd }, config, cfg);

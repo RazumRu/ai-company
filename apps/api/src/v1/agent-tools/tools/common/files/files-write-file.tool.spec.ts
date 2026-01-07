@@ -32,7 +32,7 @@ describe('FilesWriteFileTool', () => {
     });
 
     const { output } = await tool.invoke(
-      { path: '/repo/a.txt', content: 'hello\n' },
+      { filePath: '/repo/a.txt', fileContent: 'hello\n' },
       mockConfig,
       cfg,
     );

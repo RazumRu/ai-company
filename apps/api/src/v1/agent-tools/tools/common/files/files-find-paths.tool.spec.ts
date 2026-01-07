@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,8 +33,8 @@ describe('FilesFindPathsTool', () => {
 
   it('validates schema', () => {
     const valid: FilesFindPathsToolSchemaType = {
-      dir: '/repo',
-      pattern: '**/*.ts',
+      searchInDirectory: '/repo',
+      filenamePattern: '**/*.ts',
     };
     expect(() => FilesFindPathsToolSchema.parse(valid)).not.toThrow();
   });
@@ -58,7 +60,7 @@ describe('FilesFindPathsTool', () => {
     });
 
     const { output } = await tool.invoke(
-      { dir: '/repo', pattern: '**/*.ts' },
+      { searchInDirectory: '/repo', filenamePattern: '**/*.ts' },
       mockConfig,
       cfg,
     );
@@ -105,7 +107,11 @@ describe('FilesFindPathsTool', () => {
     });
 
     await tool.invoke(
-      { dir: '/repo', pattern: '*', recursive: false },
+      {
+        searchInDirectory: '/repo',
+        filenamePattern: '*',
+        includeSubdirectories: false,
+      },
       mockConfig,
       cfg,
     );
@@ -141,7 +147,7 @@ describe('FilesFindPathsTool', () => {
     });
 
     const { output } = await tool.invoke(
-      { dir: '/repo', pattern: '**/*.ts', maxResults: 2 },
+      { searchInDirectory: '/repo', filenamePattern: '**/*.ts', maxResults: 2 },
       mockConfig,
       cfg,
     );
@@ -165,7 +171,7 @@ describe('FilesFindPathsTool', () => {
     });
 
     const { output } = await tool.invoke(
-      { dir: '/repo', pattern: '**/*.ts' },
+      { searchInDirectory: '/repo', filenamePattern: '**/*.ts' },
       mockConfig,
       cfg,
     );

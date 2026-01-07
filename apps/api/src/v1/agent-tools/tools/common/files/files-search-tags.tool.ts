@@ -11,7 +11,7 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesSearchTagsToolSchema = z.object({
-  dir: z
+  directoryPath: z
     .string()
     .min(1)
     .optional()
@@ -22,7 +22,7 @@ export const FilesSearchTagsToolSchema = z.object({
     .string()
     .min(1)
     .describe('The alias used when building the tags index.'),
-  query: z
+  symbolQuery: z
     .string()
     .min(1)
     .describe(
@@ -57,8 +57,8 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     _config: FilesBaseToolConfig,
   ): string {
     const matchType = args.exactMatch ? 'exact' : 'regex';
-    const location = args.dir ?? 'current directory';
-    return `Tag search (${matchType}) "${args.query}" in ${location} (alias ${args.alias})`;
+    const location = args.directoryPath ?? 'current directory';
+    return `Tag search (${matchType}) "${args.symbolQuery}" in ${location} (alias ${args.alias})`;
   }
 
   public getDetailedInstructions(
@@ -67,7 +67,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
   ): string {
     return dedent`
       ### Overview
-      Searches a previously built ctags index for symbol definitions. Faster and more precise than text search for finding function, class, and variable definitions. Requires prior \`files_build_tags\` call. If \`dir\` is omitted, runs in the current working directory of the persistent shell session (e.g., after \`cd\` via shell).
+      Searches a previously built ctags index for symbol definitions. Faster and more precise than text search for finding function, class, and variable definitions. Requires prior \`files_build_tags\` call. If \`directoryPath\` is omitted, runs in the current working directory of the persistent shell session (e.g., after \`cd\` via shell).
 
       ### When to Use
       - Finding where a function or class is defined
@@ -88,33 +88,33 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
       **1. Use exact match for known symbols:**
       \`\`\`json
-        {"dir": "/repo", "alias": "project", "query": "UserController", "exactMatch": true}
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "UserController", "exactMatch": true}
         // After cd /repo via shell:
-        {"alias": "project", "query": "UserController", "exactMatch": true}
+        {"alias": "project", "symbolQuery": "UserController", "exactMatch": true}
 
         // Quick current-directory example (after building tags in cwd)
-        {"alias": "project", "query": "Service", "exactMatch": false}
+        {"alias": "project", "symbolQuery": "Service", "exactMatch": false}
       \`\`\`
 
       **2. Use regex for pattern discovery:**
       \`\`\`json
         // Find all hooks
-        {"dir": "/repo", "alias": "project", "query": "^use[A-Z]"}
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "^use[A-Z]"}
 
         // Find all test functions
-        {"dir": "/repo", "alias": "project", "query": "^test.*|^it.*|^describe.*"}
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "^test.*|^it.*|^describe.*"}
 
         // Find all handlers
-        {"dir": "/repo", "alias": "project", "query": "handle[A-Z]"}
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "handle[A-Z]"}
       \`\`\`
 
       **3. Narrow searches with specific patterns:**
       \`\`\`json
         // Instead of broad search
-        {"dir": "/repo", "alias": "project", "query": "User"}
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "User"}
 
         // Be specific
-        {"dir": "/repo", "alias": "project", "query": "UserService", "exactMatch": true}
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "UserService", "exactMatch": true}
       \`\`\`
 
       ### Output Format
@@ -153,22 +153,22 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
       **Find class definition:**
       \`\`\`json
-        {"dir": "/repo", "alias": "project", "query": "AuthService", "exactMatch": true}
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "AuthService", "exactMatch": true}
       \`\`\`
 
       **Find all classes:**
       \`\`\`json
-        {"dir": "/repo", "alias": "project", "query": "Service$"}  // Classes ending in Service
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "Service$"}  // Classes ending in Service
       \`\`\`
 
       **Find React components:**
       \`\`\`json
-        {"dir": "/repo", "alias": "project", "query": "^[A-Z][a-z].*Component$"}
+        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "^[A-Z][a-z].*Component$"}
       \`\`\`
 
       ### After Finding Definitions
       1. Get the file path and line number from results
-      2. Use \`files_read\` with startLine/endLine on the specific read item to view the full implementation
+      2. Use \`files_read\` with fromLineNumber/toLineNumber on the specific read item to view the full implementation
       3. Use \`files_search_text\` to find all usages of the symbol
 
       ### Troubleshooting
@@ -202,13 +202,13 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     let cmd: string;
     if (args.exactMatch) {
       // Exact match: select(.name == "SYMBOL_NAME")
-      const escapedQuery = args.query.replace(/"/g, '\\"');
-      const prefix = args.dir ? `cd "${args.dir}" && ` : '';
+      const escapedQuery = args.symbolQuery.replace(/"/g, '\\"');
+      const prefix = args.directoryPath ? `cd "${args.directoryPath}" && ` : '';
       cmd = `${prefix}jq -c 'select(.name == "${escapedQuery}")' "${tagsFile}"`;
     } else {
       // Regex match: select(.name | test("SYMBOL_REGEX"))
-      const escapedQuery = args.query.replace(/"/g, '\\"');
-      const prefix = args.dir ? `cd "${args.dir}" && ` : '';
+      const escapedQuery = args.symbolQuery.replace(/"/g, '\\"');
+      const prefix = args.directoryPath ? `cd "${args.directoryPath}" && ` : '';
       cmd = `${prefix}jq -c 'select(.name | test("${escapedQuery}"))' "${tagsFile}"`;
     }
 

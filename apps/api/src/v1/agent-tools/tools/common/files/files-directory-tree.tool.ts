@@ -13,14 +13,17 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesDirectoryTreeToolSchema = z.object({
-  path: z.string().min(1).describe('Absolute path to a directory to scan.'),
+  directoryPath: z
+    .string()
+    .min(1)
+    .describe('Absolute path to the directory to scan.'),
   maxDepth: z
     .number()
     .int()
     .positive()
     .optional()
     .describe('Optional maximum depth to traverse.'),
-  excludePatterns: z
+  skipPatterns: z
     .array(z.string().min(1))
     .optional()
     .describe(
@@ -92,7 +95,7 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
     args: FilesDirectoryTreeToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    const dirName = basename(args.path) || 'root';
+    const dirName = basename(args.directoryPath) || 'root';
     return `Tree view: ${dirName}`;
   }
 
@@ -111,17 +114,17 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
       For exact paths matching glob → use files_find_paths. For searching contents → use files_search_text.
 
       ### Best Practices
-      Start with shallow maxDepth (3-5). Add excludePatterns to avoid large folders (build outputs, node_modules, caches).
+      Start with shallow maxDepth (3-5). Add skipPatterns to avoid large folders (build outputs, node_modules, caches).
 
       ### Examples
       **1. Repo overview (shallow):**
       \`\`\`json
-      {"path":"/repo","maxDepth":4}
+      {"directoryPath":"/repo","maxDepth":4}
       \`\`\`
 
       **2. Subfolder with exclusions:**
       \`\`\`json
-      {"path":"/repo/apps/api","maxDepth":6,"excludePatterns":["node_modules/**","dist/**","build/**"]}
+      {"directoryPath":"/repo/apps/api","maxDepth":6,"skipPatterns":["node_modules/**","dist/**","build/**"]}
       \`\`\`
     `;
   }
@@ -141,9 +144,9 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
 
-    const excludePatterns =
-      args.excludePatterns && args.excludePatterns.length > 0
-        ? args.excludePatterns
+    const skipPatterns =
+      args.skipPatterns && args.skipPatterns.length > 0
+        ? args.skipPatterns
         : [
             'node_modules/**',
             'dist/**',
@@ -167,14 +170,14 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
       cmdParts.push('--max-depth', String(args.maxDepth));
     }
 
-    for (const ex of excludePatterns) {
+    for (const ex of skipPatterns) {
       cmdParts.push('--exclude', shQuote(ex));
     }
 
     cmdParts.push('--color', 'never', '.');
 
     const baseCmd = cmdParts.join(' ');
-    const cmd = `cd ${shQuote(args.path)} && ${baseCmd}`;
+    const cmd = `cd ${shQuote(args.directoryPath)} && ${baseCmd}`;
 
     const res = await this.execCommand({ cmd }, config, cfg);
     if (res.exitCode !== 0) {
@@ -189,7 +192,8 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
 
-    const rootLabel = basename(args.path.replace(/\/+$/, '')) || args.path;
+    const rootLabel =
+      basename(args.directoryPath.replace(/\/+$/, '')) || args.directoryPath;
     const root = buildTree(relPaths);
     const lines = [rootLabel, ...renderTree(root)];
 

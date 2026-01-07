@@ -92,7 +92,7 @@ describe('Files tools integration', () => {
 
     const { output: result } = await filesApplyChangesTool.invoke(
       {
-        path: filePath,
+        filePath,
         edits: [{ oldText: '', newText: SAMPLE_TS_CONTENT }],
       },
       { runtime },
@@ -158,7 +158,7 @@ describe('Files tools integration', () => {
 
       // Read file first
       const { output: initialRead } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -167,7 +167,7 @@ describe('Files tools integration', () => {
 
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [
             {
               oldText: initialContent,
@@ -182,7 +182,7 @@ describe('Files tools integration', () => {
       expect(insertResult.success).toBe(true);
 
       const { output: listResult } = await filesFindPathsTool.invoke(
-        { dir: WORKSPACE_DIR, pattern: '*.ts' },
+        { searchInDirectory: WORKSPACE_DIR, filenamePattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -192,7 +192,7 @@ describe('Files tools integration', () => {
       expect(listResult.files).toContain(filePath);
 
       const { output: readResult } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -203,7 +203,7 @@ describe('Files tools integration', () => {
       expect(readContent?.includes('export function greet')).toBe(true);
 
       const { output: searchResult } = await filesSearchTextTool.invoke(
-        { filePath, query: 'HelperService' },
+        { filePath, textPattern: 'HelperService' },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -220,7 +220,7 @@ describe('Files tools integration', () => {
       await writeSampleFile('tags.ts');
 
       const { output: buildResult } = await filesBuildTagsTool.invoke(
-        { dir: WORKSPACE_DIR, alias: TAGS_ALIAS },
+        { directoryPath: WORKSPACE_DIR, alias: TAGS_ALIAS },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -232,9 +232,9 @@ describe('Files tools integration', () => {
 
       const { output: classSearch } = await filesSearchTagsTool.invoke(
         {
-          dir: WORKSPACE_DIR,
+          directoryPath: WORKSPACE_DIR,
           alias: TAGS_ALIAS,
-          query: 'HelperService',
+          symbolQuery: 'HelperService',
           exactMatch: true,
         },
         { runtime },
@@ -246,9 +246,9 @@ describe('Files tools integration', () => {
 
       const { output: functionSearch } = await filesSearchTagsTool.invoke(
         {
-          dir: WORKSPACE_DIR,
+          directoryPath: WORKSPACE_DIR,
           alias: TAGS_ALIAS,
-          query: 'greet',
+          symbolQuery: 'greet',
           exactMatch: true,
         },
         { runtime },
@@ -268,7 +268,7 @@ describe('Files tools integration', () => {
       const filePath = await writeSampleFile('cwd-file.ts');
 
       const { output: listResult } = await filesFindPathsTool.invoke(
-        { pattern: '*.ts' },
+        { filenamePattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -279,7 +279,7 @@ describe('Files tools integration', () => {
       );
 
       const { output: searchResult } = await filesSearchTextTool.invoke(
-        { filePath, query: 'HelperService' },
+        { filePath, textPattern: 'HelperService' },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -301,7 +301,7 @@ describe('Files tools integration', () => {
       // Create file in a custom directory
       const { output: applyRes } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [{ oldText: '', newText: content }],
         },
         { runtime },
@@ -311,7 +311,7 @@ describe('Files tools integration', () => {
 
       // Move shell session into that directory and verify cwd
       const { output: cdRes } = await builtShell.invoke(
-        { purpose: 'cd into custom dir', cmd: `cd ${customDir} && pwd` },
+        { purpose: 'cd into custom dir', command: `cd ${customDir} && pwd` },
         RUNNABLE_CONFIG,
       );
       expect(cdRes.exitCode).toBe(0);
@@ -319,7 +319,7 @@ describe('Files tools integration', () => {
 
       // Use files_find_paths without dir to rely on current session cwd
       const { output: listRes } = await filesFindPathsTool.invoke(
-        { pattern: '*.txt' },
+        { filenamePattern: '*.txt' },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -330,7 +330,7 @@ describe('Files tools integration', () => {
 
       // Read the file from the custom directory
       const { output: readRes } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -346,7 +346,7 @@ describe('Files tools integration', () => {
       const builtShell = shellTool.build({ runtime });
 
       const { output: setCwd } = await builtShell.invoke(
-        { purpose: 'set cwd', cmd: 'cd /tmp && pwd' },
+        { purpose: 'set cwd', command: 'cd /tmp && pwd' },
         RUNNABLE_CONFIG,
       );
       expect(setCwd.exitCode).toBe(0);
@@ -354,14 +354,14 @@ describe('Files tools integration', () => {
 
       // Run files_find_paths with an explicit dir (subshell) and ensure cwd remains /tmp
       const { output: listResult } = await filesFindPathsTool.invoke(
-        { dir: WORKSPACE_DIR, pattern: '*.ts' },
+        { searchInDirectory: WORKSPACE_DIR, filenamePattern: '*.ts' },
         { runtime },
         RUNNABLE_CONFIG,
       );
       expect(listResult.error).toBeUndefined();
 
       const { output: cwdResult } = await builtShell.invoke(
-        { purpose: 'check cwd', cmd: 'pwd' },
+        { purpose: 'check cwd', command: 'pwd' },
         RUNNABLE_CONFIG,
       );
       expect(cwdResult.exitCode).toBe(0);
@@ -380,7 +380,7 @@ describe('Files tools integration', () => {
 
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [{ oldText: '', newText: content }],
         },
         { runtime },
@@ -390,7 +390,11 @@ describe('Files tools integration', () => {
       expect(createResult.success).toBe(true);
 
       const { output: listAfterCreate } = await filesFindPathsTool.invoke(
-        { dir: nestedDir, pattern: fileName, recursive: false },
+        {
+          searchInDirectory: nestedDir,
+          filenamePattern: fileName,
+          includeSubdirectories: false,
+        },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -406,7 +410,11 @@ describe('Files tools integration', () => {
       expect(deleteResult.success).toBe(true);
 
       const { output: listAfterDelete } = await filesFindPathsTool.invoke(
-        { dir: nestedDir, pattern: fileName, recursive: false },
+        {
+          searchInDirectory: nestedDir,
+          filenamePattern: fileName,
+          includeSubdirectories: false,
+        },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -427,7 +435,7 @@ describe('Files tools integration', () => {
 
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [{ oldText: '', newText: initialContent }],
         },
         { runtime },
@@ -439,7 +447,7 @@ describe('Files tools integration', () => {
       // Replace a specific function using pattern matching
       const { output: replaceResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [
             {
               oldText: `export function oldFunction() {\n  return 'old value';\n}`,
@@ -457,7 +465,7 @@ describe('Files tools integration', () => {
 
       // Verify the replacement
       const { output: readResult } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -481,7 +489,7 @@ describe('Files tools integration', () => {
 
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [{ oldText: '', newText: initialContent }],
         },
         { runtime },
@@ -492,7 +500,7 @@ describe('Files tools integration', () => {
 
       // Read current content
       const { output: readBefore } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -501,7 +509,7 @@ describe('Files tools integration', () => {
       // Insert import at the beginning
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [
             {
               oldText: beforeContent,
@@ -517,7 +525,7 @@ describe('Files tools integration', () => {
 
       // Verify the insertion
       const { output: readAfter } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -540,7 +548,7 @@ describe('Files tools integration', () => {
 
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [{ oldText: '', newText: initialContent }],
         },
         { runtime },
@@ -551,7 +559,7 @@ describe('Files tools integration', () => {
 
       // Read current content
       const { output: readBefore } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -560,7 +568,7 @@ describe('Files tools integration', () => {
       // Append new function at the end
       const { output: appendResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [
             {
               oldText: beforeContent,
@@ -576,7 +584,7 @@ describe('Files tools integration', () => {
 
       // Verify the append
       const { output: readAfter } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -607,7 +615,7 @@ describe('Files tools integration', () => {
 
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [{ oldText: '', newText: initialContent }],
         },
         { runtime },
@@ -619,7 +627,7 @@ describe('Files tools integration', () => {
       // Insert a new property in the middle
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [
             {
               oldText: `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`,
@@ -635,7 +643,7 @@ describe('Files tools integration', () => {
 
       // Verify the insertion
       const { output: readAfter } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -665,7 +673,7 @@ describe('Files tools integration', () => {
       // Create an empty file
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [{ oldText: '', newText: '' }],
         },
         { runtime },
@@ -676,7 +684,7 @@ describe('Files tools integration', () => {
 
       // Verify it's empty
       const { output: readEmpty } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -686,7 +694,7 @@ describe('Files tools integration', () => {
       // Add content to the empty file
       const { output: addResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [
             {
               oldText: '',
@@ -702,7 +710,7 @@ describe('Files tools integration', () => {
 
       // Verify content was added
       const { output: readAfter } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -724,7 +732,7 @@ describe('Files tools integration', () => {
 
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [{ oldText: '', newText: initialContent }],
         },
         { runtime },
@@ -736,7 +744,7 @@ describe('Files tools integration', () => {
       // Preview changes with dryRun
       const { output: dryRunResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [
             {
               oldText: `export function test() {\n  return 'original';\n}`,
@@ -757,7 +765,7 @@ describe('Files tools integration', () => {
 
       // Verify file wasn't changed
       const { output: readAfterDryRun } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
@@ -769,7 +777,7 @@ describe('Files tools integration', () => {
       // Now apply for real
       const { output: applyResult } = await filesApplyChangesTool.invoke(
         {
-          path: filePath,
+          filePath,
           edits: [
             {
               oldText: `export function test() {\n  return 'original';\n}`,
@@ -787,7 +795,7 @@ describe('Files tools integration', () => {
 
       // Verify file was changed
       const { output: readAfterApply } = await filesReadTool.invoke(
-        { reads: [{ filePath }] },
+        { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );

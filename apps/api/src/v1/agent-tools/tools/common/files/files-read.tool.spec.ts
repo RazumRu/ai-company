@@ -46,79 +46,91 @@ describe('FilesReadTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required reads field', () => {
+    it('should validate required filesToRead field', () => {
       const validData = {
-        reads: [{ filePath: '/path/to/repo/src/file.ts' }],
+        filesToRead: [{ filePath: '/path/to/repo/src/file.ts' }],
       };
       expect(() => FilesReadToolSchema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing reads field', () => {
+    it('should reject missing filesToRead field', () => {
       const invalidData = {};
       expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
 
-    it('should reject empty reads array', () => {
+    it('should reject empty filesToRead array', () => {
       const invalidData = {
-        reads: [],
+        filesToRead: [],
       };
       expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
 
-    it('should accept optional startLine and endLine fields', () => {
+    it('should accept optional fromLineNumber and toLineNumber fields', () => {
       const validData = {
-        reads: [
-          { filePath: '/path/to/repo/src/file.ts', startLine: 1, endLine: 10 },
-        ],
-      };
-      expect(() => FilesReadToolSchema.parse(validData)).not.toThrow();
-    });
-
-    it('should accept data without startLine and endLine', () => {
-      const validData = {
-        reads: [{ filePath: '/path/to/repo/src/file.ts' }],
-      };
-      expect(() => FilesReadToolSchema.parse(validData)).not.toThrow();
-    });
-
-    it('should reject non-positive startLine', () => {
-      const invalidData = {
-        reads: [
-          { filePath: '/path/to/repo/src/file.ts', startLine: 0, endLine: 10 },
-        ],
-      };
-      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
-    });
-
-    it('should reject non-positive endLine', () => {
-      const invalidData = {
-        reads: [
-          { filePath: '/path/to/repo/src/file.ts', startLine: 1, endLine: 0 },
-        ],
-      };
-      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
-    });
-
-    it('should reject non-integer startLine', () => {
-      const invalidData = {
-        reads: [
+        filesToRead: [
           {
             filePath: '/path/to/repo/src/file.ts',
-            startLine: 1.5,
-            endLine: 10,
+            fromLineNumber: 1,
+            toLineNumber: 10,
+          },
+        ],
+      };
+      expect(() => FilesReadToolSchema.parse(validData)).not.toThrow();
+    });
+
+    it('should accept data without fromLineNumber and toLineNumber', () => {
+      const validData = {
+        filesToRead: [{ filePath: '/path/to/repo/src/file.ts' }],
+      };
+      expect(() => FilesReadToolSchema.parse(validData)).not.toThrow();
+    });
+
+    it('should reject non-positive fromLineNumber', () => {
+      const invalidData = {
+        filesToRead: [
+          {
+            filePath: '/path/to/repo/src/file.ts',
+            fromLineNumber: 0,
+            toLineNumber: 10,
           },
         ],
       };
       expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
     });
 
-    it('should reject non-integer endLine', () => {
+    it('should reject non-positive toLineNumber', () => {
       const invalidData = {
-        reads: [
+        filesToRead: [
           {
             filePath: '/path/to/repo/src/file.ts',
-            startLine: 1,
-            endLine: 10.5,
+            fromLineNumber: 1,
+            toLineNumber: 0,
+          },
+        ],
+      };
+      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
+    });
+
+    it('should reject non-integer fromLineNumber', () => {
+      const invalidData = {
+        filesToRead: [
+          {
+            filePath: '/path/to/repo/src/file.ts',
+            fromLineNumber: 1.5,
+            toLineNumber: 10,
+          },
+        ],
+      };
+      expect(() => FilesReadToolSchema.parse(invalidData)).toThrow();
+    });
+
+    it('should reject non-integer toLineNumber', () => {
+      const invalidData = {
+        filesToRead: [
+          {
+            filePath: '/path/to/repo/src/file.ts',
+            fromLineNumber: 1,
+            toLineNumber: 10.5,
           },
         ],
       };
@@ -135,7 +147,7 @@ describe('FilesReadTool', () => {
 
     it('should read entire file successfully (single file)', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [{ filePath: '/path/to/repo/src/file.ts' }],
+        filesToRead: [{ filePath: '/path/to/repo/src/file.ts' }],
       };
 
       const fileContent = 'line 1\nline 2\nline 3\n';
@@ -166,7 +178,7 @@ describe('FilesReadTool', () => {
 
     it('should read multiple files in one call', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [
+        filesToRead: [
           { filePath: '/path/to/repo/src/a.ts' },
           { filePath: '/path/to/repo/src/b.ts' },
         ],
@@ -208,7 +220,7 @@ describe('FilesReadTool', () => {
 
     it('should return per-file error when a file read fails', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [{ filePath: '/path/to/repo/nonexistent.ts' }],
+        filesToRead: [{ filePath: '/path/to/repo/nonexistent.ts' }],
       };
 
       const errMsg =
@@ -238,48 +250,56 @@ describe('FilesReadTool', () => {
 
     it('should return error when endLine is provided without startLine', async () => {
       const args = {
-        reads: [{ filePath: '/path/to/repo/src/file.ts', endLine: 10 }],
+        filesToRead: [
+          { filePath: '/path/to/repo/src/file.ts', toLineNumber: 10 },
+        ],
       } as FilesReadToolSchemaType;
 
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
-        'startLine must be provided when endLine is specified (file: /path/to/repo/src/file.ts)',
+        'fromLineNumber must be provided when toLineNumber is specified (file: /path/to/repo/src/file.ts)',
       );
       expect(result.files).toBeUndefined();
     });
 
     it('should return error when startLine is provided without endLine', async () => {
       const args = {
-        reads: [{ filePath: '/path/to/repo/src/file.ts', startLine: 1 }],
+        filesToRead: [
+          { filePath: '/path/to/repo/src/file.ts', fromLineNumber: 1 },
+        ],
       } as FilesReadToolSchemaType;
 
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
-        'endLine must be provided when startLine is specified (file: /path/to/repo/src/file.ts)',
+        'toLineNumber must be provided when fromLineNumber is specified (file: /path/to/repo/src/file.ts)',
       );
       expect(result.files).toBeUndefined();
     });
 
     it('should return error when startLine is greater than endLine', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [
-          { filePath: '/path/to/repo/src/file.ts', startLine: 10, endLine: 5 },
+        filesToRead: [
+          {
+            filePath: '/path/to/repo/src/file.ts',
+            fromLineNumber: 10,
+            toLineNumber: 5,
+          },
         ],
       };
 
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBe(
-        'startLine must be less than or equal to endLine (file: /path/to/repo/src/file.ts)',
+        'fromLineNumber must be less than or equal to toLineNumber (file: /path/to/repo/src/file.ts)',
       );
       expect(result.files).toBeUndefined();
     });
 
     it('should return error when command fails', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [{ filePath: '/path/to/repo/nonexistent.ts' }],
+        filesToRead: [{ filePath: '/path/to/repo/nonexistent.ts' }],
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -299,7 +319,7 @@ describe('FilesReadTool', () => {
 
     it('should return error message from stdout when stderr is empty', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [{ filePath: '/path/to/repo/src/file.ts' }],
+        filesToRead: [{ filePath: '/path/to/repo/src/file.ts' }],
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -317,7 +337,7 @@ describe('FilesReadTool', () => {
 
     it('should return default error message when both stdout and stderr are empty', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [{ filePath: '/path/to/repo/src/file.ts' }],
+        filesToRead: [{ filePath: '/path/to/repo/src/file.ts' }],
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -335,7 +355,7 @@ describe('FilesReadTool', () => {
 
     it('should handle file path with spaces', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [{ filePath: '/path/to repo/src/my file.ts' }],
+        filesToRead: [{ filePath: '/path/to repo/src/my file.ts' }],
       };
 
       const fileContent = 'content\n';
@@ -363,7 +383,7 @@ describe('FilesReadTool', () => {
 
     it('should handle empty file', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [{ filePath: '/path/to/repo/empty.txt' }],
+        filesToRead: [{ filePath: '/path/to/repo/empty.txt' }],
       };
 
       vi.spyOn(tool as any, 'createMarker').mockReturnValue('test');
@@ -390,7 +410,7 @@ describe('FilesReadTool', () => {
 
     it('should handle file with only newline', async () => {
       const args: FilesReadToolSchemaType = {
-        reads: [{ filePath: '/path/to/repo/newline.txt' }],
+        filesToRead: [{ filePath: '/path/to/repo/newline.txt' }],
       };
 
       vi.spyOn(tool as any, 'createMarker').mockReturnValue('test');

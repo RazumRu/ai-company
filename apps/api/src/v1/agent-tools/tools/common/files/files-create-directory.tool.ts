@@ -13,7 +13,10 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesCreateDirectoryToolSchema = z.object({
-  path: z.string().min(1).describe('Absolute path to the directory to create.'),
+  directoryPath: z
+    .string()
+    .min(1)
+    .describe('Absolute path to the directory to create.'),
 });
 
 export type FilesCreateDirectoryToolSchemaType = z.infer<
@@ -38,7 +41,7 @@ export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectory
     args: FilesCreateDirectoryToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    return `Creating directory: ${basename(args.path) || args.path}`;
+    return `Creating directory: ${basename(args.directoryPath) || args.directoryPath}`;
   }
 
   public getDetailedInstructions(
@@ -57,7 +60,7 @@ export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectory
 
       ### Example
       \`\`\`json
-      {"path": "/repo/generated/client"}
+      {"directoryPath": "/repo/generated/client"}
       \`\`\`
     `;
   }
@@ -78,7 +81,7 @@ export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectory
     const messageMetadata = { __title: title };
 
     const res = await this.execCommand(
-      { cmd: `mkdir -p ${shQuote(args.path)}` },
+      { cmd: `mkdir -p ${shQuote(args.directoryPath)}` },
       config,
       cfg,
     );

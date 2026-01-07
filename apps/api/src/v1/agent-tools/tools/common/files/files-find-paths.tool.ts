@@ -13,37 +13,39 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesFindPathsToolSchema = z.object({
-  dir: z
+  searchInDirectory: z
     .string()
     .min(1)
     .optional()
     .describe(
-      'Directory to search in. If omitted, uses the current working directory of the persistent shell session.',
+      'Directory to search in. If not specified, uses current working directory.',
     ),
-  pattern: z
+  filenamePattern: z
     .string()
     .min(1)
     .describe(
-      'Glob pattern (fd --glob) to match file paths. Use "*" to list all files.',
+      'Glob pattern to match file names/paths. Use "*" to list all files, "*.ts" for TypeScript files, etc.',
     ),
-  recursive: z
+  includeSubdirectories: z
     .boolean()
     .optional()
     .default(true)
     .describe(
-      'Whether to search recursively. If false, only lists direct children of dir.',
+      'Search in subdirectories recursively. Set to false to only search the specified directory.',
     ),
   maxDepth: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('Optional max depth (applied only when recursive=true).'),
-  excludePatterns: z
+    .describe(
+      'Maximum directory depth to search (only used when includeSubdirectories is true)',
+    ),
+  skipPatterns: z
     .array(z.string().min(1))
     .optional()
     .describe(
-      'Optional glob patterns to exclude (fd syntax). If omitted, common junk folders are excluded.',
+      'Glob patterns to exclude from search (e.g., ["node_modules/**", "dist/**"]). If not specified, common build/cache folders are excluded.',
     ),
   maxResults: z
     .number()
@@ -51,10 +53,10 @@ export const FilesFindPathsToolSchema = z.object({
     .positive()
     .optional()
     .default(200)
-    .describe('Maximum number of paths to return. Default: 200.'),
+    .describe('Maximum number of file paths to return (default: 200)'),
 });
 
-// Use `z.input<>` so callers can omit defaulted fields like `recursive`/`maxResults`.
+// Use `z.input<>` so callers can omit defaulted fields like `includeSubdirectories`/`maxResults`.
 export type FilesFindPathsToolSchemaType = z.input<
   typeof FilesFindPathsToolSchema
 >;
@@ -82,8 +84,8 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
     args: FilesFindPathsToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    const location = args.dir ?? 'current directory';
-    return `Finding paths in ${location}`;
+    const location = args.searchInDirectory ?? 'current directory';
+    return `Finding "${args.filenamePattern}" in ${location}`;
   }
 
   public getDetailedInstructions(
@@ -101,27 +103,27 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       Searching inside files → use files_search_text. Visual structure overview → use files_directory_tree.
 
       ### Best Practices
-      Use \`recursive: false\` + \`pattern: "*"\` for quick directory listing. Keep patterns specific (e.g. **/*.ts) to avoid huge results. Add excludePatterns if results include junk (defaults exclude node_modules/**, dist/**, build/**, coverage/**, .turbo/**, .next/**, etc.). Lower maxResults to reduce output.
+      Use \`includeSubdirectories: false\` + \`filenamePattern: "*"\` for quick directory listing. Keep patterns specific (e.g. **/*.ts) to avoid huge results. Add skipPatterns if results include junk (defaults exclude node_modules/**, dist/**, build/**, coverage/**, .turbo/**, .next/**, etc.). Lower maxResults to reduce output.
 
       ### Examples
       **1. Find all TypeScript files recursively:**
       \`\`\`json
-      {"dir": "/repo", "pattern": "**/*.ts"}
+      {"searchInDirectory": "/repo", "filenamePattern": "**/*.ts"}
       \`\`\`
 
       **2. List only current directory (non-recursive):**
       \`\`\`json
-      {"dir": "/repo/src", "pattern": "*", "recursive": false}
+      {"searchInDirectory": "/repo/src", "filenamePattern": "*", "includeSubdirectories": false}
       \`\`\`
 
       **3. Find config files with exclusions:**
       \`\`\`json
-      {"pattern": "**/tsconfig*.json", "excludePatterns": ["node_modules/**", "dist/**"]}
+      {"filenamePattern": "**/tsconfig*.json", "skipPatterns": ["node_modules/**", "dist/**"]}
       \`\`\`
 
       **4. Limited results with max depth:**
       \`\`\`json
-      {"dir": "/repo", "pattern": "*.test.ts", "maxDepth": 3, "maxResults": 50}
+      {"searchInDirectory": "/repo", "filenamePattern": "*.test.ts", "maxDepth": 3, "maxResults": 50}
       \`\`\`
     `;
   }
@@ -143,11 +145,11 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
 
     const maxResults = args.maxResults ?? 200;
     const probeLimit = maxResults + 1;
-    const recursive = args.recursive ?? true;
+    const includeSubdirectories = args.includeSubdirectories ?? true;
 
-    const excludePatterns =
-      args.excludePatterns && args.excludePatterns.length > 0
-        ? args.excludePatterns
+    const skipPatterns =
+      args.skipPatterns && args.skipPatterns.length > 0
+        ? args.skipPatterns
         : [
             'node_modules/**',
             'dist/**',
@@ -171,18 +173,18 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       '--exclude',
       '.git',
       '--glob',
-      shQuote(args.pattern),
+      shQuote(args.filenamePattern),
       '--max-results',
       String(probeLimit),
     ];
 
-    if (!recursive) {
+    if (!includeSubdirectories) {
       fdCmdParts.push('--max-depth', '1');
     } else if (args.maxDepth !== undefined) {
       fdCmdParts.push('--max-depth', String(args.maxDepth));
     }
 
-    for (const ex of excludePatterns) {
+    for (const ex of skipPatterns) {
       fdCmdParts.push('--exclude', shQuote(ex));
     }
 
@@ -204,7 +206,9 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       'exit "$__ec"',
     ].join('; ');
 
-    const cmd = args.dir ? `cd ${shQuote(args.dir)} && ${script}` : script;
+    const cmd = args.searchInDirectory
+      ? `cd ${shQuote(args.searchInDirectory)} && ${script}`
+      : script;
 
     const res = await this.execCommand({ cmd }, config, cfg);
 
@@ -218,7 +222,7 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
     const cwd =
       cwdIdx !== -1 && cwdIdx + 1 < stdoutLines.length
         ? (stdoutLines[cwdIdx + 1] ?? '').trim()
-        : (args.dir ?? '').trim();
+        : (args.searchInDirectory ?? '').trim();
 
     const rawFiles =
       filesIdx !== -1 && exitIdx !== -1 && exitIdx > filesIdx

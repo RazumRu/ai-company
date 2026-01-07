@@ -32,7 +32,7 @@ describe('FilesMoveFileTool', () => {
     });
 
     const { output } = await tool.invoke(
-      { source: '/repo/a.txt', destination: '/repo/b/c.txt' },
+      { sourcePath: '/repo/a.txt', destinationPath: '/repo/b/c.txt' },
       mockConfig,
       cfg,
     );

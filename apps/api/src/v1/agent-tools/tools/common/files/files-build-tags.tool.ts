@@ -11,7 +11,7 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesBuildTagsToolSchema = z.object({
-  dir: z
+  directoryPath: z
     .string()
     .min(1)
     .optional()
@@ -40,7 +40,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
     args: FilesBuildTagsToolSchemaType,
     _config: FilesBaseToolConfig,
   ): string {
-    const dir = args.dir ?? 'current directory';
+    const dir = args.directoryPath ?? 'current directory';
     return `Building tags "${args.alias}" in ${dir}`;
   }
 
@@ -67,12 +67,12 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       - Use a stable \`alias\` per repo (e.g. "project") so you can reuse it across many \`files_search_tags\` calls.
       - **Rebuild tags after you change files** (especially renames/new files/added or removed symbols) because the index is **not** automatically updated.
       - Rebuild tags after large refactors or when definitions aren’t found.
-      - If you already \`cd\`’d into the repo using \`shell\`, omit \`dir\` to use the persistent session cwd.
+      - If you already \`cd\`’d into the repo using \`shell\`, omit \`directoryPath\` to use the persistent session cwd.
 
       ### Examples
       **1) Build tags for a repo:**
       \`\`\`json
-      {"dir":"/repo","alias":"project"}
+      {"directoryPath":"/repo","alias":"project"}
       \`\`\`
 
       **2) Build tags for current directory (after \`shell\` cd):**
@@ -139,7 +139,9 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
 
     // Build ctags index without mutating session cwd (use subshell)
     const baseCmd = `ctags -R --fields=+n+K --extras=+q --output-format=json -f "${tagsFile}" .`;
-    const cmd = args.dir ? `cd "${args.dir}" && ${baseCmd}` : baseCmd;
+    const cmd = args.directoryPath
+      ? `cd "${args.directoryPath}" && ${baseCmd}`
+      : baseCmd;
 
     const res = await this.execCommand(
       {

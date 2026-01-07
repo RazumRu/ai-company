@@ -46,70 +46,70 @@ describe('FilesSearchTextTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate query field (dir optional)', () => {
+    it('should validate textPattern field (searchInDirectory optional)', () => {
       const validData = {
-        query: 'function',
+        textPattern: 'function',
       };
       expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
-    it('should reject missing query field', () => {
+    it('should reject missing textPattern field', () => {
       const invalidData = {
-        dir: '/path/to/repo',
+        searchInDirectory: '/path/to/repo',
       };
       expect(() => FilesSearchTextToolSchema.parse(invalidData)).toThrow();
     });
 
-    it('should reject empty dir', () => {
+    it('should reject empty searchInDirectory', () => {
       const invalidData = {
-        dir: '',
-        query: 'function',
+        searchInDirectory: '',
+        textPattern: 'function',
       };
       expect(() => FilesSearchTextToolSchema.parse(invalidData)).toThrow();
     });
 
-    it('should reject empty query', () => {
+    it('should reject empty textPattern', () => {
       const invalidData = {
-        dir: '/path/to/repo',
-        query: '',
+        searchInDirectory: '/path/to/repo',
+        textPattern: '',
       };
       expect(() => FilesSearchTextToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should accept optional filePath field', () => {
       const validData = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
         filePath: '/path/to/repo/src/file.ts',
       };
       expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
-    it('should accept optional includeGlobs field', () => {
+    it('should accept optional onlyInFilesMatching field', () => {
       const validData = {
-        dir: '/path/to/repo',
-        query: 'function',
-        includeGlobs: ['*.ts', 'src/**'],
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
+        onlyInFilesMatching: ['*.ts', 'src/**'],
       };
       expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
-    it('should accept optional excludeGlobs field', () => {
+    it('should accept optional skipFilesMatching field', () => {
       const validData = {
-        dir: '/path/to/repo',
-        query: 'function',
-        excludeGlobs: ['*.test.ts', 'node_modules/**'],
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
+        skipFilesMatching: ['*.test.ts', 'node_modules/**'],
       };
       expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should accept all optional fields together', () => {
       const validData = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
         filePath: '/path/to/repo/src/file.ts',
-        includeGlobs: ['*.ts'],
-        excludeGlobs: ['*.test.ts'],
+        onlyInFilesMatching: ['*.ts'],
+        skipFilesMatching: ['*.test.ts'],
       };
       expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
@@ -122,10 +122,10 @@ describe('FilesSearchTextTool', () => {
       },
     };
 
-    it('should search text successfully with basic query', async () => {
+    it('should search text successfully with basic textPattern', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
       };
 
       const rgOutput = JSON.stringify({
@@ -163,9 +163,9 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text with include globs', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
-        includeGlobs: ['*.ts', 'src/**'],
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
+        onlyInFilesMatching: ['*.ts', 'src/**'],
       };
 
       const rgOutput = JSON.stringify({
@@ -198,9 +198,9 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text with exclude globs', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
-        excludeGlobs: ['*.test.ts', 'node_modules/**'],
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
+        skipFilesMatching: ['*.test.ts', 'node_modules/**'],
       };
 
       const rgOutput = JSON.stringify({
@@ -231,10 +231,10 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text with include and exclude globs', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
-        includeGlobs: ['*.ts'],
-        excludeGlobs: ['*.test.ts'],
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
+        onlyInFilesMatching: ['*.ts'],
+        skipFilesMatching: ['*.test.ts'],
       };
 
       const rgOutput = JSON.stringify({
@@ -265,8 +265,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should search text in specific file', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
         filePath: '/path/to/repo/src/file.ts',
       };
 
@@ -299,8 +299,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should return empty matches when no results found', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'nonexistent',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'nonexistent',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -318,8 +318,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should parse multiple JSON match results', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
       };
 
       const rgOutput = [
@@ -359,8 +359,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should cap matches at 30 results', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
       };
 
       const matches = Array.from({ length: 35 }).map((_, idx) =>
@@ -391,8 +391,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should skip non-match JSON lines', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
       };
 
       const rgOutput = [
@@ -428,8 +428,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should return error when command fails with stderr', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -447,8 +447,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should return error message from stdout when stderr is empty', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -466,8 +466,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should return default error message when both stdout and stderr are empty', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
@@ -485,8 +485,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should handle file path with spaces', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to repo',
-        query: 'function',
+        searchInDirectory: '/path/to repo',
+        textPattern: 'function',
         filePath: '/path/to repo/src/my file.ts',
       };
 
@@ -519,8 +519,8 @@ describe('FilesSearchTextTool', () => {
 
     it('should handle invalid JSON lines gracefully', async () => {
       const args: FilesSearchTextToolSchemaType = {
-        dir: '/path/to/repo',
-        query: 'function',
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'function',
       };
 
       const rgOutput = [
@@ -548,6 +548,34 @@ describe('FilesSearchTextTool', () => {
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(1);
       expect(result.error).toBeUndefined();
+    });
+
+    it('should handle search in current directory', async () => {
+      const args: FilesSearchTextToolSchemaType = {
+        textPattern: 'function',
+      };
+
+      const rgOutput = JSON.stringify({
+        type: 'match',
+        data: {
+          path: { text: 'src/file.ts' },
+          lines: { text: 'export function test() {}' },
+          line_number: 10,
+        },
+      });
+
+      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: rgOutput,
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      await tool.invoke(args, mockConfig, mockCfg);
+
+      const call = (tool as any).execCommand.mock.calls[0]![0];
+      expect(call.cmd).not.toContain('cd ');
+      expect(call.cmd).toContain('rg --json --hidden');
     });
   });
 });

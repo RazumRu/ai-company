@@ -23,7 +23,7 @@ describe('FilesApplyChangesTool', () => {
       expect(schema).toBeDefined();
 
       const parsed = schema.safeParse({
-        path: '/test/file.ts',
+        filePath: '/test/file.ts',
         edits: [
           {
             oldText: 'old',
@@ -37,7 +37,7 @@ describe('FilesApplyChangesTool', () => {
 
     it('should require at least one edit', () => {
       const parsed = FilesApplyChangesToolSchema.safeParse({
-        path: '/test/file.ts',
+        filePath: '/test/file.ts',
         edits: [],
       });
 
@@ -46,7 +46,7 @@ describe('FilesApplyChangesTool', () => {
 
     it('should default dryRun to false', () => {
       const parsed = FilesApplyChangesToolSchema.safeParse({
-        path: '/test/file.ts',
+        filePath: '/test/file.ts',
         edits: [{ oldText: 'old', newText: 'new' }],
       });
 
@@ -74,7 +74,7 @@ describe('FilesApplyChangesTool', () => {
     it('should generate title with file name and edit count', () => {
       const title = tool['generateTitle'](
         {
-          path: '/repo/src/utils.ts',
+          filePath: '/repo/src/utils.ts',
           edits: [{ oldText: 'old', newText: 'new' }],
           dryRun: false,
         },
@@ -87,7 +87,7 @@ describe('FilesApplyChangesTool', () => {
     it('should pluralize edits correctly', () => {
       const title = tool['generateTitle'](
         {
-          path: '/repo/src/app.ts',
+          filePath: '/repo/src/app.ts',
           edits: [
             { oldText: 'old1', newText: 'new1' },
             { oldText: 'old2', newText: 'new2' },
@@ -103,7 +103,7 @@ describe('FilesApplyChangesTool', () => {
     it('should indicate preview mode when dryRun is true', () => {
       const title = tool['generateTitle'](
         {
-          path: '/repo/src/test.ts',
+          filePath: '/repo/src/test.ts',
           edits: [{ oldText: 'old', newText: 'new' }],
           dryRun: true,
         },

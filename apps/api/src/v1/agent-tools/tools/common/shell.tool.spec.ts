@@ -25,38 +25,38 @@ describe('ShellTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required purpose and cmd fields', () => {
+    it('should validate required purpose and command fields', () => {
       const validData = {
         purpose: 'Testing echo command',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
       };
       expect(() => tool.validate(validData)).not.toThrow();
     });
 
     it('should reject missing purpose field', () => {
-      const invalidData = { cmd: 'echo "hello"' };
+      const invalidData = { command: 'echo "hello"' };
       expect(() => tool.validate(invalidData)).toThrow();
     });
 
-    it('should reject missing cmd field', () => {
+    it('should reject missing command field', () => {
       const invalidData = { purpose: 'Testing command' };
       expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should reject empty purpose', () => {
-      const invalidData = { purpose: '', cmd: 'echo "hello"' };
+      const invalidData = { purpose: '', command: 'echo "hello"' };
       expect(() => tool.validate(invalidData)).toThrow();
     });
 
     it('should validate optional fields', () => {
       const validData = {
         purpose: 'Testing with all options',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         timeoutMs: 5000,
         tailTimeoutMs: 2000,
-        env: [
-          { key: 'NODE_ENV', value: 'test' },
-          { key: 'DEBUG', value: 'true' },
+        environmentVariables: [
+          { name: 'NODE_ENV', value: 'test' },
+          { name: 'DEBUG', value: 'true' },
         ],
       };
       expect(() => tool.validate(validData)).not.toThrow();
@@ -65,7 +65,7 @@ describe('ShellTool', () => {
     it('should validate positive timeout', () => {
       const validData = {
         purpose: 'Testing timeout',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         timeoutMs: 1000,
       };
       expect(() => tool.validate(validData)).not.toThrow();
@@ -74,7 +74,7 @@ describe('ShellTool', () => {
     it('should reject negative timeout', () => {
       const invalidData = {
         purpose: 'Testing timeout',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         timeoutMs: -1000,
       };
       expect(() => tool.validate(invalidData)).toThrow();
@@ -83,7 +83,7 @@ describe('ShellTool', () => {
     it('should reject zero timeout', () => {
       const invalidData = {
         purpose: 'Testing timeout',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         timeoutMs: 0,
       };
       expect(() => tool.validate(invalidData)).toThrow();
@@ -92,7 +92,7 @@ describe('ShellTool', () => {
     it('should validate positive tail timeout', () => {
       const validData = {
         purpose: 'Testing tail timeout',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         tailTimeoutMs: 1000,
       };
       expect(() => tool.validate(validData)).not.toThrow();
@@ -101,7 +101,7 @@ describe('ShellTool', () => {
     it('should reject negative tail timeout', () => {
       const invalidData = {
         purpose: 'Testing tail timeout',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         tailTimeoutMs: -1000,
       };
       expect(() => tool.validate(invalidData)).toThrow();
@@ -110,7 +110,7 @@ describe('ShellTool', () => {
     it('should reject zero tail timeout', () => {
       const invalidData = {
         purpose: 'Testing tail timeout',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         tailTimeoutMs: 0,
       };
       expect(() => tool.validate(invalidData)).toThrow();
@@ -119,7 +119,7 @@ describe('ShellTool', () => {
     it('should validate positive maxOutputLength', () => {
       const validData = {
         purpose: 'Testing max output length',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         maxOutputLength: 5000,
       };
       expect(() => tool.validate(validData)).not.toThrow();
@@ -128,7 +128,7 @@ describe('ShellTool', () => {
     it('should reject negative maxOutputLength', () => {
       const invalidData = {
         purpose: 'Testing max output length',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         maxOutputLength: -1000,
       };
       expect(() => tool.validate(invalidData)).toThrow();
@@ -137,7 +137,7 @@ describe('ShellTool', () => {
     it('should reject zero maxOutputLength', () => {
       const invalidData = {
         purpose: 'Testing max output length',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
         maxOutputLength: 0,
       };
       expect(() => tool.validate(invalidData)).toThrow();
@@ -146,7 +146,7 @@ describe('ShellTool', () => {
     it('should default maxOutputLength to 10000', () => {
       const data = {
         purpose: 'Testing default max output length',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
       };
       const parsed = tool.validate(data);
       expect(parsed.maxOutputLength).toBe(10000);
@@ -176,7 +176,7 @@ describe('ShellTool', () => {
 
       const { output } = await builtTool.invoke({
         purpose: 'Testing echo command',
-        cmd: 'echo "hello world"',
+        command: 'echo "hello world"',
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
@@ -216,7 +216,7 @@ describe('ShellTool', () => {
 
       const { messageMetadata } = await builtTool.invoke({
         purpose: 'Testing echo command',
-        cmd: 'echo "hello world"',
+        command: 'echo "hello world"',
       });
 
       expect(messageMetadata?.__title).toBe('Testing echo command');
@@ -233,11 +233,11 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const envArray = [{ key: 'NODE_ENV', value: 'test' }];
+      const environmentVariables = [{ name: 'NODE_ENV', value: 'test' }];
       const { output } = await builtTool.invoke({
         purpose: 'Testing environment variables',
-        cmd: 'echo $NODE_ENV',
-        env: envArray,
+        command: 'echo $NODE_ENV',
+        environmentVariables,
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
@@ -276,13 +276,13 @@ describe('ShellTool', () => {
       const config: ShellToolOptions = { runtime: mockRuntime };
       const builtTool = tool.build(config);
 
-      const envArray = [{ key: 'TEST', value: 'value' }];
+      const environmentVariables = [{ name: 'TEST', value: 'value' }];
       const { output } = await builtTool.invoke({
         purpose: 'Testing all options',
-        cmd: 'pwd',
+        command: 'pwd',
         timeoutMs: 5000,
         tailTimeoutMs: 2000,
-        env: envArray,
+        environmentVariables,
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
@@ -326,7 +326,7 @@ describe('ShellTool', () => {
       const { output: result } = await builtTool.invoke(
         {
           purpose: 'Testing persistent session',
-          cmd: 'echo "session"',
+          command: 'echo "session"',
         },
         {
           configurable: {
@@ -363,7 +363,7 @@ describe('ShellTool', () => {
       await builtTool.invoke(
         {
           purpose: 'Testing run_id fallback',
-          cmd: 'pwd',
+          command: 'pwd',
         },
         {
           configurable: {
@@ -390,7 +390,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing error handling',
-        cmd: 'echo "hello"',
+        command: 'echo "hello"',
       });
 
       expect(result.exitCode).toBe(1);
@@ -406,7 +406,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing error handling',
-        cmd: 'invalid-command',
+        command: 'invalid-command',
       });
 
       expect(result).toEqual({
@@ -425,7 +425,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing runtime error',
-        cmd: 'echo "test"',
+        command: 'echo "test"',
       });
 
       expect(result).toEqual({
@@ -435,7 +435,7 @@ describe('ShellTool', () => {
       });
     });
 
-    it('should convert env array to object correctly', async () => {
+    it('should convert environmentVariables array to object correctly', async () => {
       const mockExecResult = {
         stdout: 'output',
         stderr: '',
@@ -448,10 +448,10 @@ describe('ShellTool', () => {
 
       await builtTool.invoke({
         purpose: 'Testing environment variable conversion',
-        cmd: 'env',
-        env: [
-          { key: 'VAR1', value: 'value1' },
-          { key: 'VAR2', value: 'value2' },
+        command: 'env',
+        environmentVariables: [
+          { name: 'VAR1', value: 'value1' },
+          { name: 'VAR2', value: 'value2' },
         ],
       });
 
@@ -489,7 +489,7 @@ describe('ShellTool', () => {
 
       await builtTool.invoke({
         purpose: 'Testing tail timeout',
-        cmd: 'echo "test"',
+        command: 'echo "test"',
         tailTimeoutMs: 3000,
       });
 
@@ -534,7 +534,7 @@ describe('ShellTool', () => {
 
       await builtTool.invoke({
         purpose: 'Testing config environment variables',
-        cmd: 'echo $GITHUB_PAT_TOKEN',
+        command: 'echo $GITHUB_PAT_TOKEN',
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
@@ -576,8 +576,10 @@ describe('ShellTool', () => {
 
       await builtTool.invoke({
         purpose: 'Testing environment variable override',
-        cmd: 'echo $GITHUB_PAT_TOKEN',
-        env: [{ key: 'GITHUB_PAT_TOKEN', value: 'ghp_provided_token' }],
+        command: 'echo $GITHUB_PAT_TOKEN',
+        environmentVariables: [
+          { name: 'GITHUB_PAT_TOKEN', value: 'ghp_provided_token' },
+        ],
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
@@ -613,7 +615,7 @@ describe('ShellTool', () => {
 
       await builtTool.invoke({
         purpose: 'Testing without environment variables',
-        cmd: 'echo "test"',
+        command: 'echo "test"',
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
@@ -648,7 +650,7 @@ describe('ShellTool', () => {
 
       await builtTool.invoke({
         purpose: 'Testing with empty environment variables',
-        cmd: 'echo "test"',
+        command: 'echo "test"',
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
@@ -695,7 +697,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing output trimming',
-        cmd: 'echo "long output"',
+        command: 'echo "long output"',
         maxOutputLength: 5000,
       });
 
@@ -718,7 +720,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing error trimming',
-        cmd: 'invalid-command',
+        command: 'invalid-command',
         maxOutputLength: 3000,
       });
 
@@ -742,7 +744,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing both outputs trimming',
-        cmd: 'some-command',
+        command: 'some-command',
         maxOutputLength: 8000,
       });
 
@@ -766,7 +768,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing no trimming needed',
-        cmd: 'echo "short"',
+        command: 'echo "short"',
         maxOutputLength: 1000,
       });
 
@@ -788,7 +790,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing default max output length',
-        cmd: 'echo "long"',
+        command: 'echo "long"',
       });
 
       expect(result.stdout).toHaveLength(10000);
@@ -804,7 +806,7 @@ describe('ShellTool', () => {
 
       const { output: result } = await builtTool.invoke({
         purpose: 'Testing error message trimming',
-        cmd: 'invalid-command',
+        command: 'invalid-command',
         maxOutputLength: 500,
       });
 
@@ -828,7 +830,7 @@ describe('ShellTool', () => {
 
       await builtTool.invoke({
         purpose: 'Testing env defaults',
-        cmd: 'echo ok',
+        command: 'echo ok',
       });
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(

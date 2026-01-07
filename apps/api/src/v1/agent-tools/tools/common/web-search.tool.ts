@@ -10,30 +10,34 @@ import {
 } from '../base-tool';
 
 export const WebSearchToolSchema = z.object({
-  query: z
+  searchQuery: z
     .string()
-    .describe('The search query. Be specific and include relevant keywords.')
+    .describe(
+      'What you want to search for on the internet. Be specific and include relevant keywords.',
+    )
     .min(1),
   searchDepth: z
     .enum(['basic', 'advanced'])
     .describe(
-      'Depth of search results. `basic` - Quick search for straightforward queries. `advanced` - Deeper search for complex topics',
+      'How deep to search: "basic" for quick results on straightforward queries, "advanced" for thorough research on complex topics',
     )
     .default('basic'),
-  includeDomains: z
+  onlyFromDomains: z
     .array(z.string())
-    .describe('Limit search to specific domains.')
+    .describe(
+      'Only search these websites (e.g., ["stackoverflow.com", "github.com"])',
+    )
     .optional(),
-  excludeDomains: z
+  skipDomains: z
     .array(z.string())
-    .describe('Exclude specific domains from results.')
+    .describe("Don't search these websites")
     .optional(),
   maxResults: z
     .number()
     .int()
     .min(1)
     .max(20)
-    .describe('Maximum number of results to return.')
+    .describe('Maximum number of results to return (1-20)')
     .optional(),
 });
 export type WebSearchToolSchemaType = z.infer<typeof WebSearchToolSchema>;
@@ -70,27 +74,27 @@ export class WebSearchTool extends BaseTool<
       Info available in codebase → use files_search_text. For specific URL → use shell with curl/wget. For local code → use file tools.
 
       ### Best Practices
-      Include tech versions when relevant. Include error messages verbatim. Use domain filters (includeDomains) for authoritative sources. Add year for time-sensitive topics.
+      Include tech versions when relevant. Include error messages verbatim. Use domain filters (onlyFromDomains) for authoritative sources. Add year for time-sensitive topics.
 
       ### Examples
       **1. Version-specific query:**
       \`\`\`json
-      {"query": "React 18 Suspense data fetching example"}
+      {"searchQuery": "React 18 Suspense data fetching example"}
       \`\`\`
 
       **2. Error search:**
       \`\`\`json
-      {"query": "error TS2339: Property 'map' does not exist on type 'unknown'"}
+      {"searchQuery": "error TS2339: Property 'map' does not exist on type 'unknown'"}
       \`\`\`
 
       **3. Domain-filtered search:**
       \`\`\`json
-      {"query": "PostgreSQL JSONB indexing", "includeDomains": ["postgresql.org", "stackoverflow.com"]}
+      {"searchQuery": "PostgreSQL JSONB indexing", "onlyFromDomains": ["postgresql.org", "stackoverflow.com"]}
       \`\`\`
 
       **4. Deep research:**
       \`\`\`json
-      {"query": "TypeScript monorepo best practices 2024", "searchDepth": "advanced", "maxResults": 10}
+      {"searchQuery": "TypeScript monorepo best practices 2024", "searchDepth": "advanced", "maxResults": 10}
       \`\`\`
     `;
   }
@@ -107,9 +111,21 @@ export class WebSearchTool extends BaseTool<
     config: WebSearchToolConfig,
   ): Promise<ToolInvokeResult<WebSearchOutput>> {
     const client = tavily({ apiKey: config.apiKey });
-    const { query, ...opts } = args;
+    const {
+      searchQuery,
+      searchDepth,
+      onlyFromDomains,
+      skipDomains,
+      maxResults,
+    } = args;
 
-    const res = await client.search(query, opts);
+    // Map to Tavily API parameter names
+    const res = await client.search(searchQuery, {
+      searchDepth,
+      includeDomains: onlyFromDomains,
+      excludeDomains: skipDomains,
+      maxResults,
+    });
 
     const title = this.generateTitle?.(args, config);
 
@@ -132,6 +148,6 @@ export class WebSearchTool extends BaseTool<
     args: WebSearchToolSchemaType,
     _config: WebSearchToolConfig,
   ): string {
-    return `Search in internet: ${args.query}`;
+    return `Search in internet: ${args.searchQuery}`;
   }
 }
