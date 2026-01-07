@@ -130,6 +130,13 @@ export function updateMessageWithMetadata(
   (clone as unknown as { response_metadata?: unknown }).response_metadata = {};
 
   const prev = getMessageKwargs(clone);
+  const configurable = runnableConfig?.configurable as
+    | (BaseAgentConfigurable & {
+        __interAgentCommunication?: boolean;
+        __sourceAgentNodeId?: string;
+      })
+    | undefined;
+
   clone.additional_kwargs = {
     ...prev,
     __runId: runnableConfig?.configurable?.run_id,
@@ -138,6 +145,13 @@ export function updateMessageWithMetadata(
       (typeof (prev as { created_at?: unknown }).created_at === 'string' &&
         (prev as { created_at?: string }).created_at) ||
       new Date().toISOString(),
+    // Apply inter-agent communication metadata if present in configurable
+    ...(configurable?.__interAgentCommunication
+      ? {
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: configurable.__sourceAgentNodeId,
+        }
+      : {}),
   };
 
   return clone;

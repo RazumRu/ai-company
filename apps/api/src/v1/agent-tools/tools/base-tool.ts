@@ -7,6 +7,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import Ajv from 'ajv';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import type { MessageAdditionalKwargs } from '../../notifications/notifications.types';
 import {
   fixRequiredWithDefaults,
   getSchemaParameterDocs,
@@ -29,9 +30,7 @@ export type BuiltAgentTool = DynamicStructuredTool & {
 
 export type ToolInvokeResult<TResult> = {
   output: TResult;
-  messageMetadata?: {
-    __title?: string;
-  };
+  messageMetadata?: MessageAdditionalKwargs;
   /**
    * Optional tool-owned state update persisted into agent state by ToolExecutorNode.
    * This is stored under `state.toolsMetadata[tool.name]`.

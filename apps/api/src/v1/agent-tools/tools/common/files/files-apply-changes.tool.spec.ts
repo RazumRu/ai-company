@@ -43,18 +43,6 @@ describe('FilesApplyChangesTool', () => {
 
       expect(parsed.success).toBe(false);
     });
-
-    it('should default dryRun to false', () => {
-      const parsed = FilesApplyChangesToolSchema.safeParse({
-        filePath: '/test/file.ts',
-        edits: [{ oldText: 'old', newText: 'new' }],
-      });
-
-      expect(parsed.success).toBe(true);
-      if (parsed.success) {
-        expect(parsed.data.dryRun).toBe(false);
-      }
-    });
   });
 
   describe('name and description', () => {
@@ -64,7 +52,6 @@ describe('FilesApplyChangesTool', () => {
 
     it('should have meaningful description', () => {
       expect(tool.description).toContain('targeted text edits');
-      expect(tool.description).toContain('dryRun');
       expect(tool.description).toContain('oldText');
       expect(tool.description).toContain('newText');
     });
@@ -76,7 +63,6 @@ describe('FilesApplyChangesTool', () => {
         {
           filePath: '/repo/src/utils.ts',
           edits: [{ oldText: 'old', newText: 'new' }],
-          dryRun: false,
         },
         mockConfig,
       );
@@ -92,25 +78,11 @@ describe('FilesApplyChangesTool', () => {
             { oldText: 'old1', newText: 'new1' },
             { oldText: 'old2', newText: 'new2' },
           ],
-          dryRun: false,
         },
         mockConfig,
       );
 
       expect(title).toBe('Editing app.ts (2 edits)');
-    });
-
-    it('should indicate preview mode when dryRun is true', () => {
-      const title = tool['generateTitle'](
-        {
-          filePath: '/repo/src/test.ts',
-          edits: [{ oldText: 'old', newText: 'new' }],
-          dryRun: true,
-        },
-        mockConfig,
-      );
-
-      expect(title).toContain('(preview)');
     });
   });
 
@@ -384,7 +356,6 @@ describe('FilesApplyChangesTool', () => {
       expect(instructions).toBeDefined();
       expect(instructions).toContain('### Overview');
       expect(instructions).toContain('### When to Use');
-      expect(instructions).toContain('dryRun');
       expect(instructions).toContain('oldText');
       expect(instructions).toContain('newText');
     });

@@ -60,9 +60,7 @@ type SuccessResponse = {
 
 type ErrorResponse = {
   success: false;
-  errorCode: ErrorCode;
-  errorDetails: string;
-  suggestedNextAction: string;
+  error: string;
   filePath: string;
   failedHunk?: ParsedHunk;
 };
@@ -88,8 +86,15 @@ const LIMITS = {
 
 const ANCHOR_MARKER = '// ... existing code ...';
 
+function formatError(details: string, suggestedNextAction?: string): string {
+  if (suggestedNextAction && suggestedNextAction.trim().length > 0) {
+    return `${details}\nNext: ${suggestedNextAction}`;
+  }
+  return details;
+}
+
 export type FilesEditToolConfig = FilesBaseToolConfig & {
-  fastModel?: string;
+  fastModel: string;
 };
 
 @Injectable()
@@ -156,7 +161,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         return user;
       }
 
-      // Bad - no context (will fail with INVALID_SKETCH_FORMAT or NOT_FOUND_ANCHOR)
+      // Bad - no context (will fail)
       const updatedUser = transformUser(user);
 
       // Bad - missing afterAnchor context
@@ -174,16 +179,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
       ### Error Handling
 
-      When you receive an error, check the \`errorCode\` field:
-
-      - **\`INVALID_SKETCH_FORMAT\`**: Sketch has no \`// ... existing code ...\` markers or is malformed - rewrite with proper markers
-      - **\`NOT_FOUND_ANCHOR\`**: Anchors don't exist in file - add 5-10 more lines of exact surrounding context
-      - **\`AMBIGUOUS_MATCH\`**: Multiple matches found - add unique anchors (function names, comments, or more context)
-      - **\`CONFLICT_FILE_CHANGED\`**: File was modified between read and apply - re-read with \`files_read\` and retry
-      - **\`LIMIT_EXCEEDED\`**: Check errorDetails for which limit (file size, hunks, diff size, change ratio) - break into smaller edits
-      - **\`PARSE_FAILED\`** or **\`APPLY_FAILED\`**: LLM parsing failed - try \`files_edit_reapply\` for smarter parsing
-
-      Each error includes a \`suggestedNextAction\` - follow it!
+      On failure, the tool returns an \`error\` string that includes what went wrong and what to try next. If needed, retry with \`files_edit_reapply\` (smarter parsing) or use \`files_apply_changes\` for manual oldText/newText edits.
 
       ### Examples
 
@@ -631,9 +627,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       return {
         output: {
           success: false,
-          errorCode: 'INVALID_PATH',
-          errorDetails: readResult.stderr || 'Failed to read file',
-          suggestedNextAction: 'Verify the file exists and is readable',
+          error: formatError(
+            readResult.stderr || 'Failed to read file',
+            'Verify the file exists and is readable',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -655,10 +652,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         return {
           output: {
             success: false,
-            errorCode: parseResult.errorCode,
-            errorDetails: parseResult.errorDetails || 'Invalid sketch format',
-            suggestedNextAction:
+            error: formatError(
+              parseResult.errorDetails || 'Invalid sketch format',
               parseResult.suggestedNextAction || 'Fix sketch format',
+            ),
             filePath: args.filePath,
           },
           messageMetadata,
@@ -666,12 +663,11 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       }
 
       if (parseResult.needsLLM) {
-        const fastModel = config.fastModel || 'gpt-5-mini';
         parseResult = await this.parseLLM(
           fileContent,
           args.editInstructions,
           args.codeSketch,
-          fastModel,
+          config.fastModel,
         );
       }
     }
@@ -680,10 +676,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       return {
         output: {
           success: false,
-          errorCode: parseResult.errorCode || 'PARSE_FAILED',
-          errorDetails: parseResult.errorDetails || 'Failed to parse sketch',
-          suggestedNextAction:
+          error: formatError(
+            parseResult.errorDetails || 'Failed to parse sketch',
             parseResult.suggestedNextAction || 'Try files_edit_reapply',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -699,9 +695,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       return {
         output: {
           success: false,
-          errorCode: error.code,
-          errorDetails: error.details,
-          suggestedNextAction: error.suggestedAction,
+          error: formatError(error.details, error.suggestedAction),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -712,9 +706,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       return {
         output: {
           success: false,
-          errorCode: 'APPLY_FAILED',
-          errorDetails: 'No edits could be resolved from hunks',
-          suggestedNextAction: 'Check your sketch format and anchors',
+          error: formatError(
+            'No edits could be resolved from hunks',
+            'Check your sketch format and anchors',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -731,9 +726,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       return {
         output: {
           success: false,
-          errorCode: 'CONFLICT_FILE_CHANGED',
-          errorDetails: 'Failed to re-read file for conflict check',
-          suggestedNextAction: 'Re-read file with files_read and retry',
+          error: formatError(
+            'Failed to re-read file for conflict check',
+            'Re-read file with files_read and retry',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -747,9 +743,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       return {
         output: {
           success: false,
-          errorCode: 'CONFLICT_FILE_CHANGED',
-          errorDetails: 'File was modified between read and apply',
-          suggestedNextAction: 'Re-read file with files_read and retry',
+          error: formatError(
+            'File was modified between read and apply',
+            'Re-read file with files_read and retry',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -762,10 +759,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       return {
         output: {
           success: false,
-          errorCode: limitCheck.errorCode || 'LIMIT_EXCEEDED',
-          errorDetails: limitCheck.details || 'Limit exceeded',
-          suggestedNextAction:
+          error: formatError(
+            limitCheck.details || 'Limit exceeded',
             limitCheck.suggestedAction || 'Break into smaller changes',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -777,7 +774,6 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       {
         filePath: args.filePath,
         edits,
-        dryRun: false,
       },
       config,
       cfg,
@@ -787,10 +783,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       return {
         output: {
           success: false,
-          errorCode: 'APPLY_FAILED',
-          errorDetails: applyResult.output.error || 'Failed to apply changes',
-          suggestedNextAction:
+          error: formatError(
+            applyResult.output.error || 'Failed to apply changes',
             'Try files_apply_changes with manual oldText/newText',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,

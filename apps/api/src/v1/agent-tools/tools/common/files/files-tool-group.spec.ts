@@ -226,6 +226,8 @@ describe('FilesToolGroup', () => {
         runtime: {
           getWorkdir: () => '/test/workdir',
         } as any,
+        fastModel: 'gpt-5-mini',
+        smartModel: 'gpt-5.1',
       };
 
       const result = toolGroup.buildTools(config);
@@ -323,6 +325,8 @@ describe('FilesToolGroup', () => {
           getWorkdir: () => '/test/workdir',
         } as any,
         includeEditActions: false,
+        fastModel: 'gpt-5-mini',
+        smartModel: 'gpt-5.1',
       };
 
       const result = toolGroup.buildTools(config);
@@ -414,6 +418,8 @@ describe('FilesToolGroup', () => {
         runtime: {
           getWorkdir: () => '/test/workdir',
         } as any,
+        fastModel: 'gpt-5-mini',
+        smartModel: 'gpt-5.1',
       };
 
       const result = toolGroup.buildTools(config, lgConfig);
@@ -471,6 +477,8 @@ describe('FilesToolGroup', () => {
           getWorkdir: () => '/test/repo/path',
         } as any,
         includeEditActions: true,
+        fastModel: 'gpt-5-mini',
+        smartModel: 'gpt-5.1',
       };
 
       const result = toolGroup.getDetailedInstructions(config);
@@ -489,6 +497,8 @@ describe('FilesToolGroup', () => {
           getWorkdir: () => '/test/repo/path',
         } as any,
         includeEditActions: false,
+        fastModel: 'gpt-5-mini',
+        smartModel: 'gpt-5.1',
       };
 
       const result = toolGroup.getDetailedInstructions(config);

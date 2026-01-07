@@ -464,7 +464,6 @@ describe('Files tools integration', () => {
               newText: `export function newFunction() {\n  return 'new value';\n}`,
             },
           ],
-          dryRun: false,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -732,7 +731,7 @@ describe('Files tools integration', () => {
   );
 
   it(
-    'uses dryRun to preview changes before applying',
+    'returns diff when applying changes',
     { timeout: INT_TEST_TIMEOUT },
     async () => {
       const filePath = `${WORKSPACE_DIR}/dryrun-test.ts`;
@@ -751,40 +750,7 @@ describe('Files tools integration', () => {
 
       expect(createResult.success).toBe(true);
 
-      // Preview changes with dryRun
-      const { output: dryRunResult } = await filesApplyChangesTool.invoke(
-        {
-          filePath,
-          edits: [
-            {
-              oldText: `export function test() {\n  return 'original';\n}`,
-              newText: `export function test() {\n  return 'modified';\n}`,
-            },
-          ],
-          dryRun: true,
-        },
-        { runtime },
-        RUNNABLE_CONFIG,
-      );
-
-      expect(dryRunResult.success).toBe(true);
-      expect(dryRunResult.appliedEdits).toBe(0); // No edits applied in dry run
-      expect(dryRunResult.diff).toBeDefined();
-      expect(dryRunResult.diff).toContain("-  return 'original'");
-      expect(dryRunResult.diff).toContain("+  return 'modified'");
-
-      // Verify file wasn't changed
-      const { output: readAfterDryRun } = await filesReadTool.invoke(
-        { filesToRead: [{ filePath }] },
-        { runtime },
-        RUNNABLE_CONFIG,
-      );
-
-      const afterDryRun = readAfterDryRun.files?.[0]?.content || '';
-      expect(afterDryRun).toContain('original');
-      expect(afterDryRun).not.toContain('modified');
-
-      // Now apply for real
+      // Apply changes (no dryRun support)
       const { output: applyResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
@@ -794,7 +760,6 @@ describe('Files tools integration', () => {
               newText: `export function test() {\n  return 'modified';\n}`,
             },
           ],
-          dryRun: false,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -802,6 +767,9 @@ describe('Files tools integration', () => {
 
       expect(applyResult.success).toBe(true);
       expect(applyResult.appliedEdits).toBe(1);
+      expect(applyResult.diff).toBeDefined();
+      expect(applyResult.diff).toContain("-  return 'original'");
+      expect(applyResult.diff).toContain("+  return 'modified'");
 
       // Verify file was changed
       const { output: readAfterApply } = await filesReadTool.invoke(
@@ -835,7 +803,7 @@ describe('Files tools integration', () => {
 // ... existing code ...
 }`,
         },
-        { runtime },
+        { runtime, fastModel: 'gpt-5-mini' },
         RUNNABLE_CONFIG,
       );
 
@@ -846,9 +814,7 @@ describe('Files tools integration', () => {
 
       if (!editResult.success) {
         // If it fails, verify error structure
-        expect(editResult.errorCode).toBeDefined();
-        expect(editResult.errorDetails).toBeDefined();
-        expect(editResult.suggestedNextAction).toBeDefined();
+        expect(editResult.error).toBeDefined();
       } else {
         // If it succeeds, verify success structure
         expect(editResult.diff).toBeDefined();
@@ -875,15 +841,14 @@ describe('Files tools integration', () => {
 // ... existing code ...
 }`,
         },
-        { runtime },
+        { runtime, fastModel: 'gpt-5-mini' },
         RUNNABLE_CONFIG,
       );
 
       expect(editResult.success).toBe(false);
       if (!editResult.success) {
-        expect(editResult.errorCode).toBe('NOT_FOUND_ANCHOR');
-        expect(editResult.errorDetails).toBeDefined();
-        expect(editResult.suggestedNextAction).toBeDefined();
+        expect(editResult.error).toBeDefined();
+        expect(editResult.error).toContain('Could not find anchors');
       }
     },
   );
@@ -904,15 +869,14 @@ describe('Files tools integration', () => {
   return 'modified';
 }`,
         },
-        { runtime },
+        { runtime, fastModel: 'gpt-5-mini' },
         RUNNABLE_CONFIG,
       );
 
       expect(editResult.success).toBe(false);
       if (!editResult.success) {
-        expect(editResult.errorCode).toBe('INVALID_SKETCH_FORMAT');
-        expect(editResult.errorDetails).toContain('marker');
-        expect(editResult.suggestedNextAction).toBeDefined();
+        expect(editResult.error).toBeDefined();
+        expect(editResult.error).toContain('marker');
       }
     },
   );
@@ -935,7 +899,7 @@ describe('Files tools integration', () => {
 // ... existing code ...
 }`,
         },
-        { runtime },
+        { runtime, smartModel: 'gpt-5.1' },
         RUNNABLE_CONFIG,
       );
 
@@ -945,8 +909,7 @@ describe('Files tools integration', () => {
       expect(typeof reapplyResult.filePath).toBe('string');
 
       if (!reapplyResult.success) {
-        expect(reapplyResult.errorCode).toBeDefined();
-        expect(reapplyResult.errorDetails).toBeDefined();
+        expect(reapplyResult.error).toBeDefined();
       } else {
         expect(reapplyResult.diff).toBeDefined();
         expect(typeof reapplyResult.appliedHunks).toBe('number');
@@ -970,7 +933,7 @@ describe('Files tools integration', () => {
 // ... existing code ...
 }`,
         },
-        { runtime },
+        { runtime, fastModel: 'gpt-5-mini' },
         RUNNABLE_CONFIG,
       );
 
@@ -1001,7 +964,7 @@ export class HelperService {
 // ... existing code ...
 }`,
         },
-        { runtime },
+        { runtime, fastModel: 'gpt-5-mini' },
         RUNNABLE_CONFIG,
       );
 
@@ -1054,7 +1017,7 @@ export class HelperService {
 // ... existing code ...
 export function calculate(a: number, b: number) {`,
         },
-        { runtime },
+        { runtime, fastModel: 'gpt-5-mini' },
         RUNNABLE_CONFIG,
       );
 
@@ -1079,9 +1042,7 @@ export function calculate(a: number, b: number) {`,
         expect(contentAfter.length).toBeGreaterThan(0);
       } else {
         // If it failed, verify proper error structure
-        expect(editResult.errorCode).toBeDefined();
-        expect(editResult.errorDetails).toBeDefined();
-        expect(editResult.suggestedNextAction).toBeDefined();
+        expect(editResult.error).toBeDefined();
       }
     },
   );
@@ -1127,7 +1088,7 @@ export function calculate(a: number, b: number) {`,
 // ... existing code ...
 export const other`,
         },
-        { runtime },
+        { runtime, fastModel: 'gpt-5-mini' },
         RUNNABLE_CONFIG,
       );
 
@@ -1135,8 +1096,8 @@ export const other`,
       expect(editResult).toBeDefined();
       if (!editResult.success) {
         // Should fail with NOT_FOUND_ANCHOR since the old value is gone
-        expect(editResult.errorCode).toBe('NOT_FOUND_ANCHOR');
-        expect(editResult.errorDetails).toBeDefined();
+        expect(editResult.error).toBeDefined();
+        expect(editResult.error).toContain('Could not find anchors');
       }
     },
   );
@@ -1168,7 +1129,7 @@ export const other`,
 // ... existing code ...
   return result`,
         },
-        { runtime },
+        { runtime, smartModel: 'gpt-5.1' },
         RUNNABLE_CONFIG,
       );
 
@@ -1183,8 +1144,7 @@ export const other`,
         expect(reapplyResult.appliedHunks).toBeGreaterThan(0);
       } else {
         // If failed, verify proper error structure
-        expect(reapplyResult.errorCode).toBeDefined();
-        expect(reapplyResult.suggestedNextAction).toBeDefined();
+        expect(reapplyResult.error).toBeDefined();
       }
     },
   );
@@ -1217,14 +1177,15 @@ export const other`,
 // ... existing code ...
 xxx`,
         },
-        { runtime },
+        { runtime, fastModel: 'gpt-5-mini' },
         RUNNABLE_CONFIG,
       );
 
       // Should either succeed or fail for reasons other than size limit
       expect(editResult).toBeDefined();
       if (!editResult.success) {
-        expect(editResult.errorCode).not.toBe('LIMIT_EXCEEDED');
+        // Ensure error isn't due to size limit for an under-limit file.
+        expect(editResult.error || '').not.toContain('exceeds');
       }
     },
   );

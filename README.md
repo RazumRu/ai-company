@@ -46,7 +46,7 @@ Key API modules (apps/api/src/v1): `graphs`, `graph-templates`, `agents`, `agent
 
 ## Getting Started
 
-We are using `Node 22.x`!
+We are using `Node 24.x`!
 
 ## Install Dependencies
 Run `pnpm install` - this will install all dependencies in the root and in all packages.

@@ -11,8 +11,11 @@ import { FilesBuildTagsTool } from './files-build-tags.tool';
 import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
-import { FilesEditTool } from './files-edit.tool';
-import { FilesEditReapplyTool } from './files-edit-reapply.tool';
+import { FilesEditTool, FilesEditToolConfig } from './files-edit.tool';
+import {
+  FilesEditReapplyTool,
+  FilesEditReapplyToolConfig,
+} from './files-edit-reapply.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
@@ -26,6 +29,16 @@ export type FilesToolGroupConfig = FilesBaseToolConfig & {
    * Defaults to true.
    */
   includeEditActions?: boolean;
+  /**
+   * Model to use for fast/efficient LLM parsing in files_edit.
+   * Required when includeEditActions is true.
+   */
+  fastModel: string;
+  /**
+   * Model to use for smart/capable LLM parsing in files_edit_reapply.
+   * Required when includeEditActions is true.
+   */
+  smartModel: string;
 };
 
 @Injectable()
@@ -67,7 +80,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
         ? '5) **PRIMARY:** Use `files_edit` for sketch-based edits (preferred editing tool).'
         : '5) (Read-only) Do not attempt file modifications.',
       includeEditActions
-        ? '6) **ON ERROR:** Follow `suggestedNextAction` from `files_edit` or use `files_edit_reapply` for smarter parsing.'
+        ? '6) **ON ERROR:** Use `files_edit_reapply` for smarter parsing, or fall back to `files_apply_changes` for manual oldText/newText edits.'
         : '',
       includeEditActions
         ? '7) **MANUAL:** Use `files_apply_changes` for exact oldText/newText control when needed.'
@@ -111,12 +124,21 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     ];
 
     if (includeEditActions) {
+      const editToolConfig: FilesEditToolConfig = {
+        runtime: config.runtime,
+        fastModel: config.fastModel,
+      };
+      const reapplyToolConfig: FilesEditReapplyToolConfig = {
+        runtime: config.runtime,
+        smartModel: config.smartModel,
+      };
+
       tools.push(
         this.filesCreateDirectoryTool.build(config, lgConfig),
         this.filesMoveFileTool.build(config, lgConfig),
         this.filesWriteFileTool.build(config, lgConfig),
-        this.filesEditTool.build(config, lgConfig),
-        this.filesEditReapplyTool.build(config, lgConfig),
+        this.filesEditTool.build(editToolConfig, lgConfig),
+        this.filesEditReapplyTool.build(reapplyToolConfig, lgConfig),
         this.filesApplyChangesTool.build(config, lgConfig),
         this.filesDeleteTool.build(config, lgConfig),
       );

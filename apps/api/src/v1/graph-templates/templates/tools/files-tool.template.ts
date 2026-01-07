@@ -21,6 +21,20 @@ export const FilesToolTemplateSchema = z
       )
       .meta({ 'x-ui:show-on-node': true })
       .meta({ 'x-ui:label': 'Edit mode' }),
+    fastModel: z
+      .string()
+      .describe('Model to use for fast/efficient LLM parsing in files_edit.')
+      .meta({ 'x-ui:show-on-node': true })
+      .meta({ 'x-ui:label': 'Fast Model' })
+      .meta({ 'x-ui:litellm-models-list-select': true }),
+    smartModel: z
+      .string()
+      .describe(
+        'Model to use for smart/capable LLM parsing in files_edit_reapply.',
+      )
+      .meta({ 'x-ui:show-on-node': true })
+      .meta({ 'x-ui:label': 'Smart Model' })
+      .meta({ 'x-ui:litellm-models-list-select': true }),
   })
   // Strip legacy/unknown fields so older configs remain valid.
   .strip();
@@ -104,6 +118,8 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
         const { tools, instructions } = this.filesToolGroup.buildTools({
           runtime,
           includeEditActions: config.includeEditActions,
+          fastModel: config.fastModel,
+          smartModel: config.smartModel,
         });
 
         instance.tools.length = 0;

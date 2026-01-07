@@ -31,10 +31,6 @@ const FilesApplyChangesToolSchemaBase = z.object({
     .array(FilesApplyChangesToolEditSchema)
     .min(1)
     .describe('List of edit operations to perform'),
-  dryRun: z
-    .boolean()
-    .default(false)
-    .describe('Preview changes without applying them'),
 });
 
 export const FilesApplyChangesToolSchema = FilesApplyChangesToolSchemaBase;
@@ -66,7 +62,7 @@ type FilesApplyChangesToolOutput = {
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Apply targeted text edits to a file (pattern-based; oldText/newText; supports dryRun preview).';
+    'Apply targeted text edits to a file (pattern-based; oldText/newText).';
 
   protected override generateTitle(
     args: FilesApplyChangesToolSchemaType,
@@ -74,8 +70,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): string {
     const name = basename(args.filePath);
     const editsCount = args.edits.length;
-    const dryRunText = args.dryRun ? ' (preview)' : '';
-    return `Editing ${name} (${editsCount} edit${editsCount > 1 ? 's' : ''})${dryRunText}`;
+    return `Editing ${name} (${editsCount} edit${editsCount > 1 ? 's' : ''})`;
   }
 
   public get schema() {
@@ -91,13 +86,13 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): string {
     return dedent`
       ### Overview
-      Applies targeted text edits by replacing \`oldText\` with \`newText\`. Supports \`dryRun\` to preview diff without modifying.
+      Applies targeted text edits by replacing \`oldText\` with \`newText\`.
 
       ### How matching works
       Whitespace-normalized exact block match: trailing whitespace and common leading indentation are stripped, but relative indentation within blocks is preserved. Each \`oldText\` must match exactly once: 0 matches = adjust text; >1 match = add more context. Indentation auto-detected and preserved from the matched file location.
 
       ### When to Use
-      Precise changes without overwriting whole file, insert/replace blocks, safe preview with \`dryRun: true\`.
+      Precise changes without overwriting whole file, insert/replace blocks.
 
       ### When NOT to Use
       For full overwrite → use \`files_write_file\`. For file deletion → use \`files_delete\`.
@@ -118,14 +113,8 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       1. **ALWAYS** use \`files_read\` first to get exact text
       2. **ALWAYS** include 5-10 lines of context around your change
       3. For edits in arrays/lists (providers, imports, exports), include the unique element before/after
-      4. Run \`dryRun: true\` first to verify match
-      5. If error occurs, read file again and include MORE context
-      6. Multiple edits must not overlap (same line in multiple edits), but adjacent edits are allowed
-
-      ### Workflow
-      1. \`files_read\` to copy exact block (REQUIRED)
-      2. \`files_apply_changes\` with \`dryRun: true\` to verify
-      3. \`files_apply_changes\` with \`dryRun: false\` to apply
+      4. If error occurs, read file again and include MORE context
+      5. Multiple edits must not overlap (same line in multiple edits), but adjacent edits are allowed
 
       ### Examples
       **1. BAD - Not enough context (will fail if pattern repeats):**
@@ -403,22 +392,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       }
       const newContent = firstEdit.newText;
 
-      if (args.dryRun) {
-        const diffLines = newContent
-          .split('\n')
-          .map((line) => `+${line}`)
-          .join('\n');
-        return {
-          output: {
-            success: true,
-            appliedEdits: 0,
-            totalEdits: 1,
-            diff: `New file:\n${diffLines}`,
-          },
-          messageMetadata,
-        };
-      }
-
       const parentDir = dirname(args.filePath);
       const contentBase64 = Buffer.from(newContent, 'utf8').toString('base64');
       const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
@@ -500,18 +473,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
     const diff = this.generateDiff(originalLines, matches, args.edits);
-
-    if (args.dryRun) {
-      return {
-        output: {
-          success: true,
-          appliedEdits: 0,
-          totalEdits: args.edits.length,
-          diff,
-        },
-        messageMetadata,
-      };
-    }
 
     const modifiedContent = this.applyEdits(fileContent, matches, args.edits);
 

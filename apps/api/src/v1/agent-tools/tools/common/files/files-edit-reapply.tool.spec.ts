@@ -205,7 +205,7 @@ describe('FilesEditReapplyTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('INVALID_PATH');
+        expect(result.output.error).toBeDefined();
       }
     });
   });
@@ -261,27 +261,22 @@ describe('FilesEditReapplyTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('CONFLICT_FILE_CHANGED');
-        expect(result.output.suggestedNextAction).toContain('Re-read');
+        expect(result.output.error).toBeDefined();
+        expect(result.output.error).toContain('File was modified');
       }
     });
   });
 
   describe('error responses', () => {
-    it('should return structured error with errorCode and suggestedNextAction', () => {
-      // Test error structure at unit level - all errors should include these fields
+    it('should return error string on failure', () => {
       const errorResponse = {
         success: false as const,
-        errorCode: 'PARSE_FAILED' as const,
-        errorDetails: 'Smart model failed to parse',
-        suggestedNextAction: 'Try files_apply_changes',
+        error: 'Smart model failed to parse',
         filePath: '/test/file.ts',
       };
 
       expect(errorResponse.success).toBe(false);
-      expect(errorResponse.errorCode).toBe('PARSE_FAILED');
-      expect(errorResponse.errorDetails).toBeDefined();
-      expect(errorResponse.suggestedNextAction).toBeDefined();
+      expect(errorResponse.error).toBeDefined();
       expect(errorResponse.filePath).toBeDefined();
     });
   });
@@ -322,14 +317,6 @@ describe('FilesEditReapplyTool', () => {
       // Test that smart model configuration is available
       expect(mockConfig.smartModel).toBeDefined();
       expect(mockConfig.smartModel).toBe('gpt-5.1');
-    });
-
-    it('should have default model fallback', () => {
-      // Verify default model fallback exists
-      const configWithoutModel = { ...mockConfig, smartModel: undefined };
-      const defaultModel = configWithoutModel.smartModel || 'gpt-5.1';
-
-      expect(defaultModel).toBe('gpt-5.1');
     });
   });
 
@@ -372,8 +359,8 @@ describe('FilesEditReapplyTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('PARSE_FAILED');
-        expect(result.output.errorDetails).toContain('Network timeout');
+        expect(result.output.error).toBeDefined();
+        expect(result.output.error).toContain('Network timeout');
       }
     });
 
@@ -404,10 +391,8 @@ describe('FilesEditReapplyTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('PARSE_FAILED');
-        expect(result.output.errorDetails).toContain(
-          'Smart model did not return valid JSON',
-        );
+        expect(result.output.error).toBeDefined();
+        expect(result.output.error).toContain('valid JSON');
       }
     });
 
@@ -446,20 +431,20 @@ describe('FilesEditReapplyTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('NOT_FOUND_ANCHOR');
-        expect(result.output.suggestedNextAction).toBeDefined();
+        expect(result.output.error).toBeDefined();
+        expect(result.output.error).toContain('Could not find anchors');
       }
     });
   });
 
   describe('model configuration edge cases', () => {
-    it('should use default smartModel when undefined', async () => {
+    it('should use provided smartModel', async () => {
       const testFile = join(testDir, 'test.ts');
       await writeFile(testFile, 'function test() { return 1; }');
 
-      const configWithoutModel = {
+      const customConfig = {
         runtime: mockConfig.runtime,
-        // smartModel is undefined
+        smartModel: 'custom-smart-model',
       };
 
       const generateSpy = vi
@@ -488,15 +473,13 @@ describe('FilesEditReapplyTool', () => {
           editInstructions: 'Change return value',
           codeSketch: 'function test() {\n// ... existing code ...\n}',
         },
-        configWithoutModel as any,
+        customConfig,
         {} as any,
       );
 
-      // Verify the default model 'gpt-5.1' was used
+      // Verify the custom model was used
       expect(generateSpy).toHaveBeenCalled();
-      if (generateSpy.mock.calls.length > 0) {
-        expect(generateSpy.mock.calls[0]?.[1]?.model).toBe('gpt-5.1');
-      }
+      expect(generateSpy.mock.calls[0]?.[1]?.model).toBe('custom-smart-model');
     });
   });
 
@@ -522,9 +505,7 @@ describe('FilesEditReapplyTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('INVALID_PATH');
-        // Error details should be defined
-        expect(result.output.errorDetails).toBeDefined();
+        expect(result.output.error).toBeDefined();
       }
     });
 
@@ -716,8 +697,7 @@ describe('FilesEditReapplyTool', () => {
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
         expect(result.output.filePath).toBe(testFile);
-        expect(result.output.errorCode).toBeDefined();
-        expect(result.output.suggestedNextAction).toBeDefined();
+        expect(result.output.error).toBeDefined();
       }
     });
 
@@ -747,12 +727,9 @@ describe('FilesEditReapplyTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(['PARSE_FAILED', 'LIMIT_EXCEEDED']).toContain(
-          result.output.errorCode,
-        );
-        expect(result.output.suggestedNextAction).toContain(
-          'files_apply_changes',
-        );
+        expect(result.output.error).toBeDefined();
+        expect(result.output.error).toContain('Model error');
+        expect(result.output.error).toContain('files_apply_changes');
       }
     });
   });

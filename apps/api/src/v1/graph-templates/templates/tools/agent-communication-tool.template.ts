@@ -161,6 +161,9 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
                 node_id: agentNodeId,
                 parent_thread_id: rootParentThreadId,
                 checkpoint_ns: checkpointNs,
+                // Inter-agent communication metadata to propagate to all messages
+                __interAgentCommunication: true,
+                __sourceAgentNodeId: runnableConfig.configurable?.node_id,
               },
             };
 

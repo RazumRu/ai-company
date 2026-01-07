@@ -60,9 +60,7 @@ type SuccessResponse = {
 
 type ErrorResponse = {
   success: false;
-  errorCode: ErrorCode;
-  errorDetails: string;
-  suggestedNextAction: string;
+  error: string;
   filePath: string;
   failedHunk?: ParsedHunk;
 };
@@ -86,8 +84,15 @@ const LIMITS = {
   MAX_CHANGED_LINES_RATIO: 0.5, // 50% of file
 };
 
+function formatError(details: string, suggestedNextAction?: string): string {
+  if (suggestedNextAction && suggestedNextAction.trim().length > 0) {
+    return `${details}\nNext: ${suggestedNextAction}`;
+  }
+  return details;
+}
+
 export type FilesEditReapplyToolConfig = FilesBaseToolConfig & {
-  smartModel?: string; // Default: 'gpt-5.1' - Used for smart LLM parsing
+  smartModel: string;
 };
 
 @Injectable()
@@ -512,9 +517,10 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       return {
         output: {
           success: false,
-          errorCode: 'INVALID_PATH',
-          errorDetails: readResult.stderr || 'Failed to read file',
-          suggestedNextAction: 'Verify the file exists and is readable',
+          error: formatError(
+            readResult.stderr || 'Failed to read file',
+            'Verify the file exists and is readable',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -525,24 +531,22 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
     const baseSha = this.computeFileHash(fileContent);
 
     // 2. Parse with smart LLM (skip deterministic parser)
-    const smartModel = config.smartModel || 'gpt-5.1';
     const parseResult = await this.parseLLMSmart(
       fileContent,
       args.editInstructions,
       args.codeSketch,
-      smartModel,
+      config.smartModel,
     );
 
     if (!parseResult.success || !parseResult.hunks) {
       return {
         output: {
           success: false,
-          errorCode: parseResult.errorCode || 'PARSE_FAILED',
-          errorDetails:
+          error: formatError(
             parseResult.errorDetails ||
-            'Failed to parse sketch with smart model',
-          suggestedNextAction:
+              'Failed to parse sketch with smart model',
             parseResult.suggestedNextAction || 'Try files_apply_changes',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -558,9 +562,7 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       return {
         output: {
           success: false,
-          errorCode: error.code,
-          errorDetails: error.details,
-          suggestedNextAction: error.suggestedAction,
+          error: formatError(error.details, error.suggestedAction),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -571,10 +573,10 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       return {
         output: {
           success: false,
-          errorCode: 'APPLY_FAILED',
-          errorDetails: 'No edits could be resolved from hunks',
-          suggestedNextAction:
+          error: formatError(
+            'No edits could be resolved from hunks',
             'Check your sketch format and try files_apply_changes',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -591,9 +593,10 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       return {
         output: {
           success: false,
-          errorCode: 'CONFLICT_FILE_CHANGED',
-          errorDetails: 'Failed to re-read file for conflict check',
-          suggestedNextAction: 'Re-read file with files_read and retry',
+          error: formatError(
+            'Failed to re-read file for conflict check',
+            'Re-read file with files_read and retry',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -607,9 +610,10 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       return {
         output: {
           success: false,
-          errorCode: 'CONFLICT_FILE_CHANGED',
-          errorDetails: 'File was modified between read and apply',
-          suggestedNextAction: 'Re-read file with files_read and retry',
+          error: formatError(
+            'File was modified between read and apply',
+            'Re-read file with files_read and retry',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -622,10 +626,10 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       return {
         output: {
           success: false,
-          errorCode: limitCheck.errorCode || 'LIMIT_EXCEEDED',
-          errorDetails: limitCheck.details || 'Limit exceeded',
-          suggestedNextAction:
+          error: formatError(
+            limitCheck.details || 'Limit exceeded',
             limitCheck.suggestedAction || 'Break into smaller changes',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,
@@ -637,7 +641,6 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       {
         filePath: args.filePath,
         edits,
-        dryRun: false,
       },
       config,
       cfg,
@@ -647,10 +650,10 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       return {
         output: {
           success: false,
-          errorCode: 'APPLY_FAILED',
-          errorDetails: applyResult.output.error || 'Failed to apply changes',
-          suggestedNextAction:
+          error: formatError(
+            applyResult.output.error || 'Failed to apply changes',
             'Try files_apply_changes with manual oldText/newText',
+          ),
           filePath: args.filePath,
         },
         messageMetadata,

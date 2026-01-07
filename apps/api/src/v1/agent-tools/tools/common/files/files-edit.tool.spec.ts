@@ -387,7 +387,7 @@ describe('FilesEditTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('INVALID_PATH');
+        expect(result.output.error).toBeDefined();
       }
     });
   });
@@ -437,130 +437,68 @@ describe('FilesEditTool', () => {
 
       expect(instructions).toContain('// ... existing code ...');
       expect(instructions).toContain('CRITICAL');
-      expect(instructions).toContain('errorCode');
-      expect(instructions).toContain('INVALID_SKETCH_FORMAT');
-      expect(instructions).toContain('NOT_FOUND_ANCHOR');
-      expect(instructions).toContain('AMBIGUOUS_MATCH');
+      expect(instructions).toContain('error');
       expect(instructions).toContain('files_edit_reapply');
     });
   });
 
   describe('OpenaiService integration', () => {
     it('should handle OpenaiService.generate() throwing error', async () => {
-      const testFile = join(testDir, 'test.ts');
-      await writeFile(testFile, 'function test() { return 1; }');
-
-      // Mock OpenaiService to throw error
       vi.spyOn(mockOpenaiService, 'generate').mockRejectedValue(
         new Error('API timeout'),
       );
 
-      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: 'function test() { return 1; }',
-        stderr: '',
-      });
-
-      const result = await tool.invoke(
-        {
-          filePath: testFile,
-          editInstructions: 'Change return value',
-          codeSketch: 'function test() {\n// ... existing code ...\n}',
-        },
-        mockConfig,
-        {} as any,
+      const result = await tool['parseLLM'](
+        'function test() {\n  return 1;\n}\n',
+        'Change return value',
+        'function test() {\n// ... existing code ...\n}\n',
+        mockConfig.fastModel,
       );
 
-      expect(result.output.success).toBe(false);
-      if (!result.output.success) {
-        // API errors may surface as different error codes depending on the flow
-        expect(['PARSE_FAILED', 'LIMIT_EXCEEDED']).toContain(
-          result.output.errorCode,
-        );
-        expect(result.output.errorDetails).toBeDefined();
-      }
+      expect(result.success).toBe(false);
+      expect(result.errorDetails).toContain('API timeout');
     });
 
     it('should handle malformed JSON from LLM', async () => {
-      const testFile = join(testDir, 'test.ts');
-      await writeFile(testFile, 'function test() { return 1; }');
-
-      // Mock OpenaiService to return malformed JSON
       vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
         content: 'This is not JSON at all!',
       });
 
-      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: 'function test() { return 1; }',
-        stderr: '',
-      });
-
-      const result = await tool.invoke(
-        {
-          filePath: testFile,
-          editInstructions: 'Change return value',
-          codeSketch: 'function test() {\n// ... existing code ...\n}',
-        },
-        mockConfig,
-        {} as any,
+      const result = await tool['parseLLM'](
+        'function test() {\n  return 1;\n}\n',
+        'Change return value',
+        'function test() {\n// ... existing code ...\n}\n',
+        mockConfig.fastModel,
       );
 
-      expect(result.output.success).toBe(false);
-      if (!result.output.success) {
-        // Malformed JSON response may trigger different error codes depending on flow
-        expect(['PARSE_FAILED', 'LIMIT_EXCEEDED']).toContain(
-          result.output.errorCode,
-        );
-      }
+      expect(result.success).toBe(false);
+      expect(result.errorDetails).toContain('valid JSON');
     });
 
     it('should handle empty hunks array from LLM', async () => {
-      const testFile = join(testDir, 'test.ts');
-      await writeFile(testFile, 'function test() { return 1; }');
-
-      // Mock OpenaiService to return empty hunks
       vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
         content: JSON.stringify({ hunks: [] }),
       });
 
-      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: 'function test() { return 1; }',
-        stderr: '',
-      });
-
-      const result = await tool.invoke(
-        {
-          filePath: testFile,
-          editInstructions: 'Change return value',
-          codeSketch: 'function test() {\n// ... existing code ...\n}',
-        },
-        mockConfig,
-        {} as any,
+      const result = await tool['parseLLM'](
+        'function test() {\n  return 1;\n}\n',
+        'Change return value',
+        'function test() {\n// ... existing code ...\n}\n',
+        mockConfig.fastModel,
       );
 
-      expect(result.output.success).toBe(false);
-      if (!result.output.success) {
-        // Empty hunks may trigger PARSE_FAILED or LIMIT_EXCEEDED depending on flow
-        expect(['PARSE_FAILED', 'LIMIT_EXCEEDED']).toContain(
-          result.output.errorCode,
-        );
-      }
+      expect(result.success).toBe(false);
+      expect(result.errorDetails).toContain('empty');
     });
   });
 
   describe('model configuration', () => {
-    it('should use default fastModel when undefined', async () => {
-      const testFile = join(testDir, 'test.ts');
-      await writeFile(testFile, 'function test() { return 1; }');
-
-      const configWithoutModel = {
+    it('should use provided fastModel when calling LLM parser', async () => {
+      const customConfig = {
         runtime: mockConfig.runtime,
-        // fastModel is undefined
+        fastModel: 'custom-fast-model',
       };
 
-      // Mock to trigger LLM parsing path
       const generateSpy = vi
         .spyOn(mockOpenaiService, 'generate')
         .mockResolvedValue({
@@ -575,26 +513,15 @@ describe('FilesEditTool', () => {
           }),
         });
 
-      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: 'function test() { return 1; }',
-        stderr: '',
-      });
-
-      await tool.invoke(
-        {
-          filePath: testFile,
-          editInstructions: 'Change return value',
-          codeSketch: 'x\n// ... existing code ...\ny',
-        },
-        configWithoutModel as any,
-        {} as any,
+      await tool['parseLLM'](
+        'function test() { return 1; }',
+        'Change return value',
+        'x\n// ... existing code ...\ny',
+        customConfig.fastModel,
       );
 
-      // Verify the default model 'gpt-5-mini' was used
-      if (generateSpy.mock.calls.length > 0) {
-        expect(generateSpy.mock.calls[0]?.[1]?.model).toBe('gpt-5-mini');
-      }
+      expect(generateSpy).toHaveBeenCalledTimes(1);
+      expect(generateSpy.mock.calls[0]?.[1]?.model).toBe('custom-fast-model');
     });
   });
 
@@ -645,9 +572,7 @@ describe('FilesEditTool', () => {
 
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('INVALID_PATH');
-        // Error details should mention the file couldn't be read
-        expect(result.output.errorDetails).toBeDefined();
+        expect(result.output.error).toBeDefined();
       }
     });
 
@@ -873,8 +798,8 @@ describe('FilesEditTool', () => {
       // Should detect conflict
       expect(result.output.success).toBe(false);
       if (!result.output.success) {
-        expect(result.output.errorCode).toBe('CONFLICT_FILE_CHANGED');
-        expect(result.output.suggestedNextAction).toContain('Re-read');
+        expect(result.output.error).toBeDefined();
+        expect(result.output.error).toContain('File was modified');
       }
     });
   });
