@@ -11,6 +11,8 @@ import { FilesBuildTagsTool } from './files-build-tags.tool';
 import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
+import { FilesEditTool } from './files-edit.tool';
+import { FilesEditReapplyTool } from './files-edit-reapply.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
@@ -38,6 +40,8 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     private readonly filesCreateDirectoryTool: FilesCreateDirectoryTool,
     private readonly filesMoveFileTool: FilesMoveFileTool,
     private readonly filesWriteFileTool: FilesWriteFileTool,
+    private readonly filesEditTool: FilesEditTool,
+    private readonly filesEditReapplyTool: FilesEditReapplyTool,
     private readonly filesApplyChangesTool: FilesApplyChangesTool,
     private readonly filesDeleteTool: FilesDeleteTool,
   ) {
@@ -60,21 +64,33 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       '3) If tags are not enough, use `files_search_text` and/or `files_directory_tree` to locate code.',
       '4) Use `files_read` to inspect exact code before making changes.',
       includeEditActions
-        ? '5) Apply edits with `files_apply_changes` (prefer minimal, precise diffs).'
+        ? '5) **PRIMARY:** Use `files_edit` for sketch-based edits (preferred editing tool).'
         : '5) (Read-only) Do not attempt file modifications.',
       includeEditActions
-        ? '6) After ANY file changes, rebuild tags with `files_build_tags` BEFORE using `files_search_tags` again.'
+        ? '6) **ON ERROR:** Follow `suggestedNextAction` from `files_edit` or use `files_edit_reapply` for smarter parsing.'
+        : '',
+      includeEditActions
+        ? '7) **MANUAL:** Use `files_apply_changes` for exact oldText/newText control when needed.'
+        : '',
+      includeEditActions
+        ? '8) After ANY file changes, rebuild tags with `files_build_tags` BEFORE using `files_search_tags` again.'
         : '6) If the repo changes externally, rebuild tags before using `files_search_tags` again.',
       '',
       '**Available Operations:**',
       includeEditActions
         ? '- Read/search + create/modify/move/delete files and directories'
         : '- Read/search only (edit actions disabled)',
+      includeEditActions
+        ? '- Sketch-based editing with `files_edit` (primary) and smart fallback with `files_edit_reapply`'
+        : '',
       '- Build/search semantic tags for faster navigation',
       '',
       '**Notes:**',
       '- Tag search results can become stale after edits; rebuilding tags is required for correctness.',
       '- Prefer tags for large repos; fall back to text search when needed.',
+      includeEditActions
+        ? '- Use `files_edit` as primary editing tool; it provides better error messages and smart parsing.'
+        : '',
     ];
 
     return lines.filter(Boolean).join('\n');
@@ -99,6 +115,8 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
         this.filesCreateDirectoryTool.build(config, lgConfig),
         this.filesMoveFileTool.build(config, lgConfig),
         this.filesWriteFileTool.build(config, lgConfig),
+        this.filesEditTool.build(config, lgConfig),
+        this.filesEditReapplyTool.build(config, lgConfig),
         this.filesApplyChangesTool.build(config, lgConfig),
         this.filesDeleteTool.build(config, lgConfig),
       );

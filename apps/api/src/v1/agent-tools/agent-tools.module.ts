@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { OpenaiModule } from '../openai/openai.module';
 import { CommunicationExecTool } from './tools/common/communication/communication-exec.tool';
 import { CommunicationToolGroup } from './tools/common/communication/communication-tool-group';
 import { FilesApplyChangesTool } from './tools/common/files/files-apply-changes.tool';
@@ -7,6 +8,8 @@ import { FilesBuildTagsTool } from './tools/common/files/files-build-tags.tool';
 import { FilesCreateDirectoryTool } from './tools/common/files/files-create-directory.tool';
 import { FilesDeleteTool } from './tools/common/files/files-delete.tool';
 import { FilesDirectoryTreeTool } from './tools/common/files/files-directory-tree.tool';
+import { FilesEditTool } from './tools/common/files/files-edit.tool';
+import { FilesEditReapplyTool } from './tools/common/files/files-edit-reapply.tool';
 import { FilesFindPathsTool } from './tools/common/files/files-find-paths.tool';
 import { FilesMoveFileTool } from './tools/common/files/files-move-file.tool';
 import { FilesReadTool } from './tools/common/files/files-read.tool';
@@ -24,7 +27,7 @@ import { WebSearchTool } from './tools/common/web-search.tool';
 import { FinishTool } from './tools/core/finish.tool';
 
 @Module({
-  imports: [],
+  imports: [OpenaiModule],
   controllers: [],
   providers: [
     ShellTool,
@@ -46,6 +49,8 @@ import { FinishTool } from './tools/core/finish.tool';
     FilesCreateDirectoryTool,
     FilesMoveFileTool,
     FilesWriteFileTool,
+    FilesEditTool,
+    FilesEditReapplyTool,
     FilesApplyChangesTool,
     FilesDeleteTool,
     FilesToolGroup,
@@ -70,6 +75,8 @@ import { FinishTool } from './tools/core/finish.tool';
     FilesCreateDirectoryTool,
     FilesMoveFileTool,
     FilesWriteFileTool,
+    FilesEditTool,
+    FilesEditReapplyTool,
     FilesApplyChangesTool,
     FilesDeleteTool,
     FilesToolGroup,

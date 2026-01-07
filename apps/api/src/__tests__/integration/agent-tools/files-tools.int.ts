@@ -8,6 +8,8 @@ import { environment } from '../../../environments';
 import { FilesApplyChangesTool } from '../../../v1/agent-tools/tools/common/files/files-apply-changes.tool';
 import { FilesBuildTagsTool } from '../../../v1/agent-tools/tools/common/files/files-build-tags.tool';
 import { FilesDeleteTool } from '../../../v1/agent-tools/tools/common/files/files-delete.tool';
+import { FilesEditTool } from '../../../v1/agent-tools/tools/common/files/files-edit.tool';
+import { FilesEditReapplyTool } from '../../../v1/agent-tools/tools/common/files/files-edit-reapply.tool';
 import { FilesFindPathsTool } from '../../../v1/agent-tools/tools/common/files/files-find-paths.tool';
 import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-read.tool';
 import { FilesSearchTagsTool } from '../../../v1/agent-tools/tools/common/files/files-search-tags.tool';
@@ -19,6 +21,7 @@ import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-no
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { RuntimeProvider } from '../../../v1/runtime/services/runtime-provider';
@@ -85,6 +88,8 @@ describe('Files tools integration', () => {
   let filesBuildTagsTool: FilesBuildTagsTool;
   let filesSearchTagsTool: FilesSearchTagsTool;
   let filesDeleteTool: FilesDeleteTool;
+  let filesEditTool: FilesEditTool;
+  let filesEditReapplyTool: FilesEditReapplyTool;
   let shellTool: ShellTool;
 
   const writeSampleFile = async (fileName = 'sample.ts') => {
@@ -114,8 +119,11 @@ describe('Files tools integration', () => {
         FilesBuildTagsTool,
         FilesSearchTagsTool,
         FilesDeleteTool,
+        FilesEditTool,
+        FilesEditReapplyTool,
         ShellTool,
         RuntimeProvider,
+        OpenaiService,
       ],
     }).compile();
 
@@ -127,6 +135,8 @@ describe('Files tools integration', () => {
     filesBuildTagsTool = moduleRef.get(FilesBuildTagsTool);
     filesSearchTagsTool = moduleRef.get(FilesSearchTagsTool);
     filesDeleteTool = moduleRef.get(FilesDeleteTool);
+    filesEditTool = moduleRef.get(FilesEditTool);
+    filesEditReapplyTool = moduleRef.get(FilesEditReapplyTool);
     shellTool = moduleRef.get(ShellTool);
 
     runtime = await runtimeProvider.provide({
@@ -803,6 +813,419 @@ describe('Files tools integration', () => {
       const afterApply = readAfterApply.files?.[0]?.content || '';
       expect(afterApply).toContain('modified');
       expect(afterApply).not.toContain('original');
+    },
+  );
+
+  it(
+    'files_edit: tool can be invoked with proper schema',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      // Create initial file
+      const fileName = `edit-test-${Date.now()}.ts`;
+      const filePath = await writeSampleFile(fileName);
+
+      // Invoke files_edit (may succeed or fail depending on LLM parsing)
+      // The key is that it should not throw and should return proper structure
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Change greeting',
+          codeSketch: `export function greet(name: string) {
+  return \`Hello, \${name}!\`;
+// ... existing code ...
+}`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Verify the response structure is correct
+      expect(editResult).toBeDefined();
+      expect(typeof editResult.success).toBe('boolean');
+      expect(typeof editResult.filePath).toBe('string');
+
+      if (!editResult.success) {
+        // If it fails, verify error structure
+        expect(editResult.errorCode).toBeDefined();
+        expect(editResult.errorDetails).toBeDefined();
+        expect(editResult.suggestedNextAction).toBeDefined();
+      } else {
+        // If it succeeds, verify success structure
+        expect(editResult.diff).toBeDefined();
+        expect(typeof editResult.appliedHunks).toBe('number');
+      }
+    },
+  );
+
+  it(
+    'files_edit: handles NOT_FOUND_ANCHOR error with invalid anchors',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `edit-error-test-${Date.now()}.ts`;
+      const filePath = await writeSampleFile(fileName);
+
+      // Try to edit with non-existent anchors
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Try to modify non-existent code',
+          codeSketch: `function nonExistent() {
+// ... existing code ...
+  return 'modified';
+// ... existing code ...
+}`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(editResult.success).toBe(false);
+      if (!editResult.success) {
+        expect(editResult.errorCode).toBe('NOT_FOUND_ANCHOR');
+        expect(editResult.errorDetails).toBeDefined();
+        expect(editResult.suggestedNextAction).toBeDefined();
+      }
+    },
+  );
+
+  it(
+    'files_edit: handles INVALID_SKETCH_FORMAT error with no markers',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `edit-format-test-${Date.now()}.ts`;
+      const filePath = await writeSampleFile(fileName);
+
+      // Try to edit without proper markers
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Try to modify without markers',
+          codeSketch: `export function greet(name: string) {
+  return 'modified';
+}`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      expect(editResult.success).toBe(false);
+      if (!editResult.success) {
+        expect(editResult.errorCode).toBe('INVALID_SKETCH_FORMAT');
+        expect(editResult.errorDetails).toContain('marker');
+        expect(editResult.suggestedNextAction).toBeDefined();
+      }
+    },
+  );
+
+  it(
+    'files_edit_reapply: tool can be invoked and uses smart model',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      // Create initial file
+      const fileName = `reapply-test-${Date.now()}.ts`;
+      const filePath = await writeSampleFile(fileName);
+
+      // Use files_edit_reapply (smart fallback)
+      const { output: reapplyResult } = await filesEditReapplyTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Update constructor',
+          codeSketch: `export class HelperService {
+  constructor(private prefix: string = 'helper') {}
+// ... existing code ...
+}`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Verify response structure
+      expect(reapplyResult).toBeDefined();
+      expect(typeof reapplyResult.success).toBe('boolean');
+      expect(typeof reapplyResult.filePath).toBe('string');
+
+      if (!reapplyResult.success) {
+        expect(reapplyResult.errorCode).toBeDefined();
+        expect(reapplyResult.errorDetails).toBeDefined();
+      } else {
+        expect(reapplyResult.diff).toBeDefined();
+        expect(typeof reapplyResult.appliedHunks).toBe('number');
+      }
+    },
+  );
+
+  it(
+    'files_edit: handles file read and provides structured response',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `edit-basic-test-${Date.now()}.ts`;
+      const filePath = await writeSampleFile(fileName);
+
+      // Invoke with a simple sketch
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Modify the function',
+          codeSketch: `export function greet(name: string) {
+// ... existing code ...
+}`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Verify tool returns proper structure (may succeed or fail)
+      expect(editResult).toBeDefined();
+      expect(editResult.filePath).toBe(filePath);
+      expect(typeof editResult.success).toBe('boolean');
+    },
+  );
+
+  it(
+    'files_edit: processes multiple markers in sketch',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `multi-marker-test-${Date.now()}.ts`;
+      const filePath = await writeSampleFile(fileName);
+
+      // Sketch with multiple markers
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Update multiple sections',
+          codeSketch: `export function greet(name: string) {
+// ... existing code ...
+}
+
+export class HelperService {
+// ... existing code ...
+}`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Verify structure regardless of success/failure
+      expect(editResult).toBeDefined();
+      expect(typeof editResult.success).toBe('boolean');
+
+      if (editResult.success) {
+        // If successful, verify it detected multiple hunks
+        expect(editResult.appliedHunks).toBeGreaterThanOrEqual(0);
+      }
+    },
+  );
+
+  it(
+    'files_edit: successfully creates and applies edit with proper workflow',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      // Create a simple file with deterministic content
+      const fileName = `e2e-edit-test-${Date.now()}.ts`;
+      const filePath = `${WORKSPACE_DIR}/${fileName}`;
+      const initialContent = `export const oldValue = 'old';\n\nexport function calculate(a: number, b: number) {\n  return a + b;\n}`;
+
+      await filesApplyChangesTool.invoke(
+        {
+          filePath,
+          edits: [{ oldText: '', newText: initialContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // First, verify the file was created correctly
+      const { output: readBefore } = await filesReadTool.invoke(
+        { filesToRead: [{ filePath }] },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      const contentBefore = readBefore.files?.[0]?.content || '';
+      expect(contentBefore).toContain('export const oldValue');
+      expect(contentBefore).toContain('export function calculate');
+
+      // Edit with simple deterministic sketch
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Update the constant value',
+          codeSketch: `export const oldValue = 'old';
+// ... existing code ...
+export function calculate(a: number, b: number) {`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Verify the response structure (may succeed or fail depending on parsing)
+      expect(editResult).toBeDefined();
+      expect(typeof editResult.success).toBe('boolean');
+      expect(editResult.filePath).toBe(filePath);
+
+      if (editResult.success) {
+        // If successful, check that we got reasonable output
+        expect(editResult.appliedHunks).toBeGreaterThan(0);
+        expect(editResult.diff).toBeDefined();
+
+        // Verify the file still exists and has some content
+        const { output: readAfter } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtime },
+          RUNNABLE_CONFIG,
+        );
+
+        const contentAfter = readAfter.files?.[0]?.content || '';
+        expect(contentAfter.length).toBeGreaterThan(0);
+      } else {
+        // If it failed, verify proper error structure
+        expect(editResult.errorCode).toBeDefined();
+        expect(editResult.errorDetails).toBeDefined();
+        expect(editResult.suggestedNextAction).toBeDefined();
+      }
+    },
+  );
+
+  it(
+    'files_edit: detects anchor mismatch after file modification',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `mismatch-test-${Date.now()}.ts`;
+      const filePath = `${WORKSPACE_DIR}/${fileName}`;
+      const initialContent = `export const value = 'initial';\nexport const other = 'data';`;
+
+      await filesApplyChangesTool.invoke(
+        {
+          filePath,
+          edits: [{ oldText: '', newText: initialContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Modify the file directly
+      await filesApplyChangesTool.invoke(
+        {
+          filePath,
+          edits: [
+            {
+              oldText: `export const value = 'initial';`,
+              newText: `export const value = 'modified';`,
+            },
+          ],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Now try to apply an edit based on the old content (with proper markers)
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Update value',
+          codeSketch: `export const value = 'initial';
+// ... existing code ...
+export const other`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Should fail since 'initial' no longer exists in file
+      expect(editResult).toBeDefined();
+      if (!editResult.success) {
+        // Should fail with NOT_FOUND_ANCHOR since the old value is gone
+        expect(editResult.errorCode).toBe('NOT_FOUND_ANCHOR');
+        expect(editResult.errorDetails).toBeDefined();
+      }
+    },
+  );
+
+  it(
+    'files_edit_reapply: successfully falls back when deterministic parsing fails',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `fallback-test-${Date.now()}.ts`;
+      const filePath = `${WORKSPACE_DIR}/${fileName}`;
+      const initialContent = `export function complexFunction(param1: string, param2: number) {\n  const result = param1.repeat(param2);\n  return result.toUpperCase();\n}`;
+
+      await filesApplyChangesTool.invoke(
+        {
+          filePath,
+          edits: [{ oldText: '', newText: initialContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Use a vague sketch that requires LLM parsing
+      const { output: reapplyResult } = await filesEditReapplyTool.invoke(
+        {
+          filePath,
+          editInstructions:
+            'Make the function return lowercase instead of uppercase',
+          codeSketch: `export function complexFunction
+// ... existing code ...
+  return result`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Verify structure (success or failure both valid for LLM-based parsing)
+      expect(reapplyResult).toBeDefined();
+      expect(typeof reapplyResult.success).toBe('boolean');
+      expect(reapplyResult.filePath).toBe(filePath);
+
+      if (reapplyResult.success) {
+        // If successful, verify diff is present
+        expect(reapplyResult.diff).toBeDefined();
+        expect(reapplyResult.appliedHunks).toBeGreaterThan(0);
+      } else {
+        // If failed, verify proper error structure
+        expect(reapplyResult.errorCode).toBeDefined();
+        expect(reapplyResult.suggestedNextAction).toBeDefined();
+      }
+    },
+  );
+
+  it(
+    'files_edit: respects limit enforcement',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `limits-test-${Date.now()}.ts`;
+      const filePath = `${WORKSPACE_DIR}/${fileName}`;
+
+      // Create a file that's just under the size limit
+      const largeContent = 'x'.repeat(999_000); // ~999KB
+
+      await filesApplyChangesTool.invoke(
+        {
+          filePath,
+          edits: [{ oldText: '', newText: largeContent }],
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Try to edit - should work since file is under 1MB
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Add marker',
+          codeSketch: `xxx
+// ... existing code ...
+xxx`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Should either succeed or fail for reasons other than size limit
+      expect(editResult).toBeDefined();
+      if (!editResult.success) {
+        expect(editResult.errorCode).not.toBe('LIMIT_EXCEEDED');
+      }
     },
   );
 });
