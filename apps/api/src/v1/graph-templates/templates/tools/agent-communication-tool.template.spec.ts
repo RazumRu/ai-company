@@ -1,4 +1,8 @@
-import { HumanMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+} from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,7 +48,8 @@ const expectAgentInstructionMessage = (
 ) => {
   expect(message).toBeInstanceOf(HumanMessage);
   expect(message.content).toBe(expectedContent);
-  expect(message.additional_kwargs?.isAgentInstructionMessage).toBe(true);
+  expect(message.additional_kwargs?.__isAgentInstructionMessage).toBe(true);
+  expect(message.additional_kwargs?.__interAgentCommunication).toBe(true);
 };
 
 describe('AgentCommunicationToolTemplate', () => {
@@ -302,6 +307,129 @@ describe('AgentCommunicationToolTemplate', () => {
       expect(runConfig.configurable.thread_id).toBe(
         'parent-thread__tool-node__Agent One',
       );
+    });
+
+    it('should extract response message when system messages (summary markers) are present', async () => {
+      // Mock agent to return messages including a system summary marker (last message)
+      const mockAgentWithSummary = {
+        ...mockAgent,
+        runOrAppend: vi.fn().mockResolvedValue({
+          messages: [
+            new AIMessage('This is the actual response from Agent B'),
+            new SystemMessage('Conversation history was summarized.'),
+          ],
+          threadId: 'test-thread',
+        }),
+      } as unknown as SimpleAgent;
+
+      const agentNodeWithSummary = buildCompiledNode({
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: mockAgentWithSummary,
+        config: {
+          name: 'Agent One',
+          description: 'Test agent one',
+        },
+      });
+
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(
+        agentNodeWithSummary,
+      );
+
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+      };
+      const outputNodeIds = new Set(['agent-1']);
+
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      const buildCalls = vi.mocked(mockCommunicationToolGroup.buildTools).mock
+        .calls;
+      const buildConfig = buildCalls[0]![0] as any;
+      const agentInfo = buildConfig.agents[0];
+
+      const toolConfig: RunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'parent-thread',
+        },
+      };
+
+      const result = await agentInfo.invokeAgent(['Hello'], toolConfig as any);
+
+      // Should extract the AI message content, not the system summary marker
+      expect(result.message).toBe('This is the actual response from Agent B');
+      expect(result.message).not.toBe('Conversation history was summarized.');
+    });
+
+    it('should extract response message when only system messages are present', async () => {
+      // Edge case: only system messages returned
+      const mockAgentOnlySystem = {
+        ...mockAgent,
+        runOrAppend: vi.fn().mockResolvedValue({
+          messages: [
+            new SystemMessage('System message 1'),
+            new SystemMessage('Conversation history was summarized.'),
+          ],
+          threadId: 'test-thread',
+        }),
+      } as unknown as SimpleAgent;
+
+      const agentNodeOnlySystem = buildCompiledNode({
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: mockAgentOnlySystem,
+        config: {
+          name: 'Agent One',
+          description: 'Test agent one',
+        },
+      });
+
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(agentNodeOnlySystem);
+
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+      };
+      const outputNodeIds = new Set(['agent-1']);
+
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      const buildCalls = vi.mocked(mockCommunicationToolGroup.buildTools).mock
+        .calls;
+      const buildConfig = buildCalls[0]![0] as any;
+      const agentInfo = buildConfig.agents[0];
+
+      const toolConfig: RunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'parent-thread',
+        },
+      };
+
+      const result = await agentInfo.invokeAgent(['Hello'], toolConfig as any);
+
+      // Should fall back to "No response message available" when no non-system messages exist
+      expect(result.message).toBe('No response message available');
     });
   });
 });

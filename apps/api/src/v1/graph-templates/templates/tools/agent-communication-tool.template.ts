@@ -1,4 +1,4 @@
-import { HumanMessage } from '@langchain/core/messages';
+import { BaseMessage, HumanMessage } from '@langchain/core/messages';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
@@ -142,7 +142,10 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
                 new HumanMessage({
                   content: msg,
                   additional_kwargs: {
-                    isAgentInstructionMessage: true,
+                    __isAgentInstructionMessage: true,
+                    __interAgentCommunication: true,
+                    __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+                    __createdAt: new Date().toISOString(),
                   },
                 }),
             );
@@ -169,7 +172,16 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
             );
 
             // Extract the last message content or finish tool message from the agent's response
-            const lastMessage = response.messages[response.messages.length - 1];
+            // Skip system messages (like summary markers) by iterating backwards
+            let lastMessage: BaseMessage | undefined;
+            for (let i = response.messages.length - 1; i >= 0; i--) {
+              const msg = response.messages[i];
+              if (msg && msg.type !== 'system') {
+                lastMessage = msg;
+                break;
+              }
+            }
+
             let responseMessage: string | undefined;
             let needsMoreInfo = false;
 

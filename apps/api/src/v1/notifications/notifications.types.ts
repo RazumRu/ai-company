@@ -89,6 +89,10 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
   __hideForSummary?: boolean;
   __isAgentInstructionMessage?: boolean;
 
+  // Inter-agent communication metadata
+  __interAgentCommunication?: boolean;
+  __sourceAgentNodeId?: string;
+
   __context?: unknown;
 
   // Per-message token usage (totalTokens + totalPrice only)
