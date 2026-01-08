@@ -26,7 +26,7 @@ describe('FilesEditReapplyTool', () => {
     await mkdir(testDir, { recursive: true });
 
     mockOpenaiService = {
-      generate: vi.fn(),
+      response: vi.fn(),
     } as unknown as OpenaiService;
 
     mockFilesApplyChangesTool = new FilesApplyChangesTool();
@@ -42,7 +42,6 @@ describe('FilesEditReapplyTool', () => {
 
     mockConfig = {
       runtime: mockRuntime,
-      smartModel: 'gpt-5.1',
     };
   });
 
@@ -119,7 +118,6 @@ describe('FilesEditReapplyTool', () => {
         fileContent,
         editInstructions,
         sketch,
-        model,
       );
 
       expect(result.success).toBe(true);
@@ -217,8 +215,9 @@ describe('FilesEditReapplyTool', () => {
 
       // Mock execCommand to simulate file change between reads
       let callCount = 0;
-      // Mock the generate method to return a valid response
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
+      // Mock the response method to return a valid response
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
         content: JSON.stringify({
           hunks: [
             {
@@ -313,10 +312,8 @@ describe('FilesEditReapplyTool', () => {
   });
 
   describe('model selection', () => {
-    it('should use smartModel from config by default', () => {
-      // Test that smart model configuration is available
-      expect(mockConfig.smartModel).toBeDefined();
-      expect(mockConfig.smartModel).toBe('gpt-5.1');
+    it('should not require smartModel in config (model comes from env)', () => {
+      expect((mockConfig as any).smartModel).toBeUndefined();
     });
   });
 
@@ -332,12 +329,12 @@ describe('FilesEditReapplyTool', () => {
   });
 
   describe('OpenaiService integration', () => {
-    it('should handle OpenaiService.generate() throwing error', async () => {
+    it('should handle OpenaiService.response() throwing error', async () => {
       const testFile = join(testDir, 'test.ts');
       await writeFile(testFile, 'function test() { return 1; }');
 
       // Mock OpenaiService to throw error
-      vi.spyOn(mockOpenaiService, 'generate').mockRejectedValue(
+      vi.spyOn(mockOpenaiService, 'response').mockRejectedValue(
         new Error('Network timeout'),
       );
 
@@ -369,7 +366,8 @@ describe('FilesEditReapplyTool', () => {
       await writeFile(testFile, 'function test() { return 1; }');
 
       // Mock OpenaiService to return malformed JSON
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
         content: '{ incomplete json',
       });
 
@@ -401,7 +399,8 @@ describe('FilesEditReapplyTool', () => {
       await writeFile(testFile, 'function test() { return 1; }');
 
       // Mock OpenaiService to return anchors that don't exist
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
         content: JSON.stringify({
           hunks: [
             {
@@ -438,24 +437,20 @@ describe('FilesEditReapplyTool', () => {
   });
 
   describe('model configuration edge cases', () => {
-    it('should use provided smartModel', async () => {
+    it('should call OpenaiService.response when using smart parsing', async () => {
       const testFile = join(testDir, 'test.ts');
       await writeFile(testFile, 'function test() { return 1; }');
 
-      const customConfig = {
-        runtime: mockConfig.runtime,
-        smartModel: 'custom-smart-model',
-      };
-
       const generateSpy = vi
-        .spyOn(mockOpenaiService, 'generate')
+        .spyOn(mockOpenaiService, 'response')
         .mockResolvedValue({
+          conversationId: 'test',
           content: JSON.stringify({
             hunks: [
               {
                 beforeAnchor: 'function',
                 afterAnchor: '}',
-                replacement: 'new code',
+                replacement: 'function\nnew code',
               },
             ],
           }),
@@ -473,13 +468,12 @@ describe('FilesEditReapplyTool', () => {
           editInstructions: 'Change return value',
           codeSketch: 'function test() {\n// ... existing code ...\n}',
         },
-        customConfig,
+        mockConfig,
         {} as any,
       );
 
-      // Verify the custom model was used
       expect(generateSpy).toHaveBeenCalled();
-      expect(generateSpy.mock.calls[0]?.[1]?.model).toBe('custom-smart-model');
+      expect(generateSpy.mock.calls[0]?.[1]?.model).toBeDefined();
     });
   });
 
@@ -519,7 +513,8 @@ describe('FilesEditReapplyTool', () => {
         stderr: '',
       });
 
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
         content: JSON.stringify({
           hunks: [
             {
@@ -557,7 +552,8 @@ describe('FilesEditReapplyTool', () => {
         stderr: '',
       });
 
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
         content: JSON.stringify({
           hunks: [
             {
@@ -597,7 +593,8 @@ describe('FilesEditReapplyTool', () => {
         stderr: '',
       });
 
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
         content: JSON.stringify({
           hunks: [
             {
@@ -711,7 +708,7 @@ describe('FilesEditReapplyTool', () => {
         stderr: '',
       });
 
-      vi.spyOn(mockOpenaiService, 'generate').mockRejectedValue(
+      vi.spyOn(mockOpenaiService, 'response').mockRejectedValue(
         new Error('Model error'),
       );
 
@@ -740,8 +737,9 @@ describe('FilesEditReapplyTool', () => {
       await writeFile(testFile, 'content');
 
       const generateSpy = vi
-        .spyOn(mockOpenaiService, 'generate')
+        .spyOn(mockOpenaiService, 'response')
         .mockResolvedValue({
+          conversationId: 'test',
           content: JSON.stringify({
             hunks: [
               {
@@ -765,14 +763,14 @@ describe('FilesEditReapplyTool', () => {
           editInstructions: 'Edit',
           codeSketch: 'content\n// ... existing code ...',
         },
-        { runtime: mockConfig.runtime, smartModel: 'custom-smart-model' },
+        { runtime: mockConfig.runtime },
         {} as any,
       );
 
-      // Verify smart model was actually used
+      // Verify model is provided (env-controlled)
       expect(generateSpy).toHaveBeenCalled();
       const callArgs = generateSpy.mock.calls[0];
-      expect(callArgs?.[1]?.model).toBe('custom-smart-model');
+      expect(callArgs?.[1]?.model).toBeDefined();
     });
   });
 });

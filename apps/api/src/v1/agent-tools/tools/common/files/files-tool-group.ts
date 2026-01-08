@@ -29,16 +29,6 @@ export type FilesToolGroupConfig = FilesBaseToolConfig & {
    * Defaults to true.
    */
   includeEditActions?: boolean;
-  /**
-   * Model to use for fast/efficient LLM parsing in files_edit.
-   * Required when includeEditActions is true.
-   */
-  fastModel: string;
-  /**
-   * Model to use for smart/capable LLM parsing in files_edit_reapply.
-   * Required when includeEditActions is true.
-   */
-  smartModel: string;
 };
 
 @Injectable()
@@ -126,11 +116,9 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     if (includeEditActions) {
       const editToolConfig: FilesEditToolConfig = {
         runtime: config.runtime,
-        fastModel: config.fastModel,
       };
       const reapplyToolConfig: FilesEditReapplyToolConfig = {
         runtime: config.runtime,
-        smartModel: config.smartModel,
       };
 
       tools.push(

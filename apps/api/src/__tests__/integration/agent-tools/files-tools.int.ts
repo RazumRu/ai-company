@@ -2,6 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BaseException } from '@packages/common';
+import dedent from 'dedent';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
@@ -34,7 +35,7 @@ import { createTestModule } from '../setup';
 const THREAD_ID = `files-tools-int-${Date.now()}`;
 const WORKSPACE_DIR = `/runtime-workspace/${THREAD_ID}`;
 const TAGS_ALIAS = 'files-tools-index';
-const INT_TEST_TIMEOUT = 30000;
+const INT_TEST_TIMEOUT = 60000;
 const RUNNABLE_CONFIG: ToolRunnableConfig<BaseAgentConfigurable> = {
   configurable: {
     thread_id: THREAD_ID,
@@ -766,41 +767,92 @@ describe('Files tools integration', () => {
   );
 
   it(
-    'files_edit: tool can be invoked with proper schema',
+    'files_edit: succeeds on a simple, unambiguous edit',
     { timeout: INT_TEST_TIMEOUT },
     async () => {
-      // Create initial file
-      const fileName = `edit-test-${Date.now()}.ts`;
-      const filePath = await writeSampleFile(fileName);
-
-      // Invoke files_edit (may succeed or fail depending on LLM parsing)
-      // The key is that it should not throw and should return proper structure
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Change greeting',
-          codeSketch: `export function greet(name: string) {
+      const unique = `UNIQUE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const filePath = `${WORKSPACE_DIR}/files-edit-success-${unique}.ts`;
+      const padding = Array.from(
+        { length: 250 },
+        (_, i) => `// pad-${unique}-${i}`,
+      ).join('\n');
+      const keepBlock = Array.from(
+        { length: 12 },
+        (_, i) => `export const keep_${unique}_${i} = ${i};`,
+      ).join('\n');
+      const initialContent = `export function greet(name: string) {
   return \`Hello, \${name}!\`;
-// ... existing code ...
-}`,
-        },
-        { runtime, fastModel: 'gpt-5-mini' },
+}
+
+// ${unique}_BEFORE
+export const value = 'old';
+${keepBlock}
+// ${unique}_AFTER
+export const tail_${unique} = true;
+${padding}
+`;
+
+      await filesApplyChangesTool.invoke(
+        { filePath, oldText: '', newText: initialContent },
+        { runtime },
         RUNNABLE_CONFIG,
       );
 
-      // Verify the response structure is correct
-      expect(editResult).toBeDefined();
-      expect(typeof editResult.success).toBe('boolean');
-      expect(typeof editResult.filePath).toBe('string');
+      // Invoke files_edit - this should succeed with very strong, unique anchors.
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: dedent`
+            Change the single line between the anchors from:
+              export const value = 'old';
+            to:
+              export const value = 'new';
+
+            Use these EXACT anchors from the CURRENT FILE:
+            beforeAnchor (must be exactly this line):
+              // ${unique}_BEFORE
+            afterAnchor (must be exactly this line):
+              // ${unique}_AFTER
+
+            The replacement MUST be the line that goes BETWEEN those anchors (do not add it after afterAnchor).
+          `,
+          codeSketch: `export function greet(name: string) {
+  return \`Hello, \${name}!\`;
+}
+
+// ... existing code ...
+// ${unique}_BEFORE
+export const value = 'new';
+${keepBlock}
+// ... existing code ...
+// ${unique}_AFTER
+export const tail_${unique} = true;
+// ... existing code ...`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
 
       if (!editResult.success) {
-        // If it fails, verify error structure
-        expect(editResult.error).toBeDefined();
-      } else {
-        // If it succeeds, verify success structure
-        expect(editResult.diff).toBeDefined();
-        expect(typeof editResult.appliedHunks).toBe('number');
+        // Make failures actionable in CI logs
+
+        console.error('files_edit success test failed:', editResult.error);
+        throw new Error(
+          `files_edit expected success but got: ${editResult.error}`,
+        );
       }
+
+      expect(editResult.filePath).toBe(filePath);
+      expect(editResult.diff).toBeDefined();
+      expect(editResult.appliedHunks).toBeGreaterThan(0);
+
+      const { output: readAfter } = await filesReadTool.invoke(
+        { filesToRead: [{ filePath }] },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+      const contentAfter = readAfter.files?.[0]?.content || '';
+      expect(contentAfter).toContain("export const value = 'new'");
     },
   );
 
@@ -822,14 +874,18 @@ describe('Files tools integration', () => {
 // ... existing code ...
 }`,
         },
-        { runtime, fastModel: 'gpt-5-mini' },
+        { runtime },
         RUNNABLE_CONFIG,
       );
 
+      // With LLM alignment, this should NOT silently succeed in editing unrelated parts of the file.
+      // It may fail for "anchors not found", "ambiguous/not unique", or safety limits depending on the anchors proposed.
       expect(editResult.success).toBe(false);
       if (!editResult.success) {
         expect(editResult.error).toBeDefined();
-        expect(editResult.error).toContain('Could not find anchors');
+        expect(editResult.error).toMatch(
+          /Could not find|anchors|unique|ambiguous|multiple|limit|exceeds/i,
+        );
       }
     },
   );
@@ -850,14 +906,16 @@ describe('Files tools integration', () => {
   return 'modified';
 }`,
         },
-        { runtime, fastModel: 'gpt-5-mini' },
+        { runtime },
         RUNNABLE_CONFIG,
       );
 
-      expect(editResult.success).toBe(false);
+      // Markerless sketch is now allowed (Cursor-like behavior), so LLM will attempt to process it
+      // The result could be success or failure depending on LLM interpretation, but "marker" is no longer required
       if (!editResult.success) {
         expect(editResult.error).toBeDefined();
-        expect(editResult.error).toContain('marker');
+        // Should not complain about missing markers
+        expect(editResult.error).not.toContain('marker');
       }
     },
   );
@@ -866,310 +924,76 @@ describe('Files tools integration', () => {
     'files_edit_reapply: tool can be invoked and uses smart model',
     { timeout: INT_TEST_TIMEOUT },
     async () => {
-      // Create initial file
-      const fileName = `reapply-test-${Date.now()}.ts`;
-      const filePath = await writeSampleFile(fileName);
+      const unique = `UNIQUE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const filePath = `${WORKSPACE_DIR}/files-edit-reapply-success-${unique}.ts`;
+      const padding = Array.from(
+        { length: 120 },
+        (_, i) => `// pad-${unique}-${i}`,
+      ).join('\n');
 
-      // Use files_edit_reapply (smart fallback)
+      const initialContent = `export class Service {
+// ${unique}_BEFORE
+run() {
+  return 'old';
+}
+// ${unique}_AFTER
+static readonly __tail = '${unique}_TAIL';
+// ${unique}_AFTER_ANCHOR
+}
+${padding}
+`;
+
+      await filesApplyChangesTool.invoke(
+        { filePath, oldText: '', newText: initialContent },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
       const { output: reapplyResult } = await filesEditReapplyTool.invoke(
         {
           filePath,
-          editInstructions: 'Update constructor',
-          codeSketch: `export class HelperService {
-  constructor(private prefix: string = 'helper') {}
-// ... existing code ...
-}`,
-        },
-        { runtime, smartModel: 'gpt-5.1' },
-        RUNNABLE_CONFIG,
-      );
-
-      // Verify response structure
-      expect(reapplyResult).toBeDefined();
-      expect(typeof reapplyResult.success).toBe('boolean');
-      expect(typeof reapplyResult.filePath).toBe('string');
-
-      if (!reapplyResult.success) {
-        expect(reapplyResult.error).toBeDefined();
-      } else {
-        expect(reapplyResult.diff).toBeDefined();
-        expect(typeof reapplyResult.appliedHunks).toBe('number');
-      }
-    },
-  );
-
-  it(
-    'files_edit: handles file read and provides structured response',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const fileName = `edit-basic-test-${Date.now()}.ts`;
-      const filePath = await writeSampleFile(fileName);
-
-      // Invoke with a simple sketch
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Modify the function',
-          codeSketch: `export function greet(name: string) {
-// ... existing code ...
-}`,
-        },
-        { runtime, fastModel: 'gpt-5-mini' },
-        RUNNABLE_CONFIG,
-      );
-
-      // Verify tool returns proper structure (may succeed or fail)
-      expect(editResult).toBeDefined();
-      expect(editResult.filePath).toBe(filePath);
-      expect(typeof editResult.success).toBe('boolean');
-    },
-  );
-
-  it(
-    'files_edit: processes multiple markers in sketch',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const fileName = `multi-marker-test-${Date.now()}.ts`;
-      const filePath = await writeSampleFile(fileName);
-
-      // Sketch with multiple markers
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Update multiple sections',
-          codeSketch: `export function greet(name: string) {
-// ... existing code ...
+          editInstructions: 'Change return string from old to new.',
+          codeSketch: `export class Service {
+// ${unique}_BEFORE
+run() {
+  return 'new';
 }
-
-export class HelperService {
-// ... existing code ...
-}`,
-        },
-        { runtime, fastModel: 'gpt-5-mini' },
-        RUNNABLE_CONFIG,
-      );
-
-      // Verify structure regardless of success/failure
-      expect(editResult).toBeDefined();
-      expect(typeof editResult.success).toBe('boolean');
-
-      if (editResult.success) {
-        // If successful, verify it detected multiple hunks
-        expect(editResult.appliedHunks).toBeGreaterThanOrEqual(0);
-      }
-    },
-  );
-
-  it(
-    'files_edit: successfully creates and applies edit with proper workflow',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      // Create a simple file with deterministic content
-      const fileName = `e2e-edit-test-${Date.now()}.ts`;
-      const filePath = `${WORKSPACE_DIR}/${fileName}`;
-      const initialContent = `export const oldValue = 'old';\n\nexport function calculate(a: number, b: number) {\n  return a + b;\n}`;
-
-      await filesApplyChangesTool.invoke(
-        {
-          filePath,
-          oldText: '',
-          newText: initialContent,
+// ${unique}_AFTER
+static readonly __tail = '${unique}_TAIL';
+// ${unique}_AFTER_ANCHOR
+}
+// ... existing code ...`,
         },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      // First, verify the file was created correctly
-      const { output: readBefore } = await filesReadTool.invoke(
+      if (!reapplyResult.success) {
+        console.error(
+          'files_edit_reapply success test failed:',
+          reapplyResult.error,
+        );
+        throw new Error(
+          `files_edit_reapply expected success but got: ${reapplyResult.error}`,
+        );
+      }
+
+      expect(reapplyResult.filePath).toBe(filePath);
+      expect(reapplyResult.diff).toBeDefined();
+      expect(reapplyResult.appliedHunks).toBeGreaterThan(0);
+
+      const { output: readAfter } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
-
-      const contentBefore = readBefore.files?.[0]?.content || '';
-      expect(contentBefore).toContain('export const oldValue');
-      expect(contentBefore).toContain('export function calculate');
-
-      // Edit with simple deterministic sketch
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Update the constant value',
-          codeSketch: `export const oldValue = 'old';
-// ... existing code ...
-export function calculate(a: number, b: number) {`,
-        },
-        { runtime, fastModel: 'gpt-5-mini' },
-        RUNNABLE_CONFIG,
-      );
-
-      // Verify the response structure (may succeed or fail depending on parsing)
-      expect(editResult).toBeDefined();
-      expect(typeof editResult.success).toBe('boolean');
-      expect(editResult.filePath).toBe(filePath);
-
-      if (editResult.success) {
-        // If successful, check that we got reasonable output
-        expect(editResult.appliedHunks).toBeGreaterThan(0);
-        expect(editResult.diff).toBeDefined();
-
-        // Verify the file still exists and has some content
-        const { output: readAfter } = await filesReadTool.invoke(
-          { filesToRead: [{ filePath }] },
-          { runtime },
-          RUNNABLE_CONFIG,
-        );
-
-        const contentAfter = readAfter.files?.[0]?.content || '';
-        expect(contentAfter.length).toBeGreaterThan(0);
-      } else {
-        // If it failed, verify proper error structure
-        expect(editResult.error).toBeDefined();
-      }
+      const contentAfter = readAfter.files?.[0]?.content || '';
+      expect(contentAfter).toContain("return 'new'");
+      expect(contentAfter).not.toContain("return 'old'");
     },
   );
 
-  it(
-    'files_edit: detects anchor mismatch after file modification',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const fileName = `mismatch-test-${Date.now()}.ts`;
-      const filePath = `${WORKSPACE_DIR}/${fileName}`;
-      const initialContent = `export const value = 'initial';\nexport const other = 'data';`;
-
-      await filesApplyChangesTool.invoke(
-        {
-          filePath,
-          oldText: '',
-          newText: initialContent,
-        },
-        { runtime },
-        RUNNABLE_CONFIG,
-      );
-
-      // Modify the file directly
-      await filesApplyChangesTool.invoke(
-        {
-          filePath,
-          oldText: `export const value = 'initial';`,
-          newText: `export const value = 'modified';`,
-        },
-        { runtime },
-        RUNNABLE_CONFIG,
-      );
-
-      // Now try to apply an edit based on the old content (with proper markers)
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Update value',
-          codeSketch: `export const value = 'initial';
-// ... existing code ...
-export const other`,
-        },
-        { runtime, fastModel: 'gpt-5-mini' },
-        RUNNABLE_CONFIG,
-      );
-
-      // Should fail since 'initial' no longer exists in file
-      expect(editResult).toBeDefined();
-      if (!editResult.success) {
-        // Should fail with NOT_FOUND_ANCHOR since the old value is gone
-        expect(editResult.error).toBeDefined();
-        expect(editResult.error).toContain('Could not find anchors');
-      }
-    },
-  );
-
-  it(
-    'files_edit_reapply: successfully falls back when deterministic parsing fails',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const fileName = `fallback-test-${Date.now()}.ts`;
-      const filePath = `${WORKSPACE_DIR}/${fileName}`;
-      const initialContent = `export function complexFunction(param1: string, param2: number) {\n  const result = param1.repeat(param2);\n  return result.toUpperCase();\n}`;
-
-      await filesApplyChangesTool.invoke(
-        {
-          filePath,
-          oldText: '',
-          newText: initialContent,
-        },
-        { runtime },
-        RUNNABLE_CONFIG,
-      );
-
-      // Use a vague sketch that requires LLM parsing
-      const { output: reapplyResult } = await filesEditReapplyTool.invoke(
-        {
-          filePath,
-          editInstructions:
-            'Make the function return lowercase instead of uppercase',
-          codeSketch: `export function complexFunction
-// ... existing code ...
-  return result`,
-        },
-        { runtime, smartModel: 'gpt-5.1' },
-        RUNNABLE_CONFIG,
-      );
-
-      // Verify structure (success or failure both valid for LLM-based parsing)
-      expect(reapplyResult).toBeDefined();
-      expect(typeof reapplyResult.success).toBe('boolean');
-      expect(reapplyResult.filePath).toBe(filePath);
-
-      if (reapplyResult.success) {
-        // If successful, verify diff is present
-        expect(reapplyResult.diff).toBeDefined();
-        expect(reapplyResult.appliedHunks).toBeGreaterThan(0);
-      } else {
-        // If failed, verify proper error structure
-        expect(reapplyResult.error).toBeDefined();
-      }
-    },
-  );
-
-  it(
-    'files_edit: respects limit enforcement',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const fileName = `limits-test-${Date.now()}.ts`;
-      const filePath = `${WORKSPACE_DIR}/${fileName}`;
-
-      // Create a file that's just under the size limit
-      const largeContent = 'x'.repeat(999_000); // ~999KB
-
-      await filesApplyChangesTool.invoke(
-        {
-          filePath,
-          oldText: '',
-          newText: largeContent,
-        },
-        { runtime },
-        RUNNABLE_CONFIG,
-      );
-
-      // Try to edit - should work since file is under 1MB
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Add marker',
-          codeSketch: `xxx
-// ... existing code ...
-xxx`,
-        },
-        { runtime, fastModel: 'gpt-5-mini' },
-        RUNNABLE_CONFIG,
-      );
-
-      // Should either succeed or fail for reasons other than size limit
-      expect(editResult).toBeDefined();
-      if (!editResult.success) {
-        // Ensure error isn't due to size limit for an under-limit file.
-        expect(editResult.error || '').not.toContain('exceeds');
-      }
-    },
-  );
+  // NOTE: More detailed, LLM-dependent `files_edit` scenario coverage lives in unit tests.
 });
 
 describe('Files tools graph execution', () => {

@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OpenaiService } from '../../../../openai/openai.service';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
-import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesEditTool, FilesEditToolConfig } from './files-edit.tool';
 
 describe('FilesEditTool', () => {
@@ -15,7 +14,6 @@ describe('FilesEditTool', () => {
   let mockConfig: FilesEditToolConfig;
   let testDir: string;
   let mockOpenaiService: OpenaiService;
-  let mockFilesApplyChangesTool: FilesApplyChangesTool;
 
   beforeEach(async () => {
     // Create temporary directory for tests
@@ -23,12 +21,10 @@ describe('FilesEditTool', () => {
     await mkdir(testDir, { recursive: true });
 
     mockOpenaiService = {
-      generate: vi.fn(),
+      response: vi.fn(),
     } as unknown as OpenaiService;
 
-    mockFilesApplyChangesTool = new FilesApplyChangesTool();
-
-    tool = new FilesEditTool(mockOpenaiService, mockFilesApplyChangesTool);
+    tool = new FilesEditTool(mockOpenaiService);
 
     const mockRuntime = {
       getWorkdir: () => testDir,
@@ -36,7 +32,6 @@ describe('FilesEditTool', () => {
 
     mockConfig = {
       runtime: mockRuntime,
-      fastModel: 'gpt-5-mini',
     };
   });
 
@@ -96,121 +91,63 @@ describe('FilesEditTool', () => {
     });
   });
 
-  describe('parseDeterministicAnchors', () => {
-    it('should parse simple sketch with one marker', () => {
-      const fileContent = 'line1\nline2\nline3\nline4\nline5';
+  describe('validateSketchFormat', () => {
+    it('should accept sketch with markers', () => {
       const sketch = 'line1\nline2\n// ... existing code ...\nline4\nline5';
 
-      const result = tool['parseDeterministicAnchors'](fileContent, sketch);
+      const result = tool['validateSketchFormat'](sketch);
 
-      expect(result.success).toBe(true);
-      expect(result.hunks).toHaveLength(1);
-      expect(result.hunks?.[0]?.beforeAnchor).toContain('line1');
-      expect(result.hunks?.[0]?.afterAnchor).toContain('line4');
+      expect(result.valid).toBe(true);
+      expect(result.error).toBeUndefined();
     });
 
-    it('should fail with INVALID_SKETCH_FORMAT when no markers present', () => {
-      const fileContent = 'line1\nline2\nline3';
+    it('should allow sketch with no markers (markerless, like Cursor)', () => {
       const sketch = 'line1\nline2\nline3';
 
-      const result = tool['parseDeterministicAnchors'](fileContent, sketch);
+      const result = tool['validateSketchFormat'](sketch);
 
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe('INVALID_SKETCH_FORMAT');
-      expect(result.errorDetails).toContain('must contain at least one');
+      expect(result.valid).toBe(true);
+      expect(result.warning).toBeDefined();
+      expect(result.warning).toContain('no');
     });
 
-    it('should fail with INVALID_SKETCH_FORMAT when anchors are empty', () => {
-      const fileContent = 'line1\nline2\nline3';
-      const sketch = '// ... existing code ...';
-
-      const result = tool['parseDeterministicAnchors'](fileContent, sketch);
-
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe('INVALID_SKETCH_FORMAT');
-      expect(result.errorDetails).toContain('cannot be empty');
-    });
-
-    it('should validate anchor quality', () => {
-      const fileContent = 'line1\nline2\nline3\nline4\nline5';
-      // Test with good anchors (multiple lines, sufficient context)
-      const goodSketch = 'line1\nline2\n// ... existing code ...\nline4\nline5';
-
-      const result = tool['parseDeterministicAnchors'](fileContent, goodSketch);
-
-      // With good anchors, should either succeed or need LLM, but not return invalid format
-      expect(result.errorCode).not.toBe('INVALID_SKETCH_FORMAT');
-    });
-
-    it('should parse multiple markers', () => {
-      const fileContent = 'line1\nline2\nline3\nline4\nline5\nline6';
+    it('should accept sketch with one marker', () => {
       const sketch =
-        'line1\nline2\n// ... existing code ...\nline4\n// ... existing code ...\nline6';
+        'function test() {\n  line1\n// ... existing code ...\n  line3\n}';
 
-      const result = tool['parseDeterministicAnchors'](fileContent, sketch);
+      const result = tool['validateSketchFormat'](sketch);
 
-      expect(result.success).toBe(true);
-      expect(result.hunks).toHaveLength(2);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should accept sketch with multiple markers', () => {
+      const sketch =
+        'class Test {\n  methodA() { }\n// ... existing code ...\n  methodC() { }\n// ... existing code ...\n}';
+
+      const result = tool['validateSketchFormat'](sketch);
+
+      expect(result.valid).toBe(true);
     });
   });
 
-  describe('findMatchInContent', () => {
-    it('should find exact match', () => {
+  describe('findAllAnchorPairs', () => {
+    it('should find a single valid before→after pair', () => {
       const content = 'abc\ndef\nghi';
-      const beforeAnchor = 'abc';
-      const afterAnchor = 'ghi';
-
-      const result = tool['findMatchInContent'](
-        content,
-        beforeAnchor,
-        afterAnchor,
-        'exact',
-      );
-
-      expect(result).not.toBeNull();
-      expect(result?.start).toBe(0);
-      expect(result?.matchedText).toBe('abc\ndef\nghi');
+      const pairs = tool['findAllAnchorPairs'](content, 'abc', 'ghi');
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]?.matchedText).toBe('abc\ndef\nghi');
     });
 
-    it('should return null when anchor not found', () => {
+    it('should return empty when anchors not found', () => {
       const content = 'abc\ndef\nghi';
-      const beforeAnchor = 'xyz';
-      const afterAnchor = 'ghi';
-
-      const result = tool['findMatchInContent'](
-        content,
-        beforeAnchor,
-        afterAnchor,
-        'exact',
-      );
-
-      expect(result).toBeNull();
+      const pairs = tool['findAllAnchorPairs'](content, 'xyz', 'ghi');
+      expect(pairs).toHaveLength(0);
     });
 
-    it('should detect ambiguous matches', () => {
-      // When the same pattern appears multiple times, it should detect ambiguity
-      // In this case, "const x = 1;" appears twice, making it ambiguous
-      const content = 'const x = 1;\nconst y = 2;\nconst x = 1;\nconst z = 3;';
-      const beforeAnchor = 'const x = 1;';
-      const afterAnchor = 'const z = 3;';
-
-      const result = tool['findMatchInContent'](
-        content,
-        beforeAnchor,
-        afterAnchor,
-        'exact',
-      );
-
-      // Should detect ambiguous match when beforeAnchor appears multiple times
-      expect(result).not.toBeNull();
-      if (result && result.start === -1) {
-        // Ambiguity detected
-        expect(result.start).toBe(-1);
-      } else {
-        // If not detected, verify there are multiple occurrences
-        const occurrences = content.split('const x = 1;').length - 1;
-        expect(occurrences).toBeGreaterThan(1);
-      }
+    it('should return multiple pairs when beforeAnchor repeats', () => {
+      const content = 'const x = 1;\nA\nconst x = 1;\nB\nEND';
+      const pairs = tool['findAllAnchorPairs'](content, 'const x = 1;', 'END');
+      expect(pairs.length).toBeGreaterThan(1);
     });
   });
 
@@ -219,9 +156,9 @@ describe('FilesEditTool', () => {
       const fileContent = 'function test() {\n  return 1;\n}';
       const hunks = [
         {
-          beforeAnchor: 'function test() {',
-          afterAnchor: '}',
-          replacement: 'function test() {\n  return 2;\n}',
+          beforeAnchor: 'function test() {\n  return',
+          afterAnchor: '1;\n}',
+          replacement: ' 2;',
         },
       ];
 
@@ -231,12 +168,12 @@ describe('FilesEditTool', () => {
       expect(result.edits).toHaveLength(1);
     });
 
-    it('should return NOT_FOUND_ANCHOR error when anchors not found', () => {
+    it('should return error when anchors not found', () => {
       const fileContent = 'function test() {\n  return 1;\n}';
       const hunks = [
         {
-          beforeAnchor: 'nonexistent',
-          afterAnchor: 'also nonexistent',
+          beforeAnchor: 'nonexistent\nanchor text',
+          afterAnchor: 'also nonexistent\nanchor text',
           replacement: 'new code',
         },
       ];
@@ -244,41 +181,35 @@ describe('FilesEditTool', () => {
       const result = tool['resolveHunksToEdits'](fileContent, hunks);
 
       expect(result.error).toBeDefined();
-      expect(result.error?.code).toBe('NOT_FOUND_ANCHOR');
+      expect(result.error).toContain('Could not find anchors');
     });
 
     it('should detect ambiguous matches when pattern repeats', () => {
-      // Test that ambiguous patterns are handled
-      // When beforeAnchor appears multiple times before afterAnchor, it's ambiguous
       const content =
-        'function test() {}\ncode here\nfunction test() {}\nmore code\nend';
-      const beforeAnchor = 'function test() {}';
-      const afterAnchor = 'end';
+        'function test() {\n  return 1;\n}\n// end marker\nfunction test() {\n  return 2;\n}\n// end marker';
+      const beforeAnchor = 'function test() {\n  return';
+      const afterAnchor = '}\n// end marker';
 
-      const result = tool['findMatchInContent'](
-        content,
-        beforeAnchor,
-        afterAnchor,
-        'exact',
-      );
+      const hunks = [
+        {
+          beforeAnchor,
+          afterAnchor,
+          replacement: 'NEW',
+        },
+      ];
 
-      // Verify ambiguity detection mechanism exists
-      expect(result).not.toBeNull();
-      if (result && result.start === -1) {
-        expect(result.start).toBe(-1); // Ambiguous
-      } else {
-        // Verify the pattern does repeat
-        const matches = content.match(/function test\(\) \{\}/g);
-        expect(matches).toBeDefined();
-        expect(matches?.length).toBeGreaterThan(1);
-      }
+      const result = tool['resolveHunksToEdits'](content, hunks);
+      expect(result.error).toBeDefined();
+      expect(result.error).toMatch(/Ambiguous|occurrence/i);
     });
   });
 
   describe('checkLimits', () => {
     it('should pass when all limits are within bounds', () => {
       const fileContent = 'line1\nline2\nline3\n'.repeat(10);
-      const edits = [{ oldText: 'line1', newText: 'line1-modified' }];
+      const edits = [
+        { oldText: 'line1', newText: 'line1-modified', start: 0, end: 0 },
+      ];
 
       const result = tool['checkLimits'](fileContent, edits);
 
@@ -287,14 +218,14 @@ describe('FilesEditTool', () => {
 
     it('should fail when file size exceeds limit', () => {
       const fileContent = 'x'.repeat(1_000_001); // > 1MB
-      const edits = [{ oldText: 'x', newText: 'y' }];
+      const edits = [{ oldText: 'x', newText: 'y', start: 0, end: 0 }];
 
       const result = tool['checkLimits'](fileContent, edits);
 
       expect(result.ok).toBe(false);
-      expect(result.errorCode).toBe('LIMIT_EXCEEDED');
-      expect(result.details).toContain('File size');
-      expect(result.details).toContain('MB');
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('File size');
+      expect(result.error).toContain('MB');
     });
 
     it('should fail when hunk count exceeds limit', () => {
@@ -302,14 +233,16 @@ describe('FilesEditTool', () => {
       const edits = Array.from({ length: 21 }, (_, i) => ({
         oldText: `line${i}`,
         newText: `modified${i}`,
+        start: 0,
+        end: 0,
       }));
 
       const result = tool['checkLimits'](fileContent, edits);
 
       expect(result.ok).toBe(false);
-      expect(result.errorCode).toBe('LIMIT_EXCEEDED');
-      expect(result.details).toContain('hunks exceeds');
-      expect(result.details).toContain('21');
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('hunks exceeds');
+      expect(result.error).toContain('21');
     });
 
     it('should fail when changed lines ratio exceeds limit', () => {
@@ -318,15 +251,17 @@ describe('FilesEditTool', () => {
         {
           oldText: 'line1\nline2\nline3\nline4',
           newText: 'modified1\nmodified2\nmodified3\nmodified4',
+          start: 0,
+          end: 0,
         },
       ];
 
       const result = tool['checkLimits'](fileContent, edits);
 
       expect(result.ok).toBe(false);
-      expect(result.errorCode).toBe('LIMIT_EXCEEDED');
-      expect(result.details).toContain('change ratio');
-      expect(result.details).toContain('%');
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('change ratio');
+      expect(result.error).toContain('%');
     });
   });
 
@@ -405,17 +340,13 @@ describe('FilesEditTool', () => {
   });
 
   describe('error responses', () => {
-    it('should return structured error for INVALID_SKETCH_FORMAT', () => {
-      // Test at unit level with parseDeterministicAnchors
-      const result = tool['parseDeterministicAnchors'](
-        'line1\nline2\nline3',
-        'no markers here',
-      );
+    it('should allow markerless sketches with warning', () => {
+      // Test at unit level with validateSketchFormat
+      const result = tool['validateSketchFormat']('no markers here');
 
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe('INVALID_SKETCH_FORMAT');
-      expect(result.errorDetails).toBeDefined();
-      expect(result.suggestedNextAction).toBeDefined();
+      expect(result.valid).toBe(true);
+      expect(result.warning).toBeDefined();
+      expect(result.warning).toContain('no');
     });
   });
 
@@ -436,92 +367,89 @@ describe('FilesEditTool', () => {
       const instructions = tool.getDetailedInstructions(mockConfig);
 
       expect(instructions).toContain('// ... existing code ...');
-      expect(instructions).toContain('CRITICAL');
+      expect(instructions).toContain('ritical'); // matches both "Critical" and "CRITICAL"
       expect(instructions).toContain('error');
       expect(instructions).toContain('files_edit_reapply');
     });
   });
 
   describe('OpenaiService integration', () => {
-    it('should handle OpenaiService.generate() throwing error', async () => {
-      vi.spyOn(mockOpenaiService, 'generate').mockRejectedValue(
+    it('should handle OpenaiService.response() throwing error', async () => {
+      vi.spyOn(mockOpenaiService, 'response').mockRejectedValue(
         new Error('API timeout'),
       );
 
       const result = await tool['parseLLM'](
         'function test() {\n  return 1;\n}\n',
         'Change return value',
-        'function test() {\n// ... existing code ...\n}\n',
-        mockConfig.fastModel,
+        'function test() {\n// ... existing code ...\nnew_code\n// ... existing code ...\n}\n',
       );
 
       expect(result.success).toBe(false);
-      expect(result.errorDetails).toContain('API timeout');
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('API timeout');
     });
 
     it('should handle malformed JSON from LLM', async () => {
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
-        content: 'This is not JSON at all!',
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
+        content: '<json>{invalid json here</json>',
       });
 
       const result = await tool['parseLLM'](
         'function test() {\n  return 1;\n}\n',
         'Change return value',
-        'function test() {\n// ... existing code ...\n}\n',
-        mockConfig.fastModel,
+        'function test() {\n// ... existing code ...\nnew_code\n// ... existing code ...\n}\n',
       );
 
       expect(result.success).toBe(false);
-      expect(result.errorDetails).toContain('valid JSON');
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('Invalid JSON');
     });
 
     it('should handle empty hunks array from LLM', async () => {
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
-        content: JSON.stringify({ hunks: [] }),
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
+        content: `<json>${JSON.stringify({ hunks: [] })}</json>`,
       });
 
       const result = await tool['parseLLM'](
         'function test() {\n  return 1;\n}\n',
         'Change return value',
-        'function test() {\n// ... existing code ...\n}\n',
-        mockConfig.fastModel,
+        'function test() {\n// ... existing code ...\nnew_code\n// ... existing code ...\n}\n',
       );
 
       expect(result.success).toBe(false);
-      expect(result.errorDetails).toContain('empty');
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('hunk structure');
     });
   });
 
   describe('model configuration', () => {
-    it('should use provided fastModel when calling LLM parser', async () => {
-      const customConfig = {
-        runtime: mockConfig.runtime,
-        fastModel: 'custom-fast-model',
-      };
-
+    it('should call OpenaiService.response when parsing with LLM', async () => {
       const generateSpy = vi
-        .spyOn(mockOpenaiService, 'generate')
+        .spyOn(mockOpenaiService, 'response')
         .mockResolvedValue({
-          content: JSON.stringify({
+          conversationId: 'test',
+          content: `<json>${JSON.stringify({
             hunks: [
               {
-                beforeAnchor: 'function',
-                afterAnchor: '}',
-                replacement: 'new code',
+                beforeAnchor: 'function test() {',
+                afterAnchor: '  return 1;\n}',
+                replacement: '  return 2;',
               },
             ],
-          }),
+          })}</json>`,
         });
 
       await tool['parseLLM'](
         'function test() { return 1; }',
         'Change return value',
         'x\n// ... existing code ...\ny',
-        customConfig.fastModel,
       );
 
-      expect(generateSpy).toHaveBeenCalledTimes(1);
-      expect(generateSpy.mock.calls[0]?.[1]?.model).toBe('custom-fast-model');
+      expect(generateSpy).toHaveBeenCalled();
+      expect(generateSpy.mock.calls[0]?.[1]?.model).toBeDefined();
     });
   });
 
@@ -624,9 +552,10 @@ describe('FilesEditTool', () => {
 
       const result = tool['resolveHunksToEdits'](fileContent, hunks);
 
-      // Should detect overlapping edits
+      // Should detect overlapping edits or return valid edits
       if (result.error) {
-        expect(result.error.code).toBeDefined();
+        expect(result.error).toBeDefined();
+        expect(typeof result.error).toBe('string');
       } else {
         // If no error, edits should be valid and non-overlapping
         expect(result.edits).toBeDefined();
@@ -659,14 +588,12 @@ describe('FilesEditTool', () => {
       const beforeAnchor = 'function test() {  '; // Trailing spaces
       const afterAnchor = '}';
 
-      const result = tool['findMatchInContent'](
+      const pairs = tool['findAllAnchorPairs'](
         fileContent,
-        beforeAnchor.trim(), // Normalize
+        beforeAnchor.trim(),
         afterAnchor,
-        'exact',
       );
-
-      expect(result).not.toBeNull();
+      expect(pairs).toHaveLength(1);
     });
 
     it('should handle anchors with tabs vs spaces', () => {
@@ -674,14 +601,12 @@ describe('FilesEditTool', () => {
       const beforeAnchor = 'function test() {';
       const afterAnchor = '}';
 
-      const result = tool['findMatchInContent'](
+      const pairs = tool['findAllAnchorPairs'](
         fileContent,
         beforeAnchor,
         afterAnchor,
-        'exact',
       );
-
-      expect(result).not.toBeNull();
+      expect(pairs).toHaveLength(1);
     });
   });
 
@@ -691,14 +616,12 @@ describe('FilesEditTool', () => {
       const beforeAnchor = 'const pattern = /test.*$/;';
       const afterAnchor = 'const value = 1;';
 
-      const result = tool['findMatchInContent'](
+      const pairs = tool['findAllAnchorPairs'](
         fileContent,
         beforeAnchor,
         afterAnchor,
-        'exact',
       );
-
-      expect(result).not.toBeNull();
+      expect(pairs).toHaveLength(1);
     });
 
     it('should handle anchors with unicode characters', () => {
@@ -706,14 +629,12 @@ describe('FilesEditTool', () => {
       const beforeAnchor = 'const emoji = "🚀";';
       const afterAnchor = 'const text = "hello";';
 
-      const result = tool['findMatchInContent'](
+      const pairs = tool['findAllAnchorPairs'](
         fileContent,
         beforeAnchor,
         afterAnchor,
-        'exact',
       );
-
-      expect(result).not.toBeNull();
+      expect(pairs).toHaveLength(1);
     });
   });
 
@@ -723,14 +644,16 @@ describe('FilesEditTool', () => {
       const edits = Array.from({ length: 25 }, (_, i) => ({
         oldText: `x${i}`,
         newText: `y${i}`,
+        start: 0,
+        end: 0,
       })); // Exceeds hunk count
 
       const result = tool['checkLimits'](fileContent, edits);
 
       expect(result.ok).toBe(false);
-      expect(result.errorCode).toBe('LIMIT_EXCEEDED');
+      expect(result.error).toBeDefined();
       // Should report at least one limit exceeded
-      expect(result.details).toBeDefined();
+      expect(result.error).toMatch(/limit|exceeds/i);
     });
 
     it('should pass when values are exactly at limit', () => {
@@ -742,6 +665,8 @@ describe('FilesEditTool', () => {
       const edits = Array.from({ length: 20 }, (_, i) => ({
         oldText: `line${i}`,
         newText: `newline${i}`,
+        start: 0,
+        end: 0,
       }));
 
       const result = tool['checkLimits'](fileContent, edits);
@@ -750,10 +675,29 @@ describe('FilesEditTool', () => {
     });
   });
 
-  describe('conflict detection mid-execution', () => {
-    it('should detect file modified between baseline and conflict check', async () => {
+  describe('single-read invoke behavior', () => {
+    it('should not perform a second read for conflict detection (writes based on initial read)', async () => {
       const testFile = join(testDir, 'conflict.ts');
-      await writeFile(testFile, 'original content');
+      const prefix = Array.from(
+        { length: 50 },
+        (_, i) => `// prefix ${i}`,
+      ).join('\n');
+      const suffix = Array.from(
+        { length: 50 },
+        (_, i) => `// suffix ${i}`,
+      ).join('\n');
+      const originalContent = [
+        prefix,
+        'const original = "content";',
+        'const untouchedA = 0;',
+        '// marker A',
+        'const value = 1;',
+        '// marker B',
+        'const untouchedB = 0;',
+        '// end',
+        suffix,
+      ].join('\n');
+      await writeFile(testFile, originalContent);
 
       let readCount = 0;
       vi.spyOn(tool as any, 'execCommand').mockImplementation(
@@ -762,54 +706,63 @@ describe('FilesEditTool', () => {
             readCount++;
             if (readCount === 1) {
               // First read (baseline)
-              return { exitCode: 0, stdout: 'original content', stderr: '' };
-            } else {
-              // Second read (conflict check) - file changed
-              return { exitCode: 0, stdout: 'modified content', stderr: '' };
+              return { exitCode: 0, stdout: originalContent, stderr: '' };
             }
+            // If a second read happens unexpectedly, simulate that the file changed.
+            return {
+              exitCode: 0,
+              stdout:
+                'const modified = "different";\n// marker A\nconst value = 999;\n// marker B\n// end',
+              stderr: '',
+            };
+          }
+          // Write command (printf|base64 -d > tmp && mv tmp target)
+          if (cmd.includes('base64 -d') && cmd.includes('mv')) {
+            return { exitCode: 0, stdout: '', stderr: '' };
           }
           return { exitCode: 0, stdout: '', stderr: '' };
         },
       );
 
       // Mock LLM to return valid hunks
-      vi.spyOn(mockOpenaiService, 'generate').mockResolvedValue({
-        content: JSON.stringify({
+      vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
+        conversationId: 'test',
+        content: `<json>${JSON.stringify({
           hunks: [
             {
-              beforeAnchor: 'original',
-              afterAnchor: 'content',
-              replacement: 'new content',
+              beforeAnchor: 'const untouchedA = 0;\n// marker A',
+              afterAnchor: '// marker B\nconst untouchedB = 0;',
+              replacement: 'const value = 2;',
             },
           ],
-        }),
+        })}</json>`,
       });
 
       const result = await tool.invoke(
         {
           filePath: testFile,
           editInstructions: 'Edit content',
-          codeSketch: 'original\n// ... existing code ...\ncontent',
+          codeSketch:
+            'const original = "content";\n// ... existing code ...\nconst untouchedA = 0;\n// marker A\nconst value = 2;\n// marker B\nconst untouchedB = 0;\n// ... existing code ...\n// end',
         },
         mockConfig,
         {} as any,
       );
 
-      // Should detect conflict
-      expect(result.output.success).toBe(false);
+      expect(readCount).toBe(1);
       if (!result.output.success) {
-        expect(result.output.error).toBeDefined();
-        expect(result.output.error).toContain('File was modified');
+        throw new Error(`invoke failed: ${result.output.error}`);
       }
+      expect(result.output.success).toBe(true);
     });
   });
 
   describe('error message quality', () => {
-    it('should provide actionable suggestions for NOT_FOUND_ANCHOR', () => {
+    it('should provide actionable suggestions when anchors not found', () => {
       const hunks = [
         {
-          beforeAnchor: 'nonexistent',
-          afterAnchor: 'also nonexistent',
+          beforeAnchor: 'nonexistent\ntext here',
+          afterAnchor: 'also nonexistent\ntext here',
           replacement: 'new',
         },
       ];
@@ -818,9 +771,8 @@ describe('FilesEditTool', () => {
 
       expect(result.error).toBeDefined();
       if (result.error) {
-        expect(result.error.code).toBe('NOT_FOUND_ANCHOR');
-        expect(result.error.suggestedAction).toBeDefined();
-        expect(result.error.suggestedAction).toContain('context');
+        expect(result.error).toContain('Could not find anchors');
+        expect(result.error).toContain('EXACT text from the current file');
       }
     });
 
@@ -848,6 +800,352 @@ describe('FilesEditTool', () => {
       if (!result.output.success) {
         expect(result.output.filePath).toBe(testFile);
       }
+    });
+  });
+
+  describe('occurrence selection (disambiguating multiple pairs)', () => {
+    it('should error when multiple pairs found without occurrence', () => {
+      const fileContent = `
+function test() {
+  const x = 1;
+  return x;
+}
+
+function other() {
+  // code here
+}
+
+function test() {
+  const x = 2;
+  return x;
+}
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: 'function test() {\n  const x =',
+          afterAnchor: '  return x;\n}',
+          replacement: 'function test() {\n  const x = 99;\n  return x;\n}',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toMatch(
+        /Ambiguous anchors.*found \d+ valid before→after pairs/,
+      );
+      expect(result.error).toContain('occurrence');
+    });
+
+    it('should select correct pair when occurrence=2', () => {
+      const fileContent = `
+function test() {
+  const x = 1;
+  return x;
+}
+
+function other() {
+  // code here
+}
+
+function test() {
+  const x = 2;
+  return x;
+}
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: 'function test() {\n  const x =',
+          afterAnchor: '  return x;\n}',
+          replacement: ' 99;',
+          occurrence: 2,
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeUndefined();
+      expect(result.edits).toBeDefined();
+      expect(result.edits).toHaveLength(1);
+      // Should select the second occurrence
+      expect(result.edits![0]!.oldText).toContain('const x = 2');
+    });
+
+    it('should error when occurrence is out of range', () => {
+      const fileContent = `
+function test() {
+  const x = 1;
+  return x;
+}
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: 'function test() {\n  const',
+          afterAnchor: '  return x;\n}',
+          replacement: ' x = 99;',
+          occurrence: 5, // Only 1 pair exists
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('occurrence 5 is out of range');
+      expect(result.error).toContain('Only 1 valid matches found');
+    });
+
+    it('should error when occurrence is invalid (zero)', () => {
+      const fileContent = 'function test() {\n  return 1;\n}';
+
+      const hunks = [
+        {
+          beforeAnchor: 'function test() {\n  return',
+          afterAnchor: '1;\n}',
+          replacement: 'new',
+          occurrence: 0,
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('Invalid occurrence value');
+    });
+  });
+
+  describe('overlapping hunks detection', () => {
+    it('should detect overlapping edits and error', () => {
+      const fileContent = `
+// Section A start
+const valueA = 1;
+// Section A end
+// Section B start
+const valueB = 2;
+// Section B end
+// Section C start
+const valueC = 3;
+// Section C end
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: '// Section A start\nconst',
+          afterAnchor: '2;\n// Section B end',
+          replacement: ' modified = "A+B";',
+        },
+        {
+          beforeAnchor: '// Section B start\nconst', // Overlaps with first hunk
+          afterAnchor: '3;\n// Section C end',
+          replacement: ' modified = "B+C";',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toMatch(
+        /Overlapping edits detected.*hunks \d+ and \d+/,
+      );
+      expect(result.error).toContain('non-overlapping regions');
+    });
+
+    it('should allow non-overlapping edits', () => {
+      const fileContent = `
+// Section A start
+const valueA = 1;
+// Section A end
+// Section B start
+const valueB = 2;
+// Section B end
+// Section C start
+const valueC = 3;
+// Section C end
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: '// Section A start\nconst',
+          afterAnchor: '1;\n// Section A end',
+          replacement: ' modifiedA = 999;',
+        },
+        {
+          beforeAnchor: '// Section C start\nconst', // Does not overlap
+          afterAnchor: '3;\n// Section C end',
+          replacement: ' modifiedC = 888;',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeUndefined();
+      expect(result.edits).toBeDefined();
+      expect(result.edits).toHaveLength(2);
+    });
+  });
+
+  describe('replacement-contains-anchor guard', () => {
+    it('should error when replacement contains beforeAnchor', () => {
+      const fileContent = `
+const longVariableNameHere
+= 1;
+const anotherVariable = 2;
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: 'const longVariableNameHere\n=',
+          afterAnchor: '1;\nconst anotherVariable',
+          // Replacement incorrectly includes the beforeAnchor text (>= 20 chars)
+          replacement: ' 99;\nconst longVariableNameHere\n= 88',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('replacement must not include');
+      expect(result.error).toContain('beforeAnchor/afterAnchor');
+    });
+
+    it('should error when replacement contains afterAnchor', () => {
+      const fileContent = `
+import ComponentA from './a';
+export class ModuleX {
+}
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: "import ComponentA from './a';\nexport class",
+          afterAnchor: 'ModuleX {\n}',
+          // Replacement incorrectly includes "ModuleX {\n}" which is the afterAnchor
+          replacement: ' Helper {};\nModuleX {\n}',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('replacement must not include');
+    });
+
+    it('should succeed when replacement is anchor-free', () => {
+      const fileContent = `
+import ComponentA from './a';
+export class ModuleX {
+}
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: "import ComponentA from './a';\nexport class",
+          afterAnchor: 'ModuleX {\n}',
+          // Replacement contains new code without duplicating anchors
+          replacement: ' Helper {};\nexport class',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeUndefined();
+      expect(result.edits).toBeDefined();
+    });
+  });
+
+  describe('weak/common anchor detection', () => {
+    it('should error when beforeAnchor is single-line in large file (>= 20 lines)', () => {
+      // Make file large enough (>= 20 lines) to trigger anchor strength validation
+      const lines = Array.from({ length: 25 }, (_, i) => `line${i}`);
+      const fileContent = lines.join('\n') + '\nconst x = 1;\nconst y\n= 2;';
+
+      const hunks = [
+        {
+          beforeAnchor: 'const x = 1;', // Single line, no newline
+          afterAnchor: 'const y\n= 2;',
+          replacement: 'new',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('Weak beforeAnchor');
+      expect(result.error).toContain('prefer 2+ lines');
+    });
+
+    it('should error when afterAnchor is single-line in large file (>= 20 lines)', () => {
+      // Make file large enough (>= 20 lines) to trigger anchor strength validation
+      const lines = Array.from({ length: 25 }, (_, i) => `line${i}`);
+      const fileContent =
+        lines.join('\n') + '\nconst x\n= 1;\nconst y = 2;\nconst z = 3;';
+
+      const hunks = [
+        {
+          beforeAnchor: 'const x\n= 1;',
+          afterAnchor: 'const y = 2;', // Single line, no newline, NOT at file end
+          replacement: 'new',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('Weak afterAnchor');
+      expect(result.error).toContain('prefer 2+ lines');
+    });
+
+    it('should error when anchor span is too large', () => {
+      const largeContent = `
+// Function start marker
+here
+${'line\n'.repeat(10000)}
+// Function end marker
+here
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: '// Function start marker\nhere',
+          afterAnchor: '// Function end marker\nhere', // Span is > MAX_ANCHOR_SPAN_BYTES (50k)
+          replacement: 'modified',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](largeContent, hunks);
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('Anchor span too large');
+      expect(result.error).toMatch(/\d+ bytes.*exceeds.*byte limit/);
+    });
+
+    it('should succeed when anchors are strong and span is reasonable', () => {
+      const fileContent = `
+function calculateTotal(items) {
+  let total = 0;
+  for (const item of items) {
+    total += item.price;
+  }
+  return total;
+}
+      `.trim();
+
+      const hunks = [
+        {
+          beforeAnchor: 'function calculateTotal(items) {\n  let',
+          afterAnchor: '}\n  return total;\n}',
+          replacement:
+            ' total = items.reduce((sum, item) => sum + item.price, 0);',
+        },
+      ];
+
+      const result = tool['resolveHunksToEdits'](fileContent, hunks);
+
+      expect(result.error).toBeUndefined();
+      expect(result.edits).toBeDefined();
+      expect(result.edits).toHaveLength(1);
     });
   });
 });

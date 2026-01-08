@@ -11,34 +11,12 @@ type GenerateResult = {
   conversationId: string;
 };
 
-type SimpleGenerateResult = {
-  content: string;
-};
-
 @Injectable()
 export class OpenaiService {
   private readonly client = new OpenAI({
     apiKey: environment.litellmMasterKey,
     baseURL: environment.llmBaseUrl,
   });
-
-  async generate(
-    prompt: string,
-    options: {
-      model: string;
-      temperature?: number;
-    },
-  ): Promise<SimpleGenerateResult> {
-    const completion = await this.client.chat.completions.create({
-      model: options.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: options.temperature ?? 0,
-    });
-
-    const content = completion.choices[0]?.message?.content ?? '';
-
-    return { content };
-  }
 
   async response(
     data: {

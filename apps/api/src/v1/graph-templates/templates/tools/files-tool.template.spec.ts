@@ -96,8 +96,8 @@ describe('FilesToolTemplate', () => {
   });
 
   describe('schema validation', () => {
-    it('should reject empty config (models required)', () => {
-      expect(() => FilesToolTemplateSchema.parse({})).toThrow();
+    it('should accept empty config (models come from env)', () => {
+      expect(() => FilesToolTemplateSchema.parse({})).not.toThrow();
     });
 
     it('should ignore legacy/unknown fields', () => {
@@ -111,8 +111,6 @@ describe('FilesToolTemplate', () => {
       const parsed = FilesToolTemplateSchema.parse(dataWithExtra);
       expect(parsed).toEqual({
         includeEditActions: true,
-        fastModel: 'gpt-5-mini',
-        smartModel: 'gpt-5.1',
       });
       expect(parsed).not.toHaveProperty('oldProperty');
     });
@@ -154,8 +152,6 @@ describe('FilesToolTemplate', () => {
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = {
         includeEditActions: true,
-        fastModel: 'gpt-5-mini',
-        smartModel: 'gpt-5.1',
       };
       const handle = await template.create();
       const init: GraphNode<typeof config> = {
@@ -176,8 +172,6 @@ describe('FilesToolTemplate', () => {
 
       const config = {
         includeEditActions: false,
-        fastModel: 'gpt-5-mini',
-        smartModel: 'gpt-5.1',
       };
       const handle = await template.create();
       const outputNodeIds = new Set<string>();
@@ -200,8 +194,6 @@ describe('FilesToolTemplate', () => {
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = {
         includeEditActions: false,
-        fastModel: 'gpt-5-mini',
-        smartModel: 'gpt-5.1',
       };
       const handle = await template.create();
       const init: GraphNode<typeof config> = {
@@ -227,8 +219,6 @@ describe('FilesToolTemplate', () => {
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = {
         includeEditActions: true,
-        fastModel: 'gpt-5-mini',
-        smartModel: 'gpt-5.1',
       };
       const handle = await template.create();
       const init: GraphNode<typeof config> = {
@@ -256,8 +246,6 @@ describe('FilesToolTemplate', () => {
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = {
         includeEditActions: true,
-        fastModel: 'gpt-5-mini',
-        smartModel: 'gpt-5.1',
       };
       const handle = await template.create();
       const init: GraphNode<typeof config> = {

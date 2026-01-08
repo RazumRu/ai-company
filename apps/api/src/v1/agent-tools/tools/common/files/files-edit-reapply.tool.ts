@@ -5,6 +5,7 @@ import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
+import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { OpenaiService } from '../../../../openai/openai.service';
 import {
@@ -94,7 +95,7 @@ function formatError(details: string, suggestedNextAction?: string): string {
 }
 
 export type FilesEditReapplyToolConfig = FilesBaseToolConfig & {
-  smartModel: string;
+  // Model selection is controlled via env config (FILES_EDIT_REAPPLY_MODEL / FILES_EDIT_REAPPLY_REASONING_EFFORT).
 };
 
 @Injectable()
@@ -181,55 +182,74 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
     fileContent: string,
     editInstructions: string,
     sketch: string,
-    model: string,
   ): Promise<ParseResult> {
     try {
       const prompt = dedent`
         You are a precise code editor with enhanced parsing capabilities.
         Extract anchor-based hunks from a code sketch with MAXIMUM PRECISION.
-        
+
         FILE CONTENT:
         \`\`\`
         ${fileContent}
         \`\`\`
-        
+
         USER INTENT: ${editInstructions}
-        
+
         CODE SKETCH:
         \`\`\`
         ${sketch}
         \`\`\`
-        
+
         CRITICAL REQUIREMENTS:
         1. Extract hunks with UNIQUE, UNAMBIGUOUS anchors
         2. Include 5-10 lines of context in each anchor
         3. Use CASE-SENSITIVE exact matches only
         4. Avoid common patterns that could match multiple locations
         5. Include unique identifiers like function names, comments, or variable names
-        
+
+        EMPTY ANCHORS (for file boundaries):
+        - beforeAnchor can be "" (empty) ONLY for prepending at the beginning of file (BOF)
+        - afterAnchor can be "" (empty) ONLY for appending at the end of file (EOF)
+        - Both empty ("" and "") means full file rewrite
+
         Each hunk must have:
-        - beforeAnchor: exact substring immediately before the region to replace (5-10 lines of unique context)
-        - afterAnchor: exact substring immediately after the region to replace (5-10 lines of unique context)
-        - replacement: new code to insert between anchors
-        
+        - beforeAnchor: exact substring immediately before the region to replace (5-10 lines of unique context), OR "" for BOF
+        - afterAnchor: exact substring immediately after the region to replace (5-10 lines of unique context), OR "" for EOF
+        - replacement: new code to insert between anchors (DO NOT include anchors)
+
         Return ONLY valid JSON with this structure:
         {
           "hunks": [
             {
-              "beforeAnchor": "exact unique text before (5-10 lines)",
-              "afterAnchor": "exact unique text after (5-10 lines)",
+              "beforeAnchor": "exact unique text before (5-10 lines)" OR "",
+              "afterAnchor": "exact unique text after (5-10 lines)" OR "",
               "replacement": "new code to insert"
             }
           ]
         }
-        
+
+        EXAMPLES:
+        - Append: {"beforeAnchor":"last line of file","afterAnchor":"","replacement":"\\nnew content"}
+        - Prepend: {"beforeAnchor":"","afterAnchor":"first line of file","replacement":"new content\\n"}
+        - Rewrite: {"beforeAnchor":"","afterAnchor":"","replacement":"entirely new file content"}
+
         Ensure anchors are UNIQUE and will only match ONE location in the file.
       `;
 
-      const { content } = await this.openaiService.generate(prompt, { model });
+      const { content } = await this.openaiService.response(
+        { message: prompt },
+        {
+          model: environment.filesEditReapplyModel,
+          reasoning: {
+            effort: 'low',
+          },
+          text: { verbosity: 'medium' },
+        },
+      );
 
       // Extract JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const safeContent = content ?? '';
+      const jsonMatch = safeContent.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         return {
           success: false,
@@ -291,37 +311,15 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
     const fileLines = fileContent.split('\n');
 
     for (const hunk of hunks) {
-      // Try matching tiers
-      let match: { start: number; end: number; matchedText: string } | null =
-        null;
-
-      // Tier 1: Exact match
-      match = this.findMatchInContent(
+      // IMPORTANT: Only accept exact matches against CURRENT FILE.
+      // Matching against normalized variants can produce an `oldText` that does not
+      // exist verbatim in the file and will then fail apply (or behave unsafely).
+      const match = this.findMatchInContent(
         fileContent,
         hunk.beforeAnchor,
         hunk.afterAnchor,
         'exact',
       );
-
-      // Tier 2: Normalized newlines
-      if (!match) {
-        match = this.findMatchInContent(
-          this.normalizeNewlines(fileContent),
-          this.normalizeNewlines(hunk.beforeAnchor),
-          this.normalizeNewlines(hunk.afterAnchor),
-          'newline',
-        );
-      }
-
-      // Tier 3: Whitespace insensitive
-      if (!match) {
-        match = this.findMatchInContent(
-          this.normalizeWhitespace(fileContent),
-          this.normalizeWhitespace(hunk.beforeAnchor),
-          this.normalizeWhitespace(hunk.afterAnchor),
-          'whitespace',
-        );
-      }
 
       if (!match) {
         return {
@@ -346,9 +344,28 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       }
 
       // Convert match to edit
+      // newText is built as: beforeAnchor + replacement + afterAnchor
+      let newText = hunk.beforeAnchor;
+      if (
+        hunk.replacement.length > 0 &&
+        !newText.endsWith('\n') &&
+        !hunk.replacement.startsWith('\n')
+      ) {
+        newText += '\n';
+      }
+      newText += hunk.replacement;
+      if (
+        hunk.afterAnchor.length > 0 &&
+        !newText.endsWith('\n') &&
+        !hunk.afterAnchor.startsWith('\n')
+      ) {
+        newText += '\n';
+      }
+      newText += hunk.afterAnchor;
+
       edits.push({
         oldText: match.matchedText,
-        newText: hunk.replacement,
+        newText,
       });
     }
 
@@ -465,22 +482,28 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
     }
 
     // Changed lines ratio check (approximate)
-    const fileLines = fileContent.split('\n').length;
-    let changedLines = 0;
-    for (const edit of edits) {
-      changedLines += edit.oldText.split('\n').length;
-      changedLines += edit.newText.split('\n').length;
-    }
-    const changeRatio = changedLines / (fileLines * 2);
+    // Skip ratio check for full rewrite (like Cursor) - single edit replacing entire file
+    const isFullRewrite =
+      edits.length === 1 && edits[0]!.oldText === fileContent;
 
-    if (changeRatio > LIMITS.MAX_CHANGED_LINES_RATIO) {
-      return {
-        ok: false,
-        errorCode: 'LIMIT_EXCEEDED',
-        details: `${(changeRatio * 100).toFixed(0)}% change ratio exceeds ${LIMITS.MAX_CHANGED_LINES_RATIO * 100}% limit`,
-        suggestedAction:
-          'Break into smaller changes or use files_write_file for complete rewrites',
-      };
+    if (!isFullRewrite) {
+      const fileLines = fileContent.split('\n').length;
+      let changedLines = 0;
+      for (const edit of edits) {
+        changedLines += edit.oldText.split('\n').length;
+        changedLines += edit.newText.split('\n').length;
+      }
+      const changeRatio = changedLines / (fileLines * 2);
+
+      if (changeRatio > LIMITS.MAX_CHANGED_LINES_RATIO) {
+        return {
+          ok: false,
+          errorCode: 'LIMIT_EXCEEDED',
+          details: `${(changeRatio * 100).toFixed(0)}% change ratio exceeds ${LIMITS.MAX_CHANGED_LINES_RATIO * 100}% limit`,
+          suggestedAction:
+            'Break into smaller changes or use files_write_file for complete rewrites',
+        };
+      }
     }
 
     return { ok: true };
@@ -537,7 +560,6 @@ export class FilesEditReapplyTool extends FilesBaseTool<FilesEditReapplyToolSche
       fileContent,
       args.editInstructions,
       args.codeSketch,
-      config.smartModel,
     );
 
     if (!parseResult.success || !parseResult.hunks) {
