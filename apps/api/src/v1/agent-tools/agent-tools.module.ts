@@ -19,6 +19,7 @@ import { FilesWriteFileTool } from './tools/common/files/files-write-file.tool';
 import { GhBranchTool } from './tools/common/github/gh-branch.tool';
 import { GhCloneTool } from './tools/common/github/gh-clone.tool';
 import { GhCommitTool } from './tools/common/github/gh-commit.tool';
+import { GhCreatePullRequestTool } from './tools/common/github/gh-create-pull-request.tool';
 import { GhPushTool } from './tools/common/github/gh-push.tool';
 import { GhToolGroup } from './tools/common/github/gh-tool-group';
 import { ShellTool } from './tools/common/shell.tool';
@@ -38,6 +39,7 @@ import { FinishTool } from './tools/core/finish.tool';
     GhCommitTool,
     GhBranchTool,
     GhPushTool,
+    GhCreatePullRequestTool,
     GhToolGroup,
     FilesFindPathsTool,
     FilesDirectoryTreeTool,
@@ -63,6 +65,7 @@ import { FinishTool } from './tools/core/finish.tool';
     GhCommitTool,
     GhBranchTool,
     GhPushTool,
+    GhCreatePullRequestTool,
     GhToolGroup,
     FilesFindPathsTool,
     FilesDirectoryTreeTool,

@@ -28,7 +28,7 @@ export abstract class GhBaseTool<
   TConfig extends GhBaseToolConfig = GhBaseToolConfig,
   TResult = unknown,
 > extends BaseTool<TSchema, TConfig, TResult> {
-  protected getClient(token: string) {
+  protected createClient(token: string): Octokit {
     return new Octokit({ auth: token });
   }
 

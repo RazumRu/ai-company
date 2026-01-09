@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GhBranchTool } from './gh-branch.tool';
 import { GhCloneTool } from './gh-clone.tool';
 import { GhCommitTool } from './gh-commit.tool';
+import { GhCreatePullRequestTool } from './gh-create-pull-request.tool';
 import { GhPushTool } from './gh-push.tool';
 import { GhToolGroup, GhToolGroupConfig, GhToolType } from './gh-tool-group';
 
@@ -14,6 +15,7 @@ describe('GhToolGroup', () => {
   let mockGhCommitTool: GhCommitTool;
   let mockGhBranchTool: GhBranchTool;
   let mockGhPushTool: GhPushTool;
+  let mockGhCreatePullRequestTool: GhCreatePullRequestTool;
 
   beforeEach(async () => {
     mockGhCloneTool = {
@@ -31,6 +33,10 @@ describe('GhToolGroup', () => {
     mockGhPushTool = {
       build: vi.fn(),
     } as unknown as GhPushTool;
+
+    mockGhCreatePullRequestTool = {
+      build: vi.fn(),
+    } as unknown as GhCreatePullRequestTool;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -51,6 +57,10 @@ describe('GhToolGroup', () => {
           provide: GhPushTool,
           useValue: mockGhPushTool,
         },
+        {
+          provide: GhCreatePullRequestTool,
+          useValue: mockGhCreatePullRequestTool,
+        },
       ],
     }).compile();
 
@@ -69,7 +79,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result = toolGroup.buildTools(config);
@@ -97,7 +107,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result = toolGroup.buildTools(config, lgConfig);
@@ -123,7 +133,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result = toolGroup.buildTools(config);
@@ -158,12 +168,12 @@ describe('GhToolGroup', () => {
       const config1: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_token_1',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
       const config2: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_token_2',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result1 = toolGroup.buildTools(config1);
@@ -191,7 +201,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result = toolGroup.buildTools(config);
@@ -213,7 +223,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT],
+        tools: [GhToolType.Clone, GhToolType.Commit],
       };
 
       const result = toolGroup.buildTools(config);
@@ -230,7 +240,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.COMMIT],
+        tools: [GhToolType.Commit],
       };
 
       const result = toolGroup.buildTools(config);
@@ -268,7 +278,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.BRANCH, GhToolType.CLONE, GhToolType.COMMIT],
+        tools: [GhToolType.Branch, GhToolType.Clone, GhToolType.Commit],
       };
 
       const result = toolGroup.buildTools(config);
@@ -288,7 +298,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.PUSH],
+        tools: [GhToolType.Push],
       };
 
       const result = toolGroup.buildTools(config);
@@ -315,10 +325,10 @@ describe('GhToolGroup', () => {
         runtime: {} as any,
         patToken: 'ghp_test_token',
         tools: [
-          GhToolType.CLONE,
-          GhToolType.COMMIT,
-          GhToolType.BRANCH,
-          GhToolType.PUSH,
+          GhToolType.Clone,
+          GhToolType.Commit,
+          GhToolType.Branch,
+          GhToolType.Push,
         ],
       };
 
@@ -332,6 +342,32 @@ describe('GhToolGroup', () => {
         mockPushTool,
       ]);
       expect(mockGhPushTool.build).toHaveBeenCalledWith(config, undefined);
+    });
+
+    it('should build CreatePullRequest tool when specified', () => {
+      const mockTool = {
+        name: 'gh_create_pull_request',
+      } as DynamicStructuredTool;
+      mockGhCreatePullRequestTool.build = vi.fn().mockReturnValue(mockTool);
+
+      const config: GhToolGroupConfig = {
+        runtime: {} as any,
+        patToken: 'ghp_test_token',
+        tools: [GhToolType.CreatePullRequest],
+      };
+
+      const result = toolGroup.buildTools(config);
+
+      expect(result.tools.length).toBe(1);
+      expect(result.tools).toEqual([mockTool]);
+      expect(mockGhCreatePullRequestTool.build).toHaveBeenCalledWith(
+        config,
+        undefined,
+      );
+      expect(mockGhCloneTool.build).not.toHaveBeenCalled();
+      expect(mockGhCommitTool.build).not.toHaveBeenCalled();
+      expect(mockGhBranchTool.build).not.toHaveBeenCalled();
+      expect(mockGhPushTool.build).not.toHaveBeenCalled();
     });
   });
 });

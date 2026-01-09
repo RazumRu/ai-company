@@ -9,17 +9,24 @@ import { GhBaseToolConfig } from './gh-base.tool';
 import { GhBranchTool } from './gh-branch.tool';
 import { GhCloneTool } from './gh-clone.tool';
 import { GhCommitTool } from './gh-commit.tool';
+import { GhCreatePullRequestTool } from './gh-create-pull-request.tool';
 import { GhPushTool } from './gh-push.tool';
 
 export enum GhToolType {
-  CLONE = 'clone',
-  COMMIT = 'commit',
-  BRANCH = 'branch',
-  PUSH = 'push',
+  Clone = 'clone',
+  Commit = 'commit',
+  Branch = 'branch',
+  Push = 'push',
+  CreatePullRequest = 'create_pull_request',
 }
 
 export type GhToolGroupConfig = GhBaseToolConfig & {
   tools?: GhToolType[];
+  /**
+   * Labels that will always be applied when creating PRs via `gh_create_pull_request`.
+   * These are merged with any labels passed at invocation time.
+   */
+  additionalLabels?: string[];
 };
 
 @Injectable()
@@ -29,6 +36,7 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     private readonly ghCommitTool: GhCommitTool,
     private readonly ghBranchTool: GhBranchTool,
     private readonly ghPushTool: GhPushTool,
+    private readonly ghCreatePullRequestTool: GhCreatePullRequestTool,
   ) {
     super();
   }
@@ -38,27 +46,31 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): BuiltAgentTool[] {
     const selectedTools = config.tools ?? [
-      GhToolType.CLONE,
-      GhToolType.COMMIT,
-      GhToolType.BRANCH,
-      GhToolType.PUSH,
+      GhToolType.Clone,
+      GhToolType.Commit,
+      GhToolType.Branch,
+      GhToolType.Push,
+      GhToolType.CreatePullRequest,
     ];
 
     const tools: BuiltAgentTool[] = [];
 
     for (const toolType of selectedTools) {
       switch (toolType) {
-        case GhToolType.CLONE:
+        case GhToolType.Clone:
           tools.push(this.ghCloneTool.build(config, lgConfig));
           break;
-        case GhToolType.COMMIT:
+        case GhToolType.Commit:
           tools.push(this.ghCommitTool.build(config, lgConfig));
           break;
-        case GhToolType.BRANCH:
+        case GhToolType.Branch:
           tools.push(this.ghBranchTool.build(config, lgConfig));
           break;
-        case GhToolType.PUSH:
+        case GhToolType.Push:
           tools.push(this.ghPushTool.build(config, lgConfig));
+          break;
+        case GhToolType.CreatePullRequest:
+          tools.push(this.ghCreatePullRequestTool.build(config, lgConfig));
           break;
       }
     }
