@@ -4,6 +4,7 @@ import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
+import { ThreadTokenUsageCacheService } from '../../cache/services/thread-token-usage-cache.service';
 import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
@@ -27,6 +28,7 @@ describe('GraphRestorationService', () => {
   let graphCompiler: any;
   let graphRegistry: any;
   let threadsDao: any;
+  let threadTokenUsageCacheService: any;
   let graphCheckpointsDao: any;
   let graphsService: any;
   let logger: any;
@@ -106,6 +108,10 @@ describe('GraphRestorationService', () => {
       updateById: vi.fn(),
     };
 
+    const mockThreadTokenUsageCacheService = {
+      flushThreadTokenUsage: vi.fn().mockResolvedValue(null),
+    };
+
     const mockGraphCheckpointsDao = {
       getAll: vi.fn(),
     };
@@ -145,6 +151,10 @@ describe('GraphRestorationService', () => {
           useValue: mockThreadsDao,
         },
         {
+          provide: ThreadTokenUsageCacheService,
+          useValue: mockThreadTokenUsageCacheService,
+        },
+        {
           provide: GraphCheckpointsDao,
           useValue: mockGraphCheckpointsDao,
         },
@@ -164,6 +174,7 @@ describe('GraphRestorationService', () => {
     graphCompiler = module.get(GraphCompiler);
     graphRegistry = module.get(GraphRegistry);
     threadsDao = module.get(ThreadsDao);
+    threadTokenUsageCacheService = module.get(ThreadTokenUsageCacheService);
     graphCheckpointsDao = module.get(GraphCheckpointsDao);
     graphsService = mockGraphsService;
     logger = module.get(DefaultLogger);

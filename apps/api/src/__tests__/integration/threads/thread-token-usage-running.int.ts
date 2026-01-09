@@ -451,4 +451,286 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       expect(secondTotalPrice).toBeGreaterThanOrEqual(firstTotalPrice);
     },
   );
+
+  it(
+    'preserves per-node token usage across multiple runs with different agents (integration)',
+    { timeout: 300_000 },
+    async () => {
+      // This test verifies the fix for per-node token usage preservation:
+      // - First run: agents 1 and 2 execute
+      // - Second run: agents 1 and 3 execute
+      // - Expected: byNode should contain all three agents after both runs
+      const graph = await graphsService.create({
+        name: `Thread per-node preservation test ${Date.now()}`,
+        description:
+          'integration test ensuring per-node token usage is preserved across runs with different agents',
+        temporary: true,
+        schema: {
+          nodes: [
+            { id: 'trigger-1', template: 'manual-trigger', config: {} },
+            {
+              id: 'agent-1',
+              template: 'simple-agent',
+              config: {
+                name: 'Coordinator Agent',
+                description: 'Delegates work to other agents',
+                instructions:
+                  'When user asks you to delegate to Worker Agent 2: call communication_exec with agent="Worker Agent 2" and message="calculate 2+2". When user asks for Worker Agent 3: call communication_exec with agent="Worker Agent 3" and message="calculate 5+5". After getting response, call finish tool with needsMoreInfo=false.',
+                invokeModelName: 'gpt-5-mini',
+                enforceToolUsage: true,
+                maxIterations: 10,
+                summarizeMaxTokens: 272000,
+                summarizeKeepTokens: 30000,
+              },
+            },
+            {
+              id: 'comm-tool-1',
+              template: 'agent-communication-tool',
+              config: {},
+            },
+            {
+              id: 'agent-2',
+              template: 'simple-agent',
+              config: {
+                name: 'Worker Agent 2',
+                description: 'Performs specific tasks',
+                instructions:
+                  'Answer math questions in one sentence then call finish tool.',
+                invokeModelName: 'gpt-5-mini',
+                enforceToolUsage: true,
+                maxIterations: 5,
+                summarizeMaxTokens: 272000,
+                summarizeKeepTokens: 30000,
+              },
+            },
+            {
+              id: 'agent-3',
+              template: 'simple-agent',
+              config: {
+                name: 'Worker Agent 3',
+                description: 'Performs different tasks',
+                instructions:
+                  'Answer math questions in one sentence then call finish tool.',
+                invokeModelName: 'gpt-5-mini',
+                enforceToolUsage: true,
+                maxIterations: 5,
+                summarizeMaxTokens: 272000,
+                summarizeKeepTokens: 30000,
+              },
+            },
+          ],
+          edges: [
+            { from: 'trigger-1', to: 'agent-1' },
+            { from: 'agent-1', to: 'comm-tool-1' },
+            { from: 'comm-tool-1', to: 'agent-2' },
+            { from: 'comm-tool-1', to: 'agent-3' },
+          ],
+        },
+      });
+      createdGraphIds.push(graph.id);
+
+      await graphsService.run(graph.id);
+      await waitForCondition(
+        () => graphsService.findById(graph.id),
+        (g) => g.status === GraphStatus.Running,
+        { timeout: 60_000, interval: 1_000 },
+      );
+
+      const threadSubId = `token-usage-per-node-${Date.now()}`;
+
+      // ========== FIRST RUN: Agent 1 delegates to Agent 2 ==========
+      const exec1 = await graphsService.executeTrigger(graph.id, 'trigger-1', {
+        messages: ['Please delegate this to Worker Agent 2'],
+        async: true,
+        threadSubId,
+      });
+
+      const thread = await waitForCondition(
+        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        (t) => Boolean(t),
+        { timeout: 30_000, interval: 1_000 },
+      );
+
+      // Wait for communication tool to execute
+      await waitForCondition(
+        () =>
+          threadsService.getThreadMessages(thread.id, {
+            limit: 300,
+            offset: 0,
+          }),
+        (msgs) =>
+          msgs.some(
+            (m) =>
+              m.message.role === 'tool' &&
+              m.message.name === 'communication_exec',
+          ),
+        { timeout: 180_000, interval: 2_000 },
+      );
+
+      // Check token usage DURING first run (from Redis)
+      const usageAfterFirstRun = await waitForCondition(
+        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
+        { timeout: 180_000, interval: 2_000 },
+      );
+
+      expect(usageAfterFirstRun.tokenUsage?.byNode).toBeDefined();
+      expect(usageAfterFirstRun.tokenUsage?.byNode?.['agent-1']).toBeDefined();
+      expect(usageAfterFirstRun.tokenUsage?.byNode?.['agent-2']).toBeDefined();
+      expect(
+        usageAfterFirstRun.tokenUsage?.byNode?.['agent-3'],
+      ).toBeUndefined();
+
+      const agent1TokensFirstRun =
+        usageAfterFirstRun.tokenUsage?.byNode?.['agent-1']?.totalTokens ?? 0;
+      const agent2TokensFirstRun =
+        usageAfterFirstRun.tokenUsage?.byNode?.['agent-2']?.totalTokens ?? 0;
+
+      expect(agent1TokensFirstRun).toBeGreaterThan(0);
+      expect(agent2TokensFirstRun).toBeGreaterThan(0);
+
+      // Wait for first run to complete
+      await waitForCondition(
+        () => threadsService.getThreadById(thread.id),
+        (t) =>
+          t.status === ThreadStatus.Done ||
+          t.status === ThreadStatus.NeedMoreInfo,
+        { timeout: 180_000, interval: 2_000 },
+      );
+
+      // Check token usage AFTER first run completes (from DB)
+      const usageAfterFirstComplete =
+        await threadsService.getThreadByExternalId(exec1.externalThreadId);
+
+      expect(usageAfterFirstComplete.tokenUsage?.byNode).toBeDefined();
+      expect(
+        usageAfterFirstComplete.tokenUsage?.byNode?.['agent-1'],
+      ).toBeDefined();
+      expect(
+        usageAfterFirstComplete.tokenUsage?.byNode?.['agent-2'],
+      ).toBeDefined();
+      expect(
+        usageAfterFirstComplete.tokenUsage?.byNode?.['agent-3'],
+      ).toBeUndefined();
+
+      // ========== SECOND RUN: Agent 1 delegates to Agent 3 ==========
+      await graphsService.executeTrigger(graph.id, 'trigger-1', {
+        messages: ['Please delegate this to Worker Agent 3'],
+        async: true,
+        threadSubId,
+      });
+
+      // Wait for second communication tool execution
+      const messagesAfterSecondCall = await waitForCondition(
+        () =>
+          threadsService.getThreadMessages(thread.id, {
+            limit: 300,
+            offset: 0,
+          }),
+        (msgs) => {
+          const commExecMessages = msgs.filter(
+            (m) =>
+              m.message.role === 'tool' &&
+              m.message.name === 'communication_exec',
+          );
+          return commExecMessages.length >= 2;
+        },
+        { timeout: 180_000, interval: 2_000 },
+      );
+
+      // Check token usage DURING second run (from Redis)
+      // CRITICAL: This should include agent-2 from the first run!
+      const usageAfterSecondRun = await waitForCondition(
+        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        (t) => {
+          const byNode = t.tokenUsage?.byNode;
+          return !!(
+            byNode &&
+            byNode['agent-1'] &&
+            byNode['agent-2'] &&
+            byNode['agent-3'] &&
+            (byNode['agent-1']?.totalTokens ?? 0) > agent1TokensFirstRun
+          );
+        },
+        { timeout: 180_000, interval: 2_000 },
+      );
+
+      // Verify all three agents are present in byNode
+      expect(usageAfterSecondRun.tokenUsage?.byNode).toBeDefined();
+      expect(usageAfterSecondRun.tokenUsage?.byNode?.['agent-1']).toBeDefined();
+      expect(usageAfterSecondRun.tokenUsage?.byNode?.['agent-2']).toBeDefined();
+      expect(usageAfterSecondRun.tokenUsage?.byNode?.['agent-3']).toBeDefined();
+
+      // Agent 1 should have more tokens than first run (it executed again)
+      const agent1TokensSecondRun =
+        usageAfterSecondRun.tokenUsage?.byNode?.['agent-1']?.totalTokens ?? 0;
+      expect(agent1TokensSecondRun).toBeGreaterThan(agent1TokensFirstRun);
+
+      // Agent 2 tokens should be preserved from first run (it didn't execute in second run)
+      const agent2TokensSecondRun =
+        usageAfterSecondRun.tokenUsage?.byNode?.['agent-2']?.totalTokens ?? 0;
+      expect(agent2TokensSecondRun).toBeGreaterThanOrEqual(
+        agent2TokensFirstRun,
+      );
+
+      // Agent 3 should have tokens from second run
+      const agent3TokensSecondRun =
+        usageAfterSecondRun.tokenUsage?.byNode?.['agent-3']?.totalTokens ?? 0;
+      expect(agent3TokensSecondRun).toBeGreaterThan(0);
+
+      // Wait for second run to complete
+      await waitForCondition(
+        () => threadsService.getThreadById(thread.id),
+        (t) =>
+          t.status === ThreadStatus.Done ||
+          t.status === ThreadStatus.NeedMoreInfo,
+        { timeout: 180_000, interval: 2_000 },
+      );
+
+      // Check token usage AFTER second run completes (from DB)
+      // CRITICAL: All three agents should still be present after DB flush!
+      const usageAfterSecondComplete =
+        await threadsService.getThreadByExternalId(exec1.externalThreadId);
+
+      expect(usageAfterSecondComplete.tokenUsage?.byNode).toBeDefined();
+      expect(
+        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-1'],
+      ).toBeDefined();
+      expect(
+        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-2'],
+      ).toBeDefined();
+      expect(
+        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-3'],
+      ).toBeDefined();
+
+      // Verify token counts are preserved
+      expect(
+        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-1']?.totalTokens ??
+          0,
+      ).toBeGreaterThanOrEqual(agent1TokensSecondRun);
+      expect(
+        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-2']?.totalTokens ??
+          0,
+      ).toBeGreaterThanOrEqual(agent2TokensFirstRun);
+      expect(
+        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-3']?.totalTokens ??
+          0,
+      ).toBeGreaterThanOrEqual(agent3TokensSecondRun);
+
+      // Verify aggregate totals are reasonable
+      const finalByNode = usageAfterSecondComplete.tokenUsage?.byNode ?? {};
+      const sumOfAllAgents = Object.values(finalByNode).reduce(
+        (acc, u) => acc + (u.totalTokens ?? 0),
+        0,
+      );
+      const finalTotalTokens =
+        usageAfterSecondComplete.tokenUsage?.totalTokens ?? 0;
+
+      // The sum of byNode should be positive and less than or equal to total
+      // (total may include overhead from message tokenization, etc.)
+      expect(sumOfAllAgents).toBeGreaterThan(0);
+      expect(finalTotalTokens).toBeGreaterThan(0);
+      expect(finalTotalTokens).toBeGreaterThanOrEqual(sumOfAllAgents * 0.5);
+    },
+  );
 });

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
 
+import { ThreadTokenUsageCacheService } from '../../cache/services/thread-token-usage-cache.service';
 import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
@@ -28,6 +29,7 @@ export class GraphRestorationService {
     private readonly graphCompiler: GraphCompiler,
     private readonly graphRegistry: GraphRegistry,
     private readonly threadsDao: ThreadsDao,
+    private readonly threadTokenUsageCacheService: ThreadTokenUsageCacheService,
     private readonly moduleRef: ModuleRef,
     private readonly logger: DefaultLogger,
   ) {}
@@ -208,12 +210,31 @@ export class GraphRestorationService {
         },
       );
 
-      // Update all running threads to stopped status
-      const updatePromises = runningThreads.map((thread) =>
-        this.threadsDao.updateById(thread.id, {
+      // Flush token usage from Redis and update thread status
+      const updatePromises = runningThreads.map(async (thread) => {
+        const tokenUsage =
+          await this.threadTokenUsageCacheService.flushThreadTokenUsage(
+            thread.externalThreadId,
+          );
+
+        // Merge with existing DB token usage to preserve per-node data across multiple runs
+        let mergedTokenUsage = tokenUsage;
+        if (tokenUsage && thread.tokenUsage?.byNode && tokenUsage.byNode) {
+          const mergedByNode = { ...thread.tokenUsage.byNode };
+          for (const [nodeId, usage] of Object.entries(tokenUsage.byNode)) {
+            mergedByNode[nodeId] = usage;
+          }
+          mergedTokenUsage = {
+            ...tokenUsage,
+            byNode: mergedByNode,
+          };
+        }
+
+        return this.threadsDao.updateById(thread.id, {
           status: ThreadStatus.Stopped,
-        }),
-      );
+          ...(mergedTokenUsage ? { tokenUsage: mergedTokenUsage } : {}),
+        });
+      });
 
       await Promise.allSettled(updatePromises);
 
