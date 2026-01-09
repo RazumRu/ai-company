@@ -79,7 +79,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result = toolGroup.buildTools(config);
@@ -107,7 +107,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result = toolGroup.buildTools(config, lgConfig);
@@ -133,7 +133,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result = toolGroup.buildTools(config);
@@ -168,12 +168,12 @@ describe('GhToolGroup', () => {
       const config1: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_token_1',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
       const config2: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_token_2',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result1 = toolGroup.buildTools(config1);
@@ -201,7 +201,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT, GhToolType.BRANCH],
+        tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
       const result = toolGroup.buildTools(config);
@@ -223,7 +223,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CLONE, GhToolType.COMMIT],
+        tools: [GhToolType.Clone, GhToolType.Commit],
       };
 
       const result = toolGroup.buildTools(config);
@@ -240,7 +240,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.COMMIT],
+        tools: [GhToolType.Commit],
       };
 
       const result = toolGroup.buildTools(config);
@@ -278,7 +278,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.BRANCH, GhToolType.CLONE, GhToolType.COMMIT],
+        tools: [GhToolType.Branch, GhToolType.Clone, GhToolType.Commit],
       };
 
       const result = toolGroup.buildTools(config);
@@ -298,7 +298,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.PUSH],
+        tools: [GhToolType.Push],
       };
 
       const result = toolGroup.buildTools(config);
@@ -325,10 +325,10 @@ describe('GhToolGroup', () => {
         runtime: {} as any,
         patToken: 'ghp_test_token',
         tools: [
-          GhToolType.CLONE,
-          GhToolType.COMMIT,
-          GhToolType.BRANCH,
-          GhToolType.PUSH,
+          GhToolType.Clone,
+          GhToolType.Commit,
+          GhToolType.Branch,
+          GhToolType.Push,
         ],
       };
 
@@ -344,7 +344,7 @@ describe('GhToolGroup', () => {
       expect(mockGhPushTool.build).toHaveBeenCalledWith(config, undefined);
     });
 
-    it('should build CREATE_PULL_REQUEST tool when specified', () => {
+    it('should build CreatePullRequest tool when specified', () => {
       const mockTool = {
         name: 'gh_create_pull_request',
       } as DynamicStructuredTool;
@@ -353,7 +353,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CREATE_PULL_REQUEST],
+        tools: [GhToolType.CreatePullRequest],
       };
 
       const result = toolGroup.buildTools(config);

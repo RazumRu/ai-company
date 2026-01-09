@@ -23,6 +23,12 @@ export const GhToolTemplateSchema = z
       .describe(
         'When true, expose only gh_clone; otherwise expose all GH tools',
       ),
+    additionalLabels: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        'Labels that will always be applied when creating PRs via gh_create_pull_request.',
+      ),
   })
   // Strip legacy/unknown fields (e.g., includeClone/includeBranch/includeCommit)
   // so older configs remain valid without errors.
@@ -151,7 +157,10 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
 
         const parsedConfig = GhToolTemplateSchema.parse(config);
         const tools: GhToolType[] | undefined = parsedConfig.cloneOnly
-          ? [GhToolType.CLONE]
+          ? [GhToolType.Clone]
+          : undefined;
+        const additionalLabels = parsedConfig.additionalLabels?.length
+          ? parsedConfig.additionalLabels
           : undefined;
 
         const { tools: builtTools, instructions } = this.ghToolGroup.buildTools(
@@ -159,6 +168,7 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
             runtime,
             patToken,
             tools,
+            additionalLabels,
           },
         );
 

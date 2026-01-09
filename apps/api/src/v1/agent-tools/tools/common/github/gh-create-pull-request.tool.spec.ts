@@ -23,7 +23,7 @@ type MockOctokit = {
 describe('GhCreatePullRequestTool', () => {
   let tool: GhCreatePullRequestTool;
   let mockRuntime: BaseRuntime;
-  let mockConfig: GhBaseToolConfig;
+  let mockConfig: GhBaseToolConfig & { additionalLabels?: string[] };
 
   beforeEach(async () => {
     mockRuntime = {
@@ -139,7 +139,6 @@ describe('GhCreatePullRequestTool', () => {
         assignees: ['octocat'],
         reviewers: ['reviewer1'],
         teamReviewers: ['platform'],
-        milestoneNumber: 3,
         closesIssues: [12],
       };
 
@@ -193,23 +192,35 @@ describe('GhCreatePullRequestTool', () => {
         },
       };
 
+      const toolWithCreateClient = tool as unknown as {
+        createClient: (patToken: string) => MockOctokit;
+      };
       const createClientSpy = vi
-        .spyOn(tool, 'createClient')
+        .spyOn(toolWithCreateClient, 'createClient')
         .mockReturnValue(mockClient as any);
 
-      const { output } = await tool.invoke(args, mockConfig, mockCfg);
+      const { output } = await tool.invoke(
+        args,
+        { ...mockConfig, additionalLabels: ['team'] },
+        mockCfg,
+      );
 
       expect(createClientSpy).toHaveBeenCalledWith('ghp_test_token');
       expect(pullsCreate).toHaveBeenCalledTimes(1);
       expect(issuesUpdate).toHaveBeenCalledTimes(1);
       expect(pullsRequestReviewers).toHaveBeenCalledTimes(1);
+      expect(issuesUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          labels: ['team', 'bug'],
+        }),
+      );
 
       // Sequencing: create PR first
-      expect(pullsCreate.mock.invocationCallOrder[0]).toBeLessThan(
-        issuesUpdate.mock.invocationCallOrder[0],
+      expect(pullsCreate.mock.invocationCallOrder[0]!).toBeLessThan(
+        issuesUpdate.mock.invocationCallOrder[0]!,
       );
-      expect(issuesUpdate.mock.invocationCallOrder[0]).toBeLessThan(
-        pullsRequestReviewers.mock.invocationCallOrder[0],
+      expect(issuesUpdate.mock.invocationCallOrder[0]!).toBeLessThan(
+        pullsRequestReviewers.mock.invocationCallOrder[0]!,
       );
 
       // Body should include closes issue line
@@ -228,8 +239,74 @@ describe('GhCreatePullRequestTool', () => {
       expect(output.applied?.assignees).toEqual(['octocat']);
       expect(output.applied?.reviewers).toEqual(['reviewer1']);
       expect(output.applied?.teamReviewers).toEqual(['platform']);
-      expect(output.applied?.milestoneNumber).toBe(3);
       expect(output.warnings).toBeUndefined();
+    });
+
+    it('should always apply additionalLabels even when labels are not provided', async () => {
+      const args: GhCreatePullRequestToolSchemaType = {
+        owner: 'acme',
+        repo: 'demo',
+        title: 'Add feature',
+        head: 'feat/add-feature',
+        base: 'main',
+      };
+
+      const pullsCreate = vi.fn().mockResolvedValue({
+        data: {
+          number: 101,
+          id: 999,
+          node_id: 'NODE',
+          html_url: 'https://github.com/acme/demo/pull/101',
+          url: 'https://api.github.com/repos/acme/demo/pulls/101',
+          state: 'open',
+          draft: false,
+          title: 'Add feature',
+          body: null,
+          base: { ref: 'main', sha: 'BASE', repo: { full_name: 'acme/demo' } },
+          head: {
+            ref: 'feat/add-feature',
+            sha: 'HEAD',
+            repo: { full_name: 'acme/demo' },
+          },
+          created_at: '2020-01-01T00:00:00Z',
+          updated_at: '2020-01-02T00:00:00Z',
+        },
+      });
+
+      const issuesUpdate = vi.fn().mockResolvedValue({
+        data: {
+          labels: [{ name: 'team' }],
+          assignees: [],
+        },
+      });
+
+      const mockClient: MockOctokit = {
+        pulls: { create: pullsCreate, requestReviewers: vi.fn() },
+        issues: { update: issuesUpdate },
+      };
+
+      const toolWithCreateClient = tool as unknown as {
+        createClient: (patToken: string) => MockOctokit;
+      };
+      vi.spyOn(toolWithCreateClient, 'createClient').mockReturnValue(
+        mockClient as any,
+      );
+
+      const { output } = await tool.invoke(
+        args,
+        { ...mockConfig, additionalLabels: ['team'] },
+        mockCfg,
+      );
+
+      expect(output.success).toBe(true);
+      if (output.success !== true) throw new Error('Expected success output');
+
+      expect(issuesUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          labels: ['team'],
+        }),
+      );
+      expect(output.applied?.labels).toEqual(['team']);
     });
 
     it('should return success with warnings if metadata application fails', async () => {
@@ -276,7 +353,12 @@ describe('GhCreatePullRequestTool', () => {
         },
       };
 
-      vi.spyOn(tool, 'createClient').mockReturnValue(mockClient as any);
+      const toolWithCreateClient = tool as unknown as {
+        createClient: (patToken: string) => MockOctokit;
+      };
+      vi.spyOn(toolWithCreateClient, 'createClient').mockReturnValue(
+        mockClient as any,
+      );
 
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
@@ -343,7 +425,12 @@ describe('GhCreatePullRequestTool', () => {
         },
       };
 
-      vi.spyOn(tool, 'createClient').mockReturnValue(mockClient as any);
+      const toolWithCreateClient = tool as unknown as {
+        createClient: (patToken: string) => MockOctokit;
+      };
+      vi.spyOn(toolWithCreateClient, 'createClient').mockReturnValue(
+        mockClient as any,
+      );
 
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
@@ -378,7 +465,12 @@ describe('GhCreatePullRequestTool', () => {
         },
       };
 
-      vi.spyOn(tool, 'createClient').mockReturnValue(mockClient as any);
+      const toolWithCreateClient = tool as unknown as {
+        createClient: (patToken: string) => MockOctokit;
+      };
+      vi.spyOn(toolWithCreateClient, 'createClient').mockReturnValue(
+        mockClient as any,
+      );
 
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
