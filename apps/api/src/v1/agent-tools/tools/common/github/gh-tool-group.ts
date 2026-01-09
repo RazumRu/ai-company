@@ -9,6 +9,7 @@ import { GhBaseToolConfig } from './gh-base.tool';
 import { GhBranchTool } from './gh-branch.tool';
 import { GhCloneTool } from './gh-clone.tool';
 import { GhCommitTool } from './gh-commit.tool';
+import { GhCreatePullRequestTool } from './gh-create-pull-request.tool';
 import { GhPushTool } from './gh-push.tool';
 
 export enum GhToolType {
@@ -16,6 +17,7 @@ export enum GhToolType {
   COMMIT = 'commit',
   BRANCH = 'branch',
   PUSH = 'push',
+  CreatePullRequest = 'create_pull_request',
 }
 
 export type GhToolGroupConfig = GhBaseToolConfig & {
@@ -29,6 +31,7 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     private readonly ghCommitTool: GhCommitTool,
     private readonly ghBranchTool: GhBranchTool,
     private readonly ghPushTool: GhPushTool,
+    private readonly ghCreatePullRequestTool: GhCreatePullRequestTool,
   ) {
     super();
   }
@@ -59,6 +62,9 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
           break;
         case GhToolType.PUSH:
           tools.push(this.ghPushTool.build(config, lgConfig));
+          break;
+        case GhToolType.CreatePullRequest:
+          tools.push(this.ghCreatePullRequestTool.build(config, lgConfig));
           break;
       }
     }
