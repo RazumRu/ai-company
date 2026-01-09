@@ -1,23 +1,9 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
-type RequestErrorLike = {
-  status?: number;
-  message?: string;
-  response?: {
-    data?: {
-      message?: string;
-      errors?: unknown;
-    };
-    headers?: {
-      'x-ratelimit-remaining'?: string;
-      'x-ratelimit-reset'?: string;
-    };
-  };
-};
+import { RequestError } from '@octokit/request-error';
 
-function isRequestError(error: unknown): error is RequestErrorLike {
-  const e = error as { name?: unknown };
-  return e?.name === 'HttpError';
+function isRequestError(error: unknown): error is RequestError {
+  return error instanceof RequestError;
 }
 import dedent from 'dedent';
 import { z } from 'zod';
@@ -133,10 +119,11 @@ type GhCreatePullRequestToolOutput =
 
 function formatGitHubError(error: unknown): string {
   if (isRequestError(error)) {
-    const status = error.status;
-    const message = error.message;
-    const responseMessage = error.response?.data?.message;
-    const responseErrors = error.response?.data?.errors;
+    const status: number = error.status;
+    const message: string = error.message;
+
+    const responseMessage: unknown = error.response?.data?.message;
+    const responseErrors: unknown = error.response?.data?.errors;
 
     const parts: string[] = [`GitHubError(${status}):`, message];
 
@@ -188,6 +175,72 @@ function appendClosesIssues(body: string | undefined, closesIssues: number[]) {
 
   const separator = existingBody.trim().length ? '\n\n' : '';
   return `${existingBody}${separator}${filtered.join('\n')}`;
+}
+
+type CreatedPullRequest = {
+  number: number;
+  id: number;
+  nodeId?: string;
+  url: string;
+  apiUrl: string;
+  state: 'open' | 'closed';
+  draft: boolean;
+  title: string;
+  body?: string | null;
+  base: { ref: string; sha?: string; repoFullName?: string };
+  head: { ref: string; sha?: string; repoFullName?: string };
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type GitHubLabel = { name?: string | null };
+
+type GitHubAssignee = { login?: string | null };
+
+type GitHubReviewer = { login?: string | null };
+
+type GitHubTeam = { slug?: string | null };
+
+type IssuesUpdateResponseData = {
+  labels?: GitHubLabel[];
+  assignees?: GitHubAssignee[];
+};
+
+type PullsRequestReviewersResponseData = {
+  requested_reviewers?: GitHubReviewer[];
+  requested_teams?: GitHubTeam[];
+};
+
+function extractLabelNames(
+  labels: GitHubLabel[] | undefined,
+): string[] | undefined {
+  const names = labels
+    ?.map((l) => l.name)
+    .filter((name): name is string => typeof name === 'string' && name.length);
+
+  return names?.length ? names : undefined;
+}
+
+function extractLogins(
+  users: { login?: string | null }[] | undefined,
+): string[] | undefined {
+  const logins = users
+    ?.map((u) => u.login)
+    .filter(
+      (login): login is string => typeof login === 'string' && login.length,
+    );
+
+  return logins?.length ? logins : undefined;
+}
+
+function extractTeamSlugs(
+  teams: { slug?: string | null }[] | undefined,
+): string[] | undefined {
+  const slugs = teams
+    ?.map((t) => t.slug)
+    .filter((slug): slug is string => typeof slug === 'string' && slug.length);
+
+  return slugs?.length ? slugs : undefined;
 }
 
 @Injectable()
@@ -256,10 +309,17 @@ export class GhCreatePullRequestTool extends GhBaseTool<GhCreatePullRequestToolS
   }
 
   public get schema() {
-    return z.toJSONSchema(GhCreatePullRequestToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    const schema = z.toJSONSchema(GhCreatePullRequestToolSchema) as Record<
+      string,
+      unknown
+    >;
+
+    // Ajv in this repo is configured for draft-07 by default; the Zod JSON schema
+    // output includes a draft 2020-12 $schema ref which Ajv treats as an external ref.
+    // Strip it so validation can compile.
+    delete schema.$schema;
+
+    return schema;
   }
 
   public async invoke(
@@ -267,134 +327,158 @@ export class GhCreatePullRequestTool extends GhBaseTool<GhCreatePullRequestToolS
     config: GhBaseToolConfig,
     _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<GhCreatePullRequestToolOutput>> {
-    const title = this.generateTitle?.(args, config);
-    const messageMetadata = { __title: title };
+    const validated = this.validate(args);
 
-    const warnings: string[] = [];
-    const applied: NonNullable<
-      Extract<GhCreatePullRequestToolOutput, { success: true }>['applied']
-    > = {};
-
-    // Prefer this.createClient() so tests can override client creation without spying/casting.
-    const client = this.createClient(config.patToken);
-
-    const bodyWithCloses = args.closesIssues?.length
-      ? appendClosesIssues(args.body, args.closesIssues)
-      : args.body;
-
-    try {
-      const prRes = await client.pulls.create({
-        owner: args.owner,
-        repo: args.repo,
-        title: args.title,
-        head: args.head,
-        base: args.base,
-        body: bodyWithCloses,
-        draft: args.draft,
-        maintainer_can_modify: args.maintainerCanModify,
-      });
-
-      const pr = prRes.data;
-      const issueNumber = pr.number;
-
-      // Apply issue metadata (labels/assignees/milestone) via Issues API
-      if (
-        (args.labels && args.labels.length) ||
-        (args.assignees && args.assignees.length) ||
-        args.milestoneNumber
-      ) {
-        try {
-          const updateRes = await client.issues.update({
-            owner: args.owner,
-            repo: args.repo,
-            issue_number: issueNumber,
-            labels: args.labels,
-            assignees: args.assignees,
-            milestone: args.milestoneNumber,
-          });
-
-          applied.labels = (updateRes.data.labels ?? [])
-            .map((l) => l.name)
-            .filter((x): x is string => !!x);
-          applied.assignees = (updateRes.data.assignees ?? [])
-            .map((a) => a.login)
-            .filter((x): x is string => !!x);
-          if (args.milestoneNumber) {
-            applied.milestoneNumber = args.milestoneNumber;
-          }
-        } catch (e) {
-          warnings.push(
-            `Failed to apply issue metadata: ${formatGitHubError(e)}`,
-          );
-        }
-      }
-
-      // Request reviewers (users + teams)
-      if (
-        (args.reviewers && args.reviewers.length) ||
-        (args.teamReviewers && args.teamReviewers.length)
-      ) {
-        try {
-          const reviewersRes = await client.pulls.requestReviewers({
-            owner: args.owner,
-            repo: args.repo,
-            pull_number: issueNumber,
-            reviewers: args.reviewers,
-            team_reviewers: args.teamReviewers,
-          });
-
-          applied.reviewers = (reviewersRes.data.requested_reviewers ?? [])
-            .map((r) => r.login)
-            .filter((x): x is string => !!x);
-          applied.teamReviewers = (reviewersRes.data.requested_teams ?? [])
-            .map((t) => t.slug)
-            .filter((x): x is string => !!x);
-        } catch (e) {
-          warnings.push(`Failed to request reviewers: ${formatGitHubError(e)}`);
-        }
-      }
-
-      return {
-        output: {
-          success: true,
-          owner: args.owner,
-          repo: args.repo,
-          pullRequest: {
-            number: pr.number,
-            id: pr.id,
-            nodeId: pr.node_id,
-            url: pr.html_url,
-            apiUrl: pr.url,
-            state: pr.state,
-            draft: pr.draft,
-            title: pr.title,
-            body: pr.body,
-            base: {
-              ref: pr.base.ref,
-              sha: pr.base.sha,
-              repoFullName: pr.base.repo?.full_name,
-            },
-            head: {
-              ref: pr.head.ref,
-              sha: pr.head.sha,
-              repoFullName: pr.head.repo?.full_name,
-            },
-            createdAt: pr.created_at,
-            updatedAt: pr.updated_at,
-          },
-          applied: Object.keys(applied).length ? applied : undefined,
-          warnings: warnings.length ? warnings : undefined,
-        },
-        messageMetadata,
-      };
-    } catch (error) {
+    const token = config.patToken;
+    if (!token) {
       return {
         output: {
           success: false,
-          error: formatGitHubError(error),
+          error: 'ValidationError: Missing GitHub PAT token',
         },
-        messageMetadata,
       };
     }
+
+    const client = this.createClient(token);
+
+    // Step 1: create PR
+    const baseBody = validated.body;
+    const bodyWithIssues = validated.closesIssues?.length
+      ? appendClosesIssues(baseBody, validated.closesIssues)
+      : baseBody;
+
+    let created: CreatedPullRequest;
+    try {
+      const res = await client.pulls.create({
+        owner: validated.owner,
+        repo: validated.repo,
+        title: validated.title,
+        head: validated.head,
+        base: validated.base,
+        body: bodyWithIssues,
+        draft: validated.draft,
+        maintainer_can_modify: validated.maintainerCanModify,
+      });
+
+      created = {
+        number: res.data.number,
+        id: res.data.id,
+        nodeId: res.data.node_id,
+        url: res.data.html_url,
+        apiUrl: res.data.url,
+        state: res.data.state === 'closed' ? 'closed' : 'open',
+        draft: Boolean(res.data.draft),
+        title: res.data.title,
+        body: res.data.body,
+        base: {
+          ref: res.data.base.ref,
+          sha: res.data.base.sha,
+          repoFullName: res.data.base.repo?.full_name,
+        },
+        head: {
+          ref: res.data.head.ref,
+          sha: res.data.head.sha,
+          repoFullName: res.data.head.repo?.full_name,
+        },
+        createdAt: res.data.created_at,
+        updatedAt: res.data.updated_at,
+      };
+    } catch (error) {
+      return { output: { success: false, error: formatGitHubError(error) } };
+    }
+
+    // Step 2: apply metadata (labels/assignees/milestone)
+    const warnings: string[] = [];
+    let applied:
+      | {
+          labels?: string[];
+          assignees?: string[];
+          reviewers?: string[];
+          teamReviewers?: string[];
+          milestoneNumber?: number;
+        }
+      | undefined;
+
+    if (
+      validated.labels?.length ||
+      validated.assignees?.length ||
+      validated.milestoneNumber
+    ) {
+      try {
+        const issueRes = await client.issues.update({
+          owner: validated.owner,
+          repo: validated.repo,
+          issue_number: created.number,
+          labels: validated.labels,
+          assignees: validated.assignees,
+          milestone: validated.milestoneNumber,
+        });
+
+        const data = issueRes.data as IssuesUpdateResponseData;
+        applied = {
+          labels: extractLabelNames(data.labels),
+          assignees: extractLogins(data.assignees),
+          milestoneNumber: validated.milestoneNumber,
+        };
+      } catch (error) {
+        warnings.push(
+          `Failed to apply issue metadata: ${formatGitHubError(error)}`,
+        );
+      }
+    }
+
+    // Step 3: request reviewers
+    if (
+      (validated.reviewers?.length || validated.teamReviewers?.length) &&
+      (validated.reviewers?.length ?? 0) +
+        (validated.teamReviewers?.length ?? 0) <=
+        15
+    ) {
+      try {
+        const reviewersRes = await client.pulls.requestReviewers({
+          owner: validated.owner,
+          repo: validated.repo,
+          pull_number: created.number,
+          reviewers: validated.reviewers,
+          team_reviewers: validated.teamReviewers,
+        });
+
+        const reviewersData =
+          reviewersRes.data as PullsRequestReviewersResponseData;
+
+        const reviewersApplied = extractLogins(
+          reviewersData.requested_reviewers,
+        );
+        const teamReviewersApplied = extractTeamSlugs(
+          reviewersData.requested_teams,
+        );
+
+        applied = {
+          ...(applied ?? {}),
+          reviewers: reviewersApplied,
+          teamReviewers: teamReviewersApplied,
+        };
+      } catch (error) {
+        warnings.push(
+          `Failed to request reviewers: ${formatGitHubError(error)}`,
+        );
+      }
+    }
+
+    const output: GhCreatePullRequestToolOutput = {
+      success: true,
+      owner: validated.owner,
+      repo: validated.repo,
+      pullRequest: created,
+      applied,
+      warnings: warnings.length ? warnings : undefined,
+    };
+
+    return {
+      output,
+      messageMetadata: {
+        __title: this.generateTitle?.(validated, config),
+      },
+    };
   }
 }

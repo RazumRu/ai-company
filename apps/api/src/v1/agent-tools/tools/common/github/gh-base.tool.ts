@@ -32,10 +32,6 @@ export abstract class GhBaseTool<
     return new Octokit({ auth: token });
   }
 
-  protected getClient(token: string) {
-    return this.createClient(token);
-  }
-
   protected async execGhCommand(
     params: { cmd: string[] | string },
     config: GhBaseToolConfig,

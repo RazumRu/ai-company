@@ -353,7 +353,7 @@ describe('GhToolGroup', () => {
       const config: GhToolGroupConfig = {
         runtime: {} as any,
         patToken: 'ghp_test_token',
-        tools: [GhToolType.CreatePullRequest],
+        tools: [GhToolType.CREATE_PULL_REQUEST],
       };
 
       const result = toolGroup.buildTools(config);

@@ -17,7 +17,8 @@ export enum GhToolType {
   COMMIT = 'commit',
   BRANCH = 'branch',
   PUSH = 'push',
-  CreatePullRequest = 'create_pull_request',
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  CREATE_PULL_REQUEST = 'create_pull_request',
 }
 
 export type GhToolGroupConfig = GhBaseToolConfig & {
@@ -48,7 +49,7 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
       // Intentionally excluded by default: this is a potentially destructive action
       // that creates permanent PRs in a repo. Only enable when explicitly requested.
       // (Product can opt-in later if desired.)
-      // GhToolType.CreatePullRequest,
+      // GhToolType.CREATE_PULL_REQUEST,
     ];
 
     const tools: BuiltAgentTool[] = [];
@@ -67,7 +68,7 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
         case GhToolType.PUSH:
           tools.push(this.ghPushTool.build(config, lgConfig));
           break;
-        case GhToolType.CreatePullRequest:
+        case GhToolType.CREATE_PULL_REQUEST:
           tools.push(this.ghCreatePullRequestTool.build(config, lgConfig));
           break;
       }
