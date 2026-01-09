@@ -1,10 +1,6 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { RequestError } from '@octokit/request-error';
-
-function isRequestError(error: unknown): error is RequestError {
-  return error instanceof RequestError;
-}
 import dedent from 'dedent';
 import { z } from 'zod';
 
@@ -118,7 +114,7 @@ type GhCreatePullRequestToolOutput =
   | { success: false; error: string };
 
 function formatGitHubError(error: unknown): string {
-  if (isRequestError(error)) {
+  if (error instanceof RequestError) {
     const status: number = error.status;
     const message: string = error.message;
 
