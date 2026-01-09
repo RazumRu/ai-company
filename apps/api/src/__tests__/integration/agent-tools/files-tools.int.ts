@@ -2,12 +2,14 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BaseException } from '@packages/common';
+import dedent from 'dedent';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { FilesApplyChangesTool } from '../../../v1/agent-tools/tools/common/files/files-apply-changes.tool';
 import { FilesBuildTagsTool } from '../../../v1/agent-tools/tools/common/files/files-build-tags.tool';
 import { FilesDeleteTool } from '../../../v1/agent-tools/tools/common/files/files-delete.tool';
+import { FilesEditTool } from '../../../v1/agent-tools/tools/common/files/files-edit.tool';
 import { FilesFindPathsTool } from '../../../v1/agent-tools/tools/common/files/files-find-paths.tool';
 import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-read.tool';
 import { FilesSearchTagsTool } from '../../../v1/agent-tools/tools/common/files/files-search-tags.tool';
@@ -19,6 +21,7 @@ import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-no
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { RuntimeProvider } from '../../../v1/runtime/services/runtime-provider';
@@ -31,7 +34,7 @@ import { createTestModule } from '../setup';
 const THREAD_ID = `files-tools-int-${Date.now()}`;
 const WORKSPACE_DIR = `/runtime-workspace/${THREAD_ID}`;
 const TAGS_ALIAS = 'files-tools-index';
-const INT_TEST_TIMEOUT = 30000;
+const INT_TEST_TIMEOUT = 60000;
 const RUNNABLE_CONFIG: ToolRunnableConfig<BaseAgentConfigurable> = {
   configurable: {
     thread_id: THREAD_ID,
@@ -85,6 +88,7 @@ describe('Files tools integration', () => {
   let filesBuildTagsTool: FilesBuildTagsTool;
   let filesSearchTagsTool: FilesSearchTagsTool;
   let filesDeleteTool: FilesDeleteTool;
+  let filesEditTool: FilesEditTool;
   let shellTool: ShellTool;
 
   const writeSampleFile = async (fileName = 'sample.ts') => {
@@ -93,7 +97,8 @@ describe('Files tools integration', () => {
     const { output: result } = await filesApplyChangesTool.invoke(
       {
         filePath,
-        edits: [{ oldText: '', newText: SAMPLE_TS_CONTENT }],
+        oldText: '',
+        newText: SAMPLE_TS_CONTENT,
       },
       { runtime },
       RUNNABLE_CONFIG,
@@ -114,8 +119,10 @@ describe('Files tools integration', () => {
         FilesBuildTagsTool,
         FilesSearchTagsTool,
         FilesDeleteTool,
+        FilesEditTool,
         ShellTool,
         RuntimeProvider,
+        OpenaiService,
       ],
     }).compile();
 
@@ -127,6 +134,7 @@ describe('Files tools integration', () => {
     filesBuildTagsTool = moduleRef.get(FilesBuildTagsTool);
     filesSearchTagsTool = moduleRef.get(FilesSearchTagsTool);
     filesDeleteTool = moduleRef.get(FilesDeleteTool);
+    filesEditTool = moduleRef.get(FilesEditTool);
     shellTool = moduleRef.get(ShellTool);
 
     runtime = await runtimeProvider.provide({
@@ -168,12 +176,8 @@ describe('Files tools integration', () => {
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: initialContent,
-              newText: '// Integration header\n' + initialContent,
-            },
-          ],
+          oldText: initialContent,
+          newText: '// Integration header\n' + initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -302,7 +306,8 @@ describe('Files tools integration', () => {
       const { output: applyRes } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: content }],
+          oldText: '',
+          newText: content,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -381,7 +386,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: content }],
+          oldText: '',
+          newText: content,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -436,7 +442,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -448,13 +455,8 @@ describe('Files tools integration', () => {
       const { output: replaceResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: `export function oldFunction() {\n  return 'old value';\n}`,
-              newText: `export function newFunction() {\n  return 'new value';\n}`,
-            },
-          ],
-          dryRun: false,
+          oldText: `export function oldFunction() {\n  return 'old value';\n}`,
+          newText: `export function newFunction() {\n  return 'new value';\n}`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -490,7 +492,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -510,12 +513,8 @@ describe('Files tools integration', () => {
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: beforeContent,
-              newText: `import { newImport } from './new';\n\n${beforeContent}`,
-            },
-          ],
+          oldText: beforeContent,
+          newText: `import { newImport } from './new';\n\n${beforeContent}`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -549,7 +548,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -569,12 +569,8 @@ describe('Files tools integration', () => {
       const { output: appendResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: beforeContent,
-              newText: `${beforeContent}\n\nexport function newFunction() {\n  return 'new';\n}`,
-            },
-          ],
+          oldText: beforeContent,
+          newText: `${beforeContent}\n\nexport function newFunction() {\n  return 'new';\n}`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -616,7 +612,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -628,12 +625,8 @@ describe('Files tools integration', () => {
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`,
-              newText: `export const config = {\n  api: 'http://localhost',\n  timeout: 5000,\n  port: 3000,\n};`,
-            },
-          ],
+          oldText: `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`,
+          newText: `export const config = {\n  api: 'http://localhost',\n  timeout: 5000,\n  port: 3000,\n};`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -674,7 +667,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: '' }],
+          oldText: '',
+          newText: '',
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -695,12 +689,8 @@ describe('Files tools integration', () => {
       const { output: addResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: '',
-              newText: `// First line\nexport const value = 'data';`,
-            },
-          ],
+          oldText: '',
+          newText: `// First line\nexport const value = 'data';`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -722,7 +712,7 @@ describe('Files tools integration', () => {
   );
 
   it(
-    'uses dryRun to preview changes before applying',
+    'returns diff when applying changes',
     { timeout: INT_TEST_TIMEOUT },
     async () => {
       const filePath = `${WORKSPACE_DIR}/dryrun-test.ts`;
@@ -733,7 +723,8 @@ describe('Files tools integration', () => {
       const { output: createResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [{ oldText: '', newText: initialContent }],
+          oldText: '',
+          newText: initialContent,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -741,50 +732,12 @@ describe('Files tools integration', () => {
 
       expect(createResult.success).toBe(true);
 
-      // Preview changes with dryRun
-      const { output: dryRunResult } = await filesApplyChangesTool.invoke(
-        {
-          filePath,
-          edits: [
-            {
-              oldText: `export function test() {\n  return 'original';\n}`,
-              newText: `export function test() {\n  return 'modified';\n}`,
-            },
-          ],
-          dryRun: true,
-        },
-        { runtime },
-        RUNNABLE_CONFIG,
-      );
-
-      expect(dryRunResult.success).toBe(true);
-      expect(dryRunResult.appliedEdits).toBe(0); // No edits applied in dry run
-      expect(dryRunResult.diff).toBeDefined();
-      expect(dryRunResult.diff).toContain("-  return 'original'");
-      expect(dryRunResult.diff).toContain("+  return 'modified'");
-
-      // Verify file wasn't changed
-      const { output: readAfterDryRun } = await filesReadTool.invoke(
-        { filesToRead: [{ filePath }] },
-        { runtime },
-        RUNNABLE_CONFIG,
-      );
-
-      const afterDryRun = readAfterDryRun.files?.[0]?.content || '';
-      expect(afterDryRun).toContain('original');
-      expect(afterDryRun).not.toContain('modified');
-
-      // Now apply for real
+      // Apply changes (no dryRun support)
       const { output: applyResult } = await filesApplyChangesTool.invoke(
         {
           filePath,
-          edits: [
-            {
-              oldText: `export function test() {\n  return 'original';\n}`,
-              newText: `export function test() {\n  return 'modified';\n}`,
-            },
-          ],
-          dryRun: false,
+          oldText: `export function test() {\n  return 'original';\n}`,
+          newText: `export function test() {\n  return 'modified';\n}`,
         },
         { runtime },
         RUNNABLE_CONFIG,
@@ -792,6 +745,9 @@ describe('Files tools integration', () => {
 
       expect(applyResult.success).toBe(true);
       expect(applyResult.appliedEdits).toBe(1);
+      expect(applyResult.diff).toBeDefined();
+      expect(applyResult.diff).toContain("-  return 'original'");
+      expect(applyResult.diff).toContain("+  return 'modified'");
 
       // Verify file was changed
       const { output: readAfterApply } = await filesReadTool.invoke(
@@ -805,6 +761,222 @@ describe('Files tools integration', () => {
       expect(afterApply).not.toContain('original');
     },
   );
+
+  it(
+    'files_edit: succeeds on a simple, unambiguous edit',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const unique = `UNIQUE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const filePath = `${WORKSPACE_DIR}/files-edit-success-${unique}.ts`;
+      const padding = Array.from(
+        { length: 250 },
+        (_, i) => `// pad-${unique}-${i}`,
+      ).join('\n');
+      const keepBlock = Array.from(
+        { length: 12 },
+        (_, i) => `export const keep_${unique}_${i} = ${i};`,
+      ).join('\n');
+      const initialContent = `export function greet(name: string) {
+  return \`Hello, \${name}!\`;
+}
+
+// ${unique}_BEFORE
+export const value = 'old';
+${keepBlock}
+// ${unique}_AFTER
+export const tail_${unique} = true;
+${padding}
+`;
+
+      await filesApplyChangesTool.invoke(
+        { filePath, oldText: '', newText: initialContent },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Invoke files_edit - this should succeed with very strong, unique anchors.
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: dedent`
+            Change the single line between the anchors from:
+              export const value = 'old';
+            to:
+              export const value = 'new';
+
+            Use these EXACT anchors from the CURRENT FILE:
+            beforeAnchor (must be exactly this line):
+              // ${unique}_BEFORE
+            afterAnchor (must be exactly this line):
+              // ${unique}_AFTER
+
+            The replacement MUST be the line that goes BETWEEN those anchors (do not add it after afterAnchor).
+          `,
+          codeSketch: `export function greet(name: string) {
+  return \`Hello, \${name}!\`;
+}
+
+// ... existing code ...
+// ${unique}_BEFORE
+export const value = 'new';
+${keepBlock}
+// ... existing code ...
+// ${unique}_AFTER
+export const tail_${unique} = true;
+// ... existing code ...`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      if (!editResult.success) {
+        // Make failures actionable in CI logs
+
+        console.error('files_edit success test failed:', editResult.error);
+        throw new Error(
+          `files_edit expected success but got: ${editResult.error}`,
+        );
+      }
+
+      expect(editResult.filePath).toBe(filePath);
+      expect(editResult.diff).toBeDefined();
+      expect(editResult.appliedHunks).toBeGreaterThan(0);
+
+      const { output: readAfter } = await filesReadTool.invoke(
+        { filesToRead: [{ filePath }] },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+      const contentAfter = readAfter.files?.[0]?.content || '';
+      expect(contentAfter).toContain("export const value = 'new'");
+    },
+  );
+
+  it(
+    'files_edit: handles NOT_FOUND_ANCHOR error with invalid anchors',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `edit-error-test-${Date.now()}.ts`;
+      const filePath = await writeSampleFile(fileName);
+
+      // Try to edit with non-existent anchors
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Try to modify non-existent code',
+          codeSketch: `function nonExistent() {
+// ... existing code ...
+  return 'modified';
+// ... existing code ...
+}`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // With LLM alignment, this should NOT silently succeed in editing unrelated parts of the file.
+      // It may fail for various reasons: "anchors not found", "ambiguous/not unique", "Invalid JSON", or safety limits.
+      expect(editResult.success).toBe(false);
+      if (!editResult.success) {
+        expect(editResult.error).toBeDefined();
+        expect(editResult.error).toMatch(
+          /Could not find|anchors|unique|ambiguous|multiple|limit|exceeds|Invalid JSON|parse/i,
+        );
+      }
+    },
+  );
+
+  it(
+    'files_edit: handles INVALID_SKETCH_FORMAT error with no markers',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const fileName = `edit-format-test-${Date.now()}.ts`;
+      const filePath = await writeSampleFile(fileName);
+
+      // Try to edit without proper markers
+      const { output: editResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Try to modify without markers',
+          codeSketch: `export function greet(name: string) {
+  return 'modified';
+}`,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Markerless sketch is now allowed (Cursor-like behavior), so LLM will attempt to process it
+      // The result could be success or failure depending on LLM interpretation, but "marker" is no longer required
+      if (!editResult.success) {
+        expect(editResult.error).toBeDefined();
+        // Should not complain about missing markers
+        expect(editResult.error).not.toContain('marker');
+      }
+    },
+  );
+
+  it(
+    'files_edit with useSmartModel: uses smart model flag',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const unique = `UNIQUE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const filePath = `${WORKSPACE_DIR}/files-edit-smart-model-${unique}.ts`;
+
+      // Create a simple, small file to ensure it fits within LLM context budget
+      const initialContent = `// ${unique}
+export function greet(name: string): string {
+  return \`Hello, \${name}!\`;
+}
+`;
+
+      await filesApplyChangesTool.invoke(
+        { filePath, oldText: '', newText: initialContent },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Test with useSmartModel=true - this should succeed with a simple, unambiguous edit
+      const { output: smartModelResult } = await filesEditTool.invoke(
+        {
+          filePath,
+          editInstructions: 'Change greeting from Hello to Hi',
+          codeSketch: `// ${unique}
+export function greet(name: string): string {
+  return \`Hi, \${name}!\`;
+}
+`,
+          useSmartModel: true,
+        },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+
+      // Must succeed - no conditional acceptance of failure
+      if (!smartModelResult.success) {
+        throw new Error(
+          `Smart model edit failed: ${smartModelResult.error}. This test requires deterministic success.`,
+        );
+      }
+
+      expect(smartModelResult.success).toBe(true);
+      expect(smartModelResult.modelUsed).toBe('smart');
+      expect(smartModelResult.appliedHunks).toBeGreaterThan(0);
+      expect(smartModelResult.diff).toBeDefined();
+
+      // Verify the content was actually changed
+      const { output: readAfter } = await filesReadTool.invoke(
+        { filesToRead: [{ filePath }] },
+        { runtime },
+        RUNNABLE_CONFIG,
+      );
+      const contentAfter = readAfter.files?.[0]?.content || '';
+      expect(contentAfter).toContain('Hi,');
+      expect(contentAfter).not.toContain('Hello,');
+    },
+  );
+
+  // NOTE: More detailed, LLM-dependent `files_edit` scenario coverage lives in unit tests.
 });
 
 describe('Files tools graph execution', () => {

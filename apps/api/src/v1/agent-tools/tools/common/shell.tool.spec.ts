@@ -182,15 +182,7 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "hello world"',
-          env: expect.objectContaining({
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
-          }),
+          env: {},
           childWorkdir: 'unknown',
           createChildWorkdir: true,
           metadata: expect.any(Object),
@@ -245,13 +237,6 @@ describe('ShellTool', () => {
           cmd: 'echo $NODE_ENV',
           env: expect.objectContaining({
             NODE_ENV: 'test',
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
@@ -292,13 +277,6 @@ describe('ShellTool', () => {
           tailTimeoutMs: 2000,
           env: expect.objectContaining({
             TEST: 'value',
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
@@ -461,13 +439,6 @@ describe('ShellTool', () => {
           env: expect.objectContaining({
             VAR1: 'value1',
             VAR2: 'value2',
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
@@ -497,15 +468,7 @@ describe('ShellTool', () => {
         expect.objectContaining({
           cmd: 'echo "test"',
           tailTimeoutMs: 3000,
-          env: expect.objectContaining({
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
-          }),
+          env: {},
           childWorkdir: 'unknown',
           createChildWorkdir: true,
           metadata: expect.any(Object),
@@ -543,13 +506,6 @@ describe('ShellTool', () => {
           env: expect.objectContaining({
             GITHUB_PAT_TOKEN: 'ghp_token123',
             GIT_REPO_URL: 'https://github.com/user/repo.git',
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
@@ -587,13 +543,6 @@ describe('ShellTool', () => {
           cmd: 'echo $GITHUB_PAT_TOKEN',
           env: expect.objectContaining({
             GITHUB_PAT_TOKEN: 'ghp_provided_token', // Provided value should override config value
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
           }),
           childWorkdir: 'unknown',
           createChildWorkdir: true,
@@ -621,15 +570,7 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "test"',
-          env: expect.objectContaining({
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
-          }),
+          env: {},
           childWorkdir: 'unknown',
           createChildWorkdir: true,
           metadata: expect.any(Object),
@@ -656,15 +597,7 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "test"',
-          env: expect.objectContaining({
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
-          }),
+          env: {},
           childWorkdir: 'unknown',
           createChildWorkdir: true,
           metadata: expect.any(Object),
@@ -817,7 +750,7 @@ describe('ShellTool', () => {
   });
 
   describe('output env defaults', () => {
-    it('should include no-color env defaults by default (caller can override)', async () => {
+    it('should not add default env variables (now set in Dockerfile)', async () => {
       const mockExecResult = {
         stdout: 'ok',
         stderr: '',
@@ -835,15 +768,7 @@ describe('ShellTool', () => {
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
-          env: expect.objectContaining({
-            NO_COLOR: '1',
-            FORCE_COLOR: '0',
-            CLICOLOR: '0',
-            CLICOLOR_FORCE: '0',
-            TERM: 'dumb',
-            CI: 'true',
-            NODE_NO_WARNINGS: '1',
-          }),
+          env: {},
         }),
       );
     });

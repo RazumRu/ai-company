@@ -1,6 +1,13 @@
 FROM node:24
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV NO_COLOR=1
+ENV FORCE_COLOR=0
+ENV CLICOLOR=0
+ENV CLICOLOR_FORCE=0
+ENV TERM=dumb
+ENV CI=true
+ENV NODE_NO_WARNINGS=1
 WORKDIR /app
 
 RUN apt-get update -y && apt-get install -y --no-install-recommends \

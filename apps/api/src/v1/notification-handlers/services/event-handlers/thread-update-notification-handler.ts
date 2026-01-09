@@ -81,7 +81,21 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
           externalThreadKey,
         );
       if (tokenUsage) {
-        updates.tokenUsage = tokenUsage;
+        // Merge with existing DB token usage to preserve per-node data across multiple runs
+        const existingUsage = thread.tokenUsage;
+        if (existingUsage?.byNode && tokenUsage.byNode) {
+          // Merge byNode data: keep nodes from DB that aren't in Redis
+          const mergedByNode = { ...existingUsage.byNode };
+          for (const [nodeId, usage] of Object.entries(tokenUsage.byNode)) {
+            mergedByNode[nodeId] = usage;
+          }
+          updates.tokenUsage = {
+            ...tokenUsage,
+            byNode: mergedByNode,
+          };
+        } else {
+          updates.tokenUsage = tokenUsage;
+        }
       }
     }
 

@@ -246,7 +246,11 @@ export class CommunicationExecTool extends BaseTool<
 
     return {
       output,
-      messageMetadata: { __title: title },
+      messageMetadata: {
+        __title: title,
+        __interAgentCommunication: true,
+        __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+      },
     };
   }
 }

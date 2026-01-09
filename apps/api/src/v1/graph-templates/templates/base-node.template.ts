@@ -7,11 +7,7 @@ import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { IBaseResourceOutput } from '../../graph-resources/graph-resources.types';
-import {
-  GraphMetadataSchemaType,
-  GraphNodeInstanceHandle,
-  NodeKind,
-} from '../../graphs/graphs.types';
+import { GraphNodeInstanceHandle, NodeKind } from '../../graphs/graphs.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 
 export type NodeConnection =

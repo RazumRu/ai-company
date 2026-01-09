@@ -33,6 +33,9 @@ export const environment = () =>
 
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY'),
+    // LLM model defaults for tools (do not override per-call)
+    filesEditModel: getEnv('FILES_EDIT_MODEL', 'gpt-5-mini'),
+    filesEditSmartModel: getEnv('FILES_EDIT_SMART_MODEL', 'gpt-5.1-codex-mini'),
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),
     dockerRuntimeImage: getEnv(
       'DOCKER_RUNTIME_IMAGE',

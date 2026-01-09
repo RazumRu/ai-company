@@ -335,7 +335,7 @@ describe('ThreadUpdateNotificationHandler', () => {
         totalTokens: 3,
         totalPrice: 0.002,
         byNode: {
-          agentA: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
+          agentB: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
         },
       };
 
@@ -343,12 +343,13 @@ describe('ThreadUpdateNotificationHandler', () => {
         ...thread,
         status: ThreadStatus.Done,
         tokenUsage: {
-          inputTokens: 10,
-          outputTokens: 5,
-          totalTokens: 15,
-          totalPrice: 0.01,
+          inputTokens: 2,
+          outputTokens: 1,
+          totalTokens: 3,
+          totalPrice: 0.002,
           byNode: {
             agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            agentB: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
           },
         },
         updatedAt: new Date('2024-01-01T00:00:01Z'),
@@ -386,7 +387,16 @@ describe('ThreadUpdateNotificationHandler', () => {
 
       expect(updateSpy).toHaveBeenCalledWith(thread.id, {
         status: ThreadStatus.Done,
-        tokenUsage: flushedUsage,
+        tokenUsage: {
+          inputTokens: 2,
+          outputTokens: 1,
+          totalTokens: 3,
+          totalPrice: 0.002,
+          byNode: {
+            agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            agentB: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
+          },
+        },
       });
     });
   });

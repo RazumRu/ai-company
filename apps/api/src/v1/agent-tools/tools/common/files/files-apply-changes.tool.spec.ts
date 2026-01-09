@@ -24,36 +24,33 @@ describe('FilesApplyChangesTool', () => {
 
       const parsed = schema.safeParse({
         filePath: '/test/file.ts',
-        edits: [
-          {
-            oldText: 'old',
-            newText: 'new',
-          },
-        ],
+        oldText: 'old',
+        newText: 'new',
       });
 
       expect(parsed.success).toBe(true);
     });
 
-    it('should require at least one edit', () => {
+    it('should accept replaceAll flag', () => {
       const parsed = FilesApplyChangesToolSchema.safeParse({
         filePath: '/test/file.ts',
-        edits: [],
-      });
-
-      expect(parsed.success).toBe(false);
-    });
-
-    it('should default dryRun to false', () => {
-      const parsed = FilesApplyChangesToolSchema.safeParse({
-        filePath: '/test/file.ts',
-        edits: [{ oldText: 'old', newText: 'new' }],
+        oldText: 'old',
+        newText: 'new',
+        replaceAll: true,
       });
 
       expect(parsed.success).toBe(true);
-      if (parsed.success) {
-        expect(parsed.data.dryRun).toBe(false);
-      }
+    });
+
+    it('should accept replaceAll as false', () => {
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        oldText: 'old',
+        newText: 'new',
+        replaceAll: false,
+      });
+
+      expect(parsed.success).toBe(true);
     });
   });
 
@@ -64,53 +61,37 @@ describe('FilesApplyChangesTool', () => {
 
     it('should have meaningful description', () => {
       expect(tool.description).toContain('targeted text edits');
-      expect(tool.description).toContain('dryRun');
       expect(tool.description).toContain('oldText');
       expect(tool.description).toContain('newText');
     });
   });
 
   describe('generateTitle', () => {
-    it('should generate title with file name and edit count', () => {
+    it('should generate title with file name for edit mode', () => {
       const title = tool['generateTitle'](
         {
           filePath: '/repo/src/utils.ts',
-          edits: [{ oldText: 'old', newText: 'new' }],
-          dryRun: false,
+          oldText: 'old',
+          newText: 'new',
         },
         mockConfig,
       );
 
-      expect(title).toBe('Editing utils.ts (1 edit)');
+      expect(title).toBe('Editing utils.ts');
     });
 
-    it('should pluralize edits correctly', () => {
+    it('should generate title with replace all mode', () => {
       const title = tool['generateTitle'](
         {
           filePath: '/repo/src/app.ts',
-          edits: [
-            { oldText: 'old1', newText: 'new1' },
-            { oldText: 'old2', newText: 'new2' },
-          ],
-          dryRun: false,
+          oldText: 'old',
+          newText: 'new',
+          replaceAll: true,
         },
         mockConfig,
       );
 
-      expect(title).toBe('Editing app.ts (2 edits)');
-    });
-
-    it('should indicate preview mode when dryRun is true', () => {
-      const title = tool['generateTitle'](
-        {
-          filePath: '/repo/src/test.ts',
-          edits: [{ oldText: 'old', newText: 'new' }],
-          dryRun: true,
-        },
-        mockConfig,
-      );
-
-      expect(title).toContain('(preview)');
+      expect(title).toBe('Editing app.ts');
     });
   });
 
@@ -168,9 +149,12 @@ describe('FilesApplyChangesTool', () => {
   describe('findMatches', () => {
     it('should find single match', () => {
       const fileContent = 'line1\nline2\nline3';
-      const edits = [{ oldText: 'line2', newText: 'modified' }];
 
-      const { matches, errors } = tool['findMatches'](fileContent, edits);
+      const { matches, errors } = tool['findMatches'](
+        fileContent,
+        'line2',
+        false,
+      );
 
       expect(matches).toHaveLength(1);
       expect(errors).toHaveLength(0);
@@ -181,9 +165,12 @@ describe('FilesApplyChangesTool', () => {
 
     it('should find multiline match', () => {
       const fileContent = 'line1\nline2\nline3\nline4';
-      const edits = [{ oldText: 'line2\nline3', newText: 'modified' }];
 
-      const { matches, errors } = tool['findMatches'](fileContent, edits);
+      const { matches, errors } = tool['findMatches'](
+        fileContent,
+        'line2\nline3',
+        false,
+      );
 
       expect(matches).toHaveLength(1);
       expect(errors).toHaveLength(0);
@@ -194,9 +181,12 @@ describe('FilesApplyChangesTool', () => {
 
     it('should handle whitespace normalization', () => {
       const fileContent = '  line1  \n  line2  ';
-      const edits = [{ oldText: 'line1\nline2', newText: 'modified' }];
 
-      const { matches, errors } = tool['findMatches'](fileContent, edits);
+      const { matches, errors } = tool['findMatches'](
+        fileContent,
+        'line1\nline2',
+        false,
+      );
 
       expect(matches).toHaveLength(1);
       expect(errors).toHaveLength(0);
@@ -204,44 +194,50 @@ describe('FilesApplyChangesTool', () => {
 
     it('should detect when no match found', () => {
       const fileContent = 'line1\nline2';
-      const edits = [{ oldText: 'nonexistent', newText: 'modified' }];
 
-      const { matches, errors } = tool['findMatches'](fileContent, edits);
+      const { matches, errors } = tool['findMatches'](
+        fileContent,
+        'nonexistent',
+        false,
+      );
 
       expect(matches).toHaveLength(0);
       expect(errors).toHaveLength(1);
       expect(errors[0]).toContain('Could not find match');
     });
 
-    it('should detect multiple matches', () => {
+    it('should detect multiple matches when replaceAll is false', () => {
       const fileContent = 'line1\nline1\nline1';
-      const edits = [{ oldText: 'line1', newText: 'modified' }];
 
-      const { matches, errors } = tool['findMatches'](fileContent, edits);
+      const { matches, errors } = tool['findMatches'](
+        fileContent,
+        'line1',
+        false,
+      );
 
       expect(matches).toHaveLength(0);
       expect(errors).toHaveLength(1);
       expect(errors[0]).toContain('Found 3 matches');
+      expect(errors[0]).toContain('replaceAll');
     });
 
-    it('should handle multiple edits', () => {
-      const fileContent = 'line1\nline2\nline3';
-      const edits = [
-        { oldText: 'line1', newText: 'modified1' },
-        { oldText: 'line3', newText: 'modified3' },
-      ];
+    it('should find all matches when replaceAll is true', () => {
+      const fileContent = 'line1\nline1\nline1';
 
-      const { matches, errors } = tool['findMatches'](fileContent, edits);
+      const { matches, errors } = tool['findMatches'](
+        fileContent,
+        'line1',
+        true,
+      );
 
-      expect(matches).toHaveLength(2);
+      expect(matches).toHaveLength(3);
       expect(errors).toHaveLength(0);
     });
 
-    it('should skip edits with empty oldText', () => {
+    it('should skip when oldText is empty', () => {
       const fileContent = 'line1\nline2';
-      const edits = [{ oldText: '', newText: 'new file' }];
 
-      const { matches, errors } = tool['findMatches'](fileContent, edits);
+      const { matches, errors } = tool['findMatches'](fileContent, '', false);
 
       expect(matches).toHaveLength(0);
       expect(errors).toHaveLength(0);
@@ -260,9 +256,8 @@ describe('FilesApplyChangesTool', () => {
           indentation: '',
         },
       ];
-      const edits = [{ oldText: 'line2', newText: 'modified' }];
 
-      const diff = tool['generateDiff'](originalLines, matches, edits);
+      const diff = tool['generateDiff'](originalLines, matches, 'modified');
 
       expect(diff).toContain('-line2');
       expect(diff).toContain('+modified');
@@ -279,9 +274,8 @@ describe('FilesApplyChangesTool', () => {
           indentation: '',
         },
       ];
-      const edits = [{ oldText: 'line3', newText: 'modified' }];
 
-      const diff = tool['generateDiff'](originalLines, matches, edits);
+      const diff = tool['generateDiff'](originalLines, matches, 'modified');
 
       expect(diff).toContain(' line1');
       expect(diff).toContain(' line2');
@@ -289,6 +283,34 @@ describe('FilesApplyChangesTool', () => {
       expect(diff).toContain('+modified');
       expect(diff).toContain(' line4');
       expect(diff).toContain(' line5');
+    });
+
+    it('should generate diff for multiple matches', () => {
+      const originalLines = ['line1', 'line2', 'line3', 'line2'];
+      const matches = [
+        {
+          editIndex: 0,
+          startLine: 1,
+          endLine: 1,
+          matchedText: 'line2',
+          indentation: '',
+        },
+        {
+          editIndex: 0,
+          startLine: 3,
+          endLine: 3,
+          matchedText: 'line2',
+          indentation: '',
+        },
+      ];
+
+      const diff = tool['generateDiff'](originalLines, matches, 'modified');
+
+      expect(diff).toContain('-line2');
+      expect(diff).toContain('+modified');
+      // Should have two replacements
+      const minusCount = (diff.match(/-line2/g) || []).length;
+      expect(minusCount).toBe(2);
     });
   });
 
@@ -304,15 +326,14 @@ describe('FilesApplyChangesTool', () => {
           indentation: '',
         },
       ];
-      const edits = [{ oldText: 'line2', newText: 'modified' }];
 
-      const result = tool['applyEdits'](fileContent, matches, edits);
+      const result = tool['applyEdits'](fileContent, matches, 'modified');
 
       expect(result).toBe('line1\nmodified\nline3');
     });
 
     it('should apply multiple edits from bottom to top', () => {
-      const fileContent = 'line1\nline2\nline3\nline4';
+      const fileContent = 'line1\nline2\nline3\nline2';
       const matches = [
         {
           editIndex: 0,
@@ -322,21 +343,17 @@ describe('FilesApplyChangesTool', () => {
           indentation: '',
         },
         {
-          editIndex: 1,
+          editIndex: 0,
           startLine: 3,
           endLine: 3,
-          matchedText: 'line4',
+          matchedText: 'line2',
           indentation: '',
         },
       ];
-      const edits = [
-        { oldText: 'line2', newText: 'mod2' },
-        { oldText: 'line4', newText: 'mod4' },
-      ];
 
-      const result = tool['applyEdits'](fileContent, matches, edits);
+      const result = tool['applyEdits'](fileContent, matches, 'modified');
 
-      expect(result).toBe('line1\nmod2\nline3\nmod4');
+      expect(result).toBe('line1\nmodified\nline3\nmodified');
     });
 
     it('should preserve indentation', () => {
@@ -350,9 +367,12 @@ describe('FilesApplyChangesTool', () => {
           indentation: '  ',
         },
       ];
-      const edits = [{ oldText: 'line2', newText: 'mod2\nmod2line2' }];
 
-      const result = tool['applyEdits'](fileContent, matches, edits);
+      const result = tool['applyEdits'](
+        fileContent,
+        matches,
+        'mod2\nmod2line2',
+      );
 
       // All lines of replacement get the indentation of the matched location
       expect(result).toBe('line1\n  mod2\n  mod2line2\nline3');
@@ -369,9 +389,8 @@ describe('FilesApplyChangesTool', () => {
           indentation: '',
         },
       ];
-      const edits = [{ oldText: 'line2\nline3', newText: 'modified' }];
 
-      const result = tool['applyEdits'](fileContent, matches, edits);
+      const result = tool['applyEdits'](fileContent, matches, 'modified');
 
       expect(result).toBe('line1\nmodified\nline4');
     });
@@ -384,9 +403,9 @@ describe('FilesApplyChangesTool', () => {
       expect(instructions).toBeDefined();
       expect(instructions).toContain('### Overview');
       expect(instructions).toContain('### When to Use');
-      expect(instructions).toContain('dryRun');
       expect(instructions).toContain('oldText');
       expect(instructions).toContain('newText');
+      expect(instructions).toContain('replaceAll');
     });
   });
 });

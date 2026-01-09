@@ -96,18 +96,22 @@ describe('FilesToolTemplate', () => {
   });
 
   describe('schema validation', () => {
-    it('should accept empty config', () => {
+    it('should accept empty config (models come from env)', () => {
       expect(() => FilesToolTemplateSchema.parse({})).not.toThrow();
     });
 
     it('should ignore legacy/unknown fields', () => {
       const dataWithExtra = {
+        fastModel: 'gpt-5-mini',
+        smartModel: 'gpt-5.1',
         oldProperty: 'value',
         extraField: 123,
       };
 
       const parsed = FilesToolTemplateSchema.parse(dataWithExtra);
-      expect(parsed).toEqual({ includeEditActions: true });
+      expect(parsed).toEqual({
+        includeEditActions: true,
+      });
       expect(parsed).not.toHaveProperty('oldProperty');
     });
   });
@@ -146,7 +150,9 @@ describe('FilesToolTemplate', () => {
       });
 
       const outputNodeIds = new Set([mockRuntimeId]);
-      const config = { includeEditActions: true };
+      const config = {
+        includeEditActions: true,
+      };
       const handle = await template.create();
       const init: GraphNode<typeof config> = {
         config,
@@ -164,7 +170,9 @@ describe('FilesToolTemplate', () => {
     it('should throw NotFoundException when runtime node is not found in output nodes', async () => {
       vi.mocked(mockGraphRegistry.filterNodesByType).mockReturnValue([]);
 
-      const config = { includeEditActions: false };
+      const config = {
+        includeEditActions: false,
+      };
       const handle = await template.create();
       const outputNodeIds = new Set<string>();
       const init: GraphNode<typeof config> = {
@@ -184,7 +192,9 @@ describe('FilesToolTemplate', () => {
       vi.mocked(mockGraphRegistry.getNodeInstance).mockReturnValue(undefined);
 
       const outputNodeIds = new Set([mockRuntimeId]);
-      const config = { includeEditActions: false };
+      const config = {
+        includeEditActions: false,
+      };
       const handle = await template.create();
       const init: GraphNode<typeof config> = {
         config,
@@ -207,7 +217,9 @@ describe('FilesToolTemplate', () => {
       });
 
       const outputNodeIds = new Set([mockRuntimeId]);
-      const config = { includeEditActions: true };
+      const config = {
+        includeEditActions: true,
+      };
       const handle = await template.create();
       const init: GraphNode<typeof config> = {
         config,
@@ -232,7 +244,9 @@ describe('FilesToolTemplate', () => {
       });
 
       const outputNodeIds = new Set([mockRuntimeId]);
-      const config = { includeEditActions: true };
+      const config = {
+        includeEditActions: true,
+      };
       const handle = await template.create();
       const init: GraphNode<typeof config> = {
         config,
