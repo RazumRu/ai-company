@@ -1,5 +1,41 @@
 import { BaseMessage } from '@langchain/core/messages';
 
+import type { MessageTokenUsage, TokenUsage } from '../litellm/litellm.types';
+
+/**
+ * Message metadata stored in `BaseMessage.additional_kwargs`.
+ *
+ * Conventions:
+ * - Our internal/custom fields use `__` prefix.
+ * - Our internal/custom fields use camelCase.
+ * - Provider/tool transport fields may also be present (no enforced naming).
+ */
+export type MessageAdditionalKwargs = Record<string, unknown> & {
+  __runId?: string;
+  __threadId?: string;
+  __createdAt?: string;
+  __model?: string;
+  __title?: string;
+
+  // Used by message transformer for reasoning + LLM visibility controls
+  __reasoningId?: string;
+  __hideForLlm?: boolean;
+  __hideForSummary?: boolean;
+  __isAgentInstructionMessage?: boolean;
+
+  // Inter-agent communication metadata
+  __interAgentCommunication?: boolean;
+  __sourceAgentNodeId?: string;
+
+  __context?: unknown;
+
+  // Per-message token usage (proportional share)
+  __tokenUsage?: MessageTokenUsage;
+
+  // Full request token usage (entire LLM request, not just this message)
+  __requestUsage?: TokenUsage;
+};
+
 export type BaseAgentStateMessagesUpdateValue = {
   mode: 'append' | 'replace';
   items: BaseMessage[];

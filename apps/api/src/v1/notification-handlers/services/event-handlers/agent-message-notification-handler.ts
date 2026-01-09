@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
+import { DefaultLogger, NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
-import type { MessageTokenUsage } from '../../../litellm/litellm.types';
+import type {
+  MessageTokenUsage,
+  TokenUsage,
+} from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import {
   IAgentMessageNotification,
@@ -40,6 +43,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     private readonly messagesDao: MessagesDao,
     private readonly threadsDao: ThreadsDao,
     private readonly litellmService: LitellmService,
+    private readonly logger: DefaultLogger,
   ) {
     super();
   }
@@ -70,34 +74,23 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
 
     for (const [i, messageDto] of messageDtos.entries()) {
       const originalMessage = event.data.messages[i];
-      let tokenUsage =
+      const tokenUsage =
         this.litellmService.extractMessageTokenUsageFromAdditionalKwargs(
           originalMessage?.additional_kwargs ?? undefined,
         );
 
-      // Tool response messages don't have provider usage metadata.
-      // Compute token usage from the tool output content so UI can show
-      // both tool "request" (AI tool call) and tool "response" usage.
+      // Tool messages should already have token usage attached by graph-state.manager
+      // If not, this indicates a configuration issue or missing model information
       if (!tokenUsage && originalMessage?.type === 'ToolMessage') {
-        const model =
-          typeof originalMessage.additional_kwargs?.__model === 'string'
-            ? originalMessage.additional_kwargs.__model
-            : null;
-
-        if (model) {
-          tokenUsage = await this.litellmService.attachTokenUsageToMessage(
-            {
-              // LitellmService expects a required `content` field
-              content: originalMessage.content ?? '',
-              ...(Array.isArray(originalMessage.tool_calls)
-                ? { tool_calls: originalMessage.tool_calls }
-                : {}),
-              additional_kwargs: originalMessage.additional_kwargs,
-            },
-            model,
-            { direction: 'input', skipIfExists: false },
-          );
-        }
+        this.logger.warn(
+          `Tool message without token usage - should have been computed in graph-state.manager`,
+          {
+            messageType: originalMessage.type,
+            hasModel: !!originalMessage.additional_kwargs?.__model,
+            threadId: event.threadId,
+            nodeId: event.nodeId,
+          },
+        );
       }
 
       // Save message to database with correct internal thread ID

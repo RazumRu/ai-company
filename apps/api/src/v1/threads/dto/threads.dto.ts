@@ -2,6 +2,7 @@ import { zodQueryArray } from '@packages/http-server';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
+import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { MessageSchema } from '../../graphs/dto/graphs.dto';
 import { ThreadStatus } from '../threads.types';
 
@@ -79,6 +80,11 @@ export const ThreadMessageSchema = z.object({
   tokenUsage: MessageTokenUsageSchema.optional()
     .nullable()
     .describe('Token usage & cost for this message'),
+  requestTokenUsage: TokenUsageSchema.optional()
+    .nullable()
+    .describe(
+      'Full LLM request token usage & cost (entire request, not just this message)',
+    ),
 });
 
 // Get threads query parameters
@@ -128,6 +134,7 @@ export const GetMessagesQuerySchema = z.object({
 });
 
 // Type exports
+export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 export type ThreadTokenUsage = z.infer<typeof ThreadTokenUsageSchema>;
 export type MessageTokenUsage = z.infer<typeof MessageTokenUsageSchema>;
 

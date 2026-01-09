@@ -1,5 +1,6 @@
 import { AIMessage, ToolMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
+import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -88,6 +89,15 @@ describe('AgentMessageNotificationHandler', () => {
             attachTokenUsageToMessage: vi.fn(),
           },
         },
+        {
+          provide: DefaultLogger,
+          useValue: {
+            warn: vi.fn(),
+            error: vi.fn(),
+            info: vi.fn(),
+            debug: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -100,7 +110,7 @@ describe('AgentMessageNotificationHandler', () => {
     litellmService = module.get<LitellmService>(LitellmService);
   });
 
-  it('computes tokenUsage for tool response messages', async () => {
+  it('saves tokenUsage for tool response messages (pre-computed)', async () => {
     const internalThread = createMockThreadEntity();
     vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
 
@@ -128,9 +138,11 @@ describe('AgentMessageNotificationHandler', () => {
       tool_call_id: toolCallId,
       name: 'shell',
     });
+    // Tool message now comes pre-computed from graph-state.manager
     Object.assign(tool, {
       additional_kwargs: {
         __model: 'openai/gpt-5.2',
+        __tokenUsage: toolTokenUsage, // Already computed
       },
     });
 
@@ -148,19 +160,19 @@ describe('AgentMessageNotificationHandler', () => {
     vi.spyOn(
       litellmService,
       'extractMessageTokenUsageFromAdditionalKwargs',
-    ).mockImplementation((kwargs?: { tokenUsage?: unknown } | null) => {
-      const usage = kwargs?.tokenUsage;
-      if (
-        typeof usage === 'object' &&
-        usage !== null &&
-        typeof (usage as { totalTokens?: unknown }).totalTokens === 'number'
-      ) {
-        return usage as MessageTokenUsage;
-      }
-      return null;
-    });
-    vi.spyOn(litellmService, 'attachTokenUsageToMessage').mockResolvedValue(
-      toolTokenUsage,
+    ).mockImplementation(
+      (kwargs?: { tokenUsage?: unknown; __tokenUsage?: unknown } | null) => {
+        // Check both tokenUsage and __tokenUsage
+        const usage = kwargs?.__tokenUsage ?? kwargs?.tokenUsage;
+        if (
+          typeof usage === 'object' &&
+          usage !== null &&
+          typeof (usage as { totalTokens?: unknown }).totalTokens === 'number'
+        ) {
+          return usage as MessageTokenUsage;
+        }
+        return null;
+      },
     );
 
     await handler.handle(notification);
@@ -181,5 +193,118 @@ describe('AgentMessageNotificationHandler', () => {
 
     expect(firstCreate.tokenUsage).toEqual(aiTokenUsage);
     expect(secondCreate.tokenUsage).toEqual(toolTokenUsage);
+  });
+
+  it('preserves __requestUsage from AI messages to tool messages', async () => {
+    const internalThread = createMockThreadEntity();
+    vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
+
+    const toolCallId = 'call_test_123';
+    const requestUsage = {
+      inputTokens: 13780,
+      outputTokens: 37,
+      totalTokens: 13817,
+      cachedInputTokens: 13696,
+      reasoningTokens: 0,
+      totalPrice: 0.0030618,
+      currentContext: 13780,
+    };
+
+    // AI message with __requestUsage
+    const ai = new AIMessage({
+      content: '',
+      tool_calls: [
+        {
+          id: toolCallId,
+          type: 'tool_call',
+          name: 'finish',
+          args: { message: 'Test' },
+        },
+      ],
+      additional_kwargs: {
+        __model: 'azure/gpt-5.2',
+        __tokenUsage: {
+          totalTokens: 61,
+          totalPrice: 0.000013517391619020047,
+        },
+        __requestUsage: requestUsage,
+      },
+    });
+
+    // Tool message with pre-computed __requestUsage (from graph-state.manager)
+    const tool = new ToolMessage({
+      content: JSON.stringify({ success: true }),
+      tool_call_id: toolCallId,
+      name: 'finish',
+    });
+    Object.assign(tool, {
+      additional_kwargs: {
+        __model: 'azure/gpt-5.2',
+        __tokenUsage: {
+          totalTokens: 23,
+          totalPrice: 0.00004025,
+        },
+        __requestUsage: requestUsage, // Already attached by graph-state.manager
+      },
+    });
+
+    const notification: IAgentMessageNotification = {
+      type: NotificationEvent.AgentMessage,
+      graphId: mockGraphId,
+      nodeId: mockNodeId,
+      threadId: mockThreadId,
+      parentThreadId: mockParentThreadId,
+      data: {
+        messages: serializeBaseMessages([ai, tool]),
+      },
+    };
+
+    // Mock extractMessageTokenUsageFromAdditionalKwargs
+    vi.spyOn(
+      litellmService,
+      'extractMessageTokenUsageFromAdditionalKwargs',
+    ).mockImplementation(
+      (kwargs?: { tokenUsage?: unknown; __tokenUsage?: unknown } | null) => {
+        // Check both tokenUsage and __tokenUsage
+        const usage = kwargs?.__tokenUsage ?? kwargs?.tokenUsage;
+        if (
+          typeof usage === 'object' &&
+          usage !== null &&
+          typeof (usage as { totalTokens?: unknown }).totalTokens === 'number'
+        ) {
+          return usage as MessageTokenUsage;
+        }
+        return null;
+      },
+    );
+
+    await handler.handle(notification);
+
+    // Verify messagesDao.create was called twice
+    expect(messagesDao.create).toHaveBeenCalledTimes(2);
+
+    const calls = (messagesDao.create as unknown as ReturnType<typeof vi.fn>)
+      .mock.calls;
+
+    // Check AI message
+    const aiCreateCall = calls[0]?.[0] as Record<string, unknown>;
+    const aiMessage = aiCreateCall.message as Record<string, unknown>;
+    const aiAdditionalKwargs = aiMessage.additionalKwargs as Record<
+      string,
+      unknown
+    >;
+
+    expect(aiAdditionalKwargs.__requestUsage).toEqual(requestUsage);
+
+    // Check Tool message - THIS IS THE KEY TEST
+    const toolCreateCall = calls[1]?.[0] as Record<string, unknown>;
+    const toolMessage = toolCreateCall.message as Record<string, unknown>;
+    const toolAdditionalKwargs = toolMessage.additionalKwargs as Record<
+      string,
+      unknown
+    >;
+
+    // Tool message should have __requestUsage (pre-attached by graph-state.manager)
+    expect(toolAdditionalKwargs.__requestUsage).toEqual(requestUsage);
   });
 });

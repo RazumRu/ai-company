@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
+import Decimal from 'decimal.js';
 
 import type { TokenUsage } from '../../litellm/litellm.types';
 import type { ThreadTokenUsage } from '../../threads/dto/threads.dto';
@@ -77,48 +78,46 @@ export class ThreadTokenUsageCacheService {
       };
     }
 
-    const aggregated: TokenUsage = {
-      inputTokens: 0,
-      cachedInputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      totalTokens: 0,
-      totalPrice: 0,
-      currentContext: 0,
-    };
+    let inputTokens = 0;
+    let cachedInputTokens = 0;
+    let outputTokens = 0;
+    let reasoningTokens = 0;
+    let totalTokens = 0;
+    let totalPriceDecimal = new Decimal(0);
+    let currentContext = 0;
 
     for (const usage of nodes) {
-      aggregated.inputTokens += usage.inputTokens || 0;
-      aggregated.cachedInputTokens! += usage.cachedInputTokens || 0;
-      aggregated.outputTokens += usage.outputTokens || 0;
-      aggregated.reasoningTokens! += usage.reasoningTokens || 0;
-      aggregated.totalTokens += usage.totalTokens || 0;
-      aggregated.totalPrice! += usage.totalPrice || 0;
+      inputTokens += usage.inputTokens || 0;
+      cachedInputTokens += usage.cachedInputTokens || 0;
+      outputTokens += usage.outputTokens || 0;
+      reasoningTokens += usage.reasoningTokens || 0;
+      totalTokens += usage.totalTokens || 0;
+      // Use Decimal.js for precise price aggregation
+      if (usage.totalPrice) {
+        totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice);
+      }
       // currentContext is a snapshot; use max across nodes as a stable thread-level view
-      aggregated.currentContext = Math.max(
-        aggregated.currentContext ?? 0,
-        usage.currentContext ?? 0,
-      );
+      currentContext = Math.max(currentContext, usage.currentContext ?? 0);
     }
 
     // Clean up optional fields if they're zero
     const result: TokenUsage = {
-      inputTokens: aggregated.inputTokens,
-      outputTokens: aggregated.outputTokens,
-      totalTokens: aggregated.totalTokens,
+      inputTokens,
+      outputTokens,
+      totalTokens,
     };
 
-    if (aggregated.cachedInputTokens && aggregated.cachedInputTokens > 0) {
-      result.cachedInputTokens = aggregated.cachedInputTokens;
+    if (cachedInputTokens > 0) {
+      result.cachedInputTokens = cachedInputTokens;
     }
-    if (aggregated.reasoningTokens && aggregated.reasoningTokens > 0) {
-      result.reasoningTokens = aggregated.reasoningTokens;
+    if (reasoningTokens > 0) {
+      result.reasoningTokens = reasoningTokens;
     }
-    if (aggregated.totalPrice && aggregated.totalPrice > 0) {
-      result.totalPrice = aggregated.totalPrice;
+    if (!totalPriceDecimal.isZero()) {
+      result.totalPrice = totalPriceDecimal.toNumber();
     }
-    if (aggregated.currentContext && aggregated.currentContext > 0) {
-      result.currentContext = aggregated.currentContext;
+    if (currentContext > 0) {
+      result.currentContext = currentContext;
     }
 
     return result;

@@ -6,8 +6,8 @@ import {
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import Ajv from 'ajv';
 
+import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
-import type { MessageAdditionalKwargs } from '../../notifications/notifications.types';
 import {
   fixRequiredWithDefaults,
   getSchemaParameterDocs,

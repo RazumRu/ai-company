@@ -1,7 +1,10 @@
+import { AIMessage, ToolMessage } from '@langchain/core/messages';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
+import { serializeBaseMessages } from '../../notifications/notifications.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import {
   RuntimeExecParams,
@@ -94,7 +97,14 @@ describe('GraphStateManager', () => {
       info: vi.fn(),
       warn: vi.fn(),
     } as unknown as DefaultLogger;
-    manager = new GraphStateManager(notifications, logger);
+    const litellmService = {
+      attachTokenUsageToMessage: vi.fn().mockResolvedValue(null),
+    };
+    manager = new GraphStateManager(
+      notifications,
+      litellmService as any,
+      logger,
+    );
     manager.setGraphId('graph-1');
   });
 

@@ -1,3 +1,4 @@
+import type { MessageAdditionalKwargs } from '../agents/agents.types';
 import { GraphRevisionEntity } from '../graphs/entity/graph-revision.entity';
 import {
   GraphExecutionMetadata,
@@ -5,7 +6,6 @@ import {
   GraphSchemaType,
   GraphStatus,
 } from '../graphs/graphs.types';
-import type { MessageTokenUsage } from '../litellm/litellm.types';
 import { ThreadDto } from '../threads/dto/threads.dto';
 import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
@@ -67,38 +67,6 @@ export interface SerializedBaseMessage {
    */
   additional_kwargs?: MessageAdditionalKwargs;
 }
-
-/**
- * Message metadata stored in `BaseMessage.additional_kwargs`.
- *
- * Conventions:
- * - Our internal/custom fields use `__` prefix.
- * - Our internal/custom fields use camelCase.
- * - Provider/tool transport fields may also be present (no enforced naming).
- */
-export type MessageAdditionalKwargs = Record<string, unknown> & {
-  __runId?: string;
-  __threadId?: string;
-  __createdAt?: string;
-  __model?: string;
-  __title?: string;
-
-  // Used by message transformer for reasoning + LLM visibility controls
-  __reasoningId?: string;
-  __hideForLlm?: boolean;
-  __hideForSummary?: boolean;
-  __isAgentInstructionMessage?: boolean;
-
-  // Inter-agent communication metadata
-  __interAgentCommunication?: boolean;
-  __sourceAgentNodeId?: string;
-
-  __context?: unknown;
-
-  // Per-message token usage (totalTokens + totalPrice only)
-  // Full TokenUsage breakdown belongs to thread-level state, not individual messages.
-  __tokenUsage?: MessageTokenUsage;
-};
 
 export enum NotificationEvent {
   Graph = 'graph.update',

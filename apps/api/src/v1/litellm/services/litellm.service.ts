@@ -1,5 +1,6 @@
 import { encodingForModel, getEncoding } from '@langchain/core/utils/tiktoken';
 import { Injectable } from '@nestjs/common';
+import Decimal from 'decimal.js';
 
 import { LiteLlmModelDto } from '../dto/models.dto';
 import type { MessageTokenUsage, TokenUsage } from '../litellm.types';
@@ -128,7 +129,7 @@ export class LitellmService {
     let outputTokens = 0;
     let reasoningTokens = 0;
     let totalTokens = 0;
-    let totalPrice = 0;
+    let totalPriceDecimal = new Decimal(0);
     let sawAny = false;
     let sawPrice = false;
 
@@ -141,7 +142,8 @@ export class LitellmService {
       reasoningTokens += usage.reasoningTokens ?? 0;
       totalTokens += usage.totalTokens;
       if (typeof usage.totalPrice === 'number') {
-        totalPrice += usage.totalPrice;
+        // Use Decimal.js to accumulate prices precisely
+        totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice);
         sawPrice = true;
       }
     }
@@ -156,7 +158,7 @@ export class LitellmService {
       outputTokens,
       ...(reasoningTokens ? { reasoningTokens } : {}),
       totalTokens,
-      ...(sawPrice ? { totalPrice } : {}),
+      ...(sawPrice ? { totalPrice: totalPriceDecimal.toNumber() } : {}),
     };
   }
 
@@ -321,7 +323,9 @@ export class LitellmService {
 
     const entry =
       candidates.map((c) => prices[c]).find((e) => e !== undefined) ?? null;
-    if (!entry) return null;
+    if (!entry) {
+      return null;
+    }
 
     const inputCostPerToken = this.readNumberish(entry.input_cost_per_token);
     const outputCostPerToken = this.readNumberish(entry.output_cost_per_token);
@@ -356,7 +360,9 @@ export class LitellmService {
     reasoningTokens?: number;
   }): Promise<number | null> {
     const rates = await this.getTokenCostRatesForModel(args.model);
-    if (!rates) return null;
+    if (!rates) {
+      return null;
+    }
 
     const cached = Math.max(0, args.cachedInputTokens ?? 0);
     const input = Math.max(0, args.inputTokens);
@@ -367,12 +373,17 @@ export class LitellmService {
     const cachedRate = rates.inputCostPerCachedToken ?? rates.inputCostPerToken;
     const reasoningRate = rates.outputCostPerReasoningToken ?? 0;
 
-    return (
-      nonCached * rates.inputCostPerToken +
-      cached * cachedRate +
-      output * rates.outputCostPerToken +
-      reasoning * reasoningRate
-    );
+    // Use Decimal.js for precise cost calculations
+    const inputCost = new Decimal(nonCached).times(rates.inputCostPerToken);
+    const cachedCost = new Decimal(cached).times(cachedRate);
+    const outputCost = new Decimal(output).times(rates.outputCostPerToken);
+    const reasoningCost = new Decimal(reasoning).times(reasoningRate);
+
+    return inputCost
+      .plus(cachedCost)
+      .plus(outputCost)
+      .plus(reasoningCost)
+      .toNumber();
   }
 
   async estimateMessageTotalPriceFromModelRates(args: {
@@ -386,14 +397,15 @@ export class LitellmService {
     const tokens = Math.max(0, args.totalTokens);
     if (tokens === 0) return 0;
 
+    // Use Decimal.js for precise cost calculations
     if (args.direction === 'input') {
-      return tokens * rates.inputCostPerToken;
+      return new Decimal(tokens).times(rates.inputCostPerToken).toNumber();
     }
     if (args.direction === 'reasoning') {
       const r = rates.outputCostPerReasoningToken ?? rates.outputCostPerToken;
-      return tokens * r;
+      return new Decimal(tokens).times(r).toNumber();
     }
-    return tokens * rates.outputCostPerToken;
+    return new Decimal(tokens).times(rates.outputCostPerToken).toNumber();
   }
 
   /**
@@ -443,13 +455,16 @@ export class LitellmService {
     let totalPrice: number | undefined;
 
     if (options?.threadUsage) {
-      // Proportional allocation from thread usage
-      totalPrice =
+      // Proportional allocation from thread usage using Decimal for precision
+      if (
         options.threadUsage.totalPrice !== undefined &&
         options.threadUsage.totalTokens > 0
-          ? (totalTokens / options.threadUsage.totalTokens) *
-            options.threadUsage.totalPrice
-          : undefined;
+      ) {
+        totalPrice = new Decimal(totalTokens)
+          .dividedBy(options.threadUsage.totalTokens)
+          .times(options.threadUsage.totalPrice)
+          .toNumber();
+      }
     } else {
       // Estimate from model rates
       const estimated = await this.estimateMessageTotalPriceFromModelRates({
@@ -470,6 +485,27 @@ export class LitellmService {
       ...(message.additional_kwargs ?? {}),
       __tokenUsage: tokenUsage,
     };
+
+    // Also attach full request/thread usage data if available
+    if (options?.threadUsage) {
+      message.additional_kwargs.__requestUsage = {
+        inputTokens: options.threadUsage.inputTokens,
+        outputTokens: options.threadUsage.outputTokens,
+        totalTokens: options.threadUsage.totalTokens,
+        ...(options.threadUsage.cachedInputTokens !== undefined
+          ? { cachedInputTokens: options.threadUsage.cachedInputTokens }
+          : {}),
+        ...(options.threadUsage.reasoningTokens !== undefined
+          ? { reasoningTokens: options.threadUsage.reasoningTokens }
+          : {}),
+        ...(options.threadUsage.totalPrice !== undefined
+          ? { totalPrice: options.threadUsage.totalPrice }
+          : {}),
+        ...(options.threadUsage.currentContext !== undefined
+          ? { currentContext: options.threadUsage.currentContext }
+          : {}),
+      };
+    }
 
     return tokenUsage;
   }

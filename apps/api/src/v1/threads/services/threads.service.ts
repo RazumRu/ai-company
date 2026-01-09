@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 
+import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { ThreadTokenUsageCacheService } from '../../cache/services/thread-token-usage-cache.service';
 import { GraphsService } from '../../graphs/services/graphs.service';
 import type { TokenUsage } from '../../litellm/litellm.types';
@@ -240,10 +241,47 @@ export class ThreadsService {
   }
 
   public prepareMessageResponse(entity: MessageEntity): ThreadMessageDto {
+    // Extract requestTokenUsage from message.additionalKwargs.__requestUsage
+    const additionalKwargs = entity.message.additionalKwargs as
+      | MessageAdditionalKwargs
+      | undefined;
+    const requestUsage = additionalKwargs?.__requestUsage;
+
+    const requestTokenUsage =
+      requestUsage && typeof requestUsage === 'object'
+        ? {
+            inputTokens:
+              typeof requestUsage.inputTokens === 'number'
+                ? requestUsage.inputTokens
+                : 0,
+            outputTokens:
+              typeof requestUsage.outputTokens === 'number'
+                ? requestUsage.outputTokens
+                : 0,
+            totalTokens:
+              typeof requestUsage.totalTokens === 'number'
+                ? requestUsage.totalTokens
+                : 0,
+            ...(typeof requestUsage.cachedInputTokens === 'number'
+              ? { cachedInputTokens: requestUsage.cachedInputTokens }
+              : {}),
+            ...(typeof requestUsage.reasoningTokens === 'number'
+              ? { reasoningTokens: requestUsage.reasoningTokens }
+              : {}),
+            ...(typeof requestUsage.totalPrice === 'number'
+              ? { totalPrice: requestUsage.totalPrice }
+              : {}),
+            ...(typeof requestUsage.currentContext === 'number'
+              ? { currentContext: requestUsage.currentContext }
+              : {}),
+          }
+        : null;
+
     return {
       ...entity,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
+      requestTokenUsage,
     };
   }
 }

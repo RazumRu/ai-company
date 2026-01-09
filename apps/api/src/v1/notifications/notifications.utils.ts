@@ -1,9 +1,7 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
-import type {
-  MessageAdditionalKwargs,
-  SerializedBaseMessage,
-} from './notifications.types';
+import type { MessageAdditionalKwargs } from '../agents/agents.types';
+import type { SerializedBaseMessage } from './notifications.types';
 
 /**
  * Convert LangChain BaseMessage instances into JSON-serializable messages

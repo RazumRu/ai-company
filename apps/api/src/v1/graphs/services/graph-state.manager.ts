@@ -1,3 +1,4 @@
+import type { BaseMessage } from '@langchain/core/messages';
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 import { isEqual } from 'lodash';
@@ -13,6 +14,7 @@ import {
   AgentStopEvent,
 } from '../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
+import { LitellmService } from '../../litellm/services/litellm.service';
 import type { IGraphNodeUpdateData } from '../../notifications/notifications.types';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { serializeBaseMessages } from '../../notifications/notifications.utils';
@@ -67,6 +69,7 @@ export class GraphStateManager {
 
   constructor(
     private readonly notificationsService: NotificationsService,
+    private readonly litellmService: LitellmService,
     private readonly logger: DefaultLogger,
   ) {}
 
@@ -410,6 +413,11 @@ export class GraphStateManager {
   private async handleAgentMessage(data: AgentMessageEvent) {
     const cfg = data.config?.configurable;
     const threadId = data.threadId;
+
+    // Pre-compute token usage for tool messages before serialization
+    // This avoids fetching model rates inside the message handler
+    await this.attachTokenUsageToToolMessages(data.messages);
+
     await this.notificationsService.emit({
       type: NotificationEvent.AgentMessage,
       graphId: cfg?.graph_id || this.graphId,
@@ -420,6 +428,92 @@ export class GraphStateManager {
         messages: serializeBaseMessages(data.messages),
       },
     });
+  }
+
+  /**
+   * Attach token usage to tool messages before serialization.
+   * This pre-computes token counts and pricing so the message handler
+   * doesn't need to fetch model rates.
+   */
+  private async attachTokenUsageToToolMessages(
+    messages: BaseMessage[],
+  ): Promise<void> {
+    // Extract thread usage from AI messages
+    const threadUsage = messages
+      .map((msg) => {
+        const msgObj = msg as unknown as {
+          additional_kwargs?: Record<string, unknown>;
+        };
+        const kwargs = msgObj.additional_kwargs;
+        if (!kwargs || typeof kwargs !== 'object') return null;
+        const requestUsage = kwargs.__requestUsage;
+        if (!requestUsage || typeof requestUsage !== 'object') return null;
+        return requestUsage as Record<string, unknown>;
+      })
+      .find((usage) => usage !== null);
+
+    // Process tool messages
+    for (const msg of messages) {
+      const msgObj = msg as unknown as {
+        _getType?: () => string;
+        content?: unknown;
+        tool_calls?: unknown[];
+        additional_kwargs?: Record<string, unknown>;
+      };
+
+      const isToolMessage = msgObj._getType?.() === 'tool';
+      if (!isToolMessage) continue;
+
+      let kwargs = msgObj.additional_kwargs;
+      if (!kwargs) {
+        // Initialize additional_kwargs if it doesn't exist
+        kwargs = {};
+        msgObj.additional_kwargs = kwargs;
+      }
+
+      // Skip if already has token usage
+      if (kwargs.__tokenUsage) continue;
+
+      const model = typeof kwargs.__model === 'string' ? kwargs.__model : null;
+      if (!model) continue;
+
+      // Create a mutable wrapper that attachTokenUsageToMessage can mutate
+      const mutableWrapper = {
+        content: msgObj.content ?? '',
+        tool_calls: msgObj.tool_calls,
+        additional_kwargs: { ...kwargs },
+      };
+
+      // Attach token usage (this will replace additional_kwargs with a new object)
+      await this.litellmService.attachTokenUsageToMessage(
+        mutableWrapper,
+        model,
+        {
+          direction: 'input',
+          skipIfExists: false,
+          threadUsage: threadUsage
+            ? (threadUsage as {
+                inputTokens: number;
+                outputTokens: number;
+                totalTokens: number;
+                cachedInputTokens?: number;
+                reasoningTokens?: number;
+                totalPrice?: number;
+                currentContext?: number;
+              })
+            : null,
+        },
+      );
+
+      // Force-assign the mutated additional_kwargs back to the message
+      // We need to directly mutate the underlying object since BaseMessage might have getters
+      Object.defineProperty(msg, 'additional_kwargs', {
+        value: mutableWrapper.additional_kwargs,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+    }
   }
 
   private async handleAgentStateUpdate(data: AgentStateUpdateEvent) {
