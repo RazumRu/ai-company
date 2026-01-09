@@ -45,6 +45,10 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
       GhToolType.COMMIT,
       GhToolType.BRANCH,
       GhToolType.PUSH,
+      // Intentionally excluded by default: this is a potentially destructive action
+      // that creates permanent PRs in a repo. Only enable when explicitly requested.
+      // (Product can opt-in later if desired.)
+      // GhToolType.CreatePullRequest,
     ];
 
     const tools: BuiltAgentTool[] = [];

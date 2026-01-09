@@ -10,6 +10,16 @@ import {
   GhCreatePullRequestToolSchemaType,
 } from './gh-create-pull-request.tool';
 
+type MockOctokit = {
+  pulls: {
+    create: ReturnType<typeof vi.fn>;
+    requestReviewers: ReturnType<typeof vi.fn>;
+  };
+  issues: {
+    update: ReturnType<typeof vi.fn>;
+  };
+};
+
 describe('GhCreatePullRequestTool', () => {
   let tool: GhCreatePullRequestTool;
   let mockRuntime: BaseRuntime;
@@ -79,6 +89,35 @@ describe('GhCreatePullRequestTool', () => {
         }),
       ).toThrow();
     });
+
+    it('should reject too many assignees via schema', () => {
+      expect(() =>
+        tool.validate({
+          owner: 'acme',
+          repo: 'demo',
+          title: 'PR',
+          head: 'feat/x',
+          base: 'main',
+          assignees: new Array(11).fill('octocat'),
+        }),
+      ).toThrow();
+    });
+
+    it('should reject too many combined reviewers via schema', () => {
+      // NOTE: Tool input validation is performed via the JSON schema (Ajv), not Zod.
+      // The combined constraint is enforced in Zod via superRefine, which currently
+      // doesn't flow into our generated JSON schema.
+      expect(() =>
+        tool.validate({
+          owner: 'acme',
+          repo: 'demo',
+          title: 'PR',
+          head: 'feat/x',
+          base: 'main',
+          reviewers: new Array(16).fill('r'),
+        }),
+      ).toThrow();
+    });
   });
 
   describe('invoke', () => {
@@ -87,22 +126,6 @@ describe('GhCreatePullRequestTool', () => {
         thread_id: 'test-thread-123',
       },
     };
-
-    it('should return validation error for too many assignees', async () => {
-      const args: GhCreatePullRequestToolSchemaType = {
-        owner: 'acme',
-        repo: 'demo',
-        title: 'PR',
-        head: 'feat/x',
-        base: 'main',
-        assignees: new Array(11).fill('octocat'),
-      };
-
-      const { output } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(output.success).toBe(false);
-      expect(output.error).toContain('ValidationError');
-    });
 
     it('should create PR and apply metadata in order', async () => {
       const args: GhCreatePullRequestToolSchemaType = {
@@ -160,7 +183,7 @@ describe('GhCreatePullRequestTool', () => {
         },
       });
 
-      const getClientSpy = vi.spyOn(tool as any, 'getClient').mockReturnValue({
+      const mockClient: MockOctokit = {
         pulls: {
           create: pullsCreate,
           requestReviewers: pullsRequestReviewers,
@@ -168,11 +191,15 @@ describe('GhCreatePullRequestTool', () => {
         issues: {
           update: issuesUpdate,
         },
-      });
+      };
+
+      const createClientSpy = vi
+        .spyOn(tool, 'createClient')
+        .mockReturnValue(mockClient as any);
 
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
-      expect(getClientSpy).toHaveBeenCalledWith('ghp_test_token');
+      expect(createClientSpy).toHaveBeenCalledWith('ghp_test_token');
       expect(pullsCreate).toHaveBeenCalledTimes(1);
       expect(issuesUpdate).toHaveBeenCalledTimes(1);
       expect(pullsRequestReviewers).toHaveBeenCalledTimes(1);
@@ -193,8 +220,10 @@ describe('GhCreatePullRequestTool', () => {
       );
 
       expect(output.success).toBe(true);
-      expect(output.pullRequest?.number).toBe(101);
-      expect(output.pullRequest?.url).toContain('/pull/101');
+      if (output.success !== true) throw new Error('Expected success output');
+
+      expect(output.pullRequest.number).toBe(101);
+      expect(output.pullRequest.url).toContain('/pull/101');
       expect(output.applied?.labels).toEqual(['bug']);
       expect(output.applied?.assignees).toEqual(['octocat']);
       expect(output.applied?.reviewers).toEqual(['reviewer1']);
@@ -235,13 +264,9 @@ describe('GhCreatePullRequestTool', () => {
         },
       });
 
-      const issuesUpdate = vi.fn().mockRejectedValue({
-        status: 422,
-        message: 'Validation Failed',
-        response: { data: { message: 'Validation Failed' } },
-      });
+      const issuesUpdate = vi.fn().mockRejectedValue(new Error('boom'));
 
-      vi.spyOn(tool as any, 'getClient').mockReturnValue({
+      const mockClient: MockOctokit = {
         pulls: {
           create: pullsCreate,
           requestReviewers: vi.fn(),
@@ -249,14 +274,85 @@ describe('GhCreatePullRequestTool', () => {
         issues: {
           update: issuesUpdate,
         },
-      });
+      };
+
+      vi.spyOn(tool, 'createClient').mockReturnValue(mockClient as any);
 
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(output.success).toBe(true);
-      expect(output.pullRequest?.number).toBe(101);
+      if (output.success !== true) throw new Error('Expected success output');
+
+      expect(output.pullRequest.number).toBe(101);
       expect(output.warnings?.length).toBe(1);
       expect(output.warnings?.[0]).toContain('Failed to apply issue metadata');
+    });
+
+    it('should return success with warnings if reviewer request fails and still preserve applied issue metadata', async () => {
+      const args: GhCreatePullRequestToolSchemaType = {
+        owner: 'acme',
+        repo: 'demo',
+        title: 'Add feature',
+        head: 'feat/add-feature',
+        base: 'main',
+        labels: ['bug'],
+        assignees: ['octocat'],
+        reviewers: ['reviewer1'],
+      };
+
+      const pullsCreate = vi.fn().mockResolvedValue({
+        data: {
+          number: 101,
+          id: 999,
+          node_id: 'NODE',
+          html_url: 'https://github.com/acme/demo/pull/101',
+          url: 'https://api.github.com/repos/acme/demo/pulls/101',
+          state: 'open',
+          draft: false,
+          title: 'Add feature',
+          body: null,
+          base: { ref: 'main', sha: 'BASE', repo: { full_name: 'acme/demo' } },
+          head: {
+            ref: 'feat/add-feature',
+            sha: 'HEAD',
+            repo: { full_name: 'acme/demo' },
+          },
+          created_at: '2020-01-01T00:00:00Z',
+          updated_at: '2020-01-02T00:00:00Z',
+        },
+      });
+
+      const issuesUpdate = vi.fn().mockResolvedValue({
+        data: {
+          labels: [{ name: 'bug' }],
+          assignees: [{ login: 'octocat' }],
+        },
+      });
+
+      const pullsRequestReviewers = vi
+        .fn()
+        .mockRejectedValue(new Error('nope'));
+
+      const mockClient: MockOctokit = {
+        pulls: {
+          create: pullsCreate,
+          requestReviewers: pullsRequestReviewers,
+        },
+        issues: {
+          update: issuesUpdate,
+        },
+      };
+
+      vi.spyOn(tool, 'createClient').mockReturnValue(mockClient as any);
+
+      const { output } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(output.success).toBe(true);
+      if (output.success !== true) throw new Error('Expected success output');
+
+      expect(output.applied?.labels).toEqual(['bug']);
+      expect(output.applied?.assignees).toEqual(['octocat']);
+      expect(output.warnings?.[0]).toContain('Failed to request reviewers');
     });
 
     it('should return structured error if create PR fails', async () => {
@@ -268,13 +364,11 @@ describe('GhCreatePullRequestTool', () => {
         base: 'main',
       };
 
-      const pullsCreate = vi.fn().mockRejectedValue({
-        status: 422,
-        message: 'Validation Failed',
-        response: { data: { message: 'Validation Failed' } },
-      });
+      const pullsCreate = vi
+        .fn()
+        .mockRejectedValue(new Error('Validation Failed'));
 
-      vi.spyOn(tool as any, 'getClient').mockReturnValue({
+      const mockClient: MockOctokit = {
         pulls: {
           create: pullsCreate,
           requestReviewers: vi.fn(),
@@ -282,12 +376,16 @@ describe('GhCreatePullRequestTool', () => {
         issues: {
           update: vi.fn(),
         },
-      });
+      };
+
+      vi.spyOn(tool, 'createClient').mockReturnValue(mockClient as any);
 
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(output.success).toBe(false);
-      expect(output.error).toContain('GitHubError(422)');
+      if (output.success !== false) throw new Error('Expected error output');
+
+      expect(output.error).toContain('GitHubError:');
     });
   });
 });

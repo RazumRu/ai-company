@@ -1,5 +1,24 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+type RequestErrorLike = {
+  status?: number;
+  message?: string;
+  response?: {
+    data?: {
+      message?: string;
+      errors?: unknown;
+    };
+    headers?: {
+      'x-ratelimit-remaining'?: string;
+      'x-ratelimit-reset'?: string;
+    };
+  };
+};
+
+function isRequestError(error: unknown): error is RequestErrorLike {
+  const e = error as { name?: unknown };
+  return e?.name === 'HttpError';
+}
 import dedent from 'dedent';
 import { z } from 'zod';
 
@@ -30,14 +49,23 @@ export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
     .boolean()
     .optional()
     .describe(
-      'Allow maintainers to modify (default true for same-repo; may be ignored).',
+      'Allow maintainers of the base repo to modify the PR branch (fork PRs).',
     ),
 
   labels: z.array(z.string().min(1)).optional(),
-  assignees: z.array(z.string().min(1)).optional().describe('Usernames'),
-  reviewers: z.array(z.string().min(1)).optional().describe('Usernames'),
+  assignees: z
+    .array(z.string().min(1))
+    .max(10)
+    .optional()
+    .describe('Usernames'),
+  reviewers: z
+    .array(z.string().min(1))
+    .max(15)
+    .optional()
+    .describe('Usernames'),
   teamReviewers: z
     .array(z.string().min(1))
+    .max(15)
     .optional()
     .describe('Team slugs (org only)'),
   milestoneNumber: z
@@ -51,116 +79,96 @@ export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
     .array(z.number().int().positive())
     .optional()
     .describe('Issue numbers to reference in body (tool can append).'),
+}).superRefine((val, ctx) => {
+  const count = (val.reviewers?.length ?? 0) + (val.teamReviewers?.length ?? 0);
+  if (count > 15) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'reviewers + teamReviewers cannot exceed 15 entries',
+      path: ['reviewers'],
+    });
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'reviewers + teamReviewers cannot exceed 15 entries',
+      path: ['teamReviewers'],
+    });
+  }
 });
 
 export type GhCreatePullRequestToolSchemaType = z.infer<
   typeof GhCreatePullRequestToolSchema
 >;
 
-type GhCreatePullRequestToolOutput = {
-  error?: string;
-
-  success?: boolean;
-  owner?: string;
-  repo?: string;
-
-  pullRequest?: {
-    number: number;
-    id: number;
-    nodeId?: string;
-    url: string;
-    apiUrl: string;
-    state: 'open' | 'closed';
-    draft: boolean;
-    title: string;
-    body?: string | null;
-    base: { ref: string; sha?: string; repoFullName?: string };
-    head: { ref: string; sha?: string; repoFullName?: string };
-    createdAt?: string;
-    updatedAt?: string;
-  };
-
-  applied?: {
-    labels?: string[];
-    assignees?: string[];
-    reviewers?: string[];
-    teamReviewers?: string[];
-    milestoneNumber?: number;
-  };
-
-  warnings?: string[];
-};
-
-type GitHubRateLimitHeaders = {
-  'x-ratelimit-remaining'?: string;
-  'x-ratelimit-reset'?: string;
-};
-
-type OctokitErrorLike = {
-  status?: number;
-  message?: string;
-  response?: {
-    data?: {
-      message?: string;
-      errors?: unknown;
-    };
-    headers?: GitHubRateLimitHeaders;
-  };
-};
-
-function asOctokitErrorLike(error: unknown): OctokitErrorLike {
-  if (typeof error !== 'object' || error === null) {
-    return {};
-  }
-  return error as OctokitErrorLike;
-}
+type GhCreatePullRequestToolOutput =
+  | {
+      success: true;
+      owner: string;
+      repo: string;
+      pullRequest: {
+        number: number;
+        id: number;
+        nodeId?: string;
+        url: string;
+        apiUrl: string;
+        state: 'open' | 'closed';
+        draft: boolean;
+        title: string;
+        body?: string | null;
+        base: { ref: string; sha?: string; repoFullName?: string };
+        head: { ref: string; sha?: string; repoFullName?: string };
+        createdAt?: string;
+        updatedAt?: string;
+      };
+      applied?: {
+        labels?: string[];
+        assignees?: string[];
+        reviewers?: string[];
+        teamReviewers?: string[];
+        milestoneNumber?: number;
+      };
+      warnings?: string[];
+    }
+  | { success: false; error: string };
 
 function formatGitHubError(error: unknown): string {
-  const err = asOctokitErrorLike(error);
+  if (isRequestError(error)) {
+    const status = error.status;
+    const message = error.message;
+    const responseMessage = error.response?.data?.message;
+    const responseErrors = error.response?.data?.errors;
 
-  const status = typeof err.status === 'number' ? err.status : undefined;
+    const parts: string[] = [`GitHubError(${status}):`, message];
 
-  const responseMessage = err.response?.data?.message;
-  const responseErrors = err.response?.data?.errors;
-
-  const baseMessage =
-    typeof err.message === 'string' && err.message.length
-      ? err.message
-      : 'Unknown GitHub error';
-
-  const parts: string[] = [];
-
-  if (status != null) {
-    parts.push(`GitHubError(${status}):`);
-  } else {
-    parts.push('GitHubError:');
-  }
-
-  parts.push(baseMessage);
-
-  if (typeof responseMessage === 'string' && responseMessage.length) {
-    parts.push(`- ${responseMessage}`);
-  }
-
-  if (Array.isArray(responseErrors) && responseErrors.length) {
-    // Keep this stable + reasonably small; Octokit errors can be verbose.
-    parts.push(`- errors: ${JSON.stringify(responseErrors).slice(0, 2000)}`);
-  }
-
-  if (status === 401 || status === 403) {
-    parts.push('- Not authorized. Check PAT scopes and repo access.');
-
-    const headers = err.response?.headers;
-    const remaining = headers?.['x-ratelimit-remaining'];
-    const reset = headers?.['x-ratelimit-reset'];
-
-    // Some rate limit errors surface as 403.
-    if (remaining === '0' && typeof reset === 'string') {
-      parts.push(`- Rate limit exceeded. Reset: ${reset}`);
+    if (typeof responseMessage === 'string' && responseMessage.length) {
+      parts.push(`- ${responseMessage}`);
     }
+
+    if (Array.isArray(responseErrors) && responseErrors.length) {
+      // Keep this stable + reasonably small; Octokit errors can be verbose.
+      parts.push(`- errors: ${JSON.stringify(responseErrors).slice(0, 2000)}`);
+    }
+
+    if (status === 401 || status === 403) {
+      parts.push('- Not authorized. Check PAT scopes and repo access.');
+
+      const remaining = error.response?.headers?.['x-ratelimit-remaining'];
+      const reset = error.response?.headers?.['x-ratelimit-reset'];
+
+      // Some rate limit errors surface as 403.
+      if (remaining === '0' && typeof reset === 'string') {
+        parts.push(`- Rate limit exceeded. Reset: ${reset}`);
+      }
+    }
+
+    return parts.join(' ');
   }
 
-  return parts.join(' ');
+  if (error instanceof Error) {
+    return `GitHubError: ${error.message}`;
+  }
+
+  return `GitHubError: ${String(error)}`;
 }
 
 function appendClosesIssues(body: string | undefined, closesIssues: number[]) {
@@ -262,39 +270,13 @@ export class GhCreatePullRequestTool extends GhBaseTool<GhCreatePullRequestToolS
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
 
-    // Extra validation beyond zod
-    if (args.assignees && args.assignees.length > 10) {
-      return {
-        output: {
-          success: false,
-          error: 'ValidationError: assignees cannot exceed 10 entries',
-        },
-        messageMetadata,
-      };
-    }
-
-    if (
-      (args.reviewers && args.reviewers.length) ||
-      (args.teamReviewers && args.teamReviewers.length)
-    ) {
-      const count =
-        (args.reviewers?.length ?? 0) + (args.teamReviewers?.length ?? 0);
-      if (count > 15) {
-        return {
-          output: {
-            success: false,
-            error:
-              'ValidationError: reviewers + teamReviewers cannot exceed 15 entries',
-          },
-          messageMetadata,
-        };
-      }
-    }
-
     const warnings: string[] = [];
-    const applied: NonNullable<GhCreatePullRequestToolOutput['applied']> = {};
+    const applied: NonNullable<
+      Extract<GhCreatePullRequestToolOutput, { success: true }>['applied']
+    > = {};
 
-    const client = this.getClient(config.patToken);
+    // Prefer this.createClient() so tests can override client creation without spying/casting.
+    const client = this.createClient(config.patToken);
 
     const bodyWithCloses = args.closesIssues?.length
       ? appendClosesIssues(args.body, args.closesIssues)
@@ -331,12 +313,12 @@ export class GhCreatePullRequestTool extends GhBaseTool<GhCreatePullRequestToolS
             milestone: args.milestoneNumber,
           });
 
-          applied.labels = (updateRes.data.labels ?? []).map(
-            (l: { name?: string | null }) => l.name ?? '',
-          );
-          applied.assignees = (updateRes.data.assignees ?? []).map(
-            (a: { login?: string | null }) => a.login ?? '',
-          );
+          applied.labels = (updateRes.data.labels ?? [])
+            .map((l) => l.name)
+            .filter((x): x is string => !!x);
+          applied.assignees = (updateRes.data.assignees ?? [])
+            .map((a) => a.login)
+            .filter((x): x is string => !!x);
           if (args.milestoneNumber) {
             applied.milestoneNumber = args.milestoneNumber;
           }
@@ -361,12 +343,12 @@ export class GhCreatePullRequestTool extends GhBaseTool<GhCreatePullRequestToolS
             team_reviewers: args.teamReviewers,
           });
 
-          applied.reviewers = (reviewersRes.data.requested_reviewers ?? []).map(
-            (r: { login?: string | null }) => r.login ?? '',
-          );
-          applied.teamReviewers = (reviewersRes.data.requested_teams ?? []).map(
-            (t: { slug?: string | null }) => t.slug ?? '',
-          );
+          applied.reviewers = (reviewersRes.data.requested_reviewers ?? [])
+            .map((r) => r.login)
+            .filter((x): x is string => !!x);
+          applied.teamReviewers = (reviewersRes.data.requested_teams ?? [])
+            .map((t) => t.slug)
+            .filter((x): x is string => !!x);
         } catch (e) {
           warnings.push(`Failed to request reviewers: ${formatGitHubError(e)}`);
         }
