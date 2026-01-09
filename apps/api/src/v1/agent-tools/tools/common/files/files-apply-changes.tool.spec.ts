@@ -77,7 +77,7 @@ describe('FilesApplyChangesTool', () => {
         mockConfig,
       );
 
-      expect(title).toBe('Editing utils.ts (edit)');
+      expect(title).toBe('Editing utils.ts');
     });
 
     it('should generate title with replace all mode', () => {
@@ -91,7 +91,7 @@ describe('FilesApplyChangesTool', () => {
         mockConfig,
       );
 
-      expect(title).toBe('Editing app.ts (replace all)');
+      expect(title).toBe('Editing app.ts');
     });
   });
 

@@ -12,10 +12,6 @@ import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
 import { FilesEditTool, FilesEditToolConfig } from './files-edit.tool';
-import {
-  FilesEditReapplyTool,
-  FilesEditReapplyToolConfig,
-} from './files-edit-reapply.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
@@ -44,7 +40,6 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     private readonly filesMoveFileTool: FilesMoveFileTool,
     private readonly filesWriteFileTool: FilesWriteFileTool,
     private readonly filesEditTool: FilesEditTool,
-    private readonly filesEditReapplyTool: FilesEditReapplyTool,
     private readonly filesApplyChangesTool: FilesApplyChangesTool,
     private readonly filesDeleteTool: FilesDeleteTool,
   ) {
@@ -67,16 +62,13 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       '3) If tags are not enough, use `files_search_text` and/or `files_directory_tree` to locate code.',
       '4) Use `files_read` to inspect exact code before making changes.',
       includeEditActions
-        ? '5) **PRIMARY:** Use `files_edit` for sketch-based edits (preferred editing tool).'
+        ? '5) **PRIMARY:** Use `files_edit` for sketch-based edits (preferred editing tool). Start with useSmartModel=false; retry with useSmartModel=true if needed.'
         : '5) (Read-only) Do not attempt file modifications.',
       includeEditActions
-        ? '6) **ON ERROR:** Use `files_edit_reapply` for smarter parsing, or fall back to `files_apply_changes` for manual oldText/newText edits.'
+        ? '6) **MANUAL:** Use `files_apply_changes` for exact oldText/newText control when needed.'
         : '',
       includeEditActions
-        ? '7) **MANUAL:** Use `files_apply_changes` for exact oldText/newText control when needed.'
-        : '',
-      includeEditActions
-        ? '8) After ANY file changes, rebuild tags with `files_build_tags` BEFORE using `files_search_tags` again.'
+        ? '7) After ANY file changes, rebuild tags with `files_build_tags` BEFORE using `files_search_tags` again.'
         : '6) If the repo changes externally, rebuild tags before using `files_search_tags` again.',
       '',
       '**Available Operations:**',
@@ -84,7 +76,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
         ? '- Read/search + create/modify/move/delete files and directories'
         : '- Read/search only (edit actions disabled)',
       includeEditActions
-        ? '- Sketch-based editing with `files_edit` (primary) and smart fallback with `files_edit_reapply`'
+        ? '- Sketch-based editing with `files_edit` (use useSmartModel flag for retry)'
         : '',
       '- Build/search semantic tags for faster navigation',
       '',
@@ -117,16 +109,12 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       const editToolConfig: FilesEditToolConfig = {
         runtime: config.runtime,
       };
-      const reapplyToolConfig: FilesEditReapplyToolConfig = {
-        runtime: config.runtime,
-      };
 
       tools.push(
         this.filesCreateDirectoryTool.build(config, lgConfig),
         this.filesMoveFileTool.build(config, lgConfig),
         this.filesWriteFileTool.build(config, lgConfig),
         this.filesEditTool.build(editToolConfig, lgConfig),
-        this.filesEditReapplyTool.build(reapplyToolConfig, lgConfig),
         this.filesApplyChangesTool.build(config, lgConfig),
         this.filesDeleteTool.build(config, lgConfig),
       );

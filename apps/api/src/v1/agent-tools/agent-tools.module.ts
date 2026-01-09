@@ -9,7 +9,6 @@ import { FilesCreateDirectoryTool } from './tools/common/files/files-create-dire
 import { FilesDeleteTool } from './tools/common/files/files-delete.tool';
 import { FilesDirectoryTreeTool } from './tools/common/files/files-directory-tree.tool';
 import { FilesEditTool } from './tools/common/files/files-edit.tool';
-import { FilesEditReapplyTool } from './tools/common/files/files-edit-reapply.tool';
 import { FilesFindPathsTool } from './tools/common/files/files-find-paths.tool';
 import { FilesMoveFileTool } from './tools/common/files/files-move-file.tool';
 import { FilesReadTool } from './tools/common/files/files-read.tool';
@@ -50,7 +49,6 @@ import { FinishTool } from './tools/core/finish.tool';
     FilesMoveFileTool,
     FilesWriteFileTool,
     FilesEditTool,
-    FilesEditReapplyTool,
     FilesApplyChangesTool,
     FilesDeleteTool,
     FilesToolGroup,
@@ -76,7 +74,6 @@ import { FinishTool } from './tools/core/finish.tool';
     FilesMoveFileTool,
     FilesWriteFileTool,
     FilesEditTool,
-    FilesEditReapplyTool,
     FilesApplyChangesTool,
     FilesDeleteTool,
     FilesToolGroup,

@@ -65,8 +65,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     _config: FilesBaseToolConfig,
   ): string {
     const name = basename(args.filePath);
-    const mode = args.replaceAll ? 'replace all' : 'edit';
-    return `Editing ${name} (${mode})`;
+    return `Editing ${name}`;
   }
 
   public get schema() {

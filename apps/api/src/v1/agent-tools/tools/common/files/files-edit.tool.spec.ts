@@ -69,7 +69,7 @@ describe('FilesEditTool', () => {
         mockConfig,
       );
 
-      expect(title).toBe('Editing utils.ts (sketch-based)');
+      expect(title).toBe('Editing utils.ts');
     });
   });
 
@@ -208,7 +208,14 @@ describe('FilesEditTool', () => {
     it('should pass when all limits are within bounds', () => {
       const fileContent = 'line1\nline2\nline3\n'.repeat(10);
       const edits = [
-        { oldText: 'line1', newText: 'line1-modified', start: 0, end: 0 },
+        {
+          oldText: 'line1',
+          newText: 'line1-modified',
+          start: 0,
+          end: 0,
+          kind: 'normal' as const,
+          hunkIndex: 0,
+        },
       ];
 
       const result = tool['checkLimits'](fileContent, edits);
@@ -218,7 +225,16 @@ describe('FilesEditTool', () => {
 
     it('should fail when file size exceeds limit', () => {
       const fileContent = 'x'.repeat(1_000_001); // > 1MB
-      const edits = [{ oldText: 'x', newText: 'y', start: 0, end: 0 }];
+      const edits = [
+        {
+          oldText: 'x',
+          newText: 'y',
+          start: 0,
+          end: 0,
+          kind: 'normal' as const,
+          hunkIndex: 0,
+        },
+      ];
 
       const result = tool['checkLimits'](fileContent, edits);
 
@@ -235,6 +251,8 @@ describe('FilesEditTool', () => {
         newText: `modified${i}`,
         start: 0,
         end: 0,
+        kind: 'normal' as const,
+        hunkIndex: i,
       }));
 
       const result = tool['checkLimits'](fileContent, edits);
@@ -243,25 +261,6 @@ describe('FilesEditTool', () => {
       expect(result.error).toBeDefined();
       expect(result.error).toContain('hunks exceeds');
       expect(result.error).toContain('21');
-    });
-
-    it('should fail when changed lines ratio exceeds limit', () => {
-      const fileContent = 'line1\nline2\nline3\nline4\nline5';
-      const edits = [
-        {
-          oldText: 'line1\nline2\nline3\nline4',
-          newText: 'modified1\nmodified2\nmodified3\nmodified4',
-          start: 0,
-          end: 0,
-        },
-      ];
-
-      const result = tool['checkLimits'](fileContent, edits);
-
-      expect(result.ok).toBe(false);
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain('change ratio');
-      expect(result.error).toContain('%');
     });
   });
 
@@ -368,8 +367,8 @@ describe('FilesEditTool', () => {
 
       expect(instructions).toContain('// ... existing code ...');
       expect(instructions).toContain('ritical'); // matches both "Critical" and "CRITICAL"
-      expect(instructions).toContain('error');
-      expect(instructions).toContain('files_edit_reapply');
+      expect(instructions).toContain('useSmartModel');
+      expect(instructions).toContain('Retry Strategy');
     });
   });
 
@@ -383,6 +382,7 @@ describe('FilesEditTool', () => {
         'function test() {\n  return 1;\n}\n',
         'Change return value',
         'function test() {\n// ... existing code ...\nnew_code\n// ... existing code ...\n}\n',
+        false,
       );
 
       expect(result.success).toBe(false);
@@ -393,13 +393,14 @@ describe('FilesEditTool', () => {
     it('should handle malformed JSON from LLM', async () => {
       vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
         conversationId: 'test',
-        content: '<json>{invalid json here</json>',
+        content: '{invalid json here',
       });
 
       const result = await tool['parseLLM'](
         'function test() {\n  return 1;\n}\n',
         'Change return value',
         'function test() {\n// ... existing code ...\nnew_code\n// ... existing code ...\n}\n',
+        false,
       );
 
       expect(result.success).toBe(false);
@@ -410,13 +411,14 @@ describe('FilesEditTool', () => {
     it('should handle empty hunks array from LLM', async () => {
       vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
         conversationId: 'test',
-        content: `<json>${JSON.stringify({ hunks: [] })}</json>`,
+        content: JSON.stringify({ hunks: [] }),
       });
 
       const result = await tool['parseLLM'](
         'function test() {\n  return 1;\n}\n',
         'Change return value',
         'function test() {\n// ... existing code ...\nnew_code\n// ... existing code ...\n}\n',
+        false,
       );
 
       expect(result.success).toBe(false);
@@ -431,7 +433,7 @@ describe('FilesEditTool', () => {
         .spyOn(mockOpenaiService, 'response')
         .mockResolvedValue({
           conversationId: 'test',
-          content: `<json>${JSON.stringify({
+          content: JSON.stringify({
             hunks: [
               {
                 beforeAnchor: 'function test() {',
@@ -439,13 +441,14 @@ describe('FilesEditTool', () => {
                 replacement: '  return 2;',
               },
             ],
-          })}</json>`,
+          }),
         });
 
       await tool['parseLLM'](
         'function test() { return 1; }',
         'Change return value',
         'x\n// ... existing code ...\ny',
+        false,
       );
 
       expect(generateSpy).toHaveBeenCalled();
@@ -646,6 +649,8 @@ describe('FilesEditTool', () => {
         newText: `y${i}`,
         start: 0,
         end: 0,
+        kind: 'normal' as const,
+        hunkIndex: i,
       })); // Exceeds hunk count
 
       const result = tool['checkLimits'](fileContent, edits);
@@ -656,10 +661,8 @@ describe('FilesEditTool', () => {
       expect(result.error).toMatch(/limit|exceeds/i);
     });
 
-    it('should pass when values are exactly at limit', () => {
-      // Create file with many lines to stay under change ratio limit
-      const lines = Array.from({ length: 1000 }, (_, i) => `line${i}`);
-      const fileContent = lines.join('\n'); // ~7KB with 1000 lines
+    it('should pass when hunk count is exactly at limit', () => {
+      const fileContent = 'line1\nline2\nline3\n'.repeat(100);
 
       // Make exactly 20 edits (at limit)
       const edits = Array.from({ length: 20 }, (_, i) => ({
@@ -667,6 +670,8 @@ describe('FilesEditTool', () => {
         newText: `newline${i}`,
         start: 0,
         end: 0,
+        kind: 'normal' as const,
+        hunkIndex: i,
       }));
 
       const result = tool['checkLimits'](fileContent, edits);
@@ -727,7 +732,7 @@ describe('FilesEditTool', () => {
       // Mock LLM to return valid hunks
       vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
         conversationId: 'test',
-        content: `<json>${JSON.stringify({
+        content: JSON.stringify({
           hunks: [
             {
               beforeAnchor: 'const untouchedA = 0;\n// marker A',
@@ -735,7 +740,7 @@ describe('FilesEditTool', () => {
               replacement: 'const value = 2;',
             },
           ],
-        })}</json>`,
+        }),
       });
 
       const result = await tool.invoke(
@@ -1055,53 +1060,12 @@ export class ModuleX {
     });
   });
 
-  describe('weak/common anchor detection', () => {
-    it('should error when beforeAnchor is single-line in large file (>= 20 lines)', () => {
-      // Make file large enough (>= 20 lines) to trigger anchor strength validation
-      const lines = Array.from({ length: 25 }, (_, i) => `line${i}`);
-      const fileContent = lines.join('\n') + '\nconst x = 1;\nconst y\n= 2;';
-
-      const hunks = [
-        {
-          beforeAnchor: 'const x = 1;', // Single line, no newline
-          afterAnchor: 'const y\n= 2;',
-          replacement: 'new',
-        },
-      ];
-
-      const result = tool['resolveHunksToEdits'](fileContent, hunks);
-
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain('Weak beforeAnchor');
-      expect(result.error).toContain('prefer 2+ lines');
-    });
-
-    it('should error when afterAnchor is single-line in large file (>= 20 lines)', () => {
-      // Make file large enough (>= 20 lines) to trigger anchor strength validation
-      const lines = Array.from({ length: 25 }, (_, i) => `line${i}`);
-      const fileContent =
-        lines.join('\n') + '\nconst x\n= 1;\nconst y = 2;\nconst z = 3;';
-
-      const hunks = [
-        {
-          beforeAnchor: 'const x\n= 1;',
-          afterAnchor: 'const y = 2;', // Single line, no newline, NOT at file end
-          replacement: 'new',
-        },
-      ];
-
-      const result = tool['resolveHunksToEdits'](fileContent, hunks);
-
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain('Weak afterAnchor');
-      expect(result.error).toContain('prefer 2+ lines');
-    });
-
-    it('should error when anchor span is too large', () => {
+  describe('anchor span validation', () => {
+    it('should error when anchor span exceeds 100KB limit', () => {
       const largeContent = `
 // Function start marker
 here
-${'line\n'.repeat(10000)}
+${'line\n'.repeat(20000)}
 // Function end marker
 here
       `.trim();
@@ -1109,7 +1073,7 @@ here
       const hunks = [
         {
           beforeAnchor: '// Function start marker\nhere',
-          afterAnchor: '// Function end marker\nhere', // Span is > MAX_ANCHOR_SPAN_BYTES (50k)
+          afterAnchor: '// Function end marker\nhere', // Span is > MAX_ANCHOR_SPAN_BYTES (100KB)
           replacement: 'modified',
         },
       ];
@@ -1121,7 +1085,7 @@ here
       expect(result.error).toMatch(/\d+ bytes.*exceeds.*byte limit/);
     });
 
-    it('should succeed when anchors are strong and span is reasonable', () => {
+    it('should succeed when span is within 100KB limit', () => {
       const fileContent = `
 function calculateTotal(items) {
   let total = 0;

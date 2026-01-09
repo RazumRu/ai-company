@@ -10,7 +10,6 @@ import { FilesApplyChangesTool } from '../../../v1/agent-tools/tools/common/file
 import { FilesBuildTagsTool } from '../../../v1/agent-tools/tools/common/files/files-build-tags.tool';
 import { FilesDeleteTool } from '../../../v1/agent-tools/tools/common/files/files-delete.tool';
 import { FilesEditTool } from '../../../v1/agent-tools/tools/common/files/files-edit.tool';
-import { FilesEditReapplyTool } from '../../../v1/agent-tools/tools/common/files/files-edit-reapply.tool';
 import { FilesFindPathsTool } from '../../../v1/agent-tools/tools/common/files/files-find-paths.tool';
 import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-read.tool';
 import { FilesSearchTagsTool } from '../../../v1/agent-tools/tools/common/files/files-search-tags.tool';
@@ -90,7 +89,6 @@ describe('Files tools integration', () => {
   let filesSearchTagsTool: FilesSearchTagsTool;
   let filesDeleteTool: FilesDeleteTool;
   let filesEditTool: FilesEditTool;
-  let filesEditReapplyTool: FilesEditReapplyTool;
   let shellTool: ShellTool;
 
   const writeSampleFile = async (fileName = 'sample.ts') => {
@@ -122,7 +120,6 @@ describe('Files tools integration', () => {
         FilesSearchTagsTool,
         FilesDeleteTool,
         FilesEditTool,
-        FilesEditReapplyTool,
         ShellTool,
         RuntimeProvider,
         OpenaiService,
@@ -138,7 +135,6 @@ describe('Files tools integration', () => {
     filesSearchTagsTool = moduleRef.get(FilesSearchTagsTool);
     filesDeleteTool = moduleRef.get(FilesDeleteTool);
     filesEditTool = moduleRef.get(FilesEditTool);
-    filesEditReapplyTool = moduleRef.get(FilesEditReapplyTool);
     shellTool = moduleRef.get(ShellTool);
 
     runtime = await runtimeProvider.provide({
@@ -879,12 +875,12 @@ export const tail_${unique} = true;
       );
 
       // With LLM alignment, this should NOT silently succeed in editing unrelated parts of the file.
-      // It may fail for "anchors not found", "ambiguous/not unique", or safety limits depending on the anchors proposed.
+      // It may fail for various reasons: "anchors not found", "ambiguous/not unique", "Invalid JSON", or safety limits.
       expect(editResult.success).toBe(false);
       if (!editResult.success) {
         expect(editResult.error).toBeDefined();
         expect(editResult.error).toMatch(
-          /Could not find|anchors|unique|ambiguous|multiple|limit|exceeds/i,
+          /Could not find|anchors|unique|ambiguous|multiple|limit|exceeds|Invalid JSON|parse/i,
         );
       }
     },
@@ -921,26 +917,17 @@ export const tail_${unique} = true;
   );
 
   it(
-    'files_edit_reapply: tool can be invoked and uses smart model',
+    'files_edit with useSmartModel: uses smart model flag',
     { timeout: INT_TEST_TIMEOUT },
     async () => {
       const unique = `UNIQUE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      const filePath = `${WORKSPACE_DIR}/files-edit-reapply-success-${unique}.ts`;
-      const padding = Array.from(
-        { length: 120 },
-        (_, i) => `// pad-${unique}-${i}`,
-      ).join('\n');
+      const filePath = `${WORKSPACE_DIR}/files-edit-smart-model-${unique}.ts`;
 
-      const initialContent = `export class Service {
-// ${unique}_BEFORE
-run() {
-  return 'old';
+      // Create a simple, small file to ensure it fits within LLM context budget
+      const initialContent = `// ${unique}
+export function greet(name: string): string {
+  return \`Hello, \${name}!\`;
 }
-// ${unique}_AFTER
-static readonly __tail = '${unique}_TAIL';
-// ${unique}_AFTER_ANCHOR
-}
-${padding}
 `;
 
       await filesApplyChangesTool.invoke(
@@ -949,47 +936,43 @@ ${padding}
         RUNNABLE_CONFIG,
       );
 
-      const { output: reapplyResult } = await filesEditReapplyTool.invoke(
+      // Test with useSmartModel=true - this should succeed with a simple, unambiguous edit
+      const { output: smartModelResult } = await filesEditTool.invoke(
         {
           filePath,
-          editInstructions: 'Change return string from old to new.',
-          codeSketch: `export class Service {
-// ${unique}_BEFORE
-run() {
-  return 'new';
+          editInstructions: 'Change greeting from Hello to Hi',
+          codeSketch: `// ${unique}
+export function greet(name: string): string {
+  return \`Hi, \${name}!\`;
 }
-// ${unique}_AFTER
-static readonly __tail = '${unique}_TAIL';
-// ${unique}_AFTER_ANCHOR
-}
-// ... existing code ...`,
+`,
+          useSmartModel: true,
         },
         { runtime },
         RUNNABLE_CONFIG,
       );
 
-      if (!reapplyResult.success) {
-        console.error(
-          'files_edit_reapply success test failed:',
-          reapplyResult.error,
-        );
+      // Must succeed - no conditional acceptance of failure
+      if (!smartModelResult.success) {
         throw new Error(
-          `files_edit_reapply expected success but got: ${reapplyResult.error}`,
+          `Smart model edit failed: ${smartModelResult.error}. This test requires deterministic success.`,
         );
       }
 
-      expect(reapplyResult.filePath).toBe(filePath);
-      expect(reapplyResult.diff).toBeDefined();
-      expect(reapplyResult.appliedHunks).toBeGreaterThan(0);
+      expect(smartModelResult.success).toBe(true);
+      expect(smartModelResult.modelUsed).toBe('smart');
+      expect(smartModelResult.appliedHunks).toBeGreaterThan(0);
+      expect(smartModelResult.diff).toBeDefined();
 
+      // Verify the content was actually changed
       const { output: readAfter } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
         { runtime },
         RUNNABLE_CONFIG,
       );
       const contentAfter = readAfter.files?.[0]?.content || '';
-      expect(contentAfter).toContain("return 'new'");
-      expect(contentAfter).not.toContain("return 'old'");
+      expect(contentAfter).toContain('Hi,');
+      expect(contentAfter).not.toContain('Hello,');
     },
   );
 

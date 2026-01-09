@@ -8,7 +8,6 @@ import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
 import { FilesEditTool } from './files-edit.tool';
-import { FilesEditReapplyTool } from './files-edit-reapply.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
@@ -29,7 +28,6 @@ describe('FilesToolGroup', () => {
   let mockFilesMoveFileTool: FilesMoveFileTool;
   let mockFilesWriteFileTool: FilesWriteFileTool;
   let mockFilesEditTool: FilesEditTool;
-  let mockFilesEditReapplyTool: FilesEditReapplyTool;
   let mockFilesApplyChangesTool: FilesApplyChangesTool;
   let mockFilesDeleteTool: FilesDeleteTool;
 
@@ -73,10 +71,6 @@ describe('FilesToolGroup', () => {
     mockFilesEditTool = {
       build: vi.fn(),
     } as unknown as FilesEditTool;
-
-    mockFilesEditReapplyTool = {
-      build: vi.fn(),
-    } as unknown as FilesEditReapplyTool;
 
     mockFilesApplyChangesTool = {
       build: vi.fn(),
@@ -130,10 +124,6 @@ describe('FilesToolGroup', () => {
           useValue: mockFilesEditTool,
         },
         {
-          provide: FilesEditReapplyTool,
-          useValue: mockFilesEditReapplyTool,
-        },
-        {
           provide: FilesApplyChangesTool,
           useValue: mockFilesApplyChangesTool,
         },
@@ -175,12 +165,6 @@ describe('FilesToolGroup', () => {
       } as DynamicStructuredTool;
       const mockFilesWriteFileToolInstance = {
         name: 'files_write_file',
-      } as DynamicStructuredTool;
-      const mockFilesEditToolInstance = {
-        name: 'files_edit',
-      } as DynamicStructuredTool;
-      const mockFilesEditReapplyToolInstance = {
-        name: 'files_edit_reapply',
       } as DynamicStructuredTool;
       const mockFilesApplyChangesToolInstance = {
         name: 'files_apply_changes',
@@ -233,7 +217,7 @@ describe('FilesToolGroup', () => {
       expect(result).toBeDefined();
       expect(result.tools).toBeDefined();
       expect(Array.isArray(result.tools)).toBe(true);
-      expect(result.tools.length).toBe(13);
+      expect(result.tools.length).toBe(12);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       // Check that group instructions are returned
       expect(result.instructions).toBeDefined();
@@ -418,7 +402,7 @@ describe('FilesToolGroup', () => {
 
       const result = toolGroup.buildTools(config, lgConfig);
 
-      expect(result.tools.length).toBe(13);
+      expect(result.tools.length).toBe(12);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       expect(mockFilesFindPathsTool.build).toHaveBeenCalledWith(
         config,

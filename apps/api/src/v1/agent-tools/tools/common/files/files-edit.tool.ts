@@ -15,25 +15,40 @@ import {
 } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
+type EditKind = 'normal' | 'bof' | 'eof' | 'rewrite';
+
+type AnchorPair = {
+  start: number;
+  end: number;
+  matchedText: string;
+  kind: EditKind;
+  contextAnchor?: string; // For BOF/EOF validation
+};
+
 type EditOperation = {
   oldText: string;
   newText: string;
   start: number;
   end: number;
+  kind: EditKind;
+  contextAnchor?: string;
+  hunkIndex: number;
 };
 
 const FilesEditToolSchema = z.object({
-  filePath: z
-    .string()
-    .min(1)
-    .describe('Absolute path to file (sandboxed to workspace root)'),
-  editInstructions: z
-    .string()
-    .describe('High-level description of changes to make'),
+  filePath: z.string().min(1).describe('Path to the file to edit'),
+  editInstructions: z.string().describe('Single sentence, first person'),
   codeSketch: z
     .string()
     .describe(
-      'Sketch with // ... existing code ... markers showing changes in context',
+      'Precise edits with minimal unchanged context. Use // ... existing code ... marker to skip spans.',
+    ),
+  useSmartModel: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Retry mode: use only if previous diff is not as expected or parsing/apply failed',
     ),
 });
 
@@ -62,17 +77,36 @@ type ParseResult = {
   needsLLM?: boolean;
 };
 
+type ErrorCode =
+  | 'PARSE_FAILED'
+  | 'NOT_FOUND_ANCHOR'
+  | 'AMBIGUOUS_MATCH'
+  | 'LIMIT_EXCEEDED'
+  | 'APPLY_FAILED'
+  | 'FILE_TOO_LARGE';
+
+type SuggestedNextAction =
+  | 'retry_with_smart_model'
+  | 'add_more_context'
+  | 'set_occurrence'
+  | 'use_apply_changes';
+
 type SuccessResponse = {
   success: true;
   filePath: string;
   diff: string;
   appliedHunks: number;
+  modelUsed: 'light' | 'smart';
+  warnings?: string[];
 };
 
 type ErrorResponse = {
   success: false;
   error: string;
   filePath: string;
+  errorCode?: ErrorCode;
+  modelUsed?: 'light' | 'smart';
+  suggestedNextAction?: SuggestedNextAction;
   failedHunk?: ParsedHunk;
 };
 
@@ -87,13 +121,10 @@ const LIMITS = {
   MAX_LLM_PROMPT_BYTES: 220_000, // 220KB total prompt budget (approx)
   MAX_HUNKS: 20,
   MAX_DIFF_BYTES: 100_000, // 100KB
-  MAX_CHANGED_LINES_RATIO: 0.5, // 50% of file
-  // Anchor strength requirements
-  MIN_ANCHOR_LINES: 2, // Anchors must span at least 2 lines
-  MIN_SINGLELINE_ANCHOR_CHARS: 80, // Allow 1-line anchors only if they are "strong" (or a file boundary anchor)
-  MAX_ANCHOR_SPAN_BYTES: 50_000, // Max bytes between before/after anchors
+  MAX_ANCHOR_SPAN_BYTES: 100_000, // Max bytes between before/after anchors
   MAX_PAIRS_WITHOUT_OCCURRENCE: 1, // If > 1 pair found, occurrence required
   MAX_ANCHOR_PAIRS_PER_HUNK: 100, // Safety cap to avoid quadratic blow-ups
+  BOF_EOF_CONTEXT_BYTES: 16_384, // 16KB - context validation for BOF/EOF
 };
 
 const ANCHOR_MARKER = '// ... existing code ...';
@@ -106,7 +137,7 @@ export type FilesEditToolConfig = FilesBaseToolConfig & {
 export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   public name = 'files_edit';
   public description =
-    'Apply sketch-based edits to a file using anchor markers (primary editing tool with smart parsing).';
+    'Apply sketch-based edits to a file using anchor markers. Call with useSmartModel=false first; if diff is wrong or parsing fails, retry with useSmartModel=true.';
 
   constructor(private readonly openaiService: OpenaiService) {
     super();
@@ -117,7 +148,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     _config: FilesEditToolConfig,
   ): string {
     const fileName = args.filePath.split('/').pop() || args.filePath;
-    return `Editing ${fileName} (sketch-based)`;
+    return `Editing ${fileName}`;
   }
 
   public get schema() {
@@ -135,6 +166,12 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       ### Overview
       Apply sketch-based edits using \`// ... existing code ...\` markers as anchors. This is the PREFERRED primary editing tool.
 
+      ### Model Selection Strategy
+      - **ALWAYS start with useSmartModel=false** (default, fast, cheaper)
+      - **If parsing fails or diff is not as expected**, retry with useSmartModel=true
+      - The tool does NOT decide if the diff is correct - that's your job
+      - Only use smart model after light model fails
+
       ### When to Use
       - Modifying existing files with sketch-style edits
       - Multiple related changes in one file
@@ -142,8 +179,14 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
       ### When NOT to Use
       - Creating new files → use \`files_write_file\`
-      - Need manual oldText/newText control → use \`files_apply_changes\`
+      - Manual oldText/newText control → use \`files_apply_changes\`
       - File content unknown → use \`files_read\` first
+
+      ### Retry Strategy
+      1. Call with useSmartModel=false (default)
+      2. Review the diff output
+      3. If error or diff is incorrect, call again with useSmartModel=true
+      4. If still fails, use files_apply_changes with exact oldText/newText
 
       ### Sketch Format
 
@@ -171,13 +214,9 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       3. Include enough context (3-8 lines) around changes so they're UNIQUE
       4. If similar code exists in multiple places, include MORE context (function names, class names)
 
-      ### Error Handling
-
-      On failure, the tool returns an \`error\` message that explains what went wrong and suggests what to try next. If needed, retry with \`files_edit_reapply\` (smarter parsing) or use \`files_apply_changes\` for manual oldText/newText edits.
-
       ### Examples
 
-      **Example 1: Simple edit with good context**
+      **Example 1: Simple edit with default model**
 
       \`\`\`json
       {
@@ -187,13 +226,14 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       }
       \`\`\`
 
-      **Example 2: Multiple hunks**
+      **Example 2: Retry with smart model after failure**
 
       \`\`\`json
       {
         "filePath": "/workspace/src/config.ts",
         "editInstructions": "Update API version and add timeout config",
-        "codeSketch": "export const config = {\\n  apiVersion: '2.0',\\n// ... existing code ...\\n  timeout: 30000,\\n// ... existing code ...\\n};"
+        "codeSketch": "export const config = {\\n  apiVersion: '2.0',\\n// ... existing code ...\\n  timeout: 30000,\\n// ... existing code ...\\n};",
+        "useSmartModel": true
       }
       \`\`\`
     `;
@@ -212,12 +252,12 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     error?: string;
     warning?: string;
   } {
-    // Markerless sketches are allowed (like Cursor) - treated as full rewrite or LLM's choice
-    // Only provide a warning if no markers present
+    // Markerless sketches are allowed (like Cursor) - treated as a full rewrite.
+    // This avoids “best-effort anchors” which are often whitespace-normalized by the model.
     if (!sketch.includes(ANCHOR_MARKER)) {
       return {
         valid: true,
-        warning: `Sketch has no "${ANCHOR_MARKER}" markers. LLM will treat this as a full rewrite or choose appropriate anchors from file.`,
+        warning: `Sketch has no "${ANCHOR_MARKER}" markers. This will be treated as a full file rewrite.`,
       };
     }
 
@@ -228,6 +268,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     fileContent: string,
     editInstructions: string,
     sketch: string,
+    useSmartModel: boolean,
   ): Promise<ParseResult> {
     try {
       const { fileContext, sketchContext, warnings, error } =
@@ -236,66 +277,82 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         return { success: false, error };
       }
 
-      const prompt = dedent`
-        You are the LLM alignment step in a code editor. Your role: propose exact edit operations.
-        A deterministic verifier will check and apply your proposals.
-
-        CURRENT FILE (EXCERPT):
-        ${fileContext}
-
-        SKETCH (desired final state, "// ... existing code ..." marks unchanged sections):
-        ${sketchContext}
-
-        USER INTENT: ${editInstructions}
-
-        YOUR JOB:
-        Output edit operations (hunks) where each hunk specifies:
-        - beforeAnchor: VERBATIM text from CURRENT FILE (prefer 2-10 lines) before the change
-        - afterAnchor: VERBATIM text from CURRENT FILE (prefer 2-10 lines) after the change
-        - replacement: exact new code from SKETCH that goes between the anchors (DO NOT include anchors)
-
-        EMPTY ANCHORS (for file boundaries):
-        - beforeAnchor can be "" (empty) ONLY for prepending at the beginning of file (BOF)
-        - afterAnchor can be "" (empty) ONLY for appending at the end of file (EOF)
-        - Both empty ("" and "") means full file rewrite
-
-        CRITICAL:
-        1. Anchors MUST be exact copy/paste from CURRENT FILE above
-        2. NEVER include new code in anchors (only in replacement)
-        3. Anchors should be unique - prefer MULTI-LINE anchors (2+ lines). Single-line anchors are allowed only if they are very distinctive or at file boundaries.
-        4. beforeAnchor and afterAnchor MUST be DIFFERENT (never identical) unless one is empty
-        5. afterAnchor MUST occur AFTER beforeAnchor in CURRENT FILE (unless empty)
-        6. replacement MUST NOT contain beforeAnchor or afterAnchor text
-        7. Compare line-by-line: CURRENT vs SKETCH to find differences
-
-        EXAMPLE 1 (middle insert):
-        CURRENT: "import A\\nexport class X {}"
-        SKETCH: "import A\\n// ... existing code ...\\nimport B\\nexport class X {}"
-        Output:
-        <json>{"hunks":[{"beforeAnchor":"import A","afterAnchor":"export class X {}","replacement":"import B"}]}</json>
-
-        EXAMPLE 2 (append to end):
-        CURRENT: "console.log('hello world');"
-        SKETCH: "console.log('hello world');\\n// ... existing code ...\\nfunction greet() { return 'hi'; }"
-        Output:
-        <json>{"hunks":[{"beforeAnchor":"console.log('hello world');","afterAnchor":"","replacement":"\\nfunction greet() { return 'hi'; }"}]}</json>
-
-        EXAMPLE 3 (prepend to beginning):
-        CURRENT: "console.log('hello world');"
-        SKETCH: "const os = require('os');\\nconsole.log('hello world');\\n// ... existing code ..."
-        Output:
-        <json>{"hunks":[{"beforeAnchor":"","afterAnchor":"console.log('hello world');","replacement":"const os = require('os');\\n"}]}</json>
-
-        EXAMPLE 4 (full rewrite):
-        CURRENT: "old code"
-        SKETCH: "completely new code"
-        Output:
-        <json>{"hunks":[{"beforeAnchor":"","afterAnchor":"","replacement":"completely new code"}]}</json>
-
-        IMPORTANT: Wrap your JSON output in <json>...</json> tags.
-        Output format:
-        <json>{"hunks":[{"beforeAnchor":"...","afterAnchor":"...","replacement":"...","occurrence":1}]}</json>
-      `;
+      // IMPORTANT: Do NOT use `dedent` on file/sketch contents — it destroys indentation.
+      // Use fenced blocks to preserve whitespace exactly.
+      const hasMarkers = sketch.includes(ANCHOR_MARKER);
+      const prompt = [
+        'You are the LLM alignment step in a code editor. Your role: propose exact edit operations.',
+        'A deterministic verifier will check and apply your proposals.',
+        '',
+        'CURRENT FILE:',
+        '```',
+        fileContext,
+        '```',
+        '',
+        'SKETCH (desired final state, "// ... existing code ..." marks unchanged sections):',
+        '```',
+        sketchContext,
+        '```',
+        '',
+        `USER INTENT: ${editInstructions}`,
+        '',
+        'YOUR JOB:',
+        'Output edit operations (hunks) where each hunk specifies:',
+        '- beforeAnchor: VERBATIM text from CURRENT FILE before the change',
+        '- afterAnchor: VERBATIM text from CURRENT FILE after the change',
+        '- replacement: exact new code from SKETCH that goes between the anchors (DO NOT include anchors)',
+        '',
+        ...(hasMarkers
+          ? []
+          : [
+              'MARKERLESS SKETCH:',
+              '- The sketch has NO "// ... existing code ..." markers.',
+              '- Treat this as a FULL FILE REWRITE.',
+              '- Return exactly ONE hunk with beforeAnchor="" and afterAnchor="".',
+            ]),
+        '',
+        'EMPTY ANCHORS (for file boundaries):',
+        '- beforeAnchor can be "" (empty) ONLY for prepending at the beginning of file (BOF)',
+        '- afterAnchor can be "" (empty) ONLY for appending at the end of file (EOF)',
+        '- Both empty ("" and "") means full file rewrite',
+        '',
+        'CRITICAL:',
+        '1. Anchors MUST be exact copy/paste from CURRENT FILE above, including ALL leading spaces/tabs.',
+        '   - If the file has "  return {", then the anchor MUST include those 2 leading spaces.',
+        '2. Do NOT retype or “normalize” anchors. Extract them from CURRENT FILE exactly as shown.',
+        '3. NEVER include new code in anchors (only in replacement).',
+        '4. beforeAnchor and afterAnchor MUST be DIFFERENT (never identical) unless one is empty.',
+        '5. afterAnchor MUST occur AFTER beforeAnchor in CURRENT FILE (unless empty).',
+        '6. replacement MUST NOT contain beforeAnchor or afterAnchor text.',
+        '',
+        'EXAMPLE 1 (middle insert):',
+        'CURRENT: "import A\\\\nexport class X {}"',
+        'SKETCH: "import A\\\\n// ... existing code ...\\\\nimport B\\\\nexport class X {}"',
+        'Output:',
+        '{"hunks":[{"beforeAnchor":"import A","afterAnchor":"export class X {}","replacement":"import B"}]}',
+        '',
+        'EXAMPLE 2 (append to end):',
+        "CURRENT: console.log('hello world');",
+        "SKETCH: console.log('hello world');\\\\n// ... existing code ...\\\\nfunction greet() { return 'hi'; }",
+        'Output:',
+        '{"hunks":[{"beforeAnchor":"console.log(\'hello world\');","afterAnchor":"","replacement":"\\\\nfunction greet() { return \'hi\'; }"}]}',
+        '',
+        'EXAMPLE 3 (prepend to beginning):',
+        "CURRENT: console.log('hello world');",
+        "SKETCH: const os = require('os');\\\\nconsole.log('hello world');\\\\n// ... existing code ...",
+        'Output:',
+        '{"hunks":[{"beforeAnchor":"","afterAnchor":"console.log(\'hello world\');","replacement":"const os = require(\'os\');\\\\n"}]}',
+        '',
+        'EXAMPLE 4 (full rewrite):',
+        'CURRENT: "old code"',
+        'SKETCH: "completely new code"',
+        'Output:',
+        '{"hunks":[{"beforeAnchor":"","afterAnchor":"","replacement":"completely new code"}]}',
+        '',
+        'IMPORTANT: Return ONLY valid JSON, no other text.',
+        'Output format:',
+        '{"hunks":[{"beforeAnchor":"...","afterAnchor":"...","replacement":"...","occurrence":1}]}',
+      ].join('\\n');
       const promptBytes = Buffer.byteLength(prompt, 'utf8');
       if (promptBytes > LIMITS.MAX_LLM_PROMPT_BYTES) {
         return {
@@ -310,11 +367,13 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         const { content } = await this.openaiService.response(
           { message },
           {
-            model: environment.filesEditModel,
+            model: useSmartModel
+              ? environment.filesEditSmartModel
+              : environment.filesEditModel,
             reasoning: {
-              effort: 'minimal',
+              effort: useSmartModel ? 'low' : 'minimal',
             },
-            text: { verbosity: 'low' },
+            text: { verbosity: useSmartModel ? 'medium' : 'low' },
           },
         );
         return content ?? '';
@@ -322,21 +381,14 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
       const safeContent = await callLLM(prompt);
 
-      // Extract JSON from <json>...</json> sentinel tags
-      const jsonTagMatch = safeContent.match(/<json>([\s\S]*?)<\/json>/);
-      if (!jsonTagMatch) {
-        return {
-          success: false,
-          error:
-            'LLM did not wrap output in <json>...</json> tags. Try files_edit_reapply with a smarter model.',
-        };
-      }
-
-      const jsonString = jsonTagMatch[1]?.trim();
+      // Parse clean JSON directly (no tags)
+      const jsonString = safeContent.trim();
       if (!jsonString) {
         return {
           success: false,
-          error: 'Empty JSON content in <json> tags. Try files_edit_reapply.',
+          error: useSmartModel
+            ? 'LLM returned empty response. Try files_apply_changes.'
+            : 'LLM returned empty response. Try with useSmartModel=true.',
         };
       }
 
@@ -346,7 +398,9 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       } catch (parseError) {
         return {
           success: false,
-          error: `Invalid JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. Try files_edit_reapply.`,
+          error: useSmartModel
+            ? `Invalid JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. Try files_apply_changes.`
+            : `Invalid JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. Try with useSmartModel=true.`,
         };
       }
 
@@ -358,20 +412,47 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           .join('; ');
         return {
           success: false,
-          error: `Invalid hunk structure: ${issues}. Try files_edit_reapply or files_apply_changes.`,
+          error: useSmartModel
+            ? `Invalid hunk structure: ${issues}. Try files_apply_changes.`
+            : `Invalid hunk structure: ${issues}. Try with useSmartModel=true or files_apply_changes.`,
         };
       }
 
       const hunks = validation.data.hunks;
 
+      // Enforce markerless sketch = full rewrite (single hunk, empty anchors).
+      // NOTE: `hasMarkers` is computed above when building the prompt.
+      if (!hasMarkers) {
+        if (hunks.length !== 1) {
+          return {
+            success: false,
+            error: `Markerless sketch produced ${hunks.length} hunks, expected exactly 1 (full rewrite).`,
+          };
+        }
+        const h = hunks[0];
+        if (!h || h.beforeAnchor !== '' || h.afterAnchor !== '') {
+          return {
+            success: false,
+            error:
+              'Markerless sketch must be treated as full rewrite: expected beforeAnchor="" and afterAnchor="".',
+          };
+        }
+      }
+
       // Retry once if the model violates basic invariants (commonly: identical anchors).
       const invalidReasons: string[] = [];
       for (const h of hunks) {
-        if (!h?.beforeAnchor || !h?.afterAnchor) {
-          invalidReasons.push('Missing beforeAnchor/afterAnchor');
+        // Empty strings are valid anchors for BOF/EOF/rewrite. Only missing fields are invalid.
+        if (h.beforeAnchor === undefined || h.afterAnchor === undefined) {
+          invalidReasons.push('Missing beforeAnchor/afterAnchor fields');
           continue;
         }
-        if (h.beforeAnchor === h.afterAnchor) {
+        // Identical anchors are invalid unless both are empty (full rewrite) or one is empty (BOF/EOF).
+        if (
+          h.beforeAnchor === h.afterAnchor &&
+          h.beforeAnchor !== '' &&
+          h.afterAnchor !== ''
+        ) {
           invalidReasons.push('beforeAnchor and afterAnchor are identical');
           continue;
         }
@@ -396,25 +477,26 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         `}`;
 
         const retryContent = await callLLM(retryPrompt);
-        const retryJsonTagMatch = retryContent.match(
-          /<json>([\s\S]*?)<\/json>/,
-        );
-        if (!retryJsonTagMatch || !retryJsonTagMatch[1]?.trim()) {
+        const retryJsonString = retryContent.trim();
+
+        if (!retryJsonString) {
           return {
             success: false,
-            error:
-              'LLM retry did not return valid <json> wrapped output. Try files_edit_reapply with a smarter model.',
+            error: useSmartModel
+              ? 'LLM retry returned empty response. Try files_apply_changes.'
+              : 'LLM retry returned empty response. Try with useSmartModel=true.',
           };
         }
 
         let retryParsed: unknown;
         try {
-          retryParsed = JSON.parse(retryJsonTagMatch[1].trim());
+          retryParsed = JSON.parse(retryJsonString);
         } catch {
           return {
             success: false,
-            error:
-              'LLM retry returned invalid JSON. Try files_edit_reapply with a smarter model.',
+            error: useSmartModel
+              ? 'LLM retry returned invalid JSON. Try files_apply_changes.'
+              : 'LLM retry returned invalid JSON. Try with useSmartModel=true.',
           };
         }
 
@@ -422,8 +504,9 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         if (!retryValidation.success) {
           return {
             success: false,
-            error:
-              'LLM retry returned invalid hunk structure. Try files_edit_reapply or files_apply_changes.',
+            error: useSmartModel
+              ? 'LLM retry returned invalid hunk structure. Try files_apply_changes.'
+              : 'LLM retry returned invalid hunk structure. Try with useSmartModel=true or files_apply_changes.',
           };
         }
 
@@ -441,7 +524,9 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     } catch (error) {
       return {
         success: false,
-        error: `${error instanceof Error ? error.message : String(error)}. Try files_edit_reapply with a smarter model.`,
+        error: useSmartModel
+          ? `${error instanceof Error ? error.message : String(error)}. Try files_apply_changes.`
+          : `${error instanceof Error ? error.message : String(error)}. Try with useSmartModel=true.`,
       };
     }
   }
@@ -456,104 +541,38 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     error?: string;
   } {
     const warnings: string[] = [];
+    const SAFETY_MARGIN = 0.6; // Use only 60% of budget
 
-    // Sketch context: prefer full sketch, but truncate to cap if too large.
-    let sketchContext = sketch;
-    const sketchBytes = Buffer.byteLength(sketchContext, 'utf8');
-    if (sketchBytes > LIMITS.MAX_LLM_SKETCH_CONTEXT_BYTES) {
-      const head = sketch.slice(
-        0,
-        Math.floor(LIMITS.MAX_LLM_SKETCH_CONTEXT_BYTES / 2),
-      );
-      const tail = sketch.slice(
-        Math.max(
-          0,
-          sketch.length - Math.floor(LIMITS.MAX_LLM_SKETCH_CONTEXT_BYTES / 2),
-        ),
-      );
-      sketchContext = `${head}\n\n/* ... SKETCH TRUNCATED ... */\n\n${tail}`;
-      warnings.push('Sketch was truncated for LLM context budget.');
-    }
+    // Calculate available budget after sketch
+    const sketchBytes = Buffer.byteLength(sketch, 'utf8');
+    const availableForFile = Math.floor(
+      (LIMITS.MAX_LLM_PROMPT_BYTES - sketchBytes) * SAFETY_MARGIN,
+    );
 
-    // For small files, send the entire file content without excerpts (like Cursor)
-    const fileBytes = Buffer.byteLength(fileContent, 'utf8');
-    if (fileBytes <= LIMITS.MAX_LLM_FILE_CONTEXT_BYTES) {
-      return { fileContext: fileContent, sketchContext, warnings };
-    }
-
-    // File context: include only relevant slices to avoid blowing context window.
-    // Strategy:
-    // - Always include head + tail (limited)
-    // - Add slices around distinctive lines from sketch that also exist in file
-    const fileLines = fileContent.split('\n');
-
-    const candidateLines = sketch
-      .split('\n')
-      .map((l) => l.trimEnd())
-      .filter((l) => l.trim().length >= 30 && l.trim() !== ANCHOR_MARKER)
-      .slice(0, 40);
-
-    const slices: { startLine: number; endLine: number }[] = [];
-    const addSlice = (startLine: number, endLine: number) => {
-      const s = Math.max(0, startLine);
-      const e = Math.min(fileLines.length, endLine);
-      if (s >= e) return;
-      slices.push({ startLine: s, endLine: e });
-    };
-
-    // Always include head/tail slices
-    addSlice(0, Math.min(fileLines.length, 120));
-    addSlice(Math.max(0, fileLines.length - 120), fileLines.length);
-
-    // Add up to N matches from candidate lines
-    for (const line of candidateLines) {
-      const idx = fileLines.findIndex((fl) => fl.includes(line));
-      if (idx !== -1) {
-        addSlice(idx - 25, idx + 26);
-      }
-      if (slices.length >= 10) break;
-    }
-
-    // Merge overlapping slices
-    slices.sort((a, b) => a.startLine - b.startLine);
-    const merged: { startLine: number; endLine: number }[] = [];
-    for (const s of slices) {
-      const last = merged[merged.length - 1];
-      if (!last || s.startLine > last.endLine + 1) {
-        merged.push({ ...s });
-      } else {
-        last.endLine = Math.max(last.endLine, s.endLine);
-      }
-    }
-
-    const chunkTexts: string[] = [];
-    for (const m of merged) {
-      const chunk = fileLines.slice(m.startLine, m.endLine).join('\n');
-      chunkTexts.push(
-        `/* FILE CONTEXT LINES ${m.startLine + 1}-${m.endLine} */\n${chunk}`,
-      );
-    }
-
-    let fileContext = chunkTexts.join('\n\n');
-    const fileContextBytes = Buffer.byteLength(fileContext, 'utf8');
-    if (fileContextBytes > LIMITS.MAX_LLM_FILE_CONTEXT_BYTES) {
-      // Hard truncate from the end to fit budget
-      fileContext = fileContext.slice(0, LIMITS.MAX_LLM_FILE_CONTEXT_BYTES);
-      warnings.push('File context was truncated for LLM context budget.');
-    }
-
-    // If we somehow ended up with too little context, fail deterministically.
-    if (fileContext.trim().length === 0) {
+    if (availableForFile < 10000) {
       return {
         fileContext: '',
-        sketchContext,
+        sketchContext: sketch,
         warnings,
         error:
-          'Unable to build LLM context. Provide a smaller file or use files_apply_changes.',
+          'File too large for LLM context even with sketch. Use files_apply_changes.',
       };
     }
 
-    return { fileContext, sketchContext, warnings };
+    const fileBytes = Buffer.byteLength(fileContent, 'utf8');
+
+    // For files that fit in budget, send full content (no excerpts - Cursor-like behavior)
+    if (fileBytes <= availableForFile) {
+      return { fileContext: fileContent, sketchContext: sketch, warnings };
+    }
+
+    // Otherwise fail fast - no excerpts (Cursor-like behavior)
+    return {
+      fileContext: '',
+      sketchContext: sketch,
+      warnings,
+      error: `File too large (${(fileBytes / 1000).toFixed(1)}KB) for LLM context. Use files_apply_changes for large files.`,
+    };
   }
 
   /**
@@ -568,43 +587,62 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     content: string,
     beforeAnchor: string,
     afterAnchor: string,
-  ): { start: number; end: number; matchedText: string }[] {
-    const pairs: { start: number; end: number; matchedText: string }[] = [];
+  ): AnchorPair[] {
+    const pairs: AnchorPair[] = [];
 
     // Case 1: Full rewrite (both anchors empty)
     if (beforeAnchor === '' && afterAnchor === '') {
-      return [{ start: 0, end: content.length, matchedText: content }];
-    }
-
-    // Case 2: Prepend (beforeAnchor empty, afterAnchor exists) - insert at BOF
-    if (beforeAnchor === '') {
-      let from = 0;
-      while (from <= content.length) {
-        const afterIdx = content.indexOf(afterAnchor, from);
-        if (afterIdx === -1) break;
-        const end = afterIdx + afterAnchor.length;
-        pairs.push({ start: 0, end, matchedText: content.slice(0, end) });
-        if (pairs.length >= LIMITS.MAX_ANCHOR_PAIRS_PER_HUNK) break;
-        from = afterIdx + 1;
-      }
-      return pairs;
-    }
-
-    // Case 3: Append (afterAnchor empty, beforeAnchor exists) - insert at EOF
-    if (afterAnchor === '') {
-      let from = 0;
-      while (from <= content.length) {
-        const beforeIdx = content.indexOf(beforeAnchor, from);
-        if (beforeIdx === -1) break;
-        pairs.push({
-          start: beforeIdx,
+      return [
+        {
+          start: 0,
           end: content.length,
-          matchedText: content.slice(beforeIdx),
-        });
-        if (pairs.length >= LIMITS.MAX_ANCHOR_PAIRS_PER_HUNK) break;
-        from = beforeIdx + 1;
-      }
-      return pairs;
+          matchedText: content,
+          kind: 'rewrite',
+        },
+      ];
+    }
+
+    // Case 2: BOF insert (beforeAnchor empty, afterAnchor exists)
+    // Zero-length insert at position 0 with context validation
+    if (beforeAnchor === '') {
+      const afterIdx = content.indexOf(afterAnchor);
+      if (afterIdx === -1) return [];
+
+      // Validate afterAnchor is near start (within 16KB)
+      if (afterIdx > LIMITS.BOF_EOF_CONTEXT_BYTES) return [];
+
+      return [
+        {
+          start: 0,
+          end: 0, // Zero-length insert!
+          matchedText: '',
+          kind: 'bof',
+          contextAnchor: afterAnchor,
+        },
+      ];
+    }
+
+    // Case 3: EOF append (afterAnchor empty, beforeAnchor exists)
+    // Zero-length insert at end with context validation
+    if (afterAnchor === '') {
+      const beforeIdx = content.indexOf(beforeAnchor);
+      if (beforeIdx === -1) return [];
+
+      const afterBeforeAnchor = beforeIdx + beforeAnchor.length;
+      const distanceFromEnd = content.length - afterBeforeAnchor;
+
+      // Validate beforeAnchor is near end (within 16KB)
+      if (distanceFromEnd > LIMITS.BOF_EOF_CONTEXT_BYTES) return [];
+
+      return [
+        {
+          start: content.length,
+          end: content.length, // Zero-length insert!
+          matchedText: '',
+          kind: 'eof',
+          contextAnchor: beforeAnchor,
+        },
+      ];
     }
 
     // Case 4: Normal pairing (both anchors non-empty)
@@ -630,6 +668,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           start: beforeIdx,
           end,
           matchedText: content.slice(beforeIdx, end),
+          kind: 'normal',
         });
         if (pairs.length >= LIMITS.MAX_ANCHOR_PAIRS_PER_HUNK) {
           return pairs;
@@ -643,38 +682,31 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     return pairs;
   }
 
-  private buildNewTextFromHunk(hunk: ParsedHunk): string | null {
-    // newText := beforeAnchor + replacement + afterAnchor
-    // replacement should not include anchors verbatim (but don't be overly strict for tiny anchors).
-    const shouldGuardAnchorInReplacement = (anchor: string) =>
+  private buildNewTextFromHunk(
+    hunk: ParsedHunk,
+    kind: EditKind,
+  ): string | null {
+    // Validate replacement doesn't contain anchors (for strong anchors)
+    const shouldGuardAnchor = (anchor: string) =>
       anchor.includes('\n') || anchor.length >= 20;
+
+    // For rewrite/bof/eof, return ONLY replacement (no anchors)
+    if (kind === 'rewrite' || kind === 'bof' || kind === 'eof') {
+      return hunk.replacement;
+    }
+
+    // For normal edits, include anchors but NO auto-newlines
     if (
-      (shouldGuardAnchorInReplacement(hunk.beforeAnchor) &&
+      (shouldGuardAnchor(hunk.beforeAnchor) &&
         hunk.replacement.includes(hunk.beforeAnchor)) ||
-      (shouldGuardAnchorInReplacement(hunk.afterAnchor) &&
+      (shouldGuardAnchor(hunk.afterAnchor) &&
         hunk.replacement.includes(hunk.afterAnchor))
     ) {
       return null;
     }
 
-    let newText = hunk.beforeAnchor;
-    if (
-      hunk.replacement.length > 0 &&
-      !newText.endsWith('\n') &&
-      !hunk.replacement.startsWith('\n')
-    ) {
-      newText += '\n';
-    }
-    newText += hunk.replacement;
-    if (
-      hunk.afterAnchor.length > 0 &&
-      !newText.endsWith('\n') &&
-      !hunk.afterAnchor.startsWith('\n')
-    ) {
-      newText += '\n';
-    }
-    newText += hunk.afterAnchor;
-    return newText;
+    // NO auto-newlines - just concatenate exactly as-is
+    return hunk.beforeAnchor + hunk.replacement + hunk.afterAnchor;
   }
 
   private resolveHunksToEdits(
@@ -686,7 +718,8 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   } {
     const edits: EditOperation[] = [];
 
-    for (const hunk of hunks) {
+    for (let hunkIndex = 0; hunkIndex < hunks.length; hunkIndex++) {
+      const hunk = hunks[hunkIndex]!;
       const pairs = this.findAllAnchorPairs(
         fileContent,
         hunk.beforeAnchor,
@@ -714,17 +747,19 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           }
         }
         return {
-          error: `Could not find anchors in file. beforeAnchor: "${hunk.beforeAnchor.substring(0, 100)}...", afterAnchor: "${hunk.afterAnchor.substring(0, 100)}...". The anchors must be EXACT text from the current file. Try files_edit_reapply with a smarter model or files_apply_changes if you know the exact oldText/newText.`,
+          error: `Could not find anchors in file. beforeAnchor: "${hunk.beforeAnchor.substring(0, 100)}...", afterAnchor: "${hunk.afterAnchor.substring(0, 100)}...". The anchors must be EXACT text from the current file. Try with useSmartModel=true or files_apply_changes if you know the exact oldText/newText.`,
         };
       }
 
-      // Validate anchor span: reject pairs with excessive span
+      // Validate anchor span: reject pairs with excessive span (skip for BOF/EOF/rewrite)
       for (const pair of pairs) {
-        const span = pair.end - pair.start;
-        if (span > LIMITS.MAX_ANCHOR_SPAN_BYTES) {
-          return {
-            error: `Anchor span too large: ${span} bytes between beforeAnchor and afterAnchor exceeds ${LIMITS.MAX_ANCHOR_SPAN_BYTES} byte limit. Choose closer anchors or use files_apply_changes for large edits.`,
-          };
+        if (pair.kind === 'normal') {
+          const span = pair.end - pair.start;
+          if (span > LIMITS.MAX_ANCHOR_SPAN_BYTES) {
+            return {
+              error: `Anchor span too large: ${span} bytes between beforeAnchor and afterAnchor exceeds ${LIMITS.MAX_ANCHOR_SPAN_BYTES} byte limit. Choose closer anchors or use files_apply_changes for large edits.`,
+            };
+          }
         }
       }
 
@@ -748,16 +783,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         };
       }
 
-      const anchorStrengthError = this.validateAnchorStrength(
-        fileContent,
-        hunk,
-        pair,
-      );
-      if (anchorStrengthError) {
-        return { error: anchorStrengthError };
-      }
-
-      const newText = this.buildNewTextFromHunk(hunk);
+      const newText = this.buildNewTextFromHunk(hunk, pair.kind);
       if (!newText) {
         return {
           error:
@@ -770,6 +796,9 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         newText,
         start: pair.start,
         end: pair.end,
+        kind: pair.kind,
+        contextAnchor: pair.contextAnchor,
+        hunkIndex,
       });
     }
 
@@ -788,52 +817,6 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     }
 
     return { edits };
-  }
-
-  private validateAnchorStrength(
-    fileContent: string,
-    hunk: ParsedHunk,
-    pair: { start: number; end: number },
-  ): string | null {
-    // Empty anchors are always allowed for BOF/EOF cases
-    if (hunk.beforeAnchor === '' || hunk.afterAnchor === '') {
-      return null;
-    }
-
-    // For small files (< 20 lines), relax anchor strength requirements
-    const fileLines = fileContent.split('\n').length;
-    const isSmallFile = fileLines < 20;
-
-    const beforeLines = hunk.beforeAnchor.split('\n').length;
-    const afterLines = hunk.afterAnchor.split('\n').length;
-    const beforeIsMultiline = beforeLines >= LIMITS.MIN_ANCHOR_LINES;
-    const afterIsMultiline = afterLines >= LIMITS.MIN_ANCHOR_LINES;
-
-    const beforeIsStrongSingleLine =
-      !beforeIsMultiline &&
-      hunk.beforeAnchor.length >= LIMITS.MIN_SINGLELINE_ANCHOR_CHARS;
-    const afterIsStrongSingleLine =
-      !afterIsMultiline &&
-      hunk.afterAnchor.length >= LIMITS.MIN_SINGLELINE_ANCHOR_CHARS;
-
-    // Boundary exceptions: allow single-line anchors at file boundaries (common for top-of-file insert / end-of-file append)
-    const beforeIsFileStart = pair.start === 0;
-    const afterIsFileEnd = pair.end === fileContent.length;
-
-    // For small files, allow any anchor (don't enforce multi-line or length requirements)
-    if (isSmallFile) {
-      return null;
-    }
-
-    if (!beforeIsMultiline && !beforeIsStrongSingleLine && !beforeIsFileStart) {
-      return `Weak beforeAnchor: prefer ${LIMITS.MIN_ANCHOR_LINES}+ lines, or >=${LIMITS.MIN_SINGLELINE_ANCHOR_CHARS} chars, or anchor at file start. Provided anchor looks too generic.`;
-    }
-
-    if (!afterIsMultiline && !afterIsStrongSingleLine && !afterIsFileEnd) {
-      return `Weak afterAnchor: prefer ${LIMITS.MIN_ANCHOR_LINES}+ lines, or >=${LIMITS.MIN_SINGLELINE_ANCHOR_CHARS} chars, or anchor at file end. Provided anchor looks too generic.`;
-    }
-
-    return null;
   }
 
   private checkLimits(
@@ -858,30 +841,6 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         ok: false,
         error: `${edits.length} hunks exceeds ${LIMITS.MAX_HUNKS} limit. Break changes into multiple files_edit calls with fewer hunks each.`,
       };
-    }
-
-    // Changed lines ratio check (approximate)
-    // Skip ratio check for full rewrite (like Cursor) - single edit replacing entire file
-    const isFullRewrite =
-      edits.length === 1 &&
-      edits[0]!.start === 0 &&
-      edits[0]!.end === fileContent.length;
-
-    if (!isFullRewrite) {
-      const fileLines = fileContent.split('\n').length;
-      let changedLines = 0;
-      for (const edit of edits) {
-        changedLines += edit.oldText.split('\n').length;
-        changedLines += edit.newText.split('\n').length;
-      }
-      const changeRatio = changedLines / (fileLines * 2); // Divide by 2 since we count both old and new
-
-      if (changeRatio > LIMITS.MAX_CHANGED_LINES_RATIO) {
-        return {
-          ok: false,
-          error: `${(changeRatio * 100).toFixed(0)}% change ratio exceeds ${LIMITS.MAX_CHANGED_LINES_RATIO * 100}% limit. Break into smaller changes or use files_write_file for complete rewrites.`,
-        };
-      }
     }
 
     return { ok: true };
@@ -911,17 +870,42 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     fileContent: string,
     edits: EditOperation[],
   ): string {
-    // Apply edits by captured indices, bottom-to-top. No re-searching.
-    const sorted = [...edits].sort((a, b) => b.start - a.start);
+    // Sort: bottom-to-top by start (desc), then by hunkIndex (asc) for ties
+    const sorted = [...edits].sort((a, b) => {
+      if (a.start !== b.start) {
+        return b.start - a.start; // Larger start first (bottom-to-top)
+      }
+      return a.hunkIndex - b.hunkIndex; // For same position, original order
+    });
+
     let result = fileContent;
 
     for (const edit of sorted) {
-      const currentSlice = result.slice(edit.start, edit.end);
-      if (currentSlice !== edit.oldText) {
-        throw new Error(
-          `Could not find match for oldText at expected range during apply`,
-        );
+      // For BOF/EOF, validate context anchor is still present and near boundary
+      if (edit.kind === 'bof' && edit.contextAnchor) {
+        const idx = result.indexOf(edit.contextAnchor);
+        if (idx === -1 || idx > LIMITS.BOF_EOF_CONTEXT_BYTES) {
+          throw new Error('BOF context anchor not found or too far from start');
+        }
       }
+
+      if (edit.kind === 'eof' && edit.contextAnchor) {
+        const idx = result.lastIndexOf(edit.contextAnchor);
+        if (idx === -1 || result.length - idx > LIMITS.BOF_EOF_CONTEXT_BYTES) {
+          throw new Error('EOF context anchor not found or too far from end');
+        }
+      }
+
+      // For normal/rewrite, validate oldText matches
+      if (edit.kind === 'normal' || edit.kind === 'rewrite') {
+        const currentSlice = result.slice(edit.start, edit.end);
+        if (currentSlice !== edit.oldText) {
+          throw new Error(
+            `Could not find match for oldText at expected range during apply`,
+          );
+        }
+      }
+
       result =
         result.slice(0, edit.start) + edit.newText + result.slice(edit.end);
     }
@@ -938,7 +922,6 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     edits: EditOperation[],
   ): string {
     const originalLines = originalContent.split('\n');
-    const modifiedLines = modifiedContent.split('\n');
 
     const diffLines: string[] = [];
 
@@ -1021,6 +1004,8 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           success: false,
           error: `File size ${(fileBytes / 1_000_000).toFixed(2)}MB exceeds ${LIMITS.MAX_FILE_BYTES / 1_000_000}MB limit. Use files_apply_changes for large files.`,
           filePath: args.filePath,
+          errorCode: 'FILE_TOO_LARGE',
+          suggestedNextAction: 'use_apply_changes',
         },
         messageMetadata,
       };
@@ -1050,10 +1035,13 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       };
     }
 
+    const useSmartModel = args.useSmartModel ?? false;
+
     const parseResult = await this.parseLLM(
       fileContent,
       args.editInstructions,
       args.codeSketch,
+      useSmartModel,
     );
 
     if (!parseResult.success || !parseResult.hunks) {
@@ -1062,8 +1050,13 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           success: false,
           error:
             parseResult.error ||
-            'Failed to parse sketch. Try files_edit_reapply.',
+            'Failed to parse sketch. Try with useSmartModel=true.',
           filePath: args.filePath,
+          errorCode: 'PARSE_FAILED',
+          modelUsed: useSmartModel ? 'smart' : 'light',
+          suggestedNextAction: useSmartModel
+            ? 'use_apply_changes'
+            : 'retry_with_smart_model',
         },
         messageMetadata,
       };
@@ -1074,11 +1067,21 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       parseResult.hunks,
     );
     if (error) {
+      const isAnchorError =
+        error.includes('Could not find anchors') ||
+        error.includes('Ambiguous anchors');
       return {
         output: {
           success: false,
           error,
           filePath: args.filePath,
+          errorCode: isAnchorError ? 'NOT_FOUND_ANCHOR' : 'APPLY_FAILED',
+          modelUsed: useSmartModel ? 'smart' : 'light',
+          suggestedNextAction: useSmartModel
+            ? 'use_apply_changes'
+            : isAnchorError
+              ? 'retry_with_smart_model'
+              : 'add_more_context',
         },
         messageMetadata,
       };
@@ -1091,6 +1094,11 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           error:
             'No edits could be resolved from hunks. Check your sketch format and anchors.',
           filePath: args.filePath,
+          errorCode: 'APPLY_FAILED',
+          modelUsed: useSmartModel ? 'smart' : 'light',
+          suggestedNextAction: useSmartModel
+            ? 'use_apply_changes'
+            : 'retry_with_smart_model',
         },
         messageMetadata,
       };
@@ -1104,6 +1112,9 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           error:
             limitCheck.error || 'Limit exceeded. Break into smaller changes.',
           filePath: args.filePath,
+          errorCode: 'LIMIT_EXCEEDED',
+          modelUsed: useSmartModel ? 'smart' : 'light',
+          suggestedNextAction: 'use_apply_changes',
         },
         messageMetadata,
       };
@@ -1118,6 +1129,11 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           success: false,
           error: `${applyError instanceof Error ? applyError.message : String(applyError)}. Try files_apply_changes with manual oldText/newText.`,
           filePath: args.filePath,
+          errorCode: 'APPLY_FAILED',
+          modelUsed: useSmartModel ? 'smart' : 'light',
+          suggestedNextAction: useSmartModel
+            ? 'use_apply_changes'
+            : 'retry_with_smart_model',
         },
         messageMetadata,
       };
@@ -1155,6 +1171,8 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         filePath: args.filePath,
         diff: this.truncateDiff(diff, LIMITS.MAX_DIFF_BYTES),
         appliedHunks: edits.length,
+        modelUsed: useSmartModel ? 'smart' : 'light',
+        warnings: parseResult.warnings,
       },
       messageMetadata,
     };
