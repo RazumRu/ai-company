@@ -39,6 +39,8 @@ import type {
   GetThreadMessagesResponses,
   GetThreadsData,
   GetThreadsResponses,
+  GetThreadUsageStatisticsData,
+  GetThreadUsageStatisticsResponses,
   ListModelsData,
   ListModelsResponses,
   RunGraphData,
@@ -357,6 +359,20 @@ export const getThreadMessages = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/messages',
+    ...options,
+  });
+
+export const getThreadUsageStatistics = <ThrowOnError extends boolean = false>(
+  options: Options<GetThreadUsageStatisticsData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    GetThreadUsageStatisticsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/{threadId}/usage-statistics',
     ...options,
   });
 

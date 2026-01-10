@@ -61,7 +61,7 @@ describe('ShellTool persistent sessions (integration)', () => {
       const { output: exportResult } = await builtTool.invoke(
         {
           purpose: 'set env',
-          cmd: 'export PERSIST_FOO=bar',
+          command: 'export PERSIST_FOO=bar',
         },
         RUNNABLE_CONFIG,
       );
@@ -70,7 +70,7 @@ describe('ShellTool persistent sessions (integration)', () => {
       const { output: envResult } = await builtTool.invoke(
         {
           purpose: 'read env',
-          cmd: 'echo $PERSIST_FOO',
+          command: 'echo $PERSIST_FOO',
         },
         RUNNABLE_CONFIG,
       );
@@ -80,7 +80,7 @@ describe('ShellTool persistent sessions (integration)', () => {
       const { output: changeDirResult } = await builtTool.invoke(
         {
           purpose: 'change dir',
-          cmd: 'cd /tmp',
+          command: 'cd /tmp',
         },
         RUNNABLE_CONFIG,
       );
@@ -89,7 +89,7 @@ describe('ShellTool persistent sessions (integration)', () => {
       const { output: pwdResult } = await builtTool.invoke(
         {
           purpose: 'confirm dir',
-          cmd: 'pwd',
+          command: 'pwd',
         },
         RUNNABLE_CONFIG,
       );
@@ -107,7 +107,7 @@ describe('ShellTool persistent sessions (integration)', () => {
       const { output: result } = await builtTool.invoke(
         {
           purpose: 'tail timeout enforcement',
-          cmd: 'echo "start"; sleep 2; echo "end"',
+          command: 'echo "start"; sleep 2; echo "end"',
           tailTimeoutMs: 500,
           timeoutMs: 10_000,
         },

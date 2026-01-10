@@ -1198,6 +1198,205 @@ export type ThreadMessageDto = {
      */
     totalPrice?: number;
   } | null;
+  /**
+   * Full LLM request token usage & cost (entire request, not just this message)
+   */
+  requestTokenUsage?: {
+    /**
+     * Input tokens
+     */
+    inputTokens: number;
+    /**
+     * Cached input tokens
+     */
+    cachedInputTokens?: number;
+    /**
+     * Output tokens
+     */
+    outputTokens: number;
+    /**
+     * Reasoning tokens
+     */
+    reasoningTokens?: number;
+    /**
+     * Total tokens
+     */
+    totalTokens: number;
+    /**
+     * Total price in USD
+     */
+    totalPrice?: number;
+    /**
+     * Current context size in tokens (snapshot, not additive)
+     */
+    currentContext?: number;
+  } | null;
+};
+
+export type ThreadUsageStatisticsDto = {
+  /**
+   * Total usage statistics for the entire thread
+   */
+  total: {
+    /**
+     * Input tokens
+     */
+    inputTokens: number;
+    /**
+     * Cached input tokens
+     */
+    cachedInputTokens?: number;
+    /**
+     * Output tokens
+     */
+    outputTokens: number;
+    /**
+     * Reasoning tokens
+     */
+    reasoningTokens?: number;
+    /**
+     * Total tokens
+     */
+    totalTokens: number;
+    /**
+     * Total price in USD
+     */
+    totalPrice?: number;
+    /**
+     * Current context size in tokens (snapshot, not additive)
+     */
+    currentContext?: number;
+  };
+  /**
+   * Usage statistics breakdown by node ID
+   */
+  byNode: {
+    [key: string]: {
+      /**
+       * Input tokens
+       */
+      inputTokens: number;
+      /**
+       * Cached input tokens
+       */
+      cachedInputTokens?: number;
+      /**
+       * Output tokens
+       */
+      outputTokens: number;
+      /**
+       * Reasoning tokens
+       */
+      reasoningTokens?: number;
+      /**
+       * Total tokens
+       */
+      totalTokens: number;
+      /**
+       * Total price in USD
+       */
+      totalPrice?: number;
+      /**
+       * Current context size in tokens (snapshot, not additive)
+       */
+      currentContext?: number;
+    };
+  };
+  /**
+   * Usage statistics breakdown by tool name
+   */
+  byTool: Array<{
+    /**
+     * Tool name
+     */
+    toolName: string;
+    /**
+     * Total tokens used by this tool
+     */
+    totalTokens: number;
+    /**
+     * Total price for this tool in USD
+     */
+    totalPrice?: number;
+    /**
+     * Number of times this tool was called
+     */
+    callCount: number;
+  }>;
+  /**
+   * Aggregated statistics for all tool messages
+   */
+  toolsAggregate: {
+    /**
+     * Input tokens
+     */
+    inputTokens: number;
+    /**
+     * Cached input tokens
+     */
+    cachedInputTokens?: number;
+    /**
+     * Output tokens
+     */
+    outputTokens: number;
+    /**
+     * Reasoning tokens
+     */
+    reasoningTokens?: number;
+    /**
+     * Total tokens
+     */
+    totalTokens: number;
+    /**
+     * Total price in USD
+     */
+    totalPrice?: number;
+    /**
+     * Current context size in tokens (snapshot, not additive)
+     */
+    currentContext?: number;
+    /**
+     * Number of messages
+     */
+    messageCount: number;
+  };
+  /**
+   * Aggregated statistics for all non-tool messages (human, ai, system, reasoning)
+   */
+  messagesAggregate: {
+    /**
+     * Input tokens
+     */
+    inputTokens: number;
+    /**
+     * Cached input tokens
+     */
+    cachedInputTokens?: number;
+    /**
+     * Output tokens
+     */
+    outputTokens: number;
+    /**
+     * Reasoning tokens
+     */
+    reasoningTokens?: number;
+    /**
+     * Total tokens
+     */
+    totalTokens: number;
+    /**
+     * Total price in USD
+     */
+    totalPrice?: number;
+    /**
+     * Current context size in tokens (snapshot, not additive)
+     */
+    currentContext?: number;
+    /**
+     * Number of messages
+     */
+    messageCount: number;
+  };
 };
 
 export type ListModelsData = {
@@ -1465,6 +1664,10 @@ export type GetThreadsData = {
      */
     graphId?: string;
     /**
+     * Filter by thread statuses
+     */
+    statuses?: Array<'running' | 'done' | 'need_more_info' | 'stopped'>;
+    /**
      * Maximum number of threads to return
      */
     limit?: number;
@@ -1555,6 +1758,22 @@ export type GetThreadMessagesResponses = {
 
 export type GetThreadMessagesResponse =
   GetThreadMessagesResponses[keyof GetThreadMessagesResponses];
+
+export type GetThreadUsageStatisticsData = {
+  body?: never;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}/usage-statistics';
+};
+
+export type GetThreadUsageStatisticsResponses = {
+  200: ThreadUsageStatisticsDto;
+};
+
+export type GetThreadUsageStatisticsResponse =
+  GetThreadUsageStatisticsResponses[keyof GetThreadUsageStatisticsResponses];
 
 export type StopThreadData = {
   body?: never;

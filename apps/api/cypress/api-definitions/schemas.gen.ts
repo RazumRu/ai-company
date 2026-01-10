@@ -1956,6 +1956,40 @@ export const ThreadMessageDtoSchema = {
         },
       ],
     },
+    requestTokenUsage: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            inputTokens: {
+              type: 'number',
+            },
+            cachedInputTokens: {
+              type: 'number',
+            },
+            outputTokens: {
+              type: 'number',
+            },
+            reasoningTokens: {
+              type: 'number',
+            },
+            totalTokens: {
+              type: 'number',
+            },
+            totalPrice: {
+              type: 'number',
+            },
+            currentContext: {
+              type: 'number',
+            },
+          },
+          required: ['inputTokens', 'outputTokens', 'totalTokens'],
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
   },
   required: [
     'id',
@@ -1965,5 +1999,159 @@ export const ThreadMessageDtoSchema = {
     'createdAt',
     'updatedAt',
     'message',
+  ],
+} as const;
+
+export const ThreadUsageStatisticsDtoSchema = {
+  type: 'object',
+  properties: {
+    total: {
+      type: 'object',
+      properties: {
+        inputTokens: {
+          type: 'number',
+        },
+        cachedInputTokens: {
+          type: 'number',
+        },
+        outputTokens: {
+          type: 'number',
+        },
+        reasoningTokens: {
+          type: 'number',
+        },
+        totalTokens: {
+          type: 'number',
+        },
+        totalPrice: {
+          type: 'number',
+        },
+        currentContext: {
+          type: 'number',
+        },
+      },
+      required: ['inputTokens', 'outputTokens', 'totalTokens'],
+    },
+    byNode: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {
+        type: 'object',
+        properties: {
+          inputTokens: {
+            type: 'number',
+          },
+          cachedInputTokens: {
+            type: 'number',
+          },
+          outputTokens: {
+            type: 'number',
+          },
+          reasoningTokens: {
+            type: 'number',
+          },
+          totalTokens: {
+            type: 'number',
+          },
+          totalPrice: {
+            type: 'number',
+          },
+          currentContext: {
+            type: 'number',
+          },
+        },
+        required: ['inputTokens', 'outputTokens', 'totalTokens'],
+      },
+    },
+    byTool: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          toolName: {
+            type: 'string',
+          },
+          totalTokens: {
+            type: 'number',
+          },
+          totalPrice: {
+            type: 'number',
+          },
+          callCount: {
+            type: 'number',
+          },
+        },
+        required: ['toolName', 'totalTokens', 'callCount'],
+      },
+    },
+    toolsAggregate: {
+      type: 'object',
+      properties: {
+        inputTokens: {
+          type: 'number',
+        },
+        cachedInputTokens: {
+          type: 'number',
+        },
+        outputTokens: {
+          type: 'number',
+        },
+        reasoningTokens: {
+          type: 'number',
+        },
+        totalTokens: {
+          type: 'number',
+        },
+        totalPrice: {
+          type: 'number',
+        },
+        currentContext: {
+          type: 'number',
+        },
+        messageCount: {
+          type: 'number',
+        },
+      },
+      required: ['inputTokens', 'outputTokens', 'totalTokens', 'messageCount'],
+    },
+    messagesAggregate: {
+      type: 'object',
+      properties: {
+        inputTokens: {
+          type: 'number',
+        },
+        cachedInputTokens: {
+          type: 'number',
+        },
+        outputTokens: {
+          type: 'number',
+        },
+        reasoningTokens: {
+          type: 'number',
+        },
+        totalTokens: {
+          type: 'number',
+        },
+        totalPrice: {
+          type: 'number',
+        },
+        currentContext: {
+          type: 'number',
+        },
+        messageCount: {
+          type: 'number',
+        },
+      },
+      required: ['inputTokens', 'outputTokens', 'totalTokens', 'messageCount'],
+    },
+  },
+  required: [
+    'total',
+    'byNode',
+    'byTool',
+    'toolsAggregate',
+    'messagesAggregate',
   ],
 } as const;

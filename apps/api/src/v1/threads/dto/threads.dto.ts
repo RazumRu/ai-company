@@ -2,7 +2,6 @@ import { zodQueryArray } from '@packages/http-server';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { MessageSchema } from '../../graphs/dto/graphs.dto';
 import { ThreadStatus } from '../threads.types';
 
@@ -26,6 +25,39 @@ export const ThreadTokenUsageSchema = TokenUsageSchema.extend({
     .record(z.string(), TokenUsageSchema)
     .optional()
     .describe('Token usage breakdown by node ID'),
+});
+
+// Usage statistics schemas
+export const UsageStatisticsByToolSchema = z.object({
+  toolName: z.string().describe('Tool name'),
+  totalTokens: z.number().describe('Total tokens used by this tool'),
+  totalPrice: z
+    .number()
+    .optional()
+    .describe('Total price for this tool in USD'),
+  callCount: z.number().describe('Number of times this tool was called'),
+});
+
+export const UsageStatisticsAggregateSchema = TokenUsageSchema.extend({
+  messageCount: z.number().describe('Number of messages'),
+});
+
+export const ThreadUsageStatisticsSchema = z.object({
+  total: TokenUsageSchema.describe(
+    'Total usage statistics for the entire thread',
+  ),
+  byNode: z
+    .record(z.string(), TokenUsageSchema)
+    .describe('Usage statistics breakdown by node ID'),
+  byTool: z
+    .array(UsageStatisticsByToolSchema)
+    .describe('Usage statistics breakdown by tool name'),
+  toolsAggregate: UsageStatisticsAggregateSchema.describe(
+    'Aggregated statistics for all tool messages',
+  ),
+  messagesAggregate: UsageStatisticsAggregateSchema.describe(
+    'Aggregated statistics for all non-tool messages (human, ai, system, reasoning)',
+  ),
 });
 
 export const MessageTokenUsageSchema = z.object({
@@ -64,9 +96,6 @@ export const ThreadSchema = z.object({
     .nullable()
     .describe('Thread name (auto-generated from first user message)'),
   status: z.enum(ThreadStatus).describe('Thread execution status'),
-  tokenUsage: ThreadTokenUsageSchema.optional()
-    .nullable()
-    .describe('Aggregated token usage & cost for this thread'),
 });
 
 export const ThreadMessageSchema = z.object({
@@ -137,9 +166,17 @@ export const GetMessagesQuerySchema = z.object({
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 export type ThreadTokenUsage = z.infer<typeof ThreadTokenUsageSchema>;
 export type MessageTokenUsage = z.infer<typeof MessageTokenUsageSchema>;
+export type UsageStatisticsByTool = z.infer<typeof UsageStatisticsByToolSchema>;
+export type UsageStatisticsAggregate = z.infer<
+  typeof UsageStatisticsAggregateSchema
+>;
+export type ThreadUsageStatistics = z.infer<typeof ThreadUsageStatisticsSchema>;
 
 // DTOs
 export class ThreadDto extends createZodDto(ThreadSchema) {}
 export class ThreadMessageDto extends createZodDto(ThreadMessageSchema) {}
 export class GetThreadsQueryDto extends createZodDto(GetThreadsQuerySchema) {}
 export class GetMessagesQueryDto extends createZodDto(GetMessagesQuerySchema) {}
+export class ThreadUsageStatisticsDto extends createZodDto(
+  ThreadUsageStatisticsSchema,
+) {}

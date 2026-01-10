@@ -16,6 +16,11 @@ describe('Thread token usage + cost from running graph state (integration)', () 
 
   const createdGraphIds: string[] = [];
 
+  // Helper function to get usage statistics for a thread
+  const getUsageStatistics = async (threadId: string) => {
+    return await threadsService.getThreadUsageStatistics(threadId);
+  };
+
   beforeAll(async () => {
     app = await createTestModule();
     graphsService = app.get(GraphsService);
@@ -57,7 +62,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
   });
 
   it(
-    'creates a graph, executes it, returns tokenUsage while running, and still returns tokenUsage after stop (checkpoint fallback)',
+    'creates a graph, executes it, returns tokenUsage statistics via separate endpoint while running and after stop',
     { timeout: 180_000 },
     async () => {
       const graph = await graphsService.create({
@@ -114,16 +119,23 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         { timeout: 30_000, interval: 1_000 },
       );
 
-      // While graph is running: pull from running graph state.
-      const runningThread = await waitForCondition(
-        () =>
-          threadsService.getThreadByExternalId(createdThread.externalThreadId),
-        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
+      // Thread response should not include tokenUsage field anymore
+
+      // While graph is running: get usage statistics via separate endpoint
+      const runningUsageStats = await waitForCondition(
+        async () => {
+          try {
+            return await getUsageStatistics(createdThread.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => (stats?.total?.totalTokens ?? 0) > 0,
         { timeout: 120_000, interval: 2_000 },
       );
-      expect(runningThread.tokenUsage).not.toBeNull();
-      expect(runningThread.tokenUsage?.totalTokens).toBeGreaterThan(0);
-      expect(runningThread.tokenUsage?.currentContext).toBeGreaterThan(0);
+      expect(runningUsageStats).not.toBeNull();
+      expect(runningUsageStats!.total.totalTokens).toBeGreaterThan(0);
+      expect(runningUsageStats!.total.currentContext).toBeGreaterThan(0);
 
       // Message DTOs should include per-message tokenUsage (AI messages must not be null).
       const messagesWhileRunning = await waitForCondition(
@@ -161,15 +173,21 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         { timeout: 60_000, interval: 1_000 },
       );
 
-      const stoppedThread = await waitForCondition(
-        () =>
-          threadsService.getThreadByExternalId(createdThread.externalThreadId),
-        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
+      // Get usage statistics after stop - should still be available from message history
+      const stoppedUsageStats = await waitForCondition(
+        async () => {
+          try {
+            return await getUsageStatistics(createdThread.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => (stats?.total?.totalTokens ?? 0) > 0,
         { timeout: 60_000, interval: 2_000 },
       );
-      expect(stoppedThread.tokenUsage).not.toBeNull();
-      expect(stoppedThread.tokenUsage?.totalTokens).toBeGreaterThan(0);
-      expect(stoppedThread.tokenUsage?.currentContext).toBeGreaterThan(0);
+      expect(stoppedUsageStats).not.toBeNull();
+      expect(stoppedUsageStats!.total.totalTokens).toBeGreaterThan(0);
+      expect(stoppedUsageStats!.total.currentContext).toBeGreaterThan(0);
 
       // Messages should still carry per-message tokenUsage after stop.
       const messagesAfterStop = await waitForCondition(
@@ -246,19 +264,26 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       );
 
       const usageAfterFirst = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
-        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
+        async () => {
+          try {
+            return await getUsageStatistics(createdThread.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => (stats?.total?.totalTokens ?? 0) > 0,
         { timeout: 120_000, interval: 2_000 },
       );
 
-      const firstTotalTokens = usageAfterFirst.tokenUsage?.totalTokens ?? 0;
-      const firstTotalPrice = usageAfterFirst.tokenUsage?.totalPrice ?? 0;
+      expect(usageAfterFirst).not.toBeNull();
+      const firstTotalTokens = usageAfterFirst!.total.totalTokens ?? 0;
+      const firstTotalPrice = usageAfterFirst!.total.totalPrice ?? 0;
 
       expect(firstTotalTokens).toBeGreaterThan(0);
       expect(firstTotalPrice).toBeGreaterThanOrEqual(0);
 
       // Validate basic aggregation consistency (single-agent graph => byNode sum == totals).
-      const byNodeFirst = usageAfterFirst.tokenUsage?.byNode ?? {};
+      const byNodeFirst = usageAfterFirst!.byNode ?? {};
       const sumTokensFirst = Object.values(byNodeFirst).reduce(
         (acc, u) => acc + (u.totalTokens ?? 0),
         0,
@@ -273,19 +298,26 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       });
 
       const usageAfterSecond = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
-        (t) => (t.tokenUsage?.totalTokens ?? 0) > firstTotalTokens,
+        async () => {
+          try {
+            return await getUsageStatistics(createdThread.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => (stats?.total?.totalTokens ?? 0) > firstTotalTokens,
         { timeout: 120_000, interval: 2_000 },
       );
 
-      const secondTotalTokens = usageAfterSecond.tokenUsage?.totalTokens ?? 0;
-      const secondTotalPrice = usageAfterSecond.tokenUsage?.totalPrice ?? 0;
+      expect(usageAfterSecond).not.toBeNull();
+      const secondTotalTokens = usageAfterSecond!.total.totalTokens ?? 0;
+      const secondTotalPrice = usageAfterSecond!.total.totalPrice ?? 0;
 
       expect(secondTotalTokens).toBeGreaterThan(firstTotalTokens);
       // Price can be zero depending on provider metadata, but must never decrease.
       expect(secondTotalPrice).toBeGreaterThanOrEqual(firstTotalPrice);
 
-      const byNodeSecond = usageAfterSecond.tokenUsage?.byNode ?? {};
+      const byNodeSecond = usageAfterSecond!.byNode ?? {};
       const sumTokensSecond = Object.values(byNodeSecond).reduce(
         (acc, u) => acc + (u.totalTokens ?? 0),
         0,
@@ -308,12 +340,19 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         { timeout: 60_000, interval: 1_000 },
       );
 
-      const stoppedThread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
-        (t) => (t.tokenUsage?.totalTokens ?? 0) >= secondTotalTokens,
+      const stoppedUsageStats = await waitForCondition(
+        async () => {
+          try {
+            return await getUsageStatistics(createdThread.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => (stats?.total?.totalTokens ?? 0) >= secondTotalTokens,
         { timeout: 60_000, interval: 2_000 },
       );
-      expect(stoppedThread.tokenUsage?.totalTokens).toBeGreaterThanOrEqual(
+      expect(stoppedUsageStats).not.toBeNull();
+      expect(stoppedUsageStats!.total.totalTokens).toBeGreaterThanOrEqual(
         secondTotalTokens,
       );
     },
@@ -414,18 +453,25 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       );
 
       const usageAfterFirst = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
-        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
+        async () => {
+          try {
+            return await getUsageStatistics(thread1.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => (stats?.total?.totalTokens ?? 0) > 0,
         { timeout: 120_000, interval: 2_000 },
       );
 
-      const firstTotalTokens = usageAfterFirst.tokenUsage?.totalTokens ?? 0;
-      const firstTotalPrice = usageAfterFirst.tokenUsage?.totalPrice ?? 0;
+      expect(usageAfterFirst).not.toBeNull();
+      const firstTotalTokens = usageAfterFirst!.total.totalTokens ?? 0;
+      const firstTotalPrice = usageAfterFirst!.total.totalPrice ?? 0;
 
       // Nested agent usage should be attributed to the same external thread via parentThreadId.
-      expect(usageAfterFirst.tokenUsage?.byNode).toBeDefined();
+      expect(usageAfterFirst!.byNode).toBeDefined();
       expect(
-        usageAfterFirst.tokenUsage?.byNode?.['agent-2']?.totalTokens ?? 0,
+        usageAfterFirst!.byNode?.['agent-2']?.totalTokens ?? 0,
       ).toBeGreaterThan(0);
 
       // Second message on the same thread: totals must not drop (no "reset").
@@ -436,16 +482,23 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       });
 
       const usageAfterSecond = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
-        (t) => {
-          const total = t.tokenUsage?.totalTokens ?? 0;
+        async () => {
+          try {
+            return await getUsageStatistics(thread1.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => {
+          const total = stats?.total?.totalTokens ?? 0;
           return total > firstTotalTokens && total > 0;
         },
         { timeout: 120_000, interval: 2_000 },
       );
 
-      const secondTotalTokens = usageAfterSecond.tokenUsage?.totalTokens ?? 0;
-      const secondTotalPrice = usageAfterSecond.tokenUsage?.totalPrice ?? 0;
+      expect(usageAfterSecond).not.toBeNull();
+      const secondTotalTokens = usageAfterSecond!.total.totalTokens ?? 0;
+      const secondTotalPrice = usageAfterSecond!.total.totalPrice ?? 0;
 
       expect(secondTotalTokens).toBeGreaterThan(firstTotalTokens);
       expect(secondTotalPrice).toBeGreaterThanOrEqual(firstTotalPrice);
@@ -567,24 +620,29 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         { timeout: 180_000, interval: 2_000 },
       );
 
-      // Check token usage DURING first run (from Redis)
+      // Check token usage DURING first run
       const usageAfterFirstRun = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
-        (t) => (t.tokenUsage?.totalTokens ?? 0) > 0,
+        async () => {
+          try {
+            return await getUsageStatistics(thread.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => (stats?.total?.totalTokens ?? 0) > 0,
         { timeout: 180_000, interval: 2_000 },
       );
 
-      expect(usageAfterFirstRun.tokenUsage?.byNode).toBeDefined();
-      expect(usageAfterFirstRun.tokenUsage?.byNode?.['agent-1']).toBeDefined();
-      expect(usageAfterFirstRun.tokenUsage?.byNode?.['agent-2']).toBeDefined();
-      expect(
-        usageAfterFirstRun.tokenUsage?.byNode?.['agent-3'],
-      ).toBeUndefined();
+      expect(usageAfterFirstRun).not.toBeNull();
+      expect(usageAfterFirstRun!.byNode).toBeDefined();
+      expect(usageAfterFirstRun!.byNode?.['agent-1']).toBeDefined();
+      expect(usageAfterFirstRun!.byNode?.['agent-2']).toBeDefined();
+      expect(usageAfterFirstRun!.byNode?.['agent-3']).toBeUndefined();
 
       const agent1TokensFirstRun =
-        usageAfterFirstRun.tokenUsage?.byNode?.['agent-1']?.totalTokens ?? 0;
+        usageAfterFirstRun!.byNode?.['agent-1']?.totalTokens ?? 0;
       const agent2TokensFirstRun =
-        usageAfterFirstRun.tokenUsage?.byNode?.['agent-2']?.totalTokens ?? 0;
+        usageAfterFirstRun!.byNode?.['agent-2']?.totalTokens ?? 0;
 
       expect(agent1TokensFirstRun).toBeGreaterThan(0);
       expect(agent2TokensFirstRun).toBeGreaterThan(0);
@@ -598,20 +656,13 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         { timeout: 180_000, interval: 2_000 },
       );
 
-      // Check token usage AFTER first run completes (from DB)
-      const usageAfterFirstComplete =
-        await threadsService.getThreadByExternalId(exec1.externalThreadId);
+      // Check token usage AFTER first run completes
+      const usageAfterFirstComplete = await getUsageStatistics(thread.id);
 
-      expect(usageAfterFirstComplete.tokenUsage?.byNode).toBeDefined();
-      expect(
-        usageAfterFirstComplete.tokenUsage?.byNode?.['agent-1'],
-      ).toBeDefined();
-      expect(
-        usageAfterFirstComplete.tokenUsage?.byNode?.['agent-2'],
-      ).toBeDefined();
-      expect(
-        usageAfterFirstComplete.tokenUsage?.byNode?.['agent-3'],
-      ).toBeUndefined();
+      expect(usageAfterFirstComplete.byNode).toBeDefined();
+      expect(usageAfterFirstComplete.byNode?.['agent-1']).toBeDefined();
+      expect(usageAfterFirstComplete.byNode?.['agent-2']).toBeDefined();
+      expect(usageAfterFirstComplete.byNode?.['agent-3']).toBeUndefined();
 
       // ========== SECOND RUN: Agent 1 delegates to Agent 3 ==========
       await graphsService.executeTrigger(graph.id, 'trigger-1', {
@@ -621,7 +672,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       });
 
       // Wait for second communication tool execution
-      const messagesAfterSecondCall = await waitForCondition(
+      await waitForCondition(
         () =>
           threadsService.getThreadMessages(thread.id, {
             limit: 300,
@@ -638,12 +689,18 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         { timeout: 180_000, interval: 2_000 },
       );
 
-      // Check token usage DURING second run (from Redis)
+      // Check token usage DURING second run
       // CRITICAL: This should include agent-2 from the first run!
       const usageAfterSecondRun = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
-        (t) => {
-          const byNode = t.tokenUsage?.byNode;
+        async () => {
+          try {
+            return await getUsageStatistics(thread.id);
+          } catch {
+            return null;
+          }
+        },
+        (stats) => {
+          const byNode = stats?.byNode;
           return !!(
             byNode &&
             byNode['agent-1'] &&
@@ -656,26 +713,27 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       );
 
       // Verify all three agents are present in byNode
-      expect(usageAfterSecondRun.tokenUsage?.byNode).toBeDefined();
-      expect(usageAfterSecondRun.tokenUsage?.byNode?.['agent-1']).toBeDefined();
-      expect(usageAfterSecondRun.tokenUsage?.byNode?.['agent-2']).toBeDefined();
-      expect(usageAfterSecondRun.tokenUsage?.byNode?.['agent-3']).toBeDefined();
+      expect(usageAfterSecondRun).not.toBeNull();
+      expect(usageAfterSecondRun!.byNode).toBeDefined();
+      expect(usageAfterSecondRun!.byNode?.['agent-1']).toBeDefined();
+      expect(usageAfterSecondRun!.byNode?.['agent-2']).toBeDefined();
+      expect(usageAfterSecondRun!.byNode?.['agent-3']).toBeDefined();
 
       // Agent 1 should have more tokens than first run (it executed again)
       const agent1TokensSecondRun =
-        usageAfterSecondRun.tokenUsage?.byNode?.['agent-1']?.totalTokens ?? 0;
+        usageAfterSecondRun!.byNode?.['agent-1']?.totalTokens ?? 0;
       expect(agent1TokensSecondRun).toBeGreaterThan(agent1TokensFirstRun);
 
       // Agent 2 tokens should be preserved from first run (it didn't execute in second run)
       const agent2TokensSecondRun =
-        usageAfterSecondRun.tokenUsage?.byNode?.['agent-2']?.totalTokens ?? 0;
+        usageAfterSecondRun!.byNode?.['agent-2']?.totalTokens ?? 0;
       expect(agent2TokensSecondRun).toBeGreaterThanOrEqual(
         agent2TokensFirstRun,
       );
 
       // Agent 3 should have tokens from second run
       const agent3TokensSecondRun =
-        usageAfterSecondRun.tokenUsage?.byNode?.['agent-3']?.totalTokens ?? 0;
+        usageAfterSecondRun!.byNode?.['agent-3']?.totalTokens ?? 0;
       expect(agent3TokensSecondRun).toBeGreaterThan(0);
 
       // Wait for second run to complete
@@ -687,44 +745,33 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         { timeout: 180_000, interval: 2_000 },
       );
 
-      // Check token usage AFTER second run completes (from DB)
-      // CRITICAL: All three agents should still be present after DB flush!
-      const usageAfterSecondComplete =
-        await threadsService.getThreadByExternalId(exec1.externalThreadId);
+      // Check token usage AFTER second run completes
+      // CRITICAL: All three agents should still be present!
+      const usageAfterSecondComplete = await getUsageStatistics(thread.id);
 
-      expect(usageAfterSecondComplete.tokenUsage?.byNode).toBeDefined();
-      expect(
-        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-1'],
-      ).toBeDefined();
-      expect(
-        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-2'],
-      ).toBeDefined();
-      expect(
-        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-3'],
-      ).toBeDefined();
+      expect(usageAfterSecondComplete.byNode).toBeDefined();
+      expect(usageAfterSecondComplete.byNode?.['agent-1']).toBeDefined();
+      expect(usageAfterSecondComplete.byNode?.['agent-2']).toBeDefined();
+      expect(usageAfterSecondComplete.byNode?.['agent-3']).toBeDefined();
 
       // Verify token counts are preserved
       expect(
-        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-1']?.totalTokens ??
-          0,
+        usageAfterSecondComplete.byNode?.['agent-1']?.totalTokens ?? 0,
       ).toBeGreaterThanOrEqual(agent1TokensSecondRun);
       expect(
-        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-2']?.totalTokens ??
-          0,
+        usageAfterSecondComplete.byNode?.['agent-2']?.totalTokens ?? 0,
       ).toBeGreaterThanOrEqual(agent2TokensFirstRun);
       expect(
-        usageAfterSecondComplete.tokenUsage?.byNode?.['agent-3']?.totalTokens ??
-          0,
+        usageAfterSecondComplete.byNode?.['agent-3']?.totalTokens ?? 0,
       ).toBeGreaterThanOrEqual(agent3TokensSecondRun);
 
       // Verify aggregate totals are reasonable
-      const finalByNode = usageAfterSecondComplete.tokenUsage?.byNode ?? {};
+      const finalByNode = usageAfterSecondComplete.byNode ?? {};
       const sumOfAllAgents = Object.values(finalByNode).reduce(
         (acc, u) => acc + (u.totalTokens ?? 0),
         0,
       );
-      const finalTotalTokens =
-        usageAfterSecondComplete.tokenUsage?.totalTokens ?? 0;
+      const finalTotalTokens = usageAfterSecondComplete.total.totalTokens ?? 0;
 
       // The sum of byNode should be positive and less than or equal to total
       // (total may include overhead from message tokenization, etc.)

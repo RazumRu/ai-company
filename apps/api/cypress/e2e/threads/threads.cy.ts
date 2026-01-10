@@ -15,6 +15,7 @@ import {
   getThreadById,
   getThreadMessages,
   getThreads,
+  getThreadUsageStatistics,
   stopThread,
   stopThreadByExternalId,
   waitForThreadStatus,
@@ -644,7 +645,111 @@ describe('Threads E2E', () => {
       });
     });
 
-    describe.only('Thread Stop Execution', () => {
+    describe('Thread Usage Statistics', () => {
+      it('should retrieve usage statistics for a thread', () => {
+        let testGraphId: string;
+        let internalThreadId: string;
+
+        const graphData = {
+          name: `Usage Statistics Test ${Math.random().toString(36).slice(0, 8)}`,
+          description: 'Test graph for usage statistics endpoint',
+          version: '1.0.0',
+          temporary: true,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Test Agent',
+                  description: 'Test agent for usage statistics',
+                  instructions: 'Answer briefly with one sentence.',
+                  invokeModelName: 'gpt-5-mini',
+                },
+              },
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        };
+
+        createGraph(graphData)
+          .then((response) => {
+            expect(response.status).to.equal(201);
+            testGraphId = response.body.id;
+            return runGraph(testGraphId);
+          })
+          .then((runResponse) => {
+            expect(runResponse.status).to.equal(201);
+            cy.wait(2000);
+
+            return executeTrigger(testGraphId, 'trigger-1', {
+              messages: ['What is 2+2?'],
+              threadSubId: 'usage-stats-test',
+            });
+          })
+          .then((triggerResponse) => {
+            expect(triggerResponse.status).to.equal(201);
+            cy.wait(5000); // Wait for execution to complete
+
+            return getThreadByExternalId(triggerResponse.body.externalThreadId);
+          })
+          .then((threadResponse) => {
+            expect(threadResponse.status).to.equal(200);
+            internalThreadId = threadResponse.body.id;
+
+            // Thread response should not include tokenUsage
+            expect(threadResponse.body).to.not.have.property('tokenUsage');
+
+            // Get usage statistics via the separate endpoint
+            return getThreadUsageStatistics(internalThreadId);
+          })
+          .then((statsResponse) => {
+            expect(statsResponse.status).to.equal(200);
+            const stats = statsResponse.body;
+
+            // Verify structure
+            expect(stats).to.have.property('total');
+            expect(stats).to.have.property('byNode');
+            expect(stats).to.have.property('byTool');
+            expect(stats).to.have.property('toolsAggregate');
+            expect(stats).to.have.property('messagesAggregate');
+
+            // Verify total has token counts
+            expect(stats.total).to.have.property('totalTokens');
+            expect(stats.total.totalTokens).to.be.greaterThan(0);
+            expect(stats.total).to.have.property('inputTokens');
+            expect(stats.total).to.have.property('outputTokens');
+
+            // Verify byNode has the agent
+            expect(stats.byNode).to.have.property('agent-1');
+            expect(stats.byNode['agent-1']?.totalTokens).to.be.greaterThan(0);
+
+            // Verify aggregates
+            expect(stats.messagesAggregate.messageCount).to.be.greaterThan(0);
+            expect(stats.messagesAggregate.totalTokens).to.be.greaterThan(0);
+
+            // Cleanup
+            destroyGraph(testGraphId).then(() => {
+              deleteGraph(testGraphId);
+            });
+          });
+      });
+
+      it('should return 404 for non-existent thread', () => {
+        const nonExistentThreadId = generateRandomUUID();
+
+        getThreadUsageStatistics(nonExistentThreadId).then((response) => {
+          expect(response.status).to.equal(404);
+        });
+      });
+    });
+
+    describe.skip('Thread Stop Execution', () => {
       it('should stop a running thread by externalThreadId', () => {
         let testGraphId: string;
         let externalThreadId: string;

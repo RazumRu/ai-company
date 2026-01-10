@@ -7,6 +7,7 @@ import {
   GetThreadsQueryDto,
   ThreadDto,
   ThreadMessageDto,
+  ThreadUsageStatisticsDto,
 } from '../dto/threads.dto';
 import { ThreadsService } from '../services/threads.service';
 
@@ -40,6 +41,13 @@ export class ThreadsController {
     @Query() query: GetMessagesQueryDto,
   ): Promise<ThreadMessageDto[]> {
     return this.threadsService.getThreadMessages(threadId, query);
+  }
+
+  @Get(':threadId/usage-statistics')
+  async getThreadUsageStatistics(
+    @Param('threadId') threadId: string,
+  ): Promise<ThreadUsageStatisticsDto> {
+    return this.threadsService.getThreadUsageStatistics(threadId);
   }
 
   @Delete(':threadId')

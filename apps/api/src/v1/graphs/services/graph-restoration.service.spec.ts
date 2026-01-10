@@ -28,7 +28,7 @@ describe('GraphRestorationService', () => {
   let graphCompiler: any;
   let graphRegistry: any;
   let threadsDao: any;
-  let threadTokenUsageCacheService: any;
+  let _threadTokenUsageCacheService: any;
   let graphCheckpointsDao: any;
   let graphsService: any;
   let logger: any;
@@ -174,7 +174,7 @@ describe('GraphRestorationService', () => {
     graphCompiler = module.get(GraphCompiler);
     graphRegistry = module.get(GraphRegistry);
     threadsDao = module.get(ThreadsDao);
-    threadTokenUsageCacheService = module.get(ThreadTokenUsageCacheService);
+    _threadTokenUsageCacheService = module.get(ThreadTokenUsageCacheService);
     graphCheckpointsDao = module.get(GraphCheckpointsDao);
     graphsService = mockGraphsService;
     logger = module.get(DefaultLogger);

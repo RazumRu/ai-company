@@ -202,7 +202,6 @@ describe('ThreadsService', () => {
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
         status: ThreadStatus.Running,
-        tokenUsage: null,
       });
     });
 
@@ -315,7 +314,6 @@ describe('ThreadsService', () => {
         graphId: mockGraphId,
         externalThreadId: 'external-thread-123',
         status: ThreadStatus.Running,
-        tokenUsage: null,
       });
     });
 
@@ -421,11 +419,9 @@ describe('ThreadsService', () => {
 
       const result = await service.getThreadById(mockThreadId);
 
-      expect(result.tokenUsage).toEqual(expectedTokenUsage);
-      // Verify batch operation was used
-      expect(
-        mockThreadTokenUsageCacheService.getMultipleThreadTokenUsage,
-      ).toHaveBeenCalledWith([mockThread.externalThreadId]);
+      // tokenUsage is no longer included in thread response
+      // Use GET /threads/:threadId/usage-statistics instead
+      expect(result).not.toHaveProperty('tokenUsage');
     });
 
     it('reads token usage from DB for stopped threads', async () => {
@@ -455,7 +451,9 @@ describe('ThreadsService', () => {
 
       const result = await service.getThreadById(mockThreadId);
 
-      expect(result.tokenUsage).toEqual(tokenUsageFromDB);
+      // tokenUsage is no longer included in thread response
+      // Use GET /threads/:threadId/usage-statistics instead
+      expect(result).not.toHaveProperty('tokenUsage');
     });
   });
 
@@ -597,6 +595,291 @@ describe('ThreadsService', () => {
       expect(messagesDao.delete).not.toHaveBeenCalled();
       expect(notificationsService.emit).not.toHaveBeenCalled();
       expect(threadsDao.deleteById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getThreadUsageStatistics', () => {
+    it('should calculate usage statistics from message history', async () => {
+      const mockThread = createMockThreadEntity();
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-1',
+          nodeId: 'node-1',
+          message: {
+            role: 'human',
+            content: 'Hello',
+            additionalKwargs: {
+              __requestUsage: {
+                inputTokens: 10,
+                outputTokens: 20,
+                totalTokens: 30,
+                totalPrice: 0.001,
+              },
+            },
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-2',
+          nodeId: 'node-1',
+          message: {
+            role: 'ai',
+            content: 'Hi there',
+            additionalKwargs: {
+              __requestUsage: {
+                inputTokens: 15,
+                outputTokens: 25,
+                totalTokens: 40,
+                totalPrice: 0.002,
+              },
+            },
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-3',
+          nodeId: 'node-2',
+          message: {
+            role: 'tool',
+            name: 'search',
+            content: { result: 'data' },
+            toolCallId: 'tool-call-1',
+            additionalKwargs: {
+              __requestUsage: {
+                inputTokens: 5,
+                outputTokens: 10,
+                totalTokens: 15,
+                totalPrice: 0.0005,
+              },
+            },
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-4',
+          nodeId: 'node-2',
+          message: {
+            role: 'tool-shell',
+            name: 'shell',
+            content: { exitCode: 0, stdout: 'ok', stderr: '' },
+            toolCallId: 'tool-call-2',
+            additionalKwargs: {
+              __requestUsage: {
+                inputTokens: 3,
+                outputTokens: 7,
+                totalTokens: 10,
+                totalPrice: 0.0003,
+              },
+            },
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(mockThreadId);
+
+      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        id: mockThreadId,
+        createdBy: mockUserId,
+      });
+      expect(messagesDao.getAll).toHaveBeenCalledWith({
+        threadId: mockThreadId,
+        order: { createdAt: 'ASC' },
+      });
+
+      // Check total
+      expect(result.total).toMatchObject({
+        inputTokens: 33,
+        outputTokens: 62,
+        totalTokens: 95,
+        totalPrice: 0.0038,
+      });
+
+      // Check byNode
+      expect(result.byNode['node-1']).toMatchObject({
+        inputTokens: 25,
+        outputTokens: 45,
+        totalTokens: 70,
+      });
+      expect(result.byNode['node-1']!.totalPrice).toBeCloseTo(0.003, 4);
+      expect(result.byNode['node-2']).toMatchObject({
+        inputTokens: 8,
+        outputTokens: 17,
+        totalTokens: 25,
+      });
+      expect(result.byNode['node-2']!.totalPrice).toBeCloseTo(0.0008, 4);
+
+      // Check byTool
+      expect(result.byTool).toHaveLength(2);
+      expect(result.byTool[0]).toMatchObject({
+        toolName: 'search',
+        totalTokens: 15,
+        totalPrice: 0.0005,
+        callCount: 1,
+      });
+      expect(result.byTool[1]).toMatchObject({
+        toolName: 'shell',
+        totalTokens: 10,
+        totalPrice: 0.0003,
+        callCount: 1,
+      });
+
+      // Check toolsAggregate
+      expect(result.toolsAggregate).toMatchObject({
+        inputTokens: 8,
+        outputTokens: 17,
+        totalTokens: 25,
+        messageCount: 2,
+      });
+      expect(result.toolsAggregate.totalPrice).toBeCloseTo(0.0008, 4);
+
+      // Check messagesAggregate (human + ai)
+      expect(result.messagesAggregate).toMatchObject({
+        inputTokens: 25,
+        outputTokens: 45,
+        totalTokens: 70,
+        totalPrice: 0.003,
+        messageCount: 2,
+      });
+    });
+
+    it('should handle messages with no token usage', async () => {
+      const mockThread = createMockThreadEntity();
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-1',
+          nodeId: 'node-1',
+          message: {
+            role: 'human',
+            content: 'Hello',
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(mockThreadId);
+
+      expect(result.total).toMatchObject({
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      });
+      expect(result.byNode).toEqual({});
+      expect(result.byTool).toEqual([]);
+      expect(result.toolsAggregate.messageCount).toBe(0);
+      expect(result.messagesAggregate.messageCount).toBe(0);
+    });
+
+    it('should aggregate multiple calls to same tool', async () => {
+      const mockThread = createMockThreadEntity();
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-1',
+          nodeId: 'node-1',
+          message: {
+            role: 'tool',
+            name: 'search',
+            content: { result: 'data1' },
+            toolCallId: 'tool-call-1',
+            additionalKwargs: {
+              __requestUsage: {
+                inputTokens: 5,
+                outputTokens: 10,
+                totalTokens: 15,
+                totalPrice: 0.001,
+              },
+            },
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-2',
+          nodeId: 'node-1',
+          message: {
+            role: 'tool',
+            name: 'search',
+            content: { result: 'data2' },
+            toolCallId: 'tool-call-2',
+            additionalKwargs: {
+              __requestUsage: {
+                inputTokens: 7,
+                outputTokens: 14,
+                totalTokens: 21,
+                totalPrice: 0.002,
+              },
+            },
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(mockThreadId);
+
+      expect(result.byTool).toHaveLength(1);
+      expect(result.byTool[0]).toMatchObject({
+        toolName: 'search',
+        totalTokens: 36,
+        totalPrice: 0.003,
+        callCount: 2,
+      });
+    });
+
+    it('should throw error if thread not found', async () => {
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(
+        service.getThreadUsageStatistics(mockThreadId),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+
+      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        id: mockThreadId,
+        createdBy: mockUserId,
+      });
+      expect(messagesDao.getAll).not.toHaveBeenCalled();
+    });
+
+    it('should handle optional token usage fields correctly', async () => {
+      const mockThread = createMockThreadEntity();
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-1',
+          nodeId: 'node-1',
+          message: {
+            role: 'ai',
+            content: 'Test',
+            additionalKwargs: {
+              __requestUsage: {
+                inputTokens: 10,
+                outputTokens: 20,
+                totalTokens: 30,
+                cachedInputTokens: 5,
+                reasoningTokens: 3,
+                totalPrice: 0.002,
+                currentContext: 100,
+              },
+            },
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(mockThreadId);
+
+      expect(result.total).toMatchObject({
+        inputTokens: 10,
+        outputTokens: 20,
+        totalTokens: 30,
+        cachedInputTokens: 5,
+        reasoningTokens: 3,
+        totalPrice: 0.002,
+        currentContext: 100,
+      });
     });
   });
 });

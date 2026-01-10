@@ -1968,13 +1968,16 @@ describe('Socket Notifications Integration Tests', () => {
         const thread1 =
           await threadsService.getThreadByExternalId(externalThreadId);
 
-        // Verify DB has token usage after first invocation
-        expect(thread1.tokenUsage).toBeDefined();
-        expect(thread1.tokenUsage?.totalTokens).toBeGreaterThan(0);
-        expect(thread1.tokenUsage?.totalPrice).toBeGreaterThan(0);
+        // Verify DB has token usage after first invocation - use usage-statistics endpoint
+        const usageStats1 = await threadsService.getThreadUsageStatistics(
+          thread1.id,
+        );
+        expect(usageStats1).toBeDefined();
+        expect(usageStats1.total.totalTokens).toBeGreaterThan(0);
+        expect(usageStats1.total.totalPrice).toBeGreaterThan(0);
 
-        const firstDbTotalTokens = thread1.tokenUsage?.totalTokens ?? 0;
-        const firstDbTotalPrice = thread1.tokenUsage?.totalPrice ?? 0;
+        const firstDbTotalTokens = usageStats1.total.totalTokens;
+        const firstDbTotalPrice = usageStats1.total.totalPrice ?? 0;
 
         // Socket notifications should match DB values (roughly)
         expect(firstMaxTotalTokens).toBeGreaterThanOrEqual(
@@ -2037,17 +2040,18 @@ describe('Socket Notifications Integration Tests', () => {
         const thread2 =
           await threadsService.getThreadByExternalId(externalThreadId);
 
-        // Verify DB has accumulated token usage after second invocation
-        expect(thread2.tokenUsage).toBeDefined();
-        expect(thread2.tokenUsage?.totalTokens).toBeGreaterThan(
+        // Verify DB has accumulated token usage after second invocation - use usage-statistics endpoint
+        const usageStats2 = await threadsService.getThreadUsageStatistics(
+          thread2.id,
+        );
+        expect(usageStats2).toBeDefined();
+        expect(usageStats2.total.totalTokens).toBeGreaterThan(
           firstDbTotalTokens,
         );
-        expect(thread2.tokenUsage?.totalPrice).toBeGreaterThan(
-          firstDbTotalPrice,
-        );
+        expect(usageStats2.total.totalPrice).toBeGreaterThan(firstDbTotalPrice);
 
-        const secondDbTotalTokens = thread2.tokenUsage?.totalTokens ?? 0;
-        const secondDbTotalPrice = thread2.tokenUsage?.totalPrice ?? 0;
+        const secondDbTotalTokens = usageStats2.total.totalTokens;
+        const secondDbTotalPrice = usageStats2.total.totalPrice ?? 0;
 
         // Socket notifications should match final DB values (roughly)
         expect(secondMaxTotalTokens).toBeGreaterThanOrEqual(

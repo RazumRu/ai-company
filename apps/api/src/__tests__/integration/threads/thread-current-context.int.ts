@@ -136,7 +136,7 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
     graphId: string,
     threadSubId: string,
     message: string,
-    prev?: number,
+    prevTotalTokens?: number,
   ) => {
     const exec = await graphsService.executeTrigger(graphId, 'trigger-1', {
       messages: [message],
@@ -146,18 +146,38 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
 
     const thread = await waitForCondition(
       () => threadsService.getThreadByExternalId(exec.externalThreadId),
-      (t) => {
-        const current = t.tokenUsage?.currentContext ?? 0;
+      (t) => Boolean(t),
+      { timeout: 60_000, interval: 1000 },
+    );
+
+    // Wait for usage statistics to be available
+    const usageStats = await waitForCondition(
+      async () => {
+        try {
+          return await threadsService.getThreadUsageStatistics(thread.id);
+        } catch {
+          return null;
+        }
+      },
+      (stats) => {
+        const current = stats?.total?.currentContext ?? 0;
         if (current <= 0) return false;
-        if (typeof prev === 'number') return current !== prev;
+        if (typeof prevTotalTokens === 'number') {
+          return (stats?.total?.totalTokens ?? 0) > prevTotalTokens;
+        }
         return true;
       },
       { timeout: 60_000, interval: 1000 },
     );
 
+    if (!usageStats) {
+      throw new Error('Failed to get usage statistics');
+    }
+
     return {
       externalThreadId: exec.externalThreadId,
-      currentContext: thread.tokenUsage?.currentContext ?? 0,
+      currentContext: usageStats.total.currentContext ?? 0,
+      totalTokens: usageStats.total.totalTokens,
     };
   };
 
@@ -179,10 +199,11 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
         noSummarizeGraphId,
         threadSubId,
         'second',
-        first.currentContext,
+        first.totalTokens,
       );
       expect(second.externalThreadId).toBe(first.externalThreadId);
       expect(second.currentContext).toBeGreaterThan(0);
+      expect(second.totalTokens).toBeGreaterThan(first.totalTokens);
     },
   );
 
@@ -200,10 +221,10 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
         (_, i) => `msg-${i}-${'x'.repeat(600)}`,
       );
 
-      let prevNoSum: number | undefined;
-      let prevSum: number | undefined;
       let lastNoSum = 0;
       let lastSum = 0;
+      let prevNoSumTokens: number | undefined;
+      let prevSumTokens: number | undefined;
 
       for (const msg of messages) {
         const [noSum, sum] = await Promise.all([
@@ -211,21 +232,21 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
             noSummarizeGraphId,
             threadSubIdNoSum,
             msg,
-            prevNoSum,
+            prevNoSumTokens,
           ),
           executeAndWaitForContext(
             summarizeGraphId,
             threadSubIdSum,
             msg,
-            prevSum,
+            prevSumTokens,
           ),
         ]);
 
-        prevNoSum = noSum.currentContext;
         lastNoSum = noSum.currentContext;
+        prevNoSumTokens = noSum.totalTokens;
 
-        prevSum = sum.currentContext;
         lastSum = sum.currentContext;
+        prevSumTokens = sum.totalTokens;
       }
 
       expect(lastNoSum).toBeGreaterThan(0);

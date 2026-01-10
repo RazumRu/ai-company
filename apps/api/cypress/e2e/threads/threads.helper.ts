@@ -1,6 +1,7 @@
 import type {
   ThreadDto,
   ThreadMessageDto,
+  ThreadUsageStatisticsDto,
 } from '../../api-definitions/types.gen';
 import { reqHeaders } from '../common.helper';
 
@@ -71,6 +72,17 @@ export const stopThreadByExternalId = (
   cy.request<ThreadDto>({
     url: `/api/v1/threads/external/${externalThreadId}/stop`,
     method: 'POST',
+    headers,
+    failOnStatusCode: false,
+  });
+
+export const getThreadUsageStatistics = (
+  threadId: string,
+  headers = reqHeaders,
+) =>
+  cy.request<ThreadUsageStatisticsDto>({
+    url: `/api/v1/threads/${threadId}/usage-statistics`,
+    method: 'GET',
     headers,
     failOnStatusCode: false,
   });

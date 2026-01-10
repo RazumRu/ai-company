@@ -11,6 +11,7 @@ import {
   runGraph,
   updateGraph,
   validateGraph,
+  waitForGraph,
 } from './graphs.helper';
 
 const incrementVersion = (version: string): string => {
@@ -273,20 +274,25 @@ describe('Graphs E2E', () => {
     it('should update a graph', () => {
       getGraphById(createdGraphId).then((graphResponse) => {
         const currentVersion = graphResponse.body.version;
+        const existingName = graphResponse.body.name;
         const updateData = createMockUpdateData(currentVersion);
 
         updateGraph(createdGraphId, updateData).then((response) => {
           expect(response.status).to.equal(200);
           expect(response.body.graph).to.have.property('id', createdGraphId);
-          expect(response.body.graph).to.have.property('name', updateData.name);
-          expect(response.body.graph).to.have.property(
-            'description',
-            updateData.description,
-          );
+          // Graph updates are applied asynchronously via revisions; immediate response
+          // contains the current graph state, not the post-revision state.
+          expect(response.body.graph).to.have.property('name', existingName);
           expect(response.body.graph).to.have.property('updatedAt');
           expect(response.body.graph.version).to.equal(currentVersion);
 
           validateGraph(response.body.graph);
+
+          // Wait until revision is applied
+          return waitForGraph(
+            createdGraphId,
+            (g) => g.name === updateData.name,
+          );
         });
       });
     });
@@ -298,6 +304,7 @@ describe('Graphs E2E', () => {
 
       getGraphById(createdGraphId).then((graphResponse) => {
         const currentVersion = graphResponse.body.version;
+        const existingName = graphResponse.body.name;
 
         updateGraph(createdGraphId, {
           ...partialUpdateData,
@@ -305,15 +312,20 @@ describe('Graphs E2E', () => {
         }).then((response) => {
           expect(response.status).to.equal(200);
           expect(response.body.graph).to.have.property('id', createdGraphId);
-          expect(response.body.graph).to.have.property(
-            'name',
-            partialUpdateData.name,
-          );
+          // Graph updates are applied asynchronously via revisions; immediate response
+          // contains the current graph state, not the post-revision state.
+          expect(response.body.graph).to.have.property('name', existingName);
           // Description should remain unchanged
           expect(response.body.graph).to.have.property('description');
           expect(response.body.graph.version).to.equal(currentVersion);
 
           validateGraph(response.body.graph);
+
+          // Wait until revision is applied
+          return waitForGraph(
+            createdGraphId,
+            (g) => g.name === partialUpdateData.name,
+          );
         });
       });
     });
@@ -333,36 +345,47 @@ describe('Graphs E2E', () => {
       createGraph(graphData).then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         const graphId = createResponse.body.id;
-        const currentVersion = createResponse.body.version;
 
-        const updatedSchema = {
-          ...createResponse.body.schema,
-          nodes: createResponse.body.schema.nodes.map((node) =>
-            node.id === 'agent-1'
-              ? {
-                  ...node,
-                  config: {
-                    ...node.config,
-                    instructions: 'Schema update via e2e test',
-                  },
-                }
-              : node,
-          ),
-        };
+        // Ensure graph becomes "stopped" (not just "created") before schema update.
+        // Version bump behavior is tied to stopped graphs in the backend.
+        runGraph(graphId).then(() => {
+          destroyGraph(graphId).then(() => {
+            getGraphById(graphId).then((graphResponse) => {
+              const currentVersion = graphResponse.body.version;
+              const expectedVersion = incrementVersion(currentVersion);
 
-        updateGraph(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        }).then((updateResponse) => {
-          expect(updateResponse.status).to.equal(200);
-          expect(updateResponse.body.graph.version).to.equal(
-            incrementVersion(currentVersion),
-          );
-          expect(
-            updateResponse.body.graph.schema.nodes.find(
-              (node) => node.id === 'agent-1',
-            )?.config.instructions,
-          ).to.equal('Schema update via e2e test');
+              const updatedSchema = {
+                ...graphResponse.body.schema,
+                nodes: graphResponse.body.schema.nodes.map((node) =>
+                  node.id === 'agent-1'
+                    ? {
+                        ...node,
+                        config: {
+                          ...node.config,
+                          instructions: 'Schema update via e2e test',
+                        },
+                      }
+                    : node,
+                ),
+              };
+
+              updateGraph(graphId, {
+                schema: updatedSchema,
+                currentVersion,
+              }).then((updateResponse) => {
+                expect(updateResponse.status).to.equal(200);
+
+                // Wait until revision is applied and version increments
+                return waitForGraph(
+                  graphId,
+                  (g) =>
+                    g.version === expectedVersion &&
+                    g.schema.nodes.find((n) => n.id === 'agent-1')?.config
+                      .instructions === 'Schema update via e2e test',
+                );
+              });
+            });
+          });
         });
       });
     });
@@ -418,7 +441,7 @@ describe('Graphs E2E', () => {
             expect(conflictResponse.status).to.equal(400);
             expect(
               (conflictResponse.body as { message?: string }).message,
-            ).to.include('Graph version mismatch');
+            ).to.include('conflicts');
           });
         });
       });
@@ -560,28 +583,37 @@ describe('Graphs E2E', () => {
         const updateData = createMockUpdateData(createResponse.body.version);
         updateGraph(lifecycleGraphId, updateData).then((updateResponse) => {
           expect(updateResponse.status).to.equal(200);
-          expect(updateResponse.body.graph.name).to.equal(updateData.name);
+          // Graph updates are applied asynchronously via revisions
+          expect(updateResponse.body.graph.name).to.equal(
+            createResponse.body.name,
+          );
 
-          // 3. Run the graph
-          runGraph(lifecycleGraphId).then((runResponse) => {
-            expect(runResponse.status).to.equal(201);
-            expect(runResponse.body.status).to.equal('running');
+          // Wait until revision is applied before continuing lifecycle
+          return waitForGraph(
+            lifecycleGraphId,
+            (g) => g.name === updateData.name,
+          ).then(() => {
+            // 3. Run the graph
+            runGraph(lifecycleGraphId).then((runResponse) => {
+              expect(runResponse.status).to.equal(201);
+              expect(runResponse.body.status).to.equal('running');
 
-            // 4. Destroy the graph
-            destroyGraph(lifecycleGraphId).then((destroyResponse) => {
-              expect(destroyResponse.status).to.equal(201);
-              expect(destroyResponse.body.status).to.equal('stopped');
+              // 4. Destroy the graph
+              destroyGraph(lifecycleGraphId).then((destroyResponse) => {
+                expect(destroyResponse.status).to.equal(201);
+                expect(destroyResponse.body.status).to.equal('stopped');
 
-              // 5. Delete the graph
-              deleteGraph(lifecycleGraphId).then((deleteResponse) => {
-                expect(deleteResponse.status).to.equal(200);
+                // 5. Delete the graph
+                deleteGraph(lifecycleGraphId).then((deleteResponse) => {
+                  expect(deleteResponse.status).to.equal(200);
 
-                // 6. Verify deletion
-                getGraphById(lifecycleGraphId, reqHeaders).then(
-                  (getResponse) => {
-                    expect(getResponse.status).to.equal(404);
-                  },
-                );
+                  // 6. Verify deletion
+                  getGraphById(lifecycleGraphId, reqHeaders).then(
+                    (getResponse) => {
+                      expect(getResponse.status).to.equal(404);
+                    },
+                  );
+                });
               });
             });
           });

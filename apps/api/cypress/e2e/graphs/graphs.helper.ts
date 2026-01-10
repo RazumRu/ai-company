@@ -214,6 +214,42 @@ export const waitForGraphStatus = (
   return poll();
 };
 
+export const waitForGraph = (
+  id: string,
+  predicate: (graph: GraphDto) => boolean,
+  {
+    retries = 20,
+    delayMs = 1000,
+    headers = reqHeaders,
+  }: {
+    retries?: number;
+    delayMs?: number;
+    headers?: typeof reqHeaders;
+  } = {},
+): Cypress.Chainable<Cypress.Response<GraphDto>> => {
+  if (retries <= 0) {
+    throw new Error(`Graph '${id}' did not satisfy condition in time`);
+  }
+
+  return getGraphById(id, headers).then(
+    (response): Cypress.Chainable<Cypress.Response<GraphDto>> => {
+      expect(response.status).to.equal(200);
+
+      if (predicate(response.body)) {
+        return cy.wrap(response);
+      }
+
+      return cy.wait(delayMs).then(() =>
+        waitForGraph(id, predicate, {
+          retries: retries - 1,
+          delayMs,
+          headers,
+        }),
+      );
+    },
+  );
+};
+
 export const suggestAgentInstructions = (
   graphId: string,
   nodeId: string,

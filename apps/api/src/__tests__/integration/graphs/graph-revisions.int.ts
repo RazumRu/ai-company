@@ -174,7 +174,7 @@ describe('Graph Revisions Integration Tests', () => {
 
   const findShellExecution = (
     messages: ThreadMessageDto[],
-    options?: { cmdIncludes?: string },
+    options?: { cmdIncludes?: string; stdoutIncludes?: string },
   ): {
     toolName?: string;
     toolCallId?: string;
@@ -186,6 +186,52 @@ describe('Graph Revisions Integration Tests', () => {
   } => {
     // ThreadsService returns messages in DESC order (newest first). We want the latest shell
     // execution, so we must search in the returned order (do NOT reverse).
+    if (options?.stdoutIncludes) {
+      const stdoutIncludes = options.stdoutIncludes;
+      const shellEntry = messages.find(
+        (
+          entry,
+        ): entry is ThreadMessageDto & {
+          message: ShellThreadMessage;
+        } => {
+          if (!isShellThreadMessage(entry.message)) return false;
+          const content =
+            entry.message.role === 'tool-shell'
+              ? entry.message.content
+              : entry.message.content;
+          const stdout = (content as { stdout?: unknown } | undefined)?.stdout;
+          return typeof stdout === 'string' && stdout.includes(stdoutIncludes);
+        },
+      );
+
+      const result =
+        shellEntry?.message.role === 'tool-shell'
+          ? shellEntry.message.content
+          : shellEntry?.message.role === 'tool'
+            ? (shellEntry.message.content as {
+                exitCode?: number;
+                stdout?: string;
+                stderr?: string;
+              })
+            : undefined;
+
+      return {
+        toolName: shellEntry?.message.name,
+        toolCallId: shellEntry?.message.toolCallId,
+        result:
+          result &&
+          typeof result.exitCode === 'number' &&
+          typeof result.stdout === 'string' &&
+          typeof result.stderr === 'string'
+            ? {
+                exitCode: result.exitCode,
+                stdout: result.stdout,
+                stderr: result.stderr,
+              }
+            : undefined,
+      };
+    }
+
     const aiEntries = messages.filter(
       (
         entry,
@@ -1563,7 +1609,7 @@ describe('Graph Revisions Integration Tests', () => {
           firstResult.externalThreadId,
         );
         const firstShell = findShellExecution(firstMessages, {
-          cmdIncludes: 'echo "test1"',
+          stdoutIncludes: 'test1',
         });
         expect(firstShell.toolCallId).toBeDefined();
         expect(firstShell.toolName).toBe('shell');
@@ -1627,7 +1673,7 @@ describe('Graph Revisions Integration Tests', () => {
           secondResult.externalThreadId,
         );
         const secondShell = findShellExecution(secondMessages, {
-          cmdIncludes: 'echo "test2"',
+          stdoutIncludes: 'test2',
         });
         expect(secondShell.toolCallId).toBeDefined();
         expect(secondShell.toolName).toBe('shell');
@@ -1727,7 +1773,7 @@ describe('Graph Revisions Integration Tests', () => {
           firstResult.externalThreadId,
         );
         const firstShell = findShellExecution(firstMessages, {
-          cmdIncludes: 'echo "before-reload"',
+          stdoutIncludes: 'before-reload',
         });
         expect(firstShell.toolCallId).toBeDefined();
         expect(firstShell.toolName).toBe('shell');
@@ -1793,7 +1839,7 @@ describe('Graph Revisions Integration Tests', () => {
           secondResult.externalThreadId,
         );
         const secondShell = findShellExecution(secondMessages, {
-          cmdIncludes: 'echo "after-reload"',
+          stdoutIncludes: 'after-reload',
         });
         expect(secondShell.toolCallId).toBeDefined();
         expect(secondShell.toolName).toBe('shell');

@@ -92,7 +92,6 @@ describe('ThreadUpdateNotificationHandler', () => {
       name: thread.name ?? null,
       source: thread.source ?? null,
       metadata: thread.metadata ?? {},
-      tokenUsage: thread.tokenUsage ?? null,
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
     });

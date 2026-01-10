@@ -15,6 +15,8 @@ import {
   GetThreadsQueryDto,
   ThreadDto,
   ThreadMessageDto,
+  ThreadUsageStatisticsDto,
+  UsageStatisticsByTool,
 } from '../dto/threads.dto';
 import { MessageEntity } from '../entity/message.entity';
 import { ThreadEntity } from '../entity/thread.entity';
@@ -182,16 +184,19 @@ export class ThreadsService {
   public async prepareThreadsResponse(
     entities: ThreadEntity[],
   ): Promise<ThreadDto[]> {
-    const tokenUsageByThreadId = await this.getThreadsTokenUsage(entities);
-
+    // No longer include tokenUsage in the default thread response
+    // Use GET /threads/:threadId/usage-statistics instead
     return entities.map((entity) => {
-      const { deletedAt: _deletedAt, ...entityWithoutDeletedAt } = entity;
+      const {
+        deletedAt: _deletedAt,
+        tokenUsage: _tokenUsage,
+        ...entityWithoutExcludedFields
+      } = entity;
       return {
-        ...entityWithoutDeletedAt,
+        ...entityWithoutExcludedFields,
         createdAt: new Date(entity.createdAt).toISOString(),
         updatedAt: new Date(entity.updatedAt).toISOString(),
         metadata: entity.metadata || {},
-        tokenUsage: tokenUsageByThreadId.get(entity.id) ?? null,
       };
     });
   }
@@ -282,6 +287,263 @@ export class ThreadsService {
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
       requestTokenUsage,
+    };
+  }
+
+  async getThreadUsageStatistics(
+    threadId: string,
+  ): Promise<ThreadUsageStatisticsDto> {
+    const userId = this.authContext.checkSub();
+
+    // First verify the thread exists and belongs to the user
+    const thread = await this.threadDao.getOne({
+      id: threadId,
+      createdBy: userId,
+    });
+
+    if (!thread) {
+      throw new NotFoundException('THREAD_NOT_FOUND');
+    }
+
+    // Get all messages for this thread
+    const messages = await this.messagesDao.getAll({
+      threadId,
+      order: { createdAt: 'ASC' },
+    });
+
+    // Initialize aggregates
+    const total = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cachedInputTokens: 0,
+      reasoningTokens: 0,
+      totalPrice: 0,
+      currentContext: 0,
+    };
+
+    const byNode: Record<string, TokenUsage> = {};
+    const byToolMap = new Map<
+      string,
+      { totalTokens: number; totalPrice: number; callCount: number }
+    >();
+
+    const toolsAggregate = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cachedInputTokens: 0,
+      reasoningTokens: 0,
+      totalPrice: 0,
+      currentContext: 0,
+      messageCount: 0,
+    };
+
+    const messagesAggregate = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cachedInputTokens: 0,
+      reasoningTokens: 0,
+      totalPrice: 0,
+      currentContext: 0,
+      messageCount: 0,
+    };
+
+    // Process each message
+    for (const messageEntity of messages) {
+      const additionalKwargs = messageEntity.message.additionalKwargs as
+        | MessageAdditionalKwargs
+        | undefined;
+      const requestUsage = additionalKwargs?.__requestUsage;
+
+      if (requestUsage && typeof requestUsage === 'object') {
+        const usage = {
+          inputTokens:
+            typeof requestUsage.inputTokens === 'number'
+              ? requestUsage.inputTokens
+              : 0,
+          outputTokens:
+            typeof requestUsage.outputTokens === 'number'
+              ? requestUsage.outputTokens
+              : 0,
+          totalTokens:
+            typeof requestUsage.totalTokens === 'number'
+              ? requestUsage.totalTokens
+              : 0,
+          cachedInputTokens:
+            typeof requestUsage.cachedInputTokens === 'number'
+              ? requestUsage.cachedInputTokens
+              : 0,
+          reasoningTokens:
+            typeof requestUsage.reasoningTokens === 'number'
+              ? requestUsage.reasoningTokens
+              : 0,
+          totalPrice:
+            typeof requestUsage.totalPrice === 'number'
+              ? requestUsage.totalPrice
+              : 0,
+          currentContext:
+            typeof requestUsage.currentContext === 'number'
+              ? requestUsage.currentContext
+              : typeof requestUsage.inputTokens === 'number'
+                ? requestUsage.inputTokens
+                : 0,
+        };
+
+        // Update total
+        total.inputTokens += usage.inputTokens;
+        total.outputTokens += usage.outputTokens;
+        total.totalTokens += usage.totalTokens;
+        total.cachedInputTokens += usage.cachedInputTokens;
+        total.reasoningTokens += usage.reasoningTokens;
+        total.totalPrice += usage.totalPrice;
+        // currentContext is a snapshot, use the latest value
+        total.currentContext = Math.max(
+          total.currentContext,
+          usage.currentContext,
+        );
+
+        // Update by node
+        if (!byNode[messageEntity.nodeId]) {
+          byNode[messageEntity.nodeId] = {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cachedInputTokens: 0,
+            reasoningTokens: 0,
+            totalPrice: 0,
+            currentContext: 0,
+          };
+        }
+        const nodeUsage = byNode[messageEntity.nodeId]!;
+        nodeUsage.inputTokens += usage.inputTokens;
+        nodeUsage.outputTokens += usage.outputTokens;
+        nodeUsage.totalTokens += usage.totalTokens;
+        nodeUsage.cachedInputTokens =
+          (nodeUsage.cachedInputTokens ?? 0) + usage.cachedInputTokens;
+        nodeUsage.reasoningTokens =
+          (nodeUsage.reasoningTokens ?? 0) + usage.reasoningTokens;
+        nodeUsage.totalPrice = (nodeUsage.totalPrice ?? 0) + usage.totalPrice;
+        nodeUsage.currentContext = Math.max(
+          nodeUsage.currentContext ?? 0,
+          usage.currentContext,
+        );
+
+        // Determine if this is a tool message
+        const isToolMessage =
+          messageEntity.message.role === 'tool' ||
+          messageEntity.message.role === 'tool-shell';
+
+        if (isToolMessage) {
+          // Update tools aggregate
+          toolsAggregate.inputTokens += usage.inputTokens;
+          toolsAggregate.outputTokens += usage.outputTokens;
+          toolsAggregate.totalTokens += usage.totalTokens;
+          toolsAggregate.cachedInputTokens += usage.cachedInputTokens;
+          toolsAggregate.reasoningTokens += usage.reasoningTokens;
+          toolsAggregate.totalPrice += usage.totalPrice;
+          toolsAggregate.currentContext = Math.max(
+            toolsAggregate.currentContext,
+            usage.currentContext,
+          );
+          toolsAggregate.messageCount += 1;
+
+          // Update by tool
+          const toolName =
+            'name' in messageEntity.message
+              ? (messageEntity.message.name as string)
+              : 'unknown';
+          const toolStats = byToolMap.get(toolName) || {
+            totalTokens: 0,
+            totalPrice: 0,
+            callCount: 0,
+          };
+          toolStats.totalTokens += usage.totalTokens;
+          toolStats.totalPrice += usage.totalPrice;
+          toolStats.callCount += 1;
+          byToolMap.set(toolName, toolStats);
+        } else {
+          // Update messages aggregate for non-tool messages
+          messagesAggregate.inputTokens += usage.inputTokens;
+          messagesAggregate.outputTokens += usage.outputTokens;
+          messagesAggregate.totalTokens += usage.totalTokens;
+          messagesAggregate.cachedInputTokens += usage.cachedInputTokens;
+          messagesAggregate.reasoningTokens += usage.reasoningTokens;
+          messagesAggregate.totalPrice += usage.totalPrice;
+          messagesAggregate.currentContext = Math.max(
+            messagesAggregate.currentContext,
+            usage.currentContext,
+          );
+          messagesAggregate.messageCount += 1;
+        }
+      }
+    }
+
+    // Convert byToolMap to array
+    const byTool: UsageStatisticsByTool[] = Array.from(byToolMap.entries())
+      .map(([toolName, stats]) => ({
+        toolName,
+        totalTokens: stats.totalTokens,
+        totalPrice: stats.totalPrice > 0 ? stats.totalPrice : undefined,
+        callCount: stats.callCount,
+      }))
+      .sort((a, b) => b.totalTokens - a.totalTokens);
+
+    return {
+      total: {
+        inputTokens: total.inputTokens,
+        outputTokens: total.outputTokens,
+        totalTokens: total.totalTokens,
+        ...(total.cachedInputTokens > 0
+          ? { cachedInputTokens: total.cachedInputTokens }
+          : {}),
+        ...(total.reasoningTokens > 0
+          ? { reasoningTokens: total.reasoningTokens }
+          : {}),
+        ...(total.totalPrice > 0 ? { totalPrice: total.totalPrice } : {}),
+        ...(total.currentContext > 0
+          ? { currentContext: total.currentContext }
+          : {}),
+      },
+      byNode,
+      byTool,
+      toolsAggregate: {
+        inputTokens: toolsAggregate.inputTokens,
+        outputTokens: toolsAggregate.outputTokens,
+        totalTokens: toolsAggregate.totalTokens,
+        messageCount: toolsAggregate.messageCount,
+        ...(toolsAggregate.cachedInputTokens > 0
+          ? { cachedInputTokens: toolsAggregate.cachedInputTokens }
+          : {}),
+        ...(toolsAggregate.reasoningTokens > 0
+          ? { reasoningTokens: toolsAggregate.reasoningTokens }
+          : {}),
+        ...(toolsAggregate.totalPrice > 0
+          ? { totalPrice: toolsAggregate.totalPrice }
+          : {}),
+        ...(toolsAggregate.currentContext > 0
+          ? { currentContext: toolsAggregate.currentContext }
+          : {}),
+      },
+      messagesAggregate: {
+        inputTokens: messagesAggregate.inputTokens,
+        outputTokens: messagesAggregate.outputTokens,
+        totalTokens: messagesAggregate.totalTokens,
+        messageCount: messagesAggregate.messageCount,
+        ...(messagesAggregate.cachedInputTokens > 0
+          ? { cachedInputTokens: messagesAggregate.cachedInputTokens }
+          : {}),
+        ...(messagesAggregate.reasoningTokens > 0
+          ? { reasoningTokens: messagesAggregate.reasoningTokens }
+          : {}),
+        ...(messagesAggregate.totalPrice > 0
+          ? { totalPrice: messagesAggregate.totalPrice }
+          : {}),
+        ...(messagesAggregate.currentContext > 0
+          ? { currentContext: messagesAggregate.currentContext }
+          : {}),
+      },
     };
   }
 }

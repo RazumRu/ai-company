@@ -3,10 +3,7 @@ import { DefaultLogger, NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
-import type {
-  MessageTokenUsage,
-  TokenUsage,
-} from '../../../litellm/litellm.types';
+import type { MessageTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import {
   IAgentMessageNotification,
