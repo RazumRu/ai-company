@@ -16,6 +16,7 @@ import {
   CreateGraphDto,
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
+  GetAllGraphsQueryDto,
   GraphDto,
   GraphNodesQueryDto,
   GraphNodeWithStatusDto,
@@ -37,8 +38,10 @@ export class GraphsController {
   }
 
   @Get()
-  async getAllGraphs(): Promise<GraphDto[]> {
-    return await this.graphsService.getAll();
+  async getAllGraphs(
+    @Query() query: GetAllGraphsQueryDto,
+  ): Promise<GraphDto[]> {
+    return await this.graphsService.getAll(query);
   }
 
   @Get(':id')

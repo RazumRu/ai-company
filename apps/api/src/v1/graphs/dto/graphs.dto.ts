@@ -1,3 +1,4 @@
+import { zodQueryArray } from '@packages/http-server';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
@@ -237,6 +238,12 @@ export const ThreadMessagesSchema = z.object({
   messages: z.array(MessageSchema).describe('Array of messages in this thread'),
 });
 
+export const GetAllGraphsQuerySchema = z.object({
+  ids: zodQueryArray(z.uuid())
+    .optional()
+    .describe('Filter graphs by IDs (comma-separated or repeated params)'),
+});
+
 export const GraphNodesQuerySchema = z.object({
   threadId: z.string().optional(),
   runId: z.string().optional(),
@@ -265,6 +272,9 @@ export const GraphNodeWithStatusSchema = z.object({
 
 export class GraphDto extends createZodDto(GraphSchema) {}
 export class CreateGraphDto extends createZodDto(GraphEditableSchema) {}
+export class GetAllGraphsQueryDto extends createZodDto(
+  GetAllGraphsQuerySchema,
+) {}
 const UpdateGraphSchema = GraphEditableSchema.partial()
   .extend({
     currentVersion: z

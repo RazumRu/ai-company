@@ -19,6 +19,7 @@ import {
   CreateGraphDto,
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
+  GetAllGraphsQueryDto,
   GraphDto,
   GraphNodesQueryDto,
   GraphNodeWithStatusDto,
@@ -87,9 +88,10 @@ export class GraphsService {
     return this.prepareResponse(graph);
   }
 
-  async getAll(): Promise<GraphDto[]> {
+  async getAll(query?: GetAllGraphsQueryDto): Promise<GraphDto[]> {
     const row = await this.graphDao.getAll({
       createdBy: this.authContext.checkSub(),
+      ...query,
       order: {
         updatedAt: 'DESC',
       },
