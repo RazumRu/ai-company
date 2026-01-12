@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
-import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import {
   IAgentStateUpdateNotification,
   NotificationEvent,

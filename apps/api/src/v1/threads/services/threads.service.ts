@@ -3,7 +3,6 @@ import { DefaultLogger, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import Decimal from 'decimal.js';
 
-import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { NodeKind } from '../../graphs/graphs.types';

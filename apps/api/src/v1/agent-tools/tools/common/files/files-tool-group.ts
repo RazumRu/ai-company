@@ -63,7 +63,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       '',
       includeEditActions
         ? '**✏️ Editing Workflow (CRITICAL - Read This):**'
-        : '**📖 Read-Only Mode:**',
+        : '**📖 Read-Only Mode (Read-only):**',
       includeEditActions
         ? '4) **MANDATORY FIRST STEP:** Use `files_read` to get current file content. NEVER edit without reading first.'
         : '4) Use `files_read` to inspect exact code.',

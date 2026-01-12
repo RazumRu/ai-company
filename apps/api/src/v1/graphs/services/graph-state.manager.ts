@@ -438,20 +438,6 @@ export class GraphStateManager {
   private async attachTokenUsageToToolMessages(
     messages: BaseMessage[],
   ): Promise<void> {
-    // Extract thread usage from AI messages
-    const threadUsage = messages
-      .map((msg) => {
-        const msgObj = msg as unknown as {
-          additional_kwargs?: Record<string, unknown>;
-        };
-        const kwargs = msgObj.additional_kwargs;
-        if (!kwargs || typeof kwargs !== 'object') return null;
-        const requestUsage = kwargs.__requestUsage;
-        if (!requestUsage || typeof requestUsage !== 'object') return null;
-        return requestUsage as Record<string, unknown>;
-      })
-      .find((usage) => usage !== null);
-
     // Process tool messages
     for (const msg of messages) {
       const msgObj = msg as unknown as {

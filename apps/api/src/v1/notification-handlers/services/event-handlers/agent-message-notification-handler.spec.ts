@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
-import type { MessageTokenUsage } from '../../../litellm/litellm.types';
 import type { IAgentMessageNotification } from '../../../notifications/notifications.types';
 import { NotificationEvent } from '../../../notifications/notifications.types';
 import { serializeBaseMessages } from '../../../notifications/notifications.utils';

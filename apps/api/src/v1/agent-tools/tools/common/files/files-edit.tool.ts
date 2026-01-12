@@ -188,7 +188,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       - File content unknown → use \`files_read\` first
       - Simple find-replace → use \`files_apply_changes\` with replaceAll
 
-      ### Progressive Fallback Strategy
+      ### Retry Strategy
       1. Call \`files_read\` to get current content (MANDATORY)
       2. Call \`files_edit\` with useSmartModel=false (default - fast, cheap)
       3. If fails: retry \`files_edit\` with useSmartModel=true (more accurate)

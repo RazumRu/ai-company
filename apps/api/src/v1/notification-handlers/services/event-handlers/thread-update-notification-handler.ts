@@ -11,7 +11,6 @@ import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadsService } from '../../../threads/services/threads.service';
-import { ThreadStatus } from '../../../threads/threads.types';
 import {
   EnrichedNotificationEvent,
   IEnrichedNotification,
