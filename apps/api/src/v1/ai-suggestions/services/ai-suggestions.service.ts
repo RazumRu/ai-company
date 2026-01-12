@@ -382,9 +382,7 @@ export class AiSuggestionsService {
       : 'No agent configuration available.';
 
     const messagesSection = data.messages.length
-      ? data.messages
-          .map((msg, idx) => this.formatMessage(idx + 1, msg))
-          .join('\n')
+      ? this.formatMessagesCompact(data.messages)
       : 'No messages available for this thread.';
 
     const wrapBlock = (id: string, purpose: string, content: string): string =>
@@ -418,47 +416,56 @@ export class AiSuggestionsService {
     ].join('\n\n');
   }
 
-  private formatMessage(index: number, msg: SanitizedMessage): string {
+  private formatMessagesCompact(messages: SanitizedMessage[]): string {
+    const schema = [
+      'Message format:',
+      '- Standard messages (human/ai/reasoning/system): #<idx> | <role> | <from> | <content> | [toolCalls: <name> args: <json>; ...]',
+      '- Tool messages: #<idx> | tool | <from> | <name> | <content> | [title: <title>]',
+      '- Shell messages: #<idx> | tool-shell | <from> | exitCode:<code> | [stdout: <out>] | [stderr: <err>]',
+      '',
+      'Messages:',
+    ].join('\n');
+
+    const formattedMessages = messages
+      .map((msg, idx) => this.formatMessageCompact(idx + 1, msg))
+      .join('\n');
+
+    return `${schema}\n${formattedMessages}`;
+  }
+
+  private formatMessageCompact(index: number, msg: SanitizedMessage): string {
+    const truncate = (text: string, maxLen: number): string => {
+      if (text.length <= maxLen) return text;
+      return text.substring(0, maxLen) + '... [truncated]';
+    };
+
     if (msg.role === 'tool') {
-      return [
-        `${index}. tool message from ${msg.from}`,
-        `content: ${msg.content}`,
-        msg.title ? `title: ${msg.title}` : null,
-      ]
-        .filter(Boolean)
-        .join(' ');
+      const content = truncate(msg.content, 700);
+      const title = msg.title ? ` | title: ${truncate(msg.title, 200)}` : '';
+      return `#${index} | tool | ${msg.from} | ${msg.name} | ${content}${title}`;
     }
 
     if (msg.role === 'tool-shell') {
-      const stdout = msg.stdout ? `stdout: ${msg.stdout}` : null;
-      const stderr = msg.stderr ? `stderr: ${msg.stderr}` : null;
-      return [
-        `${index}. tool-shell message from ${msg.from}`,
-        `exitCode: ${msg.exitCode}`,
-        stdout,
-        stderr,
-      ]
-        .filter(Boolean)
-        .join(' ');
+      const stdout = msg.stdout
+        ? ` | stdout: ${truncate(msg.stdout, 700)}`
+        : '';
+      const stderr = msg.stderr
+        ? ` | stderr: ${truncate(msg.stderr, 700)}`
+        : '';
+      return `#${index} | tool-shell | ${msg.from} | exitCode:${msg.exitCode}${stdout}${stderr}`;
     }
 
     const toolCalls = msg.toolCalls?.length
-      ? `toolCalls: ${msg.toolCalls
+      ? ` | toolCalls: ${msg.toolCalls
           .map((tc) =>
             tc.args
-              ? `${tc.name} args: ${this.safeStringify(tc.args)}`
+              ? `${tc.name} args: ${truncate(this.safeStringify(tc.args), 500)}`
               : tc.name,
           )
           .join('; ')}`
-      : null;
+      : '';
 
-    return [
-      `${index}. ${msg.role} message from ${msg.from}:`,
-      msg.content,
-      toolCalls,
-    ]
-      .filter(Boolean)
-      .join(' ');
+    return `#${index} | ${msg.role} | ${msg.from} | ${msg.content}${toolCalls}`;
   }
 
   private sanitizeMessages(
@@ -928,7 +935,7 @@ export class AiSuggestionsService {
     }
 
     try {
-      return JSON.stringify(value, null, 2);
+      return JSON.stringify(value);
     } catch {
       return String(value);
     }

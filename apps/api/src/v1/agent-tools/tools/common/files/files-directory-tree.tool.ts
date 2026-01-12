@@ -6,6 +6,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -130,10 +131,7 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
   }
 
   public get schema() {
-    return z.toJSONSchema(FilesDirectoryTreeToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(FilesDirectoryTreeToolSchema);
   }
 
   public async invoke(

@@ -4,6 +4,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -118,10 +119,7 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
   }
 
   public get schema() {
-    return z.toJSONSchema(FinishToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(FinishToolSchema);
   }
 
   public invoke(

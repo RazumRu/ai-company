@@ -6,6 +6,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -76,10 +77,7 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
   }
 
   public get schema() {
-    return z.toJSONSchema(FilesMoveFileToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(FilesMoveFileToolSchema);
   }
 
   public async invoke(

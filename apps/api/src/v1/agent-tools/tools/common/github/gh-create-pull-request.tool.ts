@@ -6,6 +6,7 @@ import { isPlainObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -486,17 +487,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
   }
 
   public get schema() {
-    const schema = z.toJSONSchema(GhCreatePullRequestToolSchema) as Record<
-      string,
-      unknown
-    >;
-
-    // Ajv in this repo is configured for draft-07 by default; the Zod JSON schema
-    // output includes a draft 2020-12 $schema ref which Ajv treats as an external ref.
-    // Strip it so validation can compile.
-    delete schema.$schema;
-
-    return schema;
+    return zodToAjvSchema(GhCreatePullRequestToolSchema);
   }
 
   public async invoke(

@@ -7,6 +7,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -57,27 +58,43 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Overwrites entire file (**destructive**). Prefer \`files_apply_changes\` for targeted edits.
+      Overwrites entire file (**DESTRUCTIVE** - replaces all content). This is a **LAST RESORT** for editing existing files.
 
-      ### When to Use / NOT to Use
-      Use for: new files from scratch, full regeneration of files, small config overwrites.
-      Don't use for: targeted edits (use \`files_apply_changes\`), deletion (use \`files_delete\`), append/insert snippets (use \`files_apply_changes\`).
+      ### ⚠️ WARNING: High Risk of Data Loss
+      This tool replaces the ENTIRE file. Any content not in \`fileContent\` will be LOST.
+      For existing files, you almost always want a different tool.
+
+      ### Tool Selection Priority (Use in Order)
+      1. **Editing existing files?** → Use \`files_edit\` (sketch-based)
+      2. **Edit failed?** → Use \`files_apply_changes\` (oldText/newText)
+      3. **Creating new file?** → Use \`files_write_file\` (this tool - ONLY for new files)
+
+      ### When to Use
+      - **Creating brand new files from scratch**
+      - Generating configuration files that don't exist
+      - Intentional complete file replacement (rare)
+
+      ### When NOT to Use (Critical)
+      - **Modifying existing files** → HIGH RISK - use \`files_edit\` or \`files_apply_changes\`
+      - Small changes to files → use \`files_edit\` or \`files_apply_changes\`
+      - File might have been updated → risk of losing changes
+      - Deleting files → use \`files_delete\`
+      - Adding/changing parts of files → use \`files_edit\` or \`files_apply_changes\`
 
       ### Best Practice
-      Read file first with \`files_read\` before overwriting to avoid data loss. Create parent directories first using \`files_create_directory\` if needed.
+      - For existing files: Read with \`files_read\` first to verify it's safe to overwrite
+      - For new files: Create parent directories with \`files_create_directory\` if needed
+      - If modifying: Use \`files_edit\` or \`files_apply_changes\` instead
 
-      ### Example
+      ### Example (New File Only)
       \`\`\`json
-      {"filePath": "/repo/config.json", "fileContent": "{\\n  \\"version\\": \\"2.0\\"\\n}"}
+      {"filePath": "/repo/new-config.json", "fileContent": "{\\n  \\"version\\": \\"2.0\\"\\n}"}
       \`\`\`
     `;
   }
 
   public get schema() {
-    return z.toJSONSchema(FilesWriteFileToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(FilesWriteFileToolSchema);
   }
 
   public async invoke(

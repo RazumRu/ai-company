@@ -5,7 +5,10 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
-import { execRuntimeWithContext } from '../../agent-tools.utils';
+import {
+  execRuntimeWithContext,
+  zodToAjvSchema,
+} from '../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -140,10 +143,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   }
 
   public get schema() {
-    return z.toJSONSchema(ShellToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(ShellToolSchema);
   }
 
   public async invoke(

@@ -8,6 +8,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -69,10 +70,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   public get schema() {
-    return z.toJSONSchema(FilesApplyChangesToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(FilesApplyChangesToolSchema);
   }
 
   public getDetailedInstructions(
@@ -81,7 +79,13 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): string {
     return dedent`
       ### Overview
-      Applies targeted text edit by replacing \`oldText\` with \`newText\`.
+      Applies targeted text edit by replacing \`oldText\` with \`newText\`. Use when you need exact control or when \`files_edit\` fails.
+
+      ### CRITICAL: Always Read File First
+      **MANDATORY**: Use \`files_read\` before calling this tool. Copy EXACT text from the file, don't guess or type from memory.
+      - Why: oldText must match file content exactly (even with whitespace normalization)
+      - Guessing oldText is the #1 cause of "Could not find match" errors
+      - Always copy-paste from \`files_read\` output
 
       ### How matching works
       Whitespace-normalized exact block match: trailing whitespace and common leading indentation are stripped, but relative indentation within blocks is preserved. By default, \`oldText\` must match exactly once: 0 matches = adjust text; >1 match = use \`replaceAll\` flag or add more context. Indentation auto-detected and preserved from the matched file location.
@@ -91,10 +95,21 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       - When \`replaceAll: true\`: replaces all occurrences of \`oldText\`, works even with multiple matches
 
       ### When to Use
-      Precise changes without overwriting whole file, insert/replace blocks, rename symbols across a file.
+      - \`files_edit\` failed and you need exact control
+      - Renaming symbols/variables across a file (with \`replaceAll: true\`)
+      - Precise single-point edits where you know exact text
+      - Simple find-and-replace operations
 
       ### When NOT to Use
-      For full overwrite → use \`files_write_file\`. For file deletion → use \`files_delete\`.
+      - First attempt at editing → try \`files_edit\` first (better for multi-line changes)
+      - Creating new files → use \`files_write_file\`
+      - Multiple scattered changes → use \`files_edit\` (handles better)
+      - Full file overwrite → use \`files_write_file\`
+
+      ### Tool Selection Priority
+      1. **First choice**: \`files_edit\` (handles multiple changes, better error messages)
+      2. **Fallback**: \`files_apply_changes\` (this tool - exact oldText/newText control)
+      3. **Last resort**: \`files_write_file\` (overwrites entire file)
 
       ### CRITICAL: Preventing Common Errors
 

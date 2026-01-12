@@ -5,6 +5,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -210,10 +211,7 @@ export class CommunicationExecTool extends BaseTool<
   }
 
   public get schema() {
-    return z.toJSONSchema(CommunicationExecSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(CommunicationExecSchema);
   }
 
   public async invoke(

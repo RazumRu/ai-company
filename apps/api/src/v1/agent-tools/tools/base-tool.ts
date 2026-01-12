@@ -48,6 +48,8 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     useDefaults: true,
     coerceTypes: true,
     removeAdditional: true,
+    // Explicitly configure for JSON Schema draft-07 to match our schema generation
+    strict: false,
   });
 
   protected getSchemaParameterDocs(schema: JSONSchema) {
@@ -59,6 +61,21 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string;
 
+  /**
+   * Returns the JSON Schema for this tool's arguments.
+   *
+   * **Important:** Use `zodToAjvSchema()` helper (from `agent-tools.utils.ts`) to convert
+   * Zod schemas to ensure consistency with Ajv validation (draft-07, definitions vs $defs, etc.).
+   *
+   * @example
+   * ```ts
+   * import { zodToAjvSchema } from '../../agent-tools.utils';
+   *
+   * public get schema() {
+   *   return zodToAjvSchema(MyToolSchema);
+   * }
+   * ```
+   */
   public abstract get schema(): JSONSchema;
 
   /**

@@ -2,6 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { BadRequestException } from '@packages/common';
 import { isPlainObject } from 'lodash';
 import type { UnknownRecord } from 'type-fest';
+import { z, ZodSchema } from 'zod';
 
 import { BaseAgentConfigurable } from '../agents/services/nodes/base-node';
 import { RuntimeExecParams } from '../runtime/runtime.types';
@@ -61,6 +62,30 @@ export const execRuntimeWithContext = async (
         : {}),
     },
   });
+};
+
+/**
+ * Converts a Zod schema to a JSON Schema compatible with Ajv draft-07.
+ *
+ * This helper ensures consistent schema generation across all tools by:
+ * - Targeting JSON Schema draft-07 (compatible with Ajv default configuration)
+ * - Using `definitions` instead of `$defs` (draft-07 vs 2020-12)
+ * - Using `ref` strategy for reused schemas
+ *
+ * @param zodSchema - The Zod schema to convert
+ * @returns A JSON Schema object compatible with Ajv draft-07
+ *
+ * @example
+ * ```ts
+ * const schema = z.object({ name: z.string() });
+ * const jsonSchema = zodToAjvSchema(schema);
+ * ```
+ */
+export const zodToAjvSchema = (zodSchema: ZodSchema): JSONSchema => {
+  return z.toJSONSchema(zodSchema, {
+    target: 'draft-7',
+    reused: 'ref',
+  }) as JSONSchema;
 };
 
 export const getSchemaParameterDocs = (jsonSchema: JSONSchema) => {

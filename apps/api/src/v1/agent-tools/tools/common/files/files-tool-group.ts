@@ -56,20 +56,40 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     const lines: string[] = [
       `You have access to file system tools for working with the repository at: ${workdir}`,
       '',
-      '**Workflow (important):**',
+      '**🔍 Discovery Workflow:**',
       '1) Run `files_build_tags` for the repo (or relevant subpaths) before you rely on tag search.',
       '2) Use `files_search_tags` to quickly jump to relevant files/symbols.',
       '3) If tags are not enough, use `files_search_text` and/or `files_directory_tree` to locate code.',
-      '4) Use `files_read` to inspect exact code before making changes.',
+      '',
       includeEditActions
-        ? '5) **PRIMARY:** Use `files_edit` for sketch-based edits (preferred editing tool). Start with useSmartModel=false; retry with useSmartModel=true if needed.'
-        : '5) (Read-only) Do not attempt file modifications.',
+        ? '**✏️ Editing Workflow (CRITICAL - Read This):**'
+        : '**📖 Read-Only Mode:**',
       includeEditActions
-        ? '6) **MANUAL:** Use `files_apply_changes` for exact oldText/newText control when needed.'
+        ? '4) **MANDATORY FIRST STEP:** Use `files_read` to get current file content. NEVER edit without reading first.'
+        : '4) Use `files_read` to inspect exact code.',
+      includeEditActions
+        ? '5) **PRIMARY TOOL:** Use `files_edit` (sketch-based) for most edits. Start with useSmartModel=false; retry with useSmartModel=true if needed.'
         : '',
       includeEditActions
-        ? '7) After ANY file changes, rebuild tags with `files_build_tags` BEFORE using `files_search_tags` again.'
-        : '6) If the repo changes externally, rebuild tags before using `files_search_tags` again.',
+        ? '6) **FALLBACK:** If `files_edit` fails, use `files_apply_changes` with exact oldText/newText copied from `files_read`.'
+        : '',
+      includeEditActions
+        ? '7) **LAST RESORT:** Use `files_write_file` ONLY for creating new files. NEVER for modifying existing files.'
+        : '',
+      includeEditActions
+        ? '8) After ANY file changes, rebuild tags with `files_build_tags` BEFORE using `files_search_tags` again.'
+        : '5) If the repo changes externally, rebuild tags before using `files_search_tags` again.',
+      '',
+      '**📊 Tool Priority for Editing:**',
+      includeEditActions
+        ? '1. files_edit (preferred - handles multiple changes)'
+        : '',
+      includeEditActions
+        ? '2. files_apply_changes (fallback - exact oldText/newText)'
+        : '',
+      includeEditActions
+        ? '3. files_write_file (last resort - ONLY for new files)'
+        : '',
       '',
       '**Available Operations:**',
       includeEditActions
@@ -78,13 +98,26 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       includeEditActions
         ? '- Sketch-based editing with `files_edit` (use useSmartModel flag for retry)'
         : '',
+      includeEditActions
+        ? '- Exact text replacement with `files_apply_changes` (manual control)'
+        : '',
       '- Build/search semantic tags for faster navigation',
       '',
-      '**Notes:**',
-      '- Tag search results can become stale after edits; rebuilding tags is required for correctness.',
-      '- Prefer tags for large repos; fall back to text search when needed.',
+      '**⚠️ Critical Rules:**',
       includeEditActions
-        ? '- Use `files_edit` as primary editing tool; it provides better error messages and smart parsing.'
+        ? '- ALWAYS read file with `files_read` before editing (no exceptions)'
+        : '- Tag search results can become stale after external changes',
+      includeEditActions
+        ? '- Try `files_edit` first, fallback to `files_apply_changes` if needed'
+        : '- Rebuild tags after external repo changes',
+      includeEditActions
+        ? '- For `files_apply_changes`: copy EXACT text from `files_read`, never guess'
+        : '',
+      includeEditActions
+        ? '- Use `files_write_file` ONLY for new files, not for editing existing files'
+        : '',
+      includeEditActions
+        ? '- Rebuild tags with `files_build_tags` after file changes'
         : '',
     ];
 

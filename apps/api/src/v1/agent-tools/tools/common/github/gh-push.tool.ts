@@ -4,6 +4,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -81,10 +82,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   }
 
   public get schema() {
-    return z.toJSONSchema(GhPushToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(GhPushToolSchema);
   }
 
   private buildCommand(cmd: string, path?: string): string {

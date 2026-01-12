@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { OpenaiService } from '../../../../openai/openai.service';
+import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -152,10 +153,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   }
 
   public get schema() {
-    return z.toJSONSchema(FilesEditToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(FilesEditToolSchema);
   }
 
   public getDetailedInstructions(
@@ -166,6 +164,12 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       ### Overview
       Apply sketch-based edits using \`// ... existing code ...\` markers as anchors. This is the PREFERRED primary editing tool.
 
+      ### CRITICAL: Always Read File First
+      **MANDATORY**: Use \`files_read\` before editing to get current content. NEVER edit without reading.
+      - Prevents editing unknown/changed content
+      - Ensures context for sketch-based edits
+      - Validates file exists and is readable
+
       ### Model Selection Strategy
       - **ALWAYS start with useSmartModel=false** (default, fast, cheaper)
       - **If parsing fails or diff is not as expected**, retry with useSmartModel=true
@@ -175,18 +179,20 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       ### When to Use
       - Modifying existing files with sketch-style edits
       - Multiple related changes in one file
+      - Adding imports + using them in same file
       - **PREFERRED as primary editing tool** (use before \`files_apply_changes\`)
 
       ### When NOT to Use
       - Creating new files → use \`files_write_file\`
       - Manual oldText/newText control → use \`files_apply_changes\`
       - File content unknown → use \`files_read\` first
+      - Simple find-replace → use \`files_apply_changes\` with replaceAll
 
-      ### Retry Strategy
-      1. Call with useSmartModel=false (default)
-      2. Review the diff output
-      3. If error or diff is incorrect, call again with useSmartModel=true
-      4. If still fails, use files_apply_changes with exact oldText/newText
+      ### Progressive Fallback Strategy
+      1. Call \`files_read\` to get current content (MANDATORY)
+      2. Call \`files_edit\` with useSmartModel=false (default - fast, cheap)
+      3. If fails: retry \`files_edit\` with useSmartModel=true (more accurate)
+      4. If still fails: use \`files_apply_changes\` with exact oldText/newText from file
 
       ### Sketch Format
 

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import { zodToAjvSchema } from '../agent-tools.utils';
 import { BaseTool, JSONSchema, ToolInvokeResult } from './base-tool';
 
 // Create a concrete test implementation of BaseTool
@@ -18,10 +19,7 @@ class TestTool extends BaseTool<TestToolSchemaType, Record<string, never>> {
   public description = 'A test tool for validation';
 
   public get schema(): JSONSchema {
-    return z.toJSONSchema(TestToolSchema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(TestToolSchema);
   }
 
   public async invoke(

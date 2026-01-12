@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { sortBy } from 'lodash';
-import { z, ZodSchema } from 'zod';
+import { ZodSchema } from 'zod';
 
+import { zodToAjvSchema } from '../../agent-tools/agent-tools.utils';
 import { TemplateDto } from '../dto/templates.dto';
 import { TemplateRegistry } from './template-registry';
 
@@ -26,9 +27,6 @@ export class TemplatesService {
   }
 
   private serializeSchema(schema: ZodSchema): Record<string, unknown> {
-    return z.toJSONSchema(schema, {
-      target: 'draft-7',
-      reused: 'ref',
-    });
+    return zodToAjvSchema(schema);
   }
 }
