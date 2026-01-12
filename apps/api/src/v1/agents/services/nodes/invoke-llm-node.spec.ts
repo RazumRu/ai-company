@@ -2,7 +2,7 @@ import { AIMessageChunk, HumanMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TokenUsage } from '../../../litellm/litellm.types';
+import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import type { BaseAgentState } from '../../agents.types';
 import { InvokeLlmNode } from './invoke-llm-node';
@@ -61,7 +61,7 @@ describe('InvokeLlmNode', () => {
     }) as BaseAgentState;
 
   it('sets currentContext from provider-reported prompt tokens (inputTokens)', async () => {
-    const usage: TokenUsage = {
+    const usage: RequestTokenUsage = {
       inputTokens: 123,
       outputTokens: 7,
       totalTokens: 130,
@@ -108,7 +108,7 @@ describe('InvokeLlmNode', () => {
   });
 
   it('injects state.summary as a pinned memory SystemMessage before the conversation tail', async () => {
-    const usage: TokenUsage = {
+    const usage: RequestTokenUsage = {
       inputTokens: 10,
       outputTokens: 1,
       totalTokens: 11,

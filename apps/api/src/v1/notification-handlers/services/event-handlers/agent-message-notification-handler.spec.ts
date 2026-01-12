@@ -1,4 +1,4 @@
-import { AIMessage, ToolMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
 import type { MessageTokenUsage } from '../../../litellm/litellm.types';
-import { LitellmService } from '../../../litellm/services/litellm.service';
 import type { IAgentMessageNotification } from '../../../notifications/notifications.types';
 import { NotificationEvent } from '../../../notifications/notifications.types';
 import { serializeBaseMessages } from '../../../notifications/notifications.utils';
@@ -20,7 +19,6 @@ describe('AgentMessageNotificationHandler', () => {
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
   let graphDao: GraphDao;
-  let litellmService: LitellmService;
 
   const mockGraphId = 'graph-123';
   const mockNodeId = 'node-456';
@@ -75,18 +73,11 @@ describe('AgentMessageNotificationHandler', () => {
                 externalThreadId: record.externalThreadId,
                 nodeId: record.nodeId,
                 message: record.message,
-                tokenUsage: record.tokenUsage,
+                requestTokenUsage: record.requestTokenUsage,
                 createdAt: new Date('2024-01-01T00:00:00Z'),
                 updatedAt: new Date('2024-01-01T00:00:00Z'),
               };
             }),
-          },
-        },
-        {
-          provide: LitellmService,
-          useValue: {
-            extractMessageTokenUsageFromAdditionalKwargs: vi.fn(),
-            attachTokenUsageToMessage: vi.fn(),
           },
         },
         {
@@ -107,15 +98,18 @@ describe('AgentMessageNotificationHandler', () => {
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     messagesDao = module.get<MessagesDao>(MessagesDao);
     graphDao = module.get<GraphDao>(GraphDao);
-    litellmService = module.get<LitellmService>(LitellmService);
   });
 
-  it('saves tokenUsage for tool response messages (pre-computed)', async () => {
+  it('saves requestTokenUsage only for AI messages, not for tool messages', async () => {
     const internalThread = createMockThreadEntity();
     vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
 
-    const aiTokenUsage = { totalTokens: 192, totalPrice: 0.0003 };
-    const toolTokenUsage = { totalTokens: 500, totalPrice: 0.001 };
+    const aiTokenUsage = {
+      inputTokens: 100,
+      outputTokens: 92,
+      totalTokens: 192,
+      totalPrice: 0.0003,
+    };
     const toolCallId = 'call_shell_1';
 
     const ai = new AIMessage({
@@ -129,7 +123,8 @@ describe('AgentMessageNotificationHandler', () => {
         },
       ],
       additional_kwargs: {
-        tokenUsage: aiTokenUsage,
+        __requestUsage: aiTokenUsage, // Full request-level token usage
+        __tokenUsage: { totalTokens: 192, totalPrice: 0.0003 }, // Message-level usage
       },
     });
 
@@ -138,11 +133,12 @@ describe('AgentMessageNotificationHandler', () => {
       tool_call_id: toolCallId,
       name: 'shell',
     });
-    // Tool message now comes pre-computed from graph-state.manager
+    // Tool message should only have __tokenUsage (for counting tokens),
+    // NOT __requestUsage (it's not from an LLM request)
     Object.assign(tool, {
       additional_kwargs: {
         __model: 'openai/gpt-5.2',
-        __tokenUsage: toolTokenUsage, // Already computed
+        __tokenUsage: { totalTokens: 500, totalPrice: 0.001 }, // Message-level usage
       },
     });
 
@@ -156,24 +152,6 @@ describe('AgentMessageNotificationHandler', () => {
         messages: serializeBaseMessages([ai, tool]),
       },
     };
-
-    vi.spyOn(
-      litellmService,
-      'extractMessageTokenUsageFromAdditionalKwargs',
-    ).mockImplementation(
-      (kwargs?: { tokenUsage?: unknown; __tokenUsage?: unknown } | null) => {
-        // Check both tokenUsage and __tokenUsage
-        const usage = kwargs?.__tokenUsage ?? kwargs?.tokenUsage;
-        if (
-          typeof usage === 'object' &&
-          usage !== null &&
-          typeof (usage as { totalTokens?: unknown }).totalTokens === 'number'
-        ) {
-          return usage as MessageTokenUsage;
-        }
-        return null;
-      },
-    );
 
     await handler.handle(notification);
 
@@ -191,11 +169,14 @@ describe('AgentMessageNotificationHandler', () => {
       messagesDao.create as unknown as ReturnType<typeof vi.fn>
     ).mock.calls[1]?.[0] as Record<string, unknown>;
 
-    expect(firstCreate.tokenUsage).toEqual(aiTokenUsage);
-    expect(secondCreate.tokenUsage).toEqual(toolTokenUsage);
+    // AI message should have requestTokenUsage (from LLM request)
+    expect(firstCreate.requestTokenUsage).toEqual(aiTokenUsage);
+
+    // Tool message should NOT have requestTokenUsage (it's a function execution result, not an LLM response)
+    expect(secondCreate.requestTokenUsage).toBeUndefined();
   });
 
-  it('preserves __requestUsage from AI messages to tool messages', async () => {
+  it('AI messages have __requestUsage, tool messages do not', async () => {
     const internalThread = createMockThreadEntity();
     vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
 
@@ -210,7 +191,7 @@ describe('AgentMessageNotificationHandler', () => {
       currentContext: 13780,
     };
 
-    // AI message with __requestUsage
+    // AI message with __requestUsage (from LLM request)
     const ai = new AIMessage({
       content: '',
       tool_calls: [
@@ -231,7 +212,8 @@ describe('AgentMessageNotificationHandler', () => {
       },
     });
 
-    // Tool message with pre-computed __requestUsage (from graph-state.manager)
+    // Tool message should only have __tokenUsage, NOT __requestUsage
+    // (it's a function execution result, not an LLM response)
     const tool = new ToolMessage({
       content: JSON.stringify({ success: true }),
       tool_call_id: toolCallId,
@@ -244,7 +226,7 @@ describe('AgentMessageNotificationHandler', () => {
           totalTokens: 23,
           totalPrice: 0.00004025,
         },
-        __requestUsage: requestUsage, // Already attached by graph-state.manager
+        // No __requestUsage for tool messages
       },
     });
 
@@ -259,25 +241,6 @@ describe('AgentMessageNotificationHandler', () => {
       },
     };
 
-    // Mock extractMessageTokenUsageFromAdditionalKwargs
-    vi.spyOn(
-      litellmService,
-      'extractMessageTokenUsageFromAdditionalKwargs',
-    ).mockImplementation(
-      (kwargs?: { tokenUsage?: unknown; __tokenUsage?: unknown } | null) => {
-        // Check both tokenUsage and __tokenUsage
-        const usage = kwargs?.__tokenUsage ?? kwargs?.tokenUsage;
-        if (
-          typeof usage === 'object' &&
-          usage !== null &&
-          typeof (usage as { totalTokens?: unknown }).totalTokens === 'number'
-        ) {
-          return usage as MessageTokenUsage;
-        }
-        return null;
-      },
-    );
-
     await handler.handle(notification);
 
     // Verify messagesDao.create was called twice
@@ -286,25 +249,72 @@ describe('AgentMessageNotificationHandler', () => {
     const calls = (messagesDao.create as unknown as ReturnType<typeof vi.fn>)
       .mock.calls;
 
-    // Check AI message
+    // Check AI message - should have requestTokenUsage from LLM request
     const aiCreateCall = calls[0]?.[0] as Record<string, unknown>;
-    const aiMessage = aiCreateCall.message as Record<string, unknown>;
-    const aiAdditionalKwargs = aiMessage.additionalKwargs as Record<
-      string,
-      unknown
-    >;
+    expect(aiCreateCall.requestTokenUsage).toEqual(requestUsage);
+    expect(aiCreateCall.toolCallNames).toEqual(['finish']);
+    expect(aiCreateCall.role).toBe('ai');
 
-    expect(aiAdditionalKwargs.__requestUsage).toEqual(requestUsage);
-
-    // Check Tool message - THIS IS THE KEY TEST
+    // Check Tool message - should NOT have requestTokenUsage
+    // (it's a function execution result, not an LLM response)
     const toolCreateCall = calls[1]?.[0] as Record<string, unknown>;
-    const toolMessage = toolCreateCall.message as Record<string, unknown>;
-    const toolAdditionalKwargs = toolMessage.additionalKwargs as Record<
-      string,
-      unknown
-    >;
+    expect(toolCreateCall.requestTokenUsage).toBeUndefined();
+    expect(toolCreateCall.toolCallNames).toBeUndefined();
+    expect(toolCreateCall.role).toBe('tool');
+    expect(toolCreateCall.name).toBe('finish');
+  });
 
-    // Tool message should have __requestUsage (pre-attached by graph-state.manager)
-    expect(toolAdditionalKwargs.__requestUsage).toEqual(requestUsage);
+  it('does not save requestTokenUsage for human messages', async () => {
+    const internalThread = createMockThreadEntity();
+    vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
+
+    // Human message (user input - should NOT have requestTokenUsage)
+    const human = new HumanMessage({
+      content: 'Hello, how are you?',
+    });
+
+    // AI response (should have requestTokenUsage)
+    const aiTokenUsage = {
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+      totalPrice: 0.001,
+    };
+    const ai = new AIMessage({
+      content: 'I am doing well, thank you!',
+      additional_kwargs: {
+        __requestUsage: aiTokenUsage,
+      },
+    });
+
+    const notification: IAgentMessageNotification = {
+      type: NotificationEvent.AgentMessage,
+      graphId: mockGraphId,
+      nodeId: mockNodeId,
+      threadId: mockThreadId,
+      parentThreadId: mockParentThreadId,
+      data: {
+        messages: serializeBaseMessages([human, ai]),
+      },
+    };
+
+    await handler.handle(notification);
+
+    expect(messagesDao.create).toHaveBeenCalledTimes(2);
+
+    const calls = (messagesDao.create as unknown as ReturnType<typeof vi.fn>)
+      .mock.calls;
+
+    // Check human message - should NOT have requestTokenUsage
+    const humanCreateCall = calls[0]?.[0] as Record<string, unknown>;
+    expect(humanCreateCall.requestTokenUsage).toBeUndefined();
+    expect(humanCreateCall.toolCallNames).toBeUndefined();
+    expect(humanCreateCall.role).toBe('human');
+
+    // Check AI message - SHOULD have requestTokenUsage (no tool calls)
+    const aiCreateCall = calls[1]?.[0] as Record<string, unknown>;
+    expect(aiCreateCall.requestTokenUsage).toEqual(aiTokenUsage);
+    expect(aiCreateCall.toolCallNames).toBeUndefined(); // No toolCalls in this AI message
+    expect(aiCreateCall.role).toBe('ai');
   });
 });

@@ -9,7 +9,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
-import type { TokenUsage } from '../../../litellm/litellm.types';
+import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
@@ -429,7 +429,7 @@ export class SummarizeNode extends BaseNode<
     newMessages: BaseMessage[],
   ): Promise<{
     summary: string;
-    usage: TokenUsage | null;
+    usage: RequestTokenUsage | null;
   }> {
     const sys = new SystemMessage(
       this.opts.systemNote ||

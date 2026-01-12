@@ -2,7 +2,6 @@ import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ThreadTokenUsageCacheService } from '../../../cache/services/thread-token-usage-cache.service';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { GraphEntity } from '../../../graphs/entity/graph.entity';
 import { GraphStatus } from '../../../graphs/graphs.types';
@@ -125,16 +124,6 @@ describe('ThreadUpdateNotificationHandler', () => {
         {
           provide: ModuleRef,
           useValue: moduleRefMock,
-        },
-        {
-          provide: ThreadTokenUsageCacheService,
-          useValue: {
-            getThreadTokenUsage: vi.fn().mockResolvedValue(null),
-            getMultipleThreadTokenUsage: vi.fn().mockResolvedValue(new Map()),
-            setThreadTokenUsage: vi.fn().mockResolvedValue(undefined),
-            flushThreadTokenUsage: vi.fn().mockResolvedValue(null),
-            deleteThreadTokenUsage: vi.fn().mockResolvedValue(undefined),
-          },
         },
       ],
     }).compile();
@@ -314,43 +303,14 @@ describe('ThreadUpdateNotificationHandler', () => {
       expect(result).toHaveLength(1);
     });
 
-    it('accumulates token usage in DB when thread completes multiple times', async () => {
+    it('updates thread status when thread completes', async () => {
       const thread = createMockThreadEntity({
         status: ThreadStatus.Running,
-        tokenUsage: {
-          inputTokens: 10,
-          outputTokens: 5,
-          totalTokens: 15,
-          totalPrice: 0.01,
-          byNode: {
-            agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-          },
-        },
       });
-
-      const flushedUsage = {
-        inputTokens: 2,
-        outputTokens: 1,
-        totalTokens: 3,
-        totalPrice: 0.002,
-        byNode: {
-          agentB: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
-        },
-      };
 
       const updatedThread = {
         ...thread,
         status: ThreadStatus.Done,
-        tokenUsage: {
-          inputTokens: 2,
-          outputTokens: 1,
-          totalTokens: 3,
-          totalPrice: 0.002,
-          byNode: {
-            agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-            agentB: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
-          },
-        },
         updatedAt: new Date('2024-01-01T00:00:01Z'),
       } satisfies ThreadEntity;
 
@@ -366,36 +326,12 @@ describe('ThreadUpdateNotificationHandler', () => {
         .spyOn(threadsDao, 'updateById')
         .mockResolvedValue(updatedThread);
 
-      const cacheService = (
-        handler as unknown as {
-          threadTokenUsageCacheService: {
-            flushThreadTokenUsage: ReturnType<typeof vi.fn>;
-          };
-        }
-      ).threadTokenUsageCacheService;
-
-      cacheService.flushThreadTokenUsage = vi
-        .fn()
-        .mockResolvedValue(flushedUsage);
-
       await handler.handle(notification);
 
-      expect(cacheService.flushThreadTokenUsage).toHaveBeenCalledWith(
-        mockThreadId,
-      );
-
+      // Token usage is no longer flushed to threads table
+      // It's stored in checkpoint state only
       expect(updateSpy).toHaveBeenCalledWith(thread.id, {
         status: ThreadStatus.Done,
-        tokenUsage: {
-          inputTokens: 2,
-          outputTokens: 1,
-          totalTokens: 3,
-          totalPrice: 0.002,
-          byNode: {
-            agentA: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-            agentB: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
-          },
-        },
       });
     });
   });

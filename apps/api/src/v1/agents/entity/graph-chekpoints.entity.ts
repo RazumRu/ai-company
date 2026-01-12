@@ -16,6 +16,10 @@ export class GraphCheckpointEntity {
   @Column({ type: 'varchar' })
   threadId!: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  @Index()
+  parentThreadId!: string | null;
+
   @Column({ type: 'varchar', default: '' })
   checkpointNs!: string;
 

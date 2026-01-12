@@ -113,17 +113,22 @@ describe('Message token usage (integration)', () => {
 
     const aiStored = stored.find((m) => m.message.role === 'ai');
     expect(aiStored).toBeDefined();
-    expect(aiStored?.tokenUsage).toEqual({ totalTokens: 3, totalPrice: 0.02 });
+    expect(aiStored?.requestTokenUsage).toEqual({
+      totalTokens: 3,
+      totalPrice: 0.02,
+    });
 
     const humanStored = stored.find((m) => m.message.role === 'human');
     expect(humanStored).toBeDefined();
-    expect(humanStored?.tokenUsage).toEqual({
+    expect(humanStored?.requestTokenUsage).toEqual({
       totalTokens: 2,
       totalPrice: 0.01,
     });
 
     const aiNotification = enriched.find((n) => n.data.message.role === 'ai');
-    expect(aiNotification?.data.tokenUsage).not.toBeNull();
-    expect(aiNotification?.data.tokenUsage?.totalTokens).toBeGreaterThan(0);
+    expect(aiNotification?.data.requestTokenUsage).not.toBeNull();
+    expect(aiNotification?.data.requestTokenUsage?.totalTokens).toBeGreaterThan(
+      0,
+    );
   });
 });

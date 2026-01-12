@@ -221,6 +221,61 @@ describe('Graphs E2E', () => {
         });
       });
     });
+
+    it('should filter graphs by ids query parameter', () => {
+      // Create two test graphs
+      const graph1Data = createMockGraphData();
+      const graph2Data = createMockGraphData();
+
+      createGraph(graph1Data).then((response1) => {
+        const graphId1 = response1.body.id;
+
+        createGraph(graph2Data).then((response2) => {
+          const graphId2 = response2.body.id;
+
+          // Test with single id
+          getAllGraphs({ ids: [graphId1] }).then((response) => {
+            expect(response.status).to.equal(200);
+            const graphs = response.body;
+            expect(graphs).to.be.an('array');
+            expect(graphs.length).to.be.at.least(1);
+
+            const foundGraph = graphs.find((g) => g.id === graphId1);
+            expect(foundGraph).to.exist;
+
+            graphs.forEach((graph) => {
+              validateGraph(graph);
+            });
+          });
+
+          // Test with multiple ids
+          getAllGraphs({ ids: [graphId1, graphId2] }).then((response) => {
+            expect(response.status).to.equal(200);
+            const graphs = response.body;
+            expect(graphs).to.be.an('array');
+            expect(graphs.length).to.be.at.least(2);
+
+            const foundGraph1 = graphs.find((g) => g.id === graphId1);
+            const foundGraph2 = graphs.find((g) => g.id === graphId2);
+            expect(foundGraph1).to.exist;
+            expect(foundGraph2).to.exist;
+
+            graphs.forEach((graph) => {
+              validateGraph(graph);
+            });
+          });
+
+          // Test with non-existent id
+          const nonExistentId = '00000000-0000-0000-0000-000000000000';
+          getAllGraphs({ ids: [nonExistentId] }).then((response) => {
+            expect(response.status).to.equal(200);
+            const graphs = response.body;
+            expect(graphs).to.be.an('array');
+            expect(graphs.length).to.equal(0);
+          });
+        });
+      });
+    });
   });
 
   describe('GET /v1/graphs/:id', () => {

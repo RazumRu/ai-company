@@ -199,11 +199,17 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       ((config.configurable as Record<string, unknown> | undefined)
         ?.checkpoint_id as string | undefined) ?? null;
 
+    // Extract parent_thread_id from config for nested agent runs
+    const parentThreadId =
+      ((config.configurable as Record<string, unknown> | undefined)
+        ?.parent_thread_id as string | undefined) ?? null;
+
     await this.graphCheckpointsDao.upsertByCheckpointKey({
       threadId,
       checkpointNs,
       checkpointId: id,
       parentCheckpointId,
+      parentThreadId,
       type: typeA,
       checkpoint: Buffer.from(chk),
       metadata: Buffer.from(meta),

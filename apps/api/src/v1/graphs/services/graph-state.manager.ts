@@ -485,23 +485,16 @@ export class GraphStateManager {
       };
 
       // Attach token usage (this will replace additional_kwargs with a new object)
+      // Tool messages should NOT have threadUsage/__requestUsage because they're
+      // function execution results, not LLM responses
       await this.litellmService.attachTokenUsageToMessage(
         mutableWrapper,
         model,
         {
           direction: 'input',
           skipIfExists: false,
-          threadUsage: threadUsage
-            ? (threadUsage as {
-                inputTokens: number;
-                outputTokens: number;
-                totalTokens: number;
-                cachedInputTokens?: number;
-                reasoningTokens?: number;
-                totalPrice?: number;
-                currentContext?: number;
-              })
-            : null,
+          // DO NOT pass threadUsage for tool messages - they're not from LLM requests
+          threadUsage: null,
         },
       );
 

@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ThreadTokenUsageCacheService } from '../../../cache/services/thread-token-usage-cache.service';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { GraphEntity } from '../../../graphs/entity/graph.entity';
 import { GraphStatus } from '../../../graphs/graphs.types';
@@ -23,7 +22,6 @@ describe('AgentStateUpdateNotificationHandler', () => {
   let handler: AgentStateUpdateNotificationHandler;
   let _threadsDao: ThreadsDao;
   let _notificationsService: NotificationsService;
-  let threadTokenUsageCacheService: ThreadTokenUsageCacheService;
 
   const mockGraphId = 'graph-456';
   const mockNodeId = 'node-789';
@@ -95,13 +93,6 @@ describe('AgentStateUpdateNotificationHandler', () => {
           },
         },
         {
-          provide: ThreadTokenUsageCacheService,
-          useValue: {
-            upsertNodeTokenUsage: vi.fn().mockResolvedValue(undefined),
-            getThreadTokenUsage: vi.fn().mockResolvedValue(null),
-          },
-        },
-        {
           provide: NotificationsService,
           useValue: {
             emit: vi.fn().mockResolvedValue(undefined),
@@ -116,9 +107,6 @@ describe('AgentStateUpdateNotificationHandler', () => {
     _threadsDao = module.get<ThreadsDao>(ThreadsDao);
     _notificationsService =
       module.get<NotificationsService>(NotificationsService);
-    threadTokenUsageCacheService = module.get<ThreadTokenUsageCacheService>(
-      ThreadTokenUsageCacheService,
-    );
   });
 
   describe('handle', () => {
@@ -163,23 +151,6 @@ describe('AgentStateUpdateNotificationHandler', () => {
           data: { summary: 'Thread summary' },
         },
       ]);
-    });
-
-    it('treats missing parentThreadId as missing (prevents token usage resets)', async () => {
-      const notification = createMockNotification({
-        parentThreadId: undefined,
-        data: { totalPrice: 0.01, totalTokens: 123 },
-      });
-
-      await handler.handle(notification);
-
-      expect(
-        threadTokenUsageCacheService.upsertNodeTokenUsage,
-      ).toHaveBeenCalledWith(
-        mockThreadId,
-        mockNodeId,
-        expect.objectContaining({ totalPrice: 0.01, totalTokens: 123 }),
-      );
     });
 
     it('enriches agent state update when needsMoreInfo is set', async () => {

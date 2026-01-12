@@ -38,6 +38,7 @@ export class GraphCheckpointsDao extends BaseDao<
       | 'checkpointNs'
       | 'checkpointId'
       | 'parentCheckpointId'
+      | 'parentThreadId'
       | 'type'
       | 'checkpoint'
       | 'metadata'
@@ -48,7 +49,13 @@ export class GraphCheckpointsDao extends BaseDao<
       .values(data as QueryDeepPartialEntity<GraphCheckpointEntity>)
       .orUpdate({
         conflict_target: ['threadId', 'checkpointNs', 'checkpointId'],
-        overwrite: ['parentCheckpointId', 'type', 'checkpoint', 'metadata'],
+        overwrite: [
+          'parentCheckpointId',
+          'parentThreadId',
+          'type',
+          'checkpoint',
+          'metadata',
+        ],
       })
       .execute();
   }

@@ -2,6 +2,7 @@ import {
   CreateGraphDto,
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
+  GetAllGraphsData,
   GraphDto,
   GraphNodeWithStatusDto,
   SuggestAgentInstructionsResponseDto,
@@ -44,11 +45,15 @@ export const createGraph = (data: CreateGraphDto, headers = reqHeaders) =>
       return response;
     });
 
-export const getAllGraphs = (headers = reqHeaders) =>
+export const getAllGraphs = (
+  query?: GetAllGraphsData['query'],
+  headers = reqHeaders,
+) =>
   cy.request<GraphDto[]>({
     url: '/api/v1/graphs',
     method: 'GET',
     headers,
+    qs: query,
   });
 
 export const getGraphById = (id: string, headers = reqHeaders) =>

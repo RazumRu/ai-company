@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { NotFoundException } from '@packages/common';
 
-import { ThreadTokenUsageCacheService } from '../../../cache/services/thread-token-usage-cache.service';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
   IThreadUpdateNotification,
@@ -34,7 +33,6 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
     private readonly threadsDao: ThreadsDao,
     private readonly graphDao: GraphDao,
     private readonly moduleRef: ModuleRef,
-    private readonly threadTokenUsageCacheService: ThreadTokenUsageCacheService,
   ) {
     super();
   }
@@ -57,7 +55,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       return [];
     }
 
-    const updates: Partial<Pick<ThreadEntity, 'status' | 'tokenUsage'>> & {
+    const updates: Partial<Pick<ThreadEntity, 'status'>> & {
       name?: string | null;
     } = {};
 
@@ -68,35 +66,6 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
     // Only update thread name if it doesn't already exist (set once)
     if (data.name !== undefined && !thread.name) {
       updates.name = data.name ?? null;
-    }
-
-    // Flush token usage from Redis to DB when thread completes
-    if (
-      updates.status &&
-      updates.status !== ThreadStatus.Running &&
-      thread.status === ThreadStatus.Running
-    ) {
-      const tokenUsage =
-        await this.threadTokenUsageCacheService.flushThreadTokenUsage(
-          externalThreadKey,
-        );
-      if (tokenUsage) {
-        // Merge with existing DB token usage to preserve per-node data across multiple runs
-        const existingUsage = thread.tokenUsage;
-        if (existingUsage?.byNode && tokenUsage.byNode) {
-          // Merge byNode data: keep nodes from DB that aren't in Redis
-          const mergedByNode = { ...existingUsage.byNode };
-          for (const [nodeId, usage] of Object.entries(tokenUsage.byNode)) {
-            mergedByNode[nodeId] = usage;
-          }
-          updates.tokenUsage = {
-            ...tokenUsage,
-            byNode: mergedByNode,
-          };
-        } else {
-          updates.tokenUsage = tokenUsage;
-        }
-      }
     }
 
     if (Object.keys(updates).length > 0) {

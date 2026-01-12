@@ -145,7 +145,9 @@ describe('Thread token usage + cost from running graph state (integration)', () 
             offset: 0,
           }),
         (msgs) =>
-          msgs.some((m) => m.message.role === 'ai' && m.tokenUsage !== null),
+          msgs.some(
+            (m) => m.message.role === 'ai' && m.requestTokenUsage !== null,
+          ),
         { timeout: 30_000, interval: 1_000 },
       );
 
@@ -153,8 +155,10 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         (m) => m.message.role === 'ai',
       );
       expect(aiMessageWhileRunning).toBeDefined();
-      expect(aiMessageWhileRunning!.tokenUsage).not.toBeNull();
-      expect(aiMessageWhileRunning!.tokenUsage?.totalTokens).toBeGreaterThan(0);
+      expect(aiMessageWhileRunning!.requestTokenUsage).not.toBeNull();
+      expect(
+        aiMessageWhileRunning!.requestTokenUsage?.totalTokens,
+      ).toBeGreaterThan(0);
 
       // Wait until execution reaches a terminal status so checkpoint state is persisted.
       await waitForCondition(
@@ -197,7 +201,9 @@ describe('Thread token usage + cost from running graph state (integration)', () 
             offset: 0,
           }),
         (msgs) =>
-          msgs.some((m) => m.message.role === 'ai' && m.tokenUsage !== null),
+          msgs.some(
+            (m) => m.message.role === 'ai' && m.requestTokenUsage !== null,
+          ),
         { timeout: 30_000, interval: 1_000 },
       );
 
@@ -205,8 +211,10 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         (m) => m.message.role === 'ai',
       );
       expect(aiMessageAfterStop).toBeDefined();
-      expect(aiMessageAfterStop!.tokenUsage).not.toBeNull();
-      expect(aiMessageAfterStop!.tokenUsage?.totalTokens).toBeGreaterThan(0);
+      expect(aiMessageAfterStop!.requestTokenUsage).not.toBeNull();
+      expect(
+        aiMessageAfterStop!.requestTokenUsage?.totalTokens,
+      ).toBeGreaterThan(0);
     },
   );
 

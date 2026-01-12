@@ -24,7 +24,7 @@ import { z } from 'zod';
 import { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
-import type { TokenUsage } from '../../../litellm/litellm.types';
+import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import {
   BaseAgentState,
@@ -558,7 +558,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     return next.filter((m) => !prevSet.has(m));
   }
 
-  public getThreadTokenUsage(threadId: string): TokenUsage | null {
+  public getThreadTokenUsage(threadId: string): RequestTokenUsage | null {
     if (!this.graphThreadState) {
       return null;
     }

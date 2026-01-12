@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 
+import type { MessageAdditionalKwargs } from '../../../agents/agents.types';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
-import type { MessageTokenUsage } from '../../../litellm/litellm.types';
-import { LitellmService } from '../../../litellm/services/litellm.service';
+import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import {
   IAgentMessageNotification,
   NotificationEvent,
@@ -39,7 +39,6 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     private readonly messageTransformer: MessageTransformerService,
     private readonly messagesDao: MessagesDao,
     private readonly threadsDao: ThreadsDao,
-    private readonly litellmService: LitellmService,
     private readonly logger: DefaultLogger,
   ) {
     super();
@@ -71,24 +70,24 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
 
     for (const [i, messageDto] of messageDtos.entries()) {
       const originalMessage = event.data.messages[i];
-      const tokenUsage =
-        this.litellmService.extractMessageTokenUsageFromAdditionalKwargs(
-          originalMessage?.additional_kwargs ?? undefined,
-        );
+      const additionalKwargs = originalMessage?.additional_kwargs as
+        | MessageAdditionalKwargs
+        | undefined;
 
-      // Tool messages should already have token usage attached by graph-state.manager
-      // If not, this indicates a configuration issue or missing model information
-      if (!tokenUsage && originalMessage?.type === 'ToolMessage') {
-        this.logger.warn(
-          `Tool message without token usage - should have been computed in graph-state.manager`,
-          {
-            messageType: originalMessage.type,
-            hasModel: !!originalMessage.additional_kwargs?.__model,
-            threadId: event.threadId,
-            nodeId: event.nodeId,
-          },
-        );
-      }
+      // Extract request-level token usage (full RequestTokenUsage from LLM request)
+      const requestTokenUsage = additionalKwargs?.__requestUsage as
+        | RequestTokenUsage
+        | undefined;
+
+      // Extract tool call names for AI messages with tool calls
+      const toolCallNames =
+        messageDto.role === 'ai' &&
+        'toolCalls' in messageDto &&
+        Array.isArray(messageDto.toolCalls)
+          ? messageDto.toolCalls
+              .map((tc) => tc.name)
+              .filter((name): name is string => typeof name === 'string')
+          : undefined;
 
       // Save message to database with correct internal thread ID
       const createdMessage = await this.messagesDao.create({
@@ -96,7 +95,12 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         externalThreadId: event.threadId,
         nodeId: event.nodeId,
         message: messageDto,
-        ...(tokenUsage ? { tokenUsage: tokenUsage as MessageTokenUsage } : {}),
+        // Store requestTokenUsage if it exists (no fallback, no filtering)
+        ...(requestTokenUsage ? { requestTokenUsage } : {}),
+        // Denormalize role, name, and toolCallNames for query performance
+        role: messageDto.role,
+        name: 'name' in messageDto ? (messageDto.name as string) : undefined,
+        ...(toolCallNames && toolCallNames.length > 0 ? { toolCallNames } : {}),
       });
 
       out.push({

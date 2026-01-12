@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 
 import { LiteLlmModelDto } from '../dto/models.dto';
-import type { MessageTokenUsage, TokenUsage } from '../litellm.types';
+import type { MessageTokenUsage, RequestTokenUsage } from '../litellm.types';
 import { LiteLlmClient } from './litellm.client';
 
 type LiteLLMModelPriceEntry = Record<string, unknown>;
@@ -59,10 +59,10 @@ export class LitellmService {
       | { tokenUsage?: unknown }
       | ({ tokenUsage?: unknown } | null | undefined)[]
       | null,
-  ): TokenUsage | null {
+  ): RequestTokenUsage | null {
     const parseSingle = (
       single?: { tokenUsage?: unknown } | null,
-    ): TokenUsage | null => {
+    ): RequestTokenUsage | null => {
       const maybe = single?.tokenUsage;
       if (!maybe || typeof maybe !== 'object') {
         return null;
@@ -123,7 +123,9 @@ export class LitellmService {
     };
   }
 
-  sumTokenUsages(usages: (TokenUsage | null | undefined)[]): TokenUsage | null {
+  sumTokenUsages(
+    usages: (RequestTokenUsage | null | undefined)[],
+  ): RequestTokenUsage | null {
     let inputTokens = 0;
     let cachedInputTokens = 0;
     let outputTokens = 0;
@@ -172,7 +174,7 @@ export class LitellmService {
   extractTokenUsageFromResponse(res: {
     usage_metadata?: unknown;
     response_metadata?: unknown;
-  }): TokenUsage | null {
+  }): RequestTokenUsage | null {
     const responseMetadata =
       res.response_metadata && typeof res.response_metadata === 'object'
         ? (res.response_metadata as Record<string, unknown>)
@@ -275,7 +277,7 @@ export class LitellmService {
     model: string;
     usage_metadata?: unknown;
     response_metadata?: unknown;
-  }): Promise<TokenUsage | null> {
+  }): Promise<RequestTokenUsage | null> {
     const usage = this.extractTokenUsageFromResponse({
       usage_metadata: args.usage_metadata,
       response_metadata: args.response_metadata,
@@ -428,7 +430,7 @@ export class LitellmService {
     model: string,
     options?: {
       direction?: MessageCostDirection;
-      threadUsage?: TokenUsage | null;
+      threadUsage?: RequestTokenUsage | null;
       skipIfExists?: boolean;
     },
   ): Promise<MessageTokenUsage | null> {
@@ -526,7 +528,7 @@ export class LitellmService {
     model: string,
     options?: {
       direction?: MessageCostDirection;
-      threadUsage?: TokenUsage | null;
+      threadUsage?: RequestTokenUsage | null;
       skipIfExists?: boolean;
     },
   ): Promise<void> {

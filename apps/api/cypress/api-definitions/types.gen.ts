@@ -913,74 +913,6 @@ export type ThreadDto = {
    * Thread execution status
    */
   status: 'running' | 'done' | 'need_more_info' | 'stopped';
-  /**
-   * Aggregated token usage & cost for this thread
-   */
-  tokenUsage?: {
-    /**
-     * Input tokens
-     */
-    inputTokens: number;
-    /**
-     * Cached input tokens
-     */
-    cachedInputTokens?: number;
-    /**
-     * Output tokens
-     */
-    outputTokens: number;
-    /**
-     * Reasoning tokens
-     */
-    reasoningTokens?: number;
-    /**
-     * Total tokens
-     */
-    totalTokens: number;
-    /**
-     * Total price in USD
-     */
-    totalPrice?: number;
-    /**
-     * Current context size in tokens (snapshot, not additive)
-     */
-    currentContext?: number;
-    /**
-     * Token usage breakdown by node ID
-     */
-    byNode?: {
-      [key: string]: {
-        /**
-         * Input tokens
-         */
-        inputTokens: number;
-        /**
-         * Cached input tokens
-         */
-        cachedInputTokens?: number;
-        /**
-         * Output tokens
-         */
-        outputTokens: number;
-        /**
-         * Reasoning tokens
-         */
-        reasoningTokens?: number;
-        /**
-         * Total tokens
-         */
-        totalTokens: number;
-        /**
-         * Total price in USD
-         */
-        totalPrice?: number;
-        /**
-         * Current context size in tokens (snapshot, not additive)
-         */
-        currentContext?: number;
-      };
-    };
-  } | null;
 };
 
 export type ThreadMessageDto = {
@@ -1465,7 +1397,12 @@ export type SuggestKnowledgeContentResponse =
 export type GetAllGraphsData = {
   body?: never;
   path?: never;
-  query?: never;
+  query?: {
+    /**
+     * Filter graphs by IDs (comma-separated or repeated params)
+     */
+    ids?: Array<string>;
+  };
   url: '/api/v1/graphs';
 };
 

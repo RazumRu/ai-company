@@ -1,6 +1,9 @@
 import { BaseMessage } from '@langchain/core/messages';
 
-import type { MessageTokenUsage, TokenUsage } from '../litellm/litellm.types';
+import type {
+  MessageTokenUsage,
+  RequestTokenUsage,
+} from '../litellm/litellm.types';
 
 /**
  * Message metadata stored in `BaseMessage.additional_kwargs`.
@@ -33,7 +36,7 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
   __tokenUsage?: MessageTokenUsage;
 
   // Full request token usage (entire LLM request, not just this message)
-  __requestUsage?: TokenUsage;
+  __requestUsage?: RequestTokenUsage;
 };
 
 export type BaseAgentStateMessagesUpdateValue = {

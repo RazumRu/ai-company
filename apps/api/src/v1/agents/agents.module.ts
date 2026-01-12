@@ -10,6 +10,7 @@ import { GraphCheckpointsWritesDao } from './dao/graph-checkpoints-writes.dao';
 import { GraphCheckpointEntity } from './entity/graph-chekpoints.entity';
 import { GraphCheckpointWritesEntity } from './entity/graph-chekpoints-writes.entity';
 import { SimpleAgent } from './services/agents/simple-agent';
+import { CheckpointStateService } from './services/checkpoint-state.service';
 import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
 
 @Module({
@@ -24,11 +25,13 @@ import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
   providers: [
     SimpleAgent,
     PgCheckpointSaver,
+    CheckpointStateService,
     GraphCheckpointsDao,
     GraphCheckpointsWritesDao,
   ],
   exports: [
     PgCheckpointSaver,
+    CheckpointStateService,
     GraphCheckpointsDao,
     GraphCheckpointsWritesDao,
     LitellmModule,

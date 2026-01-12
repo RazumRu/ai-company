@@ -1,4 +1,8 @@
-export type TokenUsage = {
+/**
+ * Token usage for an entire LLM request.
+ * This represents the full token consumption and cost for a complete API call.
+ */
+export type RequestTokenUsage = {
   inputTokens: number;
   cachedInputTokens?: number;
   outputTokens: number;
@@ -12,7 +16,11 @@ export type TokenUsage = {
   currentContext?: number;
 };
 
-// Per-message token usage stored on MessageEntity / message DTOs
+/**
+ * Token usage for a specific message.
+ * This is the proportional share of tokens and cost attributed to a single message.
+ * Used by LiteLLM service for message-level token counting.
+ */
 export type MessageTokenUsage = {
   totalTokens: number;
   totalPrice?: number;

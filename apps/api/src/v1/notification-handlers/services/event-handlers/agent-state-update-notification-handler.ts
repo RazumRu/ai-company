@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 
-import { ThreadTokenUsageCacheService } from '../../../cache/services/thread-token-usage-cache.service';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
-import type { TokenUsage } from '../../../litellm/litellm.types';
+import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import {
   IAgentStateUpdateNotification,
   NotificationEvent,
@@ -28,10 +27,7 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
   readonly pattern = NotificationEvent.AgentStateUpdate;
   private readonly graphOwnerCache = new Map<string, string>();
 
-  constructor(
-    private readonly graphDao: GraphDao,
-    private readonly threadTokenUsageCacheService: ThreadTokenUsageCacheService,
-  ) {
+  constructor(private readonly graphDao: GraphDao) {
     super();
   }
 
@@ -43,35 +39,6 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
 
     // Get graph owner for enriching notification
     const ownerId = await this.getGraphOwner(graphId);
-
-    // Best-effort: persist per-node token usage into Redis
-    const patch: Partial<TokenUsage> = {
-      ...(data.inputTokens !== undefined
-        ? { inputTokens: data.inputTokens }
-        : {}),
-      ...(data.cachedInputTokens !== undefined
-        ? { cachedInputTokens: data.cachedInputTokens }
-        : {}),
-      ...(data.outputTokens !== undefined
-        ? { outputTokens: data.outputTokens }
-        : {}),
-      ...(data.reasoningTokens !== undefined
-        ? { reasoningTokens: data.reasoningTokens }
-        : {}),
-      ...(data.totalTokens !== undefined
-        ? { totalTokens: data.totalTokens }
-        : {}),
-      ...(data.totalPrice !== undefined ? { totalPrice: data.totalPrice } : {}),
-      ...(data.currentContext !== undefined
-        ? { currentContext: data.currentContext }
-        : {}),
-    };
-
-    await this.threadTokenUsageCacheService.upsertNodeTokenUsage(
-      externalThreadKey,
-      nodeId,
-      patch,
-    );
 
     const notifications: IAgentStateUpdateEnrichedNotification[] = [];
 

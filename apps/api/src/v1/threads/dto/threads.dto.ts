@@ -39,13 +39,18 @@ export const UsageStatisticsByToolSchema = z.object({
 });
 
 export const UsageStatisticsAggregateSchema = TokenUsageSchema.extend({
-  messageCount: z.number().describe('Number of messages'),
+  requestCount: z
+    .number()
+    .describe('Number of requests (messages with requestTokenUsage)'),
 });
 
 export const ThreadUsageStatisticsSchema = z.object({
   total: TokenUsageSchema.describe(
     'Total usage statistics for the entire thread',
   ),
+  requests: z
+    .number()
+    .describe('Total number of requests (messages with requestTokenUsage)'),
   byNode: z
     .record(z.string(), TokenUsageSchema)
     .describe('Usage statistics breakdown by node ID'),
@@ -53,10 +58,10 @@ export const ThreadUsageStatisticsSchema = z.object({
     .array(UsageStatisticsByToolSchema)
     .describe('Usage statistics breakdown by tool name'),
   toolsAggregate: UsageStatisticsAggregateSchema.describe(
-    'Aggregated statistics for all tool messages',
+    'Aggregated statistics for all tool message requests',
   ),
   messagesAggregate: UsageStatisticsAggregateSchema.describe(
-    'Aggregated statistics for all non-tool messages (human, ai, system, reasoning)',
+    'Aggregated statistics for all non-tool message requests (human, ai, system, reasoning)',
   ),
 });
 

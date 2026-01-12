@@ -1,7 +1,6 @@
 import { TimestampsEntity } from '@packages/typeorm';
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
-import type { ThreadTokenUsage } from '../dto/threads.dto';
 import { ThreadStatus } from '../threads.types';
 
 @Entity('threads')
@@ -38,7 +37,4 @@ export class ThreadEntity extends TimestampsEntity {
 
   @Column({ type: 'uuid', nullable: true })
   lastRunId?: string;
-
-  @Column({ type: 'jsonb', nullable: true })
-  tokenUsage?: ThreadTokenUsage;
 }
