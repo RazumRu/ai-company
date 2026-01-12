@@ -56,10 +56,29 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     const lines: string[] = [
       `You have access to file system tools for working with the repository at: ${workdir}`,
       '',
-      '**🔍 Discovery Workflow:**',
-      '1) Run `files_build_tags` for the repo (or relevant subpaths) before you rely on tag search.',
-      '2) Use `files_search_tags` to quickly jump to relevant files/symbols.',
-      '3) If tags are not enough, use `files_search_text` and/or `files_directory_tree` to locate code.',
+      '**🔍 Discovery Workflow (CRITICAL - Follow This):**',
+      '**MANDATORY FIRST STEP:** Run `files_build_tags` once at the start of work in any repo/directory. This indexes all symbols (functions, classes, methods) for fast lookup.',
+      '',
+      '**PRIMARY SEARCH METHOD:** Use `files_search_tags` to find symbol definitions (functions, classes, methods). This is:',
+      '- ⚡ **MUCH FASTER** than text search',
+      '- 🎯 **MORE PRECISE** - finds exact definitions, not usages/comments',
+      '- ✅ **PREFERRED** for code navigation and symbol lookup',
+      '',
+      '**WHEN TO USE EACH SEARCH TOOL:**',
+      '1) **files_search_tags** (PREFERRED): Finding where functions/classes/methods are DEFINED',
+      '   - Example: "Where is UserService defined?"',
+      '   - Example: "Find the handleRequest method"',
+      '   - Example: "Show me all React hooks (^use[A-Z])"',
+      '2) **files_search_text** (FALLBACK): Finding usages, comments, strings, or when tags aren\'t built',
+      '   - Example: "Where is UserService being called?"',
+      '   - Example: "Find TODO comments"',
+      '   - Example: "Search for API endpoint \'/users\'"',
+      '3) **files_directory_tree** (OVERVIEW): Understanding project structure',
+      '',
+      '**TAG WORKFLOW:**',
+      '1) Run `files_build_tags` once per repo/session (give it an alias like "project")',
+      '2) Use `files_search_tags` for ALL symbol lookups (with the same alias)',
+      '3) After file changes, rebuild tags before searching again',
       '',
       includeEditActions
         ? '**✏️ Editing Workflow (CRITICAL - Read This):**'
@@ -92,6 +111,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
         : '',
       '',
       '**Available Operations:**',
+      '- 🏷️ **TAG SEARCH (PRIMARY):** Build/search semantic tags for FAST symbol lookup',
       includeEditActions
         ? '- Read/search + create/modify/move/delete files and directories'
         : '- Read/search only (edit actions disabled)',
@@ -101,23 +121,22 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       includeEditActions
         ? '- Exact text replacement with `files_apply_changes` (manual control)'
         : '',
-      '- Build/search semantic tags for faster navigation',
       '',
       '**⚠️ Critical Rules:**',
+      '- 🏷️ **ALWAYS build tags first** with `files_build_tags` at the start of work in a repo',
+      '- 🔍 **PREFER `files_search_tags`** over `files_search_text` for finding symbol definitions',
+      '- ♻️ **Rebuild tags** after file changes (new/modified/renamed files) before searching again',
       includeEditActions
-        ? '- ALWAYS read file with `files_read` before editing (no exceptions)'
+        ? '- 📖 **ALWAYS read file** with `files_read` before editing (no exceptions)'
         : '- Tag search results can become stale after external changes',
       includeEditActions
-        ? '- Try `files_edit` first, fallback to `files_apply_changes` if needed'
-        : '- Rebuild tags after external repo changes',
-      includeEditActions
-        ? '- For `files_apply_changes`: copy EXACT text from `files_read`, never guess'
+        ? '- ✏️ **Try `files_edit` first**, fallback to `files_apply_changes` if needed'
         : '',
       includeEditActions
-        ? '- Use `files_write_file` ONLY for new files, not for editing existing files'
+        ? '- 📝 **For `files_apply_changes`**: copy EXACT text from `files_read`, never guess'
         : '',
       includeEditActions
-        ? '- Rebuild tags with `files_build_tags` after file changes'
+        ? '- ⚠️ **Use `files_write_file` ONLY for new files**, not for editing existing files'
         : '',
     ];
 
