@@ -741,14 +741,14 @@ describe('ThreadsService', () => {
       expect(result.byTool).toHaveLength(2);
       expect(result.byTool[0]).toMatchObject({
         toolName: 'search',
-        totalTokens: 40, // 80 / 2 tools processed
-        totalPrice: 0.002, // 0.004 / 2 tools processed
+        totalTokens: 80,
+        totalPrice: 0.004,
         callCount: 1,
       });
       expect(result.byTool[1]).toMatchObject({
         toolName: 'shell',
-        totalTokens: 40, // 80 / 2 tools processed
-        totalPrice: 0.002, // 0.004 / 2 tools processed
+        totalTokens: 80,
+        totalPrice: 0.004,
         callCount: 1,
       });
 
