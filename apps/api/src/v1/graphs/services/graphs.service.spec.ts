@@ -26,6 +26,7 @@ import {
   CompiledGraphNode,
   GraphNodeStatus,
   GraphStatus,
+  MessageRole,
   NodeKind,
 } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
@@ -307,7 +308,7 @@ describe('GraphsService', () => {
     const transformMessage = (msg: SerializedBaseMessage): MessageDto => {
       if (msg.type === 'HumanMessage') {
         return {
-          role: 'human',
+          role: MessageRole.Human,
           content: String(msg.content ?? ''),
           additionalKwargs: msg.additional_kwargs,
         };
@@ -315,7 +316,7 @@ describe('GraphsService', () => {
 
       if (msg.type === 'AIMessage' || msg.type === 'AIMessageChunk') {
         return {
-          role: 'ai',
+          role: MessageRole.AI,
           content: String(msg.content ?? ''),
           id: msg.id,
           // Keep this mock minimal; detailed toolCall mapping is tested elsewhere.
@@ -325,7 +326,7 @@ describe('GraphsService', () => {
       }
 
       return {
-        role: 'system',
+        role: MessageRole.System,
         content: String(msg.content ?? ''),
         additionalKwargs: msg.additional_kwargs,
       };

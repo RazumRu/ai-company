@@ -2,6 +2,7 @@ import { TimestampsEntity } from '@packages/typeorm';
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 import type { MessageDto } from '../../graphs/dto/graphs.dto';
+import { MessageRole } from '../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
 
 @Entity('messages')
@@ -32,7 +33,7 @@ export class MessageEntity extends TimestampsEntity {
    * Used to determine if a message is a tool message without parsing full JSONB
    */
   @Column({ type: 'varchar', nullable: true })
-  role?: string;
+  role?: MessageRole;
 
   /**
    * Tool/message name extracted from message.name for query performance

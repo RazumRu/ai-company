@@ -15,7 +15,11 @@ import { SuggestAgentInstructionsDto } from '../../../v1/ai-suggestions/dto/agen
 import { SuggestKnowledgeContentDto } from '../../../v1/ai-suggestions/dto/knowledge-suggestions.dto';
 import { AiSuggestionsService } from '../../../v1/ai-suggestions/services/ai-suggestions.service';
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
-import { GraphStatus, NodeKind } from '../../../v1/graphs/graphs.types';
+import {
+  GraphStatus,
+  MessageRole,
+  NodeKind,
+} from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
@@ -392,20 +396,20 @@ describe('AiSuggestionsService (integration)', () => {
         threadId: thread.id,
         externalThreadId: thread.externalThreadId,
         nodeId: 'agent-1',
-        message: { role: 'system', content: 'System intro' },
+        message: { role: MessageRole.System, content: 'System intro' },
       });
       await messagesDao.create({
         threadId: thread.id,
         externalThreadId: thread.externalThreadId,
         nodeId: 'agent-1',
-        message: { role: 'human', content: 'Hello' },
+        message: { role: MessageRole.Human, content: 'Hello' },
       });
       await messagesDao.create({
         threadId: thread.id,
         externalThreadId: thread.externalThreadId,
         nodeId: 'agent-1',
         message: {
-          role: 'ai',
+          role: MessageRole.AI,
           content: 'Calling tool',
           toolCalls: [
             {
@@ -422,7 +426,7 @@ describe('AiSuggestionsService (integration)', () => {
         externalThreadId: thread.externalThreadId,
         nodeId: 'tool-1',
         message: {
-          role: 'tool',
+          role: MessageRole.Tool,
           name: 'search',
           content: { result: 'ok' },
           toolCallId: '1',
@@ -433,7 +437,7 @@ describe('AiSuggestionsService (integration)', () => {
         externalThreadId: thread.externalThreadId,
         nodeId: 'tool-1',
         message: {
-          role: 'tool-shell',
+          role: MessageRole.ToolShell,
           name: 'shell',
           content: { stdout: 'done', stderr: '', exitCode: 0 },
           toolCallId: '2',

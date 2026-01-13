@@ -6,6 +6,7 @@ import {
   GraphNodeStatus,
   GraphSchema as RealGraphSchema,
   GraphStatus,
+  MessageRole,
   NodeKind,
 } from '../graphs.types';
 import { GraphRevisionSchema } from './graph-revisions.dto';
@@ -108,7 +109,7 @@ export const ToolCallSchema = z.object({
 
 // Human message schema
 export const HumanMessageSchema = z.object({
-  role: z.literal('human').describe('Message role'),
+  role: z.literal(MessageRole.Human).describe('Message role'),
   content: z.string().describe('Message content'),
   runId: z
     .string()
@@ -123,7 +124,7 @@ export const HumanMessageSchema = z.object({
 
 // AI message schema
 export const AIMessageSchema = z.object({
-  role: z.literal('ai').describe('Message role'),
+  role: z.literal(MessageRole.AI).describe('Message role'),
   content: z.string().describe('Message content'),
   id: z.string().optional().describe('Message ID'),
   runId: z
@@ -148,7 +149,7 @@ export const AIMessageSchema = z.object({
 // Reasoning message schema
 export const ReasoningMessageSchema = z.object({
   id: z.string().optional().describe('Message ID'),
-  role: z.literal('reasoning').describe('Message role'),
+  role: z.literal(MessageRole.Reasoning).describe('Message role'),
   content: z.string().describe('Reasoning trace emitted by the model'),
   runId: z
     .string()
@@ -163,7 +164,7 @@ export const ReasoningMessageSchema = z.object({
 
 // System message schema
 export const SystemMessageSchema = z.object({
-  role: z.literal('system').describe('Message role'),
+  role: z.literal(MessageRole.System).describe('Message role'),
   content: z.string().describe('Message content'),
   runId: z
     .string()
@@ -185,7 +186,7 @@ export const ShellToolResultSchema = z.object({
 
 // Shell tool message schema (specific for shell tool results)
 export const ShellToolMessageSchema = z.object({
-  role: z.literal('tool-shell').describe('Message role'),
+  role: z.literal(MessageRole.ToolShell).describe('Message role'),
   name: z.literal('shell').describe('Tool name - shell'),
   content: ShellToolResultSchema.describe('Parsed shell execution result'),
   toolCallId: z.string().describe('Tool call ID'),
@@ -202,7 +203,7 @@ export const ShellToolMessageSchema = z.object({
 
 // Generic tool message schema (for other tools)
 export const ToolMessageSchema = z.object({
-  role: z.literal('tool').describe('Message role'),
+  role: z.literal(MessageRole.Tool).describe('Message role'),
   name: z.string().describe('Tool name'),
   content: z
     .record(z.string(), z.unknown())

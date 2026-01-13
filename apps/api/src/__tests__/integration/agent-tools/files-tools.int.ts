@@ -21,6 +21,8 @@ import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-no
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
+import { LitellmService } from '../../../v1/litellm/services/litellm.service';
 import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
@@ -123,6 +125,8 @@ describe('Files tools integration', () => {
         ShellTool,
         RuntimeProvider,
         OpenaiService,
+        LitellmService,
+        LiteLlmClient,
       ],
     }).compile();
 

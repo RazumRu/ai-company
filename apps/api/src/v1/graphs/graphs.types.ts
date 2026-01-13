@@ -12,6 +12,15 @@ export enum NodeKind {
   Mcp = 'mcp',
 }
 
+export enum MessageRole {
+  Human = 'human',
+  AI = 'ai',
+  Reasoning = 'reasoning',
+  System = 'system',
+  Tool = 'tool',
+  ToolShell = 'tool-shell',
+}
+
 export enum GraphStatus {
   Created = 'created',
   Compiling = 'compiling',

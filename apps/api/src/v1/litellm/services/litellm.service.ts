@@ -132,8 +132,10 @@ export class LitellmService {
     let reasoningTokens = 0;
     let totalTokens = 0;
     let totalPriceDecimal = new Decimal(0);
+    let currentContext = 0;
     let sawAny = false;
     let sawPrice = false;
+    let sawContext = false;
 
     for (const usage of usages) {
       if (!usage) continue;
@@ -148,6 +150,11 @@ export class LitellmService {
         totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice);
         sawPrice = true;
       }
+      if (typeof usage.currentContext === 'number') {
+        // currentContext is a snapshot, take the maximum across all usages
+        currentContext = Math.max(currentContext, usage.currentContext);
+        sawContext = true;
+      }
     }
 
     if (!sawAny) {
@@ -161,6 +168,7 @@ export class LitellmService {
       ...(reasoningTokens ? { reasoningTokens } : {}),
       totalTokens,
       ...(sawPrice ? { totalPrice: totalPriceDecimal.toNumber() } : {}),
+      ...(sawContext ? { currentContext } : {}),
     };
   }
 

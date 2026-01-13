@@ -8,6 +8,7 @@ import Ajv from 'ajv';
 
 import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import type { RequestTokenUsage } from '../../litellm/litellm.types';
 import {
   fixRequiredWithDefaults,
   getSchemaParameterDocs,
@@ -36,6 +37,12 @@ export type ToolInvokeResult<TResult> = {
    * This is stored under `state.toolsMetadata[tool.name]`.
    */
   stateChange?: unknown;
+  /**
+   * Optional LLM token usage incurred by this tool during execution.
+   * If provided, will be added to thread state usage counters and
+   * attached to the tool message entity.
+   */
+  toolRequestUsage?: RequestTokenUsage;
 };
 
 export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {

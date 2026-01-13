@@ -4,7 +4,7 @@ import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockDeep, MockProxy } from 'vitest-mock-extended';
 
-import { GraphStatus } from '../../graphs/graphs.types';
+import { GraphStatus, MessageRole } from '../../graphs/graphs.types';
 import {
   IAgentMessageNotification,
   IGraphNotification,
@@ -194,7 +194,7 @@ describe('NotificationHandler', () => {
           createdAt: '2023-01-01T00:00:00Z',
           updatedAt: '2023-01-01T00:00:00Z',
           message: {
-            role: 'ai',
+            role: MessageRole.AI,
             content: 'Hello, world!',
           },
         },
@@ -253,7 +253,7 @@ describe('NotificationHandler', () => {
           createdAt: '2023-01-01T00:00:00Z',
           updatedAt: '2023-01-01T00:00:00Z',
           message: {
-            role: 'ai',
+            role: MessageRole.AI,
             content: '',
             id: 'msg-123',
             toolCalls: [
@@ -330,7 +330,7 @@ describe('NotificationHandler', () => {
           createdAt: '2023-01-01T00:00:00Z',
           updatedAt: '2023-01-01T00:00:00Z',
           message: {
-            role: 'ai',
+            role: MessageRole.AI,
             content: 'Hello!',
           },
         },
@@ -352,7 +352,7 @@ describe('NotificationHandler', () => {
           createdAt: '2023-01-01T00:00:00Z',
           updatedAt: '2023-01-01T00:00:00Z',
           message: {
-            role: 'human',
+            role: MessageRole.Human,
             content: 'Hi!',
           },
         },
@@ -415,7 +415,7 @@ describe('NotificationHandler', () => {
           createdAt: '2023-01-01T00:00:00Z',
           updatedAt: '2023-01-01T00:00:00Z',
           message: {
-            role: 'tool-shell',
+            role: MessageRole.ToolShell,
             name: 'shell',
             content: {
               exitCode: 0,

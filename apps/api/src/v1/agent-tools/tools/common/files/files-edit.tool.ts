@@ -8,6 +8,8 @@ import { z } from 'zod';
 
 import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import type { RequestTokenUsage } from '../../../../litellm/litellm.types';
+import { LitellmService } from '../../../../litellm/services/litellm.service';
 import { OpenaiService } from '../../../../openai/openai.service';
 import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
@@ -76,6 +78,7 @@ type ParseResult = {
   warnings?: string[];
   error?: string;
   needsLLM?: boolean;
+  usage?: RequestTokenUsage;
 };
 
 type ErrorCode =
@@ -140,7 +143,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   public description =
     'Apply sketch-based edits to a file using anchor markers. Call with useSmartModel=false first; if diff is wrong or parsing fails, retry with useSmartModel=true.';
 
-  constructor(private readonly openaiService: OpenaiService) {
+  constructor(
+    private readonly openaiService: OpenaiService,
+    private readonly litellmService: LitellmService,
+  ) {
     super();
   }
 
@@ -283,6 +289,9 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         return { success: false, error };
       }
 
+      // Track aggregated usage across all LLM calls
+      let aggregatedUsage: RequestTokenUsage | undefined;
+
       // IMPORTANT: Do NOT use `dedent` on file/sketch contents — it destroys indentation.
       // Use fenced blocks to preserve whitespace exactly.
       const hasMarkers = sketch.includes(ANCHOR_MARKER);
@@ -370,7 +379,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       }
 
       const callLLM = async (message: string) => {
-        const { content } = await this.openaiService.response(
+        const result = await this.openaiService.response(
           { message },
           {
             model: useSmartModel
@@ -382,7 +391,17 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
             text: { verbosity: useSmartModel ? 'medium' : 'low' },
           },
         );
-        return content ?? '';
+
+        // Aggregate usage
+        if (result.usage) {
+          aggregatedUsage =
+            this.litellmService.sumTokenUsages([
+              aggregatedUsage,
+              result.usage,
+            ]) ?? undefined;
+        }
+
+        return result.content ?? '';
       };
 
       const safeContent = await callLLM(prompt);
@@ -519,6 +538,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         return {
           success: true,
           hunks: retryValidation.data.hunks,
+          usage: aggregatedUsage,
         };
       }
 
@@ -526,6 +546,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         success: true,
         hunks,
         warnings: warnings.length > 0 ? warnings : undefined,
+        usage: aggregatedUsage,
       };
     } catch (error) {
       return {
@@ -1181,6 +1202,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         warnings: parseResult.warnings,
       },
       messageMetadata,
+      toolRequestUsage: parseResult.usage,
     };
   }
 }

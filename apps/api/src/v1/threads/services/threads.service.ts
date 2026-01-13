@@ -5,7 +5,7 @@ import Decimal from 'decimal.js';
 
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
-import { NodeKind } from '../../graphs/graphs.types';
+import { MessageRole, NodeKind } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphsService } from '../../graphs/services/graphs.service';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
@@ -236,72 +236,26 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    // Priority 1: Try to get usage from local state (if agent is in memory)
-    try {
-      const agentNodes = this.graphRegistry.getNodesByType<SimpleAgent>(
-        thread.graphId,
-        NodeKind.SimpleAgent,
-      );
-
-      if (agentNodes.length > 0) {
-        const agent = agentNodes[0]?.instance;
-        if (agent) {
-          const localUsage = agent.getThreadTokenUsage(thread.externalThreadId);
-          if (localUsage) {
-            // Agent is in memory, use local state (fastest)
-            return this.formatUsageStatistics(
-              { ...localUsage },
-              thread.externalThreadId,
-            );
-          }
-        }
+    let totalUsage: RequestTokenUsage = {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      totalPrice: 0,
+      currentContext: 0,
+    };
+    let byNodeUsage = new Map<string, RequestTokenUsage>();
+    const byToolUsage = new Map<
+      string,
+      {
+        toolName: string;
+        totalTokens: number;
+        totalPrice: number;
+        callCount: number;
       }
-    } catch (_error) {
-      // Agent not found or not in memory, fall through to checkpoint
-    }
+    >();
 
-    // Priority 2: Fallback to checkpoint (if agent not in memory)
-    const checkpointUsage =
-      await this.checkpointStateService.getThreadTokenUsage(
-        thread.externalThreadId,
-      );
-
-    if (checkpointUsage) {
-      return this.formatUsageStatistics(
-        checkpointUsage,
-        thread.externalThreadId,
-      );
-    }
-
-    // No usage data available anywhere
-    throw new NotFoundException('THREAD_USAGE_STATISTICS_NOT_FOUND');
-  }
-
-  /**
-   * Format usage statistics from stored token usage data (checkpoint or local state)
-   */
-  private async formatUsageStatistics(
-    tokenUsage: RequestTokenUsage & {
-      byNode?: Record<string, RequestTokenUsage>;
-    },
-    externalThreadId: string,
-  ): Promise<ThreadUsageStatisticsDto> {
-    // We need to get messages to calculate byTool and aggregates
-    // Use projection to get only needed fields (no need for full message JSONB)
-    const messages = await this.messagesDao.getAll({
-      externalThreadId,
-      order: { createdAt: 'ASC' },
-      projection: [
-        'id',
-        'nodeId',
-        'role',
-        'name',
-        'requestTokenUsage',
-        'toolCallNames',
-      ],
-    });
-
-    // Aggregate message usage directly - separate tools from regular messages
     const toolsAggregate: UsageStatisticsAggregate = {
       inputTokens: 0,
       outputTokens: 0,
@@ -316,142 +270,104 @@ export class ThreadsService {
       requestCount: 0,
     };
 
-    const byToolMap = new Map<
-      string,
-      { totalTokens: number; totalPrice: number; callCount: number }
-    >();
+    const accumulate = (
+      a: RequestTokenUsage,
+      b: RequestTokenUsage,
+    ): RequestTokenUsage => ({
+      inputTokens: a.inputTokens + b.inputTokens,
+      cachedInputTokens:
+        (a.cachedInputTokens || 0) + (b.cachedInputTokens || 0),
+      outputTokens: a.outputTokens + b.outputTokens,
+      reasoningTokens: (a.reasoningTokens || 0) + (b.reasoningTokens || 0),
+      totalTokens: a.totalTokens + b.totalTokens,
+      totalPrice: (a.totalPrice || 0) + (b.totalPrice || 0),
+      currentContext: (a.currentContext || 0) + (b.currentContext || 0),
+    });
 
-    const byNodeMap = new Map<string, RequestTokenUsage>();
+    // Priority 1: Try to get usage from local state (if agent is in memory)
+    const agentNodes = this.graphRegistry.getNodesByType<SimpleAgent>(
+      thread.graphId,
+      NodeKind.SimpleAgent,
+    );
 
-    // Use Decimal.js for price aggregation to avoid floating-point errors
-    let toolsPriceDecimal = new Decimal(0);
-    let messagesPriceDecimal = new Decimal(0);
-    let totalRequests = 0;
+    for (const agent of agentNodes) {
+      const instance = agent.instance;
+      const localUsage = instance.getThreadTokenUsage(thread.externalThreadId);
+      if (localUsage) {
+        totalUsage = accumulate(totalUsage, localUsage);
+      }
+    }
 
-    for (const messageEntity of messages) {
-      const requestUsage = messageEntity.requestTokenUsage;
+    // Priority 2: Fallback to checkpoint (if agent not in memory)
+    if (totalUsage.totalTokens === 0) {
+      const threadUsage = await this.checkpointStateService.getThreadTokenUsage(
+        thread.externalThreadId,
+      );
 
-      // Process requestTokenUsage for LLM responses (AI, reasoning messages)
-      if (requestUsage && typeof requestUsage === 'object') {
-        const usage = requestUsage as RequestTokenUsage;
+      if (threadUsage) {
+        totalUsage = threadUsage;
 
-        // Count total requests (messages with requestTokenUsage)
-        totalRequests += 1;
-
-        // Aggregate by node
-        const nodeId = messageEntity.nodeId;
-        if (nodeId) {
-          const nodeUsage = byNodeMap.get(nodeId) || {
-            inputTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0,
-          };
-
-          nodeUsage.inputTokens += usage.inputTokens || 0;
-          nodeUsage.outputTokens += usage.outputTokens || 0;
-          nodeUsage.totalTokens += usage.totalTokens || 0;
-
-          if (usage.cachedInputTokens) {
-            nodeUsage.cachedInputTokens =
-              (nodeUsage.cachedInputTokens || 0) + usage.cachedInputTokens;
-          }
-          if (usage.reasoningTokens) {
-            nodeUsage.reasoningTokens =
-              (nodeUsage.reasoningTokens || 0) + usage.reasoningTokens;
-          }
-          if (usage.totalPrice) {
-            nodeUsage.totalPrice =
-              (nodeUsage.totalPrice || 0) + usage.totalPrice;
-          }
-          if (usage.currentContext) {
-            nodeUsage.currentContext = Math.max(
-              nodeUsage.currentContext || 0,
-              usage.currentContext,
-            );
-          }
-
-          byNodeMap.set(nodeId, nodeUsage);
-        }
-
-        // Check if this AI message has tool calls (using denormalized field)
-        const isAiMessage = messageEntity.role === 'ai';
-        const toolCallNames = messageEntity.toolCallNames;
-        const hasToolCalls =
-          isAiMessage &&
-          Array.isArray(toolCallNames) &&
-          toolCallNames.length > 0;
-
-        if (hasToolCalls) {
-          // Update tools aggregate (AI messages WITH tool calls)
-          toolsAggregate.inputTokens += usage.inputTokens || 0;
-          toolsAggregate.outputTokens += usage.outputTokens || 0;
-          toolsAggregate.totalTokens += usage.totalTokens || 0;
-          toolsAggregate.requestCount += 1;
-
-          if (usage.cachedInputTokens) {
-            toolsAggregate.cachedInputTokens =
-              (toolsAggregate.cachedInputTokens || 0) + usage.cachedInputTokens;
-          }
-          if (usage.reasoningTokens) {
-            toolsAggregate.reasoningTokens =
-              (toolsAggregate.reasoningTokens || 0) + usage.reasoningTokens;
-          }
-          if (usage.totalPrice) {
-            toolsPriceDecimal = toolsPriceDecimal.plus(usage.totalPrice);
-          }
-          if (usage.currentContext) {
-            toolsAggregate.currentContext = Math.max(
-              toolsAggregate.currentContext || 0,
-              usage.currentContext,
-            );
-          }
-
-          // Attribute this AI message's requestUsage to each tool it called for byTool
-          for (const toolName of toolCallNames) {
-            const toolStats = byToolMap.get(toolName) || {
-              totalTokens: 0,
-              totalPrice: 0,
-              callCount: 0,
-            };
-
-            // Divide usage across all tool calls in this message
-            const usagePerTool = {
-              totalTokens: Math.floor(usage.totalTokens / toolCallNames.length),
-              totalPrice: (usage.totalPrice || 0) / toolCallNames.length,
-            };
-
-            toolStats.totalTokens += usagePerTool.totalTokens;
-            toolStats.totalPrice += usagePerTool.totalPrice;
-            toolStats.callCount += 1;
-            byToolMap.set(toolName, toolStats);
-          }
-        } else {
-          // Update messages aggregate (AI messages WITHOUT tool calls + human/system/reasoning)
-          messagesAggregate.inputTokens += usage.inputTokens || 0;
-          messagesAggregate.outputTokens += usage.outputTokens || 0;
-          messagesAggregate.totalTokens += usage.totalTokens || 0;
-          messagesAggregate.requestCount += 1;
-
-          if (usage.cachedInputTokens) {
-            messagesAggregate.cachedInputTokens =
-              (messagesAggregate.cachedInputTokens || 0) +
-              usage.cachedInputTokens;
-          }
-          if (usage.reasoningTokens) {
-            messagesAggregate.reasoningTokens =
-              (messagesAggregate.reasoningTokens || 0) + usage.reasoningTokens;
-          }
-          if (usage.totalPrice) {
-            messagesPriceDecimal = messagesPriceDecimal.plus(usage.totalPrice);
-          }
-          if (usage.currentContext) {
-            messagesAggregate.currentContext = Math.max(
-              messagesAggregate.currentContext || 0,
-              usage.currentContext,
-            );
-          }
+        if (threadUsage.byNode) {
+          byNodeUsage = new Map(Object.entries(threadUsage.byNode));
         }
       }
+    }
+
+    if (totalUsage.totalTokens === 0) {
+      throw new NotFoundException('THREAD_USAGE_STATISTICS_NOT_FOUND');
+    }
+
+    // Format usage statistics from stored token usage data
+    // We need to get messages to calculate byTool and aggregates
+    const messages = await this.messagesDao.getAll({
+      externalThreadId: thread.externalThreadId,
+      order: { createdAt: 'ASC' },
+      projection: [
+        'id',
+        'nodeId',
+        'role',
+        'name',
+        'requestTokenUsage',
+        'toolCallNames',
+      ],
+    });
+
+    // Use Decimal.js for price aggregation to avoid floating-point errors
+    const toolsPriceDecimal = new Decimal(0);
+    const messagesPriceDecimal = new Decimal(0);
+    let totalRequests = 0;
+
+    for (const [index, messageEntity] of messages.entries()) {
+      const requestUsage = messageEntity.requestTokenUsage;
+      const isToolMessage =
+        messageEntity.role === MessageRole.Tool ||
+        messageEntity.role === MessageRole.ToolShell;
+
+      console.log(isToolMessage);
+
+      if (requestUsage) {
+        totalRequests++;
+
+        totalUsage = accumulate(totalUsage, requestUsage);
+
+        if (isToolMessage) {
+          toolsPriceDecimal.plus(requestUsage.totalPrice || 0);
+
+          toolsAggregate.inputTokens += requestUsage.inputTokens;
+          toolsAggregate.outputTokens += requestUsage.outputTokens;
+          toolsAggregate.totalTokens += requestUsage.totalTokens;
+          toolsAggregate.requestCount++;
+        } else {
+          messagesPriceDecimal.plus(requestUsage?.totalPrice || 0);
+
+          messagesAggregate.inputTokens += requestUsage.inputTokens;
+          messagesAggregate.outputTokens += requestUsage.outputTokens;
+          messagesAggregate.totalTokens += requestUsage.totalTokens;
+          messagesAggregate.requestCount++;
+        }
+      }
+
+      console.log(messageEntity);
     }
 
     // Finalize price aggregations
@@ -462,41 +378,11 @@ export class ThreadsService {
       messagesAggregate.totalPrice = messagesPriceDecimal.toNumber();
     }
 
-    // Convert byToolMap to array
-    const byTool: UsageStatisticsByTool[] = Array.from(byToolMap.entries())
-      .map(([toolName, stats]) => ({
-        toolName,
-        totalTokens: stats.totalTokens,
-        totalPrice: stats.totalPrice > 0 ? stats.totalPrice : undefined,
-        callCount: stats.callCount,
-      }))
-      .sort((a, b) => b.totalTokens - a.totalTokens);
-
-    // Convert byNodeMap to object
-    const byNode: Record<string, RequestTokenUsage> =
-      Object.fromEntries(byNodeMap);
-
     return {
-      total: {
-        inputTokens: tokenUsage.inputTokens ?? 0,
-        outputTokens: tokenUsage.outputTokens ?? 0,
-        totalTokens: tokenUsage.totalTokens ?? 0,
-        ...(tokenUsage.cachedInputTokens && tokenUsage.cachedInputTokens > 0
-          ? { cachedInputTokens: tokenUsage.cachedInputTokens }
-          : {}),
-        ...(tokenUsage.reasoningTokens && tokenUsage.reasoningTokens > 0
-          ? { reasoningTokens: tokenUsage.reasoningTokens }
-          : {}),
-        ...(tokenUsage.totalPrice && tokenUsage.totalPrice > 0
-          ? { totalPrice: tokenUsage.totalPrice }
-          : {}),
-        ...(tokenUsage.currentContext && tokenUsage.currentContext > 0
-          ? { currentContext: tokenUsage.currentContext }
-          : {}),
-      },
+      total: totalUsage,
       requests: totalRequests,
-      byNode,
-      byTool,
+      byNode: Object.fromEntries(byNodeUsage),
+      byTool: Array.from(byToolUsage.values()),
       toolsAggregate,
       messagesAggregate,
     };

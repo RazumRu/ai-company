@@ -8,6 +8,7 @@ import { DefaultLogger } from '@packages/common';
 import { keyBy } from 'lodash';
 
 import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
+import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
@@ -20,6 +21,7 @@ export class ToolExecutorNode extends BaseNode<
 
   constructor(
     private tools: DynamicStructuredTool[],
+    private readonly litellmService: LitellmService,
     opts?: {
       maxOutputChars?: number;
     },
@@ -92,7 +94,7 @@ export class ToolExecutorNode extends BaseNode<
             },
             signal: cfg.signal,
           })) as unknown;
-          const { output, messageMetadata, stateChange } =
+          const { output, messageMetadata, stateChange, toolRequestUsage } =
             rawResult as ToolInvokeResult<unknown>;
 
           const content =
@@ -106,6 +108,7 @@ export class ToolExecutorNode extends BaseNode<
               toolName: tc.name,
               toolMessage: makeMsg(`${trimmed}${suffix}`, messageMetadata),
               stateChange,
+              toolRequestUsage,
             };
           }
 
@@ -113,6 +116,7 @@ export class ToolExecutorNode extends BaseNode<
             toolName: tc.name,
             toolMessage: makeMsg(content, messageMetadata),
             stateChange,
+            toolRequestUsage,
           };
         } catch (e) {
           const err = e as Error;
@@ -134,6 +138,20 @@ export class ToolExecutorNode extends BaseNode<
 
     const toolMessages = results.map((r) => r.toolMessage);
 
+    // Attach token usage to tool messages that have it
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result && result.toolRequestUsage) {
+        const msg = toolMessages[i];
+        if (msg) {
+          msg.additional_kwargs = {
+            ...(msg.additional_kwargs ?? {}),
+            __requestUsage: result.toolRequestUsage,
+          };
+        }
+      }
+    }
+
     const toolsMetadataUpdate = results.reduce(
       (acc, r) => {
         if (r.stateChange !== undefined) {
@@ -149,12 +167,19 @@ export class ToolExecutorNode extends BaseNode<
       cfg,
     );
 
+    // Aggregate all tool request usages
+    const aggregatedToolUsage = this.litellmService.sumTokenUsages(
+      results.map((r) => r.toolRequestUsage).filter(Boolean),
+    );
+
     return {
       messages: {
         mode: 'append',
         items: messagesWithMetadata,
       },
       toolsMetadata: toolsMetadataUpdate,
+      // Spread aggregated tool usage into state (will be added by reducers)
+      ...(aggregatedToolUsage ?? {}),
     };
   }
 }

@@ -69,7 +69,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       '   - Example: "Where is UserService defined?"',
       '   - Example: "Find the handleRequest method"',
       '   - Example: "Show me all React hooks (^use[A-Z])"',
-      '2) **files_search_text** (FALLBACK): Finding usages, comments, strings, or when tags aren\'t built',
+      "2) **files_search_text** (FALLBACK): Finding usages, comments, strings, or when tags aren't built",
       '   - Example: "Where is UserService being called?"',
       '   - Example: "Find TODO comments"',
       '   - Example: "Search for API endpoint \'/users\'"',

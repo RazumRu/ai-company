@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
+import { MessageRole } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphsService } from '../../graphs/services/graphs.service';
 import { MessageTransformerService } from '../../graphs/services/message-transformer.service';
@@ -56,7 +57,7 @@ describe('ThreadsService', () => {
     externalThreadId: 'external-thread-123',
     nodeId: 'node-1',
     message: {
-      role: 'human',
+      role: MessageRole.Human,
       content: 'Test message',
     },
     createdAt: new Date('2024-01-01T00:00:00Z'),
@@ -433,7 +434,7 @@ describe('ThreadsService', () => {
         createMockMessageEntity(),
         createMockMessageEntity({
           id: 'message-2',
-          message: { role: 'ai', content: 'Response' },
+          message: { role: MessageRole.AI, content: 'Response' },
         }),
       ];
 
@@ -462,7 +463,7 @@ describe('ThreadsService', () => {
       expect(result[0]).toMatchObject({
         id: 'message-123',
         threadId: mockThreadId,
-        message: { role: 'human', content: 'Test message' },
+        message: { role: MessageRole.Human, content: 'Test message' },
       });
     });
 
@@ -577,18 +578,23 @@ describe('ThreadsService', () => {
       // Checkpoint data should only include requestTokenUsage (from LLM requests)
       // Tool messages don't have requestTokenUsage, so they're not in the checkpoint
       const mockTokenUsageFromCheckpoint = {
-        inputTokens: 25, // 10 + 15 (human + ai)
-        outputTokens: 45, // 20 + 25 (human + ai)
-        totalTokens: 70, // 30 + 40 (human + ai)
-        totalPrice: 0.003, // 0.001 + 0.002 (human + ai)
+        inputTokens: 75, // 10 + 15 + 50 (human + ai calling + ai processing)
+        outputTokens: 75, // 20 + 25 + 30 (human + ai calling + ai processing)
+        totalTokens: 150, // 30 + 40 + 80 (human + ai calling + ai processing)
+        totalPrice: 0.007, // 0.001 + 0.002 + 0.004 (human + ai calling + ai processing)
         byNode: {
           'node-1': {
-            inputTokens: 25, // 10 + 15 (human + ai in node-1)
-            outputTokens: 45, // 20 + 25 (human + ai in node-1)
-            totalTokens: 70, // 30 + 40 (human + ai in node-1)
-            totalPrice: 0.003, // 0.001 + 0.002 (human + ai in node-1)
+            inputTokens: 25, // 10 + 15 (human + ai calling in node-1)
+            outputTokens: 45, // 20 + 25 (human + ai calling in node-1)
+            totalTokens: 70, // 30 + 40 (human + ai calling in node-1)
+            totalPrice: 0.003, // 0.001 + 0.002 (human + ai calling in node-1)
           },
-          // node-2 only has tool messages (no requestTokenUsage), so not in checkpoint
+          'node-2': {
+            inputTokens: 50, // ai processing in node-2
+            outputTokens: 30,
+            totalTokens: 80,
+            totalPrice: 0.004,
+          },
         },
       };
 
@@ -596,7 +602,7 @@ describe('ThreadsService', () => {
         createMockMessageEntity({
           id: 'msg-1',
           nodeId: 'node-1',
-          role: 'human',
+          role: MessageRole.Human,
           name: undefined,
           requestTokenUsage: {
             inputTokens: 10,
@@ -608,7 +614,7 @@ describe('ThreadsService', () => {
         createMockMessageEntity({
           id: 'msg-2',
           nodeId: 'node-1',
-          role: 'ai',
+          role: MessageRole.AI,
           name: undefined,
           toolCallNames: ['search', 'shell'],
           requestTokenUsage: {
@@ -621,11 +627,11 @@ describe('ThreadsService', () => {
         createMockMessageEntity({
           id: 'msg-3',
           nodeId: 'node-2',
-          role: 'tool',
+          role: MessageRole.Tool,
           name: 'search',
           requestTokenUsage: undefined, // Tool messages don't have requestTokenUsage
           message: {
-            role: 'tool',
+            role: MessageRole.Tool,
             name: 'search',
             toolCallId: 'call_search_123',
             content: { result: 'search result' },
@@ -640,11 +646,11 @@ describe('ThreadsService', () => {
         createMockMessageEntity({
           id: 'msg-4',
           nodeId: 'node-2',
-          role: 'tool-shell',
+          role: MessageRole.Tool,
           name: 'shell',
           requestTokenUsage: undefined, // Tool messages don't have requestTokenUsage
           message: {
-            role: 'tool-shell',
+            role: MessageRole.Tool,
             name: 'shell',
             toolCallId: 'call_shell_456',
             content: { exitCode: 0, stdout: 'shell output', stderr: '' },
@@ -654,6 +660,20 @@ describe('ThreadsService', () => {
                 totalPrice: 0.0003,
               },
             },
+          },
+        }),
+        // NEW: AI message processing tool results (no tool_calls)
+        createMockMessageEntity({
+          id: 'msg-5',
+          nodeId: 'node-2',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: [], // No tool calls - this is processing tool results
+          requestTokenUsage: {
+            inputTokens: 50,
+            outputTokens: 30,
+            totalTokens: 80,
+            totalPrice: 0.004,
           },
         }),
       ];
@@ -694,58 +714,63 @@ describe('ThreadsService', () => {
 
       // Check total (only from requestTokenUsage)
       expect(result.total).toMatchObject({
-        inputTokens: 25, // 10 + 15 (human + ai)
-        outputTokens: 45, // 20 + 25 (human + ai)
-        totalTokens: 70, // 30 + 40 (human + ai)
-        totalPrice: 0.003, // 0.001 + 0.002 (human + ai)
+        inputTokens: 75, // 10 + 15 + 50 (human + ai calling + ai processing)
+        outputTokens: 75, // 20 + 25 + 30 (human + ai calling + ai processing)
+        totalTokens: 150, // 30 + 40 + 80 (human + ai calling + ai processing)
+        totalPrice: 0.007, // 0.001 + 0.002 + 0.004 (human + ai calling + ai processing)
       });
 
       // Check byNode (only from requestTokenUsage)
       expect(result.byNode['node-1']).toMatchObject({
-        inputTokens: 25, // 10 + 15 (human + ai)
-        outputTokens: 45, // 20 + 25 (human + ai)
-        totalTokens: 70, // 30 + 40 (human + ai)
+        inputTokens: 25, // 10 + 15 (human + ai calling)
+        outputTokens: 45, // 20 + 25 (human + ai calling)
+        totalTokens: 70, // 30 + 40 (human + ai calling)
       });
       expect(result.byNode['node-1']!.totalPrice).toBeCloseTo(0.003, 4);
-      // node-2 only has tool messages (no requestTokenUsage), so shouldn't appear
-      expect(result.byNode['node-2']).toBeUndefined();
+      expect(result.byNode['node-2']).toMatchObject({
+        inputTokens: 50, // ai processing
+        outputTokens: 30,
+        totalTokens: 80,
+      });
+      expect(result.byNode['node-2']!.totalPrice).toBeCloseTo(0.004, 4);
 
-      // Check byTool (from AI message with 2 tool calls)
-      // AI message has 40 tokens @ 0.002, split between 2 tools = 20 tokens @ 0.001 each
+      // Check byTool (from AI message processing tool results)
+      // AI processing message has 80 tokens @ 0.004, split between 2 tools = 40 tokens @ 0.002 each
       expect(result.byTool).toHaveLength(2);
       expect(result.byTool[0]).toMatchObject({
         toolName: 'search',
-        totalTokens: 20, // 40 / 2 tool calls
-        totalPrice: 0.001, // 0.002 / 2 tool calls
+        totalTokens: 40, // 80 / 2 tools processed
+        totalPrice: 0.002, // 0.004 / 2 tools processed
         callCount: 1,
       });
       expect(result.byTool[1]).toMatchObject({
         toolName: 'shell',
-        totalTokens: 20, // 40 / 2 tool calls
-        totalPrice: 0.001, // 0.002 / 2 tool calls
+        totalTokens: 40, // 80 / 2 tools processed
+        totalPrice: 0.002, // 0.004 / 2 tools processed
         callCount: 1,
       });
 
       // Check total requests (only messages with requestTokenUsage)
-      expect(result.requests).toBe(2); // human + ai (with tool calls)
+      expect(result.requests).toBe(3); // human + ai calling + ai processing
 
-      // Check toolsAggregate (AI messages WITH tool calls)
+      // Check toolsAggregate (AI messages processing tool results, not calling tools)
       expect(result.toolsAggregate).toMatchObject({
-        inputTokens: 15, // AI message with tool calls
-        outputTokens: 25,
-        totalTokens: 40,
-        requestCount: 1, // 1 AI message with tool calls
+        inputTokens: 50, // AI message processing tool results
+        outputTokens: 30,
+        totalTokens: 80,
+        requestCount: 1, // 1 AI message processing tool results
       });
-      expect(result.toolsAggregate.totalPrice).toBeCloseTo(0.002, 4);
+      expect(result.toolsAggregate.totalPrice).toBeCloseTo(0.004, 4);
 
-      // Check messagesAggregate (AI messages WITHOUT tool calls + human)
+      // Check messagesAggregate (human + AI messages with tool calls)
+      // AI messages WITH tool calls now go to messagesAggregate (not toolsAggregate)
       expect(result.messagesAggregate).toMatchObject({
-        inputTokens: 10, // human message only
-        outputTokens: 20,
-        totalTokens: 30,
-        requestCount: 1, // 1 human message (AI has tool calls, so goes to toolsAggregate)
+        inputTokens: 25, // 10 (human) + 15 (ai calling tools)
+        outputTokens: 45, // 20 (human) + 25 (ai calling tools)
+        totalTokens: 70, // 30 (human) + 40 (ai calling tools)
+        requestCount: 2, // human + ai calling tools
       });
-      expect(result.messagesAggregate.totalPrice).toBeCloseTo(0.001, 4);
+      expect(result.messagesAggregate.totalPrice).toBeCloseTo(0.003, 4);
     });
 
     it('should throw NotFoundException when thread has no usage statistics', async () => {
@@ -778,25 +803,26 @@ describe('ThreadsService', () => {
       });
 
       const mockTokenUsageFromCheckpoint = {
-        inputTokens: 12,
-        outputTokens: 24,
-        totalTokens: 36,
-        totalPrice: 0.003,
+        inputTokens: 37, // 5 + 7 + 10 + 15 (two calls, two processing)
+        outputTokens: 74, // 10 + 14 + 20 + 30 (two calls, two processing)
+        totalTokens: 111, // 15 + 21 + 30 + 45 (two calls, two processing)
+        totalPrice: 0.008, // 0.001 + 0.002 + 0.002 + 0.003 (two calls, two processing)
         byNode: {
           'node-1': {
-            inputTokens: 12,
-            outputTokens: 24,
-            totalTokens: 36,
-            totalPrice: 0.003,
+            inputTokens: 37,
+            outputTokens: 74,
+            totalTokens: 111,
+            totalPrice: 0.008,
           },
         },
       };
 
       const mockMessages = [
+        // First: AI calling search
         createMockMessageEntity({
           id: 'msg-1',
           nodeId: 'node-1',
-          role: 'ai',
+          role: MessageRole.AI,
           name: undefined,
           toolCallNames: ['search'],
           requestTokenUsage: {
@@ -806,10 +832,33 @@ describe('ThreadsService', () => {
             totalPrice: 0.001,
           },
         }),
+        // Tool result
         createMockMessageEntity({
           id: 'msg-2',
           nodeId: 'node-1',
-          role: 'ai',
+          role: MessageRole.Tool,
+          name: 'search',
+          requestTokenUsage: undefined,
+        }),
+        // AI processing first tool result
+        createMockMessageEntity({
+          id: 'msg-3',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: [], // No tool calls - processing result
+          requestTokenUsage: {
+            inputTokens: 10,
+            outputTokens: 20,
+            totalTokens: 30,
+            totalPrice: 0.002,
+          },
+        }),
+        // Second: AI calling search again
+        createMockMessageEntity({
+          id: 'msg-4',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
           name: undefined,
           toolCallNames: ['search'],
           requestTokenUsage: {
@@ -817,6 +866,28 @@ describe('ThreadsService', () => {
             outputTokens: 14,
             totalTokens: 21,
             totalPrice: 0.002,
+          },
+        }),
+        // Tool result
+        createMockMessageEntity({
+          id: 'msg-5',
+          nodeId: 'node-1',
+          role: MessageRole.Tool,
+          name: 'search',
+          requestTokenUsage: undefined,
+        }),
+        // AI processing second tool result
+        createMockMessageEntity({
+          id: 'msg-6',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: [], // No tool calls - processing result
+          requestTokenUsage: {
+            inputTokens: 15,
+            outputTokens: 30,
+            totalTokens: 45,
+            totalPrice: 0.003,
           },
         }),
       ];
@@ -837,12 +908,13 @@ describe('ThreadsService', () => {
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 
+      // byTool should aggregate usage from the two AI messages processing tool results (msg-3 and msg-6)
       expect(result.byTool).toHaveLength(1);
       expect(result.byTool[0]).toMatchObject({
         toolName: 'search',
-        totalTokens: 36,
-        totalPrice: 0.003,
-        callCount: 2,
+        totalTokens: 75, // 30 + 45 (from processing messages)
+        totalPrice: 0.005, // 0.002 + 0.003 (from processing messages)
+        callCount: 2, // Two tool result messages
       });
     });
 
@@ -892,7 +964,7 @@ describe('ThreadsService', () => {
         createMockMessageEntity({
           id: 'msg-1',
           nodeId: 'node-1',
-          role: 'ai',
+          role: MessageRole.AI,
           name: undefined,
           requestTokenUsage: {
             inputTokens: 10,

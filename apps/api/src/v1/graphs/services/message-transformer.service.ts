@@ -4,6 +4,7 @@ import { isObject, isString } from 'lodash';
 import { extractTextFromResponseContent } from '../../agents/agents.utils';
 import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import { MessageDto } from '../dto/graphs.dto';
+import { MessageRole } from '../graphs.types';
 
 /**
  * Interface for raw tool call structures from LangChain serialization
@@ -56,17 +57,27 @@ export class MessageTransformerService {
       case 'HumanMessage':
         if (isAgentInstruction) {
           return {
-            role: 'ai',
+            role: MessageRole.AI,
             content: contentStr,
             rawContent: msg.content,
             additionalKwargs,
             runId,
           };
         }
-        return { role: 'human', content: contentStr, additionalKwargs, runId };
+        return {
+          role: MessageRole.Human,
+          content: contentStr,
+          additionalKwargs,
+          runId,
+        };
 
       case 'SystemMessage':
-        return { role: 'system', content: contentStr, additionalKwargs, runId };
+        return {
+          role: MessageRole.System,
+          content: contentStr,
+          additionalKwargs,
+          runId,
+        };
 
       case 'ChatMessage': {
         const role = typeof msg.role === 'string' ? msg.role : undefined;
@@ -81,7 +92,7 @@ export class MessageTransformerService {
         if (role === 'reasoning') {
           return {
             id: reasoningId,
-            role: 'reasoning',
+            role: MessageRole.Reasoning,
             content: contentStr,
             additionalKwargs,
             runId,
@@ -89,7 +100,7 @@ export class MessageTransformerService {
         }
 
         return {
-          role: 'ai',
+          role: MessageRole.AI,
           content: contentStr,
           rawContent: msg.content,
           id: typeof msg.id === 'string' ? msg.id : undefined,
@@ -106,7 +117,7 @@ export class MessageTransformerService {
             : [],
         );
         return {
-          role: 'ai',
+          role: MessageRole.AI,
           content: contentStr,
           rawContent: msg.content,
           id: typeof msg.id === 'string' ? msg.id : undefined,
@@ -127,7 +138,7 @@ export class MessageTransformerService {
 
         if (toolName === 'shell') {
           return {
-            role: 'tool-shell',
+            role: MessageRole.ToolShell,
             name: toolName,
             content: parsed as {
               exitCode: number;
@@ -143,7 +154,7 @@ export class MessageTransformerService {
         }
 
         return {
-          role: 'tool',
+          role: MessageRole.Tool,
           name: toolName,
           content: parsed,
           toolCallId,
@@ -155,7 +166,12 @@ export class MessageTransformerService {
 
       default:
         // Fallback for unknown message types - treat as system message
-        return { role: 'system', content: contentStr, additionalKwargs, runId };
+        return {
+          role: MessageRole.System,
+          content: contentStr,
+          additionalKwargs,
+          runId,
+        };
     }
   }
 

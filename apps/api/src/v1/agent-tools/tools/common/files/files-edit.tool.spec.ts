@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { LitellmService } from '../../../../litellm/services/litellm.service';
 import { OpenaiService } from '../../../../openai/openai.service';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesEditTool, FilesEditToolConfig } from './files-edit.tool';
@@ -14,6 +15,7 @@ describe('FilesEditTool', () => {
   let mockConfig: FilesEditToolConfig;
   let testDir: string;
   let mockOpenaiService: OpenaiService;
+  let mockLitellmService: LitellmService;
 
   beforeEach(async () => {
     // Create temporary directory for tests
@@ -24,7 +26,11 @@ describe('FilesEditTool', () => {
       response: vi.fn(),
     } as unknown as OpenaiService;
 
-    tool = new FilesEditTool(mockOpenaiService);
+    mockLitellmService = {
+      sumTokenUsages: vi.fn().mockReturnValue(null),
+    } as unknown as LitellmService;
+
+    tool = new FilesEditTool(mockOpenaiService, mockLitellmService);
 
     const mockRuntime = {
       getWorkdir: () => testDir,
@@ -1110,6 +1116,63 @@ function calculateTotal(items) {
       expect(result.error).toBeUndefined();
       expect(result.edits).toBeDefined();
       expect(result.edits).toHaveLength(1);
+    });
+  });
+
+  describe('toolRequestUsage', () => {
+    it('should aggregate complete RequestTokenUsage with all fields from LLM calls', () => {
+      // Test that sumTokenUsages is called and properly aggregates usage
+      // This verifies the fix for incomplete usage data in files_edit tool
+
+      const usage1 = {
+        inputTokens: 100,
+        cachedInputTokens: 50,
+        outputTokens: 75,
+        reasoningTokens: 10,
+        totalTokens: 175,
+        totalPrice: 0.005,
+        currentContext: 100,
+      };
+
+      const usage2 = {
+        inputTokens: 50,
+        cachedInputTokens: 25,
+        outputTokens: 30,
+        reasoningTokens: 5,
+        totalTokens: 80,
+        totalPrice: 0.002,
+        currentContext: 50,
+      };
+
+      // Mock sumTokenUsages to return aggregated usage with all fields
+      vi.mocked(mockLitellmService.sumTokenUsages).mockReturnValue({
+        inputTokens: 150, // 100 + 50
+        cachedInputTokens: 75, // 50 + 25
+        outputTokens: 105, // 75 + 30
+        reasoningTokens: 15, // 10 + 5
+        totalTokens: 255, // 175 + 80
+        totalPrice: 0.007, // 0.005 + 0.002
+        currentContext: 100, // max(100, 50)
+      });
+
+      // Call sumTokenUsages with two usage objects
+      const aggregated = mockLitellmService.sumTokenUsages([usage1, usage2]);
+
+      // Verify all fields are present in aggregated usage
+      expect(aggregated).toBeDefined();
+      expect(aggregated?.inputTokens).toBe(150);
+      expect(aggregated?.cachedInputTokens).toBe(75);
+      expect(aggregated?.outputTokens).toBe(105);
+      expect(aggregated?.reasoningTokens).toBe(15);
+      expect(aggregated?.totalTokens).toBe(255);
+      expect(aggregated?.totalPrice).toBe(0.007);
+      expect(aggregated?.currentContext).toBe(100);
+
+      // Verify sumTokenUsages was called
+      expect(mockLitellmService.sumTokenUsages).toHaveBeenCalledWith([
+        usage1,
+        usage2,
+      ]);
     });
   });
 });

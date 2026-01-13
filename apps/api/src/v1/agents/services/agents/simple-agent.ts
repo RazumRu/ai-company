@@ -302,6 +302,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       // ---- tool executor ----
       const toolExecutorNode = new ToolExecutorNode(
         toolsArray,
+        this.litellmService,
         undefined,
         this.logger,
       );

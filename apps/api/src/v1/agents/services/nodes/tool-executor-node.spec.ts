@@ -2,6 +2,7 @@ import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState } from '../../agents.types';
 import { ToolExecutorNode } from './tool-executor-node';
 
@@ -10,6 +11,7 @@ describe('ToolExecutorNode', () => {
   let mockTool1: DynamicStructuredTool;
   let mockTool2: DynamicStructuredTool;
   let mockFinishTool: DynamicStructuredTool;
+  let mockLitellmService: LitellmService;
 
   beforeEach(() => {
     mockTool1 = {
@@ -30,7 +32,14 @@ describe('ToolExecutorNode', () => {
       invoke: vi.fn(),
     } as unknown as DynamicStructuredTool;
 
-    node = new ToolExecutorNode([mockTool1, mockTool2, mockFinishTool]);
+    mockLitellmService = {
+      sumTokenUsages: vi.fn().mockReturnValue(null),
+    } as unknown as LitellmService;
+
+    node = new ToolExecutorNode(
+      [mockTool1, mockTool2, mockFinishTool],
+      mockLitellmService,
+    );
   });
 
   describe('constructor', () => {
@@ -46,7 +55,7 @@ describe('ToolExecutorNode', () => {
     });
 
     it('should initialize with empty tools array', () => {
-      const emptyNode = new ToolExecutorNode([]);
+      const emptyNode = new ToolExecutorNode([], mockLitellmService);
       expect(emptyNode['tools']).toHaveLength(0);
     });
   });
@@ -288,9 +297,13 @@ describe('ToolExecutorNode', () => {
     });
 
     it('should trim tool output that exceeds maxOutputChars and append suffix', async () => {
-      const limitedNode = new ToolExecutorNode([mockTool1], {
-        maxOutputChars: 10,
-      });
+      const limitedNode = new ToolExecutorNode(
+        [mockTool1],
+        mockLitellmService,
+        {
+          maxOutputChars: 10,
+        },
+      );
 
       const toolCall = {
         id: 'call-1',
@@ -439,6 +452,132 @@ describe('ToolExecutorNode', () => {
       expect(result.messages?.items?.[0]?.content).toBe(
         '{"message":"What is the target environment?","needsMoreInfo":true}',
       );
+    });
+
+    it('should capture and aggregate tool request usage', async () => {
+      const toolCall1 = {
+        id: 'call-1',
+        name: 'test-tool-1',
+        args: { input: 'input 1' },
+      };
+
+      const toolCall2 = {
+        id: 'call-2',
+        name: 'test-tool-2',
+        args: { input: 'input 2' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Using tools with usage tracking',
+        tool_calls: [toolCall1, toolCall2],
+      });
+
+      mockState.messages = [aiMessage];
+
+      // Mock tool 1 returns usage
+      mockTool1.invoke = vi.fn().mockResolvedValue({
+        output: 'Result 1',
+        toolRequestUsage: {
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          totalPrice: 0.001,
+        },
+      });
+
+      // Mock tool 2 returns usage
+      mockTool2.invoke = vi.fn().mockResolvedValue({
+        output: 'Result 2',
+        toolRequestUsage: {
+          inputTokens: 200,
+          outputTokens: 100,
+          totalTokens: 300,
+          totalPrice: 0.002,
+        },
+      });
+
+      // Mock litellmService.sumTokenUsages to aggregate
+      mockLitellmService.sumTokenUsages = vi.fn().mockReturnValue({
+        inputTokens: 300,
+        outputTokens: 150,
+        totalTokens: 450,
+        totalPrice: 0.003,
+      });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      // Verify sumTokenUsages was called with both usages
+      expect(mockLitellmService.sumTokenUsages).toHaveBeenCalledWith([
+        {
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          totalPrice: 0.001,
+        },
+        {
+          inputTokens: 200,
+          outputTokens: 100,
+          totalTokens: 300,
+          totalPrice: 0.002,
+        },
+      ]);
+
+      // Verify aggregated usage is in the state change
+      expect(result.inputTokens).toBe(300);
+      expect(result.outputTokens).toBe(150);
+      expect(result.totalTokens).toBe(450);
+      expect(result.totalPrice).toBe(0.003);
+
+      // Verify usage is attached to tool messages
+      expect(result.messages?.items).toHaveLength(2);
+      expect(
+        result.messages?.items?.[0]?.additional_kwargs?.__requestUsage,
+      ).toEqual({
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150,
+        totalPrice: 0.001,
+      });
+      expect(
+        result.messages?.items?.[1]?.additional_kwargs?.__requestUsage,
+      ).toEqual({
+        inputTokens: 200,
+        outputTokens: 100,
+        totalTokens: 300,
+        totalPrice: 0.002,
+      });
+    });
+
+    it('should handle tools without usage tracking', async () => {
+      const toolCall = {
+        id: 'call-1',
+        name: 'test-tool-1',
+        args: { input: 'test' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Using tool',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+
+      // Tool returns no usage
+      mockTool1.invoke = vi.fn().mockResolvedValue({
+        output: 'Result without usage',
+      });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      // Verify no usage fields in state change
+      expect(result.inputTokens).toBeUndefined();
+      expect(result.outputTokens).toBeUndefined();
+      expect(result.totalTokens).toBeUndefined();
+
+      // Verify no usage attached to message
+      expect(
+        result.messages?.items?.[0]?.additional_kwargs?.__requestUsage,
+      ).toBeUndefined();
     });
   });
 });

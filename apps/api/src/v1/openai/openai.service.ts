@@ -4,11 +4,14 @@ import OpenAI from 'openai';
 import { ResponseCreateParams } from 'openai/resources/responses/responses';
 
 import { environment } from '../../environments';
+import type { RequestTokenUsage } from '../litellm/litellm.types';
+import { LitellmService } from '../litellm/services/litellm.service';
 import ResponseCreateParamsNonStreaming = ResponseCreateParams.ResponseCreateParamsNonStreaming;
 
 type GenerateResult = {
   content?: string;
   conversationId: string;
+  usage?: RequestTokenUsage;
 };
 
 @Injectable()
@@ -17,6 +20,8 @@ export class OpenaiService {
     apiKey: environment.litellmMasterKey,
     baseURL: environment.llmBaseUrl,
   });
+
+  constructor(private readonly litellmService: LitellmService) {}
 
   async response(
     data: {
@@ -36,13 +41,23 @@ export class OpenaiService {
     });
 
     const extractedContent =
-      // Prefer the SDK convenience field if present
-      (response as { output_text?: string }).output_text ??
-      this.extractFromOutput(response);
+      response.output_text ?? this.extractFromOutput(response);
+
+    // Use fallback to estimate price from model rates if not provided in response
+    const modelName = typeof params.model === 'string' ? params.model : '';
+    const usage =
+      (await this.litellmService.extractTokenUsageFromResponseWithPriceFallback(
+        {
+          model: modelName,
+          usage_metadata: response.usage,
+          response_metadata: response,
+        },
+      )) || undefined;
 
     return {
       content: extractedContent,
       conversationId: response.id,
+      usage,
     };
   }
 

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
 import { CommunicationExecTool } from './tools/common/communication/communication-exec.tool';
 import { CommunicationToolGroup } from './tools/common/communication/communication-tool-group';
@@ -27,7 +28,7 @@ import { WebSearchTool } from './tools/common/web-search.tool';
 import { FinishTool } from './tools/core/finish.tool';
 
 @Module({
-  imports: [OpenaiModule],
+  imports: [LitellmModule, OpenaiModule],
   controllers: [],
   providers: [
     ShellTool,
