@@ -669,6 +669,7 @@ describe('ThreadsService', () => {
           role: MessageRole.AI,
           name: undefined,
           toolCallNames: [], // No tool calls - this is processing tool results
+          answeredToolCallNames: ['search', 'shell'],
           requestTokenUsage: {
             inputTokens: 50,
             outputTokens: 30,
@@ -709,6 +710,7 @@ describe('ThreadsService', () => {
           'name',
           'requestTokenUsage',
           'toolCallNames',
+          'answeredToolCallNames',
         ],
       });
 
@@ -847,6 +849,7 @@ describe('ThreadsService', () => {
           role: MessageRole.AI,
           name: undefined,
           toolCallNames: [], // No tool calls - processing result
+          answeredToolCallNames: ['search'],
           requestTokenUsage: {
             inputTokens: 10,
             outputTokens: 20,
@@ -883,6 +886,7 @@ describe('ThreadsService', () => {
           role: MessageRole.AI,
           name: undefined,
           toolCallNames: [], // No tool calls - processing result
+          answeredToolCallNames: ['search'],
           requestTokenUsage: {
             inputTokens: 15,
             outputTokens: 30,

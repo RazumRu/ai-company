@@ -21,7 +21,6 @@ import {
   ThreadMessageDto,
   ThreadUsageStatisticsDto,
   UsageStatisticsAggregate,
-  UsageStatisticsByTool,
 } from '../dto/threads.dto';
 import { MessageEntity } from '../entity/message.entity';
 import { ThreadEntity } from '../entity/thread.entity';
@@ -249,7 +248,6 @@ export class ThreadsService {
     const byToolUsage = new Map<
       string,
       {
-        toolName: string;
         totalTokens: number;
         totalPrice: number;
         callCount: number;
@@ -295,6 +293,7 @@ export class ThreadsService {
       const localUsage = instance.getThreadTokenUsage(thread.externalThreadId);
       if (localUsage) {
         totalUsage = accumulate(totalUsage, localUsage);
+        byNodeUsage.set(agent.id, localUsage);
       }
     }
 
@@ -329,45 +328,74 @@ export class ThreadsService {
         'name',
         'requestTokenUsage',
         'toolCallNames',
+        'answeredToolCallNames',
       ],
     });
 
     // Use Decimal.js for price aggregation to avoid floating-point errors
-    const toolsPriceDecimal = new Decimal(0);
-    const messagesPriceDecimal = new Decimal(0);
+    let toolsPriceDecimal = new Decimal(0);
+    let messagesPriceDecimal = new Decimal(0);
     let totalRequests = 0;
 
     for (const [index, messageEntity] of messages.entries()) {
       const requestUsage = messageEntity.requestTokenUsage;
+      const isToolAnswerMessage =
+        messageEntity.role === MessageRole.AI &&
+        Array.isArray(messageEntity.answeredToolCallNames) &&
+        messageEntity.answeredToolCallNames.length > 0;
       const isToolMessage =
         messageEntity.role === MessageRole.Tool ||
         messageEntity.role === MessageRole.ToolShell;
-
-      console.log(isToolMessage);
+      const isRealLlmRequest =
+        (isToolAnswerMessage && requestUsage) ||
+        (!isToolAnswerMessage && !isToolMessage);
 
       if (requestUsage) {
-        totalRequests++;
+        if (isRealLlmRequest) {
+          totalRequests++;
+        }
 
-        totalUsage = accumulate(totalUsage, requestUsage);
-
-        if (isToolMessage) {
-          toolsPriceDecimal.plus(requestUsage.totalPrice || 0);
+        if (isToolAnswerMessage || isToolMessage) {
+          toolsPriceDecimal = toolsPriceDecimal.plus(
+            requestUsage.totalPrice || 0,
+          );
 
           toolsAggregate.inputTokens += requestUsage.inputTokens;
           toolsAggregate.outputTokens += requestUsage.outputTokens;
           toolsAggregate.totalTokens += requestUsage.totalTokens;
-          toolsAggregate.requestCount++;
+
+          if (isRealLlmRequest) {
+            toolsAggregate.requestCount++;
+          }
+
+          let answeredToolCallNames = messageEntity.answeredToolCallNames;
+          if (!answeredToolCallNames && isToolMessage && messageEntity.name) {
+            answeredToolCallNames = [messageEntity.name];
+          }
+
+          for (const toolName of answeredToolCallNames || []) {
+            const current = byToolUsage.get(toolName);
+            byToolUsage.set(toolName, {
+              totalTokens:
+                (current?.totalTokens || 0) + requestUsage.totalTokens,
+              totalPrice:
+                (current?.totalPrice || 0) + (requestUsage.totalPrice || 0),
+              callCount: (current?.callCount || 0) + (isRealLlmRequest ? 1 : 0),
+            });
+          }
         } else {
-          messagesPriceDecimal.plus(requestUsage?.totalPrice || 0);
+          messagesPriceDecimal = messagesPriceDecimal.plus(
+            requestUsage?.totalPrice || 0,
+          );
 
           messagesAggregate.inputTokens += requestUsage.inputTokens;
           messagesAggregate.outputTokens += requestUsage.outputTokens;
           messagesAggregate.totalTokens += requestUsage.totalTokens;
-          messagesAggregate.requestCount++;
+          if (isRealLlmRequest) {
+            messagesAggregate.requestCount++;
+          }
         }
       }
-
-      console.log(messageEntity);
     }
 
     // Finalize price aggregations
@@ -382,7 +410,10 @@ export class ThreadsService {
       total: totalUsage,
       requests: totalRequests,
       byNode: Object.fromEntries(byNodeUsage),
-      byTool: Array.from(byToolUsage.values()),
+      byTool: Array.from(byToolUsage.entries()).map(([toolName, usage]) => ({
+        toolName,
+        ...usage,
+      })),
       toolsAggregate,
       messagesAggregate,
     };

@@ -49,4 +49,7 @@ export class MessageEntity extends TimestampsEntity {
    */
   @Column({ type: 'simple-array', nullable: true })
   toolCallNames?: string[];
+
+  @Column({ type: 'simple-array', nullable: true })
+  answeredToolCallNames?: string[];
 }

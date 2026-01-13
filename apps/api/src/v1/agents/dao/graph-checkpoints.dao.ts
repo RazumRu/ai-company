@@ -11,6 +11,8 @@ export type SearchTerms = Partial<{
   checkpointId: string;
   checkpointNs: string;
   parentCheckpointId: string;
+  parentThreadId: string;
+  nodeId: string;
 }>;
 
 @Injectable()
@@ -39,6 +41,7 @@ export class GraphCheckpointsDao extends BaseDao<
       | 'checkpointId'
       | 'parentCheckpointId'
       | 'parentThreadId'
+      | 'nodeId'
       | 'type'
       | 'checkpoint'
       | 'metadata'
@@ -52,6 +55,7 @@ export class GraphCheckpointsDao extends BaseDao<
         overwrite: [
           'parentCheckpointId',
           'parentThreadId',
+          'nodeId',
           'type',
           'checkpoint',
           'metadata',
@@ -91,6 +95,18 @@ export class GraphCheckpointsDao extends BaseDao<
     if (params?.parentCheckpointId) {
       builder.andWhere({
         parentCheckpointId: params.parentCheckpointId,
+      });
+    }
+
+    if (params?.parentThreadId) {
+      builder.andWhere({
+        parentThreadId: params.parentThreadId,
+      });
+    }
+
+    if (params?.nodeId) {
+      builder.andWhere({
+        nodeId: params.nodeId,
       });
     }
   }

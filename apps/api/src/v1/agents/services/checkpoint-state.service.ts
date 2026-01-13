@@ -18,10 +18,11 @@ export class CheckpointStateService {
   ) {}
 
   /**
-   * Get token usage for a thread by reading from its latest checkpoint.
+   * Get token usage for a thread by reading from all related checkpoints.
+   * Aggregates usage across all graphs/agents that share the same parent thread.
    * Returns per-node breakdown and aggregated totals.
    *
-   * @param threadId - External thread ID
+   * @param threadId - External thread ID (can be root thread or nested thread)
    * @param checkpointNs - Checkpoint namespace (default: empty string for root threads)
    * @returns Token usage with per-node breakdown, or null if no checkpoint found
    */
@@ -30,54 +31,72 @@ export class CheckpointStateService {
     checkpointNs = '',
   ): Promise<ThreadTokenUsage | null> {
     try {
-      // Get the latest checkpoint for this thread
-      const checkpointTuple = await this.checkpointSaver.getTuple({
-        configurable: {
-          thread_id: threadId,
-          checkpoint_ns: checkpointNs,
-        },
-      });
+      // Get all checkpoint tuples for this thread and nested agents
+      // includeWrites=false since we only need state data for token usage
+      const tuples = await this.checkpointSaver.getTuples(
+        threadId,
+        checkpointNs,
+        false,
+      );
 
-      if (!checkpointTuple?.checkpoint) {
+      if (tuples.length === 0) {
         return null;
       }
 
-      // Extract state from checkpoint
-      const state = checkpointTuple.checkpoint
-        .channel_values as unknown as BaseAgentState;
-
-      if (!state) {
-        return null;
-      }
-
-      // Extract token usage counters from state
-      const usage: RequestTokenUsage = {
-        inputTokens: state.inputTokens || 0,
-        outputTokens: state.outputTokens || 0,
-        totalTokens: state.totalTokens || 0,
+      // Aggregate token usage across all checkpoints
+      const byNode = new Map<string, RequestTokenUsage>();
+      const totalUsage: RequestTokenUsage = {
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+        totalPrice: 0,
+        currentContext: 0,
       };
 
-      // Add optional fields if present
-      if (state.cachedInputTokens) {
-        usage.cachedInputTokens = state.cachedInputTokens;
-      }
-      if (state.reasoningTokens) {
-        usage.reasoningTokens = state.reasoningTokens;
-      }
-      if (state.totalPrice) {
-        usage.totalPrice = state.totalPrice;
-      }
-      if (state.currentContext) {
-        usage.currentContext = state.currentContext;
+      for (const tuple of tuples) {
+        const state = tuple.checkpoint
+          .channel_values as unknown as BaseAgentState;
+
+        if (!state) {
+          continue;
+        }
+
+        // Extract usage from this checkpoint
+        const usage: RequestTokenUsage = {
+          inputTokens: state.inputTokens || 0,
+          cachedInputTokens: state.cachedInputTokens || 0,
+          outputTokens: state.outputTokens || 0,
+          reasoningTokens: state.reasoningTokens || 0,
+          totalTokens: state.totalTokens || 0,
+          totalPrice: state.totalPrice || 0,
+          currentContext: state.currentContext || 0,
+        };
+
+        // Aggregate totals
+        totalUsage.inputTokens += usage.inputTokens;
+        totalUsage.cachedInputTokens! += usage.cachedInputTokens || 0;
+        totalUsage.outputTokens += usage.outputTokens;
+        totalUsage.reasoningTokens! += usage.reasoningTokens || 0;
+        totalUsage.totalTokens += usage.totalTokens;
+        totalUsage.totalPrice! += usage.totalPrice || 0;
+        totalUsage.currentContext! += usage.currentContext || 0;
+
+        // Add to byNode map if we have a nodeId
+        if (tuple.nodeId) {
+          byNode.set(tuple.nodeId, usage);
+        }
       }
 
-      // For now, we don't have per-node breakdown in the checkpoint state
-      // The checkpoint only stores aggregate values
-      // Per-node data would need to be stored separately in the state
+      // Return null if no valid usage data was found
+      if (totalUsage.totalTokens === 0 && byNode.size === 0) {
+        return null;
+      }
+
       return {
-        ...usage,
-        // byNode is not available from current checkpoint structure
-        // Could be added in future if needed
+        ...totalUsage,
+        byNode: byNode.size > 0 ? Object.fromEntries(byNode) : undefined,
       };
     } catch (error) {
       this.logger.error(
@@ -99,18 +118,8 @@ export class CheckpointStateService {
   async getRootThreadTokenUsage(
     rootThreadId: string,
   ): Promise<ThreadTokenUsage | null> {
-    try {
-      // For now, just get the root thread's usage
-      // In future, could query all checkpoints with parentThreadId = rootThreadId
-      // and aggregate them together
-      return this.getThreadTokenUsage(rootThreadId);
-    } catch (error) {
-      this.logger.error(
-        error instanceof Error ? error : new Error(String(error)),
-        'Failed to get root thread token usage from checkpoints',
-        { rootThreadId },
-      );
-      return null;
-    }
+    // The updated getThreadTokenUsage now handles aggregation across all
+    // related threads, so we can just delegate to it
+    return this.getThreadTokenUsage(rootThreadId);
   }
 }

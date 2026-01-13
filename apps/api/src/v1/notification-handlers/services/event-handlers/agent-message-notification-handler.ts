@@ -3,6 +3,7 @@ import { DefaultLogger, NotFoundException } from '@packages/common';
 
 import type { MessageAdditionalKwargs } from '../../../agents/agents.types';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
+import { MessageRole } from '../../../graphs/graphs.types';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import {
@@ -81,8 +82,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
 
       // Extract tool call names for AI messages with tool calls
       const toolCallNames =
-        messageDto.role === 'ai' &&
-        'toolCalls' in messageDto &&
+        messageDto.role === MessageRole.AI &&
         Array.isArray(messageDto.toolCalls)
           ? messageDto.toolCalls
               .map((tc) => tc.name)
@@ -101,6 +101,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         role: messageDto.role,
         name: 'name' in messageDto ? (messageDto.name as string) : undefined,
         ...(toolCallNames && toolCallNames.length > 0 ? { toolCallNames } : {}),
+        answeredToolCallNames: additionalKwargs?.__answeredToolCallNames,
       });
 
       out.push({

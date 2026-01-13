@@ -69,12 +69,106 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
-    const writes = await this.graphCheckpointsWritesDao.getAll({
+    return this.buildCheckpointTuple(doc, true);
+  }
+
+  /**
+   * Get multiple checkpoint tuples for a thread and all its nested agents.
+   * Returns latest checkpoint per unique threadId.
+   *
+   * @param threadId - Thread ID to search for
+   * @param checkpointNs - Checkpoint namespace (default: empty string)
+   * @param includeWrites - Whether to include pending writes (default: false)
+   * @returns Array of checkpoint tuples with metadata including nodeId
+   */
+  async getTuples(
+    threadId: string,
+    checkpointNs = '',
+    includeWrites = false,
+  ): Promise<(CheckpointTuple & { nodeId?: string })[]> {
+    // Get all checkpoints for this thread
+    const checkpoints = await this.graphCheckpointsDao.getAll({
       threadId,
       checkpointNs,
-      checkpointId: doc.checkpointId,
-      order: { taskId: 'ASC', idx: 'ASC' },
+      order: { checkpointId: 'DESC' },
     });
+
+    // Also get checkpoints where this threadId is the parent (nested agent runs)
+    const nestedCheckpoints = await this.graphCheckpointsDao.getAll({
+      parentThreadId: threadId,
+      checkpointNs,
+      order: { checkpointId: 'DESC' },
+    });
+
+    // Combine and deduplicate - keep latest checkpoint per unique threadId
+    const allCheckpoints = [...checkpoints, ...nestedCheckpoints];
+    const latestByThread = new Map<string, (typeof allCheckpoints)[0]>();
+
+    for (const checkpoint of allCheckpoints) {
+      const existing = latestByThread.get(checkpoint.threadId);
+      if (!existing || checkpoint.checkpointId > existing.checkpointId) {
+        latestByThread.set(checkpoint.threadId, checkpoint);
+      }
+    }
+
+    // Build checkpoint tuples for all latest checkpoints
+    const tuples: (CheckpointTuple & { nodeId?: string })[] = [];
+
+    for (const doc of latestByThread.values()) {
+      try {
+        const tuple = await this.buildCheckpointTuple(doc, includeWrites);
+        tuples.push({
+          ...tuple,
+          nodeId: doc.nodeId ?? undefined,
+        });
+      } catch (_error) {
+        // Skip checkpoints that fail to deserialize
+        continue;
+      }
+    }
+
+    return tuples;
+  }
+
+  /**
+   * Build a checkpoint tuple from a database entity.
+   * Shared logic between getTuple and getTuples.
+   */
+  private async buildCheckpointTuple(
+    doc: Awaited<ReturnType<typeof this.graphCheckpointsDao.getOne>>,
+    includeWrites = true,
+  ): Promise<CheckpointTuple> {
+    if (!doc) {
+      throw new Error('Document is null or undefined');
+    }
+
+    const threadId = doc.threadId;
+    const checkpointNs = doc.checkpointNs;
+
+    const pendingWrites = includeWrites
+      ? await (async () => {
+          const writes = await this.graphCheckpointsWritesDao.getAll({
+            threadId,
+            checkpointNs,
+            checkpointId: doc.checkpointId,
+            order: { taskId: 'ASC', idx: 'ASC' },
+          });
+
+          return Promise.all(
+            writes.map(
+              async (w) =>
+                [
+                  w.taskId,
+                  w.channel,
+                  (await this.serde.loadsTyped(
+                    w.type,
+                    w.value.toString('utf8'),
+                  )) as unknown,
+                ] as [string, string, unknown],
+            ),
+          );
+        })()
+      : [];
 
     const checkpoint = (await this.serde.loadsTyped(
       doc.type,
@@ -84,19 +178,6 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       doc.type,
       doc.metadata.toString('utf8'),
     )) as unknown as CheckpointMetadata;
-    const pendingWrites = await Promise.all(
-      writes.map(
-        async (w) =>
-          [
-            w.taskId,
-            w.channel,
-            (await this.serde.loadsTyped(
-              w.type,
-              w.value.toString('utf8'),
-            )) as unknown,
-          ] as [string, string, unknown],
-      ),
-    );
 
     return {
       config: {
@@ -204,12 +285,18 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       ((config.configurable as Record<string, unknown> | undefined)
         ?.parent_thread_id as string | undefined) ?? null;
 
+    const nodeId =
+      ((config.configurable as Record<string, unknown> | undefined)?.node_id as
+        | string
+        | undefined) ?? null;
+
     await this.graphCheckpointsDao.upsertByCheckpointKey({
       threadId,
       checkpointNs,
       checkpointId: id,
       parentCheckpointId,
       parentThreadId,
+      nodeId,
       type: typeA,
       checkpoint: Buffer.from(chk),
       metadata: Buffer.from(meta),

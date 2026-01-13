@@ -19,6 +19,14 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
   __createdAt?: string;
   __model?: string;
   __title?: string;
+  /**
+   * When present on an AI message, indicates this message was generated in response
+   * to one or more preceding tool results (tool roundtrip).
+   *
+   * This is used for analytics: the requestTokenUsage for "tool usage" is recorded
+   * on the AI message that processes tool results, not on the tool result messages.
+   */
+  __answeredToolCallNames?: string[];
 
   // Used by message transformer for reasoning + LLM visibility controls
   __reasoningId?: string;
