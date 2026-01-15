@@ -1,25 +1,246 @@
 import { Injectable } from '@nestjs/common';
+import isEqual from 'lodash/isEqual';
+import {
+  adjectives,
+  nouns,
+  uniqueUsernameGenerator,
+} from 'unique-username-generator';
 
 import { environment } from '../../../environments';
-import { ProvideRuntimeParams, RuntimeType } from '../runtime.types';
+import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
+import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
+import {
+  ProvideRuntimeInstanceParams,
+  RuntimeInstanceStatus,
+  RuntimeType,
+} from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
 import { DockerRuntime } from './docker-runtime';
 
 @Injectable()
 export class RuntimeProvider {
-  protected resolveRuntime(
-    opts: ProvideRuntimeParams,
-  ): BaseRuntime | undefined {
-    switch (opts.type) {
+  private readonly runtimeInstances = new Map<string, BaseRuntime>();
+
+  constructor(private readonly runtimeInstanceDao: RuntimeInstanceDao) {}
+
+  protected resolveRuntimeConfigByType(
+    type: RuntimeType,
+  ): Record<string, unknown> | undefined {
+    switch (type) {
       case RuntimeType.Docker:
-        return new DockerRuntime({ socketPath: environment.dockerSocket });
+        return { socketPath: environment.dockerSocket };
     }
   }
 
-  async provide(opts: ProvideRuntimeParams): Promise<BaseRuntime> {
-    const runtime = this.resolveRuntime(opts);
-    if (!runtime) throw new Error(`Runtime ${opts.type} is not supported`);
+  protected resolveRuntimeByType(type: RuntimeType): BaseRuntime | undefined {
+    const config = this.resolveRuntimeConfigByType(type);
+
+    switch (type) {
+      case RuntimeType.Docker:
+        return new DockerRuntime(config);
+    }
+  }
+
+  async provide<T extends BaseRuntime>(
+    params: ProvideRuntimeInstanceParams,
+  ): Promise<T> {
+    const { graphId, runtimeNodeId, threadId, type } = params;
+
+    const existing = await this.runtimeInstanceDao.getOne({
+      graphId,
+      nodeId: runtimeNodeId,
+      threadId,
+      type,
+    });
+
+    if (existing) {
+      const runtimeConfig = params.runtimeStartParams;
+      const configChanged = !isEqual(existing.config, runtimeConfig);
+
+      if (configChanged) {
+        await this.stopRuntime(existing);
+        await this.runtimeInstanceDao.deleteById(existing.id);
+      } else {
+        await this.runtimeInstanceDao.updateById(existing.id, {
+          lastUsedAt: new Date(),
+          config: runtimeConfig,
+          temporary: params.temporary,
+        });
+
+        const runtime = await this.ensureRuntimeForRecord<T>(existing);
+        if (existing.status !== RuntimeInstanceStatus.Running) {
+          await this.runtimeInstanceDao.updateById(existing.id, {
+            status: RuntimeInstanceStatus.Running,
+          });
+        }
+
+        return runtime;
+      }
+    }
+
+    const containerName = this.buildContainerName();
+
+    const created = await this.runtimeInstanceDao.create({
+      graphId,
+      nodeId: runtimeNodeId,
+      threadId,
+      type,
+      containerName,
+      status: RuntimeInstanceStatus.Starting,
+      config: params.runtimeStartParams,
+      temporary: params.temporary ?? false,
+      lastUsedAt: new Date(),
+    });
+
+    const runtime = await this.ensureRuntimeForRecord<T>(created);
+
+    await this.runtimeInstanceDao.updateById(created.id, {
+      status: RuntimeInstanceStatus.Running,
+      lastUsedAt: new Date(),
+    });
 
     return runtime;
+  }
+
+  async stopRuntime(instance: RuntimeInstanceEntity): Promise<void> {
+    await this.runtimeInstanceDao.updateById(instance.id, {
+      status: RuntimeInstanceStatus.Stopping,
+    });
+
+    const runtime = this.runtimeInstances.get(instance.id);
+
+    if (runtime) {
+      await runtime.stop().catch(() => undefined);
+      this.runtimeInstances.delete(instance.id);
+    } else {
+      const config = this.resolveRuntimeConfigByType(instance.type);
+
+      switch (instance.type) {
+        case RuntimeType.Docker:
+          await DockerRuntime.stopByName(instance.containerName, config).catch(
+            () => undefined,
+          );
+      }
+    }
+
+    await this.runtimeInstanceDao.updateById(instance.id, {
+      status: RuntimeInstanceStatus.Stopped,
+    });
+  }
+
+  async cleanupIdleRuntimes(idleThresholdMs: number): Promise<number> {
+    const lastUsedBefore = new Date(Date.now() - idleThresholdMs);
+    const instances = await this.runtimeInstanceDao.getAll({
+      lastUsedBefore,
+      statuses: [RuntimeInstanceStatus.Running, RuntimeInstanceStatus.Starting],
+    });
+
+    if (!instances.length) {
+      return 0;
+    }
+
+    await Promise.all(
+      instances.map(async (instance) => {
+        await this.stopRuntime(instance);
+        await this.runtimeInstanceDao.deleteById(instance.id);
+      }),
+    );
+
+    return instances.length;
+  }
+
+  async cleanupRuntimesByNodeId(nodeId: string): Promise<number> {
+    const instances = await this.runtimeInstanceDao.getAll({
+      nodeId,
+    });
+
+    if (!instances.length) {
+      return 0;
+    }
+
+    await Promise.all(
+      instances.map(async (instance) => {
+        await this.stopRuntime(instance);
+        await this.runtimeInstanceDao.deleteById(instance.id);
+      }),
+    );
+
+    return instances.length;
+  }
+
+  async cleanupTemporaryRuntimes(): Promise<number> {
+    const instances = await this.runtimeInstanceDao.getAll({
+      temporary: true,
+    });
+
+    if (!instances.length) {
+      return 0;
+    }
+
+    await Promise.all(
+      instances.map(async (instance) => {
+        await this.stopRuntime(instance);
+        await this.runtimeInstanceDao.deleteById(instance.id);
+      }),
+    );
+
+    return instances.length;
+  }
+
+  private async ensureRuntimeForRecord<T extends BaseRuntime>(
+    record: RuntimeInstanceEntity,
+  ): Promise<T> {
+    const cached = this.runtimeInstances.get(record.id);
+    if (cached) {
+      return <T>cached;
+    }
+
+    const runtime = this.resolveRuntimeByType(record.type);
+    if (!runtime) {
+      throw new Error(`Runtime ${record.type} is not supported`);
+    }
+
+    const registryMirrors =
+      record.config.enableDind && environment.dockerRegistryMirror
+        ? [environment.dockerRegistryMirror as string]
+        : undefined;
+    const insecureRegistries =
+      record.config.enableDind && environment.dockerInsecureRegistry
+        ? [environment.dockerInsecureRegistry as string]
+        : undefined;
+    const baseLabels = record.config.labels ?? {};
+    const labels: Record<string, string> = {
+      ...baseLabels,
+      'ai-company/graph_id': record.graphId,
+      'ai-company/node_id': record.nodeId,
+      'ai-company/thread_id': record.threadId,
+      'ai-company/instance_id': record.id,
+      'ai-company/type': 'runtime',
+    };
+    if (record.temporary) {
+      labels['ai-company/temporary'] = 'true';
+    }
+
+    await runtime.start({
+      ...(record.config || {}),
+      network: `ai-company-${record.graphId}`,
+      registryMirrors,
+      insecureRegistries,
+      containerName: record.containerName,
+      labels,
+      recreate: false,
+    });
+
+    this.runtimeInstances.set(record.id, runtime);
+    return <T>runtime;
+  }
+
+  private buildContainerName(): string {
+    return uniqueUsernameGenerator({
+      dictionaries: [adjectives, nouns],
+      template: '{adjective}-{noun}-{digits:3}',
+      style: 'lowerCase',
+      length: 30,
+    });
   }
 }

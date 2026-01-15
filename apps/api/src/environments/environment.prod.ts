@@ -45,4 +45,6 @@ export const environment = () =>
     dockerInsecureRegistry: getEnv('DOCKER_INSECURE_REGISTRY'),
     tavilyApiKey: getEnv('TAVILY_API_KEY'),
     restoreGraphs: getEnv('RESTORE_GRAPHS', true),
+    runtimeCleanupIntervalMs: +getEnv('RUNTIME_CLEANUP_INTERVAL_MS', '300000'),
+    runtimeIdleThresholdMs: +getEnv('RUNTIME_IDLE_THRESHOLD_MS', '1800000'),
   }) as const satisfies Record<string, string | number | boolean>;

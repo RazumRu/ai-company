@@ -4,7 +4,10 @@ import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
-import { DockerRuntime } from '../../runtime/services/docker-runtime';
+import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
+import { RuntimeType } from '../../runtime/runtime.types';
+import { RuntimeInstanceStatus } from '../../runtime/runtime.types';
+import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
@@ -17,7 +20,7 @@ import { GraphRestorationService } from './graph-restoration.service';
 // Mock DockerRuntime static method
 vi.mock('../../runtime/services/docker-runtime', () => ({
   DockerRuntime: {
-    cleanupByLabels: vi.fn().mockResolvedValue(undefined),
+    getByName: vi.fn().mockResolvedValue(null),
   },
 }));
 
@@ -28,6 +31,8 @@ describe('GraphRestorationService', () => {
   let graphRegistry: any;
   let threadsDao: any;
   let graphCheckpointsDao: any;
+  let runtimeInstanceDao: any;
+  let runtimeProvider: any;
   let graphsService: any;
   let logger: any;
 
@@ -39,6 +44,24 @@ describe('GraphRestorationService', () => {
       .mockResolvedValueOnce(temporaryGraphs)
       .mockResolvedValueOnce(statusGraphs);
   };
+
+  const makeRuntimeInstance = (overrides?: Partial<Record<string, unknown>>) =>
+    ({
+      id: 'runtime-1',
+      graphId: mockGraph.id,
+      nodeId: 'runtime-1',
+      threadId: 'thread-1',
+      type: RuntimeType.Docker,
+      containerName: 'rt-1',
+      status: RuntimeInstanceStatus.Running,
+      config: null,
+      temporary: false,
+      lastUsedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      ...overrides,
+    }) as any;
 
   const mockGraph: GraphEntity = {
     id: 'test-graph-id',
@@ -110,6 +133,15 @@ describe('GraphRestorationService', () => {
       getAll: vi.fn(),
     };
 
+    const mockRuntimeInstanceDao = {
+      getAll: vi.fn().mockResolvedValue([]),
+      deleteById: vi.fn(),
+    };
+
+    const mockRuntimeProvider = {
+      stopRuntime: vi.fn(),
+    };
+
     const mockLogger = {
       log: vi.fn(),
       debug: vi.fn(),
@@ -145,6 +177,14 @@ describe('GraphRestorationService', () => {
           useValue: mockThreadsDao,
         },
         {
+          provide: RuntimeInstanceDao,
+          useValue: mockRuntimeInstanceDao,
+        },
+        {
+          provide: RuntimeProvider,
+          useValue: mockRuntimeProvider,
+        },
+        {
           provide: GraphCheckpointsDao,
           useValue: mockGraphCheckpointsDao,
         },
@@ -165,6 +205,8 @@ describe('GraphRestorationService', () => {
     graphRegistry = module.get(GraphRegistry);
     threadsDao = module.get(ThreadsDao);
     graphCheckpointsDao = module.get(GraphCheckpointsDao);
+    runtimeInstanceDao = module.get(RuntimeInstanceDao);
+    runtimeProvider = module.get(RuntimeProvider);
     graphsService = mockGraphsService;
     logger = module.get(DefaultLogger);
 
@@ -316,6 +358,11 @@ describe('GraphRestorationService', () => {
         .mockResolvedValueOnce([temporaryGraph])
         .mockResolvedValueOnce([]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
+      vi.mocked(runtimeInstanceDao.getAll)
+        .mockResolvedValueOnce([]) // syncRuntimeInstances
+        .mockResolvedValueOnce([
+          makeRuntimeInstance({ graphId: temporaryGraph.id }),
+        ]); // cleanupNotCompiledGraphRuntimes
 
       // Act
       await service.restoreRunningGraphs();
@@ -325,9 +372,8 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
-        'ai-company/graph_id': temporaryGraph.id,
-      });
+      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
+      expect(runtimeInstanceDao.deleteById).toHaveBeenCalled();
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       expect(graphRegistry.register).not.toHaveBeenCalled();
     });
@@ -355,7 +401,12 @@ describe('GraphRestorationService', () => {
         .mockResolvedValueOnce([temporaryGraph])
         .mockResolvedValueOnce([]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
-      vi.mocked(DockerRuntime.cleanupByLabels).mockRejectedValueOnce(
+      vi.mocked(runtimeInstanceDao.getAll)
+        .mockResolvedValueOnce([]) // syncRuntimeInstances
+        .mockResolvedValueOnce([
+          makeRuntimeInstance({ graphId: temporaryGraph.id }),
+        ]); // cleanupNotCompiledGraphRuntimes
+      vi.mocked(runtimeProvider.stopRuntime).mockRejectedValueOnce(
         new Error('Destroy failed'),
       );
 
@@ -367,9 +418,7 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
-        'ai-company/graph_id': temporaryGraph.id,
-      });
+      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       expect(graphRegistry.register).not.toHaveBeenCalled();
     });
@@ -403,6 +452,11 @@ describe('GraphRestorationService', () => {
         .mockResolvedValueOnce([temporaryGraph])
         .mockResolvedValueOnce([permanentGraph]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
+      vi.mocked(runtimeInstanceDao.getAll)
+        .mockResolvedValueOnce([]) // syncRuntimeInstances
+        .mockResolvedValueOnce([
+          makeRuntimeInstance({ graphId: temporaryGraph.id }),
+        ]); // cleanupNotCompiledGraphRuntimes
       vi.mocked(graphRegistry.get)
         .mockReturnValueOnce(undefined)
         .mockReturnValueOnce(mockCompiledGraph);
@@ -420,9 +474,7 @@ describe('GraphRestorationService', () => {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
       // Temporary graph should be destroyed
-      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
-        'ai-company/graph_id': temporaryGraph.id,
-      });
+      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       // Then permanent graph should be started via graphs service
       expect(graphsService.run).toHaveBeenCalledWith(permanentGraph.id);
@@ -450,6 +502,11 @@ describe('GraphRestorationService', () => {
 
       mockGraphDaoLists([temporaryGraph], []);
       vi.mocked(graphDao.deleteById).mockRejectedValue(deletionError);
+      vi.mocked(runtimeInstanceDao.getAll)
+        .mockResolvedValueOnce([]) // syncRuntimeInstances
+        .mockResolvedValueOnce([
+          makeRuntimeInstance({ graphId: temporaryGraph.id }),
+        ]); // cleanupNotCompiledGraphRuntimes
 
       // Act
       await service.restoreRunningGraphs();
@@ -459,9 +516,7 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
-        'ai-company/graph_id': temporaryGraph.id,
-      });
+      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
       expect(logger.warn).toHaveBeenCalled();
     });
@@ -487,7 +542,12 @@ describe('GraphRestorationService', () => {
       const cleanupError = new Error('Container cleanup failed');
 
       mockGraphDaoLists([temporaryGraph], []);
-      vi.mocked(DockerRuntime.cleanupByLabels).mockRejectedValueOnce(
+      vi.mocked(runtimeInstanceDao.getAll)
+        .mockResolvedValueOnce([]) // syncRuntimeInstances
+        .mockResolvedValueOnce([
+          makeRuntimeInstance({ graphId: temporaryGraph.id }),
+        ]); // cleanupNotCompiledGraphRuntimes
+      vi.mocked(runtimeProvider.stopRuntime).mockRejectedValueOnce(
         cleanupError,
       );
 
@@ -499,9 +559,7 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(DockerRuntime.cleanupByLabels).toHaveBeenCalledWith({
-        'ai-company/graph_id': temporaryGraph.id,
-      });
+      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
       expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
     });
 

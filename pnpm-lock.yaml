@@ -240,6 +240,9 @@ importers:
       typeorm:
         specifier: ^0.3.28
         version: 0.3.28(ioredis@5.8.2)(pg@8.16.3)(ts-node@10.9.2(@swc/core@1.15.8)(@types/node@25.0.3)(typescript@5.9.3))
+      unique-username-generator:
+        specifier: ^1.5.1
+        version: 1.5.1
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
@@ -5562,6 +5565,10 @@ packages:
   unique-string@3.0.0:
     resolution: {integrity: sha512-VGXBUVwxKMBUznyffQweQABPRRW1vHZAbadFZud4pLFAqRGvv/96vafgjWFqzourzr8YonlQiPgH0YCJfawoGQ==}
     engines: {node: '>=12'}
+
+  unique-username-generator@1.5.1:
+    resolution: {integrity: sha512-Q0pSKPyij4L7Tm6Bo3XsWeFG9qbyWTtwb3jTN+XgGhCFdlvQn6Fj0DCfYElw0kp/Xp7Jv1Q+CL+aA8S07RMChA==}
+    hasBin: true
 
   universal-user-agent@7.0.3:
     resolution: {integrity: sha512-TmnEAEAsBJVZM/AADELsK76llnwcf9vMKuPz8JflO1frO8Lchitr0fNaN9d+Ap0BjKtqWqd/J17qeDnXh8CL2A==}
@@ -11107,6 +11114,8 @@ snapshots:
   unique-string@3.0.0:
     dependencies:
       crypto-random-string: 4.0.0
+
+  unique-username-generator@1.5.1: {}
 
   universal-user-agent@7.0.3: {}
 

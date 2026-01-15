@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BadRequestException, NotFoundException } from '@packages/common';
+import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
@@ -11,7 +11,7 @@ import {
 } from '../../../graph-resources/graph-resources.types';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { ToolNodeBaseTemplate } from '../base-node.template';
 
@@ -85,12 +85,12 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
         }
 
         const runtimeNodeId = runtimeNodeIds[0]!;
-        const runtime = this.graphRegistry.getNodeInstance<BaseRuntime>(
+        const runtimeNode = this.graphRegistry.getNode<RuntimeThreadProvider>(
           graphId,
           runtimeNodeId,
         );
 
-        if (!runtime) {
+        if (!runtimeNode) {
           throw new NotFoundException(
             'NODE_NOT_FOUND',
             `Runtime node ${runtimeNodeId} not found`,
@@ -109,27 +109,26 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
           initScripts,
         } = this.collectResourceData(resourceNodeIds, graphId);
 
-        for (const script of initScripts) {
-          const res = await runtime.exec({
-            cmd: script.cmd,
-            timeoutMs: script.timeout,
-            env,
-          });
+        const currentRuntimeParams = runtimeNode.instance.getParams();
 
-          if (res.fail) {
-            throw new BadRequestException(
-              'INIT_SCRIPT_EXECUTION_FAILED',
-              `Init script execution failed: ${res.stderr}`,
-              { cmd: script.cmd, ...res },
-            );
-          }
-        }
+        const initScriptList = initScripts.flatMap((script) =>
+          Array.isArray(script.cmd) ? script.cmd : [script.cmd],
+        );
+        const initScriptTimeoutMs = Math.max(
+          currentRuntimeParams.runtimeStartParams.initScriptTimeoutMs ?? 0,
+          ...initScripts.map((script) => script.timeout ?? 0),
+        );
 
+        runtimeNode.instance.setAdditionalParams({
+          env,
+          initScript: initScriptList,
+          initScriptTimeoutMs: initScriptTimeoutMs,
+        });
         instance.tools.length = 0;
+
         instance.tools.push(
           this.shellTool.build({
-            runtime,
-            env,
+            runtimeProvider: runtimeNode.instance,
             resourcesInformation,
           }),
         );

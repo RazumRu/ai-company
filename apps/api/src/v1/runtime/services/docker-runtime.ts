@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { Duplex, PassThrough } from 'node:stream';
 
 import { BadRequestException } from '@packages/common';
-import dedent from 'dedent';
 import Docker from 'dockerode';
 
 import { environment } from '../../../environments';
@@ -10,31 +9,10 @@ import {
   RuntimeExecParams,
   RuntimeExecResult,
   RuntimeStartParams,
-  RuntimeType,
 } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
 
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
-
-const appendTail = (prev: string, chunk: Buffer, max = MAX_OUTPUT_BYTES) => {
-  const s = chunk.toString('utf8');
-  if (!prev) return s.length <= max ? s : s.slice(s.length - max);
-  const combined = prev + s;
-  if (combined.length <= max) return combined;
-  return combined.slice(combined.length - max);
-};
-
-const appendTailBuf = (
-  prev: Buffer<ArrayBufferLike>,
-  chunk: Buffer<ArrayBufferLike>,
-  max = MAX_OUTPUT_BYTES,
-): Buffer<ArrayBufferLike> => {
-  const combined = (prev.length ? Buffer.concat([prev, chunk]) : chunk) as
-    | Buffer<ArrayBufferLike>
-    | Buffer<ArrayBuffer>;
-  if (combined.length <= max) return combined as Buffer<ArrayBufferLike>;
-  return combined.subarray(combined.length - max) as Buffer<ArrayBufferLike>;
-};
 
 type ShellSession = {
   id: string;
@@ -72,12 +50,11 @@ export class DockerRuntime extends BaseRuntime {
   private image?: string;
   private container: Docker.Container | null = null;
   private dindContainer: Docker.Container | null = null;
-  private createdWorkdirs = new Set<string>();
   private containerWorkdir: string | null = null;
   private sessions = new Map<string, ShellSession>();
 
   constructor(
-    private dockerOptions?: Docker.DockerOptions,
+    dockerOptions?: Docker.DockerOptions,
     params?: { image?: string },
   ) {
     super();
@@ -85,53 +62,41 @@ export class DockerRuntime extends BaseRuntime {
     this.image = params?.image;
   }
 
-  static async cleanupByLabels(
-    labels: Record<string, string>,
-    dockerOptions?: Docker.DockerOptions,
-  ): Promise<void> {
-    const docker = new Docker(dockerOptions);
-
-    const labelFilters = Object.entries(labels).map(([k, v]) => `${k}=${v}`);
-
-    const containers = await docker.listContainers({
-      all: true,
-      filters: { label: labelFilters },
-    });
-
-    const cleanupPromises = containers.map(async (containerInfo) => {
-      try {
-        const container = docker.getContainer(containerInfo.Id);
-
-        await DockerRuntime.stopByInstance(container);
-      } catch (error) {
-        console.error(error);
-      }
-    });
-
-    await Promise.all(cleanupPromises);
-  }
-
-  static async getByLabels(
-    labels: Record<string, string>,
+  static async getByName(
+    name: string,
     dockerOptions?: Docker.DockerOptions,
   ): Promise<Docker.Container | null> {
-    if (!labels || !Object.keys(labels).length) {
+    try {
+      const docker = new Docker(dockerOptions);
+      const list = await docker.listContainers({
+        all: true,
+        filters: { name: [name] },
+      });
+
+      const exact = list.filter((c) =>
+        c.Names?.some((n) => n.replace(/^\//, '') === name),
+      );
+
+      if (!exact[0]) {
+        return null;
+      }
+
+      return docker.getContainer(exact[0].Id);
+    } catch {
       return null;
     }
+  }
 
-    const docker = new Docker(dockerOptions);
-
-    const labelFilters = Object.entries(labels).map(([k, v]) => `${k}=${v}`);
-    const list = await docker.listContainers({
-      all: true,
-      filters: { label: labelFilters },
-    });
-
-    if (!list[0]) {
-      return null;
+  static async stopByName(
+    name: string,
+    dockerOptions?: Docker.DockerOptions,
+  ): Promise<void> {
+    const container = await DockerRuntime.getByName(name, dockerOptions);
+    if (!container) {
+      return;
     }
 
-    return docker.getContainer(list[0].Id);
+    await DockerRuntime.stopByInstance(container);
   }
 
   private dropSession(sessionId: string, _reason?: Error) {
@@ -399,7 +364,7 @@ export class DockerRuntime extends BaseRuntime {
       const onStdoutData = (chunk: Buffer) => {
         hasReceivedOutput = true;
         resetTailTimer();
-        stdoutBuffer = appendTail(stdoutBuffer, chunk);
+        stdoutBuffer = this.appendTail(stdoutBuffer, chunk, MAX_OUTPUT_BYTES);
         const endTokenWithColon = `${endToken}:`;
         const endIdx = stdoutBuffer.indexOf(endTokenWithColon);
         if (endIdx === -1) return;
@@ -425,7 +390,7 @@ export class DockerRuntime extends BaseRuntime {
       const onStderrData = (chunk: Buffer) => {
         hasReceivedOutput = true;
         resetTailTimer();
-        stderrBuffer = appendTail(stderrBuffer, chunk);
+        stderrBuffer = this.appendTail(stderrBuffer, chunk, MAX_OUTPUT_BYTES);
         const idx = stderrBuffer.indexOf(stderrEndToken);
         if (idx === -1) return;
         let cleaned = stderrBuffer.slice(0, idx);
@@ -520,24 +485,6 @@ export class DockerRuntime extends BaseRuntime {
         error as Error,
       );
     }
-  }
-
-  private async getByLabels(labels?: Record<string, string>) {
-    if (!labels || !Object.keys(labels).length) {
-      return null;
-    }
-
-    const labelFilters = Object.entries(labels).map(([k, v]) => `${k}=${v}`);
-    const list = await this.docker.listContainers({
-      all: true,
-      filters: { label: labelFilters },
-    });
-
-    if (!list[0]) {
-      return null;
-    }
-
-    return this.docker.getContainer(list[0].Id);
   }
 
   private async getByName(name: string): Promise<Docker.Container | null> {
@@ -992,7 +939,6 @@ export class DockerRuntime extends BaseRuntime {
       this.container = null;
       this.containerWorkdir = null;
       this.sessions.clear();
-      this.createdWorkdirs.clear();
 
       if (this.dindContainer) {
         await DockerRuntime.stopByInstance(this.dindContainer);
@@ -1011,49 +957,12 @@ export class DockerRuntime extends BaseRuntime {
     await container.remove({ force: true }).catch(() => undefined);
   }
 
-  private async ensureChildWorkdir(workdir: string) {
-    const fullWorkdir = this.getWorkdir(workdir, this.containerWorkdir || '');
-    if (this.createdWorkdirs.has(fullWorkdir) || !this.container) {
-      return fullWorkdir;
-    }
-
-    const ex = await this.container.exec({
-      Cmd: ['sh', '-lc', `mkdir -p -- '${fullWorkdir.replace(/'/g, "'\\''")}'`],
-      AttachStdout: true,
-      AttachStderr: true,
-      Tty: false,
-    });
-    const stream = await ex.start({ hijack: true, stdin: false });
-    await new Promise<void>((resolve, reject) => {
-      stream.on('end', resolve);
-      stream.on('close', resolve);
-      stream.on('error', reject);
-    });
-    const info = await ex.inspect();
-    if (info.ExitCode !== 0) {
-      throw new Error('MKDIR_FAILED');
-    }
-
-    this.createdWorkdirs.add(fullWorkdir);
-
-    return fullWorkdir;
-  }
-
   async exec(params: RuntimeExecParams): Promise<RuntimeExecResult> {
     if (!this.container) {
       throw new Error('Runtime not started');
     }
 
-    let fullWorkdir = this.containerWorkdir || undefined;
-    if (params.childWorkdir) {
-      fullWorkdir = params.createChildWorkdir
-        ? await this.ensureChildWorkdir(params.childWorkdir)
-        : this.getWorkdir(params.childWorkdir);
-    }
-
-    if (!fullWorkdir) {
-      fullWorkdir = this.workdir;
-    }
+    const fullWorkdir = this.containerWorkdir || this.workdir;
 
     const env = this.prepareEnv(params.env);
 
@@ -1131,10 +1040,18 @@ export class DockerRuntime extends BaseRuntime {
     let hasReceivedOutput = false;
 
     stdoutStream.on('data', (c: Buffer) => {
-      stdoutBuf = appendTailBuf(stdoutBuf, c as Buffer<ArrayBufferLike>);
+      stdoutBuf = this.appendTail(
+        stdoutBuf,
+        c as Buffer<ArrayBufferLike>,
+        MAX_OUTPUT_BYTES,
+      );
     });
     stderrStream.on('data', (c: Buffer) => {
-      stderrBuf = appendTailBuf(stderrBuf, c as Buffer<ArrayBufferLike>);
+      stderrBuf = this.appendTail(
+        stderrBuf,
+        c as Buffer<ArrayBufferLike>,
+        MAX_OUTPUT_BYTES,
+      );
     });
 
     const execStream = await ex.start({ hijack: true, stdin: false });
@@ -1347,15 +1264,5 @@ export class DockerRuntime extends BaseRuntime {
         }
       },
     };
-  }
-
-  public override getRuntimeInfo(): string {
-    const runtimeImage = this.image ?? environment.dockerRuntimeImage;
-
-    return dedent`
-      Runtime type: ${RuntimeType.Docker}
-      ${runtimeImage ? `Runtime image: ${runtimeImage}` : ''}
-      DIND available: ${this.dindContainer ? 'yes' : 'no'}
-    `;
   }
 }

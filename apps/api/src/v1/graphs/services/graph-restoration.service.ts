@@ -2,13 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
 
-import { DockerRuntime } from '../../runtime/services/docker-runtime';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphStatus } from '../graphs.types';
-import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphsService } from './graphs.service';
 
@@ -25,7 +23,6 @@ import { GraphsService } from './graphs.service';
 export class GraphRestorationService {
   constructor(
     private readonly graphDao: GraphDao,
-    private readonly graphCompiler: GraphCompiler,
     private readonly graphRegistry: GraphRegistry,
     private readonly threadsDao: ThreadsDao,
     private readonly moduleRef: ModuleRef,
@@ -35,26 +32,21 @@ export class GraphRestorationService {
   /**
    * Restores all graphs that were running before server restart
    * Process order:
-   * 1. First: Clean up all temporary runtime containers
-   * 2. Then: Destroy temporary graphs (run destroy pipeline)
-   * 3. Finally: Restore permanent graphs
+   * 1. First: Destroy temporary graphs (run destroy pipeline)
+   * 2. Finally: Restore permanent graphs
    */
   async restoreRunningGraphs(): Promise<void> {
     this.logger.log('Starting graph restoration process...');
 
-    // STEP 1: Clean up all temporary runtime containers
-    await this.cleanupTemporaryRuntimes();
+    // Destroy temporary graphs first (run destroy pipeline)
+    await this.graphDao.delete({ temporary: true });
 
-    // STEP 2: Destroy temporary graphs first (run destroy pipeline)
-    const temporaryGraphs = await this.graphDao.getAll({ temporary: true });
-    await this.deleteTemporaryGraphs(temporaryGraphs);
-
-    // STEP 3: Restore permanent graphs (both running and compiling)
+    // Restore permanent graphs (both running and compiling)
     const graphsToRestore = await this.graphDao.getAll({
       statuses: [GraphStatus.Running, GraphStatus.Compiling],
     });
 
-    this.logger.log('Restoring graphs after restart', {
+    this.logger.debug('Restoring graphs after restart', {
       runningCount: graphsToRestore.filter(
         (graph) => graph.status === GraphStatus.Running,
       ).length,
@@ -68,83 +60,6 @@ export class GraphRestorationService {
       this.restoreGraph(graph),
     );
     await Promise.allSettled(restorationPromises);
-  }
-
-  /**
-   * Cleans up all runtime containers with temporary labels
-   * This ensures that any leftover temporary containers from previous runs are removed
-   */
-  private async cleanupTemporaryRuntimes(): Promise<void> {
-    this.logger.log('Cleaning up temporary runtime containers...');
-
-    try {
-      await DockerRuntime.cleanupByLabels({ 'ai-company/temporary': 'true' });
-      this.logger.log('Temporary runtime containers cleanup complete');
-    } catch (error) {
-      this.logger.warn('Failed to cleanup temporary runtime containers', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  /**
-   * Destroys temporary graphs that were running before server restart
-   * Uses the proper destroy pipeline to stop triggers and runtimes
-   */
-  private async deleteTemporaryGraphs(
-    temporaryGraphs: GraphEntity[],
-  ): Promise<void> {
-    this.logger.log('Destroying temporary graphs', {
-      count: temporaryGraphs.length,
-      graphIds: temporaryGraphs.map((g) => g.id),
-    });
-
-    const deletionPromises = temporaryGraphs.map(async (graph) => {
-      try {
-        await this.cleanupNotCompiledGraphRuntimes(graph);
-      } catch (error) {
-        this.logger.warn(
-          `Failed to destroy runtime containers for temporary graph ${graph.id}`,
-          {
-            graphId: graph.id,
-            graphName: graph.name,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
-      }
-
-      try {
-        await this.graphDao.deleteById(graph.id);
-      } catch (error) {
-        this.logger.warn(
-          `Failed to delete temporary graph ${graph.id} from database`,
-          {
-            graphId: graph.id,
-            graphName: graph.name,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
-      }
-    });
-
-    await Promise.allSettled(deletionPromises);
-
-    this.logger.log('Temporary graphs destruction complete');
-  }
-
-  /**
-   * Cleans up Docker runtime containers for graphs that were not compiled.
-   * Used during temporary graph cleanup after server restart.
-   */
-  private async cleanupNotCompiledGraphRuntimes(
-    graph: GraphEntity,
-  ): Promise<void> {
-    const runtimeNodes = graph.schema.nodes.filter(
-      (node) => node.template === 'docker-runtime',
-    );
-    if (runtimeNodes.length === 0) return;
-
-    await DockerRuntime.cleanupByLabels({ 'ai-company/graph_id': graph.id });
   }
 
   /**
@@ -200,14 +115,6 @@ export class GraphRestorationService {
         return;
       }
 
-      this.logger.log(
-        `Stopping ${runningThreads.length} interrupted thread(s) for graph ${graphId}`,
-        {
-          graphId,
-          threadIds: runningThreads.map((t) => t.externalThreadId),
-        },
-      );
-
       // Update thread status (token usage is in checkpoint state only)
       const updatePromises = runningThreads.map(async (thread) => {
         return this.threadsDao.updateById(thread.id, {
@@ -216,16 +123,11 @@ export class GraphRestorationService {
       });
 
       await Promise.allSettled(updatePromises);
-
-      this.logger.log(
-        `Successfully stopped ${runningThreads.length} interrupted thread(s) for graph ${graphId}`,
-      );
     } catch (error) {
       this.logger.error(
         error instanceof Error ? error : new Error(String(error)),
         `Failed to stop interrupted threads for graph ${graphId}`,
       );
-      // Don't throw - graph restoration should succeed even if thread stopping fails
     }
   }
 }

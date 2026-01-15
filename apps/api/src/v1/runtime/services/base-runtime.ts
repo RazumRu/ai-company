@@ -41,6 +41,34 @@ export abstract class BaseRuntime {
   protected workdir = '/runtime-workspace';
   protected eventEmitter = new EventEmitter();
 
+  protected appendTail(prev: string, chunk: Buffer, max: number): string;
+  protected appendTail(
+    prev: Buffer<ArrayBufferLike>,
+    chunk: Buffer<ArrayBufferLike>,
+    max: number,
+  ): Buffer<ArrayBufferLike>;
+  protected appendTail(
+    prev: string | Buffer<ArrayBufferLike>,
+    chunk: Buffer<ArrayBufferLike>,
+    max: number,
+  ) {
+    if (typeof prev === 'string') {
+      const next = chunk.toString('utf8');
+      if (!prev) {
+        return next.length <= max ? next : next.slice(next.length - max);
+      }
+      const combined = prev + next;
+      if (combined.length <= max) return combined;
+      return combined.slice(combined.length - max);
+    }
+
+    const combined = (prev.length ? Buffer.concat([prev, chunk]) : chunk) as
+      | Buffer<ArrayBufferLike>
+      | Buffer<ArrayBuffer>;
+    if (combined.length <= max) return combined as Buffer<ArrayBufferLike>;
+    return combined.subarray(combined.length - max) as Buffer<ArrayBufferLike>;
+  }
+
   public getWorkdir(workdir?: string | string[], parentWorkdir?: string) {
     return (
       (parentWorkdir || this.workdir) +
@@ -68,8 +96,6 @@ export abstract class BaseRuntime {
   protected emit(event: RuntimeEvent): void {
     this.eventEmitter.emit('event', event);
   }
-
-  public abstract getRuntimeInfo(): string;
 
   abstract start(params: RuntimeStartParams): Promise<void>;
   abstract stop(): Promise<void>;

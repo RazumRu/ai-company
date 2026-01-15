@@ -687,7 +687,7 @@ describe('ThreadsService', () => {
         createdBy: mockUserId,
       });
       expect(messagesDao.getAll).toHaveBeenCalledWith({
-        externalThreadId: mockThread.externalThreadId,
+        threadId: mockThreadId,
         order: { createdAt: 'ASC' },
         projection: [
           'id',

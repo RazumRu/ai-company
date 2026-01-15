@@ -17,7 +17,6 @@ export interface RuntimeStartParams {
 
 export interface RuntimeExecParams {
   cmd: string[] | string;
-  childWorkdir?: string;
   env?: Record<string, string>;
   /**
    * Optional working directory to cd into before executing the command.
@@ -39,7 +38,6 @@ export interface RuntimeExecParams {
   sessionId?: string;
   timeoutMs?: number;
   tailTimeoutMs?: number;
-  createChildWorkdir?: boolean;
   metadata?: GraphExecutionMetadata;
 }
 
@@ -56,6 +54,18 @@ export enum RuntimeType {
   Docker = 'Docker',
 }
 
-export interface ProvideRuntimeParams {
+export enum RuntimeInstanceStatus {
+  Starting = 'Starting',
+  Running = 'Running',
+  Stopping = 'Stopping',
+  Stopped = 'Stopped',
+}
+
+export interface ProvideRuntimeInstanceParams {
+  graphId: string;
+  runtimeNodeId: string;
+  threadId: string;
   type: RuntimeType;
+  runtimeStartParams: RuntimeStartParams;
+  temporary?: boolean;
 }
