@@ -8,6 +8,7 @@ ENV CLICOLOR_FORCE=0
 ENV TERM=dumb
 ENV CI=true
 ENV NODE_NO_WARNINGS=1
+
 WORKDIR /app
 
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
@@ -18,6 +19,9 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
   jq \
   python3 \
   python3-pip \
+  python3-venv \
+  python3-dev \
+  build-essential \
   apt-utils \
   gnupg \
   poppler-utils \
@@ -30,11 +34,29 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
   libjansson-dev \
   libyaml-dev \
   libxml2-dev \
+  libxslt1-dev \
+  zlib1g-dev \
   && ln -s /usr/bin/python3 /usr/bin/python \
   && ln -s /usr/bin/fdfind /usr/local/bin/fd \
   && git clone https://github.com/universal-ctags/ctags.git /tmp/ctags \
   && cd /tmp/ctags && ./autogen.sh && ./configure --prefix=/usr && make && make install \
-  && rm -rf /tmp/ctags
+  && rm -rf /tmp/ctags \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/py \
+  && /opt/py/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
+  && /opt/py/bin/pip install --no-cache-dir \
+    requests \
+    httpx \
+    beautifulsoup4 \
+    lxml \
+    pandas \
+    numpy \
+    pypdf \
+    pdfplumber \
+    openpyxl
+
+ENV PATH="/opt/py/bin:${PATH}"
 
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
   && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
