@@ -109,13 +109,10 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
           initScripts,
         } = this.collectResourceData(resourceNodeIds, graphId);
 
-        const currentRuntimeParams = runtimeNode.instance.getParams();
-
         const initScriptList = initScripts.flatMap((script) =>
           Array.isArray(script.cmd) ? script.cmd : [script.cmd],
         );
         const initScriptTimeoutMs = Math.max(
-          currentRuntimeParams.runtimeStartParams.initScriptTimeoutMs ?? 0,
           ...initScripts.map((script) => script.timeout ?? 0),
         );
 

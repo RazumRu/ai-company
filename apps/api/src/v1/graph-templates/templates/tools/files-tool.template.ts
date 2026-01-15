@@ -6,7 +6,7 @@ import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { FilesToolGroup } from '../../../agent-tools/tools/common/files/files-tool-group';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { ToolNodeBaseTemplate } from '../base-node.template';
 
@@ -90,11 +90,11 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
         const runtimeNodeId = runtimeNodeIds[0]!;
 
         // Validate that the runtime exists in the registry immediately during configuration
-        const runtime = this.graphRegistry.getNodeInstance<BaseRuntime>(
+        const runtimeNode = this.graphRegistry.getNode<RuntimeThreadProvider>(
           graphId,
           runtimeNodeId,
         );
-        if (!runtime) {
+        if (!runtimeNode) {
           throw new NotFoundException(
             'RUNTIME_NOT_FOUND',
             `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
@@ -102,7 +102,7 @@ export class FilesToolTemplate extends ToolNodeBaseTemplate<
         }
 
         const { tools, instructions } = this.filesToolGroup.buildTools({
-          runtime,
+          runtimeProvider: runtimeNode.instance,
           includeEditActions: config.includeEditActions,
         });
 

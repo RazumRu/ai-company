@@ -7,7 +7,9 @@ import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
 import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
+import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeProvider } from '../../../v1/runtime/services/runtime-provider';
+import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
 
 const THREAD_ID = `shell-sessions-${Date.now()}`;
 const RUNNABLE_CONFIG: ToolRunnableConfig<BaseAgentConfigurable> = {
@@ -21,25 +23,34 @@ describe('ShellTool persistent sessions (integration)', () => {
   let moduleRef: TestingModule;
   let runtime: BaseRuntime;
   let shellTool: ShellTool;
-  let runtimeProvider: RuntimeProvider;
+  let runtimeThreadProvider: RuntimeThreadProvider;
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
-      providers: [ShellTool, RuntimeProvider],
+      providers: [ShellTool],
     }).compile();
-
-    runtimeProvider = moduleRef.get(RuntimeProvider);
     shellTool = moduleRef.get(ShellTool);
 
-    runtime = await runtimeProvider.provide({
-      type: RuntimeType.Docker,
-    });
+    runtime = new DockerRuntime({ socketPath: environment.dockerSocket });
 
     await runtime.start({
       image: environment.dockerRuntimeImage,
       recreate: true,
       containerName: `shell-session-${Date.now()}`,
     });
+
+    runtimeThreadProvider = new RuntimeThreadProvider(
+      { provide: async () => runtime } as unknown as RuntimeProvider,
+      {
+        graphId: `graph-${Date.now()}`,
+        runtimeNodeId: `runtime-${Date.now()}`,
+        type: RuntimeType.Docker,
+        runtimeStartParams: {
+          image: environment.dockerRuntimeImage,
+        },
+        temporary: true,
+      },
+    );
   }, 240_000);
 
   afterAll(async () => {
@@ -56,7 +67,9 @@ describe('ShellTool persistent sessions (integration)', () => {
     'preserves environment variables and cwd within the same session',
     { timeout: 90000 },
     async () => {
-      const builtTool = shellTool.build({ runtime });
+      const builtTool = shellTool.build({
+        runtimeProvider: runtimeThreadProvider,
+      });
 
       const { output: exportResult } = await builtTool.invoke(
         {
@@ -102,7 +115,9 @@ describe('ShellTool persistent sessions (integration)', () => {
     'terminates commands that stop producing output within tailTimeoutMs',
     { timeout: 120_000 },
     async () => {
-      const builtTool = shellTool.build({ runtime });
+      const builtTool = shellTool.build({
+        runtimeProvider: runtimeThreadProvider,
+      });
 
       const { output: result } = await builtTool.invoke(
         {

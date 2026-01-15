@@ -4,13 +4,42 @@ import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FilesToolGroup } from '../../../agent-tools/tools/common/files/files-tool-group';
-import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
+import {
+  CompiledGraphNode,
+  GraphNode,
+  GraphNodeInstanceHandle,
+  GraphNodeStatus,
+  NodeKind,
+} from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeType } from '../../../runtime/runtime.types';
 import {
   FilesToolTemplate,
   FilesToolTemplateSchema,
 } from './files-tool.template';
+
+const makeHandle = <TInstance>(
+  instance: TInstance,
+): GraphNodeInstanceHandle<TInstance, any> => ({
+  provide: async () => instance,
+  configure: async () => {},
+  destroy: async () => {},
+});
+
+const buildMockNode = <TInstance = unknown>(options: {
+  id: string;
+  type: NodeKind;
+  template: string;
+  instance: TInstance;
+  config?: unknown;
+  getStatus?: () => GraphNodeStatus;
+}): CompiledGraphNode<TInstance> =>
+  ({
+    ...options,
+    handle: makeHandle(options.instance),
+    config: options.config ?? {},
+    getStatus: options.getStatus || (() => GraphNodeStatus.Idle),
+  }) as unknown as CompiledGraphNode<TInstance>;
 
 describe('FilesToolTemplate', () => {
   let template: FilesToolTemplate;
@@ -125,20 +154,44 @@ describe('FilesToolTemplate', () => {
       version: '1',
     };
 
-    let mockRuntime: BaseRuntime;
+    let mockRuntime: { exec: ReturnType<typeof vi.fn> };
+    let mockRuntimeThreadProvider: {
+      provide: ReturnType<typeof vi.fn>;
+      getParams: ReturnType<typeof vi.fn>;
+      setAdditionalParams: ReturnType<typeof vi.fn>;
+    };
 
     beforeEach(() => {
       mockRuntime = {
         exec: vi.fn(),
-      } as unknown as BaseRuntime;
+      };
+      mockRuntimeThreadProvider = {
+        provide: vi.fn().mockResolvedValue(mockRuntime),
+        getParams: vi.fn().mockReturnValue({
+          graphId: mockGraphId,
+          runtimeNodeId: mockRuntimeId,
+          type: RuntimeType.Docker,
+          runtimeStartParams: {},
+          temporary: false,
+        }),
+        setAdditionalParams: vi.fn(),
+      };
 
       vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
         (_gid, _nodes, kind) =>
           kind === NodeKind.Runtime ? [mockRuntimeId] : [],
       );
 
-      vi.mocked(mockGraphRegistry.getNodeInstance).mockImplementation(
-        (_gid, nid) => (nid === mockRuntimeId ? mockRuntime : undefined),
+      vi.mocked(mockGraphRegistry.getNode).mockImplementation((gid, nid) =>
+        gid === mockGraphId && nid === mockRuntimeId
+          ? buildMockNode({
+              id: mockRuntimeId,
+              type: NodeKind.Runtime,
+              template: 'docker-runtime',
+              instance: mockRuntimeThreadProvider,
+              config: { runtimeType: RuntimeType.Docker },
+            })
+          : undefined,
       );
     });
 
@@ -189,7 +242,7 @@ describe('FilesToolTemplate', () => {
     });
 
     it('should throw NotFoundException when runtime node does not exist in registry', async () => {
-      vi.mocked(mockGraphRegistry.getNodeInstance).mockReturnValue(undefined);
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(undefined);
 
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = {
@@ -233,7 +286,9 @@ describe('FilesToolTemplate', () => {
       const buildConfig = vi.mocked(mockFilesToolGroup.buildTools).mock
         .calls[0]![0] as any;
 
-      expect(buildConfig.runtime).toBe(mockRuntime);
+      expect(buildConfig.runtime).toBeUndefined();
+      expect(buildConfig.runtimeProvider).toBe(mockRuntimeThreadProvider);
+      expect(buildConfig.runtimeResolver).toBeUndefined();
     });
 
     it('should throw NotFoundException when runtime node cannot be found in configure', async () => {
@@ -257,7 +312,7 @@ describe('FilesToolTemplate', () => {
       const instance = await handle.provide(init);
 
       // Simulate runtime disappearing from registry
-      vi.mocked(mockGraphRegistry.getNodeInstance).mockReturnValue(undefined);
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(undefined);
 
       await expect(handle.configure(init, instance)).rejects.toThrow(
         NotFoundException,

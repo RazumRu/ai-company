@@ -4,7 +4,7 @@ import { Octokit } from '@octokit/rest';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { BaseRuntime } from '../../../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../../../runtime/services/runtime-thread-provider';
 import { execRuntimeWithContext } from '../../../agent-tools.utils';
 import { BaseTool } from '../../base-tool';
 
@@ -18,7 +18,7 @@ export const GhBaseToolSchema = z.object({
 export type GhBaseToolSchemaType = z.infer<typeof GhBaseToolSchema>;
 
 export type GhBaseToolConfig = {
-  runtime: BaseRuntime;
+  runtimeProvider: RuntimeThreadProvider;
   patToken: string;
 };
 
@@ -38,8 +38,10 @@ export abstract class GhBaseTool<
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ) {
     try {
+      const runtime = await config.runtimeProvider.provide(cfg);
+
       const res = await execRuntimeWithContext(
-        config.runtime,
+        runtime,
         {
           cmd: params.cmd,
         },

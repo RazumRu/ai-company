@@ -2,12 +2,12 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { BaseRuntime } from '../../../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../../../runtime/services/runtime-thread-provider';
 import { execRuntimeWithContext } from '../../../agent-tools.utils';
 import { BaseTool } from '../../base-tool';
 
 export type FilesBaseToolConfig = {
-  runtime: BaseRuntime;
+  runtimeProvider: RuntimeThreadProvider;
 };
 
 @Injectable()
@@ -31,8 +31,10 @@ export abstract class FilesBaseTool<
         : params.cmd.map((c) => `( ${c} )`);
 
     try {
+      const runtime = await config.runtimeProvider.provide(cfg);
+
       const res = await execRuntimeWithContext(
-        config.runtime,
+        runtime,
         {
           cmd: cmdWrapped,
           timeoutMs: params.timeoutMs ?? 30_000,

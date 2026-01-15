@@ -9,7 +9,6 @@ import type { BaseAgentConfigurable } from '../../agents/services/nodes/base-nod
 import {
   ProvideRuntimeInstanceParams,
   RuntimeStartParams,
-  RuntimeType,
 } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
 import type { RuntimeProvider } from './runtime-provider';
@@ -19,14 +18,14 @@ type RuntimeThreadProviderParams = Pick<
   'runtimeNodeId' | 'type' | 'runtimeStartParams' | 'temporary' | 'graphId'
 >;
 
-type RuntimeThreadAditionalParams = Pick<
+type RuntimeThreadAdditionalParams = Pick<
   RuntimeStartParams,
   'initScript' | 'initScriptTimeoutMs' | 'env'
 >;
 
 @Injectable()
 export class RuntimeThreadProvider {
-  private additionalParams?: RuntimeThreadAditionalParams;
+  private additionalParams?: RuntimeThreadAdditionalParams;
 
   constructor(
     private readonly runtimeProvider: RuntimeProvider,
@@ -41,8 +40,46 @@ export class RuntimeThreadProvider {
     return this.params;
   }
 
-  public setAdditionalParams(params: RuntimeThreadAditionalParams) {
-    this.additionalParams = params;
+  public setAdditionalParams(params: RuntimeThreadAdditionalParams) {
+    const env =
+      params.env && Object.keys(params.env).length ? params.env : null;
+    const initScript = params.initScript
+      ? Array.isArray(params.initScript)
+        ? params.initScript
+        : [params.initScript]
+      : [];
+    const initScriptTimeoutMs = params.initScriptTimeoutMs;
+
+    if (!env && initScript.length === 0 && initScriptTimeoutMs === undefined) {
+      return;
+    }
+
+    if (!this.additionalParams) {
+      this.additionalParams = {};
+    }
+
+    if (env) {
+      this.additionalParams.env = {
+        ...(this.additionalParams.env ?? {}),
+        ...env,
+      };
+    }
+
+    if (initScript.length > 0) {
+      const existing = this.additionalParams.initScript
+        ? Array.isArray(this.additionalParams.initScript)
+          ? this.additionalParams.initScript
+          : [this.additionalParams.initScript]
+        : [];
+      this.additionalParams.initScript = [...existing, ...initScript];
+    }
+
+    if (initScriptTimeoutMs !== undefined) {
+      this.additionalParams.initScriptTimeoutMs = Math.max(
+        this.additionalParams.initScriptTimeoutMs ?? 0,
+        initScriptTimeoutMs,
+      );
+    }
   }
 
   async provide<T extends BaseRuntime>(
@@ -63,7 +100,10 @@ export class RuntimeThreadProvider {
     }
 
     if (this.additionalParams?.initScript) {
-      initScript = [...initScript, ...this.additionalParams.initScript];
+      const extra = Array.isArray(this.additionalParams.initScript)
+        ? this.additionalParams.initScript
+        : [this.additionalParams.initScript];
+      initScript = [...initScript, ...extra];
     }
 
     return await this.runtimeProvider.provide<T>({
@@ -71,9 +111,10 @@ export class RuntimeThreadProvider {
       runtimeStartParams: {
         ...this.params.runtimeStartParams,
         initScript,
-        initScriptTimeoutMs:
-          this.additionalParams?.initScriptTimeoutMs ||
-          this.params.runtimeStartParams.initScriptTimeoutMs,
+        initScriptTimeoutMs: Math.max(
+          this.params.runtimeStartParams.initScriptTimeoutMs ?? 0,
+          this.additionalParams?.initScriptTimeoutMs ?? 0,
+        ),
         env: {
           ...(this.params.runtimeStartParams.env || {}),
           ...(this.additionalParams?.env || {}),

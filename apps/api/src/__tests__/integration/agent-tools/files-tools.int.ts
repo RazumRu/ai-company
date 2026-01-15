@@ -26,7 +26,9 @@ import { LitellmService } from '../../../v1/litellm/services/litellm.service';
 import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
+import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeProvider } from '../../../v1/runtime/services/runtime-provider';
+import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
@@ -82,7 +84,7 @@ const hasNamedTag = (result: SearchTagsResult, name: string) =>
 describe('Files tools integration', () => {
   let moduleRef: TestingModule;
   let runtime: BaseRuntime;
-  let runtimeProvider: RuntimeProvider;
+  let runtimeThreadProvider: RuntimeThreadProvider;
   let filesFindPathsTool: FilesFindPathsTool;
   let filesReadTool: FilesReadTool;
   let filesSearchTextTool: FilesSearchTextTool;
@@ -123,14 +125,12 @@ describe('Files tools integration', () => {
         FilesDeleteTool,
         FilesEditTool,
         ShellTool,
-        RuntimeProvider,
         OpenaiService,
         LitellmService,
         LiteLlmClient,
       ],
     }).compile();
 
-    runtimeProvider = moduleRef.get(RuntimeProvider);
     filesFindPathsTool = moduleRef.get(FilesFindPathsTool);
     filesReadTool = moduleRef.get(FilesReadTool);
     filesSearchTextTool = moduleRef.get(FilesSearchTextTool);
@@ -141,15 +141,26 @@ describe('Files tools integration', () => {
     filesEditTool = moduleRef.get(FilesEditTool);
     shellTool = moduleRef.get(ShellTool);
 
-    runtime = await runtimeProvider.provide({
-      type: RuntimeType.Docker,
-    });
+    runtime = new DockerRuntime({ socketPath: environment.dockerSocket });
 
     await runtime.start({
       image: environment.dockerRuntimeImage,
       recreate: true,
       containerName: `files-tools-${Date.now()}`,
     });
+
+    runtimeThreadProvider = new RuntimeThreadProvider(
+      { provide: async () => runtime } as unknown as RuntimeProvider,
+      {
+        graphId: `graph-${Date.now()}`,
+        runtimeNodeId: `runtime-${Date.now()}`,
+        type: RuntimeType.Docker,
+        runtimeStartParams: {
+          image: environment.dockerRuntimeImage,
+        },
+        temporary: true,
+      },
+    );
   }, 60000);
 
   afterAll(async () => {
@@ -301,7 +312,9 @@ describe('Files tools integration', () => {
     'allows creating, cd-ing, and reading from a custom dir with persistent session',
     { timeout: INT_TEST_TIMEOUT },
     async () => {
-      const builtShell = shellTool.build({ runtime });
+      const builtShell = shellTool.build({
+        runtimeProvider: runtimeThreadProvider,
+      });
       const customDir = `${WORKSPACE_DIR}/nested/custom`;
       const filePath = `${customDir}/note.txt`;
       const content = 'Hello from custom dir';
@@ -352,7 +365,9 @@ describe('Files tools integration', () => {
     'running tools with dir does not change persistent shell cwd',
     { timeout: INT_TEST_TIMEOUT },
     async () => {
-      const builtShell = shellTool.build({ runtime });
+      const builtShell = shellTool.build({
+        runtimeProvider: runtimeThreadProvider,
+      });
 
       const { output: setCwd } = await builtShell.invoke(
         { purpose: 'set cwd', command: 'cd /tmp && pwd' },

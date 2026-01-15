@@ -1,6 +1,6 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@packages/common';
+import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GhToolGroup } from '../../../agent-tools/tools/common/github/gh-tool-group';
@@ -13,7 +13,7 @@ import {
   NodeKind,
 } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeType } from '../../../runtime/runtime.types';
 import { GhToolTemplate, GhToolTemplateSchema } from './gh-tool.template';
 
 const makeHandle = <TInstance>(
@@ -157,7 +157,12 @@ describe('GhToolTemplate', () => {
       version: '1',
     };
 
-    let mockRuntime: BaseRuntime;
+    let mockRuntime: { exec: ReturnType<typeof vi.fn> };
+    let mockRuntimeThreadProvider: {
+      provide: ReturnType<typeof vi.fn>;
+      getParams: ReturnType<typeof vi.fn>;
+      setAdditionalParams: ReturnType<typeof vi.fn>;
+    };
     let mockResource: IGithubResourceOutput;
 
     beforeEach(() => {
@@ -169,7 +174,18 @@ describe('GhToolTemplate', () => {
           fail: false,
           execPath: '/bin/sh',
         }),
-      } as unknown as BaseRuntime;
+      };
+      mockRuntimeThreadProvider = {
+        provide: vi.fn().mockResolvedValue(mockRuntime),
+        getParams: vi.fn().mockReturnValue({
+          graphId: mockGraphId,
+          runtimeNodeId: mockRuntimeId,
+          type: RuntimeType.Docker,
+          runtimeStartParams: { initScriptTimeoutMs: 0 },
+          temporary: false,
+        }),
+        setAdditionalParams: vi.fn(),
+      };
 
       mockResource = {
         patToken: 'test-token',
@@ -190,11 +206,17 @@ describe('GhToolTemplate', () => {
           templateId === 'github-resource' ? [mockResourceId] : [],
       );
 
-      vi.mocked(mockGraphRegistry.getNodeInstance).mockImplementation(
-        (_gid, nid) => (nid === mockRuntimeId ? mockRuntime : undefined),
-      );
+      vi.mocked(mockGraphRegistry.getNode).mockImplementation((gid, nid) => {
+        if (gid === mockGraphId && nid === mockRuntimeId) {
+          return buildMockNode({
+            id: mockRuntimeId,
+            type: NodeKind.Runtime,
+            template: 'docker-runtime',
+            instance: mockRuntimeThreadProvider,
+            config: { runtimeType: RuntimeType.Docker },
+          });
+        }
 
-      vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, nid) => {
         if (nid === mockResourceId) {
           return buildMockNode({
             id: mockResourceId,
@@ -203,6 +225,7 @@ describe('GhToolTemplate', () => {
             instance: mockResource,
           });
         }
+
         return undefined;
       });
     });
@@ -233,7 +256,10 @@ describe('GhToolTemplate', () => {
         }),
       );
       expect(instance.tools).toEqual(mockTools);
-      expect(mockRuntime.exec).toHaveBeenCalled();
+      const buildArgs = vi.mocked(mockGhToolGroup.buildTools).mock.calls[0]![0];
+      expect(buildArgs.runtime).toBeUndefined();
+      expect(buildArgs.runtimeProvider).toBe(mockRuntimeThreadProvider);
+      expect(buildArgs.runtimeResolver).toBeUndefined();
     });
 
     it('should use cloneOnly flag to limit tools', async () => {
@@ -275,7 +301,7 @@ describe('GhToolTemplate', () => {
     });
 
     it('should throw NotFoundException when runtime node is null', async () => {
-      vi.mocked(mockGraphRegistry.getNodeInstance).mockReturnValue(undefined);
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(undefined);
 
       const outputNodeIds = new Set([mockRuntimeId]);
       const config = { cloneOnly: false };
@@ -312,7 +338,7 @@ describe('GhToolTemplate', () => {
       );
     });
 
-    it('should execute init script from GitHub resource', async () => {
+    it('should include init script from GitHub resource in runtime resolver', async () => {
       const outputNodeIds = new Set([mockRuntimeId, mockResourceId]);
       const config = { cloneOnly: false };
       const handle = await template.create();
@@ -325,22 +351,20 @@ describe('GhToolTemplate', () => {
       const instance = await handle.provide(init);
       await handle.configure(init, instance);
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith(
+      expect(
+        mockRuntimeThreadProvider.setAdditionalParams,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
-          cmd: 'echo init',
+          initScript: ['echo init'],
           env: expect.objectContaining({ GITHUB_PAT_TOKEN: 'test-token' }),
         }),
       );
     });
 
-    it('should throw BadRequestException when init script fails', async () => {
-      vi.mocked(mockRuntime.exec).mockResolvedValue({
-        stdout: '',
-        stderr: 'Error',
-        exitCode: 1,
-        fail: true,
-        execPath: '/usr/bin/gh',
-      });
+    it('should surface runtime resolver errors when invoked', async () => {
+      mockRuntimeThreadProvider.provide.mockRejectedValue(
+        new Error('INIT_SCRIPT_EXECUTION_FAILED'),
+      );
 
       const outputNodeIds = new Set([mockRuntimeId, mockResourceId]);
       const config = { cloneOnly: false };
@@ -352,13 +376,17 @@ describe('GhToolTemplate', () => {
         metadata: mockMetadata,
       };
       const instance = await handle.provide(init);
+      await handle.configure(init, instance);
 
-      await expect(handle.configure(init, instance)).rejects.toThrow(
-        BadRequestException,
-      );
+      const buildArgs = vi.mocked(mockGhToolGroup.buildTools).mock.calls[0]![0];
+      await expect(
+        buildArgs.runtimeProvider?.provide({
+          configurable: { thread_id: 'thread-1' },
+        } as any),
+      ).rejects.toThrow('INIT_SCRIPT_EXECUTION_FAILED');
     });
 
-    it('should skip init script execution when initScript is undefined', async () => {
+    it('should skip init script when initScript is undefined', async () => {
       mockResource.data.initScript = undefined;
 
       const outputNodeIds = new Set([mockRuntimeId, mockResourceId]);
@@ -373,7 +401,13 @@ describe('GhToolTemplate', () => {
       const instance = await handle.provide(init);
       await handle.configure(init, instance);
 
-      expect(mockRuntime.exec).not.toHaveBeenCalled();
+      expect(
+        mockRuntimeThreadProvider.setAdditionalParams,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initScript: [],
+        }),
+      );
     });
   });
 });

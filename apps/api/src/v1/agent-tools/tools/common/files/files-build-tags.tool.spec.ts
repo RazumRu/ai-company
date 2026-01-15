@@ -226,7 +226,7 @@ describe('FilesBuildTagsTool', () => {
       expect(result.tagsFile).toBe('/tmp/test-thread-789/myrepo.json');
     });
 
-    it('should use unknown when no thread_id is available', async () => {
+    it('should return error when no thread_id is available', async () => {
       const mockCfgNoThread: ToolRunnableConfig<BaseAgentConfigurable> = {
         configurable: {},
       };
@@ -236,19 +236,7 @@ describe('FilesBuildTagsTool', () => {
         alias: 'myrepo',
       };
 
-      vi.spyOn(tool as any, 'execCommand')
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/unknown',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-          execPath: '/runtime-workspace/unknown',
-        });
+      const execSpy = vi.spyOn(tool as any, 'execCommand');
 
       const { output: result } = await tool.invoke(
         args,
@@ -256,8 +244,8 @@ describe('FilesBuildTagsTool', () => {
         mockCfgNoThread,
       );
 
-      expect(result.success).toBe(true);
-      expect(result.tagsFile).toBe('/tmp/unknown/myrepo.json');
+      expect(result.error).toBe('Thread id is required to build tags');
+      expect(execSpy).not.toHaveBeenCalled();
     });
 
     it('should return error when mkdir fails', async () => {

@@ -108,9 +108,15 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
     const threadId =
-      cfg.configurable?.parent_thread_id ||
-      cfg.configurable?.thread_id ||
-      'unknown';
+      cfg.configurable?.parent_thread_id || cfg.configurable?.thread_id;
+    if (!threadId) {
+      return {
+        output: {
+          error: 'Thread id is required to build tags',
+        },
+        messageMetadata,
+      };
+    }
 
     // Create the tags directory if it doesn't exist
     const tagsDir = `/tmp/${threadId.replace(/:/g, '_')}`;

@@ -191,9 +191,15 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
     const threadId =
-      cfg.configurable?.parent_thread_id ||
-      cfg.configurable?.thread_id ||
-      'unknown';
+      cfg.configurable?.parent_thread_id || cfg.configurable?.thread_id;
+    if (!threadId) {
+      return {
+        output: {
+          error: 'Thread id is required to search tags',
+        },
+        messageMetadata,
+      };
+    }
 
     const tagsFile = `/tmp/${threadId.replace(/:/g, '_')}/${args.alias}.json`;
 

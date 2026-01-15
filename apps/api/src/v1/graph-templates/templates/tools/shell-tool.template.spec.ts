@@ -16,7 +16,7 @@ import {
   NodeKind,
 } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeType } from '../../../runtime/runtime.types';
 import {
   ShellToolTemplate,
   ShellToolTemplateSchema,
@@ -154,22 +154,48 @@ describe('ShellToolTemplate', () => {
       version: '1',
     };
 
-    let mockRuntime: BaseRuntime;
+    let mockRuntime: { exec: ReturnType<typeof vi.fn> };
+    let mockRuntimeThreadProvider: {
+      provide: ReturnType<typeof vi.fn>;
+      getParams: ReturnType<typeof vi.fn>;
+      setAdditionalParams: ReturnType<typeof vi.fn>;
+    };
 
     beforeEach(() => {
       mockRuntime = {
         exec: vi
           .fn()
           .mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
-      } as unknown as BaseRuntime;
+      };
+      mockRuntimeThreadProvider = {
+        provide: vi.fn().mockResolvedValue(mockRuntime),
+        getParams: vi.fn().mockReturnValue({
+          graphId: mockGraphId,
+          runtimeNodeId: mockRuntimeNodeId,
+          type: RuntimeType.Docker,
+          runtimeStartParams: { initScriptTimeoutMs: 0 },
+          temporary: false,
+        }),
+        setAdditionalParams: vi.fn(),
+      };
 
       vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
         (_gid, _nodes, kind) =>
           kind === NodeKind.Runtime ? [mockRuntimeNodeId] : [],
       );
 
-      vi.mocked(mockGraphRegistry.getNodeInstance).mockImplementation(
-        (gid, nid) => (nid === mockRuntimeNodeId ? mockRuntime : null),
+      vi.mocked(mockGraphRegistry.getNode).mockImplementation((gid, nid) =>
+        gid === mockGraphId && nid === mockRuntimeNodeId
+          ? buildMockNode({
+              id: mockRuntimeNodeId,
+              type: NodeKind.Runtime,
+              template: 'docker-runtime',
+              instance: mockRuntimeThreadProvider,
+              config: {
+                runtimeType: RuntimeType.Docker,
+              },
+            })
+          : undefined,
       );
     });
 
@@ -259,8 +285,16 @@ describe('ShellToolTemplate', () => {
         (_gid, _nodes, kind) =>
           kind === NodeKind.Runtime ? [customRuntimeId] : [],
       );
-      vi.mocked(mockGraphRegistry.getNodeInstance).mockImplementation(
-        (_gid, nid) => (nid === customRuntimeId ? mockRuntime : null),
+      vi.mocked(mockGraphRegistry.getNode).mockImplementation((gid, nid) =>
+        gid === mockGraphId && nid === customRuntimeId
+          ? buildMockNode({
+              id: customRuntimeId,
+              type: NodeKind.Runtime,
+              template: 'docker-runtime',
+              instance: mockRuntimeThreadProvider,
+              config: { runtimeType: RuntimeType.Docker },
+            })
+          : undefined,
       );
 
       const outputNodeIds = new Set([customRuntimeId]);
@@ -280,7 +314,7 @@ describe('ShellToolTemplate', () => {
     });
 
     it('should handle null/undefined runtime node gracefully', async () => {
-      vi.mocked(mockGraphRegistry.getNodeInstance).mockReturnValue(null);
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(undefined);
 
       const outputNodeIds = new Set([mockRuntimeNodeId]);
       const config = {};
@@ -320,7 +354,17 @@ describe('ShellToolTemplate', () => {
           },
         );
 
-        vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
+        vi.mocked(mockGraphRegistry.getNode).mockImplementation((gid, id) => {
+          if (gid === mockGraphId && id === mockRuntimeNodeId) {
+            return buildMockNode({
+              id: mockRuntimeNodeId,
+              type: NodeKind.Runtime,
+              template: 'docker-runtime',
+              instance: mockRuntimeThreadProvider,
+              config: { runtimeType: RuntimeType.Docker },
+            });
+          }
+
           if (id === mockResourceId) {
             return buildMockNode({
               id: mockResourceId,
@@ -329,6 +373,7 @@ describe('ShellToolTemplate', () => {
               instance: mockResourceOutput,
             });
           }
+
           return undefined;
         });
       });
@@ -346,9 +391,16 @@ describe('ShellToolTemplate', () => {
         const instance = await handle.provide(init);
         await handle.configure(init, instance);
 
-        expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect(
+          mockRuntimeThreadProvider.setAdditionalParams,
+        ).toHaveBeenCalledWith(
           expect.objectContaining({
             env: { KEY: 'VALUE' },
+          }),
+        );
+        expect(mockShellTool.build).toHaveBeenCalledWith(
+          expect.objectContaining({
+            runtimeProvider: mockRuntimeThreadProvider,
             resourcesInformation: expect.stringContaining('Resource info'),
           }),
         );
@@ -356,7 +408,17 @@ describe('ShellToolTemplate', () => {
 
       it('should ignore non-resource nodes in resourceNodeIds', async () => {
         const otherNodeId = 'other-node';
-        vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
+        vi.mocked(mockGraphRegistry.getNode).mockImplementation((gid, id) => {
+          if (gid === mockGraphId && id === mockRuntimeNodeId) {
+            return buildMockNode({
+              id: mockRuntimeNodeId,
+              type: NodeKind.Runtime,
+              template: 'docker-runtime',
+              instance: mockRuntimeThreadProvider,
+              config: { runtimeType: RuntimeType.Docker },
+            });
+          }
+
           if (id === mockResourceId) {
             return buildMockNode({
               id: mockResourceId,
@@ -400,7 +462,19 @@ describe('ShellToolTemplate', () => {
       });
 
       it('should handle missing resource nodes gracefully', async () => {
-        vi.mocked(mockGraphRegistry.getNode).mockReturnValue(undefined);
+        vi.mocked(mockGraphRegistry.getNode).mockImplementation((gid, id) => {
+          if (gid === mockGraphId && id === mockRuntimeNodeId) {
+            return buildMockNode({
+              id: mockRuntimeNodeId,
+              type: NodeKind.Runtime,
+              template: 'docker-runtime',
+              instance: mockRuntimeThreadProvider,
+              config: { runtimeType: RuntimeType.Docker },
+            });
+          }
+
+          return undefined;
+        });
 
         const outputNodeIds = new Set([mockRuntimeNodeId, mockResourceId]);
         const config = {};
@@ -414,15 +488,22 @@ describe('ShellToolTemplate', () => {
         const instance = await handle.provide(init);
         await handle.configure(init, instance);
 
-        expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect(
+          mockRuntimeThreadProvider.setAdditionalParams,
+        ).toHaveBeenCalledWith(
           expect.objectContaining({
             env: {},
+          }),
+        );
+        expect(mockShellTool.build).toHaveBeenCalledWith(
+          expect.objectContaining({
+            runtimeProvider: mockRuntimeThreadProvider,
             resourcesInformation: '',
           }),
         );
       });
 
-      it('should execute init scripts from resources', async () => {
+      it('should include resource init scripts in runtime resolver', async () => {
         const outputNodeIds = new Set([mockRuntimeNodeId, mockResourceId]);
         const config = {};
         const handle = await template.create();
@@ -435,11 +516,12 @@ describe('ShellToolTemplate', () => {
         const instance = await handle.provide(init);
         await handle.configure(init, instance);
 
-        expect(mockRuntime.exec).toHaveBeenCalledWith(
+        expect(
+          mockRuntimeThreadProvider.setAdditionalParams,
+        ).toHaveBeenCalledWith(
           expect.objectContaining({
-            cmd: 'echo init',
-            timeoutMs: 5000,
-            env: { KEY: 'VALUE' },
+            initScript: ['echo init'],
+            initScriptTimeoutMs: 5000,
           }),
         );
       });
@@ -466,7 +548,17 @@ describe('ShellToolTemplate', () => {
           },
         );
 
-        vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
+        vi.mocked(mockGraphRegistry.getNode).mockImplementation((gid, id) => {
+          if (gid === mockGraphId && id === mockRuntimeNodeId) {
+            return buildMockNode({
+              id: mockRuntimeNodeId,
+              type: NodeKind.Runtime,
+              template: 'docker-runtime',
+              instance: mockRuntimeThreadProvider,
+              config: { runtimeType: RuntimeType.Docker },
+            });
+          }
+
           if (id === mockResourceId) {
             return buildMockNode({
               id: mockResourceId,
@@ -502,13 +594,16 @@ describe('ShellToolTemplate', () => {
         const instance = await handle.provide(init);
         await handle.configure(init, instance);
 
-        expect(mockRuntime.exec).toHaveBeenCalledWith(
-          expect.objectContaining({ cmd: 'echo init' }),
+        expect(
+          mockRuntimeThreadProvider.setAdditionalParams,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({
+            initScript: expect.arrayContaining(['echo init', 'echo init2']),
+          }),
         );
-        expect(mockRuntime.exec).toHaveBeenCalledWith(
-          expect.objectContaining({ cmd: 'echo init2' }),
-        );
-        expect(mockShellTool.build).toHaveBeenCalledWith(
+        expect(
+          mockRuntimeThreadProvider.setAdditionalParams,
+        ).toHaveBeenCalledWith(
           expect.objectContaining({
             env: { KEY: 'VALUE', KEY2: 'VALUE2' },
           }),

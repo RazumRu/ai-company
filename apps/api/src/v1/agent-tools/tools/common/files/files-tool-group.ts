@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import {
   BuiltAgentTool,
   ExtendedLangGraphRunnableConfig,
@@ -11,7 +12,7 @@ import { FilesBuildTagsTool } from './files-build-tags.tool';
 import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
-import { FilesEditTool, FilesEditToolConfig } from './files-edit.tool';
+import { FilesEditTool } from './files-edit.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
@@ -51,7 +52,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const includeEditActions = config.includeEditActions ?? true;
-    const workdir = config.runtime.getWorkdir();
+    const workdir = BASE_RUNTIME_WORKDIR;
 
     const lines: string[] = [
       `You have access to file system tools for working with the repository at: ${workdir}`,
@@ -158,15 +159,11 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     ];
 
     if (includeEditActions) {
-      const editToolConfig: FilesEditToolConfig = {
-        runtime: config.runtime,
-      };
-
       tools.push(
         this.filesCreateDirectoryTool.build(config, lgConfig),
         this.filesMoveFileTool.build(config, lgConfig),
         this.filesWriteFileTool.build(config, lgConfig),
-        this.filesEditTool.build(editToolConfig, lgConfig),
+        this.filesEditTool.build(config, lgConfig),
         this.filesApplyChangesTool.build(config, lgConfig),
         this.filesDeleteTool.build(config, lgConfig),
       );

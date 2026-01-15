@@ -27,36 +27,31 @@ export const execRuntimeWithContext = async (
   }
 
   /**
-   * Tools need a stable per-execution key for:
-   * - child workdir isolation under /runtime-workspace/<key>
-   * - persistent shell session id (so cwd/env can persist within the same thread)
+   * Tools need a stable per-execution key for persistent shell sessions
+   * so cwd/env can persist within the same thread.
    *
    * In normal agent execution we always have thread_id (and often parent_thread_id).
    * In some production call sites, thread ids can be missing while run_id is still present.
-   * Falling back to a shared "unknown" workdir/session causes cross-run contamination and
-   * can make filesystem scans (e.g. ripgrep) unexpectedly slow enough to hit tail timeouts.
    */
   const threadIdFromCfg =
     cfg.configurable?.parent_thread_id || cfg.configurable?.thread_id;
-  const runId = cfg.configurable?.run_id;
-  const executionKey = threadIdFromCfg || runId || 'unknown';
-  const sessionId = executionKey;
+  if (!threadIdFromCfg) {
+    throw new BadRequestException(
+      undefined,
+      'Thread id is required for tool execution',
+    );
+  }
 
-  // Make it safe as a single path segment.
-  const childWorkdir = executionKey
-    .replace(/:/g, '_')
-    .replace(/[^a-zA-Z0-9._-]/g, '_');
+  const sessionId = threadIdFromCfg;
 
   return runtime.exec({
     ...params,
-    childWorkdir,
-    createChildWorkdir: true,
     sessionId,
     signal: cfg.signal,
     cwd: params.cwd, // Pass through cwd if provided
     metadata: {
       ...(threadIdFromCfg ? { threadId: threadIdFromCfg } : {}),
-      ...(runId ? { runId } : {}),
+      ...(cfg.configurable?.run_id ? { runId: cfg.configurable.run_id } : {}),
       ...(cfg.configurable?.parent_thread_id
         ? { parentThreadId: cfg.configurable.parent_thread_id }
         : {}),

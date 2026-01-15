@@ -37,12 +37,10 @@ describe('GraphRestorationService', () => {
   let logger: any;
 
   const mockGraphDaoLists = (
-    temporaryGraphs: GraphEntity[] = [],
+    _temporaryGraphs: GraphEntity[] = [],
     statusGraphs: GraphEntity[] = [],
   ) => {
-    vi.mocked(graphDao.getAll)
-      .mockResolvedValueOnce(temporaryGraphs)
-      .mockResolvedValueOnce(statusGraphs);
+    vi.mocked(graphDao.getAll).mockResolvedValueOnce(statusGraphs);
   };
 
   const makeRuntimeInstance = (overrides?: Partial<Record<string, unknown>>) =>
@@ -112,6 +110,7 @@ describe('GraphRestorationService', () => {
       getAll: vi.fn(),
       updateById: vi.fn(),
       deleteById: vi.fn(),
+      delete: vi.fn(),
     };
 
     const mockGraphCompiler = {
@@ -233,9 +232,8 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
@@ -248,9 +246,8 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
       expect(graphCompiler.compile).not.toHaveBeenCalled();
@@ -267,9 +264,8 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
@@ -283,9 +279,8 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
       expect(graphCompiler.compile).not.toHaveBeenCalled();
@@ -301,9 +296,7 @@ describe('GraphRestorationService', () => {
       };
       const compilationError = new Error('Compilation failed');
 
-      vi.mocked(graphDao.getAll)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([mockGraph, mockGraph2]);
+      vi.mocked(graphDao.getAll).mockResolvedValueOnce([mockGraph, mockGraph2]);
       const registryGetMock = vi.mocked(graphRegistry.get);
       let firstGraphFirstCall = true;
       registryGetMock.mockImplementation((graphId: string) => {
@@ -326,121 +319,44 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
       expect(graphsService.run).toHaveBeenCalledWith(mockGraph2.id);
     });
 
-    it('should destroy temporary graphs and cleanup Docker containers', async () => {
+    it('should delete temporary graphs before restoring', async () => {
       // Arrange
-      const temporaryGraph: GraphEntity = {
-        ...mockGraph,
-        id: 'temporary-graph-id',
-        name: 'Temporary Graph',
-        temporary: true,
-        schema: {
-          nodes: [
-            {
-              id: 'runtime-1',
-              template: 'docker-runtime',
-              config: {},
-            },
-          ],
-          edges: [],
-        },
-      };
-
-      vi.mocked(graphDao.getAll)
-        .mockResolvedValueOnce([temporaryGraph])
-        .mockResolvedValueOnce([]);
-      vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
-      vi.mocked(runtimeInstanceDao.getAll)
-        .mockResolvedValueOnce([]) // syncRuntimeInstances
-        .mockResolvedValueOnce([
-          makeRuntimeInstance({ graphId: temporaryGraph.id }),
-        ]); // cleanupNotCompiledGraphRuntimes
+      vi.mocked(graphDao.getAll).mockResolvedValueOnce([]);
 
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
-      expect(runtimeInstanceDao.deleteById).toHaveBeenCalled();
-      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
-      expect(graphRegistry.register).not.toHaveBeenCalled();
+      expect(graphsService.run).not.toHaveBeenCalled();
     });
 
-    it('should handle Docker cleanup errors gracefully', async () => {
+    it('should proceed even when no graphs are running', async () => {
       // Arrange
-      const temporaryGraph: GraphEntity = {
-        ...mockGraph,
-        id: 'temporary-graph-id',
-        name: 'Temporary Graph',
-        temporary: true,
-        schema: {
-          nodes: [
-            {
-              id: 'runtime-1',
-              template: 'docker-runtime',
-              config: {},
-            },
-          ],
-          edges: [],
-        },
-      };
-
-      vi.mocked(graphDao.getAll)
-        .mockResolvedValueOnce([temporaryGraph])
-        .mockResolvedValueOnce([]);
-      vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
-      vi.mocked(runtimeInstanceDao.getAll)
-        .mockResolvedValueOnce([]) // syncRuntimeInstances
-        .mockResolvedValueOnce([
-          makeRuntimeInstance({ graphId: temporaryGraph.id }),
-        ]); // cleanupNotCompiledGraphRuntimes
-      vi.mocked(runtimeProvider.stopRuntime).mockRejectedValueOnce(
-        new Error('Destroy failed'),
-      );
+      vi.mocked(graphDao.getAll).mockResolvedValueOnce([]);
 
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
-      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
-      expect(graphRegistry.register).not.toHaveBeenCalled();
+      expect(graphsService.run).not.toHaveBeenCalled();
     });
 
-    it('should handle mixed temporary and permanent graphs', async () => {
+    it('should restore permanent graphs after deleting temporary ones', async () => {
       // Arrange
-      const temporaryGraph: GraphEntity = {
-        ...mockGraph,
-        id: 'temporary-graph-id',
-        name: 'Temporary Graph',
-        temporary: true,
-        schema: {
-          nodes: [
-            {
-              id: 'runtime-1',
-              template: 'docker-runtime',
-              config: {},
-            },
-          ],
-          edges: [],
-        },
-      };
       const permanentGraph: GraphEntity = {
         ...mockGraph,
         id: 'permanent-graph-id',
@@ -448,18 +364,8 @@ describe('GraphRestorationService', () => {
         temporary: false,
       };
 
-      vi.mocked(graphDao.getAll)
-        .mockResolvedValueOnce([temporaryGraph])
-        .mockResolvedValueOnce([permanentGraph]);
-      vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
-      vi.mocked(runtimeInstanceDao.getAll)
-        .mockResolvedValueOnce([]) // syncRuntimeInstances
-        .mockResolvedValueOnce([
-          makeRuntimeInstance({ graphId: temporaryGraph.id }),
-        ]); // cleanupNotCompiledGraphRuntimes
-      vi.mocked(graphRegistry.get)
-        .mockReturnValueOnce(undefined)
-        .mockReturnValueOnce(mockCompiledGraph);
+      vi.mocked(graphDao.getAll).mockResolvedValueOnce([permanentGraph]);
+      vi.mocked(graphRegistry.get).mockReturnValueOnce(undefined);
       vi.mocked(graphsService.run).mockResolvedValueOnce({
         id: permanentGraph.id,
         status: GraphStatus.Running,
@@ -468,99 +374,37 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      // Temporary graph should be destroyed
-      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
-      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
-      // Then permanent graph should be started via graphs service
       expect(graphsService.run).toHaveBeenCalledWith(permanentGraph.id);
     });
 
     it('should handle errors when deleting temporary graphs', async () => {
       // Arrange
-      const temporaryGraph: GraphEntity = {
-        ...mockGraph,
-        id: 'temporary-graph-id',
-        name: 'Temporary Graph',
-        temporary: true,
-        schema: {
-          nodes: [
-            {
-              id: 'runtime-1',
-              template: 'docker-runtime',
-              config: {},
-            },
-          ],
-          edges: [],
-        },
-      };
       const deletionError = new Error('Deletion failed');
 
-      mockGraphDaoLists([temporaryGraph], []);
-      vi.mocked(graphDao.deleteById).mockRejectedValue(deletionError);
-      vi.mocked(runtimeInstanceDao.getAll)
-        .mockResolvedValueOnce([]) // syncRuntimeInstances
-        .mockResolvedValueOnce([
-          makeRuntimeInstance({ graphId: temporaryGraph.id }),
-        ]); // cleanupNotCompiledGraphRuntimes
+      vi.mocked(graphDao.delete).mockRejectedValueOnce(deletionError);
+      vi.mocked(graphDao.getAll).mockResolvedValueOnce([]);
 
       // Act
-      await service.restoreRunningGraphs();
-
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
-      });
-      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
-      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
-      expect(logger.warn).toHaveBeenCalled();
+      await expect(service.restoreRunningGraphs()).rejects.toThrow(
+        deletionError,
+      );
     });
 
-    it('should cleanup runtime containers even if container cleanup fails', async () => {
+    it('should allow restore to continue without temporary graphs', async () => {
       // Arrange
-      const temporaryGraph: GraphEntity = {
-        ...mockGraph,
-        id: 'temporary-graph-id',
-        name: 'Temporary Graph',
-        temporary: true,
-        schema: {
-          nodes: [
-            {
-              id: 'runtime-1',
-              template: 'docker-runtime',
-              config: {},
-            },
-          ],
-          edges: [],
-        },
-      };
-      const cleanupError = new Error('Container cleanup failed');
-
-      mockGraphDaoLists([temporaryGraph], []);
-      vi.mocked(runtimeInstanceDao.getAll)
-        .mockResolvedValueOnce([]) // syncRuntimeInstances
-        .mockResolvedValueOnce([
-          makeRuntimeInstance({ graphId: temporaryGraph.id }),
-        ]); // cleanupNotCompiledGraphRuntimes
-      vi.mocked(runtimeProvider.stopRuntime).mockRejectedValueOnce(
-        cleanupError,
-      );
+      vi.mocked(graphDao.getAll).mockResolvedValueOnce([]);
 
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(runtimeProvider.stopRuntime).toHaveBeenCalled();
-      expect(graphDao.deleteById).toHaveBeenCalledWith(temporaryGraph.id);
     });
 
     it('should stop interrupted threads after restoring a graph', async () => {
@@ -590,9 +434,8 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
       expect(threadsDao.getAll).toHaveBeenCalledWith({
@@ -620,9 +463,8 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
-      expect(graphDao.getAll).toHaveBeenCalledTimes(2);
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(1, { temporary: true });
-      expect(graphDao.getAll).toHaveBeenNthCalledWith(2, {
+      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
       expect(threadsDao.getAll).toHaveBeenCalledWith({

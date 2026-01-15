@@ -37,8 +37,10 @@ export type RuntimeEvent =
   | { type: 'execStart'; data: RuntimeExecStartEvent }
   | { type: 'execEnd'; data: RuntimeExecEndEvent };
 
+export const BASE_RUNTIME_WORKDIR = '/runtime-workspace';
+
 export abstract class BaseRuntime {
-  protected workdir = '/runtime-workspace';
+  protected workdir = BASE_RUNTIME_WORKDIR;
   protected eventEmitter = new EventEmitter();
 
   protected appendTail(prev: string, chunk: Buffer, max: number): string;

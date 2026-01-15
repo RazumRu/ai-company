@@ -4,7 +4,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import {
   execRuntimeWithContext,
   zodToAjvSchema,
@@ -16,8 +16,7 @@ import {
 } from '../base-tool';
 
 export interface ShellToolOptions {
-  runtime: BaseRuntime;
-  env?: Record<string, string>;
+  runtimeProvider: RuntimeThreadProvider;
   resourcesInformation?: string;
 }
 
@@ -90,11 +89,11 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     config: ShellToolOptions,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
-    const runtimeInfo = this.buildRuntimeInfo(config.runtime);
+    const runtimeInfo = this.buildRuntimeInfo(config.runtimeProvider);
 
     return dedent`
       ### Overview
-      Executes shell commands in runtime environment. Commands within same thread share persistent session (env/cwd persist). Default cwd: \`/runtime-workspace/<threadId>\`. Use absolute paths under \`/runtime-workspace\` for cross-tool compatibility.
+      Executes shell commands in runtime environment. Commands within same thread share persistent session (env/cwd persist). Default cwd: \`/runtime-workspace\`. Use absolute paths under \`/runtime-workspace\` for cross-tool compatibility.
 
       **IMPORTANT: Persistent Shell Session**
       All commands execute in ONE continuous session - the current directory and environment variables persist between commands. Do NOT run \`cd\` at the beginning of every command; the working directory stays where you left it.
@@ -110,10 +109,10 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       \`\`\`bash
       # First command: change directory
       cd /runtime-workspace/myproject
-      
+
       # Second command: you're ALREADY in /runtime-workspace/myproject
       npm install  # NO need for "cd /runtime-workspace/myproject && npm install"
-      
+
       # Third command: still in the same directory
       npm test  # Still in /runtime-workspace/myproject
       \`\`\`
@@ -122,7 +121,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       \`\`\`bash
       # Only chain if you need it all in one command
       cd /repo && npm install && npm test
-      
+
       # Better: use session persistence across separate commands
       # Command 1: cd /repo
       # Command 2: npm install  (already in /repo)
@@ -147,15 +146,13 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     `;
   }
 
-  private buildRuntimeInfo(runtime: ShellToolOptions['runtime']) {
-    const info = runtime?.getRuntimeInfo?.();
+  private buildRuntimeInfo(runtime: RuntimeThreadProvider) {
+    const info = runtime.getRuntimeInfo();
 
-    if (info) {
-      return dedent`
+    return dedent`
       ### Connected runtime information
       ${info}
     `;
-    }
   }
 
   public get schema() {
@@ -167,24 +164,12 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     config: ShellToolOptions,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<ShellToolOutput>> {
-    // Get environment variables from config
-    const configEnv = config.env || {};
-
     // Convert provided env array to object
     const providedEnv = data.environmentVariables
       ? Object.fromEntries(
           data.environmentVariables.map((v) => [v.name, v.value]),
         )
       : {};
-
-    // Default env to prevent ANSI-colored output from commands like pnpm/vitest.
-    // These environment variables are now set in the runtime Dockerfile to keep logs
-    // readable in UIs that don't interpret ANSI escapes. Callers can still override
-    // these values when needed through providedEnv.
-    const defaultEnv: Record<string, string> = {};
-
-    // Merge default env with config env and provided env (provided env takes precedence)
-    const mergedEnv = { ...defaultEnv, ...configEnv, ...providedEnv };
 
     // Extract non-runtime fields from data before passing to runtime.exec
     const {
@@ -206,13 +191,14 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     const title = this.generateTitle(data, config);
 
     try {
+      const runtime = await config.runtimeProvider.provide(cfg);
       const res = await execRuntimeWithContext(
-        config.runtime,
+        runtime,
         {
           cmd: command,
           timeoutMs,
           tailTimeoutMs,
-          env: mergedEnv,
+          env: providedEnv,
         },
         cfg,
       );

@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
@@ -133,10 +133,6 @@ const LIMITS = {
 
 const ANCHOR_MARKER = '// ... existing code ...';
 
-export type FilesEditToolConfig = FilesBaseToolConfig & {
-  // Model selection is controlled via env config (FILES_EDIT_MODEL / FILES_EDIT_REASONING_EFFORT).
-};
-
 @Injectable()
 export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   public name = 'files_edit';
@@ -152,7 +148,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
   protected override generateTitle(
     args: FilesEditToolSchemaType,
-    _config: FilesEditToolConfig,
+    _config: FilesBaseToolConfig,
   ): string {
     const fileName = args.filePath.split('/').pop() || args.filePath;
     return `Editing ${fileName}`;
@@ -163,7 +159,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   }
 
   public getDetailedInstructions(
-    _config: FilesEditToolConfig,
+    _config: FilesBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     return dedent`
@@ -253,10 +249,6 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
   private shQuote(s: string): string {
     return `'${s.replace(/'/g, `'\\''`)}'`;
-  }
-
-  private computeFileHash(content: string): string {
-    return createHash('sha256').update(content, 'utf8').digest('hex');
   }
 
   private validateSketchFormat(sketch: string): {
@@ -1002,7 +994,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
   public async invoke(
     args: FilesEditToolSchemaType,
-    config: FilesEditToolConfig,
+    config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<FilesEditToolOutput>> {
     const title = this.generateTitle?.(args, config);

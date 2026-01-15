@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BadRequestException, NotFoundException } from '@packages/common';
+import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
@@ -10,7 +10,7 @@ import {
 import { IGithubResourceOutput } from '../../../graph-resources/services/github-resource';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { ToolNodeBaseTemplate } from '../base-node.template';
 
@@ -101,11 +101,11 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         }
 
         const runtimeNodeId = runtimeNodeIds[0]!;
-        const runtime = this.graphRegistry.getNodeInstance<BaseRuntime>(
+        const runtimeNode = this.graphRegistry.getNode<RuntimeThreadProvider>(
           graphId,
           runtimeNodeId,
         );
-        if (!runtime) {
+        if (!runtimeNode) {
           throw new NotFoundException(
             'NODE_NOT_FOUND',
             `Runtime node ${runtimeNodeId} not found`,
@@ -138,22 +138,18 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         const initScriptTimeout = ghResource.data.initScriptTimeout;
         const patToken = ghResource.patToken;
         const resourceEnv = ghResource.data.env;
-
-        if (initScript) {
-          const res = await runtime.exec({
-            cmd: initScript,
-            timeoutMs: initScriptTimeout,
-            env: resourceEnv,
-          });
-
-          if (res.fail) {
-            throw new BadRequestException(
-              'INIT_SCRIPT_EXECUTION_FAILED',
-              `Init script execution failed: ${res.stderr}`,
-              { cmd: initScript, ...res },
-            );
-          }
-        }
+        const currentRuntimeParams = runtimeNode.instance.getParams();
+        const baseTimeout =
+          currentRuntimeParams.runtimeStartParams.initScriptTimeoutMs ?? 0;
+        const initScriptList = Array.isArray(initScript)
+          ? initScript
+          : initScript
+            ? [initScript]
+            : [];
+        const initScriptTimeoutMs = Math.max(
+          baseTimeout,
+          initScriptTimeout ?? 0,
+        );
 
         const parsedConfig = GhToolTemplateSchema.parse(config);
         const tools: GhToolType[] | undefined = parsedConfig.cloneOnly
@@ -163,9 +159,15 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
           ? parsedConfig.additionalLabels
           : undefined;
 
+        runtimeNode.instance.setAdditionalParams({
+          env: resourceEnv ?? {},
+          initScript: initScriptList,
+          initScriptTimeoutMs: initScriptTimeoutMs || undefined,
+        });
+
         const { tools: builtTools, instructions } = this.ghToolGroup.buildTools(
           {
-            runtime,
+            runtimeProvider: runtimeNode.instance,
             patToken,
             tools,
             additionalLabels,

@@ -4,11 +4,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { ShellTool, ShellToolOptions } from './shell.tool';
 
 describe('ShellTool', () => {
   let tool: ShellTool;
   let mockRuntime: BaseRuntime;
+  let mockRuntimeThreadProvider: RuntimeThreadProvider;
+  const defaultCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
+    configurable: {
+      thread_id: 'thread-123',
+    },
+  };
 
   beforeEach(async () => {
     mockRuntime = {
@@ -16,6 +23,10 @@ describe('ShellTool', () => {
       stop: vi.fn(),
       start: vi.fn(),
     } as unknown as BaseRuntime;
+    mockRuntimeThreadProvider = {
+      provide: vi.fn().mockResolvedValue(mockRuntime),
+      getRuntimeInfo: vi.fn().mockReturnValue(''),
+    } as unknown as RuntimeThreadProvider;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [ShellTool],
@@ -155,7 +166,9 @@ describe('ShellTool', () => {
 
   describe('build', () => {
     it('should create a DynamicStructuredTool', () => {
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
       expect(builtTool).toBeDefined();
@@ -171,20 +184,23 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { output } = await builtTool.invoke({
-        purpose: 'Testing echo command',
-        command: 'echo "hello world"',
-      });
+      const { output } = await builtTool.invoke(
+        {
+          purpose: 'Testing echo command',
+          command: 'echo "hello world"',
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "hello world"',
           env: {},
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
@@ -203,13 +219,18 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { messageMetadata } = await builtTool.invoke({
-        purpose: 'Testing echo command',
-        command: 'echo "hello world"',
-      });
+      const { messageMetadata } = await builtTool.invoke(
+        {
+          purpose: 'Testing echo command',
+          command: 'echo "hello world"',
+        },
+        defaultCfg,
+      );
 
       expect(messageMetadata?.__title).toBe('Testing echo command');
     });
@@ -222,15 +243,20 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
       const environmentVariables = [{ name: 'NODE_ENV', value: 'test' }];
-      const { output } = await builtTool.invoke({
-        purpose: 'Testing environment variables',
-        command: 'echo $NODE_ENV',
-        environmentVariables,
-      });
+      const { output } = await builtTool.invoke(
+        {
+          purpose: 'Testing environment variables',
+          command: 'echo $NODE_ENV',
+          environmentVariables,
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -238,8 +264,6 @@ describe('ShellTool', () => {
           env: expect.objectContaining({
             NODE_ENV: 'test',
           }),
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
@@ -258,17 +282,22 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
       const environmentVariables = [{ name: 'TEST', value: 'value' }];
-      const { output } = await builtTool.invoke({
-        purpose: 'Testing all options',
-        command: 'pwd',
-        timeoutMs: 5000,
-        tailTimeoutMs: 2000,
-        environmentVariables,
-      });
+      const { output } = await builtTool.invoke(
+        {
+          purpose: 'Testing all options',
+          command: 'pwd',
+          timeoutMs: 5000,
+          tailTimeoutMs: 2000,
+          environmentVariables,
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -278,8 +307,6 @@ describe('ShellTool', () => {
           env: expect.objectContaining({
             TEST: 'value',
           }),
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
@@ -298,7 +325,9 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
       const { output: result } = await builtTool.invoke(
@@ -327,7 +356,7 @@ describe('ShellTool', () => {
       expect(result.exitCode).toBe(0);
     });
 
-    it('falls back to run_id for session/workdir when thread_id is missing', async () => {
+    it('throws error when thread_id is missing', async () => {
       const mockExecResult = {
         stdout: 'ok',
         stderr: '',
@@ -335,12 +364,14 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      await builtTool.invoke(
+      const { output: result } = await builtTool.invoke(
         {
-          purpose: 'Testing run_id fallback',
+          purpose: 'Testing missing thread id',
           command: 'pwd',
         },
         {
@@ -350,20 +381,18 @@ describe('ShellTool', () => {
         } as ToolRunnableConfig<BaseAgentConfigurable>,
       );
 
-      expect(mockRuntime.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: 'run-xyz',
-          childWorkdir: 'run-xyz',
-          metadata: expect.objectContaining({
-            runId: 'run-xyz',
-          }),
-        }),
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        'Thread id is required for tool execution',
       );
     });
 
     it('should return error when runtime is not provided', async () => {
+      vi.mocked(mockRuntimeThreadProvider.provide).mockResolvedValueOnce(
+        undefined as unknown as BaseRuntime,
+      );
       const builtTool = tool.build({
-        runtime: null as unknown as BaseRuntime,
+        runtimeProvider: mockRuntimeThreadProvider,
       });
 
       const { output: result } = await builtTool.invoke({
@@ -379,32 +408,18 @@ describe('ShellTool', () => {
       const mockError = new Error('Runtime not started');
       mockRuntime.exec = vi.fn().mockRejectedValue(mockError);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing error handling',
-        command: 'invalid-command',
-      });
-
-      expect(result).toEqual({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Runtime not started',
-      });
-    });
-
-    it('should handle "Runtime not started" error specifically', async () => {
-      const mockError = new Error('Runtime not started');
-      mockRuntime.exec = vi.fn().mockRejectedValue(mockError);
-
-      const config: ShellToolOptions = { runtime: mockRuntime };
-      const builtTool = tool.build(config);
-
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing runtime error',
-        command: 'echo "test"',
-      });
+      const { output: result } = await builtTool.invoke(
+        {
+          purpose: 'Testing error handling',
+          command: 'invalid-command',
+        },
+        defaultCfg,
+      );
 
       expect(result).toEqual({
         exitCode: 1,
@@ -421,17 +436,22 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      await builtTool.invoke({
-        purpose: 'Testing environment variable conversion',
-        command: 'env',
-        environmentVariables: [
-          { name: 'VAR1', value: 'value1' },
-          { name: 'VAR2', value: 'value2' },
-        ],
-      });
+      await builtTool.invoke(
+        {
+          purpose: 'Testing environment variable conversion',
+          command: 'env',
+          environmentVariables: [
+            { name: 'VAR1', value: 'value1' },
+            { name: 'VAR2', value: 'value2' },
+          ],
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -440,8 +460,6 @@ describe('ShellTool', () => {
             VAR1: 'value1',
             VAR2: 'value2',
           }),
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
@@ -455,22 +473,25 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      await builtTool.invoke({
-        purpose: 'Testing tail timeout',
-        command: 'echo "test"',
-        tailTimeoutMs: 3000,
-      });
+      await builtTool.invoke(
+        {
+          purpose: 'Testing tail timeout',
+          command: 'echo "test"',
+          tailTimeoutMs: 3000,
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "test"',
           tailTimeoutMs: 3000,
           env: {},
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
@@ -487,7 +508,7 @@ describe('ShellTool', () => {
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
       const config: ShellToolOptions = {
-        runtime: mockRuntime,
+        runtimeProvider: mockRuntimeThreadProvider,
         env: {
           GITHUB_PAT_TOKEN: 'ghp_token123',
           GIT_REPO_URL: 'https://github.com/user/repo.git',
@@ -495,10 +516,13 @@ describe('ShellTool', () => {
       };
       const builtTool = tool.build(config);
 
-      await builtTool.invoke({
-        purpose: 'Testing config environment variables',
-        command: 'echo $GITHUB_PAT_TOKEN',
-      });
+      await builtTool.invoke(
+        {
+          purpose: 'Testing config environment variables',
+          command: 'echo $GITHUB_PAT_TOKEN',
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -507,8 +531,6 @@ describe('ShellTool', () => {
             GITHUB_PAT_TOKEN: 'ghp_token123',
             GIT_REPO_URL: 'https://github.com/user/repo.git',
           }),
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
@@ -523,20 +545,23 @@ describe('ShellTool', () => {
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
       const config: ShellToolOptions = {
-        runtime: mockRuntime,
+        runtimeProvider: mockRuntimeThreadProvider,
         env: {
           GITHUB_PAT_TOKEN: 'ghp_config_token',
         },
       };
       const builtTool = tool.build(config);
 
-      await builtTool.invoke({
-        purpose: 'Testing environment variable override',
-        command: 'echo $GITHUB_PAT_TOKEN',
-        environmentVariables: [
-          { name: 'GITHUB_PAT_TOKEN', value: 'ghp_provided_token' },
-        ],
-      });
+      await builtTool.invoke(
+        {
+          purpose: 'Testing environment variable override',
+          command: 'echo $GITHUB_PAT_TOKEN',
+          environmentVariables: [
+            { name: 'GITHUB_PAT_TOKEN', value: 'ghp_provided_token' },
+          ],
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -544,8 +569,6 @@ describe('ShellTool', () => {
           env: expect.objectContaining({
             GITHUB_PAT_TOKEN: 'ghp_provided_token', // Provided value should override config value
           }),
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
@@ -559,20 +582,23 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      await builtTool.invoke({
-        purpose: 'Testing without environment variables',
-        command: 'echo "test"',
-      });
+      await builtTool.invoke(
+        {
+          purpose: 'Testing without environment variables',
+          command: 'echo "test"',
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "test"',
           env: {},
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
@@ -586,27 +612,33 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime, env: {} };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+        env: {},
+      };
       const builtTool = tool.build(config);
 
-      await builtTool.invoke({
-        purpose: 'Testing with empty environment variables',
-        command: 'echo "test"',
-      });
+      await builtTool.invoke(
+        {
+          purpose: 'Testing with empty environment variables',
+          command: 'echo "test"',
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "test"',
           env: {},
-          childWorkdir: 'unknown',
-          createChildWorkdir: true,
           metadata: expect.any(Object),
         }),
       );
     });
 
     it('should use original description when no resource information provided', () => {
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
 
       const builtTool = tool.build(config);
 
@@ -625,14 +657,19 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing output trimming',
-        command: 'echo "long output"',
-        maxOutputLength: 5000,
-      });
+      const { output: result } = await builtTool.invoke(
+        {
+          purpose: 'Testing output trimming',
+          command: 'echo "long output"',
+          maxOutputLength: 5000,
+        },
+        defaultCfg,
+      );
 
       expect(result.stdout).toHaveLength(5000);
       expect(result.stdout).toBe(longOutput.slice(-5000));
@@ -648,14 +685,19 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing error trimming',
-        command: 'invalid-command',
-        maxOutputLength: 3000,
-      });
+      const { output: result } = await builtTool.invoke(
+        {
+          purpose: 'Testing error trimming',
+          command: 'invalid-command',
+          maxOutputLength: 3000,
+        },
+        defaultCfg,
+      );
 
       expect(result.stderr).toHaveLength(3000);
       expect(result.stderr).toBe(longError.slice(-3000));
@@ -672,14 +714,19 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing both outputs trimming',
-        command: 'some-command',
-        maxOutputLength: 8000,
-      });
+      const { output: result } = await builtTool.invoke(
+        {
+          purpose: 'Testing both outputs trimming',
+          command: 'some-command',
+          maxOutputLength: 8000,
+        },
+        defaultCfg,
+      );
 
       expect(result.stdout).toHaveLength(8000);
       expect(result.stdout).toBe(longStdout.slice(-8000));
@@ -696,14 +743,19 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing no trimming needed',
-        command: 'echo "short"',
-        maxOutputLength: 1000,
-      });
+      const { output: result } = await builtTool.invoke(
+        {
+          purpose: 'Testing no trimming needed',
+          command: 'echo "short"',
+          maxOutputLength: 1000,
+        },
+        defaultCfg,
+      );
 
       expect(result.stdout).toBe(shortOutput);
       expect(result.stdout).toHaveLength(shortOutput.length);
@@ -718,13 +770,18 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing default max output length',
-        command: 'echo "long"',
-      });
+      const { output: result } = await builtTool.invoke(
+        {
+          purpose: 'Testing default max output length',
+          command: 'echo "long"',
+        },
+        defaultCfg,
+      );
 
       expect(result.stdout).toHaveLength(10000);
       expect(result.stdout).toBe(longOutput.slice(-10000));
@@ -734,14 +791,19 @@ describe('ShellTool', () => {
       const longErrorMessage = 'Error: '.repeat(2000); // Very long error message
       mockRuntime.exec = vi.fn().mockRejectedValue(new Error(longErrorMessage));
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing error message trimming',
-        command: 'invalid-command',
-        maxOutputLength: 500,
-      });
+      const { output: result } = await builtTool.invoke(
+        {
+          purpose: 'Testing error message trimming',
+          command: 'invalid-command',
+          maxOutputLength: 500,
+        },
+        defaultCfg,
+      );
 
       expect(result.stderr).toHaveLength(500);
       expect(result.stderr).toBe(longErrorMessage.slice(-500));
@@ -758,13 +820,18 @@ describe('ShellTool', () => {
       };
       mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const config: ShellToolOptions = { runtime: mockRuntime };
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
       const builtTool = tool.build(config);
 
-      await builtTool.invoke({
-        purpose: 'Testing env defaults',
-        command: 'echo ok',
-      });
+      await builtTool.invoke(
+        {
+          purpose: 'Testing env defaults',
+          command: 'echo ok',
+        },
+        defaultCfg,
+      );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
