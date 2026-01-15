@@ -11,6 +11,8 @@ export interface RuntimeStartParams {
   network?: string;
   enableDind?: boolean;
   recreate?: boolean;
+  registryMirrors?: string[];
+  insecureRegistries?: string[];
 }
 
 export interface RuntimeExecParams {

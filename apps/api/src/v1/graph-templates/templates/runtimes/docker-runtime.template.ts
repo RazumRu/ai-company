@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
+import { environment } from '../../../../environments';
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { RuntimeType } from '../../../runtime/runtime.types';
@@ -166,6 +167,17 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       ]).catch(() => {});
     }
 
+    // Use environment defaults for registry mirrors when enableDind is true
+    const registryMirrors =
+      config.enableDind && environment.dockerRegistryMirror
+        ? [environment.dockerRegistryMirror as string]
+        : undefined;
+
+    const insecureRegistries =
+      config.enableDind && environment.dockerInsecureRegistry
+        ? [environment.dockerInsecureRegistry as string]
+        : undefined;
+
     await runtime.start({
       image: config.image,
       env: config.env,
@@ -176,6 +188,8 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       containerName,
       network: networkName,
       enableDind: config.enableDind,
+      registryMirrors,
+      insecureRegistries,
     });
   }
 }

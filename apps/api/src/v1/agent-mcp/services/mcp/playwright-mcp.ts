@@ -14,10 +14,22 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
   }
 
   public getMcpConfig(_config: PlaywrightMcpConfig): IMcpServerConfig {
+    const runtime = this.getRuntimeInstance();
+    const sharedWorkdir = runtime?.getWorkdir() || '/runtime-workspace';
+
     return {
       name: 'playwright',
       'command': 'docker',
-      'args': ['run', '--rm', '-i', 'mcr.microsoft.com/playwright/mcp'],
+      'args': [
+        'run',
+        '--rm',
+        '-i',
+        '-v',
+        `${sharedWorkdir}:${sharedWorkdir}`,
+        '-v',
+        `${sharedWorkdir}/playwright:/data`,
+        'mcp/playwright',
+      ],
     };
   }
 
@@ -32,12 +44,13 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
       Browser automation server for web scraping, testing, and interaction.
       Uses Playwright's accessibility tree for efficient, deterministic operations.
 
-      **IMPORTANT: Docker Container Environment**
-      Playwright runs inside a separate Docker container. This means:
-      - **No Local File Access:** Any files produced by Playwright (screenshots, downloads, etc.) are NOT accessible locally
-      - **Output Only:** You can only rely on stdout/stderr output from Playwright commands
-      - **Isolated Filesystem:** The Playwright container has its own isolated filesystem that cannot be accessed from the host
-      - **Cannot Retrieve Files:** Do not expect to find or access files that Playwright generates - they remain inside the container
+      **IMPORTANT: Shared Runtime Volume**
+      Playwright runs inside a Docker container, but a shared runtime volume is mounted:
+      - **Shared Path:** \`/runtime-workspace\` is mounted into the Playwright container
+      - **Shared Downloads:** \`/data\` maps to \`/runtime-workspace/playwright\`
+      - **Retrievable Files:** Save downloads, screenshots, and artifacts under \`/data\` (preferred) or \`/runtime-workspace\`
+      - **Agent Access:** Use the Filesystem MCP to read files from \`/runtime-workspace\`
+      - **Outside Paths:** Files written outside \`/runtime-workspace\` stay in the Playwright container
 
       **When to Use:**
       - Web scraping and data extraction
@@ -51,7 +64,7 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
       - Static file operations (use filesystem tools)
       - API testing (use HTTP tools)
       - Local file system access (use filesystem MCP)
-      - Tasks requiring file retrieval (screenshots, downloads) - files stay in container
+      - Tasks that require saving files outside \`/runtime-workspace\`
 
       **Best Practices:**
 
@@ -87,11 +100,20 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
       playwright_fill({selector: "input[name='password']", value: "secret"})
       playwright_click({selector: "button:text('Sign In')"})
 
-      # Visual testing (note: screenshots stay in container, not accessible locally)
+      # Visual testing (save to shared /data)
       playwright_navigate({url: "https://example.com"})
       playwright_wait_for_selector({selector: ".main-content", state: "visible"})
-      playwright_screenshot({fullPage: true})  # File stays in container
+      playwright_screenshot({fullPage: true, path: "/data/screenshots/home.png"})
+
+      # Download handling (example: save into shared /data)
+      # Always set downloadsDir/saveAs to /data when the tool supports it
+      playwright_download({saveAs: "/data/downloads/report.csv"})
       \`\`\`
+
+      **Retrieving Files**
+      1. Save artifacts to \`/data/... \` (preferred) or \`/runtime-workspace/... \`.
+      2. Use Filesystem MCP to list/read the file, e.g. \`read_text_file\` or \`read_media_file\`.
+      3. If a tool supports \`downloadsDir\`, set it to \`/data\` so files are always accessible.
 
       **Security Considerations:**
       - Browser runs in isolated container environment

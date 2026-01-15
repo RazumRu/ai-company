@@ -29,4 +29,14 @@ export const environment = () =>
     authDevMode: getEnv('AUTH_DEV_MODE', true),
     keycloakUrl: getEnv('KEYCLOAK_URL', 'http://localhost:8082'),
     keycloakRealm: getEnv('KEYCLOAK_REALM', 'ai-company'),
+
+    // docker registry mirror (for DinD)
+    dockerRegistryMirror: getEnv(
+      'DOCKER_REGISTRY_MIRROR',
+      'http://registry-mirror:5000',
+    ),
+    dockerInsecureRegistry: getEnv(
+      'DOCKER_INSECURE_REGISTRY',
+      'registry-mirror:5000',
+    ),
   }) as const satisfies Record<string, string | number | boolean>;

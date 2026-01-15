@@ -765,6 +765,8 @@ export class DockerRuntime extends BaseRuntime {
     networkAlias: string,
     labels?: Record<string, string>,
     recreate?: boolean,
+    registryMirrors?: string[],
+    insecureRegistries?: string[],
   ): Promise<Docker.Container> {
     if (this.dindContainer && recreate) {
       await DockerRuntime.stopByInstance(this.dindContainer);
@@ -798,6 +800,26 @@ export class DockerRuntime extends BaseRuntime {
       'ai-company/dind-for': containerName,
     };
 
+    const dockerdCmd = [
+      'dockerd',
+      '--host=tcp://0.0.0.0:2375',
+      '--host=unix:///var/run/docker.sock',
+    ];
+
+    // Add registry mirrors if provided
+    if (registryMirrors && registryMirrors.length > 0) {
+      for (const mirror of registryMirrors) {
+        dockerdCmd.push(`--registry-mirror=${mirror}`);
+      }
+    }
+
+    // Add insecure registries if provided
+    if (insecureRegistries && insecureRegistries.length > 0) {
+      for (const registry of insecureRegistries) {
+        dockerdCmd.push(`--insecure-registry=${registry}`);
+      }
+    }
+
     const dindContainer = await this.createContainerWithRetry(
       containerName,
       async () => {
@@ -806,11 +828,7 @@ export class DockerRuntime extends BaseRuntime {
           name: containerName,
           Labels: dindLabels,
           Env: ['DOCKER_TLS_CERTDIR='],
-          Cmd: [
-            'dockerd',
-            '--host=tcp://0.0.0.0:2375',
-            '--host=unix:///var/run/docker.sock',
-          ],
+          Cmd: dockerdCmd,
           NetworkingConfig: {
             EndpointsConfig: {
               [network]: {
@@ -905,6 +923,8 @@ export class DockerRuntime extends BaseRuntime {
         dindNetworkAlias,
         params?.labels,
         params?.recreate,
+        params?.registryMirrors,
+        params?.insecureRegistries,
       );
 
       const dindIP = await this.getContainerIP(this.dindContainer, networkName);

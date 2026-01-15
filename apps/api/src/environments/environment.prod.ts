@@ -41,6 +41,8 @@ export const environment = () =>
       'DOCKER_RUNTIME_IMAGE',
       'ai-company-runtime:latest',
     ),
+    dockerRegistryMirror: getEnv('DOCKER_REGISTRY_MIRROR'),
+    dockerInsecureRegistry: getEnv('DOCKER_INSECURE_REGISTRY'),
     tavilyApiKey: getEnv('TAVILY_API_KEY'),
     restoreGraphs: getEnv('RESTORE_GRAPHS', true),
   }) as const satisfies Record<string, string | number | boolean>;
