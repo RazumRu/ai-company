@@ -19,14 +19,10 @@ vi.mock('@langchain/openai');
 describe('SummarizeNode', () => {
   let node: SummarizeNode;
   let mockLlm: ChatOpenAI;
-  const extractTokenUsageFromResponseWithPriceFallbackMock = vi
-    .fn()
-    .mockResolvedValue(null);
+  const extractTokenUsageFromResponseMock = vi.fn().mockResolvedValue(null);
   const countTokensMock = vi.fn().mockResolvedValue(0);
   const mockLitellmService = {
-    extractTokenUsageFromResponse: vi.fn().mockReturnValue(null),
-    extractTokenUsageFromResponseWithPriceFallback:
-      extractTokenUsageFromResponseWithPriceFallbackMock,
+    extractTokenUsageFromResponse: extractTokenUsageFromResponseMock,
     estimateThreadTotalPriceFromModelRates: vi.fn().mockResolvedValue(null),
     countTokens: countTokensMock,
   } as unknown as LitellmService;
@@ -771,9 +767,7 @@ describe('SummarizeNode', () => {
       };
 
       mockInvoke.mockResolvedValue(new AIMessage('Summary'));
-      extractTokenUsageFromResponseWithPriceFallbackMock.mockResolvedValue(
-        mockUsage,
-      );
+      extractTokenUsageFromResponseMock.mockResolvedValue(mockUsage);
 
       const result = await node.invoke(state, createMockConfig());
 

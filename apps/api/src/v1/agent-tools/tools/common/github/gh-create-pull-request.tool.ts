@@ -497,7 +497,6 @@ export class GhCreatePullRequestTool extends GhBaseTool<
   ): Promise<ToolInvokeResult<GhCreatePullRequestToolOutput>> {
     const validated = this.validate(args);
 
-    console.log(args, config);
     const token = config.patToken;
     if (!token) {
       return {

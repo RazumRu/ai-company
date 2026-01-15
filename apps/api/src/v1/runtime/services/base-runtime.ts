@@ -1,3 +1,5 @@
+import { Duplex, PassThrough } from 'node:stream';
+
 import { EventEmitter } from 'events';
 import { isArray } from 'lodash';
 
@@ -72,6 +74,27 @@ export abstract class BaseRuntime {
   abstract start(params: RuntimeStartParams): Promise<void>;
   abstract stop(): Promise<void>;
   abstract exec(params: RuntimeExecParams): Promise<RuntimeExecResult>;
+
+  /**
+   * Execute command with persistent streams for real-time communication
+   * Returns properly demultiplexed stdin/stdout/stderr streams
+   *
+   * @param command - Command and arguments as array
+   * @param options - Optional execution options (workdir, env)
+   * @returns Promise with stdin/stdout/stderr streams and close function
+   */
+  abstract execStream(
+    command: string[],
+    options?: {
+      workdir?: string;
+      env?: Record<string, string>;
+    },
+  ): Promise<{
+    stdin: Duplex;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    close: () => void;
+  }>;
 
   public getGraphNodeMetadata(
     _meta: GraphExecutionMetadata,

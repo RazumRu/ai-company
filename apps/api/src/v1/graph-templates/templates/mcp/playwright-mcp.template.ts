@@ -1,41 +1,37 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
 import type { BaseMcp } from '../../../agent-mcp/services/base-mcp';
-import { JiraMcp } from '../../../agent-mcp/services/mcp/jira-mcp';
+import {
+  PlaywrightMcp,
+  PlaywrightMcpConfig,
+} from '../../../agent-mcp/services/mcp/playwright-mcp';
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { DockerRuntime } from '../../../runtime/services/docker-runtime';
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { McpNodeBaseTemplate } from '../base-node.template';
 
-export const JiraMcpTemplateSchema = z
-  .object({
-    jiraUrl: z
-      .url()
-      .describe('Jira base URL (e.g. https://your-domain.atlassian.net)'),
-    jiraApiKey: z.string().min(1).describe('Jira API key'),
-    jiraEmail: z.string().email().describe('Jira account email'),
-    projectKey: z.string().optional().describe('Optional project key filter'),
-  })
-  // Strip legacy/unknown fields so older configs remain valid.
-  .strip();
+export const PlaywrightMcpTemplateSchema = z.object({}).strip();
 
-export type JiraMcpTemplateSchemaType = z.infer<typeof JiraMcpTemplateSchema>;
+export type PlaywrightMcpTemplateSchemaType = z.infer<
+  typeof PlaywrightMcpTemplateSchema
+>;
 
 @Injectable()
 @RegisterTemplate()
-export class JiraMcpTemplate extends McpNodeBaseTemplate<
-  typeof JiraMcpTemplateSchema,
-  BaseMcp
+export class PlaywrightMcpTemplate extends McpNodeBaseTemplate<
+  typeof PlaywrightMcpTemplateSchema,
+  BaseMcp<PlaywrightMcpConfig>
 > {
-  readonly id = 'jira-mcp';
-  readonly name = 'Jira MCP';
+  readonly id = 'playwright-mcp';
+  readonly name = 'Playwright MCP';
   readonly description =
-    'Jira integration via remote MCP running in Docker runtime';
-  readonly schema = JiraMcpTemplateSchema;
+    'Browser automation via Playwright MCP running in Docker runtime';
+  readonly schema = PlaywrightMcpTemplateSchema;
 
   readonly inputs = [
     { type: 'kind', value: NodeKind.SimpleAgent, multiple: true },
@@ -54,42 +50,45 @@ export class JiraMcpTemplate extends McpNodeBaseTemplate<
 
   public async create() {
     return {
-      provide: async (_params: GraphNode<JiraMcpTemplateSchemaType>) =>
-        this.createNewInstance(this.moduleRef, JiraMcp),
+      provide: async (_params: GraphNode<PlaywrightMcpTemplateSchemaType>) =>
+        this.createNewInstance(this.moduleRef, PlaywrightMcp),
       configure: async (
-        params: GraphNode<JiraMcpTemplateSchemaType>,
-        instance: JiraMcp,
+        params: GraphNode<PlaywrightMcpTemplateSchemaType>,
+        instance: PlaywrightMcp,
       ) => {
         const graphId = params.metadata.graphId;
         const outputNodeIds = params.outputNodeIds;
         const config = params.config;
 
+        // Find connected Runtime
         const runtimeNodeId = Array.from(outputNodeIds).find((nodeId) => {
           const node = this.graphRegistry.getNode(graphId, nodeId);
           return node?.type === NodeKind.Runtime;
         });
 
         if (!runtimeNodeId) {
-          throw new Error('Jira MCP requires a Docker Runtime connection');
+          throw new Error(
+            'Playwright MCP requires a Docker Runtime connection',
+          );
         }
 
-        // Validate that runtime exists immediately during configuration
-        const runtime = this.graphRegistry.getNodeInstance<DockerRuntime>(
+        // Reconfigure: best-effort cleanup then setup again
+        await instance.cleanup().catch(() => {});
+
+        const runtime = this.graphRegistry.getNodeInstance<BaseRuntime>(
           graphId,
           runtimeNodeId,
         );
         if (!runtime) {
-          throw new Error(
-            `Runtime instance not found for node ${runtimeNodeId}`,
+          throw new NotFoundException(
+            'RUNTIME_NOT_FOUND',
+            `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
           );
         }
 
-        // Reconfigure: cleanup then setup again
-        await instance.cleanup().catch(() => {});
-
         await instance.setup(config, runtime);
       },
-      destroy: async (instance: JiraMcp) => {
+      destroy: async (instance: PlaywrightMcp) => {
         await instance.cleanup().catch(() => {});
       },
     };

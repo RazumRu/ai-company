@@ -45,13 +45,11 @@ export class OpenaiService {
 
     // Use fallback to estimate price from model rates if not provided in response
     const modelName = typeof params.model === 'string' ? params.model : '';
+
     const usage =
-      (await this.litellmService.extractTokenUsageFromResponseWithPriceFallback(
-        {
-          model: modelName,
-          usage_metadata: response.usage,
-          response_metadata: response,
-        },
+      (await this.litellmService.extractTokenUsageFromResponse(
+        modelName,
+        response.usage,
       )) || undefined;
 
     return {

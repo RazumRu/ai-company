@@ -45,11 +45,7 @@ export class BaseException extends Error {
   public getMessage(): string {
     return (
       this.data.description ||
-      get(
-        EXCEPTION_CODES,
-        this.code,
-        `[${this.code}] An exception has occurred`,
-      )
+      get(EXCEPTION_CODES, this.code, `An exception has occurred`)
     );
   }
 

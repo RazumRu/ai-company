@@ -5,241 +5,108 @@ import { LitellmService } from './litellm.service';
 const createSvc = () =>
   new LitellmService({ listModels: vi.fn() } as unknown as never);
 
-describe('LitellmService (utils)', () => {
+describe('LitellmService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   describe('extractTokenUsageFromResponse', () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-    });
-
-    it('returns null when usage_metadata is missing or not an object AND response_metadata.usage is absent', () => {
+    it('returns a zeroed usage object when usage_metadata is missing', async () => {
       const svc = createSvc();
-      expect(
-        svc.extractTokenUsageFromResponse({
-          usage_metadata: undefined,
-          response_metadata: {},
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({}),
         }),
-      ).toBeNull();
-
-      expect(
-        svc.extractTokenUsageFromResponse({
-          usage_metadata: 'not-an-object',
-          response_metadata: {},
-        }),
-      ).toBeNull();
+      );
+      await expect(svc.extractTokenUsageFromResponse('gpt-4')).resolves.toEqual(
+        {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          currentContext: 0,
+          cachedInputTokens: 0,
+          reasoningTokens: 0,
+          totalPrice: 0,
+        },
+      );
     });
 
-    it('extracts token usage from response_metadata.usage when usage_metadata is missing', () => {
+    it('extracts token usage from usage_metadata', async () => {
       const svc = createSvc();
-      const result = svc.extractTokenUsageFromResponse({
-        usage_metadata: undefined,
-        response_metadata: {
-          usage: {
-            prompt_tokens: 10,
-            completion_tokens: 5,
-            total_tokens: 20,
-            prompt_tokens_details: { cached_tokens: 3 },
-            completion_tokens_details: { reasoning_tokens: 2 },
-          },
-        },
-      });
 
-      expect(result).toEqual({
-        inputTokens: 10,
-        cachedInputTokens: 3,
-        outputTokens: 5,
-        reasoningTokens: 2,
-        totalTokens: 20,
-        currentContext: 10,
-      });
-    });
-
-    it('extracts token usage fields and prefers usage_metadata.total_tokens', () => {
-      const svc = createSvc();
-      const result = svc.extractTokenUsageFromResponse({
-        usage_metadata: {
-          input_tokens: 10,
-          output_tokens: 5,
-          total_tokens: 20,
-          input_tokens_details: { cached_tokens: 3 },
-          output_tokens_details: { reasoning_tokens: 2 },
-        },
-        response_metadata: {},
-      });
-
-      expect(result).toEqual({
-        inputTokens: 10,
-        cachedInputTokens: 3,
-        outputTokens: 5,
-        reasoningTokens: 2,
-        totalTokens: 20,
-        currentContext: 10,
-      });
-    });
-
-    it('reads response_metadata.response_cost when present', () => {
-      const svc = createSvc();
-      const result = svc.extractTokenUsageFromResponse({
-        usage_metadata: {
-          input_tokens: 1,
-          output_tokens: 2,
-          total_tokens: 3,
-        },
-        response_metadata: {
-          response_cost: 0.9,
-        },
-      });
-
-      expect(result).toEqual({
-        inputTokens: 1,
-        outputTokens: 2,
-        totalTokens: 3,
-        currentContext: 1,
-        totalPrice: 0.9,
-      });
-    });
-
-    it('reads response_metadata._hidden_params.response_cost when response_cost is absent', () => {
-      const svc = createSvc();
-      const result = svc.extractTokenUsageFromResponse({
-        usage_metadata: {
-          input_tokens: 2,
-          output_tokens: 3,
-          total_tokens: 5,
-        },
-        response_metadata: {
-          _hidden_params: {
-            response_cost: 1.23,
-          },
-        },
-      });
-
-      expect(result).toEqual({
-        inputTokens: 2,
-        outputTokens: 3,
-        totalTokens: 5,
-        currentContext: 2,
-        totalPrice: 1.23,
-      });
-    });
-
-    it('omits totalPrice when it cannot be determined', () => {
-      const svc = createSvc();
-      const result = svc.extractTokenUsageFromResponse({
-        usage_metadata: {
-          input_tokens: 2,
-          output_tokens: 3,
-        },
-        response_metadata: {
-          response_cost: 'not-a-number',
-          _hidden_params: {
-            response_cost: null,
-          },
-        },
-      });
-
-      expect(result).toEqual({
-        inputTokens: 2,
-        outputTokens: 3,
-        totalTokens: 5,
-        currentContext: 2,
-      });
-    });
-  });
-
-  describe('extractTokenUsageFromAdditionalKwargs', () => {
-    it('extracts tokenUsage from a single additionalKwargs object', () => {
-      const svc = createSvc();
-      expect(
-        svc.extractTokenUsageFromAdditionalKwargs({
-          tokenUsage: {
-            inputTokens: 1,
-            cachedInputTokens: 2,
-            outputTokens: 3,
-            reasoningTokens: 4,
-            totalTokens: 8,
-            totalPrice: 0.5,
-          },
-        }),
-      ).toEqual({
-        inputTokens: 1,
-        cachedInputTokens: 2,
-        outputTokens: 3,
-        reasoningTokens: 4,
-        totalTokens: 8,
-        totalPrice: 0.5,
-      });
-    });
-
-    it('returns null when tokenUsage is missing/invalid', () => {
-      const svc = createSvc();
-      expect(svc.extractTokenUsageFromAdditionalKwargs(undefined)).toBeNull();
-      expect(svc.extractTokenUsageFromAdditionalKwargs({})).toBeNull();
-      expect(
-        svc.extractTokenUsageFromAdditionalKwargs({ tokenUsage: 'nope' }),
-      ).toBeNull();
-      expect(
-        svc.extractTokenUsageFromAdditionalKwargs({
-          tokenUsage: { inputTokens: 1, outputTokens: 2 }, // missing totalTokens
-        }),
-      ).toBeNull();
-    });
-
-    it('accepts an array and returns aggregated totals', () => {
-      const svc = createSvc();
-      expect(
-        svc.extractTokenUsageFromAdditionalKwargs([
-          {
-            tokenUsage: {
-              inputTokens: 10,
-              outputTokens: 5,
-              totalTokens: 15,
-              totalPrice: 0.1,
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            'gpt-4': {
+              input_cost_per_token: 0.00003,
+              output_cost_per_token: 0.00006,
             },
-          },
-          undefined,
-          {
-            tokenUsage: {
-              inputTokens: 1,
-              cachedInputTokens: 2,
-              outputTokens: 3,
-              reasoningTokens: 4,
-              totalTokens: 8,
-            },
-          },
-        ]),
-      ).toEqual({
-        inputTokens: 11,
-        cachedInputTokens: 2,
-        outputTokens: 8,
-        reasoningTokens: 4,
-        totalTokens: 23,
-        totalPrice: 0.1,
+          }),
+        }),
+      );
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 3 },
+        output_tokens_details: { reasoning_tokens: 2 },
       });
+
+      expect(result).toBeDefined();
+      expect(result!.inputTokens).toBe(10);
+      expect(result!.outputTokens).toBe(5);
+      expect(result!.totalTokens).toBe(15);
+      expect(result!.cachedInputTokens).toBe(3);
+      expect(result!.reasoningTokens).toBe(2);
     });
 
-    it('returns null when array contains no extractable entries', () => {
+    it('extracts token usage with cached tokens', async () => {
       const svc = createSvc();
-      expect(
-        svc.extractTokenUsageFromAdditionalKwargs([undefined, null, {}]),
-      ).toBeNull();
-    });
-  });
 
-  describe('LiteLLM model pricing + cost estimation', () => {
-    beforeEach(() => {
-      vi.unstubAllGlobals();
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            'gpt-4': {
+              input_cost_per_token: 0.00003,
+              output_cost_per_token: 0.00006,
+            },
+          }),
+        }),
+      );
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 3 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.inputTokens).toBe(10);
+      expect(result!.outputTokens).toBe(5);
+      expect(result!.cachedInputTokens).toBe(3);
     });
 
-    afterEach(() => {
-      vi.useRealTimers();
-      vi.unstubAllGlobals();
-    });
-
-    it('estimates thread totalPrice from cached model pricing (12h cache)', async () => {
+    it('calculates price with cached tokens correctly', async () => {
       const svc = createSvc();
-      svc.resetLiteLLMModelPricesCacheForTests();
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -248,91 +115,89 @@ describe('LitellmService (utils)', () => {
             input_cost_per_token: 0.00003,
             input_cost_per_token_cache_hit: 0.00001,
             output_cost_per_token: 0.00006,
-            output_cost_per_reasoning_token: 0.00002,
           },
         }),
       });
       vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
-      const price1 = await svc.estimateThreadTotalPriceFromModelRates({
-        model: 'gpt-4',
-        inputTokens: 10,
-        cachedInputTokens: 2,
-        outputTokens: 5,
-        reasoningTokens: 1,
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 100,
+        output_tokens: 50,
+        total_tokens: 150,
+        input_tokens_details: { cached_tokens: 80 },
+        output_tokens_details: { reasoning_tokens: 0 },
       });
-      expect(price1).toBeCloseTo(
-        8 * 0.00003 + 2 * 0.00001 + 5 * 0.00006 + 1 * 0.00002,
-        10,
-      );
-      expect(fetchMock).toHaveBeenCalledTimes(1);
 
-      const price2 = await svc.estimateThreadTotalPriceFromModelRates({
-        model: 'gpt-4',
-        inputTokens: 1,
-        cachedInputTokens: 0,
-        outputTokens: 1,
-        reasoningTokens: 0,
-      });
-      expect(price2).toBeCloseTo(1 * 0.00003 + 1 * 0.00006, 10);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-
-      vi.setSystemTime(new Date('2025-01-01T12:00:00.001Z'));
-      await svc.estimateThreadTotalPriceFromModelRates({
-        model: 'gpt-4',
-        inputTokens: 1,
-        cachedInputTokens: 0,
-        outputTokens: 1,
-        reasoningTokens: 0,
-      });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result).toBeDefined();
+      expect(result!.cachedInputTokens).toBe(80);
+      // Should calculate: (20 * 0.00003) + (80 * 0.00001) + (50 * 0.00006)
+      // = 0.0006 + 0.0008 + 0.003 = 0.0044
+      expect(result!.totalPrice).toBeCloseTo(0.0044, 10);
     });
 
-    it('estimates message totalPrice by direction (input/output/reasoning)', async () => {
+    it('calculates price when no cached/reasoning tokens', async () => {
       const svc = createSvc();
-      svc.resetLiteLLMModelPricesCacheForTests();
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            'gpt-4': {
+              input_cost_per_token: 0.00003,
+              output_cost_per_token: 0.00006,
+            },
+          }),
+        }),
+      );
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.totalPrice).toBeGreaterThan(0);
+    });
+  });
+
+  describe('estimateThreadTotalPriceFromModelRates', () => {
+    it('calculates price with cached tokens correctly', async () => {
+      const svc = createSvc();
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
         json: async () => ({
-          modelA: {
-            input_cost_per_token: 1,
-            output_cost_per_token: 2,
-            output_cost_per_reasoning_token: 3,
+          'gpt-4': {
+            input_cost_per_token: 0.00003,
+            input_cost_per_token_cache_hit: 0.000015,
+            output_cost_per_token: 0.00006,
           },
         }),
       });
       vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
-      await expect(
-        svc.estimateMessageTotalPriceFromModelRates({
-          model: 'modelA',
-          direction: 'input',
-          totalTokens: 2,
-        }),
-      ).resolves.toBe(2);
+      const price = await svc.estimateThreadTotalPriceFromModelRates({
+        model: 'gpt-4',
+        inputTokens: 1000,
+        cachedInputTokens: 800,
+        outputTokens: 100,
+        reasoningTokens: 0,
+      });
 
-      await expect(
-        svc.estimateMessageTotalPriceFromModelRates({
-          model: 'modelA',
-          direction: 'output',
-          totalTokens: 2,
-        }),
-      ).resolves.toBe(4);
-
-      await expect(
-        svc.estimateMessageTotalPriceFromModelRates({
-          model: 'modelA',
-          direction: 'reasoning',
-          totalTokens: 2,
-        }),
-      ).resolves.toBe(6);
+      // (200 * 0.00003) + (800 * 0.000015) + (100 * 0.00006)
+      // = 0.006 + 0.012 + 0.006 = 0.024
+      expect(price).toBeCloseTo(0.024, 10);
     });
+  });
 
-    it('extracts token usage and falls back to model rates when response_cost is missing', async () => {
+  describe('getTokenCostRatesForModel', () => {
+    it('returns cost rates for a model', async () => {
       const svc = createSvc();
-      svc.resetLiteLLMModelPricesCacheForTests();
-
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -340,48 +205,65 @@ describe('LitellmService (utils)', () => {
           'gpt-4': {
             input_cost_per_token: 0.00003,
             output_cost_per_token: 0.00006,
+            input_cost_per_token_cache_hit: 0.000015,
           },
         }),
       });
       vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
-      const usage = await svc.extractTokenUsageFromResponseWithPriceFallback({
-        model: 'gpt-4',
-        usage_metadata: {
-          input_tokens: 2,
-          output_tokens: 3,
-          total_tokens: 5,
-        },
-        response_metadata: {},
-      });
+      const rates = await svc.getTokenCostRatesForModel('gpt-4');
 
-      expect(usage).toEqual({
-        currentContext: 2,
-        inputTokens: 2,
-        outputTokens: 3,
-        totalTokens: 5,
-        totalPrice: 2 * 0.00003 + 3 * 0.00006,
+      expect(rates).toEqual({
+        inputCostPerToken: 0.00003,
+        outputCostPerToken: 0.00006,
+        inputCostPerCachedToken: 0.000015,
       });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
 
-      // When response_cost is already present, do not fetch prices.
-      const usage2 = await svc.extractTokenUsageFromResponseWithPriceFallback({
-        model: 'gpt-4',
-        usage_metadata: {
-          input_tokens: 1,
-          output_tokens: 1,
-          total_tokens: 2,
+    it('returns null for unknown model', async () => {
+      const svc = createSvc();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+      });
+      vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+      const rates = await svc.getTokenCostRatesForModel('unknown-model');
+
+      expect(rates).toBeNull();
+    });
+  });
+
+  describe('sumTokenUsages', () => {
+    it('sums multiple token usages', () => {
+      const svc = createSvc();
+      const result = svc.sumTokenUsages([
+        {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          totalPrice: 0.001,
+          currentContext: 10,
         },
-        response_metadata: { response_cost: 0.123 },
+        {
+          inputTokens: 20,
+          cachedInputTokens: 15,
+          outputTokens: 10,
+          totalTokens: 30,
+          totalPrice: 0.002,
+          currentContext: 20,
+        },
+      ]);
+
+      expect(result).toEqual({
+        inputTokens: 30,
+        cachedInputTokens: 15,
+        outputTokens: 15,
+        totalTokens: 45,
+        totalPrice: 0.003,
+        currentContext: 20, // Max of all contexts
       });
-      expect(usage2).toEqual({
-        currentContext: 1,
-        inputTokens: 1,
-        outputTokens: 1,
-        totalTokens: 2,
-        totalPrice: 0.123,
-      });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

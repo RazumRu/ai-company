@@ -68,19 +68,7 @@ export class DockerExecTransport implements Transport {
       throw new Error('Runtime does not support execStream');
     }
 
-    const streams = await (
-      runtime as {
-        execStream: (
-          cmd: string[],
-          opts: { env: Record<string, string> },
-        ) => Promise<{
-          stdin: Duplex;
-          stdout: PassThrough;
-          stderr: PassThrough;
-          close: () => void;
-        }>;
-      }
-    ).execStream([this.command, ...this.args], {
+    const streams = await runtime.execStream([this.command, ...this.args], {
       env: this.env,
     });
 

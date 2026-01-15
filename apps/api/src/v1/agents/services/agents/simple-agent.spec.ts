@@ -107,10 +107,7 @@ describe('SimpleAgent', () => {
         SimpleAgent,
         {
           provide: LitellmService,
-          useValue: {
-            // SimpleAgent awaits this on every run/runOrAppend; mock it to avoid timeouts.
-            attachTokenUsageToMessages: vi.fn().mockResolvedValue(undefined),
-          } as unknown as LitellmService,
+          useValue: {} as unknown as LitellmService,
         },
         {
           provide: PgCheckpointSaver,

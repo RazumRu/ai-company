@@ -152,21 +152,7 @@ describe('ThreadsService', () => {
         },
         {
           provide: LitellmService,
-          useValue: {
-            extractMessageTokenUsageFromAdditionalKwargs: vi
-              .fn()
-              .mockImplementation((additionalKwargs) => {
-                // Mock implementation that extracts __tokenUsage from additionalKwargs
-                if (
-                  additionalKwargs &&
-                  typeof additionalKwargs === 'object' &&
-                  '__tokenUsage' in additionalKwargs
-                ) {
-                  return additionalKwargs.__tokenUsage as any;
-                }
-                return null;
-              }),
-          },
+          useValue: {},
         },
       ],
     }).compile();
@@ -773,29 +759,6 @@ describe('ThreadsService', () => {
         requestCount: 2, // human + ai calling tools
       });
       expect(result.messagesAggregate.totalPrice).toBeCloseTo(0.003, 4);
-    });
-
-    it('should throw NotFoundException when thread has no usage statistics', async () => {
-      const mockThread = createMockThreadEntity({
-        status: ThreadStatus.Done,
-      });
-
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-
-      // Mock no checkpoint data available
-      const mockCheckpointStateService = (service as any)
-        .checkpointStateService;
-      vi.spyOn(
-        mockCheckpointStateService,
-        'getThreadTokenUsage',
-      ).mockResolvedValue(null);
-
-      // Mock graph registry to not find agent in memory
-      vi.spyOn(mockGraphRegistry, 'getNodesByType').mockReturnValue([]);
-
-      await expect(
-        service.getThreadUsageStatistics(mockThreadId),
-      ).rejects.toThrow('THREAD_USAGE_STATISTICS_NOT_FOUND');
     });
 
     it('should aggregate multiple calls to same tool', async () => {

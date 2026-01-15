@@ -81,10 +81,20 @@ describe('Message token usage (integration)', () => {
     const human = new HumanMessage('hi');
     const ai = new AIMessage('hello');
     human.additional_kwargs = {
-      __tokenUsage: { totalTokens: 2, totalPrice: 0.01 },
+      __requestUsage: {
+        inputTokens: 2,
+        outputTokens: 0,
+        totalTokens: 2,
+        totalPrice: 0.01,
+      },
     };
     ai.additional_kwargs = {
-      __tokenUsage: { totalTokens: 3, totalPrice: 0.02 },
+      __requestUsage: {
+        inputTokens: 1,
+        outputTokens: 2,
+        totalTokens: 3,
+        totalPrice: 0.02,
+      },
     };
 
     const serializedMessages = serializeBaseMessages([human, ai]);
@@ -114,6 +124,8 @@ describe('Message token usage (integration)', () => {
     const aiStored = stored.find((m) => m.message.role === 'ai');
     expect(aiStored).toBeDefined();
     expect(aiStored?.requestTokenUsage).toEqual({
+      inputTokens: 1,
+      outputTokens: 2,
       totalTokens: 3,
       totalPrice: 0.02,
     });
@@ -121,6 +133,8 @@ describe('Message token usage (integration)', () => {
     const humanStored = stored.find((m) => m.message.role === 'human');
     expect(humanStored).toBeDefined();
     expect(humanStored?.requestTokenUsage).toEqual({
+      inputTokens: 2,
+      outputTokens: 0,
       totalTokens: 2,
       totalPrice: 0.01,
     });

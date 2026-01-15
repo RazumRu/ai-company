@@ -18,11 +18,7 @@ import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const AgentCommunicationToolTemplateSchema = z
-  .object({
-    metadata: z
-      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-      .optional(),
-  })
+  .object({})
   // Strip legacy/unknown fields so older configs remain valid.
   .strip();
 

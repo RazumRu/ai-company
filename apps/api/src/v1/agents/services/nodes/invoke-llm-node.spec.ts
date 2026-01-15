@@ -10,21 +10,12 @@ import { InvokeLlmNode } from './invoke-llm-node';
 describe('InvokeLlmNode', () => {
   let node: InvokeLlmNode;
   let mockLlm: ChatOpenAI;
-  let mockLitellm: Pick<
-    LitellmService,
-    | 'extractTokenUsageFromResponseWithPriceFallback'
-    | 'attachTokenUsageToMessage'
-  >;
+  let mockLitellm: Pick<LitellmService, 'extractTokenUsageFromResponse'>;
 
   beforeEach(() => {
     mockLitellm = {
-      extractTokenUsageFromResponseWithPriceFallback: vi.fn(),
-      attachTokenUsageToMessage: vi.fn().mockResolvedValue(null),
-    } as unknown as Pick<
-      LitellmService,
-      | 'extractTokenUsageFromResponseWithPriceFallback'
-      | 'attachTokenUsageToMessage'
-    >;
+      extractTokenUsageFromResponse: vi.fn(),
+    } as unknown as Pick<LitellmService, 'extractTokenUsageFromResponse'>;
 
     const bindTools = vi.fn();
 
@@ -68,9 +59,7 @@ describe('InvokeLlmNode', () => {
       currentContext: 123,
     };
 
-    (
-      mockLitellm.extractTokenUsageFromResponseWithPriceFallback as any
-    ).mockResolvedValue(usage);
+    (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
 
     const llmRes: AIMessageChunk = {
       id: 'msg-1',
@@ -94,14 +83,9 @@ describe('InvokeLlmNode', () => {
       configurable: { run_id: 'run-1', thread_id: 'thread-1' },
     } as any);
 
-    expect(
-      mockLitellm.extractTokenUsageFromResponseWithPriceFallback,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: 'gpt-5-mini',
-        usage_metadata: llmRes.usage_metadata,
-        response_metadata: llmRes.response_metadata,
-      }),
+    expect(mockLitellm.extractTokenUsageFromResponse).toHaveBeenCalledWith(
+      'gpt-5-mini',
+      llmRes.usage_metadata as any,
     );
 
     expect(res.currentContext).toBe(usage.inputTokens);
@@ -114,9 +98,7 @@ describe('InvokeLlmNode', () => {
       totalTokens: 11,
     };
 
-    (
-      mockLitellm.extractTokenUsageFromResponseWithPriceFallback as any
-    ).mockResolvedValue(usage);
+    (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
 
     const llmRes: AIMessageChunk = {
       id: 'msg-1',

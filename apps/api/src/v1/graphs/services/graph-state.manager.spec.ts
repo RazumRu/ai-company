@@ -1,3 +1,5 @@
+import { Duplex, PassThrough } from 'node:stream';
+
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,6 +63,39 @@ class TestRuntime extends BaseRuntime {
     return 'Runtime type: TestRuntime';
   }
 
+  async execStream(
+    _command: string[],
+    _options?: {
+      workdir?: string;
+      env?: Record<string, string>;
+    },
+  ): Promise<{
+    stdin: Duplex;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    close: () => void;
+  }> {
+    const stdin = new Duplex({
+      read() {},
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+
+    return {
+      stdin,
+      stdout,
+      stderr,
+      close: () => {
+        stdin.destroy();
+        stdout.destroy();
+        stderr.destroy();
+      },
+    };
+  }
+
   public override getGraphNodeMetadata(
     context?: GraphExecutionMetadata,
   ): Record<string, unknown> | undefined {
@@ -94,9 +129,7 @@ describe('GraphStateManager', () => {
       info: vi.fn(),
       warn: vi.fn(),
     } as unknown as DefaultLogger;
-    const litellmService = {
-      attachTokenUsageToMessage: vi.fn().mockResolvedValue(null),
-    };
+    const litellmService = {};
     manager = new GraphStateManager(
       notifications,
       litellmService as any,

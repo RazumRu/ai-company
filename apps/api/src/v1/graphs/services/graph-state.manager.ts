@@ -414,10 +414,6 @@ export class GraphStateManager {
     const cfg = data.config?.configurable;
     const threadId = data.threadId;
 
-    // Pre-compute token usage for tool messages before serialization
-    // This avoids fetching model rates inside the message handler
-    await this.attachTokenUsageToToolMessages(data.messages);
-
     await this.notificationsService.emit({
       type: NotificationEvent.AgentMessage,
       graphId: cfg?.graph_id || this.graphId,
@@ -428,71 +424,6 @@ export class GraphStateManager {
         messages: serializeBaseMessages(data.messages),
       },
     });
-  }
-
-  /**
-   * Attach token usage to tool messages before serialization.
-   * This pre-computes token counts and pricing so the message handler
-   * doesn't need to fetch model rates.
-   */
-  private async attachTokenUsageToToolMessages(
-    messages: BaseMessage[],
-  ): Promise<void> {
-    // Process tool messages
-    for (const msg of messages) {
-      const msgObj = msg as unknown as {
-        _getType?: () => string;
-        content?: unknown;
-        tool_calls?: unknown[];
-        additional_kwargs?: Record<string, unknown>;
-      };
-
-      const isToolMessage = msgObj._getType?.() === 'tool';
-      if (!isToolMessage) continue;
-
-      let kwargs = msgObj.additional_kwargs;
-      if (!kwargs) {
-        // Initialize additional_kwargs if it doesn't exist
-        kwargs = {};
-        msgObj.additional_kwargs = kwargs;
-      }
-
-      // Skip if already has token usage
-      if (kwargs.__tokenUsage) continue;
-
-      const model = typeof kwargs.__model === 'string' ? kwargs.__model : null;
-      if (!model) continue;
-
-      // Create a mutable wrapper that attachTokenUsageToMessage can mutate
-      const mutableWrapper = {
-        content: msgObj.content ?? '',
-        tool_calls: msgObj.tool_calls,
-        additional_kwargs: { ...kwargs },
-      };
-
-      // Attach token usage (this will replace additional_kwargs with a new object)
-      // Tool messages should NOT have threadUsage/__requestUsage because they're
-      // function execution results, not LLM responses
-      await this.litellmService.attachTokenUsageToMessage(
-        mutableWrapper,
-        model,
-        {
-          direction: 'input',
-          skipIfExists: false,
-          // DO NOT pass threadUsage for tool messages - they're not from LLM requests
-          threadUsage: null,
-        },
-      );
-
-      // Force-assign the mutated additional_kwargs back to the message
-      // We need to directly mutate the underlying object since BaseMessage might have getters
-      Object.defineProperty(msg, 'additional_kwargs', {
-        value: mutableWrapper.additional_kwargs,
-        writable: true,
-        enumerable: true,
-        configurable: true,
-      });
-    }
   }
 
   private async handleAgentStateUpdate(data: AgentStateUpdateEvent) {

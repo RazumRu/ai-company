@@ -275,11 +275,11 @@ describe('BaseMcp', () => {
 
         const setupPromise = testMcp.setup(config, mockRuntime);
         const setupExpectation = expect(setupPromise).rejects.toThrow(
-          'MCP initialization timed out after 120 seconds',
+          'MCP initialization timed out after 300 seconds',
         );
 
-        // BaseMcp currently uses a 120s connect timeout.
-        await vi.advanceTimersByTimeAsync(120_000);
+        // BaseMcp default uses a 300s (5 minutes) connect timeout
+        await vi.advanceTimersByTimeAsync(300_000);
 
         await setupExpectation;
 

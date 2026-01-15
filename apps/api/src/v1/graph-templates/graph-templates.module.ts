@@ -19,6 +19,7 @@ import { NodeBaseTemplate } from './templates/base-node.template';
 import { SimpleKnowledgeTemplate } from './templates/knowledge/simple-knowledge.template';
 import { FilesystemMcpTemplate } from './templates/mcp/filesystem-mcp.template';
 import { JiraMcpTemplate } from './templates/mcp/jira-mcp.template';
+import { PlaywrightMcpTemplate } from './templates/mcp/playwright-mcp.template';
 import { GithubResourceTemplate } from './templates/resources/github-resource.template';
 import { DockerRuntimeTemplate } from './templates/runtimes/docker-runtime.template';
 import { AgentCommunicationToolTemplate } from './templates/tools/agent-communication-tool.template';
@@ -57,6 +58,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     // --- mcp ---
     FilesystemMcpTemplate,
     JiraMcpTemplate,
+    PlaywrightMcpTemplate,
     // --- resources ---
     GithubResourceTemplate,
   ],

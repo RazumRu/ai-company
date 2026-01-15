@@ -18,7 +18,9 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
   jq \
   python3 \
   python3-pip \
+  apt-utils \
   gnupg \
+  poppler-utils \
   ripgrep \
   fd-find \
   autoconf \

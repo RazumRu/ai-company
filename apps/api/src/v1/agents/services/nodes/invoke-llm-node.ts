@@ -8,8 +8,10 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
+import type { ResponseUsage } from 'openai/resources/responses/responses';
 
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
+import { UsageMetadata } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
@@ -101,23 +103,17 @@ export class InvokeLlmNode extends BaseNode<
     }
 
     const model = String(this.llm.model);
-    const threadUsage =
-      await this.litellmService.extractTokenUsageFromResponseWithPriceFallback({
-        model,
-        usage_metadata: res.usage_metadata,
-        response_metadata: res.response_metadata,
-      });
+    const usageMetadata = res.usage_metadata || res.response_metadata?.usage;
+    const threadUsage = await this.litellmService.extractTokenUsageFromResponse(
+      model,
+      usageMetadata as UsageMetadata,
+    );
 
-    // Attach token usage to this message using centralized method
-    await this.litellmService.attachTokenUsageToMessage(preparedRes, model, {
-      threadUsage,
-      skipIfExists: false,
-    });
-
-    // Attach model metadata
+    // Attach model metadata and request usage
     preparedRes.additional_kwargs = {
       ...preparedRes.additional_kwargs,
       __model: model,
+      __requestUsage: threadUsage,
     };
 
     const out: BaseMessage[] = updateMessagesListWithMetadata(

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { FilesystemMcp } from '../../../v1/agent-mcp/services/mcp/filesystem-mcp';
 import { JiraMcp } from '../../../v1/agent-mcp/services/mcp/jira-mcp';
+import { PlaywrightMcp } from '../../../v1/agent-mcp/services/mcp/playwright-mcp';
 import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
@@ -227,7 +228,6 @@ describe('MCP Integration Tests', () => {
       await expect(
         mcp.setup(
           {
-            name: 'test-jira',
             jiraUrl: 'https://example.atlassian.net',
             jiraApiKey: '',
             jiraEmail: 'test@example.com',
@@ -236,6 +236,148 @@ describe('MCP Integration Tests', () => {
         ),
       ).rejects.toThrow(/auth error/i);
     });
+  });
+
+  describe('PlaywrightMcp', () => {
+    const getToolNames = (tools: { name: string }[]) =>
+      tools.map((t) => t.name).sort();
+
+    const buildMinimalArgsFromSchema = (
+      schema: unknown,
+    ): Record<string, unknown> => {
+      const s = schema as {
+        required?: unknown;
+        properties?: Record<string, unknown>;
+      };
+
+      const required = Array.isArray(s?.required)
+        ? (s.required as string[])
+        : [];
+      const properties =
+        (s?.properties as Record<string, unknown> | undefined) || {};
+
+      const args: Record<string, unknown> = {};
+      for (const key of required) {
+        const prop = properties[key] as
+          | {
+              type?: string | string[];
+              enum?: unknown[];
+            }
+          | undefined;
+
+        if (prop?.enum && Array.isArray(prop.enum) && prop.enum.length > 0) {
+          args[key] = prop.enum[0];
+          continue;
+        }
+
+        const type = Array.isArray(prop?.type) ? prop?.type : [prop?.type];
+        if (type.includes('string')) {
+          if (/url/i.test(key)) {
+            args[key] = 'https://example.com';
+          } else if (/selector/i.test(key)) {
+            args[key] = 'body';
+          } else {
+            args[key] = 'test';
+          }
+          continue;
+        }
+        if (type.includes('integer') || type.includes('number')) {
+          args[key] = 1;
+          continue;
+        }
+        if (type.includes('boolean')) {
+          args[key] = true;
+          continue;
+        }
+        if (type.includes('array')) {
+          args[key] = [];
+          continue;
+        }
+        if (type.includes('object')) {
+          args[key] = {};
+          continue;
+        }
+
+        // Last resort — may still fail schema validation if server requires more structure.
+        args[key] = null;
+      }
+
+      // Helpful fallback for common navigation tools.
+      if (!('url' in args) && typeof properties.url === 'object') {
+        args.url = 'https://example.com';
+      }
+
+      return args;
+    };
+
+    it('should setup and discover tools successfully', async () => {
+      const mcp = new PlaywrightMcp(createLogger());
+
+      await mcp.setup({}, runtime);
+
+      const tools = await mcp.discoverTools();
+      expect(tools.length).toBeGreaterThan(0);
+
+      // Tool names may vary by @playwright/mcp version — assert by capability keywords.
+      const names = getToolNames(tools);
+      expect(names.some((n) => /navigate|goto|open/i.test(n))).toBe(true);
+      expect(names.some((n) => /click|tap/i.test(n))).toBe(true);
+      expect(names.some((n) => /fill|type|input/i.test(n))).toBe(true);
+      expect(names.some((n) => /screenshot|snapshot/i.test(n))).toBe(true);
+
+      await mcp.cleanup();
+    }, 120000);
+
+    it('should execute navigate tool successfully', async () => {
+      const mcp = new PlaywrightMcp(createLogger());
+
+      await mcp.setup({}, runtime);
+
+      const tools = await mcp.discoverTools();
+      const navigateTool = tools.find((t) =>
+        /navigate|goto|open/i.test(t.name),
+      );
+
+      expect(navigateTool).toBeDefined();
+      if (navigateTool) {
+        // Navigate to a stable page (example.com). Build minimal args from tool schema.
+        const schema = (navigateTool as unknown as { schema?: unknown }).schema;
+        const args = buildMinimalArgsFromSchema(schema);
+
+        const result = await navigateTool.invoke(args);
+
+        expect(result).toBeDefined();
+        expect(result.output).toBeDefined();
+      }
+
+      await mcp.cleanup();
+    }, 120000);
+
+    it('should handle cleanup without errors', async () => {
+      const mcp = new PlaywrightMcp(createLogger());
+      await mcp.setup({}, runtime);
+
+      // Cleanup should not throw
+      await expect(mcp.cleanup()).resolves.not.toThrow();
+
+      // Second cleanup should also not throw
+      await expect(mcp.cleanup()).resolves.not.toThrow();
+    }, 120000);
+
+    it('should expose playwright tools (smoke list)', async () => {
+      const mcp = new PlaywrightMcp(createLogger());
+      await mcp.setup({}, runtime);
+
+      const tools = await mcp.discoverTools();
+
+      const names = getToolNames(tools);
+      expect(names.some((n) => /navigate|goto|open/i.test(n))).toBe(true);
+      expect(names.some((n) => /click|tap/i.test(n))).toBe(true);
+      expect(names.some((n) => /fill|type|input/i.test(n))).toBe(true);
+      expect(names.some((n) => /screenshot|snapshot/i.test(n))).toBe(true);
+
+      await mcp.cleanup();
+    }, 120000);
   });
 
   describe('Full Agent Integration', () => {

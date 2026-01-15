@@ -3,9 +3,8 @@ import { DefaultLogger, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import Decimal from 'decimal.js';
 
-import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
-import { MessageRole, NodeKind } from '../../graphs/graphs.types';
+import { MessageRole } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphsService } from '../../graphs/services/graphs.service';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
@@ -202,20 +201,10 @@ export class ThreadsService {
   }
 
   public prepareMessageResponse(entity: MessageEntity): ThreadMessageDto {
-    // Extract message-level token usage from kwargs (for this specific message)
-    const additionalKwargs = entity.message.additionalKwargs as
-      | Record<string, unknown>
-      | undefined;
-    const tokenUsage =
-      this.litellmService.extractMessageTokenUsageFromAdditionalKwargs(
-        additionalKwargs,
-      );
-
     return {
       ...entity,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
-      tokenUsage,
       requestTokenUsage: entity.requestTokenUsage ?? null,
     };
   }
@@ -268,76 +257,41 @@ export class ThreadsService {
       requestCount: 0,
     };
 
-    const accumulate = (
-      a: RequestTokenUsage,
-      b: RequestTokenUsage,
-    ): RequestTokenUsage => ({
-      inputTokens: a.inputTokens + b.inputTokens,
-      cachedInputTokens:
-        (a.cachedInputTokens || 0) + (b.cachedInputTokens || 0),
-      outputTokens: a.outputTokens + b.outputTokens,
-      reasoningTokens: (a.reasoningTokens || 0) + (b.reasoningTokens || 0),
-      totalTokens: a.totalTokens + b.totalTokens,
-      totalPrice: (a.totalPrice || 0) + (b.totalPrice || 0),
-      currentContext: (a.currentContext || 0) + (b.currentContext || 0),
-    });
-
-    // Priority 1: Try to get usage from local state (if agent is in memory)
-    const agentNodes = this.graphRegistry.getNodesByType<SimpleAgent>(
-      thread.graphId,
-      NodeKind.SimpleAgent,
+    const threadUsage = await this.checkpointStateService.getThreadTokenUsage(
+      thread.externalThreadId,
     );
 
-    for (const agent of agentNodes) {
-      const instance = agent.instance;
-      const localUsage = instance.getThreadTokenUsage(thread.externalThreadId);
-      if (localUsage) {
-        totalUsage = accumulate(totalUsage, localUsage);
-        byNodeUsage.set(agent.id, localUsage);
+    if (threadUsage) {
+      totalUsage = threadUsage;
+
+      if (threadUsage.byNode) {
+        byNodeUsage = new Map(Object.entries(threadUsage.byNode));
       }
-    }
-
-    // Priority 2: Fallback to checkpoint (if agent not in memory)
-    if (totalUsage.totalTokens === 0) {
-      const threadUsage = await this.checkpointStateService.getThreadTokenUsage(
-        thread.externalThreadId,
-      );
-
-      if (threadUsage) {
-        totalUsage = threadUsage;
-
-        if (threadUsage.byNode) {
-          byNodeUsage = new Map(Object.entries(threadUsage.byNode));
-        }
-      }
-    }
-
-    if (totalUsage.totalTokens === 0) {
-      throw new NotFoundException('THREAD_USAGE_STATISTICS_NOT_FOUND');
     }
 
     // Format usage statistics from stored token usage data
     // We need to get messages to calculate byTool and aggregates
-    const messages = await this.messagesDao.getAll({
-      externalThreadId: thread.externalThreadId,
-      order: { createdAt: 'ASC' },
-      projection: [
-        'id',
-        'nodeId',
-        'role',
-        'name',
-        'requestTokenUsage',
-        'toolCallNames',
-        'answeredToolCallNames',
-      ],
-    });
+    const messages =
+      (await this.messagesDao.getAll({
+        threadId: thread.id,
+        order: { createdAt: 'ASC' },
+        projection: [
+          'id',
+          'nodeId',
+          'role',
+          'name',
+          'requestTokenUsage',
+          'toolCallNames',
+          'answeredToolCallNames',
+        ],
+      })) ?? [];
 
     // Use Decimal.js for price aggregation to avoid floating-point errors
     let toolsPriceDecimal = new Decimal(0);
     let messagesPriceDecimal = new Decimal(0);
     let totalRequests = 0;
 
-    for (const [index, messageEntity] of messages.entries()) {
+    for (const messageEntity of messages) {
       const requestUsage = messageEntity.requestTokenUsage;
       const isToolAnswerMessage =
         messageEntity.role === MessageRole.AI &&

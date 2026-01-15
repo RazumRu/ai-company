@@ -13,7 +13,6 @@ describe('JiraMcp', () => {
     const jiraMcp = new JiraMcp(logger);
 
     const config = jiraMcp.getMcpConfig({
-      name: 'jira',
       jiraUrl: 'https://example.atlassian.net',
       jiraApiKey: 'test-key',
       jiraEmail: 'test@example.com',
@@ -37,7 +36,6 @@ describe('JiraMcp', () => {
     const jiraMcp = new JiraMcp(logger);
 
     const config = jiraMcp.getMcpConfig({
-      name: 'jira',
       projectKey: 'PROJ',
       jiraUrl: 'https://example.atlassian.net',
       jiraApiKey: 'test-key',
@@ -56,7 +54,6 @@ describe('JiraMcp', () => {
     const jiraMcp = new JiraMcp(logger);
 
     const instructions = jiraMcp.getDetailedInstructions({
-      name: 'jira',
       jiraUrl: 'https://example.atlassian.net',
       jiraApiKey: 'test-key',
       jiraEmail: 'test@example.com',

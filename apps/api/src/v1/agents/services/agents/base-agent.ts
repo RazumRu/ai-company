@@ -118,6 +118,7 @@ export abstract class BaseAgent<
       apiKey: environment.litellmMasterKey,
       configuration: { baseURL: environment.llmBaseUrl },
       useResponsesApi: true,
+      tags: ['ai-company'],
       ...params,
     });
 

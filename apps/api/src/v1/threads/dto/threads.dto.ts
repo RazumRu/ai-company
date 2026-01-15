@@ -65,14 +65,6 @@ export const ThreadUsageStatisticsSchema = z.object({
   ),
 });
 
-export const MessageTokenUsageSchema = z.object({
-  totalTokens: z.number().describe('Total tokens for this message'),
-  totalPrice: z
-    .number()
-    .optional()
-    .describe('Total price for this message in USD'),
-});
-
 // Thread schema
 export const ThreadSchema = z.object({
   id: z.uuid().describe('Thread ID'),
@@ -111,9 +103,6 @@ export const ThreadMessageSchema = z.object({
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   message: MessageSchema,
-  tokenUsage: MessageTokenUsageSchema.optional()
-    .nullable()
-    .describe('Token usage & cost for this message'),
   requestTokenUsage: TokenUsageSchema.optional()
     .nullable()
     .describe(
@@ -170,7 +159,6 @@ export const GetMessagesQuerySchema = z.object({
 // Type exports
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 export type ThreadTokenUsage = z.infer<typeof ThreadTokenUsageSchema>;
-export type MessageTokenUsage = z.infer<typeof MessageTokenUsageSchema>;
 export type UsageStatisticsByTool = z.infer<typeof UsageStatisticsByToolSchema>;
 export type UsageStatisticsAggregate = z.infer<
   typeof UsageStatisticsAggregateSchema

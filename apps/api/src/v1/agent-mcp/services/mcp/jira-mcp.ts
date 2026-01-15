@@ -7,7 +7,6 @@ import { IMcpServerConfig } from '../../agent-mcp.types';
 import { BaseMcp } from '../base-mcp';
 
 export interface JiraMcpConfig {
-  name: string;
   jiraUrl: string;
   jiraApiKey: string;
   jiraEmail: string;
@@ -40,7 +39,7 @@ export class JiraMcp extends BaseMcp<JiraMcpConfig> {
 
   public getMcpConfig(config: JiraMcpConfig): IMcpServerConfig {
     return {
-      name: config.name,
+      name: 'jira',
       command: 'docker',
       args: [
         'run',

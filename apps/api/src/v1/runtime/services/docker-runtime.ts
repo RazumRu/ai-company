@@ -298,11 +298,13 @@ export class DockerRuntime extends BaseRuntime {
       const marker = randomUUID();
       const endToken = `__AI_END_${marker}__`;
       const stderrEndToken = `__AI_END_ERR_${marker}__`;
+      // Use newlines instead of semicolons to support heredocs (<<EOF syntax)
+      // Semicolons would break heredoc closing delimiters that must be on their own line
       const wrappedScript = [
         next.script,
         `printf "\\n${endToken}:%s\\n" $?`,
         `printf "\\n${stderrEndToken}\\n" 1>&2`,
-      ].join('; ');
+      ].join('\n');
 
       let stdoutBuffer = '';
       let stderrBuffer = '';
@@ -316,6 +318,7 @@ export class DockerRuntime extends BaseRuntime {
       let stderrDone = false;
       let exitCode: number | null = null;
       let stdoutContent: string | null = null;
+      let hasReceivedOutput = false;
 
       const sid = session.id;
       const sEnv = session.env;
@@ -374,7 +377,9 @@ export class DockerRuntime extends BaseRuntime {
 
       const resetTailTimer = () => {
         if (tailTimer) clearTimeout(tailTimer);
-        if (next.tailTimeoutMs && next.tailTimeoutMs > 0) {
+        // Only start tail timeout after first output is received
+        // This prevents timeouts during legitimate silent periods (e.g., Python heredoc stdin reading)
+        if (hasReceivedOutput && next.tailTimeoutMs && next.tailTimeoutMs > 0) {
           tailTimer = setTimeout(() => {
             void finishWithRestart(
               {
@@ -392,6 +397,7 @@ export class DockerRuntime extends BaseRuntime {
       };
 
       const onStdoutData = (chunk: Buffer) => {
+        hasReceivedOutput = true;
         resetTailTimer();
         stdoutBuffer = appendTail(stdoutBuffer, chunk);
         const endTokenWithColon = `${endToken}:`;
@@ -417,6 +423,7 @@ export class DockerRuntime extends BaseRuntime {
       };
 
       const onStderrData = (chunk: Buffer) => {
+        hasReceivedOutput = true;
         resetTailTimer();
         stderrBuffer = appendTail(stderrBuffer, chunk);
         const idx = stderrBuffer.indexOf(stderrEndToken);
@@ -1101,6 +1108,7 @@ export class DockerRuntime extends BaseRuntime {
     const stderrStream = new PassThrough();
     let stdoutBuf = Buffer.alloc(0) as Buffer<ArrayBufferLike>;
     let stderrBuf = Buffer.alloc(0) as Buffer<ArrayBufferLike>;
+    let hasReceivedOutput = false;
 
     stdoutStream.on('data', (c: Buffer) => {
       stdoutBuf = appendTailBuf(stdoutBuf, c as Buffer<ArrayBufferLike>);
@@ -1122,7 +1130,13 @@ export class DockerRuntime extends BaseRuntime {
         clearTimeout(tailTimer);
       }
 
-      if (params.tailTimeoutMs && params.tailTimeoutMs > 0) {
+      // Only start tail timeout after first output is received
+      // This prevents timeouts during legitimate silent periods (e.g., Python heredoc stdin reading)
+      if (
+        hasReceivedOutput &&
+        params.tailTimeoutMs &&
+        params.tailTimeoutMs > 0
+      ) {
         tailTimer = setTimeout(() => {
           tailTimedOut = true;
           try {
@@ -1137,6 +1151,7 @@ export class DockerRuntime extends BaseRuntime {
     };
 
     const onData = () => {
+      hasReceivedOutput = true;
       resetTailTimer();
     };
 
@@ -1250,11 +1265,15 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   /**
-   * Execute command with persistent streams for MCP communication
+   * Execute command with persistent streams for real-time communication
    * Returns properly demultiplexed stdin/stdout/stderr streams
    * Uses docker.modem.demuxStream to handle Docker's 8-byte header format
+   *
+   * @param command - Command and arguments as array
+   * @param options - Optional execution options (workdir, env)
+   * @returns Promise with stdin/stdout/stderr streams and close function
    */
-  public async execStream(
+  public override async execStream(
     command: string[],
     options?: {
       workdir?: string;

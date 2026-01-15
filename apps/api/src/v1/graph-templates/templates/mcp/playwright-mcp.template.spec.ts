@@ -1,0 +1,246 @@
+import { ModuleRef } from '@nestjs/core';
+import { Test, TestingModule } from '@nestjs/testing';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { PlaywrightMcp } from '../../../agent-mcp/services/mcp/playwright-mcp';
+import type { GraphNode } from '../../../graphs/graphs.types';
+import { NodeKind } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import {
+  PlaywrightMcpTemplate,
+  PlaywrightMcpTemplateSchema,
+} from './playwright-mcp.template';
+
+describe('PlaywrightMcpTemplate', () => {
+  let template: PlaywrightMcpTemplate;
+  let graphRegistry: GraphRegistry;
+  let mockModuleRef: ModuleRef;
+  let mockRuntime: BaseRuntime;
+  let mockMcpInstance: PlaywrightMcp;
+
+  beforeEach(async () => {
+    // Create mock runtime
+    mockRuntime = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      exec: vi.fn(),
+      execStream: vi.fn(),
+    } as unknown as BaseRuntime;
+
+    // Create mock MCP instance
+    mockMcpInstance = {
+      setup: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      discoverTools: vi.fn().mockResolvedValue([]),
+    } as unknown as PlaywrightMcp;
+
+    // Create mock GraphRegistry
+    const mockGraphRegistry = {
+      getNode: vi.fn().mockReturnValue({
+        type: NodeKind.Runtime,
+        id: 'runtime-1',
+      }),
+      getNodeInstance: vi.fn().mockReturnValue(mockRuntime),
+    };
+
+    // Create mock ModuleRef with resolve method
+    mockModuleRef = {
+      get: vi.fn().mockReturnValue(mockMcpInstance),
+      create: vi.fn().mockResolvedValue(mockMcpInstance),
+      resolve: vi.fn().mockResolvedValue(mockMcpInstance),
+    } as unknown as ModuleRef;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PlaywrightMcpTemplate,
+        {
+          provide: GraphRegistry,
+          useValue: mockGraphRegistry,
+        },
+        {
+          provide: ModuleRef,
+          useValue: mockModuleRef,
+        },
+      ],
+    }).compile();
+
+    template = module.get<PlaywrightMcpTemplate>(PlaywrightMcpTemplate);
+    graphRegistry = module.get<GraphRegistry>(GraphRegistry);
+  });
+
+  describe('template metadata', () => {
+    it('should have correct id and name', () => {
+      expect(template.id).toBe('playwright-mcp');
+      expect(template.name).toBe('Playwright MCP');
+      expect(template.description).toContain('Playwright');
+      expect(template.description).toContain('Browser automation');
+    });
+
+    it('should accept SimpleAgent as input', () => {
+      expect(template.inputs).toEqual([
+        { type: 'kind', value: NodeKind.SimpleAgent, multiple: true },
+      ]);
+    });
+
+    it('should require Runtime as output', () => {
+      expect(template.outputs).toEqual([
+        {
+          type: 'kind',
+          value: NodeKind.Runtime,
+          required: true,
+          multiple: false,
+        },
+      ]);
+    });
+  });
+
+  describe('schema validation', () => {
+    it('should parse empty config', () => {
+      const parsed = PlaywrightMcpTemplateSchema.parse({});
+      expect(parsed).toEqual({});
+    });
+
+    it('should strip unknown fields', () => {
+      const config = {
+        unexpected: 'value',
+      };
+
+      const parsed = PlaywrightMcpTemplateSchema.parse(config);
+      expect(parsed).not.toHaveProperty('unexpected');
+    });
+  });
+
+  describe('create', () => {
+    it('should create MCP instance and setup with runtime', async () => {
+      const config = {} as Record<string, never>;
+
+      const metadata = {
+        graphId: 'test-graph-id',
+        nodeId: 'test-node-id',
+        name: 'test-node',
+        version: '1.0.0',
+      };
+
+      const outputNodeIds = new Set(['runtime-1']);
+
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+
+      const instance = await handle.provide(init);
+      expect(instance).toBeDefined();
+
+      await handle.configure(init, instance as PlaywrightMcp);
+
+      expect(mockMcpInstance.setup).toHaveBeenCalledWith(config, mockRuntime);
+    });
+
+    it('should cleanup before setup during reconfiguration', async () => {
+      const config = {} as Record<string, never>;
+
+      const metadata = {
+        graphId: 'test-graph-id',
+        nodeId: 'test-node-id',
+        name: 'test-node',
+        version: '1.0.0',
+      };
+
+      const outputNodeIds = new Set(['runtime-1']);
+
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance as PlaywrightMcp);
+
+      expect(mockMcpInstance.cleanup).toHaveBeenCalled();
+      expect(mockMcpInstance.setup).toHaveBeenCalled();
+    });
+
+    it('should throw error when runtime is not connected', async () => {
+      const config = {} as Record<string, never>;
+
+      const metadata = {
+        graphId: 'test-graph-id',
+        nodeId: 'test-node-id',
+        name: 'test-node',
+        version: '1.0.0',
+      };
+
+      const outputNodeIds = new Set<string>();
+
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+
+      const instance = await handle.provide(init);
+
+      await expect(
+        handle.configure(init, instance as PlaywrightMcp),
+      ).rejects.toThrow('Playwright MCP requires a Docker Runtime connection');
+    });
+
+    it('should throw error when runtime instance is not found', async () => {
+      const config = {} as Record<string, never>;
+
+      const metadata = {
+        graphId: 'test-graph-id',
+        nodeId: 'test-node-id',
+        name: 'test-node',
+        version: '1.0.0',
+      };
+
+      const outputNodeIds = new Set(['runtime-1']);
+
+      // Mock getNodeInstance to return null
+      vi.mocked(graphRegistry.getNodeInstance).mockReturnValue(null);
+
+      const handle = await template.create();
+      const init: GraphNode<typeof config> = {
+        config,
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+
+      const instance = await handle.provide(init);
+
+      await expect(
+        handle.configure(init, instance as PlaywrightMcp),
+      ).rejects.toThrow(/Runtime node .* not found/);
+    });
+
+    it('should cleanup on destroy', async () => {
+      const handle = await template.create();
+
+      await handle.destroy(mockMcpInstance);
+
+      expect(mockMcpInstance.cleanup).toHaveBeenCalled();
+    });
+
+    it('should handle cleanup errors gracefully on destroy', async () => {
+      vi.mocked(mockMcpInstance.cleanup).mockRejectedValue(
+        new Error('Cleanup failed'),
+      );
+
+      const handle = await template.create();
+
+      // Should not throw
+      await expect(handle.destroy(mockMcpInstance)).resolves.not.toThrow();
+    });
+  });
+});

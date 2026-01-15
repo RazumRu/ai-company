@@ -54,6 +54,15 @@ export abstract class BaseMcp<TConfig = unknown> {
   public abstract getMcpConfig(config: TConfig): IMcpServerConfig;
 
   /**
+   * Returns the initialization timeout in milliseconds
+   * Override this method in subclasses to customize timeout per MCP
+   * Default: 5 minutes (300000ms) - suitable for Docker image pulls
+   */
+  protected getInitTimeoutMs(): number {
+    return 300_000;
+  }
+
+  /**
    * Setup: Initialize SDK client with DockerExecTransport
    * Runs MCP server command inside the connected Docker runtime
    */
@@ -86,7 +95,7 @@ export abstract class BaseMcp<TConfig = unknown> {
       },
     );
 
-    await this.connectWithTimeout(transport, 120_000);
+    await this.connectWithTimeout(transport, this.getInitTimeoutMs());
   }
 
   /**
@@ -111,7 +120,12 @@ export abstract class BaseMcp<TConfig = unknown> {
     });
 
     try {
-      await Promise.race([this.client.connect(transport), timeoutPromise]);
+      await Promise.race([
+        this.client.connect(transport, {
+          timeout: timeoutMs,
+        }),
+        timeoutPromise,
+      ]);
     } catch (error) {
       // Cleanup client on timeout or connection error
       this.client = undefined;

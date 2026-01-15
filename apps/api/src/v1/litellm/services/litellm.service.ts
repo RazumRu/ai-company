@@ -1,9 +1,10 @@
 import { encodingForModel, getEncoding } from '@langchain/core/utils/tiktoken';
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
+import { ResponseUsage } from 'openai/resources/responses/responses';
 
 import { LiteLlmModelDto } from '../dto/models.dto';
-import type { MessageTokenUsage, RequestTokenUsage } from '../litellm.types';
+import { RequestTokenUsage, UsageMetadata } from '../litellm.types';
 import { LiteLlmClient } from './litellm.client';
 
 type LiteLLMModelPriceEntry = Record<string, unknown>;
@@ -42,7 +43,8 @@ export class LitellmService {
   }
 
   async countTokens(model: string, content: unknown): Promise<number> {
-    const text = this.coerceText(content);
+    const text =
+      typeof content === 'string' ? content : JSON.stringify(content ?? '');
     try {
       const enc =
         (typeof model === 'string' && model.length > 0
@@ -52,75 +54,6 @@ export class LitellmService {
     } catch {
       return Math.max(0, Math.ceil(text.length / 4));
     }
-  }
-
-  extractTokenUsageFromAdditionalKwargs(
-    additionalKwargs?:
-      | { tokenUsage?: unknown }
-      | ({ tokenUsage?: unknown } | null | undefined)[]
-      | null,
-  ): RequestTokenUsage | null {
-    const parseSingle = (
-      single?: { tokenUsage?: unknown } | null,
-    ): RequestTokenUsage | null => {
-      const maybe = single?.tokenUsage;
-      if (!maybe || typeof maybe !== 'object') {
-        return null;
-      }
-
-      const obj = maybe as Record<string, unknown>;
-
-      const inputTokens = this.readNumber(obj.inputTokens);
-      const outputTokens = this.readNumber(obj.outputTokens);
-      const totalTokens = this.readNumber(obj.totalTokens);
-
-      if (
-        inputTokens === undefined ||
-        outputTokens === undefined ||
-        totalTokens === undefined
-      ) {
-        return null;
-      }
-
-      const cachedInputTokens = this.readNumber(obj.cachedInputTokens);
-      const reasoningTokens = this.readNumber(obj.reasoningTokens);
-      const totalPrice = this.readNumber(obj.totalPrice);
-
-      return {
-        inputTokens,
-        ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
-        outputTokens,
-        ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
-        totalTokens,
-        ...(totalPrice !== undefined ? { totalPrice } : {}),
-      };
-    };
-
-    if (Array.isArray(additionalKwargs)) {
-      return this.sumTokenUsages(additionalKwargs.map((kw) => parseSingle(kw)));
-    }
-
-    return parseSingle(additionalKwargs);
-  }
-
-  extractMessageTokenUsageFromAdditionalKwargs(
-    additionalKwargs?: Record<string, unknown> | null,
-  ): MessageTokenUsage | null {
-    const maybe =
-      additionalKwargs?.__tokenUsage ?? additionalKwargs?.tokenUsage;
-    if (!maybe || typeof maybe !== 'object') {
-      return null;
-    }
-    const obj = maybe as Record<string, unknown>;
-    const totalTokens = this.readNumber(obj.totalTokens);
-    if (totalTokens === undefined) {
-      return null;
-    }
-    const totalPrice = this.readNumberish(obj.totalPrice);
-    return {
-      totalTokens,
-      ...(totalPrice !== undefined ? { totalPrice } : {}),
-    };
   }
 
   sumTokenUsages(
@@ -146,12 +79,10 @@ export class LitellmService {
       reasoningTokens += usage.reasoningTokens ?? 0;
       totalTokens += usage.totalTokens;
       if (typeof usage.totalPrice === 'number') {
-        // Use Decimal.js to accumulate prices precisely
         totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice);
         sawPrice = true;
       }
       if (typeof usage.currentContext === 'number') {
-        // currentContext is a snapshot, take the maximum across all usages
         currentContext = Math.max(currentContext, usage.currentContext);
         sawContext = true;
       }
@@ -173,147 +104,57 @@ export class LitellmService {
   }
 
   /**
-   * Extract token usage + (best-effort) cost from LangChain's ChatOpenAI response
-   * when using a LiteLLM proxy.
+   * Extract token usage and cost from LangChain's ChatOpenAI response.
+   * Automatically recalculates price when cached or reasoning tokens are present.
    *
-   * LiteLLM can attach cost under `response_metadata.response_cost` or
-   * `response_metadata._hidden_params.response_cost` (depending on proxy/config).
+   * @param args.model - Model name for price lookup
+   * @param args.usage_metadata - LangChain usage metadata
+   * @param args.response_metadata - LangChain response metadata
+   * @returns Token usage with accurate cost calculation
    */
-  extractTokenUsageFromResponse(res: {
-    usage_metadata?: unknown;
-    response_metadata?: unknown;
-  }): RequestTokenUsage | null {
-    const responseMetadata =
-      res.response_metadata && typeof res.response_metadata === 'object'
-        ? (res.response_metadata as Record<string, unknown>)
-        : null;
-
-    // Primary: LangChain usage_metadata (preferred when present)
-    const usageMetadata = res.usage_metadata;
-    const usage =
-      usageMetadata && typeof usageMetadata === 'object'
-        ? (usageMetadata as Record<string, unknown>)
-        : null;
-
-    // Fallback: some providers (e.g. Azure/OpenAI transport) attach usage under response_metadata.usage
-    const responseUsage =
-      responseMetadata?.usage && typeof responseMetadata.usage === 'object'
-        ? (responseMetadata.usage as Record<string, unknown>)
-        : null;
-
-    if (!usage && !responseUsage) {
-      return null;
-    }
-
+  async extractTokenUsageFromResponse(
+    model: string,
+    usageMetadata?: UsageMetadata,
+  ): Promise<RequestTokenUsage | null> {
     const inputTokens =
-      (usage ? this.readNumber(usage.input_tokens) : undefined) ??
-      (responseUsage
-        ? this.readNumber(responseUsage.prompt_tokens)
-        : undefined) ??
-      0;
+      usageMetadata?.input_tokens ?? usageMetadata?.prompt_tokens ?? 0;
     const outputTokens =
-      (usage ? this.readNumber(usage.output_tokens) : undefined) ??
-      (responseUsage
-        ? this.readNumber(responseUsage.completion_tokens)
-        : undefined) ??
+      usageMetadata?.output_tokens ?? usageMetadata?.completion_tokens ?? 0;
+
+    const inputTokensDetails =
+      usageMetadata?.input_tokens_details ||
+      usageMetadata?.input_token_details ||
+      usageMetadata?.prompt_tokens_details;
+    const cachedInputTokens =
+      inputTokensDetails?.cached_tokens ?? inputTokensDetails?.cache_read ?? 0;
+
+    const outputTokensDetails =
+      usageMetadata?.output_tokens_details ||
+      usageMetadata?.completion_tokens_details;
+    const reasoningTokens =
+      outputTokensDetails?.reasoning_tokens ??
+      outputTokensDetails?.reasoning ??
       0;
 
-    const cachedInputTokens = (() => {
-      const inputTokensDetails = usage?.input_tokens_details;
-      if (inputTokensDetails && typeof inputTokensDetails === 'object') {
-        return this.readNumber(
-          (inputTokensDetails as Record<string, unknown>).cached_tokens,
-        );
-      }
-      const promptDetails = responseUsage?.prompt_tokens_details;
-      if (promptDetails && typeof promptDetails === 'object') {
-        return this.readNumber(
-          (promptDetails as Record<string, unknown>).cached_tokens,
-        );
-      }
-      return undefined;
-    })();
+    const totalTokens = usageMetadata?.total_tokens ?? 0;
 
-    const reasoningTokens = (() => {
-      const outputDetails = usage?.output_tokens_details;
-      if (outputDetails && typeof outputDetails === 'object') {
-        return this.readNumber(
-          (outputDetails as Record<string, unknown>).reasoning_tokens,
-        );
-      }
-      const completionDetails = responseUsage?.completion_tokens_details;
-      if (completionDetails && typeof completionDetails === 'object') {
-        return this.readNumber(
-          (completionDetails as Record<string, unknown>).reasoning_tokens,
-        );
-      }
-      return undefined;
-    })();
-
-    const totalTokens =
-      (usage ? this.readNumber(usage.total_tokens) : undefined) ??
-      (responseUsage
-        ? this.readNumber(responseUsage.total_tokens)
-        : undefined) ??
-      inputTokens + outputTokens + (reasoningTokens ?? 0);
-
-    // Cost comes only from LiteLLM proxy metadata if present.
-    let totalPrice: number | undefined;
-
-    if (responseMetadata) {
-      const meta = responseMetadata;
-      totalPrice ??=
-        this.readNumber(meta.response_cost) ??
-        this.readNumber(
-          (meta._hidden_params as Record<string, unknown> | undefined)
-            ?.response_cost,
-        );
-    }
+    const totalPrice = await this.estimateThreadTotalPriceFromModelRates({
+      model,
+      inputTokens,
+      cachedInputTokens,
+      outputTokens,
+      reasoningTokens,
+    });
 
     return {
       inputTokens,
       outputTokens,
       totalTokens,
       currentContext: inputTokens,
-      ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
-      ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
-      ...(totalPrice !== undefined ? { totalPrice } : {}),
+      cachedInputTokens,
+      reasoningTokens,
+      totalPrice: totalPrice || 0,
     };
-  }
-
-  async extractTokenUsageFromResponseWithPriceFallback(args: {
-    model: string;
-    usage_metadata?: unknown;
-    response_metadata?: unknown;
-  }): Promise<RequestTokenUsage | null> {
-    const usage = this.extractTokenUsageFromResponse({
-      usage_metadata: args.usage_metadata,
-      response_metadata: args.response_metadata,
-    });
-    if (!usage) {
-      return null;
-    }
-    if (usage.totalPrice !== undefined) {
-      return usage;
-    }
-
-    const estimated = await this.estimateThreadTotalPriceFromModelRates({
-      model: args.model,
-      inputTokens: usage.inputTokens,
-      cachedInputTokens: usage.cachedInputTokens ?? 0,
-      outputTokens: usage.outputTokens,
-      reasoningTokens: usage.reasoningTokens ?? 0,
-    });
-    if (estimated === null) {
-      return usage;
-    }
-    return { ...usage, totalPrice: estimated };
-  }
-
-  /** @internal */
-  resetLiteLLMModelPricesCacheForTests() {
-    this.modelPricesCache = null;
-    this.modelPricesInFlight = null;
   }
 
   async getTokenCostRatesForModel(
@@ -337,16 +178,26 @@ export class LitellmService {
       return null;
     }
 
-    const inputCostPerToken = this.readNumberish(entry.input_cost_per_token);
-    const outputCostPerToken = this.readNumberish(entry.output_cost_per_token);
+    // Helper to read number or string number
+    const readNumish = (v: unknown): number | undefined => {
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+      if (typeof v === 'string' && v.length > 0) {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? n : undefined;
+      }
+      return undefined;
+    };
+
+    const inputCostPerToken = readNumish(entry.input_cost_per_token);
+    const outputCostPerToken = readNumish(entry.output_cost_per_token);
     if (inputCostPerToken === undefined || outputCostPerToken === undefined) {
       return null;
     }
 
     const inputCostPerCachedToken =
-      this.readNumberish(entry.input_cost_per_token_cache_hit) ??
-      this.readNumberish(entry.cache_read_input_token_cost);
-    const outputCostPerReasoningToken = this.readNumberish(
+      readNumish(entry.input_cost_per_token_cache_hit) ??
+      readNumish(entry.cache_read_input_token_cost);
+    const outputCostPerReasoningToken = readNumish(
       entry.output_cost_per_reasoning_token,
     );
 
@@ -383,7 +234,6 @@ export class LitellmService {
     const cachedRate = rates.inputCostPerCachedToken ?? rates.inputCostPerToken;
     const reasoningRate = rates.outputCostPerReasoningToken ?? 0;
 
-    // Use Decimal.js for precise cost calculations
     const inputCost = new Decimal(nonCached).times(rates.inputCostPerToken);
     const cachedCost = new Decimal(cached).times(cachedRate);
     const outputCost = new Decimal(output).times(rates.outputCostPerToken);
@@ -394,182 +244,6 @@ export class LitellmService {
       .plus(outputCost)
       .plus(reasoningCost)
       .toNumber();
-  }
-
-  async estimateMessageTotalPriceFromModelRates(args: {
-    model: string;
-    direction: MessageCostDirection;
-    totalTokens: number;
-  }): Promise<number | null> {
-    const rates = await this.getTokenCostRatesForModel(args.model);
-    if (!rates) return null;
-
-    const tokens = Math.max(0, args.totalTokens);
-    if (tokens === 0) return 0;
-
-    // Use Decimal.js for precise cost calculations
-    if (args.direction === 'input') {
-      return new Decimal(tokens).times(rates.inputCostPerToken).toNumber();
-    }
-    if (args.direction === 'reasoning') {
-      const r = rates.outputCostPerReasoningToken ?? rates.outputCostPerToken;
-      return new Decimal(tokens).times(r).toNumber();
-    }
-    return new Decimal(tokens).times(rates.outputCostPerToken).toNumber();
-  }
-
-  /**
-   * Attach token usage to a message's additional_kwargs.
-   *
-   * @param message - The message to attach token usage to
-   * @param model - The model name used for token counting
-   * @param options - Optional configuration
-   * @param options.direction - Cost direction (input/output/reasoning) for price estimation. Defaults to 'input'.
-   * @param options.threadUsage - Full thread token usage from LLM response. If provided, price is calculated proportionally.
-   * @param options.skipIfExists - If true, skip messages that already have tokenUsage. Defaults to true.
-   * @returns The message token usage that was attached
-   */
-  async attachTokenUsageToMessage(
-    message: {
-      content: unknown;
-      tool_calls?: unknown[];
-      additional_kwargs?: Record<string, unknown>;
-    },
-    model: string,
-    options?: {
-      direction?: MessageCostDirection;
-      threadUsage?: RequestTokenUsage | null;
-      skipIfExists?: boolean;
-    },
-  ): Promise<MessageTokenUsage | null> {
-    const skipIfExists = options?.skipIfExists ?? true;
-
-    const existing =
-      message.additional_kwargs?.__tokenUsage ??
-      message.additional_kwargs?.tokenUsage;
-    if (skipIfExists && existing && typeof existing === 'object') {
-      return existing as MessageTokenUsage;
-    }
-
-    // Calculate token count for this message
-    const messageForCounting = {
-      content: message.content,
-      ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}),
-    };
-    const totalTokens = await this.countTokens(
-      model,
-      JSON.stringify(messageForCounting),
-    );
-
-    // Calculate price
-    let totalPrice: number | undefined;
-
-    if (options?.threadUsage) {
-      // Proportional allocation from thread usage using Decimal for precision
-      if (
-        options.threadUsage.totalPrice !== undefined &&
-        options.threadUsage.totalTokens > 0
-      ) {
-        totalPrice = new Decimal(totalTokens)
-          .dividedBy(options.threadUsage.totalTokens)
-          .times(options.threadUsage.totalPrice)
-          .toNumber();
-      }
-    } else {
-      // Estimate from model rates
-      const estimated = await this.estimateMessageTotalPriceFromModelRates({
-        model,
-        direction: options?.direction ?? 'input',
-        totalTokens,
-      });
-      totalPrice = estimated ?? undefined;
-    }
-
-    const tokenUsage: MessageTokenUsage = {
-      totalTokens,
-      ...(totalPrice !== undefined ? { totalPrice } : {}),
-    };
-
-    // Attach to additional_kwargs
-    message.additional_kwargs = {
-      ...(message.additional_kwargs ?? {}),
-      __tokenUsage: tokenUsage,
-    };
-
-    // Also attach full request/thread usage data if available
-    if (options?.threadUsage) {
-      message.additional_kwargs.__requestUsage = {
-        inputTokens: options.threadUsage.inputTokens,
-        outputTokens: options.threadUsage.outputTokens,
-        totalTokens: options.threadUsage.totalTokens,
-        ...(options.threadUsage.cachedInputTokens !== undefined
-          ? { cachedInputTokens: options.threadUsage.cachedInputTokens }
-          : {}),
-        ...(options.threadUsage.reasoningTokens !== undefined
-          ? { reasoningTokens: options.threadUsage.reasoningTokens }
-          : {}),
-        ...(options.threadUsage.totalPrice !== undefined
-          ? { totalPrice: options.threadUsage.totalPrice }
-          : {}),
-        ...(options.threadUsage.currentContext !== undefined
-          ? { currentContext: options.threadUsage.currentContext }
-          : {}),
-      };
-    }
-
-    return tokenUsage;
-  }
-
-  /**
-   * Attach token usage to multiple messages.
-   *
-   * @param messages - Array of messages to process
-   * @param model - The model name used for token counting
-   * @param options - Optional configuration (same as attachTokenUsageToMessage)
-   */
-  async attachTokenUsageToMessages(
-    messages: {
-      content: unknown;
-      tool_calls?: unknown[];
-      additional_kwargs?: Record<string, unknown>;
-    }[],
-    model: string,
-    options?: {
-      direction?: MessageCostDirection;
-      threadUsage?: RequestTokenUsage | null;
-      skipIfExists?: boolean;
-    },
-  ): Promise<void> {
-    await Promise.all(
-      messages.map((msg) =>
-        this.attachTokenUsageToMessage(msg, model, options),
-      ),
-    );
-  }
-
-  private readNumber(v: unknown): number | undefined {
-    return typeof v === 'number' && Number.isFinite(v) && v >= 0
-      ? v
-      : undefined;
-  }
-
-  private readNumberish(v: unknown): number | undefined {
-    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
-    if (typeof v === 'string' && v.length > 0) {
-      const n = Number(v);
-      return Number.isFinite(n) && n >= 0 ? n : undefined;
-    }
-    return undefined;
-  }
-
-  private coerceText(content: unknown): string {
-    if (typeof content === 'string') return content;
-    if (content === null || content === undefined) return '';
-    try {
-      return JSON.stringify(content);
-    } catch {
-      return String(content);
-    }
   }
 
   private async getLiteLLMModelPrices(): Promise<

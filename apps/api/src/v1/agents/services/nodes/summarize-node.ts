@@ -9,7 +9,10 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
-import type { RequestTokenUsage } from '../../../litellm/litellm.types';
+import {
+  RequestTokenUsage,
+  UsageMetadata,
+} from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
@@ -450,14 +453,12 @@ export class SummarizeNode extends BaseNode<
     );
     const res = (await this.llm.invoke([sys, human])) as AIMessage;
     const model = String(this.llm.model);
-    const usage =
-      await this.litellmService.extractTokenUsageFromResponseWithPriceFallback({
-        model,
-        usage_metadata: (res as unknown as { usage_metadata?: unknown })
-          ?.usage_metadata,
-        response_metadata: (res as unknown as { response_metadata?: unknown })
-          ?.response_metadata,
-      });
+    const usageMetadata = res.usage_metadata || res.response_metadata?.usage;
+
+    const usage = await this.litellmService.extractTokenUsageFromResponse(
+      model,
+      usageMetadata as UsageMetadata,
+    );
     const extracted = extractTextFromResponseContent(res.content);
     if (extracted !== undefined) {
       return { summary: extracted, usage };

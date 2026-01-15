@@ -10,4 +10,5 @@ addExceptionCode({
   GRAPH_TEMPLATE_NOT_FOUND: 'Template not found',
   WRONG_EDGE_CONNECTION: 'Wrong edge connection',
   TEMPLATE_NOT_REGISTERED: 'Template is not registered',
+  TRIGGER_NOT_FOUND: 'Trigger not found',
 });

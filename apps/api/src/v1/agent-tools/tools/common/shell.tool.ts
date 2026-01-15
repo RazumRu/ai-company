@@ -96,6 +96,9 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       ### Overview
       Executes shell commands in runtime environment. Commands within same thread share persistent session (env/cwd persist). Default cwd: \`/runtime-workspace/<threadId>\`. Use absolute paths under \`/runtime-workspace\` for cross-tool compatibility.
 
+      **IMPORTANT: Persistent Shell Session**
+      All commands execute in ONE continuous session - the current directory and environment variables persist between commands. Do NOT run \`cd\` at the beginning of every command; the working directory stays where you left it.
+
       ### When to Use
       File/git operations, build/test/install commands, system inspection, custom scripts, or when specialized tools don't exist.
 
@@ -103,14 +106,27 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       For reading/finding/searching/editing files → use specialized file tools (better structured output, safer operations).
 
       ### Best Practices
-      **1. Set cwd once (persists across calls):**
+      **1. Session persists - avoid redundant \`cd\` commands:**
       \`\`\`bash
-      cd /runtime-workspace && ls
+      # First command: change directory
+      cd /runtime-workspace/myproject
+      
+      # Second command: you're ALREADY in /runtime-workspace/myproject
+      npm install  # NO need for "cd /runtime-workspace/myproject && npm install"
+      
+      # Third command: still in the same directory
+      npm test  # Still in /runtime-workspace/myproject
       \`\`\`
 
-      **2. Chain commands safely:**
+      **2. Chain related commands (only when needed in single call):**
       \`\`\`bash
+      # Only chain if you need it all in one command
       cd /repo && npm install && npm test
+      
+      # Better: use session persistence across separate commands
+      # Command 1: cd /repo
+      # Command 2: npm install  (already in /repo)
+      # Command 3: npm test     (still in /repo)
       \`\`\`
 
       **3. Quote paths with spaces:**

@@ -133,7 +133,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private graphThreadStateUnsubscribe?: () => void;
   private currentConfig?: SimpleAgentSchemaType;
   private activeRuns = new Map<string, ActiveRunEntry>();
-  private mcpServices: BaseMcp<unknown>[] = [];
+  private mcpServices: BaseMcp[] = [];
 
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
@@ -873,28 +873,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     };
   }
 
-  /**
-   * Attach token usage to messages that don't already have it.
-   * This is primarily for human messages which don't go through the LLM node.
-   */
-  private async attachTokenUsageToMessages(
-    messages: BaseMessage[],
-    model: string,
-  ): Promise<void> {
-    await this.litellmService.attachTokenUsageToMessages(
-      messages as unknown as {
-        content: unknown;
-        tool_calls?: unknown[];
-        additional_kwargs?: Record<string, unknown>;
-      }[],
-      model,
-      {
-        direction: 'input', // Human messages are typically inputs
-        skipIfExists: true,
-      },
-    );
-  }
-
   public async runOrAppend(
     threadId: string,
     messages: BaseMessage[],
@@ -912,10 +890,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     if (!activeRun) {
       return this.run(threadId, messages, config, runnableConfig);
     }
-
-    // Calculate token usage for appended messages
-    const model = config.invokeModelName || 'gpt-5.1';
-    await this.attachTokenUsageToMessages(messages, model);
 
     await this.appendMessages(messages, activeRun);
 
@@ -994,10 +968,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       mergedConfig,
     );
     const inputMessageSet = new Set(updateMessages);
-
-    // Calculate token usage for input messages (e.g., human messages)
-    const model = config.invokeModelName || 'gpt-5.1';
-    await this.attachTokenUsageToMessages(updateMessages, model);
 
     // Emit invoke event
     this.emit({

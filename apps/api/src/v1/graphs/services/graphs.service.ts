@@ -481,7 +481,7 @@ export class GraphsService {
 
     // Get the compiled graph from registry
     const compiledGraph = this.graphRegistry.get(graphId);
-    if (!compiledGraph) {
+    if (!compiledGraph || compiledGraph.status !== GraphStatus.Running) {
       throw new BadRequestException(
         'GRAPH_NOT_RUNNING',
         'Graph must be running to execute triggers',
