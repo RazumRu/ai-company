@@ -104,7 +104,7 @@ describe('Files tools integration', () => {
         oldText: '',
         newText: SAMPLE_TS_CONTENT,
       },
-      { runtime },
+      { runtimeProvider: runtimeThreadProvider },
       RUNNABLE_CONFIG,
     );
 
@@ -150,7 +150,9 @@ describe('Files tools integration', () => {
     });
 
     runtimeThreadProvider = new RuntimeThreadProvider(
-      { provide: async () => runtime } as unknown as RuntimeProvider,
+      {
+        provide: async () => ({ runtime, created: false }),
+      } as unknown as RuntimeProvider,
       {
         graphId: `graph-${Date.now()}`,
         runtimeNodeId: `runtime-${Date.now()}`,
@@ -182,7 +184,7 @@ describe('Files tools integration', () => {
       // Read file first
       const { output: initialRead } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -194,7 +196,7 @@ describe('Files tools integration', () => {
           oldText: initialContent,
           newText: '// Integration header\n' + initialContent,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -202,7 +204,7 @@ describe('Files tools integration', () => {
 
       const { output: listResult } = await filesFindPathsTool.invoke(
         { searchInDirectory: WORKSPACE_DIR, filenamePattern: '*.ts' },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -212,7 +214,7 @@ describe('Files tools integration', () => {
 
       const { output: readResult } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -223,7 +225,7 @@ describe('Files tools integration', () => {
 
       const { output: searchResult } = await filesSearchTextTool.invoke(
         { filePath, textPattern: 'HelperService' },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -240,7 +242,7 @@ describe('Files tools integration', () => {
 
       const { output: buildResult } = await filesBuildTagsTool.invoke(
         { directoryPath: WORKSPACE_DIR, alias: TAGS_ALIAS },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -256,7 +258,7 @@ describe('Files tools integration', () => {
           symbolQuery: 'HelperService',
           exactMatch: true,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -270,7 +272,7 @@ describe('Files tools integration', () => {
           symbolQuery: 'greet',
           exactMatch: true,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -288,7 +290,7 @@ describe('Files tools integration', () => {
 
       const { output: listResult } = await filesFindPathsTool.invoke(
         { filenamePattern: '*.ts' },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -299,7 +301,7 @@ describe('Files tools integration', () => {
 
       const { output: searchResult } = await filesSearchTextTool.invoke(
         { filePath, textPattern: 'HelperService' },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -326,7 +328,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: content,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       expect(applyRes.success).toBe(true);
@@ -342,7 +344,7 @@ describe('Files tools integration', () => {
       // Use files_find_paths without dir to rely on current session cwd
       const { output: listRes } = await filesFindPathsTool.invoke(
         { filenamePattern: '*.txt' },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       expect(listRes.error).toBeUndefined();
@@ -353,7 +355,7 @@ describe('Files tools integration', () => {
       // Read the file from the custom directory
       const { output: readRes } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       expect(readRes.error).toBeUndefined();
@@ -379,7 +381,7 @@ describe('Files tools integration', () => {
       // Run files_find_paths with an explicit dir (subshell) and ensure cwd remains /tmp
       const { output: listResult } = await filesFindPathsTool.invoke(
         { searchInDirectory: WORKSPACE_DIR, filenamePattern: '*.ts' },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       expect(listResult.error).toBeUndefined();
@@ -408,7 +410,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: content,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -420,7 +422,7 @@ describe('Files tools integration', () => {
           filenamePattern: fileName,
           includeSubdirectories: false,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       expect(listAfterCreate.error).toBeUndefined();
@@ -428,7 +430,7 @@ describe('Files tools integration', () => {
 
       const { output: deleteResult } = await filesDeleteTool.invoke(
         { filePath },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -440,7 +442,7 @@ describe('Files tools integration', () => {
           filenamePattern: fileName,
           includeSubdirectories: false,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -464,7 +466,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: initialContent,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -477,7 +479,7 @@ describe('Files tools integration', () => {
           oldText: `export function oldFunction() {\n  return 'old value';\n}`,
           newText: `export function newFunction() {\n  return 'new value';\n}`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -487,7 +489,7 @@ describe('Files tools integration', () => {
       // Verify the replacement
       const { output: readResult } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -514,7 +516,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: initialContent,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -523,7 +525,7 @@ describe('Files tools integration', () => {
       // Read current content
       const { output: readBefore } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       const beforeContent = readBefore.files?.[0]?.content || '';
@@ -535,7 +537,7 @@ describe('Files tools integration', () => {
           oldText: beforeContent,
           newText: `import { newImport } from './new';\n\n${beforeContent}`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -544,7 +546,7 @@ describe('Files tools integration', () => {
       // Verify the insertion
       const { output: readAfter } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -570,7 +572,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: initialContent,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -579,7 +581,7 @@ describe('Files tools integration', () => {
       // Read current content
       const { output: readBefore } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       const beforeContent = readBefore.files?.[0]?.content || '';
@@ -591,7 +593,7 @@ describe('Files tools integration', () => {
           oldText: beforeContent,
           newText: `${beforeContent}\n\nexport function newFunction() {\n  return 'new';\n}`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -600,7 +602,7 @@ describe('Files tools integration', () => {
       // Verify the append
       const { output: readAfter } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -634,7 +636,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: initialContent,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -647,7 +649,7 @@ describe('Files tools integration', () => {
           oldText: `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`,
           newText: `export const config = {\n  api: 'http://localhost',\n  timeout: 5000,\n  port: 3000,\n};`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -656,7 +658,7 @@ describe('Files tools integration', () => {
       // Verify the insertion
       const { output: readAfter } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -689,7 +691,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: '',
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -698,7 +700,7 @@ describe('Files tools integration', () => {
       // Verify it's empty
       const { output: readEmpty } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -711,7 +713,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: `// First line\nexport const value = 'data';`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -720,7 +722,7 @@ describe('Files tools integration', () => {
       // Verify content was added
       const { output: readAfter } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -745,7 +747,7 @@ describe('Files tools integration', () => {
           oldText: '',
           newText: initialContent,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -758,7 +760,7 @@ describe('Files tools integration', () => {
           oldText: `export function test() {\n  return 'original';\n}`,
           newText: `export function test() {\n  return 'modified';\n}`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -771,7 +773,7 @@ describe('Files tools integration', () => {
       // Verify file was changed
       const { output: readAfterApply } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -809,7 +811,7 @@ ${padding}
 
       await filesApplyChangesTool.invoke(
         { filePath, oldText: '', newText: initialContent },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -844,7 +846,7 @@ ${keepBlock}
 export const tail_${unique} = true;
 // ... existing code ...`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -863,7 +865,7 @@ export const tail_${unique} = true;
 
       const { output: readAfter } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       const contentAfter = readAfter.files?.[0]?.content || '';
@@ -889,7 +891,7 @@ export const tail_${unique} = true;
 // ... existing code ...
 }`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -921,7 +923,7 @@ export const tail_${unique} = true;
   return 'modified';
 }`,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -951,7 +953,7 @@ export function greet(name: string): string {
 
       await filesApplyChangesTool.invoke(
         { filePath, oldText: '', newText: initialContent },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -967,7 +969,7 @@ export function greet(name: string): string {
 `,
           useSmartModel: true,
         },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
@@ -986,7 +988,7 @@ export function greet(name: string): string {
       // Verify the content was actually changed
       const { output: readAfter } = await filesReadTool.invoke(
         { filesToRead: [{ filePath }] },
-        { runtime },
+        { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
       const contentAfter = readAfter.files?.[0]?.content || '';

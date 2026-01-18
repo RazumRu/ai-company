@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
+import { execRuntimeWithContext } from '../../../agent-tools/agent-tools.utils';
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import {
   GhToolGroup,
@@ -30,8 +31,6 @@ export const GhToolTemplateSchema = z
         'Labels that will always be applied when creating PRs via gh_create_pull_request.',
       ),
   })
-  // Strip legacy/unknown fields (e.g., includeClone/includeBranch/includeCommit)
-  // so older configs remain valid without errors.
   .strip();
 
 @Injectable()
@@ -75,15 +74,22 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
   }
 
   public async create() {
+    let executorNodeId: string | undefined;
+
     return {
       provide: async (
         _params: GraphNode<z.infer<typeof GhToolTemplateSchema>>,
       ) => ({ tools: [] }),
       configure: async (
         params: GraphNode<z.infer<typeof GhToolTemplateSchema>>,
-        instance: { tools: BuiltAgentTool[]; instructions?: string },
+        instance: {
+          tools: BuiltAgentTool[];
+          instructions?: string;
+          runtimeProvider?: RuntimeThreadProvider;
+        },
       ) => {
         const graphId = params.metadata.graphId;
+        executorNodeId = params.metadata.nodeId;
         const outputNodeIds = params.outputNodeIds;
         const config = params.config;
 
@@ -137,7 +143,7 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         const initScript = ghResource.data.initScript;
         const initScriptTimeout = ghResource.data.initScriptTimeout;
         const patToken = ghResource.patToken;
-        const resourceEnv = ghResource.data.env;
+        const resourceEnv = ghResource.data.env ?? {};
         const currentRuntimeParams = runtimeNode.instance.getParams();
         const baseTimeout =
           currentRuntimeParams.runtimeStartParams.initScriptTimeoutMs ?? 0;
@@ -150,6 +156,30 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
           baseTimeout,
           initScriptTimeout ?? 0,
         );
+        if (initScriptList.length > 0) {
+          runtimeNode.instance.registerJob(
+            executorNodeId,
+            `gh-init:${executorNodeId}`,
+            async (runtime, cfg) => {
+              for (const script of initScriptList) {
+                const result = await execRuntimeWithContext(
+                  runtime,
+                  {
+                    cmd: script,
+                    timeoutMs: initScriptTimeoutMs || undefined,
+                    env: resourceEnv,
+                  },
+                  cfg,
+                );
+                if (result.fail) {
+                  throw new Error(
+                    `GitHub init script failed (exit ${result.exitCode}): ${result.stderr}`,
+                  );
+                }
+              }
+            },
+          );
+        }
 
         const parsedConfig = GhToolTemplateSchema.parse(config);
         const tools: GhToolType[] | undefined = parsedConfig.cloneOnly
@@ -158,12 +188,6 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         const additionalLabels = parsedConfig.additionalLabels?.length
           ? parsedConfig.additionalLabels
           : undefined;
-
-        runtimeNode.instance.setAdditionalParams({
-          env: resourceEnv ?? {},
-          initScript: initScriptList,
-          initScriptTimeoutMs: initScriptTimeoutMs || undefined,
-        });
 
         const { tools: builtTools, instructions } = this.ghToolGroup.buildTools(
           {
@@ -177,8 +201,15 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         instance.tools.length = 0;
         instance.tools.push(...builtTools);
         instance.instructions = instructions;
+        instance.runtimeProvider = runtimeNode.instance;
       },
-      destroy: async (instance: { tools: BuiltAgentTool[] }) => {
+      destroy: async (instance: {
+        tools: BuiltAgentTool[];
+        runtimeProvider?: RuntimeThreadProvider;
+      }) => {
+        if (instance.runtimeProvider && executorNodeId) {
+          instance.runtimeProvider.removeExecutor(executorNodeId);
+        }
         instance.tools.length = 0;
       },
     };

@@ -12,7 +12,7 @@ describe('FilesWriteFileTool', () => {
   let mockConfig: FilesBaseToolConfig;
 
   beforeEach(async () => {
-    mockConfig = { runtime: { exec: vi.fn() } as unknown as BaseRuntime };
+    mockConfig = { runtimeProvider: { provide: vi.fn() } as any };
     const module: TestingModule = await Test.createTestingModule({
       providers: [FilesWriteFileTool],
     }).compile();

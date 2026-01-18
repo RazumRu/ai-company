@@ -17,6 +17,11 @@ import {
 import { BaseRuntime } from './base-runtime';
 import { DockerRuntime } from './docker-runtime';
 
+export type ProvideRuntimeResult<T extends BaseRuntime> = {
+  runtime: T;
+  cached: boolean;
+};
+
 @Injectable()
 export class RuntimeProvider {
   private readonly runtimeInstances = new Map<string, BaseRuntime>();
@@ -43,7 +48,7 @@ export class RuntimeProvider {
 
   async provide<T extends BaseRuntime>(
     params: ProvideRuntimeInstanceParams,
-  ): Promise<T> {
+  ): Promise<ProvideRuntimeResult<T>> {
     const { graphId, runtimeNodeId, threadId, type } = params;
 
     const existing = await this.runtimeInstanceDao.getOne({
@@ -74,7 +79,7 @@ export class RuntimeProvider {
           });
         }
 
-        return runtime;
+        return { runtime, cached: false };
       }
     }
 
@@ -99,7 +104,7 @@ export class RuntimeProvider {
       lastUsedAt: new Date(),
     });
 
-    return runtime;
+    return { runtime, cached: true };
   }
 
   async stopRuntime(instance: RuntimeInstanceEntity): Promise<void> {

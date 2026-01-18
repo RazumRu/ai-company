@@ -40,7 +40,9 @@ describe('ShellTool persistent sessions (integration)', () => {
     });
 
     runtimeThreadProvider = new RuntimeThreadProvider(
-      { provide: async () => runtime } as unknown as RuntimeProvider,
+      {
+        provide: async () => ({ runtime, created: false }),
+      } as unknown as RuntimeProvider,
       {
         graphId: `graph-${Date.now()}`,
         runtimeNodeId: `runtime-${Date.now()}`,

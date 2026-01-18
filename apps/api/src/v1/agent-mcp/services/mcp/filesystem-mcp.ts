@@ -650,8 +650,8 @@ export class FilesystemMcp extends BaseMcp<FilesystemMcpConfig> {
 
   public getMcpConfig(_config: FilesystemMcpConfig): IMcpServerConfig {
     const instance = this.getRuntimeInstance();
-
-    const defaultDirectory = instance?.getWorkdir() || '/';
+    const defaultDirectory =
+      instance?.getParams().runtimeStartParams.workdir || '/';
 
     return {
       name: 'filesystem',

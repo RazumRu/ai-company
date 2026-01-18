@@ -24,7 +24,9 @@ describe('FilesBuildTagsTool', () => {
     } as unknown as BaseRuntime;
 
     mockConfig = {
-      runtime: mockRuntime,
+      runtimeProvider: {
+        provide: vi.fn().mockResolvedValue(mockRuntime),
+      } as any,
     };
 
     const module: TestingModule = await Test.createTestingModule({

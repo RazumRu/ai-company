@@ -1,6 +1,5 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { ListToolsResult } from '@modelcontextprotocol/sdk/types.js';
+import type { ListToolsResult } from '@modelcontextprotocol/sdk/types.js';
 
 import {
   BaseTool,
@@ -10,6 +9,12 @@ import {
 } from '../../agent-tools/tools/base-tool';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 import { McpToolMetadata } from './base-mcp';
+
+type CallToolHandler = (
+  toolName: string,
+  args: Record<string, unknown>,
+  cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+) => Promise<unknown>;
 
 export class BaseMcpTool<TSchema, TConfig = unknown> extends BaseTool<
   TSchema,
@@ -25,7 +30,7 @@ export class BaseMcpTool<TSchema, TConfig = unknown> extends BaseTool<
 
   constructor(
     private readonly tool: ListToolsResult['tools'][number],
-    private readonly client: Client,
+    private readonly callTool: CallToolHandler,
     private readonly metadata: McpToolMetadata | undefined,
   ) {
     super();
@@ -50,31 +55,36 @@ export class BaseMcpTool<TSchema, TConfig = unknown> extends BaseTool<
   public async invoke(
     data: TSchema,
     config: TConfig,
-    _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<string>> {
     const title = this.generateTitle(data, config);
 
     try {
-      if (!this.client) {
-        throw new Error('MCP client not initialized. Call setup() first');
-      }
-
-      const result = await this.client.callTool({
-        name: this.tool.name,
-        arguments: data as Record<string, unknown>,
-      });
+      const result = await this.callTool(
+        this.tool.name,
+        data as Record<string, unknown>,
+        cfg,
+      );
 
       // Extract text content from CallToolResult
       let output = 'No result returned';
-      if (result.content && Array.isArray(result.content)) {
-        const textContent = result.content
+      if (
+        result &&
+        typeof result === 'object' &&
+        'content' in result &&
+        Array.isArray((result as { content?: unknown }).content)
+      ) {
+        const content = (
+          result as { content: { type?: string; text?: string }[] }
+        ).content;
+        const textContent = content
           .filter(
             (item: { type?: string }): item is { type: 'text'; text: string } =>
               item.type === 'text',
           )
           .map((item) => item.text || '')
           .join('\n');
-        output = textContent || JSON.stringify(result.content);
+        output = textContent || JSON.stringify(content);
       }
 
       return {

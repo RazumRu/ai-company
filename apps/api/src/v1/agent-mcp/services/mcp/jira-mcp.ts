@@ -1,3 +1,4 @@
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
@@ -22,7 +23,7 @@ export class JiraMcp extends BaseMcp<JiraMcpConfig> {
   public override async setup(
     config: JiraMcpConfig,
     runtime: BaseRuntime,
-  ): Promise<void> {
+  ): Promise<Client> {
     // Fast, deterministic auth guard for integration tests (and user errors)
     if (!config.jiraUrl?.trim()) {
       throw new Error('Jira MCP auth error: jiraUrl is required');
@@ -34,7 +35,7 @@ export class JiraMcp extends BaseMcp<JiraMcpConfig> {
       throw new Error('Jira MCP auth error: jiraEmail is required');
     }
 
-    await super.setup(config, runtime);
+    return await super.setup(config, runtime);
   }
 
   public getMcpConfig(config: JiraMcpConfig): IMcpServerConfig {

@@ -158,7 +158,6 @@ describe('FilesToolTemplate', () => {
     let mockRuntimeThreadProvider: {
       provide: ReturnType<typeof vi.fn>;
       getParams: ReturnType<typeof vi.fn>;
-      setAdditionalParams: ReturnType<typeof vi.fn>;
     };
 
     beforeEach(() => {
@@ -174,7 +173,6 @@ describe('FilesToolTemplate', () => {
           runtimeStartParams: {},
           temporary: false,
         }),
-        setAdditionalParams: vi.fn(),
       };
 
       vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(

@@ -158,7 +158,8 @@ describe('ShellToolTemplate', () => {
     let mockRuntimeThreadProvider: {
       provide: ReturnType<typeof vi.fn>;
       getParams: ReturnType<typeof vi.fn>;
-      setAdditionalParams: ReturnType<typeof vi.fn>;
+      registerJob: ReturnType<typeof vi.fn>;
+      removeExecutor: ReturnType<typeof vi.fn>;
     };
 
     beforeEach(() => {
@@ -176,7 +177,8 @@ describe('ShellToolTemplate', () => {
           runtimeStartParams: { initScriptTimeoutMs: 0 },
           temporary: false,
         }),
-        setAdditionalParams: vi.fn(),
+        registerJob: vi.fn(),
+        removeExecutor: vi.fn(),
       };
 
       vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
@@ -215,6 +217,7 @@ describe('ShellToolTemplate', () => {
       const instance = await handle.provide(init);
       await handle.configure(init, instance);
 
+      expect(mockRuntimeThreadProvider.registerJob).not.toHaveBeenCalled();
       expect(mockShellTool.build).toHaveBeenCalled();
       expect(instance.tools).toEqual([mockTool]);
     });
@@ -390,14 +393,6 @@ describe('ShellToolTemplate', () => {
         };
         const instance = await handle.provide(init);
         await handle.configure(init, instance);
-
-        expect(
-          mockRuntimeThreadProvider.setAdditionalParams,
-        ).toHaveBeenCalledWith(
-          expect.objectContaining({
-            env: { KEY: 'VALUE' },
-          }),
-        );
         expect(mockShellTool.build).toHaveBeenCalledWith(
           expect.objectContaining({
             runtimeProvider: mockRuntimeThreadProvider,
@@ -487,14 +482,7 @@ describe('ShellToolTemplate', () => {
         };
         const instance = await handle.provide(init);
         await handle.configure(init, instance);
-
-        expect(
-          mockRuntimeThreadProvider.setAdditionalParams,
-        ).toHaveBeenCalledWith(
-          expect.objectContaining({
-            env: {},
-          }),
-        );
+        expect(mockRuntimeThreadProvider.registerJob).not.toHaveBeenCalled();
         expect(mockShellTool.build).toHaveBeenCalledWith(
           expect.objectContaining({
             runtimeProvider: mockRuntimeThreadProvider,
@@ -515,14 +503,10 @@ describe('ShellToolTemplate', () => {
         };
         const instance = await handle.provide(init);
         await handle.configure(init, instance);
-
-        expect(
-          mockRuntimeThreadProvider.setAdditionalParams,
-        ).toHaveBeenCalledWith(
-          expect.objectContaining({
-            initScript: ['echo init'],
-            initScriptTimeoutMs: 5000,
-          }),
+        expect(mockRuntimeThreadProvider.registerJob).toHaveBeenCalledWith(
+          mockMetadata.nodeId,
+          `shell-init:${mockMetadata.nodeId}`,
+          expect.any(Function),
         );
       });
 
@@ -593,20 +577,10 @@ describe('ShellToolTemplate', () => {
         };
         const instance = await handle.provide(init);
         await handle.configure(init, instance);
-
-        expect(
-          mockRuntimeThreadProvider.setAdditionalParams,
-        ).toHaveBeenCalledWith(
-          expect.objectContaining({
-            initScript: expect.arrayContaining(['echo init', 'echo init2']),
-          }),
-        );
-        expect(
-          mockRuntimeThreadProvider.setAdditionalParams,
-        ).toHaveBeenCalledWith(
-          expect.objectContaining({
-            env: { KEY: 'VALUE', KEY2: 'VALUE2' },
-          }),
+        expect(mockRuntimeThreadProvider.registerJob).toHaveBeenCalledWith(
+          mockMetadata.nodeId,
+          `shell-init:${mockMetadata.nodeId}`,
+          expect.any(Function),
         );
       });
     });

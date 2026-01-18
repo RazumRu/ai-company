@@ -8,11 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LitellmService } from '../../../../litellm/services/litellm.service';
 import { OpenaiService } from '../../../../openai/openai.service';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
-import { FilesEditTool, FilesEditToolConfig } from './files-edit.tool';
+import { FilesBaseToolConfig } from './files-base.tool';
+import { FilesEditTool } from './files-edit.tool';
 
 describe('FilesEditTool', () => {
   let tool: FilesEditTool;
-  let mockConfig: FilesEditToolConfig;
+  let mockConfig: FilesBaseToolConfig;
   let testDir: string;
   let mockOpenaiService: OpenaiService;
   let mockLitellmService: LitellmService;
@@ -37,7 +38,9 @@ describe('FilesEditTool', () => {
     } as unknown as BaseRuntime;
 
     mockConfig = {
-      runtime: mockRuntime,
+      runtimeProvider: {
+        provide: vi.fn().mockResolvedValue(mockRuntime),
+      } as any,
     };
   });
 
@@ -76,24 +79,6 @@ describe('FilesEditTool', () => {
       );
 
       expect(title).toBe('Editing utils.ts');
-    });
-  });
-
-  describe('computeFileHash', () => {
-    it('should compute consistent hash for same content', () => {
-      const content = 'test content';
-      const hash1 = tool['computeFileHash'](content);
-      const hash2 = tool['computeFileHash'](content);
-
-      expect(hash1).toBe(hash2);
-      expect(hash1).toHaveLength(64); // SHA-256 hex string
-    });
-
-    it('should compute different hash for different content', () => {
-      const hash1 = tool['computeFileHash']('content1');
-      const hash2 = tool['computeFileHash']('content2');
-
-      expect(hash1).not.toBe(hash2);
     });
   });
 
@@ -329,18 +314,6 @@ describe('FilesEditTool', () => {
       if (!result.output.success) {
         expect(result.output.error).toBeDefined();
       }
-    });
-  });
-
-  describe('conflict detection', () => {
-    it('should detect file changes between read and apply', () => {
-      // Test conflict detection at unit level
-      const hash1 = tool['computeFileHash']('original content');
-      const hash2 = tool['computeFileHash']('modified content');
-
-      expect(hash1).not.toBe(hash2);
-      // This validates that different content produces different hashes,
-      // which is the basis for conflict detection
     });
   });
 

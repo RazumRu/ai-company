@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddRoleAndNameToMessages1736457100000 implements MigrationInterface {
-  name = 'AddRoleAndNameToMessages1736457100000';
+export class AddRoleAndNameToMessages1768197069212 implements MigrationInterface {
+  name = 'AddRoleAndNameToMessages1768197069212';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Add role and name columns

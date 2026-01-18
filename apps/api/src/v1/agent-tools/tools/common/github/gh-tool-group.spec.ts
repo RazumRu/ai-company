@@ -77,7 +77,7 @@ describe('GhToolGroup', () => {
       mockGhBranchTool.build = vi.fn().mockReturnValue(mockBranchTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
@@ -105,7 +105,7 @@ describe('GhToolGroup', () => {
       mockGhBranchTool.build = vi.fn().mockReturnValue(mockBranchTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
@@ -131,7 +131,7 @@ describe('GhToolGroup', () => {
       mockGhBranchTool.build = vi.fn().mockReturnValue(mockBranchTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
@@ -166,12 +166,12 @@ describe('GhToolGroup', () => {
         .mockReturnValueOnce(mockBranchTool2);
 
       const config1: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_token_1',
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
       const config2: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_token_2',
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
@@ -199,7 +199,7 @@ describe('GhToolGroup', () => {
       mockGhBranchTool.build = vi.fn().mockReturnValue(mockBranchTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
@@ -221,7 +221,7 @@ describe('GhToolGroup', () => {
       mockGhCommitTool.build = vi.fn().mockReturnValue(mockCommitTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.Clone, GhToolType.Commit],
       };
@@ -238,7 +238,7 @@ describe('GhToolGroup', () => {
       mockGhCommitTool.build = vi.fn().mockReturnValue(mockCommitTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.Commit],
       };
@@ -253,7 +253,7 @@ describe('GhToolGroup', () => {
 
     it('should return empty array when tools array is empty', () => {
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [],
       };
@@ -276,7 +276,7 @@ describe('GhToolGroup', () => {
       mockGhBranchTool.build = vi.fn().mockReturnValue(mockBranchTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.Branch, GhToolType.Clone, GhToolType.Commit],
       };
@@ -296,7 +296,7 @@ describe('GhToolGroup', () => {
       mockGhPushTool.build = vi.fn().mockReturnValue(mockPushTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.Push],
       };
@@ -322,7 +322,7 @@ describe('GhToolGroup', () => {
       mockGhPushTool.build = vi.fn().mockReturnValue(mockPushTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [
           GhToolType.Clone,
@@ -351,7 +351,7 @@ describe('GhToolGroup', () => {
       mockGhCreatePullRequestTool.build = vi.fn().mockReturnValue(mockTool);
 
       const config: GhToolGroupConfig = {
-        runtime: {} as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         patToken: 'ghp_test_token',
         tools: [GhToolType.CreatePullRequest],
       };

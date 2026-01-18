@@ -816,7 +816,7 @@ describe('GraphRevisionService', () => {
       // Mock template registry for applyLiveUpdate
       const mockTemplate = {
         kind: 'runtime',
-        create: vi.fn().mockResolvedValue({}),
+        create: vi.fn().mockResolvedValue({} as any),
       };
       vi.mocked(templateRegistry.getTemplate).mockReturnValue(
         mockTemplate as any,

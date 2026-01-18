@@ -18,7 +18,9 @@ describe('DockerRuntimeTemplate', () => {
 
   beforeEach(async () => {
     mockRuntimeProvider = {
-      provide: vi.fn().mockResolvedValue({}),
+      provide: vi
+        .fn()
+        .mockResolvedValue({ runtime: {} as any, created: false }),
     };
 
     const module: TestingModule = await Test.createTestingModule({

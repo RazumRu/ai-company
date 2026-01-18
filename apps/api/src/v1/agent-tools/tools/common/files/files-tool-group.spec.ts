@@ -207,9 +207,7 @@ describe('FilesToolGroup', () => {
         .mockReturnValue(mockFilesDeleteToolInstance);
 
       const config: FilesToolGroupConfig = {
-        runtime: {
-          getWorkdir: () => '/test/workdir',
-        } as any,
+        runtimeProvider: { provide: vi.fn() } as any,
       };
 
       const result = toolGroup.buildTools(config);
@@ -303,9 +301,7 @@ describe('FilesToolGroup', () => {
         .mockReturnValue(mockFilesSearchTagsToolInstance);
 
       const config: FilesToolGroupConfig = {
-        runtime: {
-          getWorkdir: () => '/test/workdir',
-        } as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         includeEditActions: false,
       };
 
@@ -395,9 +391,7 @@ describe('FilesToolGroup', () => {
         .mockReturnValue(mockFilesDeleteToolInstance);
 
       const config: FilesToolGroupConfig = {
-        runtime: {
-          getWorkdir: () => '/test/workdir',
-        } as any,
+        runtimeProvider: { provide: vi.fn() } as any,
       };
 
       const result = toolGroup.buildTools(config, lgConfig);
@@ -451,16 +445,14 @@ describe('FilesToolGroup', () => {
   describe('getDetailedInstructions', () => {
     it('should return instructions for full access mode', () => {
       const config: FilesToolGroupConfig = {
-        runtime: {
-          getWorkdir: () => '/test/repo/path',
-        } as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         includeEditActions: true,
       };
 
       const result = toolGroup.getDetailedInstructions(config);
 
       expect(result).toBeDefined();
-      expect(result).toContain('/test/repo/path');
+      expect(result).toContain('/runtime-workspace');
       expect(result).toContain('Read/search + create/modify/move/delete');
       expect(result).toContain('files_apply_changes');
       expect(result).toContain('files_build_tags');
@@ -469,16 +461,14 @@ describe('FilesToolGroup', () => {
 
     it('should return instructions for read-only mode', () => {
       const config: FilesToolGroupConfig = {
-        runtime: {
-          getWorkdir: () => '/test/repo/path',
-        } as any,
+        runtimeProvider: { provide: vi.fn() } as any,
         includeEditActions: false,
       };
 
       const result = toolGroup.getDetailedInstructions(config);
 
       expect(result).toBeDefined();
-      expect(result).toContain('/test/repo/path');
+      expect(result).toContain('/runtime-workspace');
       expect(result).toContain('(Read-only)');
       expect(result).toContain('edit actions disabled');
       expect(result).not.toContain('files_apply_changes');

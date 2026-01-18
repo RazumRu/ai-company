@@ -6,7 +6,9 @@ import { PlaywrightMcp } from '../../../agent-mcp/services/mcp/playwright-mcp';
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
+import { RuntimeType } from '../../../runtime/runtime.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import {
   PlaywrightMcpTemplate,
   PlaywrightMcpTemplateSchema,
@@ -18,6 +20,7 @@ describe('PlaywrightMcpTemplate', () => {
   let mockModuleRef: ModuleRef;
   let mockRuntime: BaseRuntime;
   let mockMcpInstance: PlaywrightMcp;
+  let mockRuntimeProvider: { provide: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     // Create mock runtime
@@ -30,16 +33,28 @@ describe('PlaywrightMcpTemplate', () => {
 
     // Create mock MCP instance
     mockMcpInstance = {
-      setup: vi.fn().mockResolvedValue(undefined),
+      initialize: vi.fn().mockResolvedValue(undefined),
       cleanup: vi.fn().mockResolvedValue(undefined),
       discoverTools: vi.fn().mockResolvedValue([]),
+      provideTemporaryRuntime: vi.fn().mockResolvedValue(mockRuntime),
     } as unknown as PlaywrightMcp;
 
     // Create mock GraphRegistry
+    const mockRuntimeThreadProvider = {
+      getParams: vi.fn().mockReturnValue({
+        graphId: 'test-graph-id',
+        runtimeNodeId: 'runtime-1',
+        type: RuntimeType.Docker,
+        runtimeStartParams: {},
+        temporary: false,
+      }),
+    };
     const mockGraphRegistry = {
       getNode: vi.fn().mockReturnValue({
         type: NodeKind.Runtime,
         id: 'runtime-1',
+        config: { runtimeType: RuntimeType.Docker },
+        instance: mockRuntimeThreadProvider,
       }),
       getNodeInstance: vi.fn().mockReturnValue(mockRuntime),
     };
@@ -51,6 +66,13 @@ describe('PlaywrightMcpTemplate', () => {
       resolve: vi.fn().mockResolvedValue(mockMcpInstance),
     } as unknown as ModuleRef;
 
+    mockRuntimeProvider = {
+      provide: vi.fn().mockResolvedValue({
+        runtime: mockRuntime,
+        cached: false,
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PlaywrightMcpTemplate,
@@ -61,6 +83,10 @@ describe('PlaywrightMcpTemplate', () => {
         {
           provide: ModuleRef,
           useValue: mockModuleRef,
+        },
+        {
+          provide: RuntimeProvider,
+          useValue: mockRuntimeProvider,
         },
       ],
     }).compile();
@@ -137,7 +163,18 @@ describe('PlaywrightMcpTemplate', () => {
 
       await handle.configure(init, instance as PlaywrightMcp);
 
-      expect(mockMcpInstance.setup).toHaveBeenCalledWith(config, mockRuntime);
+      expect(mockMcpInstance.provideTemporaryRuntime).toHaveBeenCalledWith({
+        runtimeProvider: mockRuntimeProvider,
+        graphId: metadata.graphId,
+        runtimeNodeId: 'runtime-1',
+        runtimeConfig: { runtimeType: RuntimeType.Docker },
+      });
+      expect(mockMcpInstance.initialize).toHaveBeenCalledWith(
+        config,
+        expect.any(Object),
+        mockRuntime,
+        metadata.nodeId,
+      );
     });
 
     it('should cleanup before setup during reconfiguration', async () => {
@@ -164,7 +201,7 @@ describe('PlaywrightMcpTemplate', () => {
       await handle.configure(init, instance as PlaywrightMcp);
 
       expect(mockMcpInstance.cleanup).toHaveBeenCalled();
-      expect(mockMcpInstance.setup).toHaveBeenCalled();
+      expect(mockMcpInstance.initialize).toHaveBeenCalled();
     });
 
     it('should throw error when runtime is not connected', async () => {
@@ -206,8 +243,14 @@ describe('PlaywrightMcpTemplate', () => {
 
       const outputNodeIds = new Set(['runtime-1']);
 
-      // Mock getNodeInstance to return null
-      vi.mocked(graphRegistry.getNodeInstance).mockReturnValue(null);
+      // Runtime node is discovered, but missing when fetched for configuration
+      vi.mocked(graphRegistry.getNode)
+        .mockReturnValueOnce({
+          type: NodeKind.Runtime,
+          id: 'runtime-1',
+          config: { runtimeType: RuntimeType.Docker },
+        } as any)
+        .mockReturnValueOnce(undefined as any);
 
       const handle = await template.create();
       const init: GraphNode<typeof config> = {

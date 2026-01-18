@@ -13,7 +13,7 @@ describe('FilesApplyChangesTool', () => {
   beforeEach(() => {
     tool = new FilesApplyChangesTool();
     mockConfig = {
-      runtime: vi.fn(),
+      runtimeProvider: { provide: vi.fn() } as any,
     } as unknown as FilesBaseToolConfig;
   });
 

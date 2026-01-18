@@ -161,7 +161,8 @@ describe('GhToolTemplate', () => {
     let mockRuntimeThreadProvider: {
       provide: ReturnType<typeof vi.fn>;
       getParams: ReturnType<typeof vi.fn>;
-      setAdditionalParams: ReturnType<typeof vi.fn>;
+      registerJob: ReturnType<typeof vi.fn>;
+      removeExecutor: ReturnType<typeof vi.fn>;
     };
     let mockResource: IGithubResourceOutput;
 
@@ -184,7 +185,8 @@ describe('GhToolTemplate', () => {
           runtimeStartParams: { initScriptTimeoutMs: 0 },
           temporary: false,
         }),
-        setAdditionalParams: vi.fn(),
+        registerJob: vi.fn(),
+        removeExecutor: vi.fn(),
       };
 
       mockResource = {
@@ -256,10 +258,13 @@ describe('GhToolTemplate', () => {
         }),
       );
       expect(instance.tools).toEqual(mockTools);
+      expect(mockRuntimeThreadProvider.registerJob).toHaveBeenCalledWith(
+        mockMetadata.nodeId,
+        `gh-init:${mockMetadata.nodeId}`,
+        expect.any(Function),
+      );
       const buildArgs = vi.mocked(mockGhToolGroup.buildTools).mock.calls[0]![0];
-      expect(buildArgs.runtime).toBeUndefined();
       expect(buildArgs.runtimeProvider).toBe(mockRuntimeThreadProvider);
-      expect(buildArgs.runtimeResolver).toBeUndefined();
     });
 
     it('should use cloneOnly flag to limit tools', async () => {
@@ -350,14 +355,10 @@ describe('GhToolTemplate', () => {
       };
       const instance = await handle.provide(init);
       await handle.configure(init, instance);
-
-      expect(
-        mockRuntimeThreadProvider.setAdditionalParams,
-      ).toHaveBeenCalledWith(
-        expect.objectContaining({
-          initScript: ['echo init'],
-          env: expect.objectContaining({ GITHUB_PAT_TOKEN: 'test-token' }),
-        }),
+      expect(mockRuntimeThreadProvider.registerJob).toHaveBeenCalledWith(
+        mockMetadata.nodeId,
+        `gh-init:${mockMetadata.nodeId}`,
+        expect.any(Function),
       );
     });
 
@@ -400,14 +401,7 @@ describe('GhToolTemplate', () => {
       };
       const instance = await handle.provide(init);
       await handle.configure(init, instance);
-
-      expect(
-        mockRuntimeThreadProvider.setAdditionalParams,
-      ).toHaveBeenCalledWith(
-        expect.objectContaining({
-          initScript: [],
-        }),
-      );
+      expect(mockRuntimeThreadProvider.registerJob).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class MigrateRequestUsageToTokenUsage1736457000000 implements MigrationInterface {
-  name = 'MigrateRequestUsageToTokenUsage1736457000000';
+export class MigrateRequestUsageToTokenUsage1768196540297 implements MigrationInterface {
+  name = 'MigrateRequestUsageToTokenUsage1768196540297';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Migrate existing data: extract __requestUsage from message.additionalKwargs

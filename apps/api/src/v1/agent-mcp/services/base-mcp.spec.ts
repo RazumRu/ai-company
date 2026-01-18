@@ -4,6 +4,7 @@ import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
 import { IMcpServerConfig } from '../agent-mcp.types';
 import { BaseMcp, McpToolMetadata } from './base-mcp';
 
@@ -35,7 +36,8 @@ class TestMcp extends BaseMcp<Record<string, never>> {
 describe('BaseMcp', () => {
   let testMcp: TestMcp;
   let mockLogger: DefaultLogger;
-  let mockClient: Client;
+  let mockRuntime: BaseRuntime;
+  let mockRuntimeThreadProvider: RuntimeThreadProvider;
 
   beforeEach(() => {
     mockLogger = {
@@ -44,14 +46,13 @@ describe('BaseMcp', () => {
       error: vi.fn(),
     } as unknown as DefaultLogger;
 
-    mockClient = {
-      listTools: vi.fn(),
-      close: vi.fn(),
-    } as unknown as Client;
-
     testMcp = new TestMcp(mockLogger);
-    // Inject mock client directly for testing
-    (testMcp as any).client = mockClient;
+    mockRuntime = {
+      execStream: vi.fn(),
+    } as unknown as BaseRuntime;
+    mockRuntimeThreadProvider = {
+      registerJob: vi.fn(),
+    } as unknown as RuntimeThreadProvider;
   });
 
   describe('discoverTools', () => {
@@ -79,8 +80,18 @@ describe('BaseMcp', () => {
     ];
 
     it('should return all tools when no toolsMapping is set', async () => {
-      vi.mocked(mockClient.listTools).mockResolvedValue({ tools: mockTools });
+      vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+      vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({
+        tools: mockTools,
+      } as ListToolsResult);
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
 
+      await testMcp.initialize(
+        {},
+        mockRuntimeThreadProvider,
+        mockRuntime,
+        'executor-1',
+      );
       const result = await testMcp.discoverTools();
 
       expect(result).toHaveLength(4);
@@ -94,14 +105,23 @@ describe('BaseMcp', () => {
     });
 
     it('should filter tools when toolsMapping is set', async () => {
-      vi.mocked(mockClient.listTools).mockResolvedValue({ tools: mockTools });
+      vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+      vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({
+        tools: mockTools,
+      } as ListToolsResult);
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
       testMcp.setToolsMapping(
         new Map([
           ['tool1', {}],
           ['tool3', {}],
         ]),
       );
-
+      await testMcp.initialize(
+        {},
+        mockRuntimeThreadProvider,
+        mockRuntime,
+        'executor-1',
+      );
       const result = await testMcp.discoverTools();
 
       expect(result).toHaveLength(2);
@@ -109,18 +129,36 @@ describe('BaseMcp', () => {
     });
 
     it('should return empty array when toolsMapping is set but no tools match', async () => {
-      vi.mocked(mockClient.listTools).mockResolvedValue({ tools: mockTools });
+      vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+      vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({
+        tools: mockTools,
+      } as ListToolsResult);
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
       testMcp.setToolsMapping(new Map([['nonexistent', {}]]));
-
+      await testMcp.initialize(
+        {},
+        mockRuntimeThreadProvider,
+        mockRuntime,
+        'executor-1',
+      );
       const result = await testMcp.discoverTools();
 
       expect(result).toHaveLength(0);
     });
 
     it('should return all tools when toolsMapping is empty map', async () => {
-      vi.mocked(mockClient.listTools).mockResolvedValue({ tools: mockTools });
+      vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+      vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({
+        tools: mockTools,
+      } as ListToolsResult);
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
       testMcp.setToolsMapping(new Map());
-
+      await testMcp.initialize(
+        {},
+        mockRuntimeThreadProvider,
+        mockRuntime,
+        'executor-1',
+      );
       const result = await testMcp.discoverTools();
 
       expect(result).toHaveLength(4);
@@ -133,11 +171,9 @@ describe('BaseMcp', () => {
       ]);
     });
 
-    it('should throw error when client is not initialized', async () => {
-      (testMcp as any).client = undefined;
-
+    it('should throw error when tools are not initialized', async () => {
       await expect(testMcp.discoverTools()).rejects.toThrow(
-        'MCP client not initialized. Call setup() first',
+        'MCP tools not initialized. Call initialize() first',
       );
     });
   });
@@ -218,15 +254,23 @@ describe('BaseMcp', () => {
 
   describe('cleanup', () => {
     it('should close client and clear reference', async () => {
+      const mockClient = {
+        close: vi.fn(),
+      } as unknown as Client;
+      (testMcp as any).clients = new Map([['thread-1', mockClient]]);
+
       await testMcp.cleanup();
 
       expect(mockClient.close).toHaveBeenCalled();
-      expect((testMcp as any).client).toBeUndefined();
+      expect((testMcp as any).clients.size).toBe(0);
     });
 
     it('should handle errors gracefully during cleanup', async () => {
       const error = new Error('Close failed');
-      vi.mocked(mockClient.close).mockRejectedValue(error);
+      const mockClient = {
+        close: vi.fn().mockRejectedValue(error),
+      } as unknown as Client;
+      (testMcp as any).clients = new Map([['thread-1', mockClient]]);
 
       await expect(testMcp.cleanup()).resolves.not.toThrow();
       expect(mockLogger.error).toHaveBeenCalledWith(
@@ -235,32 +279,25 @@ describe('BaseMcp', () => {
       );
     });
 
-    it('should not throw when client is already undefined', async () => {
-      (testMcp as any).client = undefined;
+    it('should not throw when no clients are present', async () => {
+      (testMcp as any).clients = new Map();
 
       await expect(testMcp.cleanup()).resolves.not.toThrow();
     });
   });
 
   describe('setup', () => {
-    let mockRuntime: BaseRuntime;
-
     beforeEach(() => {
-      mockRuntime = {
-        execStream: vi.fn(),
-      } as unknown as BaseRuntime;
-
-      // Mock the Client constructor and connect method
       vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
     });
 
     it('should successfully connect within timeout', async () => {
       const config = {};
 
-      await testMcp.setup(config, mockRuntime);
+      const client = await testMcp.setup(config, mockRuntime);
 
-      expect((testMcp as any).client).toBeDefined();
-      expect((testMcp as any).runtime).toBe(mockRuntime);
+      expect(client).toBeDefined();
     });
 
     it('should throw timeout error if connection takes too long', async () => {
@@ -282,9 +319,6 @@ describe('BaseMcp', () => {
         await vi.advanceTimersByTimeAsync(300_000);
 
         await setupExpectation;
-
-        // Verify client is cleaned up on timeout
-        expect((testMcp as any).client).toBeUndefined();
       } finally {
         vi.useRealTimers();
       }
@@ -299,9 +333,6 @@ describe('BaseMcp', () => {
       await expect(testMcp.setup(config, mockRuntime)).rejects.toThrow(
         'Connection failed',
       );
-
-      // Verify client is cleaned up on error
-      expect((testMcp as any).client).toBeUndefined();
     });
   });
 });

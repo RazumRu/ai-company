@@ -21,7 +21,9 @@ describe('GhBranchTool', () => {
     } as unknown as BaseRuntime;
 
     mockConfig = {
-      runtime: mockRuntime,
+      runtimeProvider: {
+        provide: vi.fn().mockResolvedValue(mockRuntime),
+      } as any,
       patToken: 'ghp_test_token',
     };
 

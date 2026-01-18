@@ -14,8 +14,10 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
   }
 
   public getMcpConfig(_config: PlaywrightMcpConfig): IMcpServerConfig {
-    const runtime = this.getRuntimeInstance();
-    const sharedWorkdir = runtime?.getWorkdir() || '/runtime-workspace';
+    const runtimeProvider = this.getRuntimeInstance();
+    const sharedWorkdir =
+      runtimeProvider?.getParams().runtimeStartParams.workdir ||
+      '/runtime-workspace';
 
     return {
       name: 'playwright',

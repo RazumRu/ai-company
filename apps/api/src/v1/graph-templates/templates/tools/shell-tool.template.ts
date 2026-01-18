@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
+import { execRuntimeWithContext } from '../../../agent-tools/agent-tools.utils';
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { ShellTool } from '../../../agent-tools/tools/common/shell.tool';
 import {
@@ -59,14 +60,26 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     super();
   }
 
+  private buildEmptyInstance(): {
+    tools: BuiltAgentTool[];
+    runtimeProvider?: RuntimeThreadProvider;
+  } {
+    return { tools: [] };
+  }
+
   public async create() {
+    let executorNodeId: string | undefined;
+
     return {
       provide: async (
         _params: GraphNode<z.infer<typeof ShellToolTemplateSchema>>,
-      ) => ({ tools: [] }),
+      ) => this.buildEmptyInstance(),
       configure: async (
         params: GraphNode<z.infer<typeof ShellToolTemplateSchema>>,
-        instance: { tools: BuiltAgentTool[]; instructions?: string },
+        instance: {
+          tools: BuiltAgentTool[];
+          runtimeProvider?: RuntimeThreadProvider;
+        },
       ) => {
         const graphId = params.metadata.graphId;
         const outputNodeIds = params.outputNodeIds;
@@ -116,22 +129,49 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
           ...initScripts.map((script) => script.timeout ?? 0),
         );
 
-        runtimeNode.instance.setAdditionalParams({
-          env,
-          initScript: initScriptList,
-          initScriptTimeoutMs: initScriptTimeoutMs,
-        });
+        executorNodeId = params.metadata.nodeId;
+        if (initScriptList.length > 0) {
+          runtimeNode.instance.registerJob(
+            executorNodeId,
+            `shell-init:${executorNodeId}`,
+            async (runtime, cfg) => {
+              for (const script of initScriptList) {
+                const result = await execRuntimeWithContext(
+                  runtime,
+                  {
+                    cmd: script,
+                    timeoutMs: initScriptTimeoutMs || undefined,
+                    env,
+                  },
+                  cfg,
+                );
+                if (result.fail) {
+                  throw new Error(
+                    `Shell init script failed (exit ${result.exitCode}): ${result.stderr}`,
+                  );
+                }
+              }
+            },
+          );
+        }
+        instance.runtimeProvider = runtimeNode.instance;
         instance.tools.length = 0;
 
         instance.tools.push(
           this.shellTool.build({
             runtimeProvider: runtimeNode.instance,
             resourcesInformation,
+            env,
           }),
         );
-        instance.instructions = undefined; // No group instructions for single tool
       },
-      destroy: async (instance: { tools: BuiltAgentTool[] }) => {
+      destroy: async (instance: {
+        tools: BuiltAgentTool[];
+        runtimeProvider?: RuntimeThreadProvider;
+      }) => {
+        if (instance.runtimeProvider && executorNodeId) {
+          instance.runtimeProvider.removeExecutor(executorNodeId);
+        }
         instance.tools.length = 0;
       },
     };

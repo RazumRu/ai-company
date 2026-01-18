@@ -11,7 +11,12 @@ import {
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { BaseRuntime } from '../../../runtime/services/base-runtime';
+import {
+  RuntimeStartParams,
+  RuntimeType,
+} from '../../../runtime/runtime.types';
+import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
+import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { McpNodeBaseTemplate } from '../base-node.template';
 
@@ -56,6 +61,7 @@ export class FilesystemMcpTemplate extends McpNodeBaseTemplate<
   constructor(
     private readonly moduleRef: ModuleRef,
     private readonly graphRegistry: GraphRegistry,
+    private readonly runtimeProvider: RuntimeProvider,
   ) {
     super();
   }
@@ -87,18 +93,32 @@ export class FilesystemMcpTemplate extends McpNodeBaseTemplate<
         // Reconfigure: best-effort cleanup then setup again
         await instance.cleanup().catch(() => {});
 
-        const runtime = this.graphRegistry.getNodeInstance<BaseRuntime>(
+        const runtimeNode = this.graphRegistry.getNode<RuntimeThreadProvider>(
           graphId,
           runtimeNodeId,
         );
-        if (!runtime) {
+        if (!runtimeNode) {
           throw new NotFoundException(
             'RUNTIME_NOT_FOUND',
             `Runtime node ${runtimeNodeId} not found in graph ${graphId}`,
           );
         }
 
-        await instance.setup(config, runtime);
+        const runtimeConfig = runtimeNode.config as RuntimeStartParams & {
+          runtimeType: RuntimeType;
+        };
+        const runtime = await instance.provideTemporaryRuntime({
+          runtimeProvider: this.runtimeProvider,
+          graphId,
+          runtimeNodeId,
+          runtimeConfig,
+        });
+        await instance.initialize(
+          config,
+          runtimeNode.instance,
+          runtime,
+          params.metadata.nodeId,
+        );
       },
       destroy: async (instance: FilesystemMcp) => {
         await instance.cleanup().catch(() => {});

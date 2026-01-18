@@ -200,7 +200,6 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "hello world"',
-          env: {},
           metadata: expect.any(Object),
         }),
       );
@@ -491,7 +490,6 @@ describe('ShellTool', () => {
         expect.objectContaining({
           cmd: 'echo "test"',
           tailTimeoutMs: 3000,
-          env: {},
           metadata: expect.any(Object),
         }),
       );
@@ -499,7 +497,7 @@ describe('ShellTool', () => {
   });
 
   describe('resource integration', () => {
-    it('should use environment variables from config', async () => {
+    it('should use environment variables from input', async () => {
       const mockExecResult = {
         stdout: 'merged',
         stderr: '',
@@ -509,17 +507,20 @@ describe('ShellTool', () => {
 
       const config: ShellToolOptions = {
         runtimeProvider: mockRuntimeThreadProvider,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_token123',
-          GIT_REPO_URL: 'https://github.com/user/repo.git',
-        },
       };
       const builtTool = tool.build(config);
 
       await builtTool.invoke(
         {
-          purpose: 'Testing config environment variables',
+          purpose: 'Testing input environment variables',
           command: 'echo $GITHUB_PAT_TOKEN',
+          environmentVariables: [
+            { name: 'GITHUB_PAT_TOKEN', value: 'ghp_token123' },
+            {
+              name: 'GIT_REPO_URL',
+              value: 'https://github.com/user/repo.git',
+            },
+          ],
         },
         defaultCfg,
       );
@@ -536,7 +537,7 @@ describe('ShellTool', () => {
       );
     });
 
-    it('should prioritize provided environment variables over config variables', async () => {
+    it('should use the last value when env names repeat', async () => {
       const mockExecResult = {
         stdout: 'overridden',
         stderr: '',
@@ -546,17 +547,15 @@ describe('ShellTool', () => {
 
       const config: ShellToolOptions = {
         runtimeProvider: mockRuntimeThreadProvider,
-        env: {
-          GITHUB_PAT_TOKEN: 'ghp_config_token',
-        },
       };
       const builtTool = tool.build(config);
 
       await builtTool.invoke(
         {
-          purpose: 'Testing environment variable override',
+          purpose: 'Testing repeated environment variables',
           command: 'echo $GITHUB_PAT_TOKEN',
           environmentVariables: [
+            { name: 'GITHUB_PAT_TOKEN', value: 'ghp_config_token' },
             { name: 'GITHUB_PAT_TOKEN', value: 'ghp_provided_token' },
           ],
         },
@@ -567,7 +566,7 @@ describe('ShellTool', () => {
         expect.objectContaining({
           cmd: 'echo $GITHUB_PAT_TOKEN',
           env: expect.objectContaining({
-            GITHUB_PAT_TOKEN: 'ghp_provided_token', // Provided value should override config value
+            GITHUB_PAT_TOKEN: 'ghp_provided_token',
           }),
           metadata: expect.any(Object),
         }),
@@ -598,7 +597,6 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "test"',
-          env: {},
           metadata: expect.any(Object),
         }),
       );
@@ -614,7 +612,6 @@ describe('ShellTool', () => {
 
       const config: ShellToolOptions = {
         runtimeProvider: mockRuntimeThreadProvider,
-        env: {},
       };
       const builtTool = tool.build(config);
 
@@ -629,7 +626,6 @@ describe('ShellTool', () => {
       expect(mockRuntime.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           cmd: 'echo "test"',
-          env: {},
           metadata: expect.any(Object),
         }),
       );
@@ -834,9 +830,7 @@ describe('ShellTool', () => {
       );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          env: {},
-        }),
+        expect.objectContaining({}),
       );
     });
   });

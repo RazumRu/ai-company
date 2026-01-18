@@ -7,7 +7,12 @@ import { JiraMcp } from '../../../agent-mcp/services/mcp/jira-mcp';
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import { DockerRuntime } from '../../../runtime/services/docker-runtime';
+import {
+  RuntimeStartParams,
+  RuntimeType,
+} from '../../../runtime/runtime.types';
+import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
+import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { McpNodeBaseTemplate } from '../base-node.template';
 
@@ -48,6 +53,7 @@ export class JiraMcpTemplate extends McpNodeBaseTemplate<
   constructor(
     private readonly moduleRef: ModuleRef,
     private readonly graphRegistry: GraphRegistry,
+    private readonly runtimeProvider: RuntimeProvider,
   ) {
     super();
   }
@@ -74,11 +80,11 @@ export class JiraMcpTemplate extends McpNodeBaseTemplate<
         }
 
         // Validate that runtime exists immediately during configuration
-        const runtime = this.graphRegistry.getNodeInstance<DockerRuntime>(
+        const runtimeNode = this.graphRegistry.getNode<RuntimeThreadProvider>(
           graphId,
           runtimeNodeId,
         );
-        if (!runtime) {
+        if (!runtimeNode) {
           throw new Error(
             `Runtime instance not found for node ${runtimeNodeId}`,
           );
@@ -87,7 +93,21 @@ export class JiraMcpTemplate extends McpNodeBaseTemplate<
         // Reconfigure: cleanup then setup again
         await instance.cleanup().catch(() => {});
 
-        await instance.setup(config, runtime);
+        const runtimeConfig = runtimeNode.config as RuntimeStartParams & {
+          runtimeType: RuntimeType;
+        };
+        const runtime = await instance.provideTemporaryRuntime({
+          runtimeProvider: this.runtimeProvider,
+          graphId,
+          runtimeNodeId,
+          runtimeConfig,
+        });
+        await instance.initialize(
+          config,
+          runtimeNode.instance,
+          runtime,
+          params.metadata.nodeId,
+        );
       },
       destroy: async (instance: JiraMcp) => {
         await instance.cleanup().catch(() => {});

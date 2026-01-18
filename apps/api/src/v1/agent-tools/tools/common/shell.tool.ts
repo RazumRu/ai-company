@@ -18,6 +18,7 @@ import {
 export interface ShellToolOptions {
   runtimeProvider: RuntimeThreadProvider;
   resourcesInformation?: string;
+  env?: Record<string, string>;
 }
 
 export const ShellToolSchema = z.object({
@@ -191,6 +192,10 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     const title = this.generateTitle(data, config);
 
     try {
+      const mergedEnv = {
+        ...(config.env || {}),
+        ...providedEnv,
+      };
       const runtime = await config.runtimeProvider.provide(cfg);
       const res = await execRuntimeWithContext(
         runtime,
@@ -198,7 +203,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
           cmd: command,
           timeoutMs,
           tailTimeoutMs,
-          env: providedEnv,
+          env: mergedEnv,
         },
         cfg,
       );
