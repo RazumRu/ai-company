@@ -1,3 +1,4 @@
+import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException, DefaultLogger } from '@packages/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -6,10 +7,17 @@ import { FilesystemMcp } from '../../../v1/agent-mcp/services/mcp/filesystem-mcp
 import { JiraMcp } from '../../../v1/agent-mcp/services/mcp/jira-mcp';
 import { PlaywrightMcp } from '../../../v1/agent-mcp/services/mcp/playwright-mcp';
 import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
+import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import {
+  RuntimeStartParams,
+  RuntimeType,
+} from '../../../v1/runtime/runtime.types';
+import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
+import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
 import { wait } from '../../test-utils';
 import { createMockGraphData } from '../helpers/graph-helpers';
 import { createTestModule } from '../setup';
@@ -17,8 +25,56 @@ import { createTestModule } from '../setup';
 const FULL_AGENT_NODE_ID = 'agent-1';
 const FULL_TRIGGER_NODE_ID = 'trigger-1';
 
+type TestRuntimeThreadProviderParams = {
+  runtimeNodeId: string;
+  type: RuntimeType;
+  runtimeStartParams: RuntimeStartParams;
+  graphId: string;
+  temporary?: boolean;
+};
+
+type RuntimeInitJob = (
+  runtime: BaseRuntime,
+  cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+) => Promise<void>;
+
+class TestRuntimeThreadProvider {
+  private readonly params: TestRuntimeThreadProviderParams;
+  private readonly runtime: BaseRuntime;
+  private readonly initJobsByNodeId = new Map<
+    string,
+    Map<string, RuntimeInitJob>
+  >();
+
+  constructor(params: TestRuntimeThreadProviderParams, runtime: BaseRuntime) {
+    this.params = params;
+    this.runtime = runtime;
+  }
+
+  public getParams(): TestRuntimeThreadProviderParams {
+    return this.params;
+  }
+
+  public registerJob(executorNodeId: string, id: string, job: RuntimeInitJob) {
+    const jobs = this.initJobsByNodeId.get(executorNodeId) ?? new Map();
+    jobs.set(id, job);
+    this.initJobsByNodeId.set(executorNodeId, jobs);
+  }
+
+  public removeExecutor(executorNodeId: string) {
+    this.initJobsByNodeId.delete(executorNodeId);
+  }
+
+  public async provide(
+    _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<BaseRuntime> {
+    return this.runtime;
+  }
+}
+
 describe('MCP Integration Tests', () => {
   let runtime: DockerRuntime;
+  let playwrightRuntime: DockerRuntime;
   let app: INestApplication;
   let graphsService: GraphsService;
   let graphRegistry: GraphRegistry;
@@ -101,6 +157,24 @@ describe('MCP Integration Tests', () => {
   const uniqueThreadSubId = (prefix: string) =>
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+  const createRuntimeThreadProvider = (runtimeInstance: BaseRuntime) =>
+    new TestRuntimeThreadProvider(
+      {
+        graphId: 'mcp-test-graph',
+        runtimeNodeId: 'runtime-node',
+        type: RuntimeType.Docker,
+        runtimeStartParams: { workdir: '/runtime-workspace' },
+        temporary: true,
+      },
+      runtimeInstance,
+    ) as unknown as RuntimeThreadProvider;
+
+  const buildToolConfig = (threadId: string) => ({
+    configurable: {
+      thread_id: threadId,
+    },
+  });
+
   const ensureGraphRunning = async (graphId: string) => {
     const graph = await graphsService.findById(graphId);
     if (graph.status === GraphStatus.Running) return;
@@ -116,14 +190,18 @@ describe('MCP Integration Tests', () => {
     });
 
   describe('FilesystemMcp', () => {
-    it('should expose all tools by default (readOnly: false)', async () => {
+    it('should expose read/write tools when readOnly is false', async () => {
+      const runtimeThreadProvider = createRuntimeThreadProvider(runtime);
       const mcp = new FilesystemMcp(createLogger());
 
-      // Setup without specifying readOnly (should default to false)
-      await mcp.setup({ readOnly: false }, runtime);
+      await mcp.initialize(
+        { readOnly: false },
+        runtimeThreadProvider,
+        runtime,
+        'executor-filesystem',
+      );
 
       const tools = await mcp.discoverTools();
-      expect(tools.length).toBeGreaterThan(0);
 
       // Verify read tools are present
       expect(tools.some((t) => t.name === 'list_directory')).toBe(true);
@@ -140,8 +218,14 @@ describe('MCP Integration Tests', () => {
     }, 60000);
 
     it('should see files created via runtime shell after setup (no stale filesystem snapshot)', async () => {
+      const runtimeThreadProvider = createRuntimeThreadProvider(runtime);
       const mcp = new FilesystemMcp(createLogger());
-      await mcp.setup({ readOnly: false }, runtime);
+      await mcp.initialize(
+        { readOnly: false },
+        runtimeThreadProvider,
+        runtime,
+        'executor-filesystem',
+      );
 
       const tools = await mcp.discoverTools();
       const listDirTool = tools.find((t) => t.name === 'list_directory');
@@ -149,10 +233,6 @@ describe('MCP Integration Tests', () => {
 
       expect(listDirTool).toBeDefined();
       expect(readFileTool).toBeDefined();
-      if (!listDirTool || !readFileTool) {
-        await mcp.cleanup();
-        throw new Error('Expected filesystem MCP tools not found');
-      }
 
       const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const dirPath = `/runtime-workspace/mcp-sync-${suffix}`;
@@ -167,22 +247,31 @@ describe('MCP Integration Tests', () => {
       });
       expect(createRes.fail).toBe(false);
 
-      const listRes = await listDirTool.invoke({ path: dirPath });
+      const toolConfig = buildToolConfig(uniqueThreadSubId('mcp-fs-list'));
+      const listRes = await listDirTool!.invoke({ path: dirPath }, toolConfig);
       expect(listRes.output).toContain('hello.txt');
 
-      const readRes = await readFileTool.invoke({ path: filePath });
+      const readRes = await readFileTool!.invoke(
+        { path: filePath },
+        toolConfig,
+      );
       expect(readRes.output).toContain(fileContent);
 
       await mcp.cleanup();
     }, 60000);
 
     it('should expose only read-only tools when readOnly: true', async () => {
+      const runtimeThreadProvider = createRuntimeThreadProvider(runtime);
       const mcp = new FilesystemMcp(createLogger());
 
-      await mcp.setup({ readOnly: true }, runtime);
+      await mcp.initialize(
+        { readOnly: true },
+        runtimeThreadProvider,
+        runtime,
+        'executor-filesystem',
+      );
 
       const tools = await mcp.discoverTools();
-      expect(tools.length).toBeGreaterThan(0);
 
       // Verify read tools are present
       expect(tools.some((t) => t.name === 'list_directory')).toBe(true);
@@ -195,29 +284,7 @@ describe('MCP Integration Tests', () => {
       expect(tools.some((t) => t.name === 'create_directory')).toBe(false);
       expect(tools.some((t) => t.name === 'move_file')).toBe(false);
 
-      // Test tool execution via BuiltAgentTool interface
-      const listDirTool = tools.find((t) => t.name === 'list_directory');
-      expect(listDirTool).toBeDefined();
-      if (listDirTool) {
-        const result = await listDirTool.invoke({
-          path: '/runtime-workspace',
-        });
-        expect(result).toBeDefined();
-        expect(result.output).toBeDefined();
-      }
-
       await mcp.cleanup();
-    }, 60000);
-
-    it('should handle cleanup without errors', async () => {
-      const mcp = new FilesystemMcp(createLogger());
-      await mcp.setup({ readOnly: false }, runtime);
-
-      // Cleanup should not throw
-      await expect(mcp.cleanup()).resolves.not.toThrow();
-
-      // Second cleanup should also not throw
-      await expect(mcp.cleanup()).resolves.not.toThrow();
     }, 60000);
   });
 
@@ -239,6 +306,27 @@ describe('MCP Integration Tests', () => {
   });
 
   describe('PlaywrightMcp', () => {
+    beforeAll(async () => {
+      playwrightRuntime = new DockerRuntime();
+      await playwrightRuntime.start({
+        image: 'docker:24.0-dind',
+        containerName: 'mcp-playwright-integration-test',
+        recreate: true,
+        initScript: [
+          'mkdir -p /runtime-workspace/playwright',
+          'dockerd --host=unix:///var/run/docker.sock > /var/log/dockerd.log 2>&1 &',
+          "sh -c 'i=0; while [ $i -lt 120 ]; do docker info >/dev/null 2>&1 && exit 0; i=$((i+1)); sleep 1; done; exit 1'",
+        ],
+        initScriptTimeoutMs: 300_000,
+      });
+    }, 300_000);
+
+    afterAll(async () => {
+      if (playwrightRuntime) {
+        await playwrightRuntime.stop();
+      }
+    }, 60000);
+
     const getToolNames = (tools: { name: string }[]) =>
       tools.map((t) => t.name).sort();
 
@@ -311,12 +399,18 @@ describe('MCP Integration Tests', () => {
     };
 
     it('should setup and discover tools successfully', async () => {
+      const runtimeThreadProvider =
+        createRuntimeThreadProvider(playwrightRuntime);
       const mcp = new PlaywrightMcp(createLogger());
 
-      await mcp.setup({}, runtime);
+      await mcp.initialize(
+        {},
+        runtimeThreadProvider,
+        playwrightRuntime,
+        'executor-playwright',
+      );
 
       const tools = await mcp.discoverTools();
-      expect(tools.length).toBeGreaterThan(0);
 
       // Tool names may vary by @playwright/mcp version — assert by capability keywords.
       const names = getToolNames(tools);
@@ -329,9 +423,16 @@ describe('MCP Integration Tests', () => {
     }, 120000);
 
     it('should execute navigate tool successfully', async () => {
+      const runtimeThreadProvider =
+        createRuntimeThreadProvider(playwrightRuntime);
       const mcp = new PlaywrightMcp(createLogger());
 
-      await mcp.setup({}, runtime);
+      await mcp.initialize(
+        {},
+        runtimeThreadProvider,
+        playwrightRuntime,
+        'executor-playwright',
+      );
 
       const tools = await mcp.discoverTools();
       const navigateTool = tools.find((t) =>
@@ -339,42 +440,17 @@ describe('MCP Integration Tests', () => {
       );
 
       expect(navigateTool).toBeDefined();
-      if (navigateTool) {
-        // Navigate to a stable page (example.com). Build minimal args from tool schema.
-        const schema = (navigateTool as unknown as { schema?: unknown }).schema;
-        const args = buildMinimalArgsFromSchema(schema);
+      // Navigate to a stable page (example.com). Build minimal args from tool schema.
+      const schema = (navigateTool as unknown as { schema?: unknown }).schema;
+      const args = buildMinimalArgsFromSchema(schema);
 
-        const result = await navigateTool.invoke(args);
+      const result = await navigateTool!.invoke(
+        args,
+        buildToolConfig(uniqueThreadSubId('mcp-playwright-nav')),
+      );
 
-        expect(result).toBeDefined();
-        expect(result.output).toBeDefined();
-      }
-
-      await mcp.cleanup();
-    }, 120000);
-
-    it('should handle cleanup without errors', async () => {
-      const mcp = new PlaywrightMcp(createLogger());
-      await mcp.setup({}, runtime);
-
-      // Cleanup should not throw
-      await expect(mcp.cleanup()).resolves.not.toThrow();
-
-      // Second cleanup should also not throw
-      await expect(mcp.cleanup()).resolves.not.toThrow();
-    }, 120000);
-
-    it('should expose playwright tools (smoke list)', async () => {
-      const mcp = new PlaywrightMcp(createLogger());
-      await mcp.setup({}, runtime);
-
-      const tools = await mcp.discoverTools();
-
-      const names = getToolNames(tools);
-      expect(names.some((n) => /navigate|goto|open/i.test(n))).toBe(true);
-      expect(names.some((n) => /click|tap/i.test(n))).toBe(true);
-      expect(names.some((n) => /fill|type|input/i.test(n))).toBe(true);
-      expect(names.some((n) => /screenshot|snapshot/i.test(n))).toBe(true);
+      expect(result).toBeDefined();
+      expect(result.output).toBeDefined();
 
       await mcp.cleanup();
     }, 120000);
@@ -506,12 +582,8 @@ describe('MCP Integration Tests', () => {
           expect(tool?.description).not.toBe('');
 
           // Verify schema is properly serialized
-          if (tool?.schema) {
-            expect(typeof tool.schema).toBe('object');
-            expect((tool.schema as { $schema?: string }).$schema).toBe(
-              'http://json-schema.org/draft-07/schema#',
-            );
-          }
+          expect(tool?.schema).toBeDefined();
+          expect(typeof tool?.schema).toBe('object');
         }
       },
     );

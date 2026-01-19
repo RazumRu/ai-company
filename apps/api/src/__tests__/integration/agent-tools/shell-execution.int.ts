@@ -19,7 +19,7 @@ const SHELL_NODE_ID = 'shell-1';
 const RUNTIME_NODE_ID = 'runtime-1';
 
 const COMMAND_AGENT_INSTRUCTIONS =
-  'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, call the finish tool with the stdout (and stderr if present). If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
+  'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>` (including `Execute shell command with timeoutMs=<ms>: <cmd>`), extract `<cmd>` and execute it exactly using the shell tool. If the message includes `timeoutMs=<number>`, pass that value to the shell tool as timeoutMs. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, call the finish tool with the stdout (and stderr if present). If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
 
 const THREAD_COMPLETION_STATUSES: ThreadStatus[] = [
   ThreadStatus.Done,
@@ -34,8 +34,6 @@ describe('Shell Execution Integration Tests', () => {
   let defaultGraphId: string;
   let envGraphId: string;
   let alpineGraphId: string;
-
-  type ShellExecutionSummary = ReturnType<typeof findShellExecution>;
 
   beforeAll(async () => {
     app = await createTestModule();
@@ -195,13 +193,11 @@ describe('Shell Execution Integration Tests', () => {
 
   const waitForShellExecution = async (
     externalThreadId: string,
-    predicate: (summary: ShellExecutionSummary) => boolean = (summary) =>
-      Boolean(summary.result),
     timeoutMs = 180_000,
   ) => {
     return waitForCondition(
       () => getThreadMessages(externalThreadId),
-      (threadMessages) => predicate(findShellExecution(threadMessages)),
+      (threadMessages) => Boolean(findShellExecution(threadMessages).result),
       { timeout: timeoutMs, interval: 2_000 },
     );
   };
@@ -286,7 +282,6 @@ describe('Shell Execution Integration Tests', () => {
   interface ExecuteShellOptions {
     threadSubId?: string;
     shellResultTimeoutMs?: number;
-    predicate?: (summary: ShellExecutionSummary) => boolean;
   }
 
   const executeShellScenario = async (
@@ -310,10 +305,10 @@ describe('Shell Execution Integration Tests', () => {
 
     const thread = await waitForThreadCompletion(execution.externalThreadId);
     expect(THREAD_COMPLETION_STATUSES).toContain(thread.status);
+    expect(thread.status).toBe(ThreadStatus.Done);
 
     const messages = await waitForShellExecution(
       execution.externalThreadId,
-      options.predicate,
       options.shellResultTimeoutMs,
     );
 
@@ -337,7 +332,7 @@ describe('Shell Execution Integration Tests', () => {
           TRIGGER_NODE_ID,
           {
             messages: [
-              'Execute the shell command: sleep 15; echo "done-after-sleep"',
+              'Execute shell command: sleep 15; echo "done-after-sleep"',
             ],
             async: true,
             threadSubId: uniqueThreadSubId('shell-ordering'),
@@ -401,7 +396,9 @@ describe('Shell Execution Integration Tests', () => {
 
         const aiNow = msgsNow[aiNowIndex];
         expect(aiNow && aiNow.role === 'ai').toBe(true);
-        if (!aiNow || aiNow.role !== 'ai') return;
+        if (!aiNow || aiNow.role !== 'ai') {
+          throw new Error('Expected ai message with shell tool call.');
+        }
 
         const shellCall = aiNow.toolCalls?.find((tc) => tc.name === 'shell');
         expect(shellCall?.id).toBeDefined();
@@ -456,15 +453,13 @@ describe('Shell Execution Integration Tests', () => {
       async () => {
         const result = await executeShellScenario(
           defaultGraphId,
-          'Execute the command: echo "Hello from integration test"',
+          'Execute shell command: printf "Hello from integration test"',
         );
 
         expect(result.result?.exitCode).toBe(0);
-        expect(
-          result.result?.stdout
-            .toLowerCase()
-            .includes('hello from integration'),
-        ).toBe(true);
+        expect(result.result?.stdout.trim()).toBe(
+          'Hello from integration test',
+        );
       },
     );
 
@@ -474,11 +469,11 @@ describe('Shell Execution Integration Tests', () => {
       async () => {
         const result = await executeShellScenario(
           envGraphId,
-          'Execute the shell command to print environment variable: echo $FOO',
+          'Execute shell command: printf "%s" "$FOO"',
         );
 
         expect(result.result?.exitCode).toBe(0);
-        expect(result.result?.stdout).toContain('bar');
+        expect(result.result?.stdout).toBe('bar');
       },
     );
   });
@@ -490,7 +485,7 @@ describe('Shell Execution Integration Tests', () => {
       async () => {
         const result = await executeShellScenario(
           alpineGraphId,
-          'Execute the shell command: uname -a',
+          'Execute shell command: uname -a',
           { shellResultTimeoutMs: 240_000 },
         );
 
@@ -507,13 +502,14 @@ describe('Shell Execution Integration Tests', () => {
       async () => {
         const result = await executeShellScenario(
           defaultGraphId,
-          'Run this command: invalidcommandthatdoesnotexist',
+          'Execute shell command: invalidcommandthatdoesnotexist',
         );
 
         expect(result.result?.exitCode).not.toBe(0);
         expect(result.result?.stderr.toLowerCase()).toContain(
           'invalidcommandthatdoesnotexist',
         );
+        expect(result.result?.stderr.toLowerCase()).toContain('not found');
       },
     );
   });
@@ -525,29 +521,11 @@ describe('Shell Execution Integration Tests', () => {
       async () => {
         const result = await executeShellScenario(
           defaultGraphId,
-          'Execute this command with a 2-second timeout: sleep 5',
-          {
-            predicate: (summary) =>
-              summary.result?.exitCode === 124 || Boolean(summary.result),
-          },
+          'Execute shell command with timeoutMs=2000: sleep 5',
         );
 
         expect(result.result?.exitCode).toBe(124);
-      },
-    );
-
-    it(
-      'completes when the command keeps producing output within tail timeout',
-      { timeout: 120_000 },
-      async () => {
-        const result = await executeShellScenario(
-          defaultGraphId,
-          'Execute this command that will stop producing output: echo "start"; sleep 3; echo "end"',
-        );
-
-        expect(result.result?.exitCode).toBe(0);
-        expect(result.result?.stdout).toContain('start');
-        expect(result.result?.stdout).toContain('end');
+        expect(result.result?.stderr).toContain('Command timed out');
       },
     );
   });

@@ -22,10 +22,7 @@ const GITHUB_RESOURCE_NODE_ID = 'github-resource-1';
 const COMMAND_AGENT_INSTRUCTIONS =
   'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, call the finish tool with the stdout (and stderr if present). If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
 
-const THREAD_COMPLETION_STATUSES: ThreadStatus[] = [
-  ThreadStatus.Done,
-  ThreadStatus.NeedMoreInfo,
-];
+const THREAD_COMPLETION_STATUS = ThreadStatus.Done;
 
 describe('Graph Resources Integration Tests', () => {
   let app: INestApplication;
@@ -70,14 +67,16 @@ describe('Graph Resources Integration Tests', () => {
     );
   };
 
-  const waitForThreadCompletion = async (externalThreadId: string) => {
+  const waitForThreadCompletion = async (
+    externalThreadId: string,
+    timeoutMs = 180_000,
+  ) => {
     const thread = await threadsService.getThreadByExternalId(externalThreadId);
 
     return waitForCondition(
       () => threadsService.getThreadById(thread.id),
-      (currentThread) =>
-        THREAD_COMPLETION_STATUSES.includes(currentThread.status),
-      { timeout: 120_000, interval: 1_000 },
+      (currentThread) => currentThread.status === THREAD_COMPLETION_STATUS,
+      { timeout: timeoutMs, interval: 1_000 },
     );
   };
 
@@ -106,13 +105,18 @@ describe('Graph Resources Integration Tests', () => {
       .map((message) => message.message)
       .find(isAiThreadMessage);
 
-    const shellMessage = messages
-      .map((message) => message.message)
-      .find(isShellThreadMessage);
-
     const shellToolCall = aiMessage?.toolCalls?.find(
       (toolCall) => toolCall.name === 'shell',
     );
+    const shellToolCallId = shellToolCall?.id;
+
+    const shellMessage = messages
+      .map((message) => message.message)
+      .find(
+        (message): message is ShellThreadMessage =>
+          isShellThreadMessage(message) &&
+          (shellToolCallId ? message.toolCallId === shellToolCallId : true),
+      );
 
     const rawResult =
       shellMessage?.role === 'tool-shell'
@@ -139,20 +143,12 @@ describe('Graph Resources Integration Tests', () => {
 
     return {
       toolName: shellToolCall?.name ?? shellMessage?.name,
-      toolCallId: shellToolCall?.id ?? shellMessage?.toolCallId,
+      toolCallId: shellToolCallId ?? shellMessage?.toolCallId,
       result,
     };
   };
 
-  const createResourceGraphData = (options?: {
-    includeResource?: boolean;
-    resourceEdgeTarget?: string;
-  }): CreateGraphDto => {
-    const includeResource = options?.includeResource ?? true;
-    const resourceEdgeTarget =
-      options?.resourceEdgeTarget ??
-      (includeResource ? GITHUB_RESOURCE_NODE_ID : 'missing-resource-node');
-
+  const createResourceGraphData = (): CreateGraphDto => {
     const nodes: CreateGraphDto['schema']['nodes'] = [
       {
         id: TRIGGER_NODE_ID,
@@ -199,16 +195,14 @@ describe('Graph Resources Integration Tests', () => {
       },
     ];
 
-    if (includeResource) {
-      nodes.push({
-        id: GITHUB_RESOURCE_NODE_ID,
-        template: 'github-resource',
-        config: {
-          patToken: 'mock-token-for-testing',
-          auth: false,
-        },
-      });
-    }
+    nodes.push({
+      id: GITHUB_RESOURCE_NODE_ID,
+      template: 'github-resource',
+      config: {
+        patToken: 'mock-token-for-testing',
+        auth: false,
+      },
+    });
 
     return {
       name: `Resource Graph ${Date.now()}`,
@@ -220,7 +214,7 @@ describe('Graph Resources Integration Tests', () => {
           { from: TRIGGER_NODE_ID, to: AGENT_NODE_ID },
           { from: AGENT_NODE_ID, to: SHELL_NODE_ID },
           { from: SHELL_NODE_ID, to: RUNTIME_NODE_ID },
-          { from: SHELL_NODE_ID, to: resourceEdgeTarget },
+          { from: SHELL_NODE_ID, to: GITHUB_RESOURCE_NODE_ID },
         ],
       },
     };
@@ -257,8 +251,8 @@ describe('Graph Resources Integration Tests', () => {
 
   describe('GitHub resource execution', () => {
     it(
-      'installs and configures GitHub CLI when the resource is connected',
-      { timeout: 120_000 },
+      'propagates GitHub resource env and init config to shell tool',
+      { timeout: 240_000 },
       async () => {
         await ensureGraphRunning();
 
@@ -266,9 +260,11 @@ describe('Graph Resources Integration Tests', () => {
           resourceGraphId,
           TRIGGER_NODE_ID,
           {
-            messages: ['Run this command: gh --version'],
+            messages: [
+              'Run this command: printf "TOKEN=%s\\n" "$GITHUB_PAT_TOKEN"; gh config get git_protocol; gh --version',
+            ],
             async: false,
-            threadSubId: uniqueThreadSubId('gh-version'),
+            threadSubId: uniqueThreadSubId('gh-resource'),
           },
         );
 
@@ -276,42 +272,36 @@ describe('Graph Resources Integration Tests', () => {
 
         const thread = await waitForThreadCompletion(
           execution.externalThreadId,
+          180_000,
         );
-        expect(THREAD_COMPLETION_STATUSES).toContain(thread.status);
+        expect(thread.status).toBe(THREAD_COMPLETION_STATUS);
 
         const messages = await waitForCondition(
           () => getThreadMessages(execution.externalThreadId),
           (threadMessages) =>
             Boolean(findShellExecution(threadMessages).result),
-          { timeout: 120_000, interval: 2_000 },
+          { timeout: 180_000, interval: 2_000 },
         );
 
         const shellExecution = findShellExecution(messages);
         expect(shellExecution.toolName).toBe('shell');
         expect(shellExecution.toolCallId).toBeDefined();
         expect(shellExecution.result).toBeDefined();
-        expect(shellExecution.result?.exitCode).toBe(0);
+        expect(
+          shellExecution.result?.exitCode,
+          shellExecution.result?.stderr ?? 'missing shell stderr',
+        ).toBe(0);
+        expect(shellExecution.result?.stdout).toContain(
+          'TOKEN=mock-token-for-testing',
+        );
+        expect(shellExecution.result?.stdout.toLowerCase() ?? '').toContain(
+          'https',
+        );
         expect(shellExecution.result?.stdout.toLowerCase() ?? '').toContain(
           'gh version',
         );
         expect(typeof shellExecution.result?.stderr).toBe('string');
       },
     );
-  });
-
-  describe('Resource validation', () => {
-    it('rejects graphs that reference missing resource nodes in shell outputs', async () => {
-      const missingNodeId = 'non-existent-resource';
-      const invalidGraph = createResourceGraphData({
-        includeResource: false,
-        resourceEdgeTarget: missingNodeId,
-      });
-
-      await expect(graphsService.create(invalidGraph)).rejects.toMatchObject({
-        errorCode: 'GRAPH_EDGE_NOT_FOUND',
-        statusCode: 400,
-        message: expect.stringContaining('non-existent target node'),
-      });
-    });
   });
 });

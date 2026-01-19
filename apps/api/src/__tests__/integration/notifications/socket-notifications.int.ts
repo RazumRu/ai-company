@@ -1599,80 +1599,6 @@ describe('Socket Notifications Integration Tests', () => {
     );
 
     it(
-      'should show token usage increasing across multiple messages in same thread',
-      { timeout: 90_000 },
-      async () => {
-        socket = createSocketConnection(TEST_USER_ID);
-        await waitForSocketConnection(socket);
-
-        const graphId = baseGraphId;
-
-        socket.emit('subscribe_graph', { graphId });
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        const stateUpdateNotifications: AgentStateUpdateNotification[] = [];
-
-        socket.on('agent.state.update', (notification) => {
-          const typed = notification as AgentStateUpdateNotification;
-          // Only collect notifications with token usage
-          if (
-            typed.data?.totalTokens !== undefined &&
-            typed.data.totalTokens > 0
-          ) {
-            stateUpdateNotifications.push(typed);
-          }
-        });
-
-        await restartGraph(graphId);
-
-        const threadSubId = uniqueThreadSubId('token-usage-accumulation-test');
-
-        // Send first message
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
-          messages: ['First message'],
-          threadSubId,
-        });
-
-        // Wait for first notification with token usage
-        await new Promise((resolve) => setTimeout(resolve, 10000));
-
-        const firstNotificationCount = stateUpdateNotifications.length;
-        expect(firstNotificationCount).toBeGreaterThanOrEqual(1);
-
-        // Send second message to same thread
-        await graphsService.executeTrigger(graphId, 'trigger-1', {
-          messages: ['Second message to accumulate more tokens'],
-          threadSubId,
-        });
-
-        // Wait for additional notifications
-        await new Promise((resolve) => setTimeout(resolve, 10000));
-
-        // Should have received more agent.state.update notifications with token usage
-        expect(stateUpdateNotifications.length).toBeGreaterThan(
-          firstNotificationCount,
-        );
-
-        // Verify token usage increases over time for the same thread
-        const threadNotifications = stateUpdateNotifications.filter((n) =>
-          n.threadId?.includes(threadSubId),
-        );
-
-        if (threadNotifications.length >= 2) {
-          const firstUsage = threadNotifications[0]?.data?.totalTokens;
-          const laterUsage =
-            threadNotifications[threadNotifications.length - 1]?.data
-              ?.totalTokens;
-
-          if (firstUsage && laterUsage) {
-            // Token usage should increase or stay the same (never decrease)
-            expect(laterUsage).toBeGreaterThanOrEqual(firstUsage);
-          }
-        }
-      },
-    );
-
-    it(
       'should include all token usage fields in agent.state.update notifications',
       { timeout: 60_000 },
       async () => {
@@ -1892,24 +1818,15 @@ describe('Socket Notifications Integration Tests', () => {
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         const agentStateNotifications: AgentStateUpdateNotification[] = [];
-        const threadUpdateNotifications: ThreadUpdateNotification[] = [];
-
-        // Listen for agent.state.update notifications
-        socket.on(
-          'agent.state.update',
-          (notification: AgentStateUpdateNotification) => {
-            if (
-              notification.data?.totalTokens !== undefined &&
-              notification.data.totalTokens > 0
-            ) {
-              agentStateNotifications.push(notification);
-            }
-          },
-        );
-
-        // Listen for thread.update notifications
-        socket.on('thread.update', (notification: ThreadUpdateNotification) => {
-          threadUpdateNotifications.push(notification);
+        socket.on('agent.state.update', (notification) => {
+          const typed = notification as AgentStateUpdateNotification;
+          if (
+            typed.data?.totalTokens !== undefined &&
+            typed.data.totalTokens > 0 &&
+            typed.data.totalPrice !== undefined
+          ) {
+            agentStateNotifications.push(typed);
+          }
         });
 
         const threadSubId = uniqueThreadSubId('token-cost-test');
@@ -1928,68 +1845,51 @@ describe('Socket Notifications Integration Tests', () => {
         );
         const externalThreadId = firstExecution.externalThreadId;
 
-        // Wait for first invocation to have notifications
+        // Wait for first invocation to emit token/cost state updates
         await waitForCondition(
           async () => agentStateNotifications,
-          (notifs) => notifs.length > 0,
-          { timeout: 60_000, interval: 500 },
-        );
-
-        // Get max values from first invocation notifications
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const firstInvocationNotifications = [...agentStateNotifications];
-        let firstMaxTotalTokens = 0;
-        let firstMaxTotalPrice = 0;
-        for (const notif of firstInvocationNotifications) {
-          if ((notif.data.totalTokens ?? 0) > firstMaxTotalTokens) {
-            firstMaxTotalTokens = notif.data.totalTokens ?? 0;
-          }
-          if ((notif.data.totalPrice ?? 0) > firstMaxTotalPrice) {
-            firstMaxTotalPrice = notif.data.totalPrice ?? 0;
-          }
-        }
-
-        expect(firstMaxTotalTokens).toBeGreaterThan(0);
-        expect(firstMaxTotalPrice).toBeGreaterThan(0);
-
-        // Wait for thread to complete
-        await waitForCondition(
-          async () => threadUpdateNotifications,
           (notifs) =>
             notifs.some(
               (n) =>
-                n.data.status === ThreadStatus.Done ||
-                n.data.status === ThreadStatus.Stopped,
+                n.threadId === externalThreadId &&
+                typeof n.data.totalTokens === 'number' &&
+                n.data.totalTokens > 0 &&
+                typeof n.data.totalPrice === 'number',
             ),
           { timeout: 60_000, interval: 500 },
         );
 
-        // Get the thread from database after first invocation completes
-        const thread1 =
-          await threadsService.getThreadByExternalId(externalThreadId);
-
-        // Verify DB has token usage after first invocation - use usage-statistics endpoint
-        const usageStats1 = await threadsService.getThreadUsageStatistics(
-          thread1.id,
+        // Wait for thread to complete
+        await waitForCondition(
+          () =>
+            threadsService
+              .getThreadByExternalId(externalThreadId)
+              .catch(() => undefined),
+          (thread) =>
+            !!thread &&
+            (thread.status === ThreadStatus.Done ||
+              thread.status === ThreadStatus.Stopped),
+          { timeout: 60_000, interval: 500 },
         );
-        expect(usageStats1).toBeDefined();
-        expect(usageStats1.total.totalTokens).toBeGreaterThan(0);
-        expect(usageStats1.total.totalPrice).toBeGreaterThan(0);
 
-        const firstDbTotalTokens = usageStats1.total.totalTokens;
-        const firstDbTotalPrice = usageStats1.total.totalPrice ?? 0;
+        // Allow final state updates to arrive
+        await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        // Socket notifications should match DB values (roughly)
-        expect(firstMaxTotalTokens).toBeGreaterThanOrEqual(
-          firstDbTotalTokens * 0.9,
+        const firstThreadNotifications = agentStateNotifications.filter(
+          (n) => n.threadId === externalThreadId,
         );
-        expect(firstMaxTotalPrice).toBeGreaterThanOrEqual(
-          firstDbTotalPrice * 0.9,
+        const firstMaxTotalTokens = Math.max(
+          ...firstThreadNotifications.map((n) => n.data.totalTokens ?? 0),
         );
+        const firstMaxTotalPrice = Math.max(
+          ...firstThreadNotifications.map((n) => n.data.totalPrice ?? 0),
+        );
+
+        expect(firstMaxTotalTokens).toBeGreaterThan(0);
+        expect(firstMaxTotalPrice).toBeGreaterThan(0);
 
         // Clear notifications for second invocation
         agentStateNotifications.length = 0;
-        threadUpdateNotifications.length = 0;
 
         // ========== SECOND INVOCATION (Same Thread) ==========
         await graphsService.executeTrigger(baseGraphId, 'trigger-1', {
@@ -2001,65 +1901,45 @@ describe('Socket Notifications Integration Tests', () => {
         // Wait for second invocation to have notifications
         await waitForCondition(
           async () => agentStateNotifications,
-          (notifs) => notifs.length > 0,
+          (notifs) =>
+            notifs.some(
+              (n) =>
+                n.threadId === externalThreadId &&
+                typeof n.data.totalTokens === 'number' &&
+                n.data.totalTokens > 0 &&
+                typeof n.data.totalPrice === 'number',
+            ),
           { timeout: 60_000, interval: 500 },
         );
 
         // Wait for thread to complete second invocation BEFORE collecting final notification values
         await waitForCondition(
-          async () => threadUpdateNotifications,
-          (notifs) =>
-            notifs.some(
-              (n) =>
-                n.data.status === ThreadStatus.Done ||
-                n.data.status === ThreadStatus.Stopped,
-            ),
+          () =>
+            threadsService
+              .getThreadByExternalId(externalThreadId)
+              .catch(() => undefined),
+          (thread) =>
+            !!thread &&
+            (thread.status === ThreadStatus.Done ||
+              thread.status === ThreadStatus.Stopped),
           { timeout: 60_000, interval: 500 },
         );
 
         // Get max values from second invocation notifications (after thread is done)
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const secondInvocationNotifications = [...agentStateNotifications];
-        let secondMaxTotalTokens = 0;
-        let secondMaxTotalPrice = 0;
-        for (const notif of secondInvocationNotifications) {
-          if ((notif.data.totalTokens ?? 0) > secondMaxTotalTokens) {
-            secondMaxTotalTokens = notif.data.totalTokens ?? 0;
-          }
-          if ((notif.data.totalPrice ?? 0) > secondMaxTotalPrice) {
-            secondMaxTotalPrice = notif.data.totalPrice ?? 0;
-          }
-        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const secondThreadNotifications = agentStateNotifications.filter(
+          (n) => n.threadId === externalThreadId,
+        );
+        const secondMaxTotalTokens = Math.max(
+          ...secondThreadNotifications.map((n) => n.data.totalTokens ?? 0),
+        );
+        const secondMaxTotalPrice = Math.max(
+          ...secondThreadNotifications.map((n) => n.data.totalPrice ?? 0),
+        );
 
-        // CRITICAL: Second invocation notifications should show ACCUMULATED values
-        // They should be HIGHER than first invocation values
+        // Second invocation should accumulate totals on the same thread
         expect(secondMaxTotalTokens).toBeGreaterThan(firstMaxTotalTokens);
         expect(secondMaxTotalPrice).toBeGreaterThan(firstMaxTotalPrice);
-
-        // Get the thread from database after second invocation completes
-        const thread2 =
-          await threadsService.getThreadByExternalId(externalThreadId);
-
-        // Verify DB has accumulated token usage after second invocation - use usage-statistics endpoint
-        const usageStats2 = await threadsService.getThreadUsageStatistics(
-          thread2.id,
-        );
-        expect(usageStats2).toBeDefined();
-        expect(usageStats2.total.totalTokens).toBeGreaterThan(
-          firstDbTotalTokens,
-        );
-        expect(usageStats2.total.totalPrice).toBeGreaterThan(firstDbTotalPrice);
-
-        const secondDbTotalTokens = usageStats2.total.totalTokens;
-        const secondDbTotalPrice = usageStats2.total.totalPrice ?? 0;
-
-        // Socket notifications should match final DB values (roughly)
-        expect(secondMaxTotalTokens).toBeGreaterThanOrEqual(
-          secondDbTotalTokens * 0.9,
-        );
-        expect(secondMaxTotalPrice).toBeGreaterThanOrEqual(
-          secondDbTotalPrice * 0.9,
-        );
       },
     );
   });

@@ -552,32 +552,6 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
-  private async ensureDockerDaemonReady(
-    timeoutMs = 90_000,
-    intervalMs = 1000,
-  ): Promise<void> {
-    const start = Date.now();
-    for (;;) {
-      try {
-        const res = await this.exec({
-          cmd: 'docker info >/dev/null 2>&1',
-          timeoutMs: 30_000,
-          tailTimeoutMs: 10_000,
-        });
-        if (!res.fail) {
-          return;
-        }
-      } catch {
-        //
-      }
-
-      if (Date.now() - start >= timeoutMs) {
-        throw new Error('DOCKER_DAEMON_NOT_READY');
-      }
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-  }
-
   private async createContainerWithRetry(
     containerName: string,
     createFn: () => Promise<Docker.Container>,
@@ -629,19 +603,6 @@ export class DockerRuntime extends BaseRuntime {
 
       this.container = existingContainer;
       this.containerWorkdir = this.getWorkdir(params?.workdir);
-
-      try {
-        await this.ensureDockerDaemonReady();
-      } catch (error) {
-        if (!params?.recreate) {
-          await DockerRuntime.stopByInstance(existingContainer);
-          this.container = null;
-          this.containerWorkdir = null;
-          await this.start({ ...params, recreate: true });
-          return;
-        }
-        throw error;
-      }
 
       this.emit({
         type: 'start',
@@ -716,8 +677,6 @@ export class DockerRuntime extends BaseRuntime {
       await container.start();
       this.container = container;
       this.containerWorkdir = this.getWorkdir(params?.workdir);
-
-      await this.ensureDockerDaemonReady();
 
       if (params?.initScript) {
         await this.runInitScript(

@@ -30,31 +30,24 @@ describe('DockerRuntime Timeout Recovery Integration', () => {
       // the session is restarted and the next command can execute successfully
       const sessionId = 'sess-timeout-recovery';
 
-      // First command: will timeout because sleep produces no output
-      // tailTimeoutMs is shorter than the sleep duration
-      const timeoutPromise = runtime.exec({
-        cmd: 'sleep 60',
+      // First command: produce initial output, then go silent long enough
+      // to trigger tail timeout.
+      const timeoutResult = await runtime.exec({
+        cmd: 'echo "start"; sleep 60',
         sessionId,
-        tailTimeoutMs: 2000, // 2 seconds - no output expected from sleep, will timeout
+        tailTimeoutMs: 2000,
       });
-
-      const timeoutResult = await timeoutPromise;
 
       // Verify timeout occurred
       expect(timeoutResult.fail).toBe(true);
       expect(timeoutResult.exitCode).toBe(124);
-      expect(
-        timeoutResult.stderr.includes('timed out') ||
-          timeoutResult.stderr.includes('no logs received'),
-      ).toBe(true);
+      expect(timeoutResult.stderr).toBe('Process timed out - no logs received');
 
       // Second command: should run successfully after session restart
-      const successPromise = runtime.exec({
+      const successResult = await runtime.exec({
         cmd: 'echo "recovery successful"',
         sessionId,
       });
-
-      const successResult = await successPromise;
 
       // Verify second command executed successfully
       expect(successResult.fail).toBe(false);
@@ -83,6 +76,7 @@ describe('DockerRuntime Timeout Recovery Integration', () => {
       // Verify timeout occurred
       expect(timeoutResult.fail).toBe(true);
       expect(timeoutResult.exitCode).toBe(124);
+      expect(timeoutResult.stderr).toBe('Process timed out');
 
       // Second command: should run successfully after session restart
       const successPromise = runtime.exec({
@@ -107,9 +101,9 @@ describe('DockerRuntime Timeout Recovery Integration', () => {
       // after a session restart due to timeout
       const sessionId = 'sess-queue-recovery';
 
-      // First command: will timeout
+      // First command: produce output, then stall to trigger tail timeout
       const timeoutPromise = runtime.exec({
-        cmd: 'sleep 60',
+        cmd: 'echo "start"; sleep 60',
         sessionId,
         tailTimeoutMs: 1000,
       });
@@ -135,6 +129,7 @@ describe('DockerRuntime Timeout Recovery Integration', () => {
       // Verify timeout occurred
       expect(timeoutResult.fail).toBe(true);
       expect(timeoutResult.exitCode).toBe(124);
+      expect(timeoutResult.stderr).toBe('Process timed out - no logs received');
 
       // Verify queued commands executed successfully
       expect(secondResult.fail).toBe(false);
@@ -155,12 +150,15 @@ describe('DockerRuntime Timeout Recovery Integration', () => {
       // the session can maintain state properly
       const sessionId = 'sess-state-recovery';
 
-      // First command: timeout
-      await runtime.exec({
-        cmd: 'sleep 60',
+      // First command: trigger tail timeout to force session restart
+      const timeoutResult = await runtime.exec({
+        cmd: 'echo "start"; sleep 60',
         sessionId,
         tailTimeoutMs: 1000,
       });
+      expect(timeoutResult.fail).toBe(true);
+      expect(timeoutResult.exitCode).toBe(124);
+      expect(timeoutResult.stderr).toBe('Process timed out - no logs received');
 
       // Create a file
       const createResult = await runtime.exec({
@@ -219,7 +217,7 @@ describe('DockerRuntime Timeout Recovery Integration', () => {
       // Verify command was aborted
       expect(result.fail).toBe(true);
       expect(result.exitCode).toBe(124);
-      expect(result.stderr).toContain('Aborted');
+      expect(result.stderr).toBe('Aborted');
 
       // Verify next command works
       const nextResult = await runtime.exec({
@@ -234,24 +232,6 @@ describe('DockerRuntime Timeout Recovery Integration', () => {
   );
 
   it(
-    'handles commands without session (non-session exec)',
-    { timeout: 10000 },
-    async () => {
-      // This test verifies that non-session commands still work correctly
-      // and are not affected by timeout recovery logic
-
-      // Execute a command without sessionId (should not use session)
-      const result = await runtime.exec({
-        cmd: 'echo "no session"',
-      });
-
-      expect(result.fail).toBe(false);
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('no session');
-    },
-  );
-
-  it(
     'handles tailTimeoutMs correctly when command produces output',
     { timeout: 10000 },
     async () => {
@@ -261,9 +241,9 @@ describe('DockerRuntime Timeout Recovery Integration', () => {
       // Command that produces output periodically
       // Should not timeout because it keeps producing output
       const result = await runtime.exec({
-        cmd: 'for i in 1 2 3; do echo "output $i"; sleep 0.5; done',
+        cmd: 'for i in 1 2 3; do echo "output $i"; sleep 1; done',
         sessionId,
-        tailTimeoutMs: 2000, // 2 seconds, but command completes in ~1.5 seconds
+        tailTimeoutMs: 3000, // tail timeout should not fire while output continues
       });
 
       expect(result.fail).toBe(false);

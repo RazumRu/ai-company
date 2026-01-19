@@ -3,4 +3,5 @@ export interface IMcpServerConfig {
   command: string;
   args: string[];
   env?: Record<string, string>;
+  requiresDockerDaemon?: boolean;
 }

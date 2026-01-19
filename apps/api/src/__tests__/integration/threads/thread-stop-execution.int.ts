@@ -152,24 +152,6 @@ describe('Thread Stop Execution Integration Tests', () => {
     (message.role === 'tool-shell' || message.role === 'tool') &&
     message.name === 'shell';
 
-  const getShellExitCode = (messages: ThreadMessageDto[]): number | null => {
-    const shellMsg = messages.map((m) => m.message).find(isShellThreadMessage);
-    if (!shellMsg) return null;
-
-    const raw =
-      shellMsg.role === 'tool-shell'
-        ? shellMsg.content
-        : shellMsg.role === 'tool'
-          ? (shellMsg.content as {
-              exitCode?: number;
-              stdout?: string;
-              stderr?: string;
-            })
-          : undefined;
-
-    return typeof raw?.exitCode === 'number' ? raw.exitCode : null;
-  };
-
   const extractShellResult = (
     message: ThreadMessageDto['message'],
   ): { exitCode: number; stdout: string; stderr: string } | null => {
@@ -224,79 +206,67 @@ describe('Thread Stop Execution Integration Tests', () => {
     });
   };
 
-  it(
-    'stopThreadByExternalId aborts a running execution (ThreadUpdate stopped emitted by GraphStateManager)',
-    { timeout: 300_000 },
-    async () => {
-      await ensureGraphRunning();
-      const threadSubId = `stop-by-external-id-${Date.now()}`;
+  const startShellExecution = async (threadSubId: string) => {
+    const execution = await graphsService.executeTrigger(
+      graphId,
+      TRIGGER_NODE_ID,
+      {
+        messages: ['Run this command: sleep 60'],
+        async: true,
+        threadSubId,
+      },
+    );
 
-      const execution = await graphsService.executeTrigger(
-        graphId,
-        TRIGGER_NODE_ID,
-        {
-          messages: ['Run this command: sleep 60'],
-          async: true,
-          threadSubId,
-        },
-      );
+    const runningThread = await waitForCondition(
+      () => threadsService.getThreadByExternalId(execution.externalThreadId),
+      (t) => t.status === ThreadStatus.Running,
+      { timeout: 30_000, interval: 1_000 },
+    );
 
-      const runningThread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(execution.externalThreadId),
-        (t) => t.status === ThreadStatus.Running,
-        { timeout: 30_000, interval: 1_000 },
-      );
+    // Ensure the agent has actually decided to run the shell tool before stopping.
+    // Otherwise, there's nothing to "abort" into a deterministic exitCode=124 message.
+    await waitForCondition(
+      () => getThreadMessagesByExternalId(execution.externalThreadId),
+      (messages) => messages.some((m) => hasShellToolCall(m.message)),
+      { timeout: 30_000, interval: 1_000 },
+    );
 
-      // Ensure the agent has actually decided to run the shell tool before stopping.
-      // Otherwise, there's nothing to "abort" into a deterministic exitCode=124 message.
-      await waitForCondition(
-        () => getThreadMessagesByExternalId(execution.externalThreadId),
-        (messages) => messages.some((m) => hasShellToolCall(m.message)),
-        { timeout: 30_000, interval: 1_000 },
-      );
+    return { execution, runningThread };
+  };
 
-      await threadsService.stopThreadByExternalId(execution.externalThreadId);
+  const waitForAbortedShellResult = async (externalThreadId: string) =>
+    waitForCondition(
+      () => getThreadMessagesByExternalId(externalThreadId),
+      (messages) =>
+        getShellResults(messages).some(
+          (result) =>
+            result.exitCode === 124 && result.stderr.includes('Aborted'),
+        ),
+      { timeout: 60_000, interval: 2_000 },
+    );
 
-      const stoppedThread = await waitForCondition(
-        () => threadsService.getThreadById(runningThread.id),
-        (t) => t.status === ThreadStatus.Stopped,
-        { timeout: 60_000, interval: 1_000 },
-      );
-      expect(stoppedThread.status).toBe(ThreadStatus.Stopped);
-
-      const msgs = await waitForCondition(
-        () => getThreadMessagesByExternalId(execution.externalThreadId),
-        (messages) => getShellExitCode(messages) !== null,
-        { timeout: 60_000, interval: 2_000 },
-      );
-      expect(getShellExitCode(msgs)).toBe(124);
+  it.each([
+    {
+      label: 'stopThreadByExternalId',
+      stop: async (threadId: string, externalThreadId: string) =>
+        threadsService.stopThreadByExternalId(externalThreadId),
     },
-  );
-
-  it(
-    'stopThread (by internal id) aborts a running execution',
+    {
+      label: 'stopThread (by internal id)',
+      stop: async (threadId: string, externalThreadId: string) =>
+        threadsService.stopThread(threadId),
+    },
+  ])(
+    '$label aborts a running execution (ThreadUpdate stopped emitted by GraphStateManager)',
     { timeout: 300_000 },
-    async () => {
+    async ({ label, stop }) => {
       await ensureGraphRunning();
-      const threadSubId = `stop-by-internal-id-${Date.now()}`;
+      const threadSubId = `${label.replace(/[^a-z0-9]+/gi, '-')}-${Date.now()}`;
 
-      const execution = await graphsService.executeTrigger(
-        graphId,
-        TRIGGER_NODE_ID,
-        {
-          messages: ['Run this command: sleep 60'],
-          async: true,
-          threadSubId,
-        },
-      );
+      const { execution, runningThread } =
+        await startShellExecution(threadSubId);
 
-      const runningThread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(execution.externalThreadId),
-        (t) => t.status === ThreadStatus.Running,
-        { timeout: 30_000, interval: 1_000 },
-      );
-
-      await threadsService.stopThread(runningThread.id);
+      await stop(runningThread.id, execution.externalThreadId);
 
       const stoppedThread = await waitForCondition(
         () => threadsService.getThreadById(runningThread.id),
@@ -304,6 +274,17 @@ describe('Thread Stop Execution Integration Tests', () => {
         { timeout: 60_000, interval: 1_000 },
       );
       expect(stoppedThread.status).toBe(ThreadStatus.Stopped);
+
+      const messages = await waitForAbortedShellResult(
+        execution.externalThreadId,
+      );
+      const shellResults = getShellResults(messages);
+      expect(
+        shellResults.some(
+          (result) =>
+            result.exitCode === 124 && result.stderr.includes('Aborted'),
+        ),
+      ).toBe(true);
     },
   );
 
@@ -369,9 +350,7 @@ describe('Thread Stop Execution Integration Tests', () => {
 
       const completedThread = await waitForCondition(
         () => threadsService.getThreadByExternalId(execution2.externalThreadId),
-        (t) =>
-          t.status === ThreadStatus.Done ||
-          t.status === ThreadStatus.NeedMoreInfo,
+        (t) => t.status === ThreadStatus.Done,
         { timeout: 60_000, interval: 1_000 },
       );
 
@@ -408,7 +387,11 @@ describe('Thread Stop Execution Integration Tests', () => {
       );
 
       const shellResults = getShellResults(messages);
-      expect(shellResults.some((r) => r.exitCode === 124)).toBe(true);
+      expect(
+        shellResults.some(
+          (r) => r.exitCode === 124 && r.stderr.includes('Aborted'),
+        ),
+      ).toBe(true);
       expect(
         shellResults.some(
           (r) => r.exitCode === 0 && r.stdout.includes(rerunToken),

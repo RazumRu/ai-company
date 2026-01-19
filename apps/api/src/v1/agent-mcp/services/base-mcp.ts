@@ -79,6 +79,10 @@ export abstract class BaseMcp<TConfig = unknown> {
     this.config = config;
     const mcpConfig = this.getMcpConfig(config);
 
+    if (mcpConfig.requiresDockerDaemon) {
+      await this.ensureDockerDaemonReady(runtime);
+    }
+
     // Initialize transport using DockerRuntime.execStream
     const transport = new DockerExecTransport(
       () => runtime,
@@ -100,6 +104,33 @@ export abstract class BaseMcp<TConfig = unknown> {
 
     await this.connectWithTimeout(client, transport, this.getInitTimeoutMs());
     return client;
+  }
+
+  private async ensureDockerDaemonReady(
+    runtime: BaseRuntime,
+    timeoutMs = 90_000,
+    intervalMs = 1000,
+  ): Promise<void> {
+    const start = Date.now();
+    for (;;) {
+      try {
+        const res = await runtime.exec({
+          cmd: 'docker info >/dev/null 2>&1',
+          timeoutMs: 30_000,
+          tailTimeoutMs: 10_000,
+        });
+        if (!res.fail) {
+          return;
+        }
+      } catch {
+        //
+      }
+
+      if (Date.now() - start >= timeoutMs) {
+        throw new Error('DOCKER_DAEMON_NOT_READY');
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
   }
 
   /**

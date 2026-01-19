@@ -120,11 +120,14 @@ export class ToolExecutorNode extends BaseNode<
           };
         } catch (e) {
           const err = e as Error;
+          const isAbortError = err?.name === 'AbortError';
 
-          this.logger?.error(err, `Error executing tool '${tc.name}'`, {
-            toolName: tc.name,
-            callId,
-          });
+          if (!isAbortError) {
+            this.logger?.error(err, `Error executing tool '${tc.name}'`, {
+              toolName: tc.name,
+              callId,
+            });
+          }
           return {
             toolName: tc.name,
             toolMessage: makeErrorMsg(
