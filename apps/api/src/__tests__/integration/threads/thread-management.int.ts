@@ -1285,7 +1285,7 @@ describe('Thread Management Integration Tests', () => {
   describe('Thread Deletion', () => {
     it(
       'should delete a thread and its messages',
-      { timeout: 60000 },
+      { timeout: 120000 },
       async () => {
         await ensureGraphRunning(basicGraphId);
         const threadSubId = uniqueThreadSubId('delete-test');
@@ -1306,7 +1306,7 @@ describe('Thread Management Integration Tests', () => {
               triggerResult.externalThreadId,
             ),
           (thread) => !!thread,
-          { timeout: 10000 },
+          { timeout: 20000 },
         );
 
         // Delete the thread

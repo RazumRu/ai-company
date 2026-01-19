@@ -2,7 +2,6 @@ import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { environment } from '../../../environments';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
@@ -24,6 +23,11 @@ const AGENT_NODE_ID = 'agent-1';
 const TRIGGER_NODE_ID = 'trigger-1';
 const DOCKER_PS_COMMAND =
   'Use the shell tool to execute this command: docker ps';
+const DOCKER_DIND_IMAGE = 'docker:24.0-dind';
+const DOCKER_DIND_INIT_SCRIPT = [
+  'dockerd --host=unix:///var/run/docker.sock > /var/log/dockerd.log 2>&1 &',
+  "sh -c 'i=0; while [ $i -lt 120 ]; do docker info >/dev/null 2>&1 && exit 0; i=$((i+1)); sleep 1; done; exit 1'",
+];
 
 describe('Docker Runtime Integration', () => {
   let app: INestApplication;
@@ -188,7 +192,9 @@ describe('Docker Runtime Integration', () => {
           template: 'docker-runtime',
           config: {
             runtimeType: 'Docker',
-            image: environment.dockerRuntimeImage,
+            image: DOCKER_DIND_IMAGE,
+            initScript: DOCKER_DIND_INIT_SCRIPT,
+            initScriptTimeoutMs: 300_000,
           },
         },
       ],
@@ -260,7 +266,7 @@ describe('Docker Runtime Integration', () => {
       );
       expect(runtimeNode).toBeDefined();
       expect(runtimeNode?.template).toBe('docker-runtime');
-      expect(runtimeNode?.config.image).toBe(environment.dockerRuntimeImage);
+      expect(runtimeNode?.config.image).toBe(DOCKER_DIND_IMAGE);
 
       const runResponse = await graphsService.run(graphId);
       expect(runResponse.status).toBe(GraphStatus.Running);

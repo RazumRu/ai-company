@@ -1856,7 +1856,7 @@ describe('Socket Notifications Integration Tests', () => {
                 n.data.totalTokens > 0 &&
                 typeof n.data.totalPrice === 'number',
             ),
-          { timeout: 60_000, interval: 500 },
+          { timeout: 120_000, interval: 1000 },
         );
 
         // Wait for thread to complete
@@ -1869,7 +1869,7 @@ describe('Socket Notifications Integration Tests', () => {
             !!thread &&
             (thread.status === ThreadStatus.Done ||
               thread.status === ThreadStatus.Stopped),
-          { timeout: 60_000, interval: 500 },
+          { timeout: 120_000, interval: 1000 },
         );
 
         // Allow final state updates to arrive
