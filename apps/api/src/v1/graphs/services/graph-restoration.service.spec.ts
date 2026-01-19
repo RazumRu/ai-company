@@ -5,8 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
-import { RuntimeType } from '../../runtime/runtime.types';
-import { RuntimeInstanceStatus } from '../../runtime/runtime.types';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
@@ -31,10 +29,7 @@ describe('GraphRestorationService', () => {
   let graphRegistry: any;
   let threadsDao: any;
   let graphCheckpointsDao: any;
-  let runtimeInstanceDao: any;
-  let runtimeProvider: any;
   let graphsService: any;
-  let logger: any;
 
   const mockGraphDaoLists = (
     _temporaryGraphs: GraphEntity[] = [],
@@ -42,24 +37,6 @@ describe('GraphRestorationService', () => {
   ) => {
     vi.mocked(graphDao.getAll).mockResolvedValueOnce(statusGraphs);
   };
-
-  const makeRuntimeInstance = (overrides?: Partial<Record<string, unknown>>) =>
-    ({
-      id: 'runtime-1',
-      graphId: mockGraph.id,
-      nodeId: 'runtime-1',
-      threadId: 'thread-1',
-      type: RuntimeType.Docker,
-      containerName: 'rt-1',
-      status: RuntimeInstanceStatus.Running,
-      config: null,
-      temporary: false,
-      lastUsedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      deletedAt: null,
-      ...overrides,
-    }) as any;
 
   const mockGraph: GraphEntity = {
     id: 'test-graph-id',
@@ -111,6 +88,7 @@ describe('GraphRestorationService', () => {
       updateById: vi.fn(),
       deleteById: vi.fn(),
       delete: vi.fn(),
+      hardDelete: vi.fn(),
     };
 
     const mockGraphCompiler = {
@@ -204,10 +182,7 @@ describe('GraphRestorationService', () => {
     graphRegistry = module.get(GraphRegistry);
     threadsDao = module.get(ThreadsDao);
     graphCheckpointsDao = module.get(GraphCheckpointsDao);
-    runtimeInstanceDao = module.get(RuntimeInstanceDao);
-    runtimeProvider = module.get(RuntimeProvider);
     graphsService = mockGraphsService;
-    logger = module.get(DefaultLogger);
 
     vi.mocked(graphCheckpointsDao.getAll).mockResolvedValue([]);
     vi.mocked(graphsService.run).mockReset();
@@ -232,7 +207,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -246,7 +221,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -264,7 +239,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -279,7 +254,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -319,7 +294,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -334,7 +309,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -348,7 +323,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -374,7 +349,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -385,7 +360,7 @@ describe('GraphRestorationService', () => {
       // Arrange
       const deletionError = new Error('Deletion failed');
 
-      vi.mocked(graphDao.delete).mockRejectedValueOnce(deletionError);
+      vi.mocked(graphDao.hardDelete).mockRejectedValueOnce(deletionError);
       vi.mocked(graphDao.getAll).mockResolvedValueOnce([]);
 
       // Act
@@ -401,7 +376,7 @@ describe('GraphRestorationService', () => {
       // Act
       await service.restoreRunningGraphs();
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -434,7 +409,7 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
@@ -463,7 +438,7 @@ describe('GraphRestorationService', () => {
       await service.restoreRunningGraphs();
 
       // Assert
-      expect(graphDao.delete).toHaveBeenCalledWith({ temporary: true });
+      expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });

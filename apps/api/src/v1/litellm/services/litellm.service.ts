@@ -1,7 +1,6 @@
 import { encodingForModel, getEncoding } from '@langchain/core/utils/tiktoken';
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
-import { ResponseUsage } from 'openai/resources/responses/responses';
 
 import { LiteLlmModelDto } from '../dto/models.dto';
 import { RequestTokenUsage, UsageMetadata } from '../litellm.types';

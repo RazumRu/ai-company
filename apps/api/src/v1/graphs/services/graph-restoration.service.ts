@@ -39,7 +39,7 @@ export class GraphRestorationService {
     this.logger.log('Starting graph restoration process...');
 
     // Destroy temporary graphs first (run destroy pipeline)
-    await this.graphDao.delete({ temporary: true });
+    await this.graphDao.hardDelete({ temporary: true });
 
     // Restore permanent graphs (both running and compiling)
     const graphsToRestore = await this.graphDao.getAll({

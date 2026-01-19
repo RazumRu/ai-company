@@ -7,7 +7,6 @@ vi.mock('node:crypto', () => ({
 }));
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
 import {
   FilesFindPathsTool,

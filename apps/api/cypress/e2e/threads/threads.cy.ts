@@ -730,7 +730,7 @@ describe('Threads E2E', () => {
             expect(stats.byNode['agent-1']?.totalTokens).to.be.greaterThan(0);
 
             // Verify aggregates
-            expect(stats.messagesAggregate.messageCount).to.be.greaterThan(0);
+            expect(stats.messagesAggregate.requestCount).to.be.greaterThan(0);
             expect(stats.messagesAggregate.totalTokens).to.be.greaterThan(0);
 
             // Cleanup
@@ -749,7 +749,7 @@ describe('Threads E2E', () => {
       });
     });
 
-    describe.skip('Thread Stop Execution', () => {
+    describe('Thread Stop Execution', () => {
       it('should stop a running thread by externalThreadId', () => {
         let testGraphId: string;
         let externalThreadId: string;

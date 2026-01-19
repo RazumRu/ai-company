@@ -85,7 +85,7 @@ set -e
 
 mkdir -p /var/lib/docker
 
-dockerd_args="--host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375"
+dockerd_args="--host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 --storage-driver=${DOCKER_STORAGE_DRIVER:-vfs}"
 
 if [ -n "${DOCKER_REGISTRY_MIRRORS:-}" ]; then
   for mirror in $(echo "$DOCKER_REGISTRY_MIRRORS" | tr ',' ' '); do

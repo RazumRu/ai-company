@@ -8,7 +8,6 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
-import type { ResponseUsage } from 'openai/resources/responses/responses';
 
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { UsageMetadata } from '../../../litellm/litellm.types';

@@ -192,7 +192,10 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
           return null;
         }
 
-        return `### ${tool.name}\n${tool.__instructions}`;
+        return this.wrapBlock(
+          `### ${tool.name}\n${tool.__instructions}`,
+          'tool_description',
+        );
       })
       .filter((block): block is string => Boolean(block));
 
@@ -210,7 +213,11 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       return undefined;
     }
 
-    return ['## Tool Group Instructions', ...instructions].join('\n\n');
+    const wrapped = instructions.map((block) =>
+      this.wrapBlock(block, 'tool_group_instructions'),
+    );
+
+    return ['## Tool Group Instructions', ...wrapped].join('\n\n');
   }
 
   private extractKnowledgeContent(node: CompiledGraphNode): string | undefined {
@@ -231,7 +238,9 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       return undefined;
     }
 
-    const blocks = knowledgeBlocks.map(({ content }) => `${content}`);
+    const blocks = knowledgeBlocks.map(({ content }) =>
+      this.wrapBlock(content, 'knowledge_data'),
+    );
 
     return ['## Knowledge', ...blocks].join('\n\n');
   }
@@ -242,7 +251,9 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     const blocks = mcpOutputs
       .map((mcp) => {
         const instructions = mcp.getDetailedInstructions?.(mcp.config as never);
-        return instructions || null;
+        return instructions
+          ? this.wrapBlock(instructions, 'mcp_instructions')
+          : null;
       })
       .filter((block): block is string => Boolean(block));
 
@@ -251,5 +262,9 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     }
 
     return ['## MCP Instructions', ...blocks].join('\n\n');
+  }
+
+  private wrapBlock(content: string, tag: string): string {
+    return [`<${tag}>`, content, `</${tag}>`].join('\n');
   }
 }

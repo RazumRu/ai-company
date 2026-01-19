@@ -1870,25 +1870,6 @@ export const ThreadMessageDtoSchema = {
         },
       ],
     },
-    tokenUsage: {
-      anyOf: [
-        {
-          type: 'object',
-          properties: {
-            totalTokens: {
-              type: 'number',
-            },
-            totalPrice: {
-              type: 'number',
-            },
-          },
-          required: ['totalTokens'],
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
     requestTokenUsage: {
       anyOf: [
         {
@@ -1964,6 +1945,9 @@ export const ThreadUsageStatisticsDtoSchema = {
         },
       },
       required: ['inputTokens', 'outputTokens', 'totalTokens'],
+    },
+    requests: {
+      type: 'number',
     },
     byNode: {
       type: 'object',
@@ -2043,11 +2027,11 @@ export const ThreadUsageStatisticsDtoSchema = {
         currentContext: {
           type: 'number',
         },
-        messageCount: {
+        requestCount: {
           type: 'number',
         },
       },
-      required: ['inputTokens', 'outputTokens', 'totalTokens', 'messageCount'],
+      required: ['inputTokens', 'outputTokens', 'totalTokens', 'requestCount'],
     },
     messagesAggregate: {
       type: 'object',
@@ -2073,15 +2057,16 @@ export const ThreadUsageStatisticsDtoSchema = {
         currentContext: {
           type: 'number',
         },
-        messageCount: {
+        requestCount: {
           type: 'number',
         },
       },
-      required: ['inputTokens', 'outputTokens', 'totalTokens', 'messageCount'],
+      required: ['inputTokens', 'outputTokens', 'totalTokens', 'requestCount'],
     },
   },
   required: [
     'total',
+    'requests',
     'byNode',
     'byTool',
     'toolsAggregate',

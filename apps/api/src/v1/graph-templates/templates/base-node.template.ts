@@ -8,7 +8,6 @@ import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { IBaseResourceOutput } from '../../graph-resources/graph-resources.types';
 import { GraphNodeInstanceHandle, NodeKind } from '../../graphs/graphs.types';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
 
 export type NodeConnection =

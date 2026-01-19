@@ -1118,19 +1118,6 @@ export type ThreadMessageDto = {
         };
       };
   /**
-   * Token usage & cost for this message
-   */
-  tokenUsage?: {
-    /**
-     * Total tokens for this message
-     */
-    totalTokens: number;
-    /**
-     * Total price for this message in USD
-     */
-    totalPrice?: number;
-  } | null;
-  /**
    * Full LLM request token usage & cost (entire request, not just this message)
    */
   requestTokenUsage?: {
@@ -1200,6 +1187,10 @@ export type ThreadUsageStatisticsDto = {
     currentContext?: number;
   };
   /**
+   * Total number of requests (messages with requestTokenUsage)
+   */
+  requests: number;
+  /**
    * Usage statistics breakdown by node ID
    */
   byNode: {
@@ -1256,7 +1247,7 @@ export type ThreadUsageStatisticsDto = {
     callCount: number;
   }>;
   /**
-   * Aggregated statistics for all tool messages
+   * Aggregated statistics for all tool message requests
    */
   toolsAggregate: {
     /**
@@ -1288,12 +1279,12 @@ export type ThreadUsageStatisticsDto = {
      */
     currentContext?: number;
     /**
-     * Number of messages
+     * Number of requests (messages with requestTokenUsage)
      */
-    messageCount: number;
+    requestCount: number;
   };
   /**
-   * Aggregated statistics for all non-tool messages (human, ai, system, reasoning)
+   * Aggregated statistics for all non-tool message requests (human, ai, system, reasoning)
    */
   messagesAggregate: {
     /**
@@ -1325,9 +1316,9 @@ export type ThreadUsageStatisticsDto = {
      */
     currentContext?: number;
     /**
-     * Number of messages
+     * Number of requests (messages with requestTokenUsage)
      */
-    messageCount: number;
+    requestCount: number;
   };
 };
 

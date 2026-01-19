@@ -752,7 +752,7 @@ export class AiSuggestionsService {
           return undefined;
         }
 
-        return trimmed;
+        return this.wrapBlock(trimmed, 'knowledge_data');
       })
       .filter((block): block is string => Boolean(block));
 
@@ -818,7 +818,7 @@ export class AiSuggestionsService {
           return undefined;
         }
 
-        return trimmed;
+        return this.wrapBlock(trimmed, 'mcp_instructions');
       })
       .filter((block): block is string => Boolean(block));
 
@@ -844,7 +844,12 @@ export class AiSuggestionsService {
             ];
 
             if (tool.instructions) {
-              details.push(`Instructions:\n${tool.instructions}`);
+              details.push(
+                `Instructions:\n${this.wrapBlock(
+                  tool.instructions,
+                  'tool_description',
+                )}`,
+              );
             }
 
             return details.join('\n');
@@ -906,6 +911,10 @@ export class AiSuggestionsService {
         : 'Current knowledge content: (empty)',
       'Provide the full updated knowledge content. Do not include a preamble.',
     ].join('\n\n');
+  }
+
+  private wrapBlock(content: string, tag: string): string {
+    return [`<${tag}>`, content, `</${tag}>`].join('\n');
   }
 
   private getKnowledgeContent(

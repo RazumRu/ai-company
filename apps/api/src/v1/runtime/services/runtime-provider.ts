@@ -147,7 +147,7 @@ export class RuntimeProvider {
     await Promise.all(
       instances.map(async (instance) => {
         await this.stopRuntime(instance);
-        await this.runtimeInstanceDao.deleteById(instance.id);
+        await this.runtimeInstanceDao.hardDeleteById(instance.id);
       }),
     );
 
@@ -166,7 +166,7 @@ export class RuntimeProvider {
     await Promise.all(
       instances.map(async (instance) => {
         await this.stopRuntime(instance);
-        await this.runtimeInstanceDao.deleteById(instance.id);
+        await this.runtimeInstanceDao.hardDeleteById(instance.id);
       }),
     );
 
@@ -185,11 +185,32 @@ export class RuntimeProvider {
     await Promise.all(
       instances.map(async (instance) => {
         await this.stopRuntime(instance);
-        await this.runtimeInstanceDao.deleteById(instance.id);
+        await this.runtimeInstanceDao.hardDeleteById(instance.id);
       }),
     );
 
     return instances.length;
+  }
+
+  async cleanupRuntimeInstance(params: {
+    graphId: string;
+    runtimeNodeId: string;
+    threadId: string;
+    type: RuntimeType;
+  }): Promise<void> {
+    const instance = await this.runtimeInstanceDao.getOne({
+      graphId: params.graphId,
+      nodeId: params.runtimeNodeId,
+      threadId: params.threadId,
+      type: params.type,
+    });
+
+    if (!instance) {
+      return;
+    }
+
+    await this.stopRuntime(instance);
+    await this.runtimeInstanceDao.hardDeleteById(instance.id);
   }
 
   private async ensureRuntimeForRecord<T extends BaseRuntime>(

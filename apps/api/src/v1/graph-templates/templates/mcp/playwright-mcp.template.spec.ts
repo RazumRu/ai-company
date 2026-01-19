@@ -20,7 +20,10 @@ describe('PlaywrightMcpTemplate', () => {
   let mockModuleRef: ModuleRef;
   let mockRuntime: BaseRuntime;
   let mockMcpInstance: PlaywrightMcp;
-  let mockRuntimeProvider: { provide: ReturnType<typeof vi.fn> };
+  let mockRuntimeProvider: {
+    provide: ReturnType<typeof vi.fn>;
+    cleanupRuntimeInstance: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     // Create mock runtime
@@ -71,6 +74,7 @@ describe('PlaywrightMcpTemplate', () => {
         runtime: mockRuntime,
         cached: false,
       }),
+      cleanupRuntimeInstance: vi.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -175,6 +179,12 @@ describe('PlaywrightMcpTemplate', () => {
         mockRuntime,
         metadata.nodeId,
       );
+      expect(mockRuntimeProvider.cleanupRuntimeInstance).toHaveBeenCalledWith({
+        graphId: metadata.graphId,
+        runtimeNodeId: 'runtime-1',
+        threadId: `mcp-init-${metadata.graphId}-runtime-1`,
+        type: RuntimeType.Docker,
+      });
     });
 
     it('should cleanup before setup during reconfiguration', async () => {

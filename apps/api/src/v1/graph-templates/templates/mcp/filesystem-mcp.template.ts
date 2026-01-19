@@ -107,18 +107,28 @@ export class FilesystemMcpTemplate extends McpNodeBaseTemplate<
         const runtimeConfig = runtimeNode.config as RuntimeStartParams & {
           runtimeType: RuntimeType;
         };
+        const mcpThreadId = `mcp-init-${graphId}-${runtimeNodeId}`;
         const runtime = await instance.provideTemporaryRuntime({
           runtimeProvider: this.runtimeProvider,
           graphId,
           runtimeNodeId,
           runtimeConfig,
         });
-        await instance.initialize(
-          config,
-          runtimeNode.instance,
-          runtime,
-          params.metadata.nodeId,
-        );
+        try {
+          await instance.initialize(
+            config,
+            runtimeNode.instance,
+            runtime,
+            params.metadata.nodeId,
+          );
+        } finally {
+          await this.runtimeProvider.cleanupRuntimeInstance({
+            graphId,
+            runtimeNodeId,
+            threadId: mcpThreadId,
+            type: runtimeConfig.runtimeType,
+          });
+        }
       },
       destroy: async (instance: FilesystemMcp) => {
         await instance.cleanup().catch(() => {});
