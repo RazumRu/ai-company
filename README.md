@@ -20,7 +20,7 @@ Build, run, and manage AI agent graphs. A graph is a set of nodes (triggers, age
 - **Real-time WebSocket notifications** — Subscribe to graph-specific or user-specific events via Socket.IO; broadcast agent state updates, thread changes, and graph lifecycle events
 - **Graph versioning with revisions** — Track schema changes as revisions with JSON patch diffs; apply/rollback revisions with automatic semver versioning and queue-based processing
 - **Threads with statuses** — Each graph execution runs in a thread with statuses (running, done, need_more_info, stopped); threads are persisted per graph with message history
-- **Runtime execution via Docker** — Isolated containers for tool execution with optional Docker-in-Docker support; configurable resource limits
+- **Runtime execution via Docker** — Isolated containers for tool execution with built-in Docker support; configurable resource limits
 - **REST API** — Create/update/run/destroy graphs, execute triggers, manage threads, and handle revisions
 - **Swagger/OpenAPI** — Full API documentation with E2E tests (Cypress) and unit tests (Vitest)
 - **Metrics, logging, and auth-ready HTTP server** — Prometheus metrics, structured logging, and configurable authentication
@@ -152,7 +152,7 @@ Swagger is available at `/swagger` (OpenAPI JSON at `/swagger-api-json`). Authen
 - `simple-agent` — LangGraph-based agent with summarization and tool execution; supports checkpoints/threads
 - `web-search-tool` — Tavily-powered web search tool
 - `shell-tool` — run shell commands inside a runtime
-- `docker-runtime` — isolated container to execute tools/commands (supports optional Docker-in-Docker)
+- `docker-runtime` — isolated container to execute tools/commands (Docker available by default)
 
 ### State, threads, and checkpoints
 - Threads are identified as `<graphId>:<uuid>` and persisted; checkpoints are per-node namespaces

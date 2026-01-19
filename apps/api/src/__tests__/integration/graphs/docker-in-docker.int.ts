@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { environment } from '../../../environments';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
@@ -24,7 +25,7 @@ const TRIGGER_NODE_ID = 'trigger-1';
 const DOCKER_PS_COMMAND =
   'Use the shell tool to execute this command: docker ps';
 
-describe('Docker-in-Docker Integration', () => {
+describe('Docker Runtime Integration', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
@@ -152,7 +153,7 @@ describe('Docker-in-Docker Integration', () => {
   const createDockerInDockerGraphData = (): CreateGraphDto => ({
     name: `Docker-in-Docker Test Graph ${Date.now()}`,
     description:
-      'Validates docker runtime graph that uses shell tool to reach a nested Docker daemon',
+      'Validates docker runtime graph that runs docker commands by default',
     temporary: true,
     schema: {
       nodes: [
@@ -187,11 +188,7 @@ describe('Docker-in-Docker Integration', () => {
           template: 'docker-runtime',
           config: {
             runtimeType: 'Docker',
-            image: 'node:24-alpine',
-            env: {},
-            initScript: 'apk add --no-cache docker-cli',
-            initScriptTimeoutMs: 60000,
-            enableDind: true,
+            image: environment.dockerRuntimeImage,
           },
         },
       ],
@@ -247,7 +244,7 @@ describe('Docker-in-Docker Integration', () => {
   }, 180000);
 
   it(
-    'runs docker runtime with DIND enabled and executes docker commands through the shell tool',
+    'runs docker runtime and executes docker commands through the shell tool',
     { timeout: 180000 },
     async () => {
       const graphData = createDockerInDockerGraphData();
@@ -263,8 +260,7 @@ describe('Docker-in-Docker Integration', () => {
       );
       expect(runtimeNode).toBeDefined();
       expect(runtimeNode?.template).toBe('docker-runtime');
-      expect(runtimeNode?.config.enableDind).toBe(true);
-      expect(runtimeNode?.config.initScript).toContain('docker-cli');
+      expect(runtimeNode?.config.image).toBe(environment.dockerRuntimeImage);
 
       const runResponse = await graphsService.run(graphId);
       expect(runResponse.status).toBe(GraphStatus.Running);
@@ -301,9 +297,15 @@ describe('Docker-in-Docker Integration', () => {
       const shellExecution = findShellExecution(messages);
       expect(shellExecution?.toolName).toBe('shell');
       expect(shellExecution?.toolCallId).toBeDefined();
-      expect(shellExecution?.result?.exitCode).toBe(0);
-
       const stdout = shellExecution?.result?.stdout ?? '';
+      const stderr = shellExecution?.result?.stderr ?? '';
+      const exitCode = shellExecution?.result?.exitCode ?? 1;
+      if (exitCode !== 0) {
+        throw new Error(
+          `docker ps failed (exit ${exitCode}). stdout: ${stdout} stderr: ${stderr}`,
+        );
+      }
+
       expect(stdout.length).toBeGreaterThan(0);
       expect(/CONTAINER|IMAGE/i.test(stdout)).toBe(true);
 

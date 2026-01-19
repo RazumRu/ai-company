@@ -49,7 +49,6 @@ export class DockerRuntime extends BaseRuntime {
   private docker: Docker;
   private image?: string;
   private container: Docker.Container | null = null;
-  private dindContainer: Docker.Container | null = null;
   private containerWorkdir: string | null = null;
   private sessions = new Map<string, ShellSession>();
 
@@ -531,97 +530,6 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
-  private async getContainerIP(
-    container: Docker.Container,
-    networkName: string,
-  ) {
-    const st = await container.inspect();
-    const net = st.NetworkSettings?.Networks?.[networkName];
-    const ip = net?.IPAddress;
-    if (ip) return ip;
-
-    const first = Object.values(st.NetworkSettings?.Networks || {})[0] as
-      | { IPAddress?: string }
-      | undefined;
-
-    if (first?.IPAddress) return first.IPAddress;
-
-    throw new Error('DIND_IP_NOT_FOUND');
-  }
-
-  private async ensureNetworkAlias(
-    container: Docker.Container,
-    networkName: string,
-    alias: string,
-  ): Promise<void> {
-    const inspect: unknown = await container.inspect();
-    const isRecord = (v: unknown): v is Record<string, unknown> =>
-      typeof v === 'object' && v !== null;
-
-    if (!isRecord(inspect)) {
-      throw new Error('Invalid container inspect result');
-    }
-
-    const containerId = inspect['Id'];
-    if (typeof containerId !== 'string' || !containerId) {
-      throw new Error('Container id not found');
-    }
-
-    const networkSettings = inspect['NetworkSettings'];
-    const networks =
-      isRecord(networkSettings) && isRecord(networkSettings['Networks'])
-        ? networkSettings['Networks']
-        : null;
-    const network =
-      networks && isRecord(networks[networkName])
-        ? networks[networkName]
-        : null;
-    const existingAliasesRaw = network ? network['Aliases'] : null;
-    const existingAliases = Array.isArray(existingAliasesRaw)
-      ? existingAliasesRaw.filter((v): v is string => typeof v === 'string')
-      : [];
-    if (existingAliases.includes(alias)) {
-      return;
-    }
-
-    const dockerNetwork = await this.getNetwork(networkName);
-    if (!dockerNetwork) {
-      throw new Error(`Network ${networkName} not found`);
-    }
-
-    if (network) {
-      await dockerNetwork.disconnect({ Container: containerId, Force: true });
-    }
-
-    await dockerNetwork.connect({
-      Container: containerId,
-      EndpointConfig: { Aliases: [alias] },
-    });
-  }
-
-  private async getNetwork(
-    networkName: string,
-  ): Promise<Docker.Network | null> {
-    try {
-      const networks = await this.docker.listNetworks({
-        filters: { name: [networkName] },
-      });
-
-      if (networks.length === 0) {
-        return null;
-      }
-
-      const networkId = networks[0]?.Id;
-      if (!networkId) {
-        return null;
-      }
-
-      return this.docker.getNetwork(networkId);
-    } catch {
-      return null;
-    }
-  }
-
   private async runInitScript(
     script?: string | string[],
     env?: Record<string, string>,
@@ -644,38 +552,27 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
-  private async waitForDindReady(
-    container: Docker.Container,
-    timeoutMs = 30_000,
-    intervalMs = 500,
+  private async ensureDockerDaemonReady(
+    timeoutMs = 90_000,
+    intervalMs = 1000,
   ): Promise<void> {
     const start = Date.now();
     for (;;) {
-      const st = await container.inspect();
-      if (st.State.Running) {
-        try {
-          const ex = await container.exec({
-            Cmd: ['sh', '-lc', 'docker info >/dev/null 2>&1'],
-            AttachStdout: true,
-            AttachStderr: true,
-            Tty: false,
-          });
-          const stream = await ex.start({ hijack: true, stdin: false });
-          await new Promise<void>((resolve, reject) => {
-            stream.on('end', resolve);
-            stream.on('close', resolve);
-            stream.on('error', reject);
-          });
-          const info = await ex.inspect();
-          if (info.ExitCode === 0) {
-            return;
-          }
-        } catch {
-          //
+      try {
+        const res = await this.exec({
+          cmd: 'docker info >/dev/null 2>&1',
+          timeoutMs: 30_000,
+          tailTimeoutMs: 10_000,
+        });
+        if (!res.fail) {
+          return;
         }
+      } catch {
+        //
       }
+
       if (Date.now() - start >= timeoutMs) {
-        throw new Error('DIND_NOT_READY');
+        throw new Error('DOCKER_DAEMON_NOT_READY');
       }
       await new Promise((r) => setTimeout(r, intervalMs));
     }
@@ -706,100 +603,6 @@ export class DockerRuntime extends BaseRuntime {
     }
   }
 
-  private async startDindContainer(
-    containerName: string,
-    network: string,
-    networkAlias: string,
-    labels?: Record<string, string>,
-    recreate?: boolean,
-    registryMirrors?: string[],
-    insecureRegistries?: string[],
-  ): Promise<Docker.Container> {
-    if (this.dindContainer && recreate) {
-      await DockerRuntime.stopByInstance(this.dindContainer);
-      this.dindContainer = null;
-    }
-
-    const dindImage = 'docker:27-dind';
-
-    const existingDind = await this.getByName(containerName);
-    if (existingDind && !recreate) {
-      const inspect = await existingDind.inspect();
-      if (!inspect.State.Running) {
-        await existingDind.start();
-      }
-      await this.ensureNetworkAlias(existingDind, network, networkAlias);
-      await this.waitForDindReady(existingDind);
-      return existingDind;
-    }
-
-    if (existingDind && recreate) {
-      await DockerRuntime.stopByInstance(existingDind);
-    }
-
-    await this.ensureImage(dindImage);
-
-    await this.ensureNetwork(network);
-
-    const dindLabels = {
-      ...labels,
-      'ai-company/dind': 'true',
-      'ai-company/dind-for': containerName,
-    };
-
-    const dockerdCmd = [
-      'dockerd',
-      '--host=tcp://0.0.0.0:2375',
-      '--host=unix:///var/run/docker.sock',
-    ];
-
-    // Add registry mirrors if provided
-    if (registryMirrors && registryMirrors.length > 0) {
-      for (const mirror of registryMirrors) {
-        dockerdCmd.push(`--registry-mirror=${mirror}`);
-      }
-    }
-
-    // Add insecure registries if provided
-    if (insecureRegistries && insecureRegistries.length > 0) {
-      for (const registry of insecureRegistries) {
-        dockerdCmd.push(`--insecure-registry=${registry}`);
-      }
-    }
-
-    const dindContainer = await this.createContainerWithRetry(
-      containerName,
-      async () => {
-        return await this.docker.createContainer({
-          Image: dindImage,
-          name: containerName,
-          Labels: dindLabels,
-          Env: ['DOCKER_TLS_CERTDIR='],
-          Cmd: dockerdCmd,
-          NetworkingConfig: {
-            EndpointsConfig: {
-              [network]: {
-                Aliases: [networkAlias],
-              },
-            },
-          },
-          HostConfig: {
-            Privileged: true,
-            NetworkMode: network,
-          },
-          Tty: false,
-        });
-      },
-    );
-
-    await dindContainer.start();
-
-    await this.ensureNetworkAlias(dindContainer, network, networkAlias);
-    await this.waitForDindReady(dindContainer);
-
-    return dindContainer;
-  }
-
   async start(params?: RuntimeStartParams): Promise<void> {
     if (this.container) {
       return;
@@ -827,17 +630,17 @@ export class DockerRuntime extends BaseRuntime {
       this.container = existingContainer;
       this.containerWorkdir = this.getWorkdir(params?.workdir);
 
-      // Restore DinD container reference if enabled
-      if (params?.enableDind) {
-        const dindContainerName = `dind-${containerName}`;
-        const existingDind = await this.getByName(dindContainerName);
-        if (existingDind) {
-          const dindInspect = await existingDind.inspect();
-          if (!dindInspect.State.Running) {
-            await existingDind.start();
-          }
-          this.dindContainer = existingDind;
+      try {
+        await this.ensureDockerDaemonReady();
+      } catch (error) {
+        if (!params?.recreate) {
+          await DockerRuntime.stopByInstance(existingContainer);
+          this.container = null;
+          this.containerWorkdir = null;
+          await this.start({ ...params, recreate: true });
+          return;
         }
+        throw error;
       }
 
       this.emit({
@@ -860,25 +663,24 @@ export class DockerRuntime extends BaseRuntime {
 
     let containerEnv = params?.env || {};
 
-    if (params?.enableDind) {
-      const dindContainerName = `dind-${containerName}`;
-      const dindNetworkAlias = `dind-host-${containerName}`;
-
-      this.dindContainer = await this.startDindContainer(
-        dindContainerName,
-        networkName,
-        dindNetworkAlias,
-        params?.labels,
-        params?.recreate,
-        params?.registryMirrors,
-        params?.insecureRegistries,
-      );
-
-      const dindIP = await this.getContainerIP(this.dindContainer, networkName);
-
+    if (params?.registryMirrors?.length) {
       containerEnv = {
         ...containerEnv,
-        DOCKER_HOST: `tcp://${dindIP}:2375`,
+        DOCKER_REGISTRY_MIRRORS: params.registryMirrors.join(','),
+      };
+    }
+
+    if (params?.insecureRegistries?.length) {
+      containerEnv = {
+        ...containerEnv,
+        DOCKER_INSECURE_REGISTRIES: params.insecureRegistries.join(','),
+      };
+    }
+
+    if (!('DOCKER_HOST' in containerEnv)) {
+      containerEnv = {
+        ...containerEnv,
+        DOCKER_HOST: 'unix:///var/run/docker.sock',
       };
     }
 
@@ -887,6 +689,7 @@ export class DockerRuntime extends BaseRuntime {
     const hostConfig: Docker.HostConfig = {
       NetworkMode: networkName,
       AutoRemove: true,
+      Privileged: true,
     };
 
     try {
@@ -914,6 +717,8 @@ export class DockerRuntime extends BaseRuntime {
       this.container = container;
       this.containerWorkdir = this.getWorkdir(params?.workdir);
 
+      await this.ensureDockerDaemonReady();
+
       if (params?.initScript) {
         await this.runInitScript(
           params.initScript,
@@ -939,11 +744,6 @@ export class DockerRuntime extends BaseRuntime {
       this.container = null;
       this.containerWorkdir = null;
       this.sessions.clear();
-
-      if (this.dindContainer) {
-        await DockerRuntime.stopByInstance(this.dindContainer);
-        this.dindContainer = null;
-      }
 
       this.emit({ type: 'stop', data: {} });
     } catch (error) {

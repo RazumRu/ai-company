@@ -205,14 +205,12 @@ export class RuntimeProvider {
       throw new Error(`Runtime ${record.type} is not supported`);
     }
 
-    const registryMirrors =
-      record.config.enableDind && environment.dockerRegistryMirror
-        ? [environment.dockerRegistryMirror as string]
-        : undefined;
-    const insecureRegistries =
-      record.config.enableDind && environment.dockerInsecureRegistry
-        ? [environment.dockerInsecureRegistry as string]
-        : undefined;
+    const registryMirrors = environment.dockerRegistryMirror
+      ? [environment.dockerRegistryMirror as string]
+      : undefined;
+    const insecureRegistries = environment.dockerInsecureRegistry
+      ? [environment.dockerInsecureRegistry as string]
+      : undefined;
     const baseLabels = record.config.labels ?? {};
     const labels: Record<string, string> = {
       ...baseLabels,

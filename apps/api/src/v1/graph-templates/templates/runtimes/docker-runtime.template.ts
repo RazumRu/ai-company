@@ -40,12 +40,6 @@ export const DockerRuntimeTemplateSchema = z
       .optional()
       .default(600_000)
       .describe(`Timeout in milliseconds for initialization script execution`),
-    enableDind: z
-      .boolean()
-      .optional()
-      .describe(
-        'Enable Docker-in-Docker by creating a separate DIND container for this runtime',
-      ),
   })
   .strip();
 

@@ -9,7 +9,6 @@ export interface RuntimeStartParams {
   initScriptTimeoutMs?: number;
   containerName?: string;
   network?: string;
-  enableDind?: boolean;
   recreate?: boolean;
   registryMirrors?: string[];
   insecureRegistries?: string[];

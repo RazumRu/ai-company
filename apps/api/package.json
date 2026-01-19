@@ -14,7 +14,7 @@
     "build:runtime": "podman build -f runtime.Dockerfile -t ai-company-runtime:latest .",
     "prebuild": "rm -rf ./dist || true",
     "test": "vitest run --passWithNoTests",
-    "test:unit": "vitest run --passWithNoTests --exclude='src/**/*.int.ts'",
+    "test:unit": "vitest run --passWithNoTests --exclude='src/**/*.int.ts' --fileParallelism",
     "test:integration": "vitest run --passWithNoTests --exclude='src/**/*.spec.ts'",
     "test:cov": "vitest run --coverage --passWithNoTests",
     "test:e2e:generate-api": "cy-generate-api http://localhost:5000/swagger-api-json cypress/api-definitions && pnpm run lint:fix",

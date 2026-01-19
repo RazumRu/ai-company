@@ -1,4 +1,3 @@
-import type { BaseMessage } from '@langchain/core/messages';
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 import { isEqual } from 'lodash';
@@ -19,7 +18,6 @@ import type { IGraphNodeUpdateData } from '../../notifications/notifications.typ
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { serializeBaseMessages } from '../../notifications/notifications.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
-import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { ThreadStatus } from '../../threads/threads.types';
 import {
   CompiledGraphNode,
@@ -113,12 +111,6 @@ export class GraphStateManager {
     state.error = null;
 
     switch (node.type) {
-      case NodeKind.Runtime:
-        this.attachRuntimeListeners(
-          state,
-          node as CompiledGraphNode<BaseRuntime>,
-        );
-        break;
       case NodeKind.SimpleAgent:
         this.attachAgentListeners(
           state,
@@ -258,71 +250,6 @@ export class GraphStateManager {
     state.lastEmitted.base = undefined;
     state.baseStatus = GraphNodeStatus.Stopped;
     state.error = null;
-  }
-
-  private attachRuntimeListeners(
-    state: NodeState,
-    node: CompiledGraphNode<BaseRuntime>,
-  ) {
-    const runtime = node.instance;
-    const unsub = runtime.subscribe(async (event) => {
-      if (event.type === 'start') {
-        state.baseStatus = GraphNodeStatus.Idle;
-        state.error = null;
-        this.emitNodeUpdate(state);
-        return;
-      }
-
-      if (event.type === 'stop') {
-        state.activeExecutions.clear();
-        state.baseStatus = GraphNodeStatus.Stopped;
-        if (event.data.error) {
-          state.error = this.toErrorMessage(event.data.error);
-        }
-        this.emitNodeUpdate(state);
-        return;
-      }
-
-      if (event.type === 'execStart') {
-        const { execId, params } = event.data;
-        const meta = params.metadata;
-
-        state.activeExecutions.set(execId, {
-          threadId: meta?.threadId,
-          runId: meta?.runId,
-        });
-
-        // Store threadId -> runId mapping
-        if (meta?.threadId && meta?.runId) {
-          state.threadToRunMap.set(meta.threadId, meta.runId);
-        }
-
-        state.baseStatus = GraphNodeStatus.Running;
-
-        this.emitNodeUpdate(state);
-        return;
-      }
-
-      if (event.type === 'execEnd') {
-        const { execId, error } = event.data;
-        const context = state.activeExecutions.get(execId);
-
-        state.error = error ? this.toErrorMessage(error) : null;
-        state.activeExecutions.delete(execId);
-
-        if (state.activeExecutions.size === 0) {
-          state.baseStatus = GraphNodeStatus.Idle;
-        }
-
-        if (context) {
-          this.emitNodeUpdate(state, context.threadId, context.runId);
-        } else {
-          this.emitNodeUpdate(state);
-        }
-      }
-    });
-
-    this.addUnsubscriber(state.nodeId, unsub);
   }
 
   private attachAgentListeners(
@@ -629,7 +556,12 @@ export class GraphStateManager {
     }
 
     if (node.type === NodeKind.Runtime) {
-      return (node.instance as BaseRuntime).getGraphNodeMetadata(meta);
+      const runtimeInstance = node.instance as {
+        getGraphNodeMetadata?: (
+          meta: GraphExecutionMetadata,
+        ) => Record<string, unknown> | undefined;
+      };
+      return runtimeInstance.getGraphNodeMetadata?.(meta);
     }
 
     if (node.type === NodeKind.Trigger) {

@@ -121,7 +121,6 @@ export class RuntimeThreadProvider {
     return dedent`
       Runtime type: ${this.params.type}
       ${runtimeImage ? `Runtime image: ${runtimeImage}` : ''}
-      DIND available: ${this.params.runtimeStartParams.enableDind ? 'yes' : 'no'}
     `;
   }
 }

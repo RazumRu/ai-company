@@ -138,128 +138,6 @@ describe('GraphStateManager', () => {
     manager.setGraphId('graph-1');
   });
 
-  describe('Runtime events', () => {
-    it('should track runtime exec start and end events', async () => {
-      const runtime = new TestRuntime();
-      const node: CompiledGraphNode<TestRuntime> = {
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        config: {},
-        instance: runtime,
-        handle: makeHandle(runtime),
-      };
-
-      manager.registerNode('runtime-1');
-      manager.attachGraphNode('runtime-1', node);
-
-      await runtime.exec({ cmd: 'test', metadata: { threadId: 't1' } });
-
-      expect(notifications.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.GraphNodeUpdate,
-          data: expect.objectContaining({ status: GraphNodeStatus.Running }),
-        }),
-      );
-    });
-
-    it('should track per-thread status', async () => {
-      const runtime = new TestRuntime();
-      const node: CompiledGraphNode<TestRuntime> = {
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        config: {},
-        instance: runtime,
-        handle: makeHandle(runtime),
-      };
-
-      manager.registerNode('runtime-1');
-      manager.attachGraphNode('runtime-1', node);
-
-      const execPromise = runtime.exec({
-        cmd: 'test',
-        metadata: { threadId: 'thread-1' },
-      });
-
-      expect(manager.getNodeThreadStatus('runtime-1', 'thread-1')).toBe(
-        GraphNodeStatus.Running,
-      );
-
-      await execPromise;
-
-      expect(
-        manager.getNodeThreadStatus('runtime-1', 'thread-1'),
-      ).toBeUndefined();
-    });
-
-    it('should track per-run status', async () => {
-      const runtime = new TestRuntime();
-      const node: CompiledGraphNode<TestRuntime> = {
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        config: {},
-        instance: runtime,
-        handle: makeHandle(runtime),
-      };
-
-      manager.registerNode('runtime-1');
-      manager.attachGraphNode('runtime-1', node);
-
-      const execPromise = runtime.exec({
-        cmd: 'test',
-        metadata: { runId: 'run-1' },
-      });
-
-      expect(manager.getNodeRunStatus('runtime-1', 'run-1')).toBe(
-        GraphNodeStatus.Running,
-      );
-
-      await execPromise;
-
-      expect(manager.getNodeRunStatus('runtime-1', 'run-1')).toBeUndefined();
-    });
-
-    it('should handle runtime start event', async () => {
-      const runtime = new TestRuntime();
-      const node: CompiledGraphNode<TestRuntime> = {
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        config: {},
-        instance: runtime,
-        handle: makeHandle(runtime),
-      };
-
-      manager.registerNode('runtime-1');
-      manager.attachGraphNode('runtime-1', node);
-
-      await runtime.start();
-
-      expect(manager.getNodeStatus('runtime-1')).toBe(GraphNodeStatus.Idle);
-    });
-
-    it('should handle runtime stop event', async () => {
-      const runtime = new TestRuntime();
-      const node: CompiledGraphNode<TestRuntime> = {
-        id: 'runtime-1',
-        type: NodeKind.Runtime,
-        template: 'docker-runtime',
-        config: {},
-        instance: runtime,
-        handle: makeHandle(runtime),
-      };
-
-      manager.registerNode('runtime-1');
-      manager.attachGraphNode('runtime-1', node);
-
-      await runtime.stop();
-
-      expect(manager.getNodeStatus('runtime-1')).toBe(GraphNodeStatus.Stopped);
-    });
-  });
-
   describe('Additional metadata', () => {
     it('should include additional node metadata when available', () => {
       const runtime = new TestRuntime();
@@ -700,8 +578,6 @@ describe('GraphStateManager', () => {
   describe('Cleanup', () => {
     it('should handle destroy cleanup', async () => {
       const runtime = new TestRuntime();
-      const unsub = vi.fn();
-      vi.spyOn(runtime, 'subscribe').mockReturnValue(unsub);
 
       const node: CompiledGraphNode<TestRuntime> = {
         id: 'runtime-1',
@@ -717,7 +593,6 @@ describe('GraphStateManager', () => {
 
       manager.destroy();
 
-      expect(unsub).toHaveBeenCalled();
       expect(manager.getSnapshots()).toHaveLength(0);
     });
   });

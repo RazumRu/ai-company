@@ -8,6 +8,7 @@ ENV CLICOLOR_FORCE=0
 ENV TERM=dumb
 ENV CI=true
 ENV NODE_NO_WARNINGS=1
+ENV DOCKER_TLS_CERTDIR=
 
 WORKDIR /app
 
@@ -70,9 +71,50 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o 
   && apt-get update -y \
   && apt-get install -y --no-install-recommends \
     gh \
+    docker-ce \
     docker-ce-cli \
     docker-buildx-plugin \
     docker-compose-plugin \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
+
+RUN cat <<'EOF' > /usr/local/bin/runtime-entrypoint.sh
+#!/bin/sh
+set -e
+
+mkdir -p /var/lib/docker
+
+dockerd_args="--host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375"
+
+if [ -n "${DOCKER_REGISTRY_MIRRORS:-}" ]; then
+  for mirror in $(echo "$DOCKER_REGISTRY_MIRRORS" | tr ',' ' '); do
+    dockerd_args="$dockerd_args --registry-mirror=$mirror"
+  done
+fi
+
+if [ -n "${DOCKER_INSECURE_REGISTRIES:-}" ]; then
+  for registry in $(echo "$DOCKER_INSECURE_REGISTRIES" | tr ',' ' '); do
+    dockerd_args="$dockerd_args --insecure-registry=$registry"
+  done
+fi
+
+dockerd $dockerd_args >/var/log/dockerd.log 2>&1 &
+
+tries=0
+until docker info >/dev/null 2>&1; do
+  tries=$((tries + 1))
+  if [ "$tries" -ge 180 ]; then
+    echo "dockerd failed to start" >&2
+    tail -n 200 /var/log/dockerd.log >&2 || true
+    exit 1
+  fi
+  sleep 0.5
+done
+
+exec "$@"
+EOF
+
+RUN chmod +x /usr/local/bin/runtime-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/runtime-entrypoint.sh"]

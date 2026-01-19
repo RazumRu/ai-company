@@ -42,7 +42,7 @@
     "build": "tsc -p tsconfig.build.json",
     "prebuild": "rm -rf ./dist || true",
     "test": "vitest run --passWithNoTests",
-    "test:unit": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests --fileParallelism",
     "test:cov": "vitest run --coverage --passWithNoTests",
     "migration:create": "node src/scripts/migration create",
     "migration:generate": "node src/scripts/migration generate",
