@@ -15,6 +15,35 @@ export type LiteLlmModelDto = {
   ownedBy: string;
 };
 
+export type KnowledgeDocInputDto = {
+  /**
+   * Raw knowledge document content
+   */
+  content: string;
+};
+
+export type KnowledgeDocDto = {
+  id: string;
+  content: string;
+  title: string;
+  summary?: string | null;
+  tags: Array<string>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeChunkDto = {
+  id: string;
+  docId: string;
+  chunkIndex: number;
+  label?: string | null;
+  keywords?: Array<string> | null;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+  createdAt: string;
+};
+
 export type SuggestAgentInstructionsDto = {
   /**
    * User request describing how to adjust agent instructions
@@ -57,28 +86,6 @@ export type ThreadAnalysisResponseDto = {
    * Identifier of the LLM conversation used for the analysis
    */
   conversationId: string;
-};
-
-export type SuggestKnowledgeContentDto = {
-  /**
-   * User request describing the knowledge content to generate
-   */
-  userRequest: string;
-  /**
-   * Optional thread id to continue a previous knowledge suggestion conversation
-   */
-  threadId?: string;
-};
-
-export type SuggestKnowledgeContentResponseDto = {
-  /**
-   * Generated knowledge content
-   */
-  content: string;
-  /**
-   * Thread id used for this suggestion session
-   */
-  threadId: string;
 };
 
 export type CreateGraphDto = {
@@ -291,14 +298,7 @@ export type GraphNodeWithStatusDto = {
   /**
    * Node kind
    */
-  type:
-    | 'runtime'
-    | 'tool'
-    | 'simpleAgent'
-    | 'trigger'
-    | 'resource'
-    | 'knowledge'
-    | 'mcp';
+  type: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource' | 'mcp';
   /**
    * Current node status
    */
@@ -821,14 +821,7 @@ export type TemplateDto = {
   id: string;
   name: string;
   description: string;
-  kind:
-    | 'runtime'
-    | 'tool'
-    | 'simpleAgent'
-    | 'trigger'
-    | 'resource'
-    | 'knowledge'
-    | 'mcp';
+  kind: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource' | 'mcp';
   schema: {
     [key: string]: unknown;
   };
@@ -841,7 +834,6 @@ export type TemplateDto = {
           | 'simpleAgent'
           | 'trigger'
           | 'resource'
-          | 'knowledge'
           | 'mcp';
         required?: boolean;
         multiple: boolean;
@@ -862,7 +854,6 @@ export type TemplateDto = {
           | 'simpleAgent'
           | 'trigger'
           | 'resource'
-          | 'knowledge'
           | 'mcp';
         required?: boolean;
         multiple: boolean;
@@ -1335,6 +1326,102 @@ export type ListModelsResponses = {
 
 export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
 
+export type ListDocsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Filter by tags (match any)
+     */
+    tags?: Array<string>;
+    /**
+     * Search in title/summary/content
+     */
+    search?: string;
+    limit?: number;
+    offset?: number;
+  };
+  url: '/api/v1/knowledge-docs';
+};
+
+export type ListDocsResponses = {
+  200: Array<KnowledgeDocDto>;
+};
+
+export type ListDocsResponse = ListDocsResponses[keyof ListDocsResponses];
+
+export type CreateDocData = {
+  body: KnowledgeDocInputDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/knowledge-docs';
+};
+
+export type CreateDocResponses = {
+  201: KnowledgeDocDto;
+};
+
+export type CreateDocResponse = CreateDocResponses[keyof CreateDocResponses];
+
+export type DeleteDocData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/knowledge-docs/{id}';
+};
+
+export type DeleteDocResponses = {
+  200: unknown;
+};
+
+export type GetDocData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/knowledge-docs/{id}';
+};
+
+export type GetDocResponses = {
+  200: KnowledgeDocDto;
+};
+
+export type GetDocResponse = GetDocResponses[keyof GetDocResponses];
+
+export type UpdateDocData = {
+  body: KnowledgeDocInputDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/knowledge-docs/{id}';
+};
+
+export type UpdateDocResponses = {
+  200: KnowledgeDocDto;
+};
+
+export type UpdateDocResponse = UpdateDocResponses[keyof UpdateDocResponses];
+
+export type GetDocChunksData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/knowledge-docs/{id}/chunks';
+};
+
+export type GetDocChunksResponses = {
+  200: Array<KnowledgeChunkDto>;
+};
+
+export type GetDocChunksResponse =
+  GetDocChunksResponses[keyof GetDocChunksResponses];
+
 export type SuggestAgentInstructionsData = {
   body: SuggestAgentInstructionsDto;
   path: {
@@ -1367,23 +1454,6 @@ export type AnalyzeThreadResponses = {
 
 export type AnalyzeThreadResponse =
   AnalyzeThreadResponses[keyof AnalyzeThreadResponses];
-
-export type SuggestKnowledgeContentData = {
-  body: SuggestKnowledgeContentDto;
-  path: {
-    graphId: string;
-    nodeId: string;
-  };
-  query?: never;
-  url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-knowledge';
-};
-
-export type SuggestKnowledgeContentResponses = {
-  201: SuggestKnowledgeContentResponseDto;
-};
-
-export type SuggestKnowledgeContentResponse =
-  SuggestKnowledgeContentResponses[keyof SuggestKnowledgeContentResponses];
 
 export type GetAllGraphsData = {
   body?: never;

@@ -13,6 +13,7 @@ export type BaseAgentConfigurable = {
   source?: string;
   async?: boolean;
   run_id?: string;
+  graph_created_by?: string;
   [key: string]: unknown;
 };
 

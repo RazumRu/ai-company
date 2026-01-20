@@ -17,14 +17,9 @@ describe(MetricsService, () => {
     });
 
     it("shouldn't set metrics with incorrect label", () => {
-      try {
-        service.setGauge('requests', 10, { incorrect: 'incorrect' });
-      } catch (e) {
-        console.error(e);
-        return;
-      }
-
-      throw Error();
+      expect(() =>
+        service.setGauge('requests', 10, { incorrect: 'incorrect' }),
+      ).toThrow();
     });
 
     it('should set metrics with incorrect index', () => {
@@ -36,14 +31,9 @@ describe(MetricsService, () => {
     });
 
     it('should add metrics with incorrect label', () => {
-      try {
-        service.incGauge('requests', 2, { incorrect: 'incorrect' });
-      } catch (e) {
-        console.error(e);
-        return;
-      }
-
-      throw Error();
+      expect(() =>
+        service.incGauge('requests', 2, { incorrect: 'incorrect' }),
+      ).toThrow();
     });
 
     it('should add metrics with incorrect index', () => {
@@ -82,14 +72,9 @@ describe(MetricsService, () => {
     });
 
     it("shouldn't set metrics with incorrect label", () => {
-      try {
-        service.incCounter('requests_counter', 10, { incorrect: 'incorrect' });
-      } catch (e) {
-        console.error(e);
-        return;
-      }
-
-      throw Error();
+      expect(() =>
+        service.incCounter('requests_counter', 10, { incorrect: 'incorrect' }),
+      ).toThrow();
     });
 
     it('should set metrics with incorrect index', () => {
@@ -101,14 +86,9 @@ describe(MetricsService, () => {
     });
 
     it('should add metrics with incorrect label', () => {
-      try {
-        service.incCounter('requests_counter', 2, { incorrect: 'incorrect' });
-      } catch (e) {
-        console.error(e);
-        return;
-      }
-
-      throw Error();
+      expect(() =>
+        service.incCounter('requests_counter', 2, { incorrect: 'incorrect' }),
+      ).toThrow();
     });
 
     it('should add metrics with incorrect index', () => {
@@ -152,16 +132,11 @@ describe(MetricsService, () => {
     });
 
     it("shouldn't set metrics with incorrect label", () => {
-      try {
+      expect(() =>
         service.observeHistogram('requests_time', 10, {
           incorrect: 'incorrect',
-        });
-      } catch (e) {
-        console.error(e);
-        return;
-      }
-
-      throw Error();
+        }),
+      ).toThrow();
     });
 
     it('should set metrics with incorrect index', () => {

@@ -728,6 +728,7 @@ export class GraphRevisionService {
       name,
       version: revision.toVersion,
       temporary,
+      graph_created_by: graph.createdBy,
     };
 
     const oldNodeIds = new Set(compiledGraph.nodes.keys());
@@ -852,6 +853,7 @@ export class GraphRevisionService {
       name: string;
       version: string;
       temporary: boolean;
+      graph_created_by: string;
     },
     edges: GraphEdgeSchemaType[],
   ): Promise<void> {

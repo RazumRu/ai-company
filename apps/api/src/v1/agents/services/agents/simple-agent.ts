@@ -26,6 +26,7 @@ import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
+import { LlmModelsService } from '../../../litellm/services/llm-models.service';
 import {
   BaseAgentState,
   BaseAgentStateChange,
@@ -78,7 +79,6 @@ export const SimpleAgentSchema = z.object({
     .meta({ 'x-ui:ai-suggestions': true }),
   invokeModelName: z
     .string()
-    .default('gpt-5.1')
     .describe('Chat model used for the main reasoning/tool-call step.')
     .meta({ 'x-ui:show-on-node': true })
     .meta({ 'x-ui:label': 'Model' })
@@ -139,6 +139,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     private readonly checkpointer: PgCheckpointSaver,
     private readonly litellmService: LitellmService,
     private readonly logger: DefaultLogger,
+    private readonly llmModelsService: LlmModelsService,
   ) {
     super();
   }
@@ -261,7 +262,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       // ---- summarize ----
       const summarizeNode = new SummarizeNode(
         this.litellmService,
-        this.buildLLM('gpt-5-mini'),
+        this.buildLLM(this.llmModelsService.getSummarizeEditModel()),
         {
           maxTokens: config.summarizeMaxTokens,
           keepTokens: config.summarizeKeepTokens,

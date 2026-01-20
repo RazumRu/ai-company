@@ -2,7 +2,6 @@ import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
-import { AgentKnowledgeModule } from '../agent-knowledge/agent-knowledge.module';
 import { AgentMcpModule } from '../agent-mcp/agent-mcp.module';
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
 import { AgentTriggersModule } from '../agent-triggers/agent-triggers.module';
@@ -16,7 +15,6 @@ import { TemplateRegistry } from './services/template-registry';
 import { TemplatesService } from './services/templates.service';
 import { SimpleAgentTemplate } from './templates/agents/simple-agent.template';
 import { NodeBaseTemplate } from './templates/base-node.template';
-import { SimpleKnowledgeTemplate } from './templates/knowledge/simple-knowledge.template';
 import { FilesystemMcpTemplate } from './templates/mcp/filesystem-mcp.template';
 import { JiraMcpTemplate } from './templates/mcp/jira-mcp.template';
 import { PlaywrightMcpTemplate } from './templates/mcp/playwright-mcp.template';
@@ -25,6 +23,7 @@ import { DockerRuntimeTemplate } from './templates/runtimes/docker-runtime.templ
 import { AgentCommunicationToolTemplate } from './templates/tools/agent-communication-tool.template';
 import { FilesToolTemplate } from './templates/tools/files-tool.template';
 import { GhToolTemplate } from './templates/tools/gh-tool.template';
+import { KnowledgeToolsTemplate } from './templates/tools/knowledge-tools.template';
 import { ShellToolTemplate } from './templates/tools/shell-tool.template';
 import { WebSearchToolTemplate } from './templates/tools/web-search-tool.template';
 import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.template';
@@ -33,7 +32,6 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
   imports: [
     RuntimeModule,
     AgentToolsModule,
-    AgentKnowledgeModule,
     AgentMcpModule,
     AgentsModule,
     AgentTriggersModule,
@@ -50,8 +48,8 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     DockerRuntimeTemplate,
     ShellToolTemplate,
     WebSearchToolTemplate,
+    KnowledgeToolsTemplate,
     SimpleAgentTemplate,
-    SimpleKnowledgeTemplate,
     ManualTriggerTemplate,
     GhToolTemplate,
     FilesToolTemplate,

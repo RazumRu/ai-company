@@ -3,8 +3,6 @@ import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
-import { IBaseKnowledgeOutput } from '../../../agent-knowledge/agent-knowledge.types';
-import { SimpleKnowledge } from '../../../agent-knowledge/services/simple-knowledge';
 import type { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import {
@@ -12,7 +10,7 @@ import {
   SimpleAgentSchema,
 } from '../../../agents/services/agents/simple-agent';
 import type { GraphNode } from '../../../graphs/graphs.types';
-import { CompiledGraphNode, NodeKind } from '../../../graphs/graphs.types';
+import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import {
@@ -59,11 +57,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     },
     {
       type: 'kind',
-      value: NodeKind.Knowledge,
-      multiple: true,
-    },
-    {
-      type: 'kind',
       value: NodeKind.Mcp,
       multiple: true,
     },
@@ -91,7 +84,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         // Collect all tools from connected nodes
         const allTools: BuiltAgentTool[] = [];
         const toolGroupInstructions: string[] = [];
-        const knowledgeBlocks: { id: string; content: string }[] = [];
         const mcpOutputs: BaseMcp<unknown>[] = [];
 
         for (const nodeId of outputNodeIds) {
@@ -101,7 +93,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
             | ToolNodeOutput
             | DynamicStructuredTool
             | DynamicStructuredTool[]
-            | SimpleKnowledge
             | BaseMcp<unknown>
           >(graphId, nodeId);
 
@@ -127,14 +118,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
             continue;
           }
 
-          if (node.type === NodeKind.Knowledge) {
-            const content = this.extractKnowledgeContent(node);
-            if (content) {
-              knowledgeBlocks.push({ id: nodeId, content });
-            }
-            continue;
-          }
-
           if (node.type === NodeKind.Mcp) {
             const mcpService = inst as BaseMcp<unknown>;
             if (mcpService) {
@@ -147,8 +130,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         instance.resetTools();
         allTools.forEach((tool) => instance.addTool(tool));
 
-        const knowledgeInstructions =
-          this.collectKnowledgeInstructions(knowledgeBlocks);
         const mcpInstructions = this.collectMcpInstructions(mcpOutputs);
 
         instance.setConfig(config);
@@ -166,7 +147,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
           ...config,
           instructions: [
             config.instructions,
-            knowledgeInstructions,
             toolGroupInstructionsText,
             toolInstructions,
             mcpInstructions,
@@ -218,31 +198,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
     );
 
     return ['## Tool Group Instructions', ...wrapped].join('\n\n');
-  }
-
-  private extractKnowledgeContent(node: CompiledGraphNode): string | undefined {
-    const content = (node.instance as IBaseKnowledgeOutput)?.content;
-
-    if (typeof content !== 'string') {
-      return undefined;
-    }
-
-    const trimmed = content.trim();
-    return trimmed.length ? trimmed : undefined;
-  }
-
-  private collectKnowledgeInstructions(
-    knowledgeBlocks: { id: string; content: string }[],
-  ): string | undefined {
-    if (!knowledgeBlocks.length) {
-      return undefined;
-    }
-
-    const blocks = knowledgeBlocks.map(({ content }) =>
-      this.wrapBlock(content, 'knowledge_data'),
-    );
-
-    return ['## Knowledge', ...blocks].join('\n\n');
   }
 
   private collectMcpInstructions(

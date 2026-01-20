@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 
+import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 
 @Injectable()
 export class ThreadNameGeneratorService {
   constructor(
     private readonly openaiService: OpenaiService,
+    private readonly llmModelsService: LlmModelsService,
     private readonly logger: DefaultLogger,
   ) {}
 
@@ -35,7 +37,7 @@ export class ThreadNameGeneratorService {
             message: `Generate a concise title for this conversation based on the first user message:\n\n${normalized}`,
           },
           {
-            model: 'gpt-5-mini',
+            model: this.llmModelsService.getThreadNameModel(),
           },
         )
         .then((r) => r.content ?? '')

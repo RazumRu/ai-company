@@ -7,10 +7,6 @@ import {
   SuggestAgentInstructionsResponseDto,
 } from '../dto/agent-instructions.dto';
 import {
-  SuggestKnowledgeContentDto,
-  SuggestKnowledgeContentResponseDto,
-} from '../dto/knowledge-suggestions.dto';
-import {
   ThreadAnalysisRequestDto,
   ThreadAnalysisResponseDto,
 } from '../dto/thread-analysis.dto';
@@ -38,18 +34,5 @@ export class AiSuggestionsController {
     @Body() payload: ThreadAnalysisRequestDto,
   ): Promise<ThreadAnalysisResponseDto> {
     return this.aiSuggestionsService.analyzeThread(threadId, payload);
-  }
-
-  @Post('graphs/:graphId/nodes/:nodeId/suggest-knowledge')
-  async suggestKnowledgeContent(
-    @Param('graphId') graphId: string,
-    @Param('nodeId') nodeId: string,
-    @Body() payload: SuggestKnowledgeContentDto,
-  ): Promise<SuggestKnowledgeContentResponseDto> {
-    return this.aiSuggestionsService.suggestKnowledgeContent(
-      graphId,
-      nodeId,
-      payload,
-    );
   }
 }

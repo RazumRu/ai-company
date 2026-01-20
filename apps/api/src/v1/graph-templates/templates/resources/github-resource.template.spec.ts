@@ -172,6 +172,7 @@ describe('GithubResourceTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -222,6 +223,7 @@ describe('GithubResourceTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -254,6 +256,7 @@ describe('GithubResourceTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -284,6 +287,7 @@ describe('GithubResourceTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -313,6 +317,7 @@ describe('GithubResourceTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();

@@ -152,6 +152,7 @@ describe('ShellToolTemplate', () => {
       graphId: mockGraphId,
       nodeId: 'tool-1',
       version: '1',
+      graph_created_by: 'user-1',
     };
 
     let mockRuntime: { exec: ReturnType<typeof vi.fn> };

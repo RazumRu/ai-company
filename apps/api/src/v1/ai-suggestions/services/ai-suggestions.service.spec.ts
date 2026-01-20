@@ -14,13 +14,13 @@ import {
 } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphStateManager } from '../../graphs/services/graph-state.manager';
+import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
 import { ThreadStatus } from '../../threads/threads.types';
 import { SuggestAgentInstructionsDto } from '../dto/agent-instructions.dto';
-import { SuggestKnowledgeContentDto } from '../dto/knowledge-suggestions.dto';
 import { AiSuggestionsService } from './ai-suggestions.service';
 
 describe('AiSuggestionsService', () => {
@@ -34,6 +34,7 @@ describe('AiSuggestionsService', () => {
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
   let authContext: Pick<AuthContextService, 'checkSub'>;
   let openaiService: { response: OpenaiService['response'] };
+  let llmModelsService: Pick<LlmModelsService, 'getAiSuggestionsModel'>;
   let responseMock: ReturnType<typeof vi.fn> & OpenaiService['response'];
   let service: AiSuggestionsService;
 
@@ -57,6 +58,9 @@ describe('AiSuggestionsService', () => {
     openaiService = {
       response: responseMock,
     };
+    llmModelsService = {
+      getAiSuggestionsModel: vi.fn().mockReturnValue('openai/gpt-5.2'),
+    };
 
     service = new AiSuggestionsService(
       threadsDao as ThreadsDao,
@@ -66,6 +70,7 @@ describe('AiSuggestionsService', () => {
       templateRegistry as TemplateRegistry,
       authContext as AuthContextService,
       openaiService as OpenaiService,
+      llmModelsService as LlmModelsService,
     );
   });
 
@@ -295,53 +300,6 @@ describe('AiSuggestionsService', () => {
         } as SuggestAgentInstructionsDto),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
-
-    it('includes knowledge content in the prompt and fallback instructions', async () => {
-      const graph = buildGraph();
-      graph.schema.nodes.push({
-        id: 'knowledge-1',
-        template: 'simple-knowledge',
-        config: { content: 'Important facts' },
-      });
-      graph.schema.edges ??= [];
-      graph.schema.edges.push({ from: 'agent-1', to: 'knowledge-1' });
-
-      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
-      (
-        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
-      ).mockReturnValue({
-        kind: NodeKind.SimpleAgent,
-      });
-      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue({
-        edges: graph.schema.edges,
-      });
-      (
-        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
-      ).mockImplementation((_graphId, _nodeIds, type) => {
-        if (type === NodeKind.Knowledge) return ['knowledge-1'];
-        return [];
-      });
-      (graphRegistry.getNode as ReturnType<typeof vi.fn>).mockReturnValue({
-        type: NodeKind.Knowledge,
-        handle: makeHandle({ content: 'Important facts' }),
-        config: { content: 'Important facts' },
-      });
-
-      responseMock.mockResolvedValueOnce({
-        content: ' ',
-        conversationId: 'thread-2',
-      });
-
-      const result = await service.suggest('graph-1', 'agent-1', {
-        userRequest: 'summarize',
-      } as SuggestAgentInstructionsDto);
-
-      expect(result.instructions).toContain('Important facts');
-      const promptArg = (responseMock.mock.calls[0] as unknown[])[0] as {
-        message: string;
-      };
-      expect(promptArg.message).toContain('Important facts');
-    });
   });
 
   describe('analyzeThread', () => {
@@ -492,98 +450,6 @@ describe('AiSuggestionsService', () => {
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toBe('Focus on tooling issues');
       expect(params.previous_response_id).toBe('prev-thread');
-    });
-  });
-
-  describe('suggestKnowledgeContent', () => {
-    const configureKnowledgeHappyPath = () => {
-      const graph = buildGraph();
-      graph.schema.nodes = [
-        {
-          id: 'knowledge-1',
-          template: 'simple-knowledge',
-          config: { content: 'Existing knowledge' },
-        },
-      ];
-      graph.schema.edges = [];
-
-      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
-      (
-        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
-      ).mockReturnValue({
-        kind: NodeKind.Knowledge,
-      });
-      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue({
-        nodes: new Map([
-          [
-            'knowledge-1',
-            {
-              id: 'knowledge-1',
-              type: NodeKind.Knowledge,
-              template: 'simple-knowledge',
-              handle: makeHandle({ content: 'Existing knowledge' }),
-              config: { content: 'Existing knowledge' },
-            },
-          ],
-        ]),
-      } as unknown as CompiledGraph);
-    };
-
-    it('returns generated content and respects thread continuation', async () => {
-      configureKnowledgeHappyPath();
-      responseMock.mockResolvedValueOnce({
-        content: 'Generated knowledge block',
-        conversationId: 'knowledge-thread-1',
-      });
-
-      const result = await service.suggestKnowledgeContent(
-        'graph-1',
-        'knowledge-1',
-        {
-          userRequest: 'Provide facts about the product',
-          threadId: 'prev-thread-knowledge',
-        } as SuggestKnowledgeContentDto,
-      );
-
-      expect(result.content).toBe('Generated knowledge block');
-      expect(result.threadId).toBe('knowledge-thread-1');
-      const [payload, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { previous_response_id?: string },
-      ];
-      expect(payload.systemMessage).toBeUndefined();
-      expect(payload.message).toContain('Existing knowledge');
-      expect(payload.message).toContain('Provide facts about the product');
-      expect(params.previous_response_id).toBe('prev-thread-knowledge');
-    });
-
-    it('falls back to user request when model returns empty', async () => {
-      configureKnowledgeHappyPath();
-      responseMock.mockResolvedValueOnce({
-        content: '   ',
-        conversationId: 'knowledge-thread-2',
-      });
-
-      const result = await service.suggestKnowledgeContent(
-        'graph-1',
-        'knowledge-1',
-        {
-          userRequest: 'Summarize safety policies',
-        } as SuggestKnowledgeContentDto,
-      );
-
-      expect(result.content).toBe('Existing knowledge');
-      expect(result.threadId).toBe('knowledge-thread-2');
-      const [payload, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { previous_response_id?: string },
-      ];
-      expect(payload.systemMessage).toContain(
-        'You generate concise knowledge blocks',
-      );
-      expect(payload.message).toContain('Existing knowledge');
-      expect(payload.message).toContain('Summarize safety policies');
-      expect(params.previous_response_id).toBeUndefined();
     });
   });
 });

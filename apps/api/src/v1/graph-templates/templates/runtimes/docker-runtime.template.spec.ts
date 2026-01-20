@@ -69,6 +69,7 @@ describe('DockerRuntimeTemplate', () => {
         nodeId: 'test-node-id',
         name: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();

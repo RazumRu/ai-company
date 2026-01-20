@@ -9,8 +9,12 @@ import type {
 import type {
   AnalyzeThreadData,
   AnalyzeThreadResponses,
+  CreateDocData,
+  CreateDocResponses,
   CreateGraphData,
   CreateGraphResponses,
+  DeleteDocData,
+  DeleteDocResponses,
   DeleteGraphData,
   DeleteGraphResponses,
   DeleteThreadData,
@@ -27,6 +31,10 @@ import type {
   GetAllTemplatesResponses,
   GetCompiledNodesData,
   GetCompiledNodesResponses,
+  GetDocChunksData,
+  GetDocChunksResponses,
+  GetDocData,
+  GetDocResponses,
   GetGraphRevisionData,
   GetGraphRevisionResponses,
   GetGraphRevisionsData,
@@ -41,6 +49,8 @@ import type {
   GetThreadsResponses,
   GetThreadUsageStatisticsData,
   GetThreadUsageStatisticsResponses,
+  ListDocsData,
+  ListDocsResponses,
   ListModelsData,
   ListModelsResponses,
   RunGraphData,
@@ -51,8 +61,8 @@ import type {
   StopThreadResponses,
   SuggestAgentInstructionsData,
   SuggestAgentInstructionsResponses,
-  SuggestKnowledgeContentData,
-  SuggestKnowledgeContentResponses,
+  UpdateDocData,
+  UpdateDocResponses,
   UpdateGraphData,
   UpdateGraphResponses,
 } from './types.gen.js';
@@ -81,6 +91,73 @@ export const listModels = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/litellm/models',
+    ...options,
+  });
+
+export const listDocs = <ThrowOnError extends boolean = false>(
+  options?: Options<ListDocsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<ListDocsResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs',
+    ...options,
+  });
+
+export const createDoc = <ThrowOnError extends boolean = false>(
+  options: Options<CreateDocData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<CreateDocResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const deleteDoc = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteDocData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<DeleteDocResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/{id}',
+    ...options,
+  });
+
+export const getDoc = <ThrowOnError extends boolean = false>(
+  options: Options<GetDocData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<GetDocResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/{id}',
+    ...options,
+  });
+
+export const updateDoc = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateDocData, ThrowOnError>,
+) =>
+  (options.client ?? client).put<UpdateDocResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/{id}',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const getDocChunks = <ThrowOnError extends boolean = false>(
+  options: Options<GetDocChunksData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<GetDocChunksResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/{id}/chunks',
     ...options,
   });
 
@@ -113,24 +190,6 @@ export const analyzeThread = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/analyze',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-export const suggestKnowledgeContent = <ThrowOnError extends boolean = false>(
-  options: Options<SuggestKnowledgeContentData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<
-    SuggestKnowledgeContentResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: 'json',
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-knowledge',
     ...options,
     headers: {
       'Content-Type': 'application/json',

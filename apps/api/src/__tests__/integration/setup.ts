@@ -18,6 +18,8 @@ import { GraphCheckpointEntity } from '../../v1/agents/entity/graph-chekpoints.e
 import { GraphCheckpointWritesEntity } from '../../v1/agents/entity/graph-chekpoints-writes.entity';
 import { GraphEntity } from '../../v1/graphs/entity/graph.entity';
 import { GraphRevisionEntity } from '../../v1/graphs/entity/graph-revision.entity';
+import { KnowledgeChunkEntity } from '../../v1/knowledge/entity/knowledge-chunk.entity';
+import { KnowledgeDocEntity } from '../../v1/knowledge/entity/knowledge-doc.entity';
 import { RuntimeInstanceEntity } from '../../v1/runtime/entity/runtime-instance.entity';
 import { MessageEntity } from '../../v1/threads/entity/message.entity';
 import { ThreadEntity } from '../../v1/threads/entity/thread.entity';
@@ -77,6 +79,8 @@ export const createTestModule = async (
           GraphCheckpointWritesEntity,
           MessageEntity,
           GraphRevisionEntity,
+          KnowledgeDocEntity,
+          KnowledgeChunkEntity,
           RuntimeInstanceEntity,
         ],
       }),

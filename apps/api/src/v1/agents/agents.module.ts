@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
@@ -17,7 +17,7 @@ import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
   imports: [
     registerEntities([GraphCheckpointEntity, GraphCheckpointWritesEntity]),
     RuntimeModule,
-    AgentToolsModule,
+    forwardRef(() => AgentToolsModule),
     NotificationsModule,
     LitellmModule,
   ],

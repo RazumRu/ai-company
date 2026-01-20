@@ -33,9 +33,18 @@ export const environment = () =>
 
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY'),
+    llmLargeModel: getEnv('LLM_LARGE_MODEL', 'openai/gpt-5.2'),
+    llmLargeCodeModel: getEnv('LLM_LARGE_CODE_MODEL', 'gpt-5.2-codex'),
+    llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'gpt-5.1-codex-mini'),
+    llmMiniModel: getEnv('LLM_MINI_MODEL', 'gpt-5-mini'),
+    llmEmbeddingModel: getEnv(
+      'LLM_EMBEDDING_MODEL',
+      'openai/text-embedding-3-small',
+    ),
+    knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
+    knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),
+
     // LLM model defaults for tools (do not override per-call)
-    filesEditModel: getEnv('FILES_EDIT_MODEL', 'gpt-5-mini'),
-    filesEditSmartModel: getEnv('FILES_EDIT_SMART_MODEL', 'gpt-5.1-codex-mini'),
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),
     dockerRuntimeImage: getEnv(
       'DOCKER_RUNTIME_IMAGE',

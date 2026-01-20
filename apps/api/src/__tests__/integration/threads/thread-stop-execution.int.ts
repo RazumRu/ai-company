@@ -253,8 +253,7 @@ describe('Thread Stop Execution Integration Tests', () => {
     },
     {
       label: 'stopThread (by internal id)',
-      stop: async (threadId: string, externalThreadId: string) =>
-        threadsService.stopThread(threadId),
+      stop: async (threadId: string) => threadsService.stopThread(threadId),
     },
   ])(
     '$label aborts a running execution (ThreadUpdate stopped emitted by GraphStateManager)',

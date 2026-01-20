@@ -158,6 +158,7 @@ describe('AgentCommunicationToolTemplate', () => {
         graphId: 'graph-1',
         nodeId: 'tool-node',
         version: '1',
+        graph_created_by: 'user-1',
       };
       const outputNodeIds = new Set(['agent-1']);
 
@@ -206,6 +207,7 @@ describe('AgentCommunicationToolTemplate', () => {
         graphId: 'graph-1',
         nodeId: 'tool-node',
         version: '1',
+        graph_created_by: 'user-1',
       };
       const outputNodeIds = new Set(['agent-1', 'agent-2']);
 
@@ -242,6 +244,7 @@ describe('AgentCommunicationToolTemplate', () => {
         graphId: 'graph-1',
         nodeId: 'tool-node',
         version: '1',
+        graph_created_by: 'user-1',
       };
       const outputNodeIds = new Set(['agent-1']);
 
@@ -264,6 +267,7 @@ describe('AgentCommunicationToolTemplate', () => {
         graphId: 'graph-1',
         nodeId: 'tool-node',
         version: '1',
+        graph_created_by: 'user-1',
       };
       const outputNodeIds = new Set(['agent-1']);
 
@@ -344,6 +348,7 @@ describe('AgentCommunicationToolTemplate', () => {
         graphId: 'graph-1',
         nodeId: 'tool-node',
         version: '1',
+        graph_created_by: 'user-1',
       };
       const outputNodeIds = new Set(['agent-1']);
 
@@ -405,6 +410,7 @@ describe('AgentCommunicationToolTemplate', () => {
         graphId: 'graph-1',
         nodeId: 'tool-node',
         version: '1',
+        graph_created_by: 'user-1',
       };
       const outputNodeIds = new Set(['agent-1']);
 

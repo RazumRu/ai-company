@@ -14,6 +14,11 @@ type GenerateResult = {
   usage?: RequestTokenUsage;
 };
 
+type EmbeddingsInput = {
+  model: string;
+  input: string | string[];
+};
+
 @Injectable()
 export class OpenaiService {
   private readonly client = new OpenAI({
@@ -57,6 +62,14 @@ export class OpenaiService {
       conversationId: response.id,
       usage,
     };
+  }
+
+  async embeddings(args: EmbeddingsInput): Promise<number[][]> {
+    const response = await this.client.embeddings.create({
+      model: args.model,
+      input: args.input,
+    });
+    return response.data.map((item) => item.embedding);
   }
 
   private extractFromOutput(response: unknown): string | undefined {

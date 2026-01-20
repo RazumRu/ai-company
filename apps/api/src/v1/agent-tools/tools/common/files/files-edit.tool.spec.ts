@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { LitellmService } from '../../../../litellm/services/litellm.service';
+import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../../../openai/openai.service';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
@@ -17,6 +18,7 @@ describe('FilesEditTool', () => {
   let testDir: string;
   let mockOpenaiService: OpenaiService;
   let mockLitellmService: LitellmService;
+  let mockLlmModelsService: LlmModelsService;
 
   beforeEach(async () => {
     // Create temporary directory for tests
@@ -31,7 +33,15 @@ describe('FilesEditTool', () => {
       sumTokenUsages: vi.fn().mockReturnValue(null),
     } as unknown as LitellmService;
 
-    tool = new FilesEditTool(mockOpenaiService, mockLitellmService);
+    mockLlmModelsService = {
+      getFilesEditModel: vi.fn().mockReturnValue('gpt-5-mini'),
+    } as unknown as LlmModelsService;
+
+    tool = new FilesEditTool(
+      mockOpenaiService,
+      mockLitellmService,
+      mockLlmModelsService,
+    );
 
     const mockRuntime = {
       getWorkdir: () => testDir,

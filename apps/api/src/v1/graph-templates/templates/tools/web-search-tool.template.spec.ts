@@ -86,6 +86,7 @@ describe('WebSearchToolTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -113,6 +114,7 @@ describe('WebSearchToolTemplate', () => {
         graphId: 'test-graph-2',
         nodeId: 'test-node-2',
         version: '1.0.1',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -139,6 +141,7 @@ describe('WebSearchToolTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -164,6 +167,7 @@ describe('WebSearchToolTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -191,6 +195,7 @@ describe('WebSearchToolTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -220,6 +225,7 @@ describe('WebSearchToolTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();
@@ -244,6 +250,7 @@ describe('WebSearchToolTemplate', () => {
         graphId: 'test-graph',
         nodeId: 'test-node',
         version: '1.0.0',
+        graph_created_by: 'user-1',
       };
 
       const handle = await template.create();

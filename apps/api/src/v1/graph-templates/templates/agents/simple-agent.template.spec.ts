@@ -114,10 +114,9 @@ describe('SimpleAgentTemplate', () => {
       expect(template.schema).toBe(SimpleAgentTemplateSchema);
     });
 
-    it('should expose tool and knowledge connections', () => {
+    it('should expose tool and MCP connections', () => {
       expect(template.outputs).toEqual([
         { type: 'kind', value: NodeKind.Tool, multiple: true },
-        { type: 'kind', value: NodeKind.Knowledge, multiple: true },
         { type: 'kind', value: NodeKind.Mcp, multiple: true },
       ]);
     });
@@ -235,6 +234,7 @@ describe('SimpleAgentTemplate', () => {
       graphId: 'test-graph',
       nodeId: 'test-node',
       version: '1.0.0',
+      graph_created_by: 'user-1',
     };
 
     it('should create agent instance with ModuleRef', async () => {
@@ -313,53 +313,6 @@ describe('SimpleAgentTemplate', () => {
       expect(mockSimpleAgent.resetTools).toHaveBeenCalledWith();
       expect(mockSimpleAgent.addTool).toHaveBeenCalledWith(tool1);
       expect(mockSimpleAgent.addTool).toHaveBeenCalledWith(tool2);
-    });
-
-    it('should collect and set knowledge from connected nodes', async () => {
-      const knowledge1 = { content: 'fact 1' };
-      const knowledge2 = { content: 'fact 2' };
-
-      const kNode1 = buildCompiledNode({
-        id: 'k1',
-        type: NodeKind.Knowledge,
-        template: 't',
-        instance: knowledge1,
-      });
-
-      const kNode2 = buildCompiledNode({
-        id: 'k2',
-        type: NodeKind.Knowledge,
-        template: 't',
-        instance: knowledge2,
-      });
-
-      vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
-        if (id === 'k1') return kNode1;
-        if (id === 'k2') return kNode2;
-        return undefined;
-      });
-
-      const outputNodeIds = new Set(['k1', 'k2']);
-      const handle = await template.create();
-      const init: GraphNode<typeof config> = {
-        config,
-        inputNodeIds: new Set(),
-        outputNodeIds,
-        metadata,
-      };
-      const instance = await handle.provide(init);
-      await handle.configure(init, instance);
-
-      expect(mockSimpleAgent.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          instructions: expect.stringContaining('fact 1'),
-        }),
-      );
-      expect(mockSimpleAgent.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          instructions: expect.stringContaining('fact 2'),
-        }),
-      );
     });
 
     it('should initialize agent tools after configuration', async () => {

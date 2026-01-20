@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
 import { CommunicationExecTool } from './tools/common/communication/communication-exec.tool';
@@ -23,12 +24,15 @@ import { GhCommitTool } from './tools/common/github/gh-commit.tool';
 import { GhCreatePullRequestTool } from './tools/common/github/gh-create-pull-request.tool';
 import { GhPushTool } from './tools/common/github/gh-push.tool';
 import { GhToolGroup } from './tools/common/github/gh-tool-group';
+import { KnowledgeGetChunksTool } from './tools/common/knowledge/knowledge-get-chunks.tool';
+import { KnowledgeSearchTool } from './tools/common/knowledge/knowledge-search.tool';
+import { KnowledgeToolGroup } from './tools/common/knowledge/knowledge-tool-group';
 import { ShellTool } from './tools/common/shell.tool';
 import { WebSearchTool } from './tools/common/web-search.tool';
 import { FinishTool } from './tools/core/finish.tool';
 
 @Module({
-  imports: [LitellmModule, OpenaiModule],
+  imports: [LitellmModule, OpenaiModule, KnowledgeModule],
   controllers: [],
   providers: [
     ShellTool,
@@ -42,6 +46,9 @@ import { FinishTool } from './tools/core/finish.tool';
     GhPushTool,
     GhCreatePullRequestTool,
     GhToolGroup,
+    KnowledgeSearchTool,
+    KnowledgeGetChunksTool,
+    KnowledgeToolGroup,
     FilesFindPathsTool,
     FilesDirectoryTreeTool,
     FilesReadTool,
@@ -68,6 +75,9 @@ import { FinishTool } from './tools/core/finish.tool';
     GhPushTool,
     GhCreatePullRequestTool,
     GhToolGroup,
+    KnowledgeSearchTool,
+    KnowledgeGetChunksTool,
+    KnowledgeToolGroup,
     FilesFindPathsTool,
     FilesDirectoryTreeTool,
     FilesReadTool,

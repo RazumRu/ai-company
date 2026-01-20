@@ -17,7 +17,7 @@ import { ThreadsService } from './services/threads.service';
 @Module({
   imports: [
     registerEntities([ThreadEntity, MessageEntity]),
-    AgentsModule,
+    forwardRef(() => AgentsModule),
     forwardRef(() => GraphsModule),
     NotificationsModule,
     LitellmModule,

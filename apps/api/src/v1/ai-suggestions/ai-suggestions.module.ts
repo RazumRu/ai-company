@@ -2,13 +2,20 @@ import { Module } from '@nestjs/common';
 
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
 import { GraphsModule } from '../graphs/graphs.module';
+import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
 import { ThreadsModule } from '../threads/threads.module';
 import { AiSuggestionsController } from './controllers/ai-suggestions.controller';
 import { AiSuggestionsService } from './services/ai-suggestions.service';
 
 @Module({
-  imports: [GraphsModule, ThreadsModule, GraphTemplatesModule, OpenaiModule],
+  imports: [
+    GraphsModule,
+    ThreadsModule,
+    GraphTemplatesModule,
+    OpenaiModule,
+    LitellmModule,
+  ],
   controllers: [AiSuggestionsController],
   providers: [AiSuggestionsService],
   exports: [AiSuggestionsService],

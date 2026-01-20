@@ -119,11 +119,6 @@ describe('Graph Templates Integration Tests', () => {
       },
       {
         type: 'kind',
-        value: NodeKind.Knowledge,
-        multiple: true,
-      },
-      {
-        type: 'kind',
         value: NodeKind.Mcp,
         multiple: true,
       },
@@ -134,23 +129,23 @@ describe('Graph Templates Integration Tests', () => {
     });
   });
 
-  it('exposes a knowledge template that only connects to agents', async () => {
-    const simpleKnowledge = await getTemplateById('simple-knowledge');
+  it('exposes a knowledge tools template for agents', async () => {
+    const knowledgeTools = await getTemplateById('knowledge-tools');
 
-    expect(simpleKnowledge).toBeDefined();
-    expect(simpleKnowledge?.kind).toBe(NodeKind.Knowledge);
-    expect(simpleKnowledge?.inputs).toEqual([
+    expect(knowledgeTools).toBeDefined();
+    expect(knowledgeTools?.kind).toBe(NodeKind.Tool);
+    expect(knowledgeTools?.inputs).toEqual([
       {
         type: 'kind',
         value: NodeKind.SimpleAgent,
         multiple: true,
       },
     ]);
-    expect(simpleKnowledge?.outputs).toEqual([]);
-    expect(simpleKnowledge?.schema).toMatchObject({
+    expect(knowledgeTools?.outputs).toEqual([]);
+    expect(knowledgeTools?.schema).toMatchObject({
       type: 'object',
       properties: expect.objectContaining({
-        content: expect.any(Object),
+        tags: expect.any(Object),
       }),
     });
   });

@@ -8,7 +8,6 @@ export enum NodeKind {
   SimpleAgent = 'simpleAgent',
   Trigger = 'trigger',
   Resource = 'resource',
-  Knowledge = 'knowledge',
   Mcp = 'mcp',
 }
 
@@ -126,6 +125,7 @@ export const GraphMetadataSchema = z.object({
   name: z.string().optional(),
   version: z.string(),
   temporary: z.boolean().optional(),
+  graph_created_by: z.string(),
 });
 
 // Complete graph schema

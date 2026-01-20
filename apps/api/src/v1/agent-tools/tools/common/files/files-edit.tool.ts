@@ -6,10 +6,10 @@ import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
-import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import type { RequestTokenUsage } from '../../../../litellm/litellm.types';
 import { LitellmService } from '../../../../litellm/services/litellm.service';
+import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../../../openai/openai.service';
 import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
@@ -142,6 +142,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   constructor(
     private readonly openaiService: OpenaiService,
     private readonly litellmService: LitellmService,
+    private readonly llmModelsService: LlmModelsService,
   ) {
     super();
   }
@@ -374,9 +375,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         const result = await this.openaiService.response(
           { message },
           {
-            model: useSmartModel
-              ? environment.filesEditSmartModel
-              : environment.filesEditModel,
+            model: this.llmModelsService.getFilesEditModel(useSmartModel),
             reasoning: {
               effort: useSmartModel ? 'low' : 'minimal',
             },

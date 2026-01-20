@@ -19,7 +19,7 @@ export default defineConfig({
     //disableConsoleIntercept: true,
     projects: ['packages/*', 'apps/*'],
     fileParallelism: false,
-    maxWorkers: 2,
+    maxWorkers: 5,
     coverage: {
       enabled: false,
       provider: 'v8',

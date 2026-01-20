@@ -7,6 +7,7 @@ import { LoggerModule } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LitellmService } from '../../../litellm/services/litellm.service';
+import { LlmModelsService } from '../../../litellm/services/llm-models.service';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { NewMessageMode, ReasoningEffort } from '../../agents.types';
 import { buildReasoningMessage } from '../../agents.utils';
@@ -108,6 +109,12 @@ describe('SimpleAgent', () => {
         {
           provide: LitellmService,
           useValue: {} as unknown as LitellmService,
+        },
+        {
+          provide: LlmModelsService,
+          useValue: {
+            getSummarizeEditModel: vi.fn().mockReturnValue('gpt-5-mini'),
+          } as unknown as LlmModelsService,
         },
         {
           provide: PgCheckpointSaver,
