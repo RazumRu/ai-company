@@ -1,4 +1,8 @@
-import { KnowledgeDocDto } from '../../api-definitions';
+import {
+  KnowledgeContentSuggestionRequestDto,
+  KnowledgeContentSuggestionResponseDto,
+  KnowledgeDocDto,
+} from '../../api-definitions';
 import { reqHeaders } from '../common.helper';
 
 export const createKnowledgeDoc = (content: string, headers = reqHeaders) =>
@@ -57,4 +61,17 @@ export const deleteKnowledgeDoc = (id: string, headers = reqHeaders) =>
     method: 'DELETE',
     headers,
     failOnStatusCode: false,
+  });
+
+export const suggestKnowledgeContent = (
+  payload: KnowledgeContentSuggestionRequestDto,
+  headers = reqHeaders,
+) =>
+  cy.request<KnowledgeContentSuggestionResponseDto>({
+    url: '/api/v1/knowledge-docs/suggest',
+    method: 'POST',
+    headers,
+    body: payload,
+    failOnStatusCode: false,
+    timeout: 300_000,
   });

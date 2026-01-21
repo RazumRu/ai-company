@@ -25,7 +25,12 @@ export const KnowledgeChunkSchema = z.object({
 });
 
 export const KnowledgeDocInputSchema = z.object({
+  title: z.string().min(1).describe('Knowledge document title'),
   content: z.string().min(1).describe('Raw knowledge document content'),
+  tags: z
+    .array(z.string().min(1))
+    .optional()
+    .describe('Optional tags to apply to the document'),
 });
 
 export const KnowledgeDocListQuerySchema = z.object({

@@ -17,9 +17,17 @@ export type LiteLlmModelDto = {
 
 export type KnowledgeDocInputDto = {
   /**
+   * Knowledge document title
+   */
+  title: string;
+  /**
    * Raw knowledge document content
    */
   content: string;
+  /**
+   * Optional tags to apply to the document
+   */
+  tags?: Array<string>;
 };
 
 export type KnowledgeDocDto = {
@@ -86,6 +94,48 @@ export type ThreadAnalysisResponseDto = {
    * Identifier of the LLM conversation used for the analysis
    */
   conversationId: string;
+};
+
+export type KnowledgeContentSuggestionRequestDto = {
+  /**
+   * User request describing knowledge content to create or improve
+   */
+  userRequest: string;
+  /**
+   * Optional existing knowledge document title
+   */
+  currentTitle?: string;
+  /**
+   * Optional existing knowledge document content
+   */
+  currentContent?: string;
+  /**
+   * Optional existing tags for the knowledge document
+   */
+  currentTags?: Array<string>;
+  /**
+   * Optional thread id to continue a previous suggestion conversation
+   */
+  threadId?: string;
+};
+
+export type KnowledgeContentSuggestionResponseDto = {
+  /**
+   * Suggested knowledge document title
+   */
+  title: string;
+  /**
+   * Suggested knowledge document content
+   */
+  content: string;
+  /**
+   * Suggested tags for the knowledge document
+   */
+  tags?: Array<string>;
+  /**
+   * Thread id used for this suggestion session
+   */
+  threadId: string;
 };
 
 export type CreateGraphDto = {
@@ -1454,6 +1504,20 @@ export type AnalyzeThreadResponses = {
 
 export type AnalyzeThreadResponse =
   AnalyzeThreadResponses[keyof AnalyzeThreadResponses];
+
+export type SuggestKnowledgeContentData = {
+  body: KnowledgeContentSuggestionRequestDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/knowledge-docs/suggest';
+};
+
+export type SuggestKnowledgeContentResponses = {
+  201: KnowledgeContentSuggestionResponseDto;
+};
+
+export type SuggestKnowledgeContentResponse =
+  SuggestKnowledgeContentResponses[keyof SuggestKnowledgeContentResponses];
 
 export type GetAllGraphsData = {
   body?: never;

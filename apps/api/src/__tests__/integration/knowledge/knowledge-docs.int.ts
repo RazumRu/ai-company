@@ -83,12 +83,15 @@ describe('KnowledgeService (integration)', () => {
     'creates a knowledge doc with metadata and chunks',
     { timeout: 30000 },
     async () => {
+      const title = 'Alpha doc';
       const content = 'Alpha document content';
+      const tags = [' Alpha ', 'BETA'];
 
-      const doc = await knowledgeService.createDoc({ content });
+      const doc = await knowledgeService.createDoc({ title, content, tags });
       createdDocIds.push(doc.id);
 
       expect(doc.content).toBe(content);
+      expect(doc.title).toBe(title);
       expect(doc.title.length).toBeGreaterThan(0);
       expect(doc.summary?.length ?? 0).toBeGreaterThan(0);
       expect(doc.tags.length).toBeGreaterThan(0);
@@ -103,7 +106,7 @@ describe('KnowledgeService (integration)', () => {
 
   it('rejects empty content', async () => {
     await expect(
-      knowledgeService.createDoc({ content: '   ' }),
+      knowledgeService.createDoc({ title: 'Alpha doc', content: '   ' }),
     ).rejects.toThrow('CONTENT_REQUIRED');
   });
 
@@ -111,9 +114,11 @@ describe('KnowledgeService (integration)', () => {
     'lists docs with tag filtering and supports updates',
     { timeout: 30000 },
     async () => {
+      const title = 'Alpha doc';
       const content = 'Alpha document content';
+      const tags = ['alpha-tag', 'beta-tag'];
 
-      const doc = await knowledgeService.createDoc({ content });
+      const doc = await knowledgeService.createDoc({ title, content, tags });
       createdDocIds.push(doc.id);
 
       const tagsFilter = doc.tags.slice(0, 1);
@@ -131,14 +136,18 @@ describe('KnowledgeService (integration)', () => {
         );
       });
 
+      const updatedTitle = 'Beta doc';
       const updatedContent = 'Beta document content with new details';
 
       const updated = await knowledgeService.updateDoc(doc.id, {
+        title: updatedTitle,
         content: updatedContent,
       });
       expect(updated.content).toBe(updatedContent);
+      expect(updated.title).toBe(updatedTitle);
       expect(updated.title.length).toBeGreaterThan(0);
       expect(updated.summary?.length ?? 0).toBeGreaterThan(0);
+      expect(updated.tags).toEqual(doc.tags);
       expectNormalizedTags(updated.tags);
       expect(new Date(updated.updatedAt).getTime()).toBeGreaterThanOrEqual(
         new Date(updated.createdAt).getTime(),
@@ -150,9 +159,11 @@ describe('KnowledgeService (integration)', () => {
   );
 
   it('deletes docs and rejects missing ids', { timeout: 30000 }, async () => {
+    const title = 'Alpha doc';
     const content = 'Alpha document content';
+    const tags = ['alpha-tag'];
 
-    const doc = await knowledgeService.createDoc({ content });
+    const doc = await knowledgeService.createDoc({ title, content, tags });
     createdDocIds.push(doc.id);
 
     await knowledgeService.deleteDoc(doc.id);

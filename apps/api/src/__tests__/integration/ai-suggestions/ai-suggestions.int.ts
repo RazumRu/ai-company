@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AiSuggestionsController } from '../../../v1/ai-suggestions/controllers/ai-suggestions.controller';
-import { SuggestAgentInstructionsDto } from '../../../v1/ai-suggestions/dto/agent-instructions.dto';
+import { SuggestAgentInstructionsDto } from '../../../v1/ai-suggestions/dto/ai-suggestions.dto';
 import { AiSuggestionsService } from '../../../v1/ai-suggestions/services/ai-suggestions.service';
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import {

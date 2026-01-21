@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sortBy } from 'lodash';
-import { z, ZodSchema } from 'zod';
+import { ZodSchema } from 'zod';
 
 import { zodToAjvSchema } from '../../agent-tools/agent-tools.utils';
 import { TemplateDto } from '../dto/templates.dto';

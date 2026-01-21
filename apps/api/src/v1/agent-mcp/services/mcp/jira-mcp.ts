@@ -42,6 +42,7 @@ export class JiraMcp extends BaseMcp<JiraMcpConfig> {
     return {
       name: 'jira',
       command: 'docker',
+      requiresDockerDaemon: true,
       args: [
         'run',
         '--rm',

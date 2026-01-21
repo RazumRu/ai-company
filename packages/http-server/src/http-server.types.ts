@@ -22,12 +22,19 @@ export interface IHttpServerParams {
   stripResponse?: boolean;
 }
 
+export interface IRequestBodySummary {
+  type: string;
+  size?: number;
+  keysCount?: number;
+  itemsCount?: number;
+}
+
 export interface IRequestData {
   userId?: string;
   requestId: string;
   ip: string;
   method: string;
-  body: unknown;
+  bodySummary?: IRequestBodySummary;
   url: string;
   [key: string]: unknown;
 }

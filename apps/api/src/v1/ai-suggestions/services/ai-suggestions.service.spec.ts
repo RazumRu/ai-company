@@ -20,7 +20,10 @@ import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
 import { ThreadStatus } from '../../threads/threads.types';
-import { SuggestAgentInstructionsDto } from '../dto/agent-instructions.dto';
+import {
+  KnowledgeContentSuggestionRequest,
+  SuggestAgentInstructionsDto,
+} from '../dto/ai-suggestions.dto';
 import { AiSuggestionsService } from './ai-suggestions.service';
 
 describe('AiSuggestionsService', () => {
@@ -450,6 +453,80 @@ describe('AiSuggestionsService', () => {
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toBe('Focus on tooling issues');
       expect(params.previous_response_id).toBe('prev-thread');
+    });
+  });
+
+  describe('suggestKnowledgeContent', () => {
+    it('returns suggested knowledge content from LLM response', async () => {
+      responseMock.mockResolvedValueOnce({
+        content: {
+          title: 'Knowledge title',
+          content: 'Knowledge content',
+          tags: ['ai', 'docs'],
+        },
+        conversationId: 'knowledge-1',
+      });
+
+      const result = await service.suggestKnowledgeContent({
+        userRequest: 'Create a knowledge doc',
+        currentTitle: 'Old title',
+        currentContent: 'Old content',
+        currentTags: ['legacy'],
+      } as KnowledgeContentSuggestionRequest);
+
+      expect(result).toEqual({
+        title: 'Knowledge title',
+        content: 'Knowledge content',
+        tags: ['ai', 'docs'],
+        threadId: 'knowledge-1',
+      });
+
+      const [payload, params] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string },
+        { previous_response_id?: string },
+      ];
+      expect(payload.systemMessage).toContain('knowledge base content');
+      expect(payload.message).toContain('Old content');
+      expect(params.previous_response_id).toBeUndefined();
+    });
+
+    it('uses continuation thread without system message', async () => {
+      responseMock.mockResolvedValueOnce({
+        content: {
+          title: 'Updated title',
+          content: 'Updated content',
+        },
+        conversationId: 'knowledge-2',
+      });
+
+      const result = await service.suggestKnowledgeContent({
+        userRequest: 'Add a troubleshooting section',
+        threadId: 'prev-knowledge',
+      } as KnowledgeContentSuggestionRequest);
+
+      expect(result.threadId).toBe('knowledge-2');
+
+      const [payload, params] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string },
+        { previous_response_id?: string },
+      ];
+      expect(payload.systemMessage).toBeUndefined();
+      expect(payload.message).toBe('Add a troubleshooting section');
+      expect(params.previous_response_id).toBe('prev-knowledge');
+    });
+
+    it('throws when LLM response is invalid', async () => {
+      responseMock.mockResolvedValueOnce({
+        content: { title: '', content: '' },
+        conversationId: 'knowledge-3',
+      });
+
+      await expect(
+        service.suggestKnowledgeContent({
+          userRequest: 'Make improvements',
+          currentContent: 'Existing content',
+        } as KnowledgeContentSuggestionRequest),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });

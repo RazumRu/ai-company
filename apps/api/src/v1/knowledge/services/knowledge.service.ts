@@ -19,12 +19,10 @@ import {
 } from '../dto/knowledge.dto';
 import { KnowledgeChunkEntity } from '../entity/knowledge-chunk.entity';
 import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
-import { KnowledgeChunkBoundary, KnowledgeMetadata } from '../knowledge.types';
+import { KnowledgeChunkBoundary, KnowledgeSummary } from '../knowledge.types';
 
-const KnowledgeMetadataSchema = z.object({
-  title: z.string().min(1),
+const KnowledgeSummarySchema = z.object({
   summary: z.string().min(1),
-  tags: z.array(z.string()).min(1).max(12),
 });
 
 const ChunkBoundarySchema = z.object({
@@ -127,7 +125,9 @@ export class KnowledgeService {
       throw new BadRequestException('CONTENT_REQUIRED');
     }
 
-    const metadata = await this.generateMetadata(content);
+    const title = dto.title.trim();
+    const summary = await this.generateSummary(content);
+    const tags = this.normalizeTags(dto.tags ?? []);
     const plan = await this.generateChunkPlan(content);
     const chunks = this.materializeChunks(content, plan.chunks);
     const embeddings = await this.embedTexts(chunks.map((c) => c.text));
@@ -136,9 +136,9 @@ export class KnowledgeService {
       const doc = await this.docDao.create(
         {
           content,
-          title: metadata.title,
-          summary: metadata.summary,
-          tags: metadata.tags,
+          title,
+          summary,
+          tags,
           createdBy: userId,
         },
         entityManager,
@@ -178,7 +178,11 @@ export class KnowledgeService {
       throw new BadRequestException('CONTENT_REQUIRED');
     }
 
-    const metadata = await this.generateMetadata(content);
+    const title =
+      dto.title !== undefined ? dto.title.trim() : (existing.title ?? '');
+    const summary = await this.generateSummary(content);
+    const tags =
+      dto.tags !== undefined ? this.normalizeTags(dto.tags) : existing.tags;
     const plan = await this.generateChunkPlan(content);
     const chunks = this.materializeChunks(content, plan.chunks);
     const embeddings = await this.embedTexts(chunks.map((c) => c.text));
@@ -188,9 +192,9 @@ export class KnowledgeService {
         id,
         {
           content,
-          title: metadata.title,
-          summary: metadata.summary,
-          tags: metadata.tags,
+          title,
+          summary,
+          tags: tags ?? [],
         },
         entityManager,
       );
@@ -240,20 +244,18 @@ export class KnowledgeService {
     };
   }
 
-  private async generateMetadata(content: string): Promise<KnowledgeMetadata> {
+  private async generateSummary(content: string): Promise<string> {
     const prompt = [
-      'You generate metadata for internal knowledge base documents.',
-      'Return ONLY JSON with keys: title, tags, type, summary.',
+      'You generate summaries for internal knowledge base documents.',
+      'Return ONLY JSON with key: summary.',
       'Rules:',
-      '- title: short, meaningful.',
-      '- tags: 5-12, lowercase, deduplicated.',
       '- summary: 2-5 lines, concise.',
       '',
       'DOCUMENT:',
       content,
     ].join('\n');
 
-    const response = await this.openaiService.response<KnowledgeMetadata>(
+    const response = await this.openaiService.response<KnowledgeSummary>(
       { message: prompt },
       {
         model: this.llmModelsService.getKnowledgeMetadataModel(),
@@ -262,28 +264,17 @@ export class KnowledgeService {
       { json: true },
     );
 
-    const validation = KnowledgeMetadataSchema.safeParse(response.content);
+    const validation = KnowledgeSummarySchema.safeParse(response.content);
     if (!validation.success) {
-      return this.buildFallbackMetadata(content);
+      return this.buildFallbackSummary(content);
     }
 
-    return {
-      ...validation.data,
-      tags: this.normalizeTags(validation.data.tags),
-    };
+    return validation.data.summary;
   }
 
-  private buildFallbackMetadata(content: string): KnowledgeMetadata {
-    const firstLine = content
-      .split('\n')
-      .find((line) => line.trim().length > 0);
-    const title = (firstLine ?? 'Untitled').trim().slice(0, 120);
+  private buildFallbackSummary(content: string): string {
     const summary = content.trim().slice(0, 500);
-    return {
-      title,
-      summary: summary.length ? summary : 'No summary available.',
-      tags: [],
-    };
+    return summary.length ? summary : 'No summary available.';
   }
 
   private normalizeTags(tags: string[]): string[] {

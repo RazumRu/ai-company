@@ -61,6 +61,8 @@ import type {
   StopThreadResponses,
   SuggestAgentInstructionsData,
   SuggestAgentInstructionsResponses,
+  SuggestKnowledgeContentData,
+  SuggestKnowledgeContentResponses,
   UpdateDocData,
   UpdateDocResponses,
   UpdateGraphData,
@@ -190,6 +192,24 @@ export const analyzeThread = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/analyze',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const suggestKnowledgeContent = <ThrowOnError extends boolean = false>(
+  options: Options<SuggestKnowledgeContentData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    SuggestKnowledgeContentResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/suggest',
     ...options,
     headers: {
       'Content-Type': 'application/json',

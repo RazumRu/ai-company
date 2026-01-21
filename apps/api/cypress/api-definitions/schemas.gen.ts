@@ -16,12 +16,23 @@ export const LiteLlmModelDtoSchema = {
 export const KnowledgeDocInputDtoSchema = {
   type: 'object',
   properties: {
+    title: {
+      type: 'string',
+      minLength: 1,
+    },
     content: {
       type: 'string',
       minLength: 1,
     },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'string',
+        minLength: 1,
+      },
+    },
   },
-  required: ['content'],
+  required: ['title', 'content'],
 } as const;
 
 export const KnowledgeDocDtoSchema = {
@@ -197,6 +208,58 @@ export const ThreadAnalysisResponseDtoSchema = {
     },
   },
   required: ['analysis', 'conversationId'],
+} as const;
+
+export const KnowledgeContentSuggestionRequestDtoSchema = {
+  type: 'object',
+  properties: {
+    userRequest: {
+      type: 'string',
+      minLength: 1,
+    },
+    currentTitle: {
+      type: 'string',
+    },
+    currentContent: {
+      type: 'string',
+    },
+    currentTags: {
+      type: 'array',
+      items: {
+        type: 'string',
+        minLength: 1,
+      },
+    },
+    threadId: {
+      type: 'string',
+    },
+  },
+  required: ['userRequest'],
+} as const;
+
+export const KnowledgeContentSuggestionResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      minLength: 1,
+    },
+    content: {
+      type: 'string',
+      minLength: 1,
+    },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'string',
+        minLength: 1,
+      },
+    },
+    threadId: {
+      type: 'string',
+    },
+  },
+  required: ['title', 'content', 'threadId'],
 } as const;
 
 export const CreateGraphDtoSchema = {

@@ -53,18 +53,19 @@ describe('Knowledge tools (integration)', () => {
       const alphaContent = `Alpha document content ${alphaKeyword}`;
       const betaContent = `Beta document content ${betaKeyword}`;
       const alphaDoc = await knowledgeService.createDoc({
+        title: 'Alpha doc',
         content: alphaContent,
+        tags: ['alpha-tag'],
       });
       const betaDoc = await knowledgeService.createDoc({
+        title: 'Beta doc',
         content: betaContent,
+        tags: ['beta-tag'],
       });
       createdDocIds.push(alphaDoc.id, betaDoc.id);
 
       expect(alphaDoc.summary).toBeTruthy();
       expect(betaDoc.summary).toBeTruthy();
-
-      await docDao.updateById(alphaDoc.id, { tags: ['alpha-tag'] });
-      await docDao.updateById(betaDoc.id, { tags: ['beta-tag'] });
 
       const refreshedAlpha = await knowledgeService.getDoc(alphaDoc.id);
       expect(refreshedAlpha.tags).toEqual(['alpha-tag']);
@@ -99,9 +100,12 @@ describe('Knowledge tools (integration)', () => {
     async () => {
       const keyword = 'zephyrox';
       const content = `Alpha document content ${keyword} and more text.`;
-      const doc = await knowledgeService.createDoc({ content });
+      const doc = await knowledgeService.createDoc({
+        title: 'Alpha doc',
+        content,
+        tags: ['alpha-tag'],
+      });
       createdDocIds.push(doc.id);
-      await docDao.updateById(doc.id, { tags: ['alpha-tag'] });
 
       const chunksResult = await searchChunksTool.invoke(
         { docIds: [doc.id], query: keyword, topK: 3 },
@@ -157,12 +161,14 @@ describe('Knowledge tools (integration)', () => {
     const originalKeyword = 'orionflux';
     const updatedKeyword = 'novaquill';
     const original = await knowledgeService.createDoc({
+      title: 'Original doc',
       content: `Original content ${originalKeyword}.`,
     });
     createdDocIds.push(original.id);
     expect(original.summary).toBeTruthy();
 
     const updated = await knowledgeService.updateDoc(original.id, {
+      title: 'Updated doc',
       content: `Updated content ${updatedKeyword}.`,
     });
 
@@ -178,15 +184,16 @@ describe('Knowledge tools (integration)', () => {
       const alphaKeyword = 'solaris';
       const betaKeyword = 'umbria';
       const alphaDoc = await knowledgeService.createDoc({
+        title: 'Alpha doc',
         content: `Alpha content ${alphaKeyword}.`,
+        tags: ['alpha-tag'],
       });
       const betaDoc = await knowledgeService.createDoc({
+        title: 'Beta doc',
         content: `Beta content ${betaKeyword}.`,
+        tags: ['beta-tag'],
       });
       createdDocIds.push(alphaDoc.id, betaDoc.id);
-
-      await docDao.updateById(alphaDoc.id, { tags: ['alpha-tag'] });
-      await docDao.updateById(betaDoc.id, { tags: ['beta-tag'] });
 
       const chunksResult = await searchChunksTool.invoke(
         { docIds: [alphaDoc.id, betaDoc.id], query: alphaKeyword, topK: 5 },

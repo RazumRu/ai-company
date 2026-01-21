@@ -22,6 +22,7 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
     return {
       name: 'playwright',
       'command': 'docker',
+      requiresDockerDaemon: true,
       'args': [
         'run',
         '--rm',

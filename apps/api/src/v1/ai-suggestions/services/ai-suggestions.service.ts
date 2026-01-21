@@ -23,13 +23,13 @@ import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
 import {
+  KnowledgeContentSuggestionRequest,
+  KnowledgeContentSuggestionResponse,
   SuggestAgentInstructionsDto,
   SuggestAgentInstructionsResponse,
-} from '../dto/agent-instructions.dto';
-import {
   ThreadAnalysisRequestDto,
   ThreadAnalysisResponse,
-} from '../dto/thread-analysis.dto';
+} from '../dto/ai-suggestions.dto';
 
 type SanitizedMessage =
   | {
@@ -267,6 +267,69 @@ export class AiSuggestionsService {
 
     return {
       instructions: updated?.length ? updated : effectiveInstructions,
+      threadId: response.conversationId,
+    };
+  }
+
+  async suggestKnowledgeContent(
+    payload: KnowledgeContentSuggestionRequest,
+  ): Promise<KnowledgeContentSuggestionResponse> {
+    this.authContext.checkSub();
+
+    const isContinuation = !!payload.threadId;
+    const systemMessage = isContinuation
+      ? undefined
+      : [
+          'You create or improve knowledge base content for internal docs.',
+          'Return ONLY JSON with keys: title, content, tags.',
+          'Rules:',
+          '- title: short and descriptive.',
+          '- content: clear, structured, standalone knowledge doc.',
+          '- tags: optional list of short keywords when useful.',
+          '- If current content is provided, preserve useful details and only change what the user requested.',
+          '- Do not include explanations or commentary outside the JSON.',
+          'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response.',
+        ].join('\n');
+
+    const message = isContinuation
+      ? payload.userRequest.trim()
+      : this.buildKnowledgeSuggestionPrompt(payload);
+
+    const response = await this.openaiService.response<{
+      title?: string;
+      content?: string;
+      tags?: string[];
+    }>(
+      {
+        systemMessage,
+        message,
+      },
+      {
+        model: this.llmModelsService.getAiSuggestionsModel(),
+        reasoning: { effort: 'medium' },
+        previous_response_id: payload.threadId,
+      },
+      { json: true },
+    );
+
+    const validation = this.validateKnowledgeSuggestionResponse(
+      response.content,
+    );
+    if (!validation.success) {
+      throw new BadRequestException(
+        'INVALID_KNOWLEDGE_SUGGESTION',
+        'LLM returned invalid knowledge suggestion output',
+      );
+    }
+
+    const tags =
+      validation.data.tags ??
+      (payload.currentTags?.length ? payload.currentTags : undefined);
+
+    return {
+      title: validation.data.title,
+      content: validation.data.content,
+      tags,
       threadId: response.conversationId,
     };
   }
@@ -741,12 +804,84 @@ export class AiSuggestionsService {
       .join('\n\n');
   }
 
+  private buildKnowledgeSuggestionPrompt(
+    payload: KnowledgeContentSuggestionRequest,
+  ): string {
+    const currentTitle = payload.currentTitle?.trim();
+    const currentContent = payload.currentContent?.trim();
+    const currentTags = payload.currentTags?.filter(Boolean);
+    const currentSection = currentContent
+      ? [
+          '<<<REFERENCE_ONLY_CURRENT_DOC>>>',
+          currentTitle ? `Title: ${currentTitle}` : undefined,
+          currentTags?.length ? `Tags: ${currentTags.join(', ')}` : undefined,
+          'Content:',
+          currentContent,
+          '<<<END_REFERENCE_ONLY_CURRENT_DOC>>>',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : 'No existing knowledge document was provided.';
+
+    return [
+      `User request:\n${payload.userRequest}`,
+      currentSection,
+      'Return JSON only.',
+    ].join('\n\n');
+  }
+
   private composeInstructions(baseInstructions: string): string {
     return baseInstructions;
   }
 
   private wrapBlock(content: string, tag: string): string {
     return [`<${tag}>`, content, `</${tag}>`].join('\n');
+  }
+
+  private validateKnowledgeSuggestionResponse(value: unknown):
+    | {
+        success: true;
+        data: {
+          title: string;
+          content: string;
+          tags?: string[];
+        };
+      }
+    | {
+        success: false;
+      } {
+    if (!value || typeof value !== 'object') {
+      return { success: false };
+    }
+
+    const record = value as {
+      title?: unknown;
+      content?: unknown;
+      tags?: unknown;
+    };
+
+    const title = typeof record.title === 'string' ? record.title.trim() : '';
+    const content =
+      typeof record.content === 'string' ? record.content.trim() : '';
+    const tags = Array.isArray(record.tags)
+      ? record.tags
+          .filter((tag): tag is string => typeof tag === 'string')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : undefined;
+
+    if (!title || !content) {
+      return { success: false };
+    }
+
+    return {
+      success: true,
+      data: {
+        title,
+        content,
+        tags: tags?.length ? tags : undefined,
+      },
+    };
   }
 
   private safeStringify(value: unknown): string {

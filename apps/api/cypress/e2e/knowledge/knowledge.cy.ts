@@ -4,6 +4,7 @@ import {
   getKnowledgeChunks,
   getKnowledgeDoc,
   listKnowledgeDocs,
+  suggestKnowledgeContent,
   updateKnowledgeDoc,
 } from './knowledge.helper';
 
@@ -43,6 +44,23 @@ describe('Knowledge docs API', () => {
       deleteKnowledgeDoc(docId).then((deleteResponse) => {
         expect(deleteResponse.status).to.eq(200);
       });
+    });
+  });
+
+  it('suggests knowledge content for the ai suggestions endpoint', () => {
+    suggestKnowledgeContent({
+      userRequest: 'Create a concise internal doc about API rate limits',
+      currentTitle: 'API rate limits',
+      currentContent: 'Existing notes: requests are limited per minute.',
+      currentTags: ['api', 'limits'],
+    }).then((response) => {
+      expect(response.status).to.eq(201);
+      expect(response.body.title).to.be.a('string').and.not.empty;
+      expect(response.body.content).to.be.a('string').and.not.empty;
+      expect(response.body.threadId).to.be.a('string').and.not.empty;
+      if (response.body.tags) {
+        expect(response.body.tags).to.be.an('array');
+      }
     });
   });
 });

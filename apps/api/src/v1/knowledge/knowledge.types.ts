@@ -4,8 +4,6 @@ export type KnowledgeChunkBoundary = {
   label?: string | null;
 };
 
-export type KnowledgeMetadata = {
-  title: string;
+export type KnowledgeSummary = {
   summary: string;
-  tags: string[];
 };

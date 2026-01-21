@@ -30,4 +30,15 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
       this.knowledgeGetChunksTool.build(config, lgConfig),
     ];
   }
+
+  public getDetailedInstructions(): string {
+    return [
+      'Mandatory before starting any work: use the knowledge tools to gather all necessary context.',
+      'Process:',
+      '1) Use knowledge_search_docs to find relevant documents for the task.',
+      '2) Use knowledge_search_chunks to narrow to the specific relevant sections.',
+      '3) Use knowledge_get_chunks to read the exact chunks you will rely on.',
+      'Then write a short note describing how you searched (queries/filters/tags) and what you found.',
+    ].join('\n');
+  }
 }

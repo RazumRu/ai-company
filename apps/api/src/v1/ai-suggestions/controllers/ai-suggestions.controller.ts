@@ -3,17 +3,17 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
 
 import {
+  KnowledgeContentSuggestionRequestDto,
+  KnowledgeContentSuggestionResponseDto,
   SuggestAgentInstructionsDto,
   SuggestAgentInstructionsResponseDto,
-} from '../dto/agent-instructions.dto';
-import {
   ThreadAnalysisRequestDto,
   ThreadAnalysisResponseDto,
-} from '../dto/thread-analysis.dto';
+} from '../dto/ai-suggestions.dto';
 import { AiSuggestionsService } from '../services/ai-suggestions.service';
 
 @Controller()
-@ApiTags('graphs', 'threads')
+@ApiTags('graphs', 'threads', 'knowledge')
 @ApiBearerAuth()
 @OnlyForAuthorized()
 export class AiSuggestionsController {
@@ -34,5 +34,12 @@ export class AiSuggestionsController {
     @Body() payload: ThreadAnalysisRequestDto,
   ): Promise<ThreadAnalysisResponseDto> {
     return this.aiSuggestionsService.analyzeThread(threadId, payload);
+  }
+
+  @Post('knowledge-docs/suggest')
+  async suggestKnowledgeContent(
+    @Body() payload: KnowledgeContentSuggestionRequestDto,
+  ): Promise<KnowledgeContentSuggestionResponseDto> {
+    return this.aiSuggestionsService.suggestKnowledgeContent(payload);
   }
 }
