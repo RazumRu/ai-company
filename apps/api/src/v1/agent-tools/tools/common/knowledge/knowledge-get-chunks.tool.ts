@@ -17,7 +17,6 @@ import {
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
 
 export const KnowledgeGetChunksSchema = z.object({
-  docId: z.uuid().describe('Document ID'),
   chunkIds: z.array(z.uuid()).min(1).describe('Chunk IDs to retrieve'),
 });
 
@@ -46,17 +45,17 @@ export class KnowledgeGetChunksTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Returns the full content for specific chunks you already selected from knowledge_search.
+      Returns the full content for specific chunks you already selected from knowledge_search_chunks.
 
       ### When to Use
-      After you have selected chunkIds from knowledge_search and need the full text for those chunks.
+      After you have selected chunkIds from knowledge_search_chunks and need the full text for those chunks.
 
       ### Best Practices
       Request only the chunks you need. Keep chunkIds focused to limit context size.
 
       ### Examples
       \`\`\`json
-      {"docId": "2b0c3f5a-1f2c-4c2d-9c33-1ad9c1c1a123", "chunkIds": ["c2b3d4e5-6f70-4a8b-9c10-11aa22bb33cc"]}
+      {"chunkIds": ["c2b3d4e5-6f70-4a8b-9c10-11aa22bb33cc"]}
       \`\`\`
     `;
   }
@@ -80,7 +79,6 @@ export class KnowledgeGetChunksTool extends BaseTool<
     }
 
     const chunks = await this.chunkDao.getAll({
-      docId: args.docId,
       ids: args.chunkIds,
       projection: [
         'id',
@@ -90,10 +88,25 @@ export class KnowledgeGetChunksTool extends BaseTool<
         'startOffset',
         'endOffset',
       ],
-      order: { chunkIndex: 'ASC' },
+      order: { docId: 'ASC', chunkIndex: 'ASC' },
     });
 
-    const output = chunks.map((chunk) => this.prepareChunkResponse(chunk));
+    if (chunks.length === 0) {
+      return { output: [] };
+    }
+
+    const tagsFilter = this.normalizeTags(config.tags);
+    const docIds = Array.from(new Set(chunks.map((chunk) => chunk.docId)));
+    const docs = await this.docDao.getAll({
+      ids: docIds,
+      createdBy: graphCreatedBy,
+      tags: tagsFilter,
+      projection: ['id'],
+    });
+    const allowedDocIds = new Set(docs.map((doc) => doc.id));
+    const output = chunks
+      .filter((chunk) => allowedDocIds.has(chunk.docId))
+      .map((chunk) => this.prepareChunkResponse(chunk));
 
     const title = this.generateTitle?.(args, config);
 
@@ -113,14 +126,27 @@ export class KnowledgeGetChunksTool extends BaseTool<
   }
 
   private prepareChunkResponse(entity: KnowledgeChunkEntity): {
+    id: string;
+    docId: string;
     text: string;
     startOffset: number;
     endOffset: number;
   } {
     return {
+      id: entity.id,
+      docId: entity.docId,
       text: entity.text,
       startOffset: entity.startOffset,
       endOffset: entity.endOffset,
     };
+  }
+
+  private normalizeTags(tags?: string[]): string[] | undefined {
+    const merged = new Set<string>();
+    for (const tag of tags ?? []) {
+      const normalized = tag.trim().toLowerCase();
+      if (normalized) merged.add(normalized);
+    }
+    return merged.size ? Array.from(merged) : undefined;
   }
 }

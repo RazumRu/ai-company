@@ -168,7 +168,7 @@ export class AiSuggestionsService {
       },
     );
 
-    const analysis = response.content?.trim() || '';
+    const analysis = String(response.content || '').trim();
 
     return {
       analysis,
@@ -263,7 +263,7 @@ export class AiSuggestionsService {
       },
     );
 
-    const updated = response.content?.trim();
+    const updated = String(response.content || '').trim();
 
     return {
       instructions: updated?.length ? updated : effectiveInstructions,

@@ -31,4 +31,8 @@ export class LlmModelsService {
   getKnowledgeEmbeddingModel(): string {
     return environment.llmEmbeddingModel;
   }
+
+  getKnowledgeSearchModel(): string {
+    return environment.llmMiniModel;
+  }
 }

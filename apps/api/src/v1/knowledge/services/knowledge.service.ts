@@ -18,6 +18,7 @@ import {
   KnowledgeDocListQuery,
 } from '../dto/knowledge.dto';
 import { KnowledgeChunkEntity } from '../entity/knowledge-chunk.entity';
+import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
 import { KnowledgeChunkBoundary, KnowledgeMetadata } from '../knowledge.types';
 
 const KnowledgeMetadataSchema = z.object({
@@ -252,16 +253,16 @@ export class KnowledgeService {
       content,
     ].join('\n');
 
-    const response = await this.openaiService.response(
+    const response = await this.openaiService.response<KnowledgeMetadata>(
       { message: prompt },
       {
         model: this.llmModelsService.getKnowledgeMetadataModel(),
         reasoning: { effort: 'medium' },
       },
+      { json: true },
     );
 
-    const parsed = this.parseJson<KnowledgeMetadata>(response.content);
-    const validation = KnowledgeMetadataSchema.safeParse(parsed);
+    const validation = KnowledgeMetadataSchema.safeParse(response.content);
     if (!validation.success) {
       return this.buildFallbackMetadata(content);
     }
@@ -363,16 +364,16 @@ export class KnowledgeService {
         ].join('\n')
       : basePrompt.join('\n');
 
-    const response = await this.openaiService.response(
+    const response = await this.openaiService.response<ChunkPlan>(
       { message: prompt },
       {
         model: this.llmModelsService.getKnowledgeChunkingModel(),
         reasoning: { effort: 'medium' },
       },
+      { json: true },
     );
 
-    const parsed = this.parseJson<ChunkPlan>(response.content);
-    const validation = ChunkPlanSchema.safeParse(parsed);
+    const validation = ChunkPlanSchema.safeParse(response.content);
     if (!validation.success) {
       return null;
     }
@@ -465,27 +466,5 @@ export class KnowledgeService {
       model: this.llmModelsService.getKnowledgeEmbeddingModel(),
       input: texts,
     });
-  }
-
-  private parseJson<T>(content?: string): T | null {
-    if (!content) return null;
-    const trimmed = content.trim();
-    if (!trimmed) return null;
-    const jsonString = this.stripJsonCodeFence(trimmed);
-    try {
-      return JSON.parse(jsonString) as T;
-    } catch {
-      return null;
-    }
-  }
-
-  private stripJsonCodeFence(value: string): string {
-    if (!value.startsWith('```')) {
-      return value;
-    }
-    return value
-      .replace(/^```[a-zA-Z]*\n?/, '')
-      .replace(/```$/, '')
-      .trim();
   }
 }

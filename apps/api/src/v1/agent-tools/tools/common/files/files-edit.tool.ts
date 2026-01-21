@@ -398,7 +398,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       const safeContent = await callLLM(prompt);
 
       // Parse clean JSON directly (no tags)
-      const jsonString = safeContent.trim();
+      const jsonString = String(safeContent).trim();
       if (!jsonString) {
         return {
           success: false,

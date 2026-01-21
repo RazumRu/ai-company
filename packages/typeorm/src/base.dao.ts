@@ -123,7 +123,13 @@ export abstract class BaseDao<
   ): void;
 
   private qualify(field: string) {
-    return field.includes('.') ? field : `${this.alias}.${field}`;
+    if (field.includes('.')) {
+      return field;
+    }
+    const hasColumn =
+      this.repository.metadata.findColumnWithPropertyName(field) ??
+      this.repository.metadata.findColumnWithPropertyPath(field);
+    return hasColumn ? `${this.alias}.${field}` : field;
   }
 
   private normalizeOrder(order: OrderInput): [string, SortDir][] {

@@ -8,8 +8,8 @@ import type { RequestTokenUsage } from '../litellm/litellm.types';
 import { LitellmService } from '../litellm/services/litellm.service';
 import ResponseCreateParamsNonStreaming = ResponseCreateParams.ResponseCreateParamsNonStreaming;
 
-type GenerateResult = {
-  content?: string;
+type GenerateResult<T> = {
+  content?: T;
   conversationId: string;
   usage?: RequestTokenUsage;
 };
@@ -34,7 +34,27 @@ export class OpenaiService {
       systemMessage?: string;
     },
     params: ResponseCreateParamsNonStreaming,
-  ): Promise<GenerateResult> {
+  ): Promise<GenerateResult<string>>;
+  async response<T>(
+    data: {
+      message: string;
+      systemMessage?: string;
+    },
+    params: ResponseCreateParamsNonStreaming,
+    options: {
+      json: true;
+    },
+  ): Promise<GenerateResult<T>>;
+  async response<T>(
+    data: {
+      message: string;
+      systemMessage?: string;
+    },
+    params: ResponseCreateParamsNonStreaming,
+    options?: {
+      json?: boolean;
+    },
+  ): Promise<GenerateResult<T | string>> {
     const response = await this.client.responses.create({
       ...params,
       input: compact([
@@ -56,6 +76,30 @@ export class OpenaiService {
         modelName,
         response.usage,
       )) || undefined;
+
+    if (options?.json) {
+      const parsed = (() => {
+        if (!extractedContent) return undefined;
+        const trimmed = extractedContent.trim();
+        if (!trimmed) return undefined;
+        const jsonString = trimmed.startsWith('```')
+          ? trimmed
+              .replace(/^```[a-zA-Z]*\n?/, '')
+              .replace(/```$/, '')
+              .trim()
+          : trimmed;
+        try {
+          return JSON.parse(jsonString) as unknown;
+        } catch {
+          return undefined;
+        }
+      })();
+      return {
+        content: parsed as T,
+        conversationId: response.id,
+        usage,
+      };
+    }
 
     return {
       content: extractedContent,

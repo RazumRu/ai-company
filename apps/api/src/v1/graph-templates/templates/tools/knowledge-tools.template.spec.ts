@@ -31,7 +31,7 @@ describe('KnowledgeToolsTemplate', () => {
   it('exposes correct metadata', () => {
     expect(template.id).toBe('knowledge-tools');
     expect(template.name).toBe('Knowledge Tools');
-    expect(template.description).toContain('knowledge chunks');
+    expect(template.description).toContain('knowledge documents');
     expect(template.kind).toBe(NodeKind.Tool);
     expect(template.schema).toBe(KnowledgeToolsTemplateSchema);
   });

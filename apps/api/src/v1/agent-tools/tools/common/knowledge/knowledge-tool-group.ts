@@ -6,13 +6,15 @@ import {
 } from '../../base-tool';
 import { BaseToolGroup } from '../../base-tool-group';
 import { KnowledgeGetChunksTool } from './knowledge-get-chunks.tool';
-import { KnowledgeSearchTool } from './knowledge-search.tool';
+import { KnowledgeSearchChunksTool } from './knowledge-search-chunks.tool';
+import { KnowledgeSearchDocsTool } from './knowledge-search-docs.tool';
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
 
 @Injectable()
 export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> {
   constructor(
-    private readonly knowledgeSearchTool: KnowledgeSearchTool,
+    private readonly knowledgeSearchDocsTool: KnowledgeSearchDocsTool,
+    private readonly knowledgeSearchChunksTool: KnowledgeSearchChunksTool,
     private readonly knowledgeGetChunksTool: KnowledgeGetChunksTool,
   ) {
     super();
@@ -23,7 +25,8 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): BuiltAgentTool[] {
     return [
-      this.knowledgeSearchTool.build(config, lgConfig),
+      this.knowledgeSearchDocsTool.build(config, lgConfig),
+      this.knowledgeSearchChunksTool.build(config, lgConfig),
       this.knowledgeGetChunksTool.build(config, lgConfig),
     ];
   }
