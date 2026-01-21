@@ -80,10 +80,10 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Call ONCE when completely done to end work or request required info. This is the ONLY way to properly end your work.
+      Call ONCE when completely done to end work or request required info. This is the ONLY way to properly end your work. You must ALWAYS end your response by calling the finish tool (never end with a plain message).
 
       ### When to Use
-      All tasks complete and have results to report, OR cannot proceed without specific required information.
+      All tasks complete and have results to report, OR cannot proceed without specific required information. If you are ready to respond to the user, you must call finish instead of sending a normal assistant message.
 
       ### When NOT to Use
       Don't call mid-work, alongside other tools, or before completing ALL work.
