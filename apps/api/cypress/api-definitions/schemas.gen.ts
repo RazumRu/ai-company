@@ -24,6 +24,10 @@ export const KnowledgeDocInputDtoSchema = {
       type: 'string',
       minLength: 1,
     },
+    politic: {
+      type: 'string',
+      minLength: 1,
+    },
     tags: {
       type: 'array',
       items: {
@@ -51,6 +55,16 @@ export const KnowledgeDocDtoSchema = {
       type: 'string',
     },
     summary: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    politic: {
       anyOf: [
         {
           type: 'string',

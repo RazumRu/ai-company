@@ -19,6 +19,9 @@ export class KnowledgeDocEntity extends TimestampsEntity {
   @Column({ type: 'text', nullable: true })
   summary?: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  politic?: string | null;
+
   @Column({ type: 'jsonb', default: () => "'[]'" })
   tags!: string[];
 }

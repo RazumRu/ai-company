@@ -219,12 +219,11 @@ The project uses Cypress for E2E testing.
 
 1. **Start dependencies**:
    ```bash
-   # if using docker
-   docker-compose up -d
-   # if using podman
-   podman compose up -d
-   # or
-   pnpm run deps:up
+   pnpm deps:up
+   ```
+   This uses Podman by default. If you prefer Docker:
+   ```bash
+   docker compose up -d
    ```
 
 2. **Check if the server is already running**:
@@ -286,7 +285,7 @@ When iterating locally, prefer running specs one-by-one to get fast feedback, fi
   cd apps/api
   pnpm test:e2e:local --spec "cypress/e2e/notifications/socket.cy.ts"
   ```
-  You can replace the path with any spec you’re working on. Extra args after `--` are forwarded to Cypress.
+  You can replace the path with any spec you’re working on.
 
 - List available spec files:
   ```bash
@@ -558,7 +557,7 @@ Correct approach:
 
 - Ensure required preconditions are present for the environment where tests run (CI and local):
   - Document required env vars in .env.example and project docs.
-  - Provide docker-compose/services to satisfy dependencies.
+- Provide Podman/Docker compose services to satisfy dependencies.
   - Seed or create required data within test setup; clean up after.
 - If a required prerequisite is truly unavailable at runtime, let the test fail with a clear error message.
 - If a test requires optional external integration (e.g., third-party API), either:

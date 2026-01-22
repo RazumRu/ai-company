@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
+import { isUndefined, pickBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 import { z } from 'zod';
 
@@ -125,10 +126,11 @@ export class KnowledgeService {
       throw new BadRequestException('CONTENT_REQUIRED');
     }
 
-    const title = dto.title.trim();
-    const summary = await this.generateSummary(content);
+    const [summary, plan] = await Promise.all([
+      this.generateSummary(content),
+      this.generateChunkPlan(content),
+    ]);
     const tags = this.normalizeTags(dto.tags ?? []);
-    const plan = await this.generateChunkPlan(content);
     const chunks = this.materializeChunks(content, plan.chunks);
     const embeddings = await this.embedTexts(chunks.map((c) => c.text));
 
@@ -136,8 +138,9 @@ export class KnowledgeService {
       const doc = await this.docDao.create(
         {
           content,
-          title,
+          title: dto.title,
           summary,
+          politic: dto.politic,
           tags,
           createdBy: userId,
         },
@@ -173,29 +176,26 @@ export class KnowledgeService {
       throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
     }
 
-    const content = dto.content.trim();
-    if (!content) {
-      throw new BadRequestException('CONTENT_REQUIRED');
+    const updateData = pickBy(dto, (v) => !isUndefined(v));
+
+    let chunkPlan: ChunkPlan | null = null;
+    if (dto.content) {
+      const [summary, plan] = await Promise.all([
+        this.generateSummary(dto.content),
+        this.generateChunkPlan(dto.content),
+      ]);
+      updateData.summary = summary;
+      chunkPlan = plan;
     }
 
-    const title =
-      dto.title !== undefined ? dto.title.trim() : (existing.title ?? '');
-    const summary = await this.generateSummary(content);
-    const tags =
-      dto.tags !== undefined ? this.normalizeTags(dto.tags) : existing.tags;
-    const plan = await this.generateChunkPlan(content);
-    const chunks = this.materializeChunks(content, plan.chunks);
-    const embeddings = await this.embedTexts(chunks.map((c) => c.text));
+    if (dto.tags) {
+      updateData.tags = this.normalizeTags(dto.tags);
+    }
 
     return this.typeorm.trx(async (entityManager: EntityManager) => {
       const updated = await this.docDao.updateById(
         id,
-        {
-          content,
-          title,
-          summary,
-          tags: tags ?? [],
-        },
+        updateData,
         entityManager,
       );
 
@@ -203,20 +203,26 @@ export class KnowledgeService {
         throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
       }
 
-      await this.chunkDao.hardDelete({ docId: id }, entityManager);
-      const chunkRows = chunks.map((chunk, index) => ({
-        docId: id,
-        chunkIndex: index,
-        label: chunk.label ?? null,
-        keywords: chunk.keywords ?? null,
-        text: chunk.text,
-        startOffset: chunk.startOffset,
-        endOffset: chunk.endOffset,
-        embedding: embeddings[index] ?? null,
-      }));
+      if (dto.content) {
+        const plan = chunkPlan ?? (await this.generateChunkPlan(dto.content));
+        const chunks = this.materializeChunks(dto.content, plan.chunks);
+        const embeddings = await this.embedTexts(chunks.map((c) => c.text));
 
-      if (chunkRows.length > 0) {
-        await this.chunkDao.createMany(chunkRows, entityManager);
+        await this.chunkDao.hardDelete({ docId: id }, entityManager);
+        const chunkRows = chunks.map((chunk, index) => ({
+          docId: id,
+          chunkIndex: index,
+          label: chunk.label ?? null,
+          keywords: chunk.keywords ?? null,
+          text: chunk.text,
+          startOffset: chunk.startOffset,
+          endOffset: chunk.endOffset,
+          embedding: embeddings[index] ?? null,
+        }));
+
+        if (chunkRows.length > 0) {
+          await this.chunkDao.createMany(chunkRows, entityManager);
+        }
       }
 
       return this.prepareDocResponse(updated);
@@ -230,6 +236,7 @@ export class KnowledgeService {
       updatedAt: new Date(entity.updatedAt).toISOString(),
       tags: entity.tags ?? [],
       summary: entity.summary ?? null,
+      politic: entity.politic ?? null,
     };
   }
 
@@ -359,7 +366,7 @@ export class KnowledgeService {
       { message: prompt },
       {
         model: this.llmModelsService.getKnowledgeChunkingModel(),
-        reasoning: { effort: 'medium' },
+        reasoning: { effort: 'low' },
       },
       { json: true },
     );

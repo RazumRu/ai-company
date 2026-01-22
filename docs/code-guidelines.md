@@ -54,8 +54,8 @@ All DTOs should provide Zod schemas for validation and type inference:
 All DTOs related to a module should be kept in one file. No need to create separate files for each new DTO:
 
 ```typescript
+import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { createZodDto } from '@anatine/zod-nestjs';
 
 // Define Zod schemas
 export const CreateUserSchema = z.object({
@@ -194,18 +194,21 @@ class UserDao {
 
 ## Script Execution
 
-### Never Use `--` with npm/pnpm Commands
+### Never Use `--` as a Script Separator
 
-When running npm or pnpm scripts, do not use `--` to pass parameters:
+When running npm or pnpm scripts, do not use `--` as a separator to pass parameters. Pass flags directly.
 
 ```bash
-# ❌ Bad
+# ❌ Bad (separator)
 pnpm run build -- --example_param=1
 npm run test -- --watch
 
-# ✅ Good
+# ✅ Good (direct flags)
 pnpm run build --example_param=1
 npm run test --watch
+
+# ✅ Good (regular flags are fine)
+pnpm test:e2e:local --spec "cypress/e2e/notifications/socket.cy.ts"
 ```
 
 The `--` separator is unnecessary and should be avoided in all script executions.

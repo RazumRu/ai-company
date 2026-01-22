@@ -82,6 +82,10 @@ Run end-to-end tests to verify the complete flow:
 
 1. **Start dependencies**:
    ```bash
+   pnpm deps:up
+   ```
+   This uses Podman by default. If you prefer Docker:
+   ```bash
    docker compose up -d
    ```
 
@@ -215,7 +219,7 @@ pnpm test:integration
 
 # 6. Run E2E tests (ensure server is running first!)
 # Terminal 1: Start dependencies
-docker compose up -d
+pnpm deps:up
 
 # Terminal 2: Start server
 cd apps/api
@@ -260,7 +264,7 @@ pnpm commit
 ### E2E Tests Fail
 
 - Ensure the server is running and accessible
-- Verify docker-compose is up (PostgreSQL is running)
+- Verify dependencies are up (`pnpm deps:up`, or Docker/Podman compose)
 - Check if the server is in a clean state
 - Review Cypress output for specific failures
 

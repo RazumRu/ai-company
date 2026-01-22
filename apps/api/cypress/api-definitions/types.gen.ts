@@ -25,6 +25,10 @@ export type KnowledgeDocInputDto = {
    */
   content: string;
   /**
+   * Optional LLM usage guidance for this document
+   */
+  politic?: string;
+  /**
    * Optional tags to apply to the document
    */
   tags?: Array<string>;
@@ -35,6 +39,7 @@ export type KnowledgeDocDto = {
   content: string;
   title: string;
   summary?: string | null;
+  politic?: string | null;
   tags: Array<string>;
   createdAt: string;
   updatedAt: string;

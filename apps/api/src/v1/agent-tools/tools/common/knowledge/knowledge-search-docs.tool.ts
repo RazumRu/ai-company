@@ -29,6 +29,7 @@ export type KnowledgeSearchDocsResult = {
   documentId: string;
   title: string;
   summary: string | null;
+  politic: string | null;
   tags: string[];
 };
 
@@ -98,7 +99,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     const docs = await this.docDao.getAll({
       createdBy: graphCreatedBy,
       tags: tagsFilter,
-      projection: ['id', 'title', 'summary', 'tags', 'updatedAt'],
+      projection: ['id', 'title', 'summary', 'politic', 'tags', 'updatedAt'],
       order: { updatedAt: 'DESC' },
     });
 
@@ -117,6 +118,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
         documentId: doc.id,
         title: doc.title,
         summary: doc.summary ?? null,
+        politic: doc.politic ?? null,
         tags: doc.tags ?? [],
       }));
 
@@ -162,7 +164,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       'DOCUMENTS:',
       docs.map(
         (d) =>
-          `[Document ID: ${d.id}] ${d.title}\n${d.summary}\n[Tags] ${d.tags.join()}`,
+          `[Document ID: ${d.id}] ${d.title}\n${d.summary}\n[Politic] ${d.politic ?? 'N/A'}\n[Tags] ${d.tags.join()}`,
       ),
     ].join('\n');
 

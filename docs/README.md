@@ -32,7 +32,7 @@ Complete guide for running and writing tests, including unit tests and E2E tests
 - Unit testing with Vitest
 - E2E testing with Cypress
 - How to run tests properly
-- E2E prerequisites (server + docker-compose)
+- E2E prerequisites (server + dependencies via `pnpm deps:up`)
 - Writing effective tests
 - Test coverage
 

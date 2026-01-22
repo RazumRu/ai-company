@@ -7,6 +7,7 @@ export const KnowledgeDocSchema = z.object({
   content: z.string(),
   title: z.string(),
   summary: z.string().nullable().optional(),
+  politic: z.string().nullable().optional(),
   tags: z.array(z.string()),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -27,6 +28,11 @@ export const KnowledgeChunkSchema = z.object({
 export const KnowledgeDocInputSchema = z.object({
   title: z.string().min(1).describe('Knowledge document title'),
   content: z.string().min(1).describe('Raw knowledge document content'),
+  politic: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Optional LLM usage guidance for this document'),
   tags: z
     .array(z.string().min(1))
     .optional()

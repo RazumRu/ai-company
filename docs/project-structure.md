@@ -47,8 +47,9 @@ The API follows a layered architecture pattern:
 ### 4. DTOs (Data Transfer Objects)
 - Define data structures for API requests/responses
 - Located in feature directories (e.g., `src/v1/users/dto/`)
-- Use class-validator decorators for validation
-- Separate DTOs for requests and responses
+- Use Zod schemas for validation and type inference
+- Create DTO classes with `nestjs-zod` (`createZodDto`)
+- Keep module DTOs in a single file within the `dto/` folder
 
 ### 5. Entities
 - Define database table structures
@@ -79,8 +80,8 @@ src/v1/feature-name/
 
 ## Prerequisites
 
-- Node.js >= 22
-- pnpm 10.11.1 or later
+- Node.js >= 24
+- pnpm 10.27.0 or later
 - Docker or Podman for running dependencies (PostgreSQL)
 
 ## Setting Up the Project
