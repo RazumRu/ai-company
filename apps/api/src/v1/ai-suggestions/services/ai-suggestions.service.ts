@@ -1009,6 +1009,7 @@ export class AiSuggestionsService {
       "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and MCP servers information in your response. You can only refer to it if needed.",
       'Never include tool descriptions, tool lists, or MCP instructions in the output.',
       'Only modify content inside <current_instructions> tags. Do not add or remove anything outside these tags.',
+      'Do NOT include the <current_instructions> tags in your output.',
       'Keep the result concise, actionable, and focused on how the agent should behave.',
       'Return only the updated instructions text without extra commentary.',
       'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
@@ -1029,6 +1030,7 @@ export class AiSuggestionsService {
       'Include ONLY agents that require changes. If no changes are needed, return { "updates": [] }.',
       'For each update, return the FULL updated instructions text (not a diff). Apply only minimal changes requested by the user.',
       'Only modify content inside <current_instructions> tags. Do not add or remove anything outside these tags.',
+      'Do NOT include the <current_instructions> tags in your output.',
       'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
     ].join('\n');
   }

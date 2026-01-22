@@ -79,7 +79,7 @@ export class RuntimeProvider {
           });
         }
 
-        return { runtime, cached: false };
+        return { runtime, cached: true };
       }
     }
 
@@ -104,7 +104,7 @@ export class RuntimeProvider {
       lastUsedAt: new Date(),
     });
 
-    return { runtime, cached: true };
+    return { runtime, cached: false };
   }
 
   async stopRuntime(instance: RuntimeInstanceEntity): Promise<void> {
