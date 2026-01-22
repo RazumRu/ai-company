@@ -298,7 +298,10 @@ export class AiSuggestionsService {
     const userRequest = payload.userRequest.trim();
     const edges = compiledGraph?.edges || graph.schema.edges;
     const allToolsMap = new Map<string, ConnectedToolInfo>();
-    const allMcpMap = new Map<string, { name: string; instructions?: string }>();
+    const allMcpMap = new Map<
+      string,
+      { name: string; instructions?: string }
+    >();
     const agentConnections = agents.map((agent) => {
       const tools = this.getConnectedTools(
         graphId,
@@ -946,8 +949,7 @@ export class AiSuggestionsService {
         }
 
         const config =
-          mcpService.config &&
-          typeof mcpService.getMcpConfig === 'function'
+          mcpService.config && typeof mcpService.getMcpConfig === 'function'
             ? mcpService.getMcpConfig(mcpService.config as never)
             : undefined;
         const name = config?.name?.trim() || mcpNode.template || mcpNode.id;
@@ -957,9 +959,7 @@ export class AiSuggestionsService {
 
         acc.push({
           name,
-          ...(typeof instructions === 'string'
-            ? { instructions }
-            : undefined),
+          ...(typeof instructions === 'string' ? { instructions } : undefined),
         });
 
         return acc;

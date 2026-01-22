@@ -122,6 +122,8 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
           initScripts,
         } = this.collectResourceData(resourceNodeIds, graphId);
 
+        runtimeNode.instance.addEnvVariables(env);
+
         const initScriptList = initScripts.flatMap((script) =>
           Array.isArray(script.cmd) ? script.cmd : [script.cmd],
         );

@@ -5,6 +5,7 @@ import {
 } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 
 import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
@@ -58,6 +59,10 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     // Explicitly configure for JSON Schema draft-07 to match our schema generation
     strict: false,
   });
+
+  constructor() {
+    addFormats(this.ajv);
+  }
 
   protected getSchemaParameterDocs(schema: JSONSchema) {
     return getSchemaParameterDocs(schema);

@@ -53,6 +53,7 @@
     "@packages/typeorm": "workspace:*",
     "@tavily/core": "^0.6.3",
     "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "axios": "^1.13.2",
     "bullmq": "^5.66.4",
     "class-transformer": "^0.5.1",

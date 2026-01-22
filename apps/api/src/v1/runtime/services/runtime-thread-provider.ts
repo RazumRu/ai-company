@@ -24,6 +24,7 @@ export class RuntimeThreadProvider {
     string,
     Map<string, RuntimeThreadInitJob>
   >();
+  private readonly additionalEnv: Record<string, string> = {};
 
   constructor(
     private readonly runtimeProvider: RuntimeProvider,
@@ -32,6 +33,14 @@ export class RuntimeThreadProvider {
 
   public setParams(params: RuntimeThreadProviderParams) {
     this.params = params;
+  }
+
+  public addEnvVariables(env: Record<string, string>) {
+    if (!Object.keys(env).length) {
+      return;
+    }
+
+    Object.assign(this.additionalEnv, env);
   }
 
   public getParams(): RuntimeThreadProviderParams {
@@ -81,6 +90,7 @@ export class RuntimeThreadProvider {
           ),
           env: {
             ...(this.params.runtimeStartParams.env || {}),
+            ...this.additionalEnv,
           },
         },
         threadId,

@@ -144,6 +144,7 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         const initScriptTimeout = ghResource.data.initScriptTimeout;
         const patToken = ghResource.patToken;
         const resourceEnv = ghResource.data.env ?? {};
+        runtimeNode.instance.addEnvVariables(resourceEnv);
         const currentRuntimeParams = runtimeNode.instance.getParams();
         const baseTimeout =
           currentRuntimeParams.runtimeStartParams.initScriptTimeoutMs ?? 0;

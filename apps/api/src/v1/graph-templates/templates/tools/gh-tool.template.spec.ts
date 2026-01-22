@@ -162,6 +162,7 @@ describe('GhToolTemplate', () => {
     let mockRuntimeThreadProvider: {
       provide: ReturnType<typeof vi.fn>;
       getParams: ReturnType<typeof vi.fn>;
+      addEnvVariables: ReturnType<typeof vi.fn>;
       registerJob: ReturnType<typeof vi.fn>;
       removeExecutor: ReturnType<typeof vi.fn>;
     };
@@ -186,6 +187,7 @@ describe('GhToolTemplate', () => {
           runtimeStartParams: { initScriptTimeoutMs: 0 },
           temporary: false,
         }),
+        addEnvVariables: vi.fn(),
         registerJob: vi.fn(),
         removeExecutor: vi.fn(),
       };
@@ -258,6 +260,9 @@ describe('GhToolTemplate', () => {
           tools: undefined,
         }),
       );
+      expect(mockRuntimeThreadProvider.addEnvVariables).toHaveBeenCalledWith({
+        GITHUB_PAT_TOKEN: 'test-token',
+      });
       expect(instance.tools).toEqual(mockTools);
       expect(mockRuntimeThreadProvider.registerJob).toHaveBeenCalledWith(
         mockMetadata.nodeId,

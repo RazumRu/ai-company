@@ -159,6 +159,7 @@ describe('ShellToolTemplate', () => {
     let mockRuntimeThreadProvider: {
       provide: ReturnType<typeof vi.fn>;
       getParams: ReturnType<typeof vi.fn>;
+      addEnvVariables: ReturnType<typeof vi.fn>;
       registerJob: ReturnType<typeof vi.fn>;
       removeExecutor: ReturnType<typeof vi.fn>;
     };
@@ -178,6 +179,7 @@ describe('ShellToolTemplate', () => {
           runtimeStartParams: { initScriptTimeoutMs: 0 },
           temporary: false,
         }),
+        addEnvVariables: vi.fn(),
         registerJob: vi.fn(),
         removeExecutor: vi.fn(),
       };
@@ -400,6 +402,9 @@ describe('ShellToolTemplate', () => {
             resourcesInformation: expect.stringContaining('Resource info'),
           }),
         );
+        expect(mockRuntimeThreadProvider.addEnvVariables).toHaveBeenCalledWith({
+          KEY: 'VALUE',
+        });
       });
 
       it('should ignore non-resource nodes in resourceNodeIds', async () => {
