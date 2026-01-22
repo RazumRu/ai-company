@@ -258,9 +258,13 @@ export class AiSuggestionsService {
     );
 
     const updated = String(response.content || '').trim();
+    const baseInstructions = this.stripInstructionExtras(effectiveInstructions);
+    const sanitizedUpdated = updated.length
+      ? this.stripInstructionExtras(updated)
+      : baseInstructions;
 
     return {
-      instructions: updated?.length ? updated : effectiveInstructions,
+      instructions: sanitizedUpdated,
       threadId: response.conversationId,
     };
   }
@@ -293,23 +297,51 @@ export class AiSuggestionsService {
 
     const userRequest = payload.userRequest.trim();
     const edges = compiledGraph?.edges || graph.schema.edges;
+    const allToolsMap = new Map<string, ConnectedToolInfo>();
+    const allMcpMap = new Map<string, { name: string; instructions?: string }>();
+    const agentConnections = agents.map((agent) => {
+      const tools = this.getConnectedTools(
+        graphId,
+        agent.nodeId,
+        edges,
+        compiledGraph,
+      );
+      tools.forEach((tool) => {
+        if (!allToolsMap.has(tool.name)) {
+          allToolsMap.set(tool.name, tool);
+        }
+      });
+
+      const mcpDetails = this.getConnectedMcpDetails(
+        graphId,
+        agent.nodeId,
+        edges,
+        compiledGraph,
+      );
+      mcpDetails.forEach((mcp) => {
+        if (!allMcpMap.has(mcp.name)) {
+          allMcpMap.set(mcp.name, mcp);
+        }
+      });
+
+      return {
+        nodeId: agent.nodeId,
+        toolNames: tools.map((tool) => tool.name),
+        mcpNames: mcpDetails.map((mcp) => mcp.name),
+      };
+    });
+
     const systemMessage = this.buildGraphInstructionSystemMessage();
     const message = this.buildGraphInstructionRequestPrompt(
       userRequest,
       agents,
-      (agent) =>
-        this.getConnectedTools(graphId, agent.nodeId, edges, compiledGraph),
-      (agent) =>
-        this.getConnectedMcpInstructions(
-          graphId,
-          agent.nodeId,
-          edges,
-          compiledGraph,
-        ),
+      agentConnections,
+      Array.from(allToolsMap.values()),
+      Array.from(allMcpMap.values()),
     );
 
     const schema = z.object({
-      agents: z.array(
+      updates: z.array(
         z.object({
           nodeId: z.string().min(1),
           instructions: z.string().min(1),
@@ -319,7 +351,7 @@ export class AiSuggestionsService {
     const compiledSchema = zodResponseFormat(schema, 'data');
 
     const response = await this.openaiService.response<{
-      agents?: { nodeId?: string; instructions?: string }[];
+      updates?: { nodeId?: string; instructions?: string }[];
     }>(
       {
         systemMessage,
@@ -350,14 +382,9 @@ export class AiSuggestionsService {
     const updates: SuggestGraphInstructionsResponse['updates'] = [];
     const expectedIds = new Set(agents.map((agent) => agent.nodeId));
     const suggestionsById = new Map(
-      parsed.data.agents.map((entry) => [entry.nodeId, entry.instructions]),
+      parsed.data.updates.map((entry) => [entry.nodeId, entry.instructions]),
     );
-    if (suggestionsById.size !== expectedIds.size) {
-      throw new BadRequestException(
-        'INVALID_GRAPH_INSTRUCTIONS_SUGGESTION',
-        'LLM response did not include all agents',
-      );
-    }
+
     for (const entry of suggestionsById.keys()) {
       if (!expectedIds.has(entry)) {
         throw new BadRequestException(
@@ -378,9 +405,14 @@ export class AiSuggestionsService {
         );
       }
 
-      const nextInstructions = suggested?.trim() || currentInstructions;
+      if (!suggested) {
+        continue;
+      }
 
-      if (this.isInstructionsUpdated(currentInstructions, nextInstructions)) {
+      const nextInstructions = this.stripInstructionExtras(suggested);
+      const baseInstructions = this.stripInstructionExtras(currentInstructions);
+
+      if (this.isInstructionsUpdated(baseInstructions, nextInstructions)) {
         updates.push({
           nodeId: agent.nodeId,
           ...(agent.name ? { name: agent.name } : {}),
@@ -872,6 +904,79 @@ export class AiSuggestionsService {
     return ['## MCP Instructions', ...blocks].join('\n\n');
   }
 
+  private getConnectedMcpDetails(
+    graphId: string,
+    nodeId: string,
+    edges: GraphEdgeSchemaType[] | undefined,
+    compiledGraph?: CompiledGraph,
+  ): { name: string; instructions?: string }[] {
+    if (!compiledGraph) {
+      return [];
+    }
+
+    const outgoingNodeIds = new Set(
+      (edges || [])
+        .filter((edge) => edge.from === nodeId)
+        .map((edge) => edge.to),
+    );
+
+    if (!outgoingNodeIds.size) {
+      return [];
+    }
+
+    const mcpNodeIds = this.graphRegistry.filterNodesByType(
+      graphId,
+      outgoingNodeIds,
+      NodeKind.Mcp,
+    );
+
+    const details = mcpNodeIds.reduce(
+      (acc, mcpNodeId) => {
+        const mcpNode = this.graphRegistry.getNode<BaseMcp<unknown>>(
+          graphId,
+          mcpNodeId,
+        );
+        if (!mcpNode || mcpNode.type !== NodeKind.Mcp) {
+          return acc;
+        }
+
+        const mcpService = mcpNode.instance;
+        if (!mcpService) {
+          return acc;
+        }
+
+        const config =
+          mcpService.config &&
+          typeof mcpService.getMcpConfig === 'function'
+            ? mcpService.getMcpConfig(mcpService.config as never)
+            : undefined;
+        const name = config?.name?.trim() || mcpNode.template || mcpNode.id;
+        const instructions = mcpService.getDetailedInstructions?.(
+          mcpService.config as never,
+        );
+
+        acc.push({
+          name,
+          ...(typeof instructions === 'string'
+            ? { instructions }
+            : undefined),
+        });
+
+        return acc;
+      },
+      [] as { name: string; instructions?: string }[],
+    );
+
+    const unique = new Map<string, { name: string; instructions?: string }>();
+    for (const entry of details) {
+      if (!unique.has(entry.name)) {
+        unique.set(entry.name, entry);
+      }
+    }
+
+    return Array.from(unique.values());
+  }
+
   private buildInstructionRequestPrompt(
     userRequest: string,
     currentInstructions: string,
@@ -884,7 +989,7 @@ export class AiSuggestionsService {
 
     return [
       `User request:\n${userRequest}`,
-      `Current instructions:\n${currentInstructions}`,
+      `Current instructions:\n<current_instructions>\n${currentInstructions}\n</current_instructions>`,
       ...(extraBlocks ?? []),
       toolsBlock,
       mcpBlock,
@@ -902,6 +1007,8 @@ export class AiSuggestionsService {
       'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
       'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
       "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and MCP servers information in your response. You can only refer to it if needed.",
+      'Never include tool descriptions, tool lists, or MCP instructions in the output.',
+      'Only modify content inside <current_instructions> tags. Do not add or remove anything outside these tags.',
       'Keep the result concise, actionable, and focused on how the agent should behave.',
       'Return only the updated instructions text without extra commentary.',
       'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
@@ -916,9 +1023,12 @@ export class AiSuggestionsService {
       'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
       'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
       "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and MCP servers information in your response. You can only refer to it if needed.",
+      'Never include tool descriptions, tool lists, or MCP instructions in the output.',
       'Keep the result concise, actionable, and focused on how each agent should behave.',
-      'Return ONLY JSON in the shape: { "agents": [ { "nodeId": "...", "instructions": "..." } ] }',
-      'Include every agent exactly once in the JSON output.',
+      'Return ONLY JSON in the shape: { "updates": [ { "nodeId": "...", "instructions": "..." } ] }',
+      'Include ONLY agents that require changes. If no changes are needed, return { "updates": [] }.',
+      'For each update, return the FULL updated instructions text (not a diff). Apply only minimal changes requested by the user.',
+      'Only modify content inside <current_instructions> tags. Do not add or remove anything outside these tags.',
       'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
     ].join('\n');
   }
@@ -945,7 +1055,7 @@ export class AiSuggestionsService {
     return [
       `User request:\n${payload.userRequest}`,
       currentSection,
-      'Return JSON only.',
+      'Return JSON only. Only include updates for agents whose instructions must change.',
     ].join('\n\n');
   }
 
@@ -955,6 +1065,24 @@ export class AiSuggestionsService {
 
   private isInstructionsUpdated(current: string, updated: string): boolean {
     return current.trim() !== updated.trim();
+  }
+
+  private stripInstructionExtras(instructions: string): string {
+    const withoutBlocks = instructions
+      .replace(/<tool_description>[\s\S]*?<\/tool_description>/g, '')
+      .replace(
+        /<tool_group_instructions>[\s\S]*?<\/tool_group_instructions>/g,
+        '',
+      )
+      .replace(/<mcp_instructions>[\s\S]*?<\/mcp_instructions>/g, '')
+      .replace(/<<<REFERENCE_ONLY_[\s\S]*?>>>/g, '')
+      .replace(/<<<END_REFERENCE_ONLY_[\s\S]*?>>>/g, '')
+      .replace(/##\s+Tool Instructions\s*/g, '')
+      .replace(/##\s+Tool Group Instructions\s*/g, '')
+      .replace(/##\s+MCP Instructions\s*/g, '')
+      .trim();
+
+    return withoutBlocks.replace(/\n{3,}/g, '\n\n').trim();
   }
 
   private buildConnectedToolsReferenceBlock(
@@ -999,11 +1127,79 @@ export class AiSuggestionsService {
       : undefined;
   }
 
+  private buildAllToolsReferenceBlock(
+    tools: ConnectedToolInfo[],
+  ): string | undefined {
+    if (!tools.length) {
+      return undefined;
+    }
+
+    const toolBlocks = tools
+      .map((tool) => {
+        const details = [
+          `Name: ${tool.name}`,
+          `Description: ${tool.description}`,
+        ];
+
+        if (tool.instructions) {
+          details.push(
+            `Instructions:\n${this.wrapBlock(
+              tool.instructions,
+              'tool_description',
+            )}`,
+          );
+        }
+
+        return details.join('\n');
+      })
+      .join('\n\n');
+
+    return [
+      '<<<REFERENCE_ONLY_ALL_TOOLS>>>',
+      toolBlocks,
+      '<<<END_REFERENCE_ONLY_ALL_TOOLS>>>',
+    ].join('\n');
+  }
+
+  private buildAllMcpReferenceBlock(
+    mcps: { name: string; instructions?: string }[],
+  ): string | undefined {
+    if (!mcps.length) {
+      return undefined;
+    }
+
+    const mcpBlocks = mcps
+      .map((mcp) => {
+        const details = [`Name: ${mcp.name}`];
+        if (mcp.instructions) {
+          details.push(
+            `Instructions:\n${this.wrapBlock(
+              mcp.instructions,
+              'mcp_instructions',
+            )}`,
+          );
+        }
+        return details.join('\n');
+      })
+      .join('\n\n');
+
+    return [
+      '<<<REFERENCE_ONLY_ALL_MCP>>>',
+      mcpBlocks,
+      '<<<END_REFERENCE_ONLY_ALL_MCP>>>',
+    ].join('\n');
+  }
+
   private buildGraphInstructionRequestPrompt(
     userRequest: string,
     agents: AgentContext[],
-    getTools: (agent: AgentContext) => ConnectedToolInfo[],
-    getMcpInstructions: (agent: AgentContext) => string | undefined,
+    agentConnections: {
+      nodeId: string;
+      toolNames: string[];
+      mcpNames: string[];
+    }[],
+    allTools: ConnectedToolInfo[],
+    allMcps: { name: string; instructions?: string }[],
   ): string {
     const agentSummary = agents
       .map((agent) => {
@@ -1022,25 +1218,30 @@ export class AiSuggestionsService {
       .map((agent) => {
         const name = agent.name?.trim() || agent.nodeId;
         const description = agent.description?.trim();
-        const toolsBlock = this.buildConnectedToolsReferenceBlock(
-          getTools(agent),
+        const connection = agentConnections.find(
+          (entry) => entry.nodeId === agent.nodeId,
         );
-        const mcpBlock = this.buildMcpReferenceBlock(getMcpInstructions(agent));
+        const toolNames = connection?.toolNames ?? [];
+        const mcpNames = connection?.mcpNames ?? [];
 
         return [
-          `<<<REFERENCE_ONLY_AGENT id=${agent.nodeId} name="${name}">>>`,
-          `Name: ${name}`,
-          `Node ID: ${agent.nodeId}`,
+          `Agent: ${name} (${agent.nodeId})`,
           description ? `Description: ${description}` : undefined,
-          `Current instructions:\n${agent.instructions}`,
-          toolsBlock,
-          mcpBlock,
-          `<<<END_REFERENCE_ONLY_AGENT id=${agent.nodeId}>>>`,
+          `Current instructions:\n<current_instructions>\n${agent.instructions}\n</current_instructions>`,
+          toolNames.length
+            ? `Connected tools: ${toolNames.join(', ')}`
+            : 'Connected tools: none',
+          mcpNames.length
+            ? `Connected MCP: ${mcpNames.join(', ')}`
+            : 'Connected MCP: none',
         ]
           .filter(Boolean)
           .join('\n');
       })
       .join('\n\n');
+
+    const allToolsBlock = this.buildAllToolsReferenceBlock(allTools);
+    const allMcpBlock = this.buildAllMcpReferenceBlock(allMcps);
 
     return [
       `User request:\n${userRequest}`,
@@ -1048,7 +1249,10 @@ export class AiSuggestionsService {
       agentSummary || 'No agent metadata available.',
       'Agent details:',
       agentBlocks,
-      'Return JSON only.',
+      allToolsBlock,
+      allMcpBlock,
+      'Remember: reference-only blocks must never be copied into output.',
+      'Return JSON only. Only include updates for agents whose instructions must change.',
     ].join('\n\n');
   }
 
