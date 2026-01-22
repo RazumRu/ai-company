@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { isPlainObject, isString } from 'lodash';
+import { zodResponseFormat } from 'openai/helpers/zod';
 import type { UnknownRecord } from 'type-fest';
+import { z } from 'zod';
 
 import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
@@ -27,6 +29,8 @@ import {
   KnowledgeContentSuggestionResponse,
   SuggestAgentInstructionsDto,
   SuggestAgentInstructionsResponse,
+  SuggestGraphInstructionsRequest,
+  SuggestGraphInstructionsResponse,
   ThreadAnalysisRequestDto,
   ThreadAnalysisResponse,
 } from '../dto/ai-suggestions.dto';
@@ -231,17 +235,7 @@ export class AiSuggestionsService {
 
     const systemMessage = isContinuation
       ? undefined
-      : [
-          'You rewrite agent system instructions.',
-          'Use the current instructions as a base and apply the user request.',
-          'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
-          'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
-          'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
-          "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and MCP servers information in your response. You can only refer to it if needed.",
-          'Keep the result concise, actionable, and focused on how the agent should behave.',
-          'Return only the updated instructions text without extra commentary.',
-          'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
-        ].join('\n');
+      : this.buildInstructionSystemMessage();
     const message = isContinuation
       ? (payload.userRequest || '').trim()
       : this.buildInstructionRequestPrompt(
@@ -269,6 +263,133 @@ export class AiSuggestionsService {
       instructions: updated?.length ? updated : effectiveInstructions,
       threadId: response.conversationId,
     };
+  }
+
+  async suggestGraphInstructions(
+    graphId: string,
+    payload: SuggestGraphInstructionsRequest,
+  ): Promise<SuggestGraphInstructionsResponse> {
+    const graph = await this.graphDao.getOne({
+      id: graphId,
+      createdBy: this.authContext.checkSub(),
+    });
+
+    if (!graph) {
+      throw new NotFoundException('GRAPH_NOT_FOUND');
+    }
+
+    const compiledGraph = this.graphRegistry.get(graphId);
+    if (!compiledGraph) {
+      throw new BadRequestException(
+        'GRAPH_NOT_RUNNING',
+        'Graph must be running to suggest instructions',
+      );
+    }
+
+    const agents = this.buildAgentContexts(compiledGraph);
+    if (!agents.length) {
+      return { updates: [] };
+    }
+
+    const userRequest = payload.userRequest.trim();
+    const edges = compiledGraph?.edges || graph.schema.edges;
+    const systemMessage = this.buildGraphInstructionSystemMessage();
+    const message = this.buildGraphInstructionRequestPrompt(
+      userRequest,
+      agents,
+      (agent) =>
+        this.getConnectedTools(graphId, agent.nodeId, edges, compiledGraph),
+      (agent) =>
+        this.getConnectedMcpInstructions(
+          graphId,
+          agent.nodeId,
+          edges,
+          compiledGraph,
+        ),
+    );
+
+    const schema = z.object({
+      agents: z.array(
+        z.object({
+          nodeId: z.string().min(1),
+          instructions: z.string().min(1),
+        }),
+      ),
+    });
+    const compiledSchema = zodResponseFormat(schema, 'data');
+
+    const response = await this.openaiService.response<{
+      agents?: { nodeId?: string; instructions?: string }[];
+    }>(
+      {
+        systemMessage,
+        message,
+      },
+      {
+        model: this.llmModelsService.getAiSuggestionsModel(),
+        reasoning: { effort: 'medium' },
+        text: {
+          format: {
+            ...compiledSchema.json_schema,
+            schema: compiledSchema.json_schema.schema!,
+            type: 'json_schema',
+          },
+        },
+      },
+      { json: true },
+    );
+
+    const parsed = schema.safeParse(response.content);
+    if (!parsed.success) {
+      throw new BadRequestException(
+        'INVALID_GRAPH_INSTRUCTIONS_SUGGESTION',
+        'LLM returned invalid graph instructions output',
+      );
+    }
+
+    const updates: SuggestGraphInstructionsResponse['updates'] = [];
+    const expectedIds = new Set(agents.map((agent) => agent.nodeId));
+    const suggestionsById = new Map(
+      parsed.data.agents.map((entry) => [entry.nodeId, entry.instructions]),
+    );
+    if (suggestionsById.size !== expectedIds.size) {
+      throw new BadRequestException(
+        'INVALID_GRAPH_INSTRUCTIONS_SUGGESTION',
+        'LLM response did not include all agents',
+      );
+    }
+    for (const entry of suggestionsById.keys()) {
+      if (!expectedIds.has(entry)) {
+        throw new BadRequestException(
+          'INVALID_GRAPH_INSTRUCTIONS_SUGGESTION',
+          'LLM response included unexpected agent ids',
+        );
+      }
+    }
+
+    for (const agent of agents) {
+      const currentInstructions = agent.instructions.trim();
+      const suggested = suggestionsById.get(agent.nodeId);
+
+      if (!currentInstructions) {
+        throw new BadRequestException(
+          'INVALID_AGENT_CONFIG',
+          `Agent ${agent.nodeId} instructions are not configured`,
+        );
+      }
+
+      const nextInstructions = suggested?.trim() || currentInstructions;
+
+      if (this.isInstructionsUpdated(currentInstructions, nextInstructions)) {
+        updates.push({
+          nodeId: agent.nodeId,
+          ...(agent.name ? { name: agent.name } : {}),
+          instructions: nextInstructions,
+        });
+      }
+    }
+
+    return { updates };
   }
 
   async suggestKnowledgeContent(
@@ -756,52 +877,50 @@ export class AiSuggestionsService {
     currentInstructions: string,
     tools: ConnectedToolInfo[],
     mcpInstructions?: string,
+    extraBlocks?: string[],
   ): string {
-    const toolsSection = tools.length
-      ? tools
-          .map((tool) => {
-            const details = [
-              `Name: ${tool.name}`,
-              `Description: ${tool.description}`,
-            ];
-
-            if (tool.instructions) {
-              details.push(
-                `Instructions:\n${this.wrapBlock(
-                  tool.instructions,
-                  'tool_description',
-                )}`,
-              );
-            }
-
-            return details.join('\n');
-          })
-          .join('\n\n')
-      : 'No connected tools available.';
-
-    const toolsBlock = [
-      '<<<REFERENCE_ONLY_CONNECTED_TOOLS>>>',
-      toolsSection,
-      '<<<END_REFERENCE_ONLY_CONNECTED_TOOLS>>>',
-    ].join('\n');
-
-    const mcpBlock = mcpInstructions
-      ? [
-          '<<<REFERENCE_ONLY_MCP>>>',
-          mcpInstructions,
-          '<<<END_REFERENCE_ONLY_MCP>>>',
-        ].join('\n')
-      : undefined;
+    const toolsBlock = this.buildConnectedToolsReferenceBlock(tools);
+    const mcpBlock = this.buildMcpReferenceBlock(mcpInstructions);
 
     return [
       `User request:\n${userRequest}`,
       `Current instructions:\n${currentInstructions}`,
+      ...(extraBlocks ?? []),
       toolsBlock,
       mcpBlock,
       'Provide the full updated instructions. Do not include a preamble.',
     ]
       .filter(Boolean)
       .join('\n\n');
+  }
+
+  private buildInstructionSystemMessage(): string {
+    return [
+      'You rewrite agent system instructions.',
+      'Use the current instructions as a base and apply the user request.',
+      'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
+      'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
+      'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
+      "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and MCP servers information in your response. You can only refer to it if needed.",
+      'Keep the result concise, actionable, and focused on how the agent should behave.',
+      'Return only the updated instructions text without extra commentary.',
+      'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
+    ].join('\n');
+  }
+
+  private buildGraphInstructionSystemMessage(): string {
+    return [
+      'You rewrite system instructions for multiple agents.',
+      'Use the current instructions as a base and apply the user request.',
+      'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
+      'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
+      'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
+      "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and MCP servers information in your response. You can only refer to it if needed.",
+      'Keep the result concise, actionable, and focused on how each agent should behave.',
+      'Return ONLY JSON in the shape: { "agents": [ { "nodeId": "...", "instructions": "..." } ] }',
+      'Include every agent exactly once in the JSON output.',
+      'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
+    ].join('\n');
   }
 
   private buildKnowledgeSuggestionPrompt(
@@ -832,6 +951,105 @@ export class AiSuggestionsService {
 
   private composeInstructions(baseInstructions: string): string {
     return baseInstructions;
+  }
+
+  private isInstructionsUpdated(current: string, updated: string): boolean {
+    return current.trim() !== updated.trim();
+  }
+
+  private buildConnectedToolsReferenceBlock(
+    tools: ConnectedToolInfo[],
+  ): string {
+    const toolsSection = tools.length
+      ? tools
+          .map((tool) => {
+            const details = [
+              `Name: ${tool.name}`,
+              `Description: ${tool.description}`,
+            ];
+
+            if (tool.instructions) {
+              details.push(
+                `Instructions:\n${this.wrapBlock(
+                  tool.instructions,
+                  'tool_description',
+                )}`,
+              );
+            }
+
+            return details.join('\n');
+          })
+          .join('\n\n')
+      : 'No connected tools available.';
+
+    return [
+      '<<<REFERENCE_ONLY_CONNECTED_TOOLS>>>',
+      toolsSection,
+      '<<<END_REFERENCE_ONLY_CONNECTED_TOOLS>>>',
+    ].join('\n');
+  }
+
+  private buildMcpReferenceBlock(mcpInstructions?: string): string | undefined {
+    return mcpInstructions
+      ? [
+          '<<<REFERENCE_ONLY_MCP>>>',
+          mcpInstructions,
+          '<<<END_REFERENCE_ONLY_MCP>>>',
+        ].join('\n')
+      : undefined;
+  }
+
+  private buildGraphInstructionRequestPrompt(
+    userRequest: string,
+    agents: AgentContext[],
+    getTools: (agent: AgentContext) => ConnectedToolInfo[],
+    getMcpInstructions: (agent: AgentContext) => string | undefined,
+  ): string {
+    const agentSummary = agents
+      .map((agent) => {
+        const name = agent.name?.trim() || agent.nodeId;
+        const description = agent.description?.trim();
+        return [
+          `- ${name} (${agent.nodeId})`,
+          description ? `  Description: ${description}` : undefined,
+        ]
+          .filter(Boolean)
+          .join('\n');
+      })
+      .join('\n');
+
+    const agentBlocks = agents
+      .map((agent) => {
+        const name = agent.name?.trim() || agent.nodeId;
+        const description = agent.description?.trim();
+        const toolsBlock = this.buildConnectedToolsReferenceBlock(
+          getTools(agent),
+        );
+        const mcpBlock = this.buildMcpReferenceBlock(getMcpInstructions(agent));
+
+        return [
+          `<<<REFERENCE_ONLY_AGENT id=${agent.nodeId} name="${name}">>>`,
+          `Name: ${name}`,
+          `Node ID: ${agent.nodeId}`,
+          description ? `Description: ${description}` : undefined,
+          `Current instructions:\n${agent.instructions}`,
+          toolsBlock,
+          mcpBlock,
+          `<<<END_REFERENCE_ONLY_AGENT id=${agent.nodeId}>>>`,
+        ]
+          .filter(Boolean)
+          .join('\n');
+      })
+      .join('\n\n');
+
+    return [
+      `User request:\n${userRequest}`,
+      'Agents (overview):',
+      agentSummary || 'No agent metadata available.',
+      'Agent details:',
+      agentBlocks,
+      'Return JSON only.',
+    ].join('\n\n');
   }
 
   private wrapBlock(content: string, tag: string): string {

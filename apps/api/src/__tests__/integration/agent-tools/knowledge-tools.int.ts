@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { KnowledgeGetChunksTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-get-chunks.tool';
+import { KnowledgeGetDocTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-get-doc.tool';
 import { KnowledgeSearchChunksTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-chunks.tool';
 import { KnowledgeSearchDocsTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-docs.tool';
 import { KnowledgeChunkDao } from '../../../v1/knowledge/dao/knowledge-chunk.dao';
@@ -16,6 +17,7 @@ describe('Knowledge tools (integration)', () => {
   let searchDocsTool: KnowledgeSearchDocsTool;
   let searchChunksTool: KnowledgeSearchChunksTool;
   let getChunksTool: KnowledgeGetChunksTool;
+  let getDocTool: KnowledgeGetDocTool;
   let docDao: KnowledgeDocDao;
   let chunkDao: KnowledgeChunkDao;
   const createdDocIds: string[] = [];
@@ -26,6 +28,7 @@ describe('Knowledge tools (integration)', () => {
     searchDocsTool = await app.resolve(KnowledgeSearchDocsTool);
     searchChunksTool = await app.resolve(KnowledgeSearchChunksTool);
     getChunksTool = await app.resolve(KnowledgeGetChunksTool);
+    getDocTool = await app.resolve(KnowledgeGetDocTool);
     docDao = app.get(KnowledgeDocDao);
     chunkDao = app.get(KnowledgeChunkDao);
     const dataSource = app.get(DataSource);
@@ -245,6 +248,53 @@ describe('Knowledge tools (integration)', () => {
         },
       );
       expect(blockedChunks.output as unknown[]).toHaveLength(0);
+    },
+  );
+
+  it(
+    'returns full doc content only when politic allows it',
+    { timeout: 60000 },
+    async () => {
+      const allowedDoc = await knowledgeService.createDoc({
+        title: 'Allowed doc',
+        content: 'Full content is allowed here.',
+        politic:
+          'If this document is relevant to the current task - always fetch the full content instead of fetching only specific chunks.',
+      });
+      const blockedDoc = await knowledgeService.createDoc({
+        title: 'Blocked doc',
+        content: 'This should not be returned.',
+        politic: 'Summarize only; do not share full content.',
+      });
+      createdDocIds.push(allowedDoc.id, blockedDoc.id);
+
+      const allowedResult = await getDocTool.invoke(
+        { docId: allowedDoc.id },
+        {},
+        {
+          configurable: {
+            thread_id: 'thread-1',
+            graph_created_by: TEST_USER_ID,
+          },
+        },
+      );
+
+      expect(allowedResult.output).toBeTruthy();
+      expect(allowedResult.output?.documentId).toBe(allowedDoc.id);
+      expect(allowedResult.output?.content).toBe(allowedDoc.content);
+
+      await expect(
+        getDocTool.invoke(
+          { docId: blockedDoc.id },
+          {},
+          {
+            configurable: {
+              thread_id: 'thread-1',
+              graph_created_by: TEST_USER_ID,
+            },
+          },
+        ),
+      ).rejects.toThrowError('FULL_CONTENT_NOT_ALLOWED');
     },
   );
 });

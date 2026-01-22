@@ -6,6 +6,7 @@ import {
 } from '../../base-tool';
 import { BaseToolGroup } from '../../base-tool-group';
 import { KnowledgeGetChunksTool } from './knowledge-get-chunks.tool';
+import { KnowledgeGetDocTool } from './knowledge-get-doc.tool';
 import { KnowledgeSearchChunksTool } from './knowledge-search-chunks.tool';
 import { KnowledgeSearchDocsTool } from './knowledge-search-docs.tool';
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
@@ -16,6 +17,7 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
     private readonly knowledgeSearchDocsTool: KnowledgeSearchDocsTool,
     private readonly knowledgeSearchChunksTool: KnowledgeSearchChunksTool,
     private readonly knowledgeGetChunksTool: KnowledgeGetChunksTool,
+    private readonly knowledgeGetDocTool: KnowledgeGetDocTool,
   ) {
     super();
   }
@@ -28,6 +30,7 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
       this.knowledgeSearchDocsTool.build(config, lgConfig),
       this.knowledgeSearchChunksTool.build(config, lgConfig),
       this.knowledgeGetChunksTool.build(config, lgConfig),
+      this.knowledgeGetDocTool.build(config, lgConfig),
     ];
   }
 
@@ -39,6 +42,8 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
       '2) Use knowledge_search_chunks to narrow to the specific relevant sections.',
       '   - You may run knowledge_search_chunks multiple times with different queries to cover the task thoroughly.',
       '3) Use knowledge_get_chunks to read the exact chunks you will rely on.',
+      '4) Use knowledge_get_doc only when the document politic instructs you to fetch full content.',
+      '   - Example: "If this document is relevant to the current task - always fetch the full content instead of fetching only specific chunks."',
       'Then write a short note describing how you searched (queries/filters/tags) and what you found.',
     ].join('\n');
   }

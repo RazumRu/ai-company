@@ -197,6 +197,45 @@ export const SuggestAgentInstructionsResponseDtoSchema = {
   required: ['instructions', 'threadId'],
 } as const;
 
+export const SuggestGraphInstructionsDtoSchema = {
+  type: 'object',
+  properties: {
+    userRequest: {
+      type: 'string',
+      minLength: 1,
+    },
+  },
+  required: ['userRequest'],
+} as const;
+
+export const SuggestGraphInstructionsResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    updates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          nodeId: {
+            type: 'string',
+            minLength: 1,
+          },
+          name: {
+            type: 'string',
+            minLength: 1,
+          },
+          instructions: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+        required: ['nodeId', 'instructions'],
+      },
+    },
+  },
+  required: ['updates'],
+} as const;
+
 export const ThreadAnalysisRequestDtoSchema = {
   type: 'object',
   properties: {

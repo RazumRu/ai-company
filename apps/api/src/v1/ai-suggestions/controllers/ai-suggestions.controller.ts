@@ -7,6 +7,8 @@ import {
   KnowledgeContentSuggestionResponseDto,
   SuggestAgentInstructionsDto,
   SuggestAgentInstructionsResponseDto,
+  SuggestGraphInstructionsDto,
+  SuggestGraphInstructionsResponseDto,
   ThreadAnalysisRequestDto,
   ThreadAnalysisResponseDto,
 } from '../dto/ai-suggestions.dto';
@@ -26,6 +28,17 @@ export class AiSuggestionsController {
     @Body() dto: SuggestAgentInstructionsDto,
   ): Promise<SuggestAgentInstructionsResponseDto> {
     return await this.aiSuggestionsService.suggest(graphId, nodeId, dto);
+  }
+
+  @Post('graphs/:graphId/suggest-instructions')
+  async suggestGraphInstructions(
+    @Param('graphId') graphId: string,
+    @Body() dto: SuggestGraphInstructionsDto,
+  ): Promise<SuggestGraphInstructionsResponseDto> {
+    return await this.aiSuggestionsService.suggestGraphInstructions(
+      graphId,
+      dto,
+    );
   }
 
   @Post('threads/:threadId/analyze')

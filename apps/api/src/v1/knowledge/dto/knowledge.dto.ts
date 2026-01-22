@@ -32,7 +32,9 @@ export const KnowledgeDocInputSchema = z.object({
     .string()
     .min(1)
     .optional()
-    .describe('Optional LLM usage guidance for this document'),
+    .describe(
+      'Optional LLM usage guidance for this document. If the politic instructs to fetch full content (e.g. "always fetch the full content instead of fetching only specific chunks"), full document retrieval is permitted.',
+    ),
   tags: z
     .array(z.string().min(1))
     .optional()

@@ -61,6 +61,8 @@ import type {
   StopThreadResponses,
   SuggestAgentInstructionsData,
   SuggestAgentInstructionsResponses,
+  SuggestGraphInstructionsData,
+  SuggestGraphInstructionsResponses,
   SuggestKnowledgeContentData,
   SuggestKnowledgeContentResponses,
   UpdateDocData,
@@ -174,6 +176,24 @@ export const suggestAgentInstructions = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-instructions',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const suggestGraphInstructions = <ThrowOnError extends boolean = false>(
+  options: Options<SuggestGraphInstructionsData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    SuggestGraphInstructionsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/graphs/{graphId}/suggest-instructions',
     ...options,
     headers: {
       'Content-Type': 'application/json',

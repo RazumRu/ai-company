@@ -29,7 +29,7 @@ export class KnowledgeToolsTemplate extends ToolNodeBaseTemplate<
   readonly id = 'knowledge-tools';
   readonly name = 'Knowledge Tools';
   readonly description =
-    'Tools to locate relevant knowledge documents and retrieve chunk text.';
+    'Tools to locate knowledge documents, retrieve chunk text, and fetch full content when allowed.';
   readonly schema = KnowledgeToolsTemplateSchema;
 
   readonly inputs = [

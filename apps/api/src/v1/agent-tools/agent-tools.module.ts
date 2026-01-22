@@ -25,6 +25,7 @@ import { GhCreatePullRequestTool } from './tools/common/github/gh-create-pull-re
 import { GhPushTool } from './tools/common/github/gh-push.tool';
 import { GhToolGroup } from './tools/common/github/gh-tool-group';
 import { KnowledgeGetChunksTool } from './tools/common/knowledge/knowledge-get-chunks.tool';
+import { KnowledgeGetDocTool } from './tools/common/knowledge/knowledge-get-doc.tool';
 import { KnowledgeSearchChunksTool } from './tools/common/knowledge/knowledge-search-chunks.tool';
 import { KnowledgeSearchDocsTool } from './tools/common/knowledge/knowledge-search-docs.tool';
 import { KnowledgeToolGroup } from './tools/common/knowledge/knowledge-tool-group';
@@ -50,6 +51,7 @@ import { FinishTool } from './tools/core/finish.tool';
     KnowledgeSearchDocsTool,
     KnowledgeSearchChunksTool,
     KnowledgeGetChunksTool,
+    KnowledgeGetDocTool,
     KnowledgeToolGroup,
     FilesFindPathsTool,
     FilesDirectoryTreeTool,
@@ -80,6 +82,7 @@ import { FinishTool } from './tools/core/finish.tool';
     KnowledgeSearchDocsTool,
     KnowledgeSearchChunksTool,
     KnowledgeGetChunksTool,
+    KnowledgeGetDocTool,
     KnowledgeToolGroup,
     FilesFindPathsTool,
     FilesDirectoryTreeTool,
