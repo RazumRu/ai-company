@@ -610,19 +610,22 @@ export class AiSuggestionsService {
     messages: { message: MessageDto; from: string }[],
     compiledGraph: CompiledGraph,
   ): SanitizedMessage[] {
-    return messages.map(({ message, from }) => {
+    const sanitized: SanitizedMessage[] = [];
+
+    for (const { message, from } of messages) {
       const fromLabel = this.getNodeDisplayName(compiledGraph, from);
 
       if (message.role === 'human') {
-        return {
+        sanitized.push({
           role: 'human',
           content: message.content,
           from: fromLabel,
-        };
+        });
+        continue;
       }
 
       if (message.role === 'ai') {
-        return {
+        sanitized.push({
           role: 'ai',
           content: message.content,
           from: fromLabel,
@@ -633,25 +636,24 @@ export class AiSuggestionsService {
               : undefined,
             type: typeof tc.type === 'string' ? tc.type : undefined,
           })),
-        };
+        });
+        continue;
       }
 
       if (message.role === 'reasoning') {
-        return {
-          role: 'reasoning',
-          content: message.content,
-          from: fromLabel,
-        };
+        // Never include reasoning content in LLM prompts.
+        continue;
       }
 
       if (message.role === 'tool') {
-        return {
+        sanitized.push({
           role: 'tool',
           name: message.name,
           content: this.safeStringify(message.content),
           from: fromLabel,
           title: message.title,
-        };
+        });
+        continue;
       }
 
       if (message.role === 'tool-shell') {
@@ -666,25 +668,28 @@ export class AiSuggestionsService {
         const stdout = typeof rec.stdout === 'string' ? rec.stdout : undefined;
         const stderr = typeof rec.stderr === 'string' ? rec.stderr : undefined;
 
-        return {
+        sanitized.push({
           role: 'tool-shell',
           name: 'shell',
           exitCode,
           stdout,
           stderr,
           from: fromLabel,
-        };
+        });
+        continue;
       }
 
-      return {
+      sanitized.push({
         role: 'system',
         content:
           typeof message.content === 'string'
             ? message.content
             : this.safeStringify(message.content),
         from: fromLabel,
-      };
-    });
+      });
+    }
+
+    return sanitized;
   }
 
   private getNodeDisplayName(

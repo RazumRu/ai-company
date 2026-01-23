@@ -3,7 +3,6 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 import { isObject } from 'lodash';
-import type { JsonObject, JsonValue } from 'type-fest';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
@@ -14,6 +13,7 @@ import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
+import { parseStructuredContent } from '../../../graphs/graphs.utils';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { ToolNodeBaseTemplate } from '../base-node.template';
 
@@ -198,23 +198,19 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
                     ? lastMessage.content
                     : JSON.stringify(lastMessage.content);
 
-                // Try to parse the content to extract needsMoreInfo flag
-                try {
-                  const parsedContent = JSON.parse(content) as JsonValue;
-                  if (isObject(parsedContent)) {
-                    const rec = parsedContent as JsonObject;
-                    const parsedMessage = rec.message;
+                // Parse structured content to extract needsMoreInfo flag
+                const parsedContent = parseStructuredContent(content);
+                if (isObject(parsedContent)) {
+                  const rec = parsedContent as Record<string, unknown>;
+                  const parsedMessage = rec.message;
 
-                    responseMessage =
-                      typeof parsedMessage === 'string' &&
-                      parsedMessage.length > 0
-                        ? parsedMessage
-                        : content;
-                    needsMoreInfo = rec.needsMoreInfo === true;
-                  } else {
-                    responseMessage = content;
-                  }
-                } catch {
+                  responseMessage =
+                    typeof parsedMessage === 'string' &&
+                    parsedMessage.length > 0
+                      ? parsedMessage
+                      : content;
+                  needsMoreInfo = rec.needsMoreInfo === true;
+                } else {
                   responseMessage = content;
                 }
               } else if (lastMessage.type === 'ai') {

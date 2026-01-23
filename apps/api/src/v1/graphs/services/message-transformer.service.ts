@@ -5,6 +5,7 @@ import { extractTextFromResponseContent } from '../../agents/agents.utils';
 import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import { MessageDto } from '../dto/graphs.dto';
 import { MessageRole } from '../graphs.types';
+import { parseStructuredContent } from '../graphs.utils';
 
 /**
  * Interface for raw tool call structures from LangChain serialization
@@ -130,33 +131,21 @@ export class MessageTransformerService {
       case 'ToolMessage': {
         const toolName = msg.name || 'unknown';
         const toolCallId = msg.tool_call_id || '';
-        const parsed = this.parseToolContent(msg.content);
+        const parsed = parseStructuredContent(msg.content);
+        const parsedRecord = isObject(parsed)
+          ? (parsed as Record<string, unknown>)
+          : Array.isArray(parsed)
+            ? { data: parsed }
+            : { message: parsed };
         const title =
           typeof additionalKwargs?.__title === 'string'
             ? additionalKwargs.__title
             : undefined;
 
-        if (toolName === 'shell') {
-          return {
-            role: MessageRole.ToolShell,
-            name: toolName,
-            content: parsed as {
-              exitCode: number;
-              stdout: string;
-              stderr: string;
-              cmd: string;
-              fail?: boolean;
-            },
-            toolCallId,
-            additionalKwargs,
-            runId,
-          };
-        }
-
         return {
           role: MessageRole.Tool,
           name: toolName,
-          content: parsed,
+          content: parsedRecord,
           toolCallId,
           title,
           additionalKwargs,
@@ -181,26 +170,6 @@ export class MessageTransformerService {
       return flattened;
     }
     return typeof input === 'string' ? input : JSON.stringify(input);
-  }
-
-  private parseToolContent(input: unknown): Record<string, unknown> {
-    if (typeof input === 'string') {
-      try {
-        const parsed = JSON.parse(input) as unknown;
-        if (Array.isArray(parsed)) {
-          return { data: parsed };
-        }
-        if (isObject(parsed)) return parsed as Record<string, unknown>;
-        return { message: parsed };
-      } catch {
-        return { message: input };
-      }
-    }
-    if (Array.isArray(input)) {
-      return { data: input };
-    }
-    if (isObject(input)) return input as Record<string, unknown>;
-    return { message: input };
   }
 
   private normalizeAdditionalKwargs(

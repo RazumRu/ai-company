@@ -284,6 +284,37 @@ describe('MessageTransformerService', () => {
       } as ShellToolMessageDto);
     });
 
+    it('should transform shell tool message from yaml', () => {
+      const m = msg({
+        type: 'ToolMessage',
+        content: [
+          'exitCode: 0',
+          'stdout: Success',
+          'stderr: ""',
+          'cmd: echo test',
+        ].join('\n'),
+        name: 'shell',
+        tool_call_id: 'call-shell-yaml-1',
+        additional_kwargs: { run_id: 'run-1' },
+      });
+
+      const result = service.transformMessageToDto(m);
+
+      expect(result).toEqual({
+        role: 'tool-shell',
+        name: 'shell',
+        content: {
+          exitCode: 0,
+          stdout: 'Success',
+          stderr: '',
+          cmd: 'echo test',
+        },
+        toolCallId: 'call-shell-yaml-1',
+        runId: 'run-1',
+        additionalKwargs: { __runId: 'run-1' },
+      } as ShellToolMessageDto);
+    });
+
     it('should handle malformed tool content', () => {
       const m = msg({
         type: 'ToolMessage',
