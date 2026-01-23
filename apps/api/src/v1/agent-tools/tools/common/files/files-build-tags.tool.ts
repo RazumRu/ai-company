@@ -139,6 +139,23 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       };
     }
 
+    const clearRes = await this.execCommand(
+      {
+        cmd: `rm -f "${tagsFile}"`,
+      },
+      config,
+      cfg,
+    );
+
+    if (clearRes.exitCode !== 0) {
+      return {
+        output: {
+          error: `Failed to clear previous tags file: ${clearRes.stderr || clearRes.stdout}`,
+        },
+        messageMetadata,
+      };
+    }
+
     // Build ctags index without mutating session cwd (use subshell)
     const baseCmd = `ctags -R --fields=+n+K --extras=+q --output-format=json -f "${tagsFile}" .`;
     const cmd = args.directoryPath

@@ -32,6 +32,7 @@ import { KnowledgeToolGroup } from './tools/common/knowledge/knowledge-tool-grou
 import { ShellTool } from './tools/common/shell.tool';
 import { WebSearchTool } from './tools/common/web-search.tool';
 import { FinishTool } from './tools/core/finish.tool';
+import { ReportStatusTool } from './tools/core/report-status.tool';
 
 @Module({
   imports: [LitellmModule, OpenaiModule, KnowledgeModule],
@@ -40,6 +41,7 @@ import { FinishTool } from './tools/core/finish.tool';
     ShellTool,
     WebSearchTool,
     FinishTool,
+    ReportStatusTool,
     CommunicationExecTool,
     CommunicationToolGroup,
     GhCloneTool,
@@ -71,6 +73,7 @@ import { FinishTool } from './tools/core/finish.tool';
     ShellTool,
     WebSearchTool,
     FinishTool,
+    ReportStatusTool,
     CommunicationExecTool,
     CommunicationToolGroup,
     GhCloneTool,

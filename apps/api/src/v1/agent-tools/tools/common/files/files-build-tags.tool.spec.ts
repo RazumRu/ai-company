@@ -87,6 +87,13 @@ describe('FilesBuildTagsTool', () => {
           stderr: '',
           execPath: '/runtime-workspace/test-thread-123',
         })
+        // Mock clear tags command
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
         // Mock ctags command
         .mockResolvedValueOnce({
           exitCode: 0,
@@ -100,7 +107,7 @@ describe('FilesBuildTagsTool', () => {
       expect(result.success).toBe(true);
       expect(result.tagsFile).toBe('/tmp/test-thread-123/tags.json');
       expect(result.error).toBeUndefined();
-      expect((tool as any).execCommand).toHaveBeenCalledTimes(2);
+      expect((tool as any).execCommand).toHaveBeenCalledTimes(3);
       expect((tool as any).execCommand).toHaveBeenNthCalledWith(
         1,
         {
@@ -111,6 +118,14 @@ describe('FilesBuildTagsTool', () => {
       );
       expect((tool as any).execCommand).toHaveBeenNthCalledWith(
         2,
+        {
+          cmd: 'rm -f "/tmp/test-thread-123/tags.json"',
+        },
+        mockConfig,
+        mockCfg,
+      );
+      expect((tool as any).execCommand).toHaveBeenNthCalledWith(
+        3,
         {
           cmd: 'cd "/path/to/repo" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "/tmp/test-thread-123/tags.json" .',
         },
@@ -143,6 +158,12 @@ describe('FilesBuildTagsTool', () => {
           stdout: '',
           stderr: '',
           execPath: '/runtime-workspace/parent-thread-456',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/parent-thread-456',
         });
 
       const { output: result } = await tool.invoke(
@@ -161,6 +182,14 @@ describe('FilesBuildTagsTool', () => {
         mockConfig,
         mockCfgWithParent,
       );
+      expect((tool as any).execCommand).toHaveBeenNthCalledWith(
+        2,
+        {
+          cmd: 'rm -f "/tmp/parent-thread-456/tags.json"',
+        },
+        mockConfig,
+        mockCfgWithParent,
+      );
     });
 
     it('should use fallback thread_id when parent_thread_id is not available', async () => {
@@ -175,6 +204,12 @@ describe('FilesBuildTagsTool', () => {
       };
 
       vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-789',
+        })
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '',
@@ -273,6 +308,12 @@ describe('FilesBuildTagsTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         })
         .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
           exitCode: 1,
           stdout: '',
           stderr: 'ctags: command not found',
@@ -299,6 +340,12 @@ describe('FilesBuildTagsTool', () => {
           execPath: '/runtime-workspace/test-thread-123',
         })
         .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
           exitCode: 1,
           stdout: 'Error: Invalid directory',
           stderr: '',
@@ -317,6 +364,12 @@ describe('FilesBuildTagsTool', () => {
       };
 
       vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '',
@@ -353,13 +406,19 @@ describe('FilesBuildTagsTool', () => {
           stdout: '',
           stderr: '',
           execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
         });
 
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
       expect((tool as any).execCommand).toHaveBeenNthCalledWith(
-        2,
+        3,
         {
           cmd: 'cd "/path/to my repo" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "/tmp/test-thread-123/tags.json" .',
         },
@@ -374,6 +433,12 @@ describe('FilesBuildTagsTool', () => {
       };
 
       vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '',

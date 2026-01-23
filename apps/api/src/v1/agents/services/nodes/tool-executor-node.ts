@@ -94,8 +94,13 @@ export class ToolExecutorNode extends BaseNode<
             },
             signal: cfg.signal,
           })) as unknown;
-          const { output, messageMetadata, stateChange, toolRequestUsage } =
-            rawResult as ToolInvokeResult<unknown>;
+          const {
+            output,
+            messageMetadata,
+            stateChange,
+            toolRequestUsage,
+            additionalMessages,
+          } = rawResult as ToolInvokeResult<unknown>;
 
           const content =
             typeof output === 'string' ? output : JSON.stringify(output);
@@ -117,6 +122,7 @@ export class ToolExecutorNode extends BaseNode<
             toolMessage: makeMsg(content, messageMetadata),
             stateChange,
             toolRequestUsage,
+            additionalMessages,
           };
         } catch (e) {
           const err = e as Error;
@@ -134,12 +140,14 @@ export class ToolExecutorNode extends BaseNode<
               `Error executing tool '${tc.name}': ${err?.message || String(err)}`,
             ),
             stateChange: undefined as unknown,
+            additionalMessages: undefined,
           };
         }
       }),
     );
 
     const toolMessages = results.map((r) => r.toolMessage);
+    const extraMessages = results.flatMap((r) => r.additionalMessages ?? []);
 
     // Attach token usage to tool messages that have it
     for (let i = 0; i < results.length; i++) {
@@ -166,7 +174,7 @@ export class ToolExecutorNode extends BaseNode<
     );
 
     const messagesWithMetadata = updateMessagesListWithMetadata(
-      toolMessages,
+      [...toolMessages, ...extraMessages],
       cfg,
     );
 

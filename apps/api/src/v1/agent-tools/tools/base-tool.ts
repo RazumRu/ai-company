@@ -1,3 +1,4 @@
+import { BaseMessage } from '@langchain/core/messages';
 import {
   DynamicStructuredTool,
   tool,
@@ -38,6 +39,11 @@ export type ToolInvokeResult<TResult> = {
    * This is stored under `state.toolsMetadata[tool.name]`.
    */
   stateChange?: unknown;
+  /**
+   * Optional extra messages to append to the agent state.
+   * These will be persisted alongside tool result messages.
+   */
+  additionalMessages?: BaseMessage[];
   /**
    * Optional LLM token usage incurred by this tool during execution.
    * If provided, will be added to thread state usage counters and

@@ -377,7 +377,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           {
             model: this.llmModelsService.getFilesEditModel(useSmartModel),
             reasoning: {
-              effort: useSmartModel ? 'low' : 'minimal',
+              effort: 'low',
             },
             text: { verbosity: useSmartModel ? 'medium' : 'low' },
           },
