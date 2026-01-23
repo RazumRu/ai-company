@@ -175,7 +175,11 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       ### Overview
       Primary edit tool. Provide a sketch of the final state using "// ... existing code ..." markers.
 
-      ### Required Flow
+      ### CRITICAL: Always Read First
+      **MANDATORY**: Run \`files_read\` before editing to avoid stale or missing context.
+      Critical: editing without a fresh read often fails or applies to the wrong place.
+
+      ### Retry Strategy
       1) Run \`files_read\` first (mandatory).
       2) Call \`files_edit\` with useSmartModel=false (default).
       3) If parsing/diff fails, retry with useSmartModel=true.

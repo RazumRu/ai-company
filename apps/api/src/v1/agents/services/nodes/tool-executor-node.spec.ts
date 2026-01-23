@@ -445,7 +445,10 @@ describe('ToolExecutorNode', () => {
         finish: { done: true, needsMoreInfo: false },
       });
       expect(result.messages?.items?.[0]?.content).toBe(
-        '{"message":"Task completed successfully","needsMoreInfo":false}',
+        stringifyYaml({
+          message: 'Task completed successfully',
+          needsMoreInfo: false,
+        }).trimEnd(),
       );
     });
 
@@ -480,7 +483,10 @@ describe('ToolExecutorNode', () => {
         finish: { done: false, needsMoreInfo: true },
       });
       expect(result.messages?.items?.[0]?.content).toBe(
-        '{"message":"What is the target environment?","needsMoreInfo":true}',
+        stringifyYaml({
+          message: 'What is the target environment?',
+          needsMoreInfo: true,
+        }).trimEnd(),
       );
     });
 
