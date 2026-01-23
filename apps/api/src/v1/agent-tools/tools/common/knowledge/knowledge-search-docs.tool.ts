@@ -83,6 +83,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       ### Best Practices
       Provide a clear task description and the relevant stack context (technology, language, framework).
       This tool returns up to 10 docs and may include a short report.
+      If no documents are returned, read the comment for refinement tips and rerun with a better query.
 
       ### Examples
       \`\`\`json

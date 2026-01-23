@@ -85,7 +85,8 @@ export class InvokeLlmNode extends BaseNode<
       ...preparedMessages,
     ];
 
-    const res = await runner.invoke(messages);
+    const invokeLlm = () => runner.invoke(messages);
+    const res = await this.invokeWithRetry(invokeLlm);
 
     const preparedRes = convertChunkToMessage(res);
     this.attachToolCallTitles(preparedRes);
@@ -138,6 +139,107 @@ export class InvokeLlmNode extends BaseNode<
           }
         : {}),
     };
+  }
+
+  private async invokeWithRetry<T>(invoke: () => Promise<T>): Promise<T> {
+    const maxRetryMs = 60_000;
+    const retryAfterRe = /Please try again in ([0-9.]+)s/i;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      });
+
+    const getMessage = (error: unknown): string | undefined => {
+      if (typeof error === 'string') return error;
+      if (error instanceof Error) return error.message;
+      return typeof (error as { message?: unknown })?.message === 'string'
+        ? (error as { message: string }).message
+        : undefined;
+    };
+
+    const getHeaders = (
+      error: unknown,
+    ): Record<string, string | number | string[]> | undefined =>
+      (error as { headers?: Record<string, string | number | string[]> })
+        ?.headers ??
+      (
+        error as {
+          response?: { headers?: Record<string, string | number | string[]> };
+        }
+      )?.response?.headers;
+
+    const getHeader = (
+      headers: Record<string, string | number | string[]> | undefined,
+      name: string,
+    ): string | undefined => {
+      if (!headers) return undefined;
+      const key = Object.keys(headers).find(
+        (h) => h.toLowerCase() === name.toLowerCase(),
+      );
+      if (!key) return undefined;
+      const value = headers[key];
+      if (typeof value === 'string') return value;
+      if (typeof value === 'number') return String(value);
+      if (Array.isArray(value)) return value[0];
+      return undefined;
+    };
+
+    const parseRetryAfterMs = (value?: string): number | null => {
+      if (!value) return null;
+      const seconds = Number.parseFloat(value);
+      if (Number.isFinite(seconds)) return Math.ceil(seconds * 1000);
+      const dateMs = Date.parse(value);
+      if (Number.isNaN(dateMs)) return null;
+      const diffMs = dateMs - Date.now();
+      return diffMs > 0 ? Math.ceil(diffMs) : null;
+    };
+
+    const getRetryDelayMs = (error: unknown): number | null => {
+      const status =
+        (error as { status?: unknown })?.status ??
+        (error as { response?: { status?: unknown } })?.response?.status ??
+        (error as { statusCode?: unknown })?.statusCode;
+      const code =
+        (error as { code?: unknown })?.code ??
+        (error as { error?: { code?: unknown } })?.error?.code;
+      const name = (error as { name?: unknown })?.name;
+      const message = getMessage(error);
+      const isRateLimit =
+        status === 429 ||
+        code === 'rate_limit_exceeded' ||
+        (typeof name === 'string' && name.includes('RateLimit')) ||
+        (typeof message === 'string' &&
+          message.toLowerCase().includes('rate limit'));
+      if (!isRateLimit) return null;
+
+      const headerDelay = parseRetryAfterMs(
+        getHeader(getHeaders(error), 'retry-after'),
+      );
+      if (headerDelay !== null) return headerDelay;
+
+      const match = message?.match(retryAfterRe);
+      return match?.[1] ? parseRetryAfterMs(match[1]) : null;
+    };
+
+    try {
+      return await invoke();
+    } catch (error: unknown) {
+      const retryDelayMs = getRetryDelayMs(error);
+      if (retryDelayMs === null) {
+        throw error;
+      }
+
+      if (retryDelayMs > maxRetryMs) {
+        const retrySeconds = Math.ceil(retryDelayMs / 1000);
+        throw new Error(`Rate limit retry delay ${retrySeconds}s exceeds 60s.`);
+      }
+
+      this.logger?.warn(
+        `Rate limit hit. Retrying LLM call after ${retryDelayMs}ms.`,
+      );
+      await sleep(retryDelayMs);
+      return invoke();
+    }
   }
 
   private attachToolCallTitles(msg: ReturnType<typeof convertChunkToMessage>) {

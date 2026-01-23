@@ -39,6 +39,8 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
       'Mandatory before starting any work: use the knowledge tools to gather all necessary context.',
       'Process:',
       '1) Use knowledge_search_docs to find relevant documents for the current task.',
+      '   - If no documents are returned, read the comment for guidance and refine the query.',
+      '   - You may rerun knowledge_search_docs with a different query if it could surface relevant documents.',
       '2) Use knowledge_search_chunks to narrow to the specific relevant sections.',
       '   - You may run knowledge_search_chunks multiple times with different queries to cover the task thoroughly.',
       '3) Use knowledge_get_chunks to read the exact chunks you will rely on.',
