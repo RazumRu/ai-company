@@ -64,114 +64,33 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
   ): string {
     return dedent`
       ### Overview
-      Searches a previously built ctags index for symbol definitions. Faster and more precise than text search for finding function, class, and variable definitions. Requires prior \`files_build_tags\` call. If \`directoryPath\` is omitted, runs in the current working directory of the persistent shell session (e.g., after \`cd\` via shell).
+      Search symbol definitions in a prebuilt ctags index. Requires \`files_build_tags\` first.
 
       ### When to Use
-      - Finding where a function or class is defined
-      - Looking up all methods in a class
-      - Finding variable and constant definitions
-      - Navigating to symbol definitions in large codebases
+      - Finding where a class/function is defined
+      - Jumping to symbol definitions quickly
+      - Listing methods by pattern (regex)
 
       ### When NOT to Use
-      - Tags index hasn't been built → call \`files_build_tags\` first
-      - You changed repo files since building tags → rebuild tags first (the index is not automatically updated)
-      - Searching for text content (not symbols) → use \`files_search_text\`
-      - Finding usages of a symbol → use \`files_search_text\`
-      - Looking for comments or strings → use \`files_search_text\`
+      - Tags not built or stale -> rebuild first
+      - Text or usage search -> \`files_search_text\`
 
       ### Best Practices
-      - **Always run \`files_build_tags\` once at the start of work** (per repo + per session/thread), then prefer this tool for symbol definitions.
-      - **Rebuild tags after file changes** (new/removed/renamed files, symbol changes) before relying on results.
+      - exactMatch=true for a known symbol name.
+      - regex (default) for pattern discovery.
+      - After results, read the file with \`files_read\` and a small range.
+      - Rebuild tags after file changes.
 
-      **1. Use exact match for known symbols:**
+      ### Examples
+      **1) Exact match:**
       \`\`\`json
-        {"directoryPath": "/repo", "symbolQuery": "UserController", "exactMatch": true}
-        // After cd /repo via shell:
-        {"symbolQuery": "UserController", "exactMatch": true}
-
-        // Quick current-directory example (after building tags in cwd)
-        {"symbolQuery": "Service", "exactMatch": false}
+      {"directoryPath":"/repo","symbolQuery":"UserService","exactMatch":true}
       \`\`\`
 
-      **2. Use regex for pattern discovery:**
+      **2) Regex search (all Services):**
       \`\`\`json
-        // Find all hooks
-        {"directoryPath": "/repo", "symbolQuery": "^use[A-Z]"}
-
-        // Find all test functions
-        {"directoryPath": "/repo", "symbolQuery": "^test.*|^it.*|^describe.*"}
-
-        // Find all handlers
-        {"directoryPath": "/repo", "symbolQuery": "handle[A-Z]"}
+      {"directoryPath":"/repo","symbolQuery":"Service$"}
       \`\`\`
-
-      **3. Narrow searches with specific patterns:**
-      \`\`\`json
-        // Instead of broad search
-        {"directoryPath": "/repo", "symbolQuery": "User"}
-
-        // Be specific
-        {"directoryPath": "/repo", "symbolQuery": "UserService", "exactMatch": true}
-      \`\`\`
-
-      ### Output Format
-      Returns up to 15 matching tag entries:
-      \`\`\`json
-        {
-          "matches": [
-            {
-              "name": "UserService",
-              "path": "/repo/src/services/user.service.ts",
-              "line": 15,
-              "kind": "class",
-              "scope": null
-            },
-            {
-              "name": "getUserById",
-              "path": "/repo/src/services/user.service.ts",
-              "line": 25,
-              "kind": "method",
-              "scope": "UserService"
-            }
-          ]
-        }
-      \`\`\`
-
-      ### Tag Entry Fields
-      | Field | Description |
-      |-------|-------------|
-      | name | Symbol name |
-      | path | File path where symbol is defined |
-      | line | Line number of definition |
-      | kind | Symbol type (function, class, method, variable, etc.) |
-      | scope | Parent scope (e.g., class name for methods) |
-
-      ### Common Patterns
-
-      **Find class definition:**
-      \`\`\`json
-        {"directoryPath": "/repo", "symbolQuery": "AuthService", "exactMatch": true}
-      \`\`\`
-
-      **Find all classes:**
-      \`\`\`json
-        {"directoryPath": "/repo", "symbolQuery": "Service$"}  // Classes ending in Service
-      \`\`\`
-
-      **Find React components:**
-      \`\`\`json
-        {"directoryPath": "/repo", "symbolQuery": "^[A-Z][a-z].*Component$"}
-      \`\`\`
-
-      ### After Finding Definitions
-      1. Get the file path and line number from results
-      2. Use \`files_read\` with fromLineNumber/toLineNumber on the specific read item to view the full implementation
-      3. Use \`files_search_text\` to find all usages of the symbol
-
-      ### Troubleshooting
-      - "No matches" → Verify alias is correct, tags are built
-      - Wrong/stale results → Rebuild tags after code changes (new files/symbols/renames)
-      - Symbol not found → May not be indexed (check language support)
     `;
   }
 

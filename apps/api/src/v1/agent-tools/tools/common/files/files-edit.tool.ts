@@ -173,85 +173,39 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Apply sketch-based edits using \`// ... existing code ...\` markers as anchors. This is the PREFERRED primary editing tool.
+      Primary edit tool. Provide a sketch of the final state using "// ... existing code ..." markers.
 
-      ### CRITICAL: Always Read File First
-      **MANDATORY**: Use \`files_read\` before editing to get current content. NEVER edit without reading.
-      - Prevents editing unknown/changed content
-      - Ensures context for sketch-based edits
-      - Validates file exists and is readable
+      ### Required Flow
+      1) Run \`files_read\` first (mandatory).
+      2) Call \`files_edit\` with useSmartModel=false (default).
+      3) If parsing/diff fails, retry with useSmartModel=true.
+      4) If still failing, use \`files_apply_changes\` with exact oldText/newText.
 
-      ### Model Selection Strategy
-      - **ALWAYS start with useSmartModel=false** (default, fast, cheaper)
-      - **If parsing fails or diff is not as expected**, retry with useSmartModel=true
-      - The tool does NOT decide if the diff is correct - that's your job
-      - Only use smart model after light model fails
+      ### Sketch Rules
+      - Show the final state (not a diff).
+      - Use "// ... existing code ..." to skip unchanged sections.
+      - Include 3-8 lines around each change to make anchors unique.
+      - If similar code repeats, include more surrounding context (function/class names).
 
       ### When to Use
-      - Modifying existing files with sketch-style edits
       - Multiple related changes in one file
-      - Adding imports + using them in same file
-      - **PREFERRED as primary editing tool** (use before \`files_apply_changes\`)
+      - Adding imports + using them in the same file
+      - Structured edits where a sketch is clearer than a patch
 
       ### When NOT to Use
-      - Creating new files → use \`files_write_file\`
-      - Manual oldText/newText control → use \`files_apply_changes\`
-      - File content unknown → use \`files_read\` first
-      - Simple find-replace → use \`files_apply_changes\` with replaceAll
-
-      ### Retry Strategy
-      1. Call \`files_read\` to get current content (MANDATORY)
-      2. Call \`files_edit\` with useSmartModel=false (default - fast, cheap)
-      3. If fails: retry \`files_edit\` with useSmartModel=true (more accurate)
-      4. If still fails: use \`files_apply_changes\` with exact oldText/newText from file
-
-      ### Sketch Format
-
-      Provide a "sketch" showing the **desired final state** with \`// ... existing code ...\` markers for unchanged sections:
-
-      \`\`\`typescript
-      // Good - shows what you want with markers for unchanged parts
-      import { ServiceA } from './service-a';
-      // ... existing code ...
-      import { ServiceB } from './service-b';
-      import { ServiceC } from './service-c';  // NEW import
-
-      export class MyClass {
-      // ... existing code ...
-        method() {
-          const result = newFunction();  // NEW line
-          // ... existing code ...
-        }
-      }
-      \`\`\`
-
-      **Critical Rules:**
-      1. Show the desired FINAL state (not just the changes)
-      2. Use \`// ... existing code ...\` to mark sections you don't want to show
-      3. Include enough context (3-8 lines) around changes so they're UNIQUE
-      4. If similar code exists in multiple places, include MORE context (function names, class names)
+      - New files -> \`files_write_file\`
+      - Simple find/replace -> \`files_apply_changes\` with replaceAll
+      - Extremely large files -> prefer \`files_apply_changes\`
 
       ### Examples
-
-      **Example 1: Simple edit with default model**
-
+      **1) Simple edit with markers:**
       \`\`\`json
-      {
-        "filePath": "/workspace/src/user.service.ts",
-        "editInstructions": "Add email validation before saving user",
-        "codeSketch": "async saveUser(user: User) {\\n  if (!user.name) {\\n    throw new Error('Name required');\\n  }\\n// ... existing code ...\\n  if (!isValidEmail(user.email)) {\\n    throw new Error('Invalid email');\\n  }\\n// ... existing code ...\\n  return await this.repository.save(user);\\n}"
-      }
+      {"filePath":"/repo/src/user.service.ts","editInstructions":"Add email validation","codeSketch":"async saveUser(user: User) {\\n  if (!user.name) {\\n    throw new Error('Name required');\\n  }\\n// ... existing code ...\\n  if (!isValidEmail(user.email)) {\\n    throw new Error('Invalid email');\\n  }\\n// ... existing code ...\\n}"}
       \`\`\`
 
-      **Example 2: Retry with smart model after failure**
-
+      **2) Retry with smart model:**
       \`\`\`json
-      {
-        "filePath": "/workspace/src/config.ts",
-        "editInstructions": "Update API version and add timeout config",
-        "codeSketch": "export const config = {\\n  apiVersion: '2.0',\\n// ... existing code ...\\n  timeout: 30000,\\n// ... existing code ...\\n};",
-        "useSmartModel": true
-      }
+      {"filePath":"/repo/src/config.ts","editInstructions":"Add timeout config","codeSketch":"export const config = {\\n  apiVersion: '2.0',\\n// ... existing code ...\\n  timeout: 30000,\\n// ... existing code ...\\n};","useSmartModel":true}
       \`\`\`
     `;
   }

@@ -5,7 +5,8 @@ import {
 } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { DefaultLogger } from '@packages/common';
-import { keyBy } from 'lodash';
+import { isPlainObject, keyBy } from 'lodash';
+import { stringify as stringifyYaml } from 'yaml';
 
 import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
@@ -102,8 +103,7 @@ export class ToolExecutorNode extends BaseNode<
             additionalMessages,
           } = rawResult as ToolInvokeResult<unknown>;
 
-          const content =
-            typeof output === 'string' ? output : JSON.stringify(output);
+          const content = this.formatToolOutputForLlm(output);
 
           if (content.length > this.maxOutputChars) {
             const trimmed = content.slice(0, this.maxOutputChars);
@@ -192,5 +192,31 @@ export class ToolExecutorNode extends BaseNode<
       // Spread aggregated tool usage into state (will be added by reducers)
       ...(aggregatedToolUsage ?? {}),
     };
+  }
+
+  private formatToolOutputForLlm(output: unknown): string {
+    if (typeof output === 'string') {
+      const trimmed = output.trim();
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        return output;
+      }
+
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (!isPlainObject(parsed) && !Array.isArray(parsed)) {
+          return output;
+        }
+
+        return stringifyYaml(parsed).trimEnd();
+      } catch {
+        return output;
+      }
+    }
+
+    if (isPlainObject(output) || Array.isArray(output)) {
+      return stringifyYaml(output).trimEnd();
+    }
+
+    return JSON.stringify(output);
   }
 }

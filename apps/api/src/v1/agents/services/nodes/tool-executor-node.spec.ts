@@ -1,6 +1,7 @@
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { stringify as stringifyYaml } from 'yaml';
 
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState } from '../../agents.types';
@@ -292,7 +293,36 @@ describe('ToolExecutorNode', () => {
 
       expect(result.messages?.items).toHaveLength(1);
       expect(result.messages?.items?.[0]?.content).toBe(
-        JSON.stringify(complexResult),
+        stringifyYaml(complexResult).trimEnd(),
+      );
+    });
+
+    it('should convert JSON string tool results to YAML', async () => {
+      const toolCall = {
+        id: 'call-1',
+        name: 'test-tool-1',
+        args: { input: 'test' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Using tool',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+
+      const jsonString = JSON.stringify({
+        data: { nested: 'value' },
+        array: [1, 2, 3],
+        boolean: true,
+      });
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: jsonString });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      expect(result.messages?.items).toHaveLength(1);
+      expect(result.messages?.items?.[0]?.content).toBe(
+        stringifyYaml(JSON.parse(jsonString)).trimEnd(),
       );
     });
 

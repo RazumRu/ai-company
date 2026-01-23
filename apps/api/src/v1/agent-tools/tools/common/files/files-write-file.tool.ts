@@ -58,37 +58,25 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Overwrites entire file (**DESTRUCTIVE** - replaces all content). This is a **LAST RESORT** for editing existing files.
-
-      ### ⚠️ WARNING: High Risk of Data Loss
-      This tool replaces the ENTIRE file. Any content not in \`fileContent\` will be LOST.
-      For existing files, you almost always want a different tool.
-
-      ### Tool Selection Priority (Use in Order)
-      1. **Editing existing files?** → Use \`files_edit\` (sketch-based)
-      2. **Edit failed?** → Use \`files_apply_changes\` (oldText/newText)
-      3. **Creating new file?** → Use \`files_write_file\` (this tool - ONLY for new files)
+      Overwrites the entire file. Use ONLY for new files or intentional full rewrites.
 
       ### When to Use
-      - **Creating brand new files from scratch**
-      - Generating configuration files that don't exist
-      - Intentional complete file replacement (rare)
+      - Creating a brand-new file from scratch
+      - Generating a file that does not exist yet
+      - Intentional full-file replacement (rare)
 
-      ### When NOT to Use (Critical)
-      - **Modifying existing files** → HIGH RISK - use \`files_edit\` or \`files_apply_changes\`
-      - Small changes to files → use \`files_edit\` or \`files_apply_changes\`
-      - File might have been updated → risk of losing changes
-      - Deleting files → use \`files_delete\`
-      - Adding/changing parts of files → use \`files_edit\` or \`files_apply_changes\`
+      ### When NOT to Use
+      - Editing existing files -> use \`files_edit\` or \`files_apply_changes\`
+      - Deleting files -> use \`files_delete\`
 
-      ### Best Practice
-      - For existing files: Read with \`files_read\` first to verify it's safe to overwrite
-      - For new files: Create parent directories with \`files_create_directory\` if needed
-      - If modifying: Use \`files_edit\` or \`files_apply_changes\` instead
+      ### Safety Tips
+      - If the file might exist, read it first (\`files_read\`) to avoid data loss.
+      - Create parent folders if needed (\`files_create_directory\`).
+      - Prefer \`files_apply_changes\` if you can express the change as oldText/newText.
 
-      ### Example (New File Only)
+      ### Example (new file)
       \`\`\`json
-      {"filePath": "/repo/new-config.json", "fileContent": "{\\n  \\"version\\": \\"2.0\\"\\n}"}
+      {"filePath":"/repo/new-config.json","fileContent":"{\\n  \\"version\\": \\"2.0\\"\\n}"}
       \`\`\`
     `;
   }

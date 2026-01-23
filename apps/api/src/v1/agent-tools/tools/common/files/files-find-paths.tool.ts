@@ -95,36 +95,32 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Finds file paths by glob using fd. Returns absolute paths. Searches by path/name only (not file contents).
+      Find file paths by glob (path/name only). Returns absolute paths.
 
       ### When to Use
-      Discover files by glob before reading/editing. List directory with \`recursive: false\`. Locate config files (tsconfig*.json, *.env*, package.json).
+      - Locating files before read/edit
+      - Quick directory listing
+      - Finding config files by pattern
 
       ### When NOT to Use
-      Searching inside files → use files_search_text. Visual structure overview → use files_directory_tree.
+      - Content search -> \`files_search_text\`
+      - Structure overview -> \`files_directory_tree\`
 
       ### Best Practices
-      Use \`includeSubdirectories: false\` + \`filenamePattern: "*"\` for quick directory listing. Keep patterns specific (e.g. **/*.ts) to avoid huge results. Add skipPatterns if results include junk (defaults exclude node_modules/**, dist/**, build/**, coverage/**, .turbo/**, .next/**, etc.). Lower maxResults to reduce output.
+      - Use specific patterns and small maxResults to limit output.
+      - For listing a folder: includeSubdirectories=false + filenamePattern="*".
+      - Use maxDepth to limit traversal.
+      - Add skipPatterns if results include build artifacts.
 
       ### Examples
-      **1. Find all TypeScript files recursively:**
+      **1) List a single directory (non-recursive):**
       \`\`\`json
-      {"searchInDirectory": "/repo", "filenamePattern": "**/*.ts"}
+      {"searchInDirectory":"/repo/src","filenamePattern":"*","includeSubdirectories":false}
       \`\`\`
 
-      **2. List only current directory (non-recursive):**
+      **2) Find all TypeScript files (limited):**
       \`\`\`json
-      {"searchInDirectory": "/repo/src", "filenamePattern": "*", "includeSubdirectories": false}
-      \`\`\`
-
-      **3. Find config files with exclusions:**
-      \`\`\`json
-      {"filenamePattern": "**/tsconfig*.json", "skipPatterns": ["node_modules/**", "dist/**"]}
-      \`\`\`
-
-      **4. Limited results with max depth:**
-      \`\`\`json
-      {"searchInDirectory": "/repo", "filenamePattern": "*.test.ts", "maxDepth": 3, "maxResults": 50}
+      {"searchInDirectory":"/repo","filenamePattern":"**/*.ts","maxResults":100}
       \`\`\`
     `;
   }

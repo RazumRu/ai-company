@@ -189,7 +189,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       'DOCUMENTS:',
       docs.map(
         (d) =>
-          `[Document ID: ${d.id}] ${d.title}\n${d.summary}\n[Politic] ${d.politic ?? 'N/A'}\n[Tags] ${d.tags.join()}`,
+          `[Document ID: ${d.id}] ${d.title}\n[Summary] ${d.summary}\n[Politic] ${d.politic ?? 'N/A'}\n[Tags] ${d.tags.join()}`,
       ),
     ].join('\n');
 

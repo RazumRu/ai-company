@@ -55,23 +55,25 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
   ): string {
     return dedent`
       ### Overview
-      Moves/renames file using mv. Creates destination parent directories automatically.
+      Move or rename a file. Parent dirs are created automatically.
 
       ### When to Use
-      Renaming file (same directory) or moving file to new folder.
+      - Renames
+      - Moving files into new folders
 
       ### When NOT to Use
-      For copying (this moves, not copies). For editing content → use files_apply_changes or files_write_file.
+      - Copying (this tool moves)
+      - Editing content -> \`files_apply_changes\` or \`files_edit\`
 
       ### Examples
-      **1. Rename:**
+      **1) Rename:**
       \`\`\`json
-      {"sourcePath": "/repo/src/old-name.ts", "destinationPath": "/repo/src/new-name.ts"}
+      {"sourcePath":"/repo/src/old-name.ts","destinationPath":"/repo/src/new-name.ts"}
       \`\`\`
 
-      **2. Move:**
+      **2) Move to new folder:**
       \`\`\`json
-      {"sourcePath": "/repo/tmp/output.json", "destinationPath": "/repo/generated/output.json"}
+      {"sourcePath":"/repo/tmp/output.json","destinationPath":"/repo/generated/output.json"}
       \`\`\`
     `;
   }

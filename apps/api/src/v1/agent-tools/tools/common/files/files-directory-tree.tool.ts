@@ -106,24 +106,27 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
   ): string {
     return dedent`
       ### Overview
-      Generates readable directory tree (structure only). Uses fd to enumerate files/dirs.
+      Tree view of a directory (structure only).
 
       ### When to Use
-      Quick "what's in here?" overview before reading/searching. Understanding monorepo/package layout at a glance.
+      Quick overview before searching/reading.
 
       ### When NOT to Use
-      For exact paths matching glob → use files_find_paths. For searching contents → use files_search_text.
+      - Finding specific paths -> \`files_find_paths\`
+      - Searching content -> \`files_search_text\`
 
       ### Best Practices
-      Start with shallow maxDepth (3-5). Add skipPatterns to avoid large folders (build outputs, node_modules, caches).
+      - Start shallow (maxDepth 3-5).
+      - Add skipPatterns for build/cache dirs.
+      - Narrow to a subdirectory when possible.
 
       ### Examples
-      **1. Repo overview (shallow):**
+      **1) Repo overview:**
       \`\`\`json
       {"directoryPath":"/repo","maxDepth":4}
       \`\`\`
 
-      **2. Subfolder with exclusions:**
+      **2) Subfolder with exclusions:**
       \`\`\`json
       {"directoryPath":"/repo/apps/api","maxDepth":6,"skipPatterns":["node_modules/**","dist/**","build/**"]}
       \`\`\`

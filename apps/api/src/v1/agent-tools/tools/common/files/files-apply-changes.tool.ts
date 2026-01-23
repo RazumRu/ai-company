@@ -79,76 +79,38 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): string {
     return dedent`
       ### Overview
-      Applies targeted text edit by replacing \`oldText\` with \`newText\`. Use when you need exact control or when \`files_edit\` fails.
+      Replace exact text blocks (oldText -> newText). Use for precise edits or when \`files_edit\` fails.
 
-      ### CRITICAL: Always Read File First
-      **MANDATORY**: Use \`files_read\` before calling this tool. Copy EXACT text from the file, don't guess or type from memory.
-      - Why: oldText must match file content exactly (even with whitespace normalization)
-      - Guessing oldText is the #1 cause of "Could not find match" errors
-      - Always copy-paste from \`files_read\` output
+      ### Required
+      - Run \`files_read\` first and copy exact oldText from the file.
+      - Matching uses whitespace-normalized block comparison.
 
-      ### How matching works
-      Whitespace-normalized exact block match: trailing whitespace and common leading indentation are stripped, but relative indentation within blocks is preserved. By default, \`oldText\` must match exactly once: 0 matches = adjust text; >1 match = use \`replaceAll\` flag or add more context. Indentation auto-detected and preserved from the matched file location.
-
-      ### replaceAll flag
-      - When \`replaceAll: false\` (default): requires exactly one match, returns error if 0 or >1 matches found
-      - When \`replaceAll: true\`: replaces all occurrences of \`oldText\`, works even with multiple matches
+      ### How Matching Works
+      - OldText must match exactly once unless \`replaceAll: true\`.
+      - Common indentation is normalized; relative indentation is preserved.
 
       ### When to Use
-      - \`files_edit\` failed and you need exact control
-      - Renaming symbols/variables across a file (with \`replaceAll: true\`)
-      - Precise single-point edits where you know exact text
-      - Simple find-and-replace operations
+      - Precise single edits
+      - Renames with \`replaceAll: true\`
+      - Simple find/replace in one file
 
       ### When NOT to Use
-      - First attempt at editing → try \`files_edit\` first (better for multi-line changes)
-      - Creating new files → use \`files_write_file\`
-      - Multiple scattered changes → use \`files_edit\` (handles better)
-      - Full file overwrite → use \`files_write_file\`
+      - First attempt on multi-line edits -> use \`files_edit\`
+      - New file -> \`files_write_file\`
 
-      ### Tool Selection Priority
-      1. **First choice**: \`files_edit\` (handles multiple changes, better error messages)
-      2. **Fallback**: \`files_apply_changes\` (this tool - exact oldText/newText control)
-      3. **Last resort**: \`files_write_file\` (overwrites entire file)
-
-      ### CRITICAL: Preventing Common Errors
-
-      **Error: "Found N matches for oldText"**
-      - CAUSE: Your \`oldText\` appears multiple times in the file
-      - FIX 1: Set \`replaceAll: true\` to replace all occurrences
-      - FIX 2: Add MORE surrounding context (5-10 lines before/after the change) to make match unique
-      - EXAMPLE: If editing line 38 in providers array, include lines 34-42 to distinguish from exports array
-
-      **Error: "Could not find match for oldText"**
-      - CAUSE: Your \`oldText\` doesn't exactly match file content (even with whitespace normalization)
-      - FIX: Use \`files_read\` FIRST to copy the EXACT text, then modify only what needs to change
-      - NEVER guess or type code from memory - always copy from file first
-
-      ### Best Practices
-      1. **ALWAYS** use \`files_read\` first to get exact text
-      2. For unique edits, include 5-10 lines of context around your change
-      3. For renaming/replacing all occurrences, use \`replaceAll: true\`
-      4. For edits in arrays/lists (providers, imports, exports), include the unique element before/after
-      5. If error occurs, read file again and include MORE context
+      ### Common Errors and Fixes
+      - "Found N matches": add more context or set \`replaceAll: true\`.
+      - "Could not find match": re-read the file and copy exact text.
 
       ### Examples
-      **1. BAD - Not enough context (will fail if pattern repeats):**
-      \`\`\`json
-      {"filePath":"/repo/module.ts","oldText":"    GhBranchTool,","newText":"    GhBranchTool,\\n    GhCreatePRTool,"}
-      \`\`\`
-
-      **2. GOOD - Sufficient context (unique match):**
-      \`\`\`json
-      {
-        "filePath": "/repo/module.ts",
-        "oldText": "    CommunicationToolGroup,\\n    GhCloneTool,\\n    GhCommitTool,\\n    GhBranchTool,\\n    GhPushTool,\\n    GhToolGroup,\\n    FilesFindPathsTool,",
-        "newText": "    CommunicationToolGroup,\\n    GhCloneTool,\\n    GhCommitTool,\\n    GhBranchTool,\\n    GhPushTool,\\n    GhCreatePRTool,\\n    GhToolGroup,\\n    FilesFindPathsTool,"
-      }
-      \`\`\`
-
-      **3. Replace all occurrences:**
+      **1) Replace all occurrences:**
       \`\`\`json
       {"filePath":"/repo/config.ts","oldText":"oldFunctionName","newText":"newFunctionName","replaceAll":true}
+      \`\`\`
+
+      **2) Unique block with context:**
+      \`\`\`json
+      {"filePath":"/repo/module.ts","oldText":"  providers: [\\n    AService,\\n    BService,\\n  ],","newText":"  providers: [\\n    AService,\\n    BService,\\n    CService,\\n  ],"}
       \`\`\`
     `;
   }

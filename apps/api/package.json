@@ -82,6 +82,7 @@
     "typeorm": "^0.3.28",
     "unique-username-generator": "^1.5.1",
     "uuid": "^13.0.0",
+    "yaml": "^2.8.2",
     "zod": "^4.3.2"
   },
   "devDependencies": {

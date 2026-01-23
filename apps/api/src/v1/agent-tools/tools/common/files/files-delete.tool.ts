@@ -46,32 +46,23 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Removes a single file at the provided absolute path. Designed for cleaning up generated artifacts, temporary files, or test fixtures. Rejects directories to prevent accidental recursive deletion.
+      Delete a single file by absolute path. Rejects directories.
 
       ### When to Use
-      - Cleaning up files created during tool runs or tests
-      - Removing generated artifacts before re-creating them
-      - Deleting temporary notes or scratch files
+      - Cleaning up generated or temporary files
+      - Removing a file you just created
 
       ### When NOT to Use
-      - Deleting directories or large trees (not supported)
-      - Modifying file contents → use files_apply_changes
-      - Listing or reading files → use files_find_paths or files_read
+      - Deleting directories
+      - Editing content -> \`files_apply_changes\`
 
       ### Best Practices
-      - Always confirm the file path via files_find_paths/files_read before deleting
-      - Avoid deleting shared project files unless you just created them
-      - This tool only deletes files; it will fail on directories
+      - Confirm the path with \`files_find_paths\` or \`files_read\` before deleting.
+      - Avoid deleting shared project files unless you just created them.
 
-      ### Output
-      Success:
+      ### Example
       \`\`\`json
-      { "success": true }
-      \`\`\`
-
-      Error:
-      \`\`\`json
-      { "success": false, "error": "File not found" }
+      {"filePath":"/repo/tmp/debug.log"}
       \`\`\`
     `;
   }

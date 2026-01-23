@@ -96,29 +96,38 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Reads file contents from the filesystem. Supports reading entire files or specific line ranges.
+      Read file contents by absolute path. Supports line ranges and multiple files per call.
 
       ### When to Use
-      Reading source code, config files (package.json, tsconfig.json), or getting file content before modifications.
+      - View source/config before edits
+      - Pull context around a search match
+      - Inspect generated output or logs in a file
 
       ### When NOT to Use
-      For binary files → use shell tool. To locate paths → use \`files_find_paths\`. To search content across files → use \`files_search_text\`.
+      - Binary files -> use shell tool
+      - Finding paths -> use \`files_find_paths\`
+      - Searching content -> use \`files_search_text\`
 
       ### Best Practices
-      **1. Read targeted sections for large files:**
+      - Read only line ranges for large files to minimize tokens.
+      - Batch related reads into one call to reduce tool invocations.
+      - Use file paths returned by \`files_find_paths\` to avoid path mistakes.
+      - After \`files_search_text\`, read a small context window (e.g., 10-30 lines).
+
+      ### Examples
+      **1) Read a line range:**
       \`\`\`json
-      {"filesToRead": [{"filePath": "/repo/large-file.ts", "fromLineNumber": 100, "toLineNumber": 150}]}
+      {"filesToRead":[{"filePath":"/repo/src/large.ts","fromLineNumber":120,"toLineNumber":160}]}
       \`\`\`
 
-      **2. Read multiple files at once:**
+      **2) Read multiple files at once:**
       \`\`\`json
-      {"filesToRead": [{"filePath": "/repo/tsconfig.json"}, {"filePath": "/repo/package.json"}]}
+      {"filesToRead":[{"filePath":"/repo/tsconfig.json"},{"filePath":"/repo/package.json"}]}
       \`\`\`
 
-      **3. Read context around found matches:**
-      After \`files_search_text\` finds match at line 150, read surrounding context:
+      **3) Batch + range:**
       \`\`\`json
-      {"filesToRead": [{"filePath": "/repo/src/utils.ts", "fromLineNumber": 140, "toLineNumber": 170}]}
+      {"filesToRead":[{"filePath":"/repo/src/a.ts","fromLineNumber":10,"toLineNumber":40},{"filePath":"/repo/package.json"}]}
       \`\`\`
     `;
   }
