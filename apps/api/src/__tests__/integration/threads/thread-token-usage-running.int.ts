@@ -84,7 +84,6 @@ describe('Thread token usage + cost from running graph state (integration)', () 
                 description: 'Test agent',
                 instructions: 'Answer briefly.',
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: false,
                 maxIterations: 3,
                 summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,
@@ -238,7 +237,6 @@ describe('Thread token usage + cost from running graph state (integration)', () 
                 description: 'Test agent',
                 instructions: 'Answer briefly (1 sentence).',
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: false,
                 maxIterations: 3,
                 summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,
@@ -388,7 +386,6 @@ describe('Thread token usage + cost from running graph state (integration)', () 
                 instructions:
                   "For each user message: call the communication_exec tool once to ask agent 'Callee Agent' for a short answer, then reply to the user with the callee's answer in one sentence.",
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: false,
                 maxIterations: 5,
                 summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,
@@ -407,7 +404,6 @@ describe('Thread token usage + cost from running graph state (integration)', () 
                 description: 'Responds to the caller agent',
                 instructions: 'Answer briefly (1 sentence).',
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: false,
                 maxIterations: 3,
                 summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,
@@ -538,7 +534,6 @@ describe('Thread token usage + cost from running graph state (integration)', () 
                 instructions:
                   'When user asks you to delegate to Worker Agent 2: call communication_exec with agent="Worker Agent 2" and message="calculate 2+2". When user asks for Worker Agent 3: call communication_exec with agent="Worker Agent 3" and message="calculate 5+5". After getting response, call finish tool with needsMoreInfo=false.',
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: true,
                 maxIterations: 10,
                 summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,
@@ -558,7 +553,6 @@ describe('Thread token usage + cost from running graph state (integration)', () 
                 instructions:
                   'Answer math questions in one sentence then call finish tool.',
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: true,
                 maxIterations: 5,
                 summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,
@@ -573,7 +567,6 @@ describe('Thread token usage + cost from running graph state (integration)', () 
                 instructions:
                   'Answer math questions in one sentence then call finish tool.',
                 invokeModelName: 'gpt-5-mini',
-                enforceToolUsage: true,
                 maxIterations: 5,
                 summarizeMaxTokens: 272000,
                 summarizeKeepTokens: 30000,

@@ -148,32 +148,6 @@ describe('SimpleAgentTemplate', () => {
       ).not.toThrow();
     });
 
-    it('should validate with optional enforceToolUsage', () => {
-      const configWithEnforce = {
-        name: 'Test Agent',
-        description: 'A test agent',
-        instructions: 'You are a test agent',
-        invokeModelName: 'gpt-4o',
-        enforceToolUsage: false,
-      };
-
-      expect(() =>
-        SimpleAgentTemplateSchema.parse(configWithEnforce),
-      ).not.toThrow();
-    });
-
-    it('should have enforceToolUsage undefined when not provided (defaults to true in code)', () => {
-      const config = {
-        name: 'Test Agent',
-        description: 'A test agent',
-        instructions: 'You are a test agent',
-        invokeModelName: 'gpt-4o',
-      };
-
-      const parsed = SimpleAgentTemplateSchema.parse(config);
-      expect(parsed.enforceToolUsage).toBeUndefined();
-    });
-
     it('should reject missing required fields', () => {
       const invalidConfig = {
         name: 'Test Agent',
@@ -327,28 +301,6 @@ describe('SimpleAgentTemplate', () => {
       await handle.configure(init, instance);
 
       expect(mockSimpleAgent.initTools).toHaveBeenCalled();
-    });
-
-    it('should configure enforceToolUsage if provided', async () => {
-      const configWithEnforce = SimpleAgentTemplateSchema.parse({
-        ...baseConfig,
-        enforceToolUsage: false,
-      });
-      const handle = await template.create();
-      const init: GraphNode<typeof configWithEnforce> = {
-        config: configWithEnforce,
-        inputNodeIds: new Set(),
-        outputNodeIds: new Set(),
-        metadata,
-      };
-      const instance = await handle.provide(init);
-      await handle.configure(init, instance);
-
-      expect(mockSimpleAgent.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          enforceToolUsage: false,
-        }),
-      );
     });
 
     it('should configure reasoning effort if provided', async () => {

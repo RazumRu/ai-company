@@ -91,12 +91,6 @@ export const SimpleAgentSchema = z.object({
     .describe('Reasoning effort')
     .meta({ 'x-ui:show-on-node': true })
     .meta({ 'x-ui:label': 'Reasoning' }),
-  enforceToolUsage: z
-    .boolean()
-    .optional()
-    .describe(
-      'If true, enforces that the agent must call a tool before finishing. Uses tool_usage_guard node to inject system messages requiring tool calls.',
-    ),
   maxIterations: z
     .number()
     .int()
@@ -253,8 +247,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       this.graphThreadStateUnsubscribe = graphThreadState.subscribe(
         this.handleThreadStateChange,
       );
-      const enforceToolUsage = config.enforceToolUsage ?? true;
-
       await this.initTools(config);
 
       // ---- summarize ----
@@ -327,89 +319,59 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         .addEdge(START, 'summarize')
         .addEdge('summarize', 'invoke_llm');
 
-      // ---- conditional tool usage guard ----
-      if (enforceToolUsage) {
-        // ---- tool usage guard ----
-        const toolUsageGuardNode = new ToolUsageGuardNode(
-          {
-            getRestrictOutput: () => true,
-            getRestrictionMessage: () =>
-              "You must call the 'finish' tool to end your response. If you have completed the task or have a final answer, call the 'finish' tool with needsMoreInfo=false. If you need more information from the user, call the 'finish' tool with needsMoreInfo=true and include your question in the message.",
-            getRestrictionMaxInjections: () => 3,
+      // ---- tool usage guard (always on) ----
+      const toolUsageGuardNode = new ToolUsageGuardNode(
+        {
+          getRestrictOutput: () => true,
+          getRestrictionMessage: () =>
+            "You must call the 'finish' tool to end your response. If you have completed the task or have a final answer, call the 'finish' tool with needsMoreInfo=false. If you need more information from the user, call the 'finish' tool with needsMoreInfo=true and include your question in the message.",
+          getRestrictionMaxInjections: () => 3,
+        },
+        this.logger,
+      );
+
+      g.addNode(
+        'tool_usage_guard',
+        toolUsageGuardNode.invoke.bind(toolUsageGuardNode),
+      )
+        .addConditionalEdges(
+          'invoke_llm',
+          (s) => {
+            const lastMsg = s.messages.at(-1) as AIMessage;
+            const hasAnyToolCall = (lastMsg?.tool_calls?.length ?? 0) > 0;
+            // If ANY tool was called, execute them. Otherwise check with guard.
+            return hasAnyToolCall ? 'tools' : 'tool_usage_guard';
           },
-          this.logger,
-        );
-
-        g.addNode(
-          'tool_usage_guard',
-          toolUsageGuardNode.invoke.bind(toolUsageGuardNode),
+          { tools: 'tools', tool_usage_guard: 'tool_usage_guard' },
         )
-          .addConditionalEdges(
-            'invoke_llm',
-            (s) => {
-              const lastMsg = s.messages.at(-1) as AIMessage;
-              const hasAnyToolCall = (lastMsg?.tool_calls?.length ?? 0) > 0;
-              // If ANY tool was called, execute them. Otherwise check with guard.
-              return hasAnyToolCall ? 'tools' : 'tool_usage_guard';
-            },
-            { tools: 'tools', tool_usage_guard: 'tool_usage_guard' },
-          )
-          .addConditionalEdges(
-            'tool_usage_guard',
-            (s) => (s.toolUsageGuardActivated ? 'invoke_llm' : END),
-            { invoke_llm: 'invoke_llm', [END]: END },
-          )
-          .addConditionalEdges(
-            'tools',
-            (s, cfg) => {
-              const threadId = String(cfg.configurable?.thread_id ?? '');
-              const { pendingMessages, newMessageMode } =
-                graphThreadState.getByThread(threadId);
+        .addConditionalEdges(
+          'tool_usage_guard',
+          (s) => (s.toolUsageGuardActivated ? 'invoke_llm' : END),
+          { invoke_llm: 'invoke_llm', [END]: END },
+        )
+        .addConditionalEdges(
+          'tools',
+          (s, cfg) => {
+            const threadId = String(cfg.configurable?.thread_id ?? '');
+            const { pendingMessages, newMessageMode } =
+              graphThreadState.getByThread(threadId);
 
-              const hasPending = pendingMessages.length > 0;
-              const mode = newMessageMode ?? NewMessageMode.InjectAfterToolCall;
-              const finishState = FinishTool.getStateFromToolsMetadata(
-                s.toolsMetadata,
-              );
-              const isComplete = Boolean(
-                finishState && (finishState.done || finishState.needsMoreInfo),
-              );
+            const hasPending = pendingMessages.length > 0;
+            const mode = newMessageMode ?? NewMessageMode.InjectAfterToolCall;
+            const finishState = FinishTool.getStateFromToolsMetadata(
+              s.toolsMetadata,
+            );
+            const isComplete = Boolean(
+              finishState && (finishState.done || finishState.needsMoreInfo),
+            );
 
-              if (!isComplete) {
-                if (mode === NewMessageMode.InjectAfterToolCall && hasPending) {
-                  return 'inject_pending';
-                }
-                // Allow agent to continue working - route back to summarize
-                return 'summarize';
-              }
-
-              if (hasPending) {
+            if (!isComplete) {
+              if (mode === NewMessageMode.InjectAfterToolCall && hasPending) {
                 return 'inject_pending';
               }
-
-              return END;
-            },
-            {
-              inject_pending: 'inject_pending',
-              summarize: 'summarize',
-              [END]: END,
-            },
-          )
-          .addEdge('inject_pending', 'summarize');
-      } else {
-        g.addConditionalEdges(
-          'invoke_llm',
-          (s, cfg) => {
-            const last = s.messages.at(-1) as AIMessage | undefined;
-            const hasTools = (last?.tool_calls?.length ?? 0) > 0;
-
-            if (hasTools) {
-              return 'tools';
+              // Allow agent to continue working - route back to summarize
+              return 'summarize';
             }
-
-            const threadId = String(cfg.configurable?.thread_id ?? '');
-            const { pendingMessages } = graphThreadState.getByThread(threadId);
-            const hasPending = pendingMessages.length > 0;
 
             if (hasPending) {
               return 'inject_pending';
@@ -418,48 +380,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             return END;
           },
           {
-            tools: 'tools',
             inject_pending: 'inject_pending',
+            summarize: 'summarize',
             [END]: END,
           },
         )
-          .addConditionalEdges(
-            'tools',
-            (s, cfg) => {
-              const threadId = String(cfg.configurable?.thread_id ?? '');
-              const { pendingMessages, newMessageMode } =
-                graphThreadState.getByThread(threadId);
-
-              const hasPending = pendingMessages.length > 0;
-              const mode = newMessageMode ?? NewMessageMode.InjectAfterToolCall;
-              const finishState = FinishTool.getStateFromToolsMetadata(
-                s.toolsMetadata,
-              );
-              const isComplete = Boolean(
-                finishState && (finishState.done || finishState.needsMoreInfo),
-              );
-
-              if (!isComplete) {
-                if (mode === NewMessageMode.InjectAfterToolCall && hasPending) {
-                  return 'inject_pending';
-                }
-                return 'summarize';
-              }
-
-              if (hasPending) {
-                return 'inject_pending';
-              }
-
-              return END;
-            },
-            {
-              inject_pending: 'inject_pending',
-              summarize: 'summarize',
-              [END]: END,
-            },
-          )
-          .addEdge('inject_pending', 'summarize');
-      }
+        .addEdge('inject_pending', 'summarize');
 
       this.graph = g.compile({
         checkpointer: this.checkpointer,

@@ -126,7 +126,6 @@ describe('Graphs Integration Tests', () => {
             summarizeKeepTokens: 30000,
             invokeModelName: 'gpt-5-mini',
             invokeModelReasoningEffort: ReasoningEffort.None,
-            enforceToolUsage: true,
             maxIterations: 50,
           } satisfies SimpleAgentSchemaType,
         },

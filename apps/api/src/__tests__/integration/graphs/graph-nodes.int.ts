@@ -220,7 +220,6 @@ describe('Graph Nodes Integration Tests', () => {
               template: 'simple-agent',
               config: {
                 // Avoid tool execution in this test; we only need MCP tool discovery during graph build.
-                enforceToolUsage: false,
               },
             },
             {

@@ -52,7 +52,6 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
               description: 'Test agent',
               instructions: 'Answer briefly.',
               invokeModelName: 'gpt-5-mini',
-              enforceToolUsage: false,
               maxIterations: 3,
               // Make summarization effectively "off" for the purposes of this test.
               summarizeMaxTokens: 272000,
@@ -83,7 +82,6 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
               description: 'Test agent',
               instructions: 'Answer briefly.',
               invokeModelName: 'gpt-5-mini',
-              enforceToolUsage: false,
               maxIterations: 5,
               // Force summarization quickly.
               summarizeMaxTokens: 200,

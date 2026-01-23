@@ -169,69 +169,6 @@ describe('SimpleAgent', () => {
       expect(() => schema.parse(invalidConfig)).toThrow();
     });
 
-    it('should have enforceToolUsage field default to undefined when not provided', () => {
-      const schema = agent.schema;
-
-      const configWithoutEnforce = {
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-        instructions: 'Test instructions',
-        name: 'Test Agent',
-        description: 'Test agent description',
-        invokeModelName: 'gpt-5-mini',
-        invokeModelReasoningEffort: ReasoningEffort.None,
-      };
-
-      const parsed = schema.parse(configWithoutEnforce);
-      expect(parsed.enforceToolUsage).toBeUndefined();
-    });
-
-    it('should accept enforceToolUsage as boolean', () => {
-      const schema = agent.schema;
-
-      const configWithEnforceTrue = {
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-        instructions: 'Test instructions',
-        name: 'Test Agent',
-        description: 'Test agent description',
-        invokeModelName: 'gpt-5-mini',
-        invokeModelReasoningEffort: ReasoningEffort.None,
-        enforceToolUsage: true,
-      };
-
-      const configWithEnforceFalse = {
-        ...configWithEnforceTrue,
-        enforceToolUsage: false,
-      };
-
-      expect(() => schema.parse(configWithEnforceTrue)).not.toThrow();
-      expect(() => schema.parse(configWithEnforceFalse)).not.toThrow();
-
-      const parsedTrue = schema.parse(configWithEnforceTrue);
-      const parsedFalse = schema.parse(configWithEnforceFalse);
-
-      expect(parsedTrue.enforceToolUsage).toBe(true);
-      expect(parsedFalse.enforceToolUsage).toBe(false);
-    });
-
-    it('should reject invalid enforceToolUsage type', () => {
-      const schema = agent.schema;
-
-      const invalidConfig = {
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-        instructions: 'Test instructions',
-        name: 'Test Agent',
-        description: 'Test agent description',
-        invokeModelName: 'gpt-5-mini',
-        invokeModelReasoningEffort: ReasoningEffort.None,
-        enforceToolUsage: 'invalid', // should be boolean
-      };
-
-      expect(() => schema.parse(invalidConfig)).toThrow();
-    });
-
     it('should default newMessageMode to inject_after_tool_call', () => {
       const schema = agent.schema;
       const config = {

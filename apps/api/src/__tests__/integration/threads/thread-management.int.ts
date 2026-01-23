@@ -634,7 +634,6 @@ describe('Thread Management Integration Tests', () => {
                     'You are an integration test agent. You MUST call the finish tool with needsMoreInfo=false. ' +
                     'When the user asks you to include a token, include it verbatim in the finish tool message.',
                   invokeModelName: 'gpt-5-mini',
-                  enforceToolUsage: true,
                   maxIterations: 10,
                   summarizeMaxTokens: 272000,
                   summarizeKeepTokens: 30000,

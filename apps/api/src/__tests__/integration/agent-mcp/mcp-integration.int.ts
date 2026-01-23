@@ -477,7 +477,6 @@ describe('MCP Integration Tests', () => {
                 template: 'simple-agent',
                 config: {
                   instructions: 'Base agent instructions',
-                  enforceToolUsage: false,
                 },
               },
               {

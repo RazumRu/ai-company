@@ -1130,7 +1130,6 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
               summarizeKeepTokens: 30000,
               invokeModelName: 'gpt-5-mini',
               invokeModelReasoningEffort: ReasoningEffort.None,
-              enforceToolUsage: true,
               maxIterations: 20,
             } satisfies SimpleAgentSchemaType,
           },

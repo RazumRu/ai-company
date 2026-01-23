@@ -176,7 +176,6 @@ describe('Docker Runtime Integration', () => {
             description: 'Test agent description',
             invokeModelName: 'gpt-5-mini',
             invokeModelReasoningEffort: ReasoningEffort.None,
-            enforceToolUsage: true,
             maxIterations: 50,
             summarizeMaxTokens: 272000,
             summarizeKeepTokens: 30000,
