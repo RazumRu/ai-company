@@ -2,6 +2,7 @@ import { encodingForModel, getEncoding } from '@langchain/core/utils/tiktoken';
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 
+import { environment } from '../../../environments';
 import { LiteLlmModelDto } from '../dto/models.dto';
 import { RequestTokenUsage, UsageMetadata } from '../litellm.types';
 import { LiteLlmClient } from './litellm.client';
@@ -137,13 +138,15 @@ export class LitellmService {
 
     const totalTokens = usageMetadata?.total_tokens ?? 0;
 
-    const totalPrice = await this.estimateThreadTotalPriceFromModelRates({
-      model,
-      inputTokens,
-      cachedInputTokens,
-      outputTokens,
-      reasoningTokens,
-    });
+    const totalPrice = this.isOfflineModel(model)
+      ? 0
+      : await this.estimateThreadTotalPriceFromModelRates({
+          model,
+          inputTokens,
+          cachedInputTokens,
+          outputTokens,
+          reasoningTokens,
+        });
 
     return {
       inputTokens,
@@ -219,6 +222,9 @@ export class LitellmService {
     outputTokens: number;
     reasoningTokens?: number;
   }): Promise<number | null> {
+    if (this.isOfflineModel(args.model)) {
+      return 0;
+    }
     const rates = await this.getTokenCostRatesForModel(args.model);
     if (!rates) {
       return null;
@@ -288,5 +294,27 @@ export class LitellmService {
     });
 
     return this.modelPricesInFlight;
+  }
+
+  private isOfflineModel(model: string): boolean {
+    if (!model || !environment.llmUseOfflineModel) {
+      return false;
+    }
+
+    const normalized = model.toLowerCase();
+    const configured = environment.llmOfflineModel.toLowerCase();
+
+    if (normalized === configured) {
+      return true;
+    }
+
+    const normalizedShort = normalized.includes('/')
+      ? normalized.split('/').pop()
+      : normalized;
+    const configuredShort = configured.includes('/')
+      ? configured.split('/').pop()
+      : configured;
+
+    return normalizedShort === configuredShort;
   }
 }

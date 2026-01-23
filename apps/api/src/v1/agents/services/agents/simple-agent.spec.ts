@@ -113,7 +113,7 @@ describe('SimpleAgent', () => {
         {
           provide: LlmModelsService,
           useValue: {
-            getSummarizeEditModel: vi.fn().mockReturnValue('gpt-5-mini'),
+            getSummarizeModel: vi.fn().mockReturnValue('gpt-5-mini'),
           } as unknown as LlmModelsService,
         },
         {

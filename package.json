@@ -21,6 +21,9 @@
     "commit": "pnpm cz",
     "deps:up": "podman compose up -d",
     "deps:down": "podman compose down",
+    "local-llm:install": "./scripts/install-local-models.sh",
+    "local-llm:start": "nohup ollama serve >/tmp/ollama.log 2>&1 &",
+    "local-llm:stop": "pkill -x ollama || true",
     "prepare": "husky",
     "up-versions": "./scripts/up-versions.sh"
   },

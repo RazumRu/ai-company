@@ -37,6 +37,8 @@ export const environment = () =>
     llmLargeCodeModel: getEnv('LLM_LARGE_CODE_MODEL', 'gpt-5.2-codex'),
     llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'gpt-5.1-codex-mini'),
     llmMiniModel: getEnv('LLM_MINI_MODEL', 'gpt-5-mini'),
+    llmUseOfflineModel: getEnv('LLM_USE_OFFLINE_MODEL', false),
+    llmOfflineModel: getEnv('LLM_OFFLINE_MODEL', 'qwen3-coder:30b'),
     llmEmbeddingModel: getEnv(
       'LLM_EMBEDDING_MODEL',
       'openai/text-embedding-3-small',

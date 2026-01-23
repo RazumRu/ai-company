@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { isUndefined, pickBy } from 'lodash';
+import { zodResponseFormat } from 'openai/helpers/zod';
 import { EntityManager } from 'typeorm';
 import { z } from 'zod';
 
@@ -25,6 +26,10 @@ import { KnowledgeChunkBoundary, KnowledgeSummary } from '../knowledge.types';
 const KnowledgeSummarySchema = z.object({
   summary: z.string().min(1),
 });
+const KnowledgeSummaryFormat = zodResponseFormat(
+  KnowledgeSummarySchema,
+  'data',
+);
 
 const ChunkBoundarySchema = z.object({
   start: z.number().int().nonnegative(),
@@ -35,6 +40,7 @@ const ChunkBoundarySchema = z.object({
 const ChunkPlanSchema = z.object({
   chunks: z.array(ChunkBoundarySchema).min(1),
 });
+const ChunkPlanFormat = zodResponseFormat(ChunkPlanSchema, 'data');
 
 type ChunkPlan = z.infer<typeof ChunkPlanSchema>;
 
@@ -267,6 +273,13 @@ export class KnowledgeService {
       {
         model: this.llmModelsService.getKnowledgeMetadataModel(),
         reasoning: { effort: 'medium' },
+        text: {
+          format: {
+            ...KnowledgeSummaryFormat.json_schema,
+            schema: KnowledgeSummaryFormat.json_schema.schema!,
+            type: 'json_schema',
+          },
+        },
       },
       { json: true },
     );
@@ -367,6 +380,13 @@ export class KnowledgeService {
       {
         model: this.llmModelsService.getKnowledgeChunkingModel(),
         reasoning: { effort: 'low' },
+        text: {
+          format: {
+            ...ChunkPlanFormat.json_schema,
+            schema: ChunkPlanFormat.json_schema.schema!,
+            type: 'json_schema',
+          },
+        },
       },
       { json: true },
     );

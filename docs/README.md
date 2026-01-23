@@ -78,6 +78,36 @@ pnpm test:e2e  # (server must be running)
 pnpm commit
 ```
 
+## Local offline model (Ollama)
+
+Use a local model to keep title generation working when you are offline or do
+not want to call hosted providers.
+
+### Install the local model
+
+Run the setup script from the repo root:
+
+```bash
+./scripts/install-local-models.sh
+```
+
+This installs Ollama (if needed), starts it, and pulls `qwen3-coder:30b`.
+
+### Run the model manually (optional)
+
+```bash
+ollama run qwen3-coder:30b
+```
+
+### Enable offline model for title generation
+
+Set the environment variables:
+
+```bash
+LLM_USE_OFFLINE_MODEL=true
+LLM_OFFLINE_MODEL=qwen3-coder:30b
+```
+
 ## Need Help?
 
 - Check the specific guideline document for detailed information

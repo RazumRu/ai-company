@@ -2,6 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable, Scope } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
 import dedent from 'dedent';
+import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
@@ -41,6 +42,7 @@ type QueryExpansion = {
 const QueryExpansionSchema = z.object({
   queries: z.array(z.string().min(1)).min(1).max(5),
 });
+const QueryExpansionFormat = zodResponseFormat(QueryExpansionSchema, 'data');
 
 const KEYWORD_WINDOW = 120;
 const FALLBACK_EDGE = 250;
@@ -216,6 +218,13 @@ export class KnowledgeSearchChunksTool extends BaseTool<
       {
         model: this.llmModelsService.getKnowledgeSearchModel(),
         reasoning: { effort: 'low' },
+        text: {
+          format: {
+            ...QueryExpansionFormat.json_schema,
+            schema: QueryExpansionFormat.json_schema.schema!,
+            type: 'json_schema',
+          },
+        },
       },
       { json: true },
     );

@@ -4,12 +4,18 @@ import { environment } from '../../../environments';
 
 @Injectable()
 export class LlmModelsService {
-  getSummarizeEditModel(): string {
-    return environment.llmMiniModel;
+  private offlineFallback(model: string): string {
+    return environment.llmUseOfflineModel ? environment.llmOfflineModel : model;
+  }
+
+  getSummarizeModel(): string {
+    return this.offlineFallback(environment.llmMiniModel);
   }
 
   getFilesEditModel(smart: boolean): string {
-    return smart ? environment.llmLargeCodeModel : environment.llmMiniCodeModel;
+    return smart
+      ? environment.llmLargeCodeModel
+      : this.offlineFallback(environment.llmMiniCodeModel);
   }
 
   getAiSuggestionsModel(): string {
@@ -17,15 +23,15 @@ export class LlmModelsService {
   }
 
   getThreadNameModel(): string {
-    return environment.llmMiniModel;
+    return this.offlineFallback(environment.llmMiniModel);
   }
 
   getKnowledgeMetadataModel(): string {
-    return environment.llmMiniModel;
+    return this.offlineFallback(environment.llmMiniModel);
   }
 
   getKnowledgeChunkingModel(): string {
-    return environment.llmMiniModel;
+    return this.offlineFallback(environment.llmMiniModel);
   }
 
   getKnowledgeEmbeddingModel(): string {
@@ -33,6 +39,6 @@ export class LlmModelsService {
   }
 
   getKnowledgeSearchModel(): string {
-    return environment.llmMiniModel;
+    return this.offlineFallback(environment.llmMiniModel);
   }
 }

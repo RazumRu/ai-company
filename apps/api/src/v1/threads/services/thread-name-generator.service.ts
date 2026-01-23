@@ -1,8 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
+import { zodResponseFormat } from 'openai/helpers/zod';
+import { z } from 'zod';
 
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
+
+const ThreadTitleSchema = z.object({
+  title: z.string().min(1).max(100),
+});
+type ThreadTitleResponse = z.infer<typeof ThreadTitleSchema>;
 
 @Injectable()
 export class ThreadNameGeneratorService {
@@ -25,22 +32,34 @@ export class ThreadNameGeneratorService {
     try {
       const llmTimeoutMs = 30000;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const compiledSchema = zodResponseFormat(ThreadTitleSchema, 'data');
 
       const llmContentOrEmptyPromise = this.openaiService
-        .response(
+        .response<ThreadTitleResponse>(
           {
             systemMessage: [
               'You generate concise conversation titles.',
               'Generate a short title (maximum 100 characters) summarizing the conversation topic.',
-              'Respond with ONLY the title, no additional text or explanation.',
+              'Respond with ONLY JSON: {"title":"..."} with no extra text.',
             ].join(' '),
             message: `Generate a concise title for this conversation based on the first user message:\n\n${normalized}`,
           },
           {
             model: this.llmModelsService.getThreadNameModel(),
+            text: {
+              format: {
+                ...compiledSchema.json_schema,
+                schema: compiledSchema.json_schema.schema!,
+                type: 'json_schema',
+              },
+            },
           },
+          { json: true },
         )
-        .then((r) => r.content ?? '')
+        .then((r) => {
+          const parsed = ThreadTitleSchema.safeParse(r.content);
+          return parsed.success ? parsed.data.title : '';
+        })
         .catch(() => '');
 
       const timeoutPromise = new Promise<null>((resolve) => {

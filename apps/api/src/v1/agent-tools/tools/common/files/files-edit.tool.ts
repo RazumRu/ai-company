@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
+import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
@@ -63,14 +64,21 @@ const ParsedHunkSchema = z.object({
   beforeAnchor: z.string().max(10000, 'beforeAnchor too long').default(''),
   afterAnchor: z.string().max(10000, 'afterAnchor too long').default(''),
   replacement: z.string().max(50000, 'replacement too long'),
-  occurrence: z.number().int().positive().optional(),
+  occurrence: z.number().int().positive().nullable().default(null),
 });
 
 const LLMResponseSchema = z.object({
   hunks: z.array(ParsedHunkSchema).min(1, 'Must have at least one hunk'),
 });
+const LLMResponseFormat = zodResponseFormat(LLMResponseSchema, 'data');
 
-type ParsedHunk = z.infer<typeof ParsedHunkSchema>;
+type ParsedHunk = z.input<typeof ParsedHunkSchema>;
+type NormalizedHunk = {
+  beforeAnchor: string;
+  afterAnchor: string;
+  replacement: string;
+  occurrence: number | null;
+};
 
 type ParseResult = {
   success: boolean;
@@ -379,7 +387,14 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
             reasoning: {
               effort: 'low',
             },
-            text: { verbosity: useSmartModel ? 'medium' : 'low' },
+            text: {
+              verbosity: useSmartModel ? 'medium' : 'low',
+              format: {
+                ...LLMResponseFormat.json_schema,
+                schema: LLMResponseFormat.json_schema.schema!,
+                type: 'json_schema',
+              },
+            },
           },
         );
 
@@ -701,7 +716,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   }
 
   private buildNewTextFromHunk(
-    hunk: ParsedHunk,
+    hunk: NormalizedHunk,
     kind: EditKind,
   ): string | null {
     // Validate replacement doesn't contain anchors (for strong anchors)
@@ -727,6 +742,15 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
     return hunk.beforeAnchor + hunk.replacement + hunk.afterAnchor;
   }
 
+  private normalizeHunk(hunk: ParsedHunk): NormalizedHunk {
+    return {
+      beforeAnchor: hunk.beforeAnchor ?? '',
+      afterAnchor: hunk.afterAnchor ?? '',
+      replacement: hunk.replacement,
+      occurrence: hunk.occurrence ?? null,
+    };
+  }
+
   private resolveHunksToEdits(
     fileContent: string,
     hunks: ParsedHunk[],
@@ -738,24 +762,25 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
     for (let hunkIndex = 0; hunkIndex < hunks.length; hunkIndex++) {
       const hunk = hunks[hunkIndex]!;
+      const normalized = this.normalizeHunk(hunk);
       const pairs = this.findAllAnchorPairs(
         fileContent,
-        hunk.beforeAnchor,
-        hunk.afterAnchor,
+        normalized.beforeAnchor,
+        normalized.afterAnchor,
       );
 
       if (pairs.length === 0) {
         // Provide a more specific error for the common case:
         // beforeAnchor exists, afterAnchor exists, but the span between them is too large.
-        const beforeIdx = fileContent.indexOf(hunk.beforeAnchor);
+        const beforeIdx = fileContent.indexOf(normalized.beforeAnchor);
         if (beforeIdx !== -1) {
-          const afterSearchFrom = beforeIdx + hunk.beforeAnchor.length;
+          const afterSearchFrom = beforeIdx + normalized.beforeAnchor.length;
           const afterIdxAny = fileContent.indexOf(
-            hunk.afterAnchor,
+            normalized.afterAnchor,
             afterSearchFrom,
           );
           if (afterIdxAny !== -1) {
-            const end = afterIdxAny + hunk.afterAnchor.length;
+            const end = afterIdxAny + normalized.afterAnchor.length;
             const span = end - beforeIdx;
             if (span > LIMITS.MAX_ANCHOR_SPAN_BYTES) {
               return {
@@ -765,7 +790,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           }
         }
         return {
-          error: `Could not find anchors in file. beforeAnchor: "${hunk.beforeAnchor.substring(0, 100)}...", afterAnchor: "${hunk.afterAnchor.substring(0, 100)}...". The anchors must be EXACT text from the current file. Try with useSmartModel=true or files_apply_changes if you know the exact oldText/newText.`,
+          error: `Could not find anchors in file. beforeAnchor: "${normalized.beforeAnchor.substring(0, 100)}...", afterAnchor: "${normalized.afterAnchor.substring(0, 100)}...". The anchors must be EXACT text from the current file. Try with useSmartModel=true or files_apply_changes if you know the exact oldText/newText.`,
         };
       }
 
@@ -781,14 +806,14 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         }
       }
 
-      const desiredOccurrence = hunk.occurrence ?? 1;
+      const desiredOccurrence = normalized.occurrence ?? 1;
       if (!Number.isInteger(desiredOccurrence) || desiredOccurrence < 1) {
         return {
-          error: `Invalid occurrence value: ${String(hunk.occurrence)}. occurrence must be a positive integer.`,
+          error: `Invalid occurrence value: ${String(normalized.occurrence)}. occurrence must be a positive integer.`,
         };
       }
 
-      if (pairs.length > 1 && hunk.occurrence === undefined) {
+      if (pairs.length > 1 && normalized.occurrence === null) {
         return {
           error: `Ambiguous anchors: found ${pairs.length} valid before→after pairs. Use more unique anchors (prefer multi-line), or provide "occurrence" to select which match to edit.`,
         };
@@ -801,7 +826,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         };
       }
 
-      const newText = this.buildNewTextFromHunk(hunk, pair.kind);
+      const newText = this.buildNewTextFromHunk(normalized, pair.kind);
       if (!newText) {
         return {
           error:
