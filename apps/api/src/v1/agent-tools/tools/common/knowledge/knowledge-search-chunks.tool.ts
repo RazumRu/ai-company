@@ -216,8 +216,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
     const response = await this.openaiService.response<QueryExpansion>(
       { message: prompt },
       {
-        model: this.llmModelsService.getKnowledgeSearchModel(),
-        reasoning: { effort: 'low' },
+        ...this.llmModelsService.getKnowledgeSearchParams(),
         text: {
           format: {
             ...QueryExpansionFormat.json_schema,

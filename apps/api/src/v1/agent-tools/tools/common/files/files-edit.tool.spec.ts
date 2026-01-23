@@ -35,6 +35,7 @@ describe('FilesEditTool', () => {
 
     mockLlmModelsService = {
       getFilesEditModel: vi.fn().mockReturnValue('gpt-5-mini'),
+      getFilesEditParams: vi.fn().mockReturnValue({ model: 'gpt-5-mini' }),
     } as unknown as LlmModelsService;
 
     tool = new FilesEditTool(

@@ -271,8 +271,7 @@ export class KnowledgeService {
     const response = await this.openaiService.response<KnowledgeSummary>(
       { message: prompt },
       {
-        model: this.llmModelsService.getKnowledgeMetadataModel(),
-        reasoning: { effort: 'medium' },
+        ...this.llmModelsService.getKnowledgeMetadataParams(),
         text: {
           format: {
             ...KnowledgeSummaryFormat.json_schema,
@@ -378,8 +377,7 @@ export class KnowledgeService {
     const response = await this.openaiService.response<ChunkPlan>(
       { message: prompt },
       {
-        model: this.llmModelsService.getKnowledgeChunkingModel(),
-        reasoning: { effort: 'low' },
+        ...this.llmModelsService.getKnowledgeChunkingParams(),
         text: {
           format: {
             ...ChunkPlanFormat.json_schema,

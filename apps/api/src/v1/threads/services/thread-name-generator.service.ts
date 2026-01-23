@@ -45,7 +45,7 @@ export class ThreadNameGeneratorService {
             message: `Generate a concise title for this conversation based on the first user message:\n\n${normalized}`,
           },
           {
-            model: this.llmModelsService.getThreadNameModel(),
+            ...this.llmModelsService.getThreadNameParams(),
             text: {
               format: {
                 ...compiledSchema.json_schema,

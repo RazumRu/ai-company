@@ -44,7 +44,7 @@ type KnowledgeDocSelection = {
 
 const KnowledgeDocSelectionSchema = z.object({
   ids: z.array(z.string().min(1)).max(10).default([]),
-  comment: z.string().min(1).optional(),
+  comment: z.string().min(1).nullable().default(null),
 });
 
 export type KnowledgeSearchDocsResponse = {
@@ -195,8 +195,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     const response = await this.openaiService.response<KnowledgeDocSelection>(
       { message: prompt },
       {
-        model: this.llmModelsService.getKnowledgeSearchModel(),
-        reasoning: { effort: 'low' },
+        ...this.llmModelsService.getKnowledgeSearchParams(),
         text: {
           format: {
             ...compiledSchema.json_schema,

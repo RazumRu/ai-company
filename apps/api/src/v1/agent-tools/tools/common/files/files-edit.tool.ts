@@ -380,13 +380,12 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       }
 
       const callLLM = async (message: string) => {
+        const modelParams =
+          this.llmModelsService.getFilesEditParams(useSmartModel);
         const result = await this.openaiService.response(
           { message },
           {
-            model: this.llmModelsService.getFilesEditModel(useSmartModel),
-            reasoning: {
-              effort: 'low',
-            },
+            ...modelParams,
             text: {
               verbosity: useSmartModel ? 'medium' : 'low',
               format: {
