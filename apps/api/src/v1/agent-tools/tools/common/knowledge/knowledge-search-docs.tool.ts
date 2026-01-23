@@ -2,6 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable, Scope } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
 import dedent from 'dedent';
+import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
@@ -18,7 +19,10 @@ import {
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
 
 export const KnowledgeSearchDocsSchema = z.object({
-  query: z.string().min(1).describe('Natural language query to search for'),
+  task: z
+    .string()
+    .min(1)
+    .describe('Current task description for selecting relevant documents'),
 });
 
 export type KnowledgeSearchDocsSchemaType = z.infer<
@@ -35,6 +39,17 @@ export type KnowledgeSearchDocsResult = {
 
 type KnowledgeDocSelection = {
   ids: string[];
+  comment?: string;
+};
+
+const KnowledgeDocSelectionSchema = z.object({
+  ids: z.array(z.string().min(1)).max(10).default([]),
+  comment: z.string().min(1).optional(),
+});
+
+export type KnowledgeSearchDocsResponse = {
+  documents: KnowledgeSearchDocsResult[];
+  comment?: string;
 };
 
 @Injectable({ scope: Scope.TRANSIENT })
@@ -44,7 +59,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
 > {
   public name = 'knowledge_search_docs';
   public description =
-    'Search knowledge documents by title/summary/tags and return relevant docs.';
+    'Select relevant knowledge documents for the current task and return an optional report.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,
@@ -60,17 +75,18 @@ export class KnowledgeSearchDocsTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Searches knowledge documents using only title/summary/tags and returns the most relevant documents.
+      Selects relevant knowledge documents for the current task by asking a model to review all available document metadata.
 
       ### When to Use
-      Use this tool first to find which documents are relevant to your query.
+      Use this tool first to find which documents are relevant to your current task.
 
       ### Best Practices
-      Keep queries short and focused. This tool returns up to 10 docs.
+      Provide a clear task description and the relevant stack context (technology, language, framework).
+      This tool returns up to 10 docs and may include a short report.
 
       ### Examples
       \`\`\`json
-      {"query": "database migration checklist"}
+      {"task": "Prepare a database migration checklist for schema changes. Stack: NestJS + TypeScript + TypeORM"}
       \`\`\`
     `;
   }
@@ -83,15 +99,15 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     args: KnowledgeSearchDocsSchemaType,
     config: KnowledgeToolGroupConfig,
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<ToolInvokeResult<KnowledgeSearchDocsResult[]>> {
+  ): Promise<ToolInvokeResult<KnowledgeSearchDocsResponse>> {
     const graphCreatedBy = runnableConfig.configurable?.graph_created_by;
     if (!graphCreatedBy) {
       throw new BadRequestException(undefined, 'graph_created_by is required');
     }
 
-    const normalizedQuery = args.query.trim();
-    if (!normalizedQuery) {
-      throw new BadRequestException('QUERY_REQUIRED');
+    const normalizedTask = args.task.trim();
+    if (!normalizedTask) {
+      throw new BadRequestException('TASK_REQUIRED');
     }
 
     const tagsFilter = this.normalizeTags(config.tags);
@@ -104,13 +120,13 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     });
 
     if (docs.length === 0) {
-      return { output: [] };
+      return { output: { documents: [] } };
     }
 
-    const selectedIds = await this.selectRelevantDocs(normalizedQuery, docs);
+    const selection = await this.selectRelevantDocs(normalizedTask, docs);
 
     const docById = new Map(docs.map((doc) => [doc.id, doc]));
-    const output = selectedIds
+    const documents = selection.ids
       .map((id) => docById.get(id))
       .filter((doc): doc is (typeof docs)[number] => Boolean(doc))
       .slice(0, 10)
@@ -125,7 +141,10 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     const title = this.generateTitle?.(args, config);
 
     return {
-      output,
+      output: {
+        documents,
+        comment: selection.comment,
+      },
       messageMetadata: {
         __title: title,
       },
@@ -136,7 +155,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     args: KnowledgeSearchDocsSchemaType,
     _config: KnowledgeToolGroupConfig,
   ): string {
-    return `Knowledge docs search: ${args.query}`;
+    return `Knowledge docs selection: ${args.task}`;
   }
 
   private normalizeTags(tags?: string[]): string[] | undefined {
@@ -149,18 +168,23 @@ export class KnowledgeSearchDocsTool extends BaseTool<
   }
 
   private async selectRelevantDocs(
-    query: string,
+    task: string,
     docs: KnowledgeDocEntity[],
-  ): Promise<string[]> {
+  ): Promise<KnowledgeDocSelection> {
+    const compiledSchema = zodResponseFormat(
+      KnowledgeDocSelectionSchema,
+      'data',
+    );
     const prompt = [
       'You select relevant knowledge documents for a query.',
-      'Return ONLY JSON with key "ids": an array of document IDs.',
+      'Return ONLY JSON with keys: "ids" (array of document IDs) and optional "comment" (string).',
       'Rules:',
       '- ids must come from the provided documents.',
       '- return at most 10 ids.',
       '- if nothing is relevant, return an empty array.',
+      '- comment should be a brief report; if nothing is relevant, say so and suggest how to refine the task.',
       '',
-      `QUERY: ${query}`,
+      `TASK: ${task}`,
       'DOCUMENTS:',
       docs.map(
         (d) =>
@@ -173,62 +197,28 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       {
         model: this.llmModelsService.getKnowledgeSearchModel(),
         reasoning: { effort: 'low' },
+        text: {
+          format: {
+            ...compiledSchema.json_schema,
+            schema: compiledSchema.json_schema.schema!,
+            type: 'json_schema',
+          },
+        },
       },
       { json: true },
     );
 
-    const rawSelection = response.content?.ids ?? [];
+    const validation = KnowledgeDocSelectionSchema.safeParse(response.content);
+    if (!validation.success) {
+      return { ids: [] };
+    }
+
+    const rawSelection = validation.data.ids ?? [];
     const validIds = new Set(docs.map((doc) => doc.id));
-    const selection = Array.from(new Set(rawSelection))
+    const ids = Array.from(new Set(rawSelection))
       .filter((id) => validIds.has(id))
       .slice(0, 10);
-
-    if (selection.length > 0) {
-      const extra = this.scoreDocs(query, docs)
-        .map((doc) => doc.id)
-        .filter((id) => !selection.includes(id));
-      return [...selection, ...extra].slice(0, 10);
-    }
-
-    return this.scoreDocs(query, docs)
-      .map((doc) => doc.id)
-      .slice(0, 10);
-  }
-
-  private scoreDocs(
-    query: string,
-    docs: KnowledgeDocEntity[],
-  ): KnowledgeDocEntity[] {
-    const keywords = this.extractKeywords(query);
-    if (keywords.length === 0) {
-      return docs;
-    }
-    const scored = docs.map((doc) => {
-      const haystack = [doc.title, doc.summary ?? '', doc.tags.join(' ')]
-        .join(' ')
-        .toLowerCase();
-      const score = keywords.reduce(
-        (sum, keyword) =>
-          haystack.includes(keyword.toLowerCase()) ? sum + 1 : sum,
-        0,
-      );
-      return { doc, score };
-    });
-    return scored
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map((item) => item.doc);
-  }
-
-  private extractKeywords(text: string): string[] {
-    const matches = text.toLowerCase().match(/[a-z0-9]+/g);
-    if (!matches) return [];
-    const unique = new Set<string>();
-    for (const match of matches) {
-      if (match.length > 2) {
-        unique.add(match);
-      }
-    }
-    return Array.from(unique);
+    const comment = validation.data.comment?.trim();
+    return comment ? { ids, comment } : { ids };
   }
 }

@@ -47,50 +47,23 @@ describe('FilesBuildTagsTool', () => {
   });
 
   describe('schema', () => {
-    it('should validate required directoryPath and alias fields', () => {
+    it('should validate directoryPath when provided', () => {
       const validData = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
       expect(() => FilesBuildTagsToolSchema.parse(validData)).not.toThrow();
     });
 
     it('should allow missing directoryPath field (defaults to session cwd)', () => {
-      const data = {
-        alias: 'myrepo',
-      };
+      const data = {};
       expect(() => FilesBuildTagsToolSchema.parse(data)).not.toThrow();
-    });
-
-    it('should reject missing alias field', () => {
-      const invalidData = {
-        directoryPath: '/path/to/repo',
-      };
-      expect(() => FilesBuildTagsToolSchema.parse(invalidData)).toThrow();
     });
 
     it('should reject empty directoryPath', () => {
       const invalidData = {
         directoryPath: '',
-        alias: 'myrepo',
       };
       expect(() => FilesBuildTagsToolSchema.parse(invalidData)).toThrow();
-    });
-
-    it('should reject empty alias', () => {
-      const invalidData = {
-        directoryPath: '/path/to/repo',
-        alias: '',
-      };
-      expect(() => FilesBuildTagsToolSchema.parse(invalidData)).toThrow();
-    });
-
-    it('should accept alias with special characters', () => {
-      const validData = {
-        directoryPath: '/path/to/repo',
-        alias: 'my-repo_123',
-      };
-      expect(() => FilesBuildTagsToolSchema.parse(validData)).not.toThrow();
     });
   });
 
@@ -104,7 +77,6 @@ describe('FilesBuildTagsTool', () => {
     it('should build tags successfully', async () => {
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       // Mock mkdir command
@@ -126,7 +98,7 @@ describe('FilesBuildTagsTool', () => {
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
-      expect(result.tagsFile).toBe('/tmp/test-thread-123/myrepo.json');
+      expect(result.tagsFile).toBe('/tmp/test-thread-123/tags.json');
       expect(result.error).toBeUndefined();
       expect((tool as any).execCommand).toHaveBeenCalledTimes(2);
       expect((tool as any).execCommand).toHaveBeenNthCalledWith(
@@ -140,7 +112,7 @@ describe('FilesBuildTagsTool', () => {
       expect((tool as any).execCommand).toHaveBeenNthCalledWith(
         2,
         {
-          cmd: 'cd "/path/to/repo" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "/tmp/test-thread-123/myrepo.json" .',
+          cmd: 'cd "/path/to/repo" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "/tmp/test-thread-123/tags.json" .',
         },
         mockConfig,
         mockCfg,
@@ -157,7 +129,6 @@ describe('FilesBuildTagsTool', () => {
 
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       vi.spyOn(tool as any, 'execCommand')
@@ -181,7 +152,7 @@ describe('FilesBuildTagsTool', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.tagsFile).toBe('/tmp/parent-thread-456/myrepo.json');
+      expect(result.tagsFile).toBe('/tmp/parent-thread-456/tags.json');
       expect((tool as any).execCommand).toHaveBeenNthCalledWith(
         1,
         {
@@ -201,7 +172,6 @@ describe('FilesBuildTagsTool', () => {
 
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       vi.spyOn(tool as any, 'execCommand')
@@ -225,7 +195,7 @@ describe('FilesBuildTagsTool', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.tagsFile).toBe('/tmp/test-thread-789/myrepo.json');
+      expect(result.tagsFile).toBe('/tmp/test-thread-789/tags.json');
     });
 
     it('should return error when no thread_id is available', async () => {
@@ -235,7 +205,6 @@ describe('FilesBuildTagsTool', () => {
 
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       const execSpy = vi.spyOn(tool as any, 'execCommand');
@@ -253,7 +222,6 @@ describe('FilesBuildTagsTool', () => {
     it('should return error when mkdir fails', async () => {
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValueOnce({
@@ -275,7 +243,6 @@ describe('FilesBuildTagsTool', () => {
     it('should return error when mkdir fails with stdout message', async () => {
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       vi.spyOn(tool as any, 'execCommand').mockResolvedValueOnce({
@@ -296,7 +263,6 @@ describe('FilesBuildTagsTool', () => {
     it('should return error when ctags command fails', async () => {
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       vi.spyOn(tool as any, 'execCommand')
@@ -323,7 +289,6 @@ describe('FilesBuildTagsTool', () => {
     it('should return error when ctags fails with stdout message', async () => {
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       vi.spyOn(tool as any, 'execCommand')
@@ -349,7 +314,6 @@ describe('FilesBuildTagsTool', () => {
     it('should return default error message when ctags fails with empty output', async () => {
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'myrepo',
       };
 
       vi.spyOn(tool as any, 'execCommand')
@@ -375,7 +339,6 @@ describe('FilesBuildTagsTool', () => {
     it('should handle directoryPath with spaces', async () => {
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to my repo',
-        alias: 'myrepo',
       };
 
       vi.spyOn(tool as any, 'execCommand')
@@ -398,17 +361,16 @@ describe('FilesBuildTagsTool', () => {
       expect((tool as any).execCommand).toHaveBeenNthCalledWith(
         2,
         {
-          cmd: 'cd "/path/to my repo" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "/tmp/test-thread-123/myrepo.json" .',
+          cmd: 'cd "/path/to my repo" && ctags -R --fields=+n+K --extras=+q --output-format=json -f "/tmp/test-thread-123/tags.json" .',
         },
         mockConfig,
         mockCfg,
       );
     });
 
-    it('should handle alias with special characters', async () => {
+    it('should return tags file in thread directory', async () => {
       const args: FilesBuildTagsToolSchemaType = {
         directoryPath: '/path/to/repo',
-        alias: 'my-repo_123',
       };
 
       vi.spyOn(tool as any, 'execCommand')
@@ -428,7 +390,7 @@ describe('FilesBuildTagsTool', () => {
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
-      expect(result.tagsFile).toBe('/tmp/test-thread-123/my-repo_123.json');
+      expect(result.tagsFile).toBe('/tmp/test-thread-123/tags.json');
     });
   });
 });

@@ -14,7 +14,7 @@ import {
 } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-const MAX_MATCHES = 30;
+const MAX_MATCHES = 15;
 
 export const FilesSearchTextToolSchema = z.object({
   searchInDirectory: z

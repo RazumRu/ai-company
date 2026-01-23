@@ -225,11 +225,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
   public async initTools(config: SimpleAgentSchemaType) {
     // ----- finish tool -----
-    const enforceToolUsage = config.enforceToolUsage ?? true;
-
-    if (enforceToolUsage) {
-      this.addTool(new FinishTool().build({}));
-    }
+    this.addTool(new FinishTool().build({}));
 
     // ----- mcp -----
     for (const mcpService of this.mcpServices) {

@@ -74,7 +74,9 @@ describe('Knowledge tools (integration)', () => {
       expect(refreshedAlpha.tags).toEqual(['alpha-tag']);
 
       const searchResult = await searchDocsTool.invoke(
-        { query: alphaKeyword },
+        {
+          task: `Find alpha-tag doc. Stack: NestJS + TypeScript. Keyword: ${alphaKeyword}`,
+        },
         { tags: ['alpha-tag'] },
         {
           configurable: {
@@ -85,15 +87,18 @@ describe('Knowledge tools (integration)', () => {
       );
 
       const output = searchResult.output as {
-        documentId: string;
-        title: string;
-        summary: string | null;
-        tags: string[];
-      }[];
-      expect(output).toHaveLength(1);
-      expect(output[0]?.documentId).toBe(alphaDoc.id);
-      expect(output[0]?.summary).toBe(refreshedAlpha.summary);
-      expect(output[0]?.tags).toEqual(['alpha-tag']);
+        documents: {
+          documentId: string;
+          title: string;
+          summary: string | null;
+          tags: string[];
+        }[];
+        comment?: string;
+      };
+      expect(output.documents).toHaveLength(1);
+      expect(output.documents[0]?.documentId).toBe(alphaDoc.id);
+      expect(output.documents[0]?.summary).toBe(refreshedAlpha.summary);
+      expect(output.documents[0]?.tags).toEqual(['alpha-tag']);
     },
   );
 

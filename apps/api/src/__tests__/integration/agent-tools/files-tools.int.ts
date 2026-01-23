@@ -241,7 +241,7 @@ describe('Files tools integration', () => {
       await writeSampleFile('tags.ts');
 
       const { output: buildResult } = await filesBuildTagsTool.invoke(
-        { directoryPath: WORKSPACE_DIR, alias: TAGS_ALIAS },
+        { directoryPath: WORKSPACE_DIR },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -254,7 +254,6 @@ describe('Files tools integration', () => {
       const { output: classSearch } = await filesSearchTagsTool.invoke(
         {
           directoryPath: WORKSPACE_DIR,
-          alias: TAGS_ALIAS,
           symbolQuery: 'HelperService',
           exactMatch: true,
         },
@@ -268,7 +267,6 @@ describe('Files tools integration', () => {
       const { output: functionSearch } = await filesSearchTagsTool.invoke(
         {
           directoryPath: WORKSPACE_DIR,
-          alias: TAGS_ALIAS,
           symbolQuery: 'greet',
           exactMatch: true,
         },

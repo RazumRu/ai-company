@@ -19,7 +19,6 @@ export const FilesBuildTagsToolSchema = z.object({
     .describe(
       'Directory path to index. If omitted, uses the current working directory of the persistent shell session. Use absolute paths when provided.',
     ),
-  alias: z.string().min(1).describe('Alias/name for the tags index file.'),
 });
 
 export type FilesBuildTagsToolSchemaType = z.infer<
@@ -42,7 +41,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
     _config: FilesBaseToolConfig,
   ): string {
     const dir = args.directoryPath ?? 'current directory';
-    return `Building tags "${args.alias}" in ${dir}`;
+    return `Building tags in ${dir}`;
   }
 
   public getDetailedInstructions(
@@ -65,7 +64,6 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
 
       ### Best Practices
       - **Always build tags at the start of work** (per repo + per session/thread) before doing code exploration, then use \`files_search_tags\` for symbol discovery.
-      - Use a stable \`alias\` per repo (e.g. "project") so you can reuse it across many \`files_search_tags\` calls.
       - **Rebuild tags after you change files** (especially renames/new files/added or removed symbols) because the index is **not** automatically updated.
       - Rebuild tags after large refactors or when definitions aren’t found.
       - If you already \`cd\`’d into the repo using \`shell\`, omit \`directoryPath\` to use the persistent session cwd.
@@ -73,18 +71,18 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       ### Examples
       **1) Build tags for a repo:**
       \`\`\`json
-      {"directoryPath":"/repo","alias":"project"}
+      {"directoryPath":"/repo"}
       \`\`\`
 
       **2) Build tags for current directory (after \`shell\` cd):**
       \`\`\`json
-      {"alias":"project"}
+      {}
       \`\`\`
 
       ### Output Format
       Success:
       \`\`\`json
-      { "success": true, "tagsFile": "/tmp/<threadId>/project.json" }
+      { "success": true, "tagsFile": "/tmp/_tags_alias.json" }
       \`\`\`
       Error:
       \`\`\`json
@@ -92,7 +90,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
       \`\`\`
 
       ### Next Step
-      After building, use \`files_search_tags\` with the same \`alias\` to query symbols.
+      After building, use \`files_search_tags\` to query symbols.
     `;
   }
 
@@ -120,7 +118,7 @@ export class FilesBuildTagsTool extends FilesBaseTool<FilesBuildTagsToolSchemaTy
 
     // Create the tags directory if it doesn't exist
     const tagsDir = `/tmp/${threadId.replace(/:/g, '_')}`;
-    const tagsFile = `${tagsDir}/${args.alias}.json`;
+    const tagsFile = `${tagsDir}/tags.json`;
 
     // First, ensure the directory exists
     const mkdirCmd = `mkdir -p "${tagsDir}"`;

@@ -19,10 +19,6 @@ export const FilesSearchTagsToolSchema = z.object({
     .describe(
       'Directory path to search. If omitted, uses the current working directory of the persistent shell session. Should match the directory used when building the tags.',
     ),
-  alias: z
-    .string()
-    .min(1)
-    .describe('The alias used when building the tags index.'),
   symbolQuery: z
     .string()
     .min(1)
@@ -59,7 +55,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
   ): string {
     const matchType = args.exactMatch ? 'exact' : 'regex';
     const location = args.directoryPath ?? 'current directory';
-    return `Tag search (${matchType}) "${args.symbolQuery}" in ${location} (alias ${args.alias})`;
+    return `Tag search (${matchType}) "${args.symbolQuery}" in ${location}`;
   }
 
   public getDetailedInstructions(
@@ -89,37 +85,37 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
       **1. Use exact match for known symbols:**
       \`\`\`json
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "UserController", "exactMatch": true}
+        {"directoryPath": "/repo", "symbolQuery": "UserController", "exactMatch": true}
         // After cd /repo via shell:
-        {"alias": "project", "symbolQuery": "UserController", "exactMatch": true}
+        {"symbolQuery": "UserController", "exactMatch": true}
 
         // Quick current-directory example (after building tags in cwd)
-        {"alias": "project", "symbolQuery": "Service", "exactMatch": false}
+        {"symbolQuery": "Service", "exactMatch": false}
       \`\`\`
 
       **2. Use regex for pattern discovery:**
       \`\`\`json
         // Find all hooks
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "^use[A-Z]"}
+        {"directoryPath": "/repo", "symbolQuery": "^use[A-Z]"}
 
         // Find all test functions
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "^test.*|^it.*|^describe.*"}
+        {"directoryPath": "/repo", "symbolQuery": "^test.*|^it.*|^describe.*"}
 
         // Find all handlers
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "handle[A-Z]"}
+        {"directoryPath": "/repo", "symbolQuery": "handle[A-Z]"}
       \`\`\`
 
       **3. Narrow searches with specific patterns:**
       \`\`\`json
         // Instead of broad search
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "User"}
+        {"directoryPath": "/repo", "symbolQuery": "User"}
 
         // Be specific
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "UserService", "exactMatch": true}
+        {"directoryPath": "/repo", "symbolQuery": "UserService", "exactMatch": true}
       \`\`\`
 
       ### Output Format
-      Returns matching tag entries:
+      Returns up to 15 matching tag entries:
       \`\`\`json
         {
           "matches": [
@@ -154,17 +150,17 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
 
       **Find class definition:**
       \`\`\`json
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "AuthService", "exactMatch": true}
+        {"directoryPath": "/repo", "symbolQuery": "AuthService", "exactMatch": true}
       \`\`\`
 
       **Find all classes:**
       \`\`\`json
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "Service$"}  // Classes ending in Service
+        {"directoryPath": "/repo", "symbolQuery": "Service$"}  // Classes ending in Service
       \`\`\`
 
       **Find React components:**
       \`\`\`json
-        {"directoryPath": "/repo", "alias": "project", "symbolQuery": "^[A-Z][a-z].*Component$"}
+        {"directoryPath": "/repo", "symbolQuery": "^[A-Z][a-z].*Component$"}
       \`\`\`
 
       ### After Finding Definitions
@@ -188,6 +184,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<FilesSearchTagsToolOutput>> {
+    const maxResults = 15;
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
     const threadId =
@@ -201,7 +198,7 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
       };
     }
 
-    const tagsFile = `/tmp/${threadId.replace(/:/g, '_')}/${args.alias}.json`;
+    const tagsFile = `/tmp/${threadId.replace(/:/g, '_')}/tags.json`;
 
     let cmd: string;
     if (args.exactMatch) {
@@ -253,6 +250,9 @@ export class FilesSearchTagsTool extends FilesBaseTool<FilesSearchTagsToolSchema
       try {
         const parsed = JSON.parse(line) as unknown;
         matches.push(parsed);
+        if (matches.length >= maxResults) {
+          break;
+        }
       } catch (_e) {
         // Skip invalid JSON lines
         continue;
