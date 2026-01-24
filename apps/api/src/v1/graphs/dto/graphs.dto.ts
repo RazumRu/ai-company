@@ -177,30 +177,6 @@ export const SystemMessageSchema = z.object({
     .describe('Additional message metadata'),
 });
 
-// Shell tool result schema
-export const ShellToolResultSchema = z.object({
-  exitCode: z.number().describe('Exit code of the shell command'),
-  stdout: z.string().describe('Standard output from the command'),
-  stderr: z.string().describe('Standard error from the command'),
-});
-
-// Shell tool message schema (specific for shell tool results)
-export const ShellToolMessageSchema = z.object({
-  role: z.literal(MessageRole.ToolShell).describe('Message role'),
-  name: z.literal('shell').describe('Tool name - shell'),
-  content: ShellToolResultSchema.describe('Parsed shell execution result'),
-  toolCallId: z.string().describe('Tool call ID'),
-  runId: z
-    .string()
-    .optional()
-    .nullable()
-    .describe('Run ID associated with this message'),
-  additionalKwargs: z
-    .record(z.string(), z.unknown())
-    .optional()
-    .describe('Additional message metadata'),
-});
-
 // Generic tool message schema (for other tools)
 export const ToolMessageSchema = z.object({
   role: z.literal(MessageRole.Tool).describe('Message role'),
@@ -230,7 +206,6 @@ export const MessageSchema = z.discriminatedUnion('role', [
   AIMessageSchema,
   ReasoningMessageSchema,
   SystemMessageSchema,
-  ShellToolMessageSchema,
   ToolMessageSchema,
 ]);
 
@@ -315,12 +290,10 @@ export type HumanMessageDto = z.infer<typeof HumanMessageSchema>;
 export type AIMessageDto = z.infer<typeof AIMessageSchema>;
 export type ReasoningMessageDto = z.infer<typeof ReasoningMessageSchema>;
 export type SystemMessageDto = z.infer<typeof SystemMessageSchema>;
-export type ShellToolMessageDto = z.infer<typeof ShellToolMessageSchema>;
 export type ToolMessageDto = z.infer<typeof ToolMessageSchema>;
 export type MessageDto =
   | HumanMessageDto
   | AIMessageDto
   | ReasoningMessageDto
   | SystemMessageDto
-  | ShellToolMessageDto
   | ToolMessageDto;

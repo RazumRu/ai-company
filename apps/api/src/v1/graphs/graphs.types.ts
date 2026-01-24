@@ -17,7 +17,6 @@ export enum MessageRole {
   Reasoning = 'reasoning',
   System = 'system',
   Tool = 'tool',
-  ToolShell = 'tool-shell',
 }
 
 export enum GraphStatus {

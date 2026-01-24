@@ -36,6 +36,7 @@ export type KnowledgeDocInputDto = {
 
 export type KnowledgeDocDto = {
   id: string;
+  publicId: number;
   content: string;
   title: string;
   summary?: string | null;
@@ -47,6 +48,7 @@ export type KnowledgeDocDto = {
 
 export type KnowledgeChunkDto = {
   id: string;
+  publicId: number;
   docId: string;
   chunkIndex: number;
   label?: string | null;
@@ -1104,47 +1106,6 @@ export type ThreadMessageDto = {
          * Message content
          */
         content: string;
-        /**
-         * Run ID associated with this message
-         */
-        runId?: string | null;
-        /**
-         * Additional message metadata
-         */
-        additionalKwargs?: {
-          [key: string]: unknown;
-        };
-      }
-    | {
-        /**
-         * Message role
-         */
-        role: 'tool-shell';
-        /**
-         * Tool name - shell
-         */
-        name: 'shell';
-        /**
-         * Parsed shell execution result
-         */
-        content: {
-          /**
-           * Exit code of the shell command
-           */
-          exitCode: number;
-          /**
-           * Standard output from the command
-           */
-          stdout: string;
-          /**
-           * Standard error from the command
-           */
-          stderr: string;
-        };
-        /**
-         * Tool call ID
-         */
-        toolCallId: string;
         /**
          * Run ID associated with this message
          */

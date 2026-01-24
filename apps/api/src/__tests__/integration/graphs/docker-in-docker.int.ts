@@ -76,9 +76,10 @@ describe('Docker Runtime Integration', () => {
     );
   };
 
-  type ShellThreadMessage =
-    | Extract<ThreadMessageDto['message'], { role: 'tool-shell' }>
-    | Extract<ThreadMessageDto['message'], { role: 'tool' }>;
+  type ShellThreadMessage = Extract<
+    ThreadMessageDto['message'],
+    { role: 'tool' }
+  >;
 
   const isAiThreadMessage = (
     message: ThreadMessageDto['message'],
@@ -88,8 +89,7 @@ describe('Docker Runtime Integration', () => {
   const isShellThreadMessage = (
     message: ThreadMessageDto['message'],
   ): message is ShellThreadMessage =>
-    (message.role === 'tool-shell' || message.role === 'tool') &&
-    message.name === 'shell';
+    message.role === 'tool' && message.name === 'shell';
 
   const getThreadMessages = async (
     externalThreadId: string,
@@ -111,7 +111,7 @@ describe('Docker Runtime Integration', () => {
       (
         message,
       ): message is ThreadMessageDto & {
-        message: Extract<ThreadMessageDto['message'], { role: 'tool-shell' }>;
+        message: ShellThreadMessage;
       } => isShellThreadMessage(message.message),
     )?.message;
 
@@ -120,15 +120,13 @@ describe('Docker Runtime Integration', () => {
     );
 
     const result =
-      shellMessage?.role === 'tool-shell'
-        ? shellMessage.content
-        : shellMessage?.role === 'tool'
-          ? (shellMessage.content as {
-              exitCode?: number;
-              stdout?: string;
-              stderr?: string;
-            })
-          : undefined;
+      shellMessage?.role === 'tool'
+        ? (shellMessage.content as {
+            exitCode?: number;
+            stdout?: string;
+            stderr?: string;
+          })
+        : undefined;
 
     return {
       toolName: shellToolCall?.name ?? shellMessage?.name,

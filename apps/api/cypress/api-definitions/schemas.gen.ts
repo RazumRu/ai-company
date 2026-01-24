@@ -48,6 +48,11 @@ export const KnowledgeDocDtoSchema = {
       pattern:
         '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
     },
+    publicId: {
+      type: 'integer',
+      minimum: -9007199254740991,
+      maximum: 9007199254740991,
+    },
     content: {
       type: 'string',
     },
@@ -93,7 +98,15 @@ export const KnowledgeDocDtoSchema = {
         '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
     },
   },
-  required: ['id', 'content', 'title', 'tags', 'createdAt', 'updatedAt'],
+  required: [
+    'id',
+    'publicId',
+    'content',
+    'title',
+    'tags',
+    'createdAt',
+    'updatedAt',
+  ],
 } as const;
 
 export const KnowledgeChunkDtoSchema = {
@@ -104,6 +117,11 @@ export const KnowledgeChunkDtoSchema = {
       format: 'uuid',
       pattern:
         '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    publicId: {
+      type: 'integer',
+      minimum: -9007199254740991,
+      maximum: 9007199254740991,
     },
     docId: {
       type: 'string',
@@ -161,6 +179,7 @@ export const KnowledgeChunkDtoSchema = {
   },
   required: [
     'id',
+    'publicId',
     'docId',
     'chunkIndex',
     'text',
@@ -1978,55 +1997,6 @@ export const ThreadMessageDtoSchema = {
             },
           },
           required: ['role', 'content'],
-        },
-        {
-          type: 'object',
-          properties: {
-            role: {
-              type: 'string',
-              const: 'tool-shell',
-            },
-            name: {
-              type: 'string',
-              const: 'shell',
-            },
-            content: {
-              type: 'object',
-              properties: {
-                exitCode: {
-                  type: 'number',
-                },
-                stdout: {
-                  type: 'string',
-                },
-                stderr: {
-                  type: 'string',
-                },
-              },
-              required: ['exitCode', 'stdout', 'stderr'],
-            },
-            toolCallId: {
-              type: 'string',
-            },
-            runId: {
-              anyOf: [
-                {
-                  type: 'string',
-                },
-                {
-                  type: 'null',
-                },
-              ],
-            },
-            additionalKwargs: {
-              type: 'object',
-              propertyNames: {
-                type: 'string',
-              },
-              additionalProperties: {},
-            },
-          },
-          required: ['role', 'name', 'content', 'toolCallId'],
         },
         {
           type: 'object',

@@ -90,15 +90,15 @@ describe('Graph Resources Integration Tests', () => {
   ): message is Extract<ThreadMessageDto['message'], { role: 'ai' }> =>
     message.role === 'ai';
 
-  type ShellThreadMessage =
-    | Extract<ThreadMessageDto['message'], { role: 'tool-shell' }>
-    | Extract<ThreadMessageDto['message'], { role: 'tool' }>;
+  type ShellThreadMessage = Extract<
+    ThreadMessageDto['message'],
+    { role: 'tool' }
+  >;
 
   const isShellThreadMessage = (
     message: ThreadMessageDto['message'],
   ): message is ShellThreadMessage =>
-    (message.role === 'tool-shell' || message.role === 'tool') &&
-    message.name === 'shell';
+    message.role === 'tool' && message.name === 'shell';
 
   const findShellExecution = (messages: ThreadMessageDto[]) => {
     const aiMessage = messages
@@ -119,15 +119,13 @@ describe('Graph Resources Integration Tests', () => {
       );
 
     const rawResult =
-      shellMessage?.role === 'tool-shell'
-        ? shellMessage.content
-        : shellMessage?.role === 'tool'
-          ? (shellMessage.content as {
-              exitCode?: number;
-              stdout?: string;
-              stderr?: string;
-            })
-          : undefined;
+      shellMessage?.role === 'tool'
+        ? (shellMessage.content as {
+            exitCode?: number;
+            stdout?: string;
+            stderr?: string;
+          })
+        : undefined;
 
     const result =
       rawResult &&

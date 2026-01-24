@@ -422,7 +422,7 @@ describe('AiSuggestionsService', () => {
           createdAt: new Date(),
           updatedAt: new Date(),
           message: {
-            role: 'tool-shell',
+            role: 'tool',
             name: 'shell',
             content: { stdout: 'ok', stderr: '', exitCode: 0 },
             toolCallId: 'call-2',

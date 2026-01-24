@@ -52,14 +52,6 @@ type SanitizedMessage =
       content: string;
       from: string;
       title?: string;
-    }
-  | {
-      role: 'tool-shell';
-      name: 'shell';
-      exitCode: number;
-      stdout?: string;
-      stderr?: string;
-      from: string;
     };
 
 type AgentContext = {
@@ -559,7 +551,6 @@ export class AiSuggestionsService {
       'Message format:',
       '- Standard messages (human/ai/reasoning/system): #<idx> | <role> | <from> | <content> | [toolCalls: <name> args: <json>; ...]',
       '- Tool messages: #<idx> | tool | <from> | <name> | <content> | [title: <title>]',
-      '- Shell messages: #<idx> | tool-shell | <from> | exitCode:<code> | [stdout: <out>] | [stderr: <err>]',
       '',
       'Messages:',
     ].join('\n');
@@ -581,16 +572,6 @@ export class AiSuggestionsService {
       const content = truncate(msg.content, 700);
       const title = msg.title ? ` | title: ${truncate(msg.title, 200)}` : '';
       return `#${index} | tool | ${msg.from} | ${msg.name} | ${content}${title}`;
-    }
-
-    if (msg.role === 'tool-shell') {
-      const stdout = msg.stdout
-        ? ` | stdout: ${truncate(msg.stdout, 700)}`
-        : '';
-      const stderr = msg.stderr
-        ? ` | stderr: ${truncate(msg.stderr, 700)}`
-        : '';
-      return `#${index} | tool-shell | ${msg.from} | exitCode:${msg.exitCode}${stdout}${stderr}`;
     }
 
     const toolCalls = msg.toolCalls?.length
@@ -649,32 +630,9 @@ export class AiSuggestionsService {
         sanitized.push({
           role: 'tool',
           name: message.name,
-          content: this.safeStringify(message.content),
+          content: this.formatToolContent(message.name, message.content),
           from: fromLabel,
           title: message.title,
-        });
-        continue;
-      }
-
-      if (message.role === 'tool-shell') {
-        const content = message.content as unknown;
-        const rec: UnknownRecord = isPlainObject(content)
-          ? (content as UnknownRecord)
-          : {};
-        const exitCode =
-          typeof rec.exitCode === 'number'
-            ? rec.exitCode
-            : Number(rec.exitCode) || 0;
-        const stdout = typeof rec.stdout === 'string' ? rec.stdout : undefined;
-        const stderr = typeof rec.stderr === 'string' ? rec.stderr : undefined;
-
-        sanitized.push({
-          role: 'tool-shell',
-          name: 'shell',
-          exitCode,
-          stdout,
-          stderr,
-          from: fromLabel,
         });
         continue;
       }
@@ -690,6 +648,23 @@ export class AiSuggestionsService {
     }
 
     return sanitized;
+  }
+
+  private formatToolContent(name: string, content: unknown): string {
+    if (name === 'shell' && isPlainObject(content)) {
+      const rec = content as UnknownRecord;
+      const exitCode =
+        typeof rec.exitCode === 'number'
+          ? rec.exitCode
+          : Number(rec.exitCode) || 0;
+      const stdout = typeof rec.stdout === 'string' ? rec.stdout : undefined;
+      const stderr = typeof rec.stderr === 'string' ? rec.stderr : undefined;
+      const stdoutChunk = stdout ? ` stdout: ${stdout}` : '';
+      const stderrChunk = stderr ? ` stderr: ${stderr}` : '';
+      return `exitCode:${exitCode}${stdoutChunk}${stderrChunk}`.trim();
+    }
+
+    return this.safeStringify(content);
   }
 
   private getNodeDisplayName(

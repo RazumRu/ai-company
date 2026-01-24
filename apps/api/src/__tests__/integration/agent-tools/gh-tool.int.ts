@@ -85,16 +85,16 @@ describe('GitHub Tool Integration Tests', () => {
     return threadsService.getThreadMessages(thread.id);
   };
 
-  type GhCloneThreadMessage =
-    | Extract<ThreadMessageDto['message'], { role: 'tool' }>
-    | Extract<ThreadMessageDto['message'], { role: 'tool-shell' }>;
+  type GhCloneThreadMessage = Extract<
+    ThreadMessageDto['message'],
+    { role: 'tool' }
+  >;
 
   const isGhCloneThreadMessage = (
     message: ThreadMessageDto['message'],
     toolName: string,
   ): message is GhCloneThreadMessage =>
-    (message.role === 'tool' || message.role === 'tool-shell') &&
-    message.name === toolName;
+    message.role === 'tool' && message.name === toolName;
 
   const findToolExecution = (
     messages: ThreadMessageDto[],
@@ -106,11 +106,9 @@ describe('GitHub Tool Integration Tests', () => {
 
     if (toolMessage) {
       const rawResult =
-        toolMessage.role === 'tool-shell'
-          ? toolMessage.content
-          : toolMessage.role === 'tool'
-            ? (toolMessage.content as { path?: string; error?: string })
-            : undefined;
+        toolMessage.role === 'tool'
+          ? (toolMessage.content as { path?: string; error?: string })
+          : undefined;
 
       let result: unknown;
       try {

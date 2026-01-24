@@ -297,9 +297,7 @@ export class ThreadsService {
         messageEntity.role === MessageRole.AI &&
         Array.isArray(messageEntity.answeredToolCallNames) &&
         messageEntity.answeredToolCallNames.length > 0;
-      const isToolMessage =
-        messageEntity.role === MessageRole.Tool ||
-        messageEntity.role === MessageRole.ToolShell;
+      const isToolMessage = messageEntity.role === MessageRole.Tool;
       const isRealLlmRequest =
         (isToolAnswerMessage && requestUsage) ||
         (!isToolAnswerMessage && !isToolMessage);

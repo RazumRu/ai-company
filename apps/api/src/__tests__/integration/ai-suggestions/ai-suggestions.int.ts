@@ -273,7 +273,7 @@ describe('AiSuggestionsService (integration)', () => {
         externalThreadId: thread.externalThreadId,
         nodeId: 'tool-1',
         message: {
-          role: MessageRole.ToolShell,
+          role: MessageRole.Tool,
           name: 'shell',
           content: { stdout: 'done', stderr: '', exitCode: 0 },
           toolCallId: '2',

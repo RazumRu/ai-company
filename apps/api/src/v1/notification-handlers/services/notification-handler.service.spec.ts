@@ -415,7 +415,7 @@ describe('NotificationHandler', () => {
           createdAt: '2023-01-01T00:00:00Z',
           updatedAt: '2023-01-01T00:00:00Z',
           message: {
-            role: MessageRole.ToolShell,
+            role: MessageRole.Tool,
             name: 'shell',
             content: {
               exitCode: 0,

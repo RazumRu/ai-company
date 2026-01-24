@@ -141,15 +141,15 @@ describe('Thread Stop Execution Integration Tests', () => {
     await waitForGraphStatus(graphId, GraphStatus.Running);
   };
 
-  type ShellThreadMessage =
-    | Extract<ThreadMessageDto['message'], { role: 'tool-shell' }>
-    | Extract<ThreadMessageDto['message'], { role: 'tool' }>;
+  type ShellThreadMessage = Extract<
+    ThreadMessageDto['message'],
+    { role: 'tool' }
+  >;
 
   const isShellThreadMessage = (
     message: ThreadMessageDto['message'],
   ): message is ShellThreadMessage =>
-    (message.role === 'tool-shell' || message.role === 'tool') &&
-    message.name === 'shell';
+    message.role === 'tool' && message.name === 'shell';
 
   const extractShellResult = (
     message: ThreadMessageDto['message'],
@@ -157,15 +157,13 @@ describe('Thread Stop Execution Integration Tests', () => {
     if (!isShellThreadMessage(message)) return null;
 
     const raw =
-      message.role === 'tool-shell'
-        ? message.content
-        : message.role === 'tool'
-          ? (message.content as {
-              exitCode?: number;
-              stdout?: string;
-              stderr?: string;
-            })
-          : undefined;
+      message.role === 'tool'
+        ? (message.content as {
+            exitCode?: number;
+            stdout?: string;
+            stderr?: string;
+          })
+        : undefined;
 
     if (
       typeof raw?.exitCode !== 'number' ||

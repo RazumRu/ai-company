@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import {
   BaseDao,
   BaseQueryBuilder,
-  EntityAttributes,
   EntityAttributesOmit,
 } from '@packages/typeorm';
 import { Brackets, DataSource, In } from 'typeorm';

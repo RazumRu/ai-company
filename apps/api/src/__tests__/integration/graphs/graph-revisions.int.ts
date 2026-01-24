@@ -177,15 +177,15 @@ describe('Graph Revisions Integration Tests', () => {
   ): message is Extract<ThreadMessageDto['message'], { role: 'ai' }> =>
     message.role === 'ai';
 
-  type ShellThreadMessage =
-    | Extract<ThreadMessageDto['message'], { role: 'tool-shell' }>
-    | Extract<ThreadMessageDto['message'], { role: 'tool' }>;
+  type ShellThreadMessage = Extract<
+    ThreadMessageDto['message'],
+    { role: 'tool' }
+  >;
 
   const isShellThreadMessage = (
     message: ThreadMessageDto['message'],
   ): message is ShellThreadMessage =>
-    (message.role === 'tool-shell' || message.role === 'tool') &&
-    message.name === 'shell';
+    message.role === 'tool' && message.name === 'shell';
 
   const getThreadMessages = async (
     externalThreadId: string,
@@ -217,25 +217,20 @@ describe('Graph Revisions Integration Tests', () => {
           message: ShellThreadMessage;
         } => {
           if (!isShellThreadMessage(entry.message)) return false;
-          const content =
-            entry.message.role === 'tool-shell'
-              ? entry.message.content
-              : entry.message.content;
+          const content = entry.message.content;
           const stdout = (content as { stdout?: unknown } | undefined)?.stdout;
           return typeof stdout === 'string' && stdout.includes(stdoutIncludes);
         },
       );
 
       const result =
-        shellEntry?.message.role === 'tool-shell'
-          ? shellEntry.message.content
-          : shellEntry?.message.role === 'tool'
-            ? (shellEntry.message.content as {
-                exitCode?: number;
-                stdout?: string;
-                stderr?: string;
-              })
-            : undefined;
+        shellEntry?.message.role === 'tool'
+          ? (shellEntry.message.content as {
+              exitCode?: number;
+              stdout?: string;
+              stderr?: string;
+            })
+          : undefined;
 
       return {
         toolName: shellEntry?.message.name,
@@ -301,15 +296,13 @@ describe('Graph Revisions Integration Tests', () => {
     );
 
     const result =
-      shellMessage?.role === 'tool-shell'
-        ? shellMessage.content
-        : shellMessage?.role === 'tool'
-          ? (shellMessage.content as {
-              exitCode?: number;
-              stdout?: string;
-              stderr?: string;
-            })
-          : undefined;
+      shellMessage?.role === 'tool'
+        ? (shellMessage.content as {
+            exitCode?: number;
+            stdout?: string;
+            stderr?: string;
+          })
+        : undefined;
 
     return {
       toolName: shellToolCall?.name ?? shellMessage?.name,

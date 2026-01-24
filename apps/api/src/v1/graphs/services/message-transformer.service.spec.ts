@@ -5,7 +5,6 @@ import {
   AIMessageDto,
   HumanMessageDto,
   ReasoningMessageDto,
-  ShellToolMessageDto,
   SystemMessageDto,
   ToolMessageDto,
 } from '../dto/graphs.dto';
@@ -270,7 +269,7 @@ describe('MessageTransformerService', () => {
       const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
-        role: 'tool-shell',
+        role: 'tool',
         name: 'shell',
         content: {
           exitCode: 0,
@@ -281,7 +280,7 @@ describe('MessageTransformerService', () => {
         toolCallId: 'call-shell-1',
         runId: 'run-1',
         additionalKwargs: { __runId: 'run-1' },
-      } as ShellToolMessageDto);
+      } as ToolMessageDto);
     });
 
     it('should transform shell tool message from yaml', () => {
@@ -301,7 +300,7 @@ describe('MessageTransformerService', () => {
       const result = service.transformMessageToDto(m);
 
       expect(result).toEqual({
-        role: 'tool-shell',
+        role: 'tool',
         name: 'shell',
         content: {
           exitCode: 0,
@@ -312,7 +311,7 @@ describe('MessageTransformerService', () => {
         toolCallId: 'call-shell-yaml-1',
         runId: 'run-1',
         additionalKwargs: { __runId: 'run-1' },
-      } as ShellToolMessageDto);
+      } as ToolMessageDto);
     });
 
     it('should handle malformed tool content', () => {
