@@ -24,5 +24,7 @@ fi
 echo "Pulling model: qwen3-coder:30b"
 ollama pull qwen3-coder:30b
 
+echo "Pulling model: qwen3-embedding:4b"
+ollama pull qwen3-embedding:4b
+
 echo "Done."
-echo "Test it with: ollama run qwen3-coder:30b"

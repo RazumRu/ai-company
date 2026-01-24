@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
+import {
+  BaseDao,
+  BaseQueryBuilder,
+  EntityAttributesOmit,
+} from '@packages/typeorm';
 import { DataSource, In, SelectQueryBuilder } from 'typeorm';
 
 import { KnowledgeChunkEntity } from '../entity/knowledge-chunk.entity';
@@ -16,11 +20,16 @@ export type KnowledgeChunkSearchTerms = Partial<{
   embedding: string;
 }>;
 
+type KnowledgeChunkEntityInput = EntityAttributesOmit<
+  KnowledgeChunkEntity,
+  'publicId'
+>;
+
 @Injectable()
 export class KnowledgeChunkDao extends BaseDao<
   ExtendedKnowledgeChunkEntity,
   KnowledgeChunkSearchTerms,
-  string
+  KnowledgeChunkEntityInput
 > {
   public get alias() {
     return 'kc';

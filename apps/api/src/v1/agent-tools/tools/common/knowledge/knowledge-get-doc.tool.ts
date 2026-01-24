@@ -22,6 +22,7 @@ export type KnowledgeGetDocSchemaType = z.infer<typeof KnowledgeGetDocSchema>;
 
 export type KnowledgeGetDocResult = {
   documentId: string;
+  documentPublicId: number;
   title: string;
   summary: string | null;
   politic: string | null;
@@ -107,6 +108,7 @@ export class KnowledgeGetDocTool extends BaseTool<
     return {
       output: {
         documentId: doc.id,
+        documentPublicId: doc.publicId,
         title: doc.title,
         summary: doc.summary ?? null,
         politic: doc.politic ?? null,

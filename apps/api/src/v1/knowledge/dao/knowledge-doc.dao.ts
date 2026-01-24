@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
+import {
+  BaseDao,
+  BaseQueryBuilder,
+  EntityAttributes,
+  EntityAttributesOmit,
+} from '@packages/typeorm';
 import { Brackets, DataSource, In } from 'typeorm';
 
 import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
@@ -12,11 +17,16 @@ export type KnowledgeDocSearchTerms = Partial<{
   search: string;
 }>;
 
+type KnowledgeDocEntityInput = EntityAttributesOmit<
+  KnowledgeDocEntity,
+  'publicId'
+>;
+
 @Injectable()
 export class KnowledgeDocDao extends BaseDao<
   KnowledgeDocEntity,
   KnowledgeDocSearchTerms,
-  string
+  KnowledgeDocEntityInput
 > {
   public get alias() {
     return 'kd';

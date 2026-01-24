@@ -142,6 +142,21 @@ export class MessageTransformerService {
             ? additionalKwargs.__title
             : undefined;
 
+        if (toolName === 'shell') {
+          return {
+            role: MessageRole.ToolShell,
+            name: toolName,
+            content: parsed as {
+              exitCode: number;
+              stdout: string;
+              stderr: string;
+            },
+            toolCallId,
+            additionalKwargs,
+            runId,
+          };
+        }
+
         return {
           role: MessageRole.Tool,
           name: toolName,

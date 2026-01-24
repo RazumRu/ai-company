@@ -17,7 +17,7 @@ export type SearchTerms = Partial<{
 }>;
 
 @Injectable()
-export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms, string> {
+export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms> {
   public get alias() {
     return 't';
   }

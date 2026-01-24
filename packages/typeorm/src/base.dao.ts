@@ -59,15 +59,22 @@ export type EntityAttributes<T extends ObjectLiteral> = NullifyUndefined<
   Omit<T, StripKeys>
 >;
 
+export type EntityAttributesOmit<
+  T extends ObjectLiteral,
+  OmitKeys extends keyof T,
+> = NullifyUndefined<Omit<T, StripKeys | OmitKeys>>;
+
 export type BaseQueryBuilder<T extends ObjectLiteral> =
   | SelectQueryBuilder<T>
   | UpdateQueryBuilder<T>
   | DeleteQueryBuilder<T>;
 
+type EntityType = ObjectLiteral & { id: number | string };
+
 export abstract class BaseDao<
-  T extends ObjectLiteral,
+  T extends EntityType,
   U extends ObjectLiteral,
-  K = number,
+  I = EntityAttributes<T>,
 > {
   public abstract get alias(): string;
 
@@ -190,10 +197,7 @@ export abstract class BaseDao<
     }
   }
 
-  public async create(
-    data: EntityAttributes<T>,
-    entityManager?: EntityManager,
-  ): Promise<T> {
+  public async create(data: I, entityManager?: EntityManager): Promise<T> {
     return (
       await this.getQueryBuilder(entityManager)
         .insert()
@@ -204,7 +208,7 @@ export abstract class BaseDao<
   }
 
   public async createMany(
-    data: EntityAttributes<T>[],
+    data: I[],
     entityManager?: EntityManager,
   ): Promise<T[]> {
     return (
@@ -218,7 +222,7 @@ export abstract class BaseDao<
 
   public async updateMany(
     params: U,
-    data: Partial<EntityAttributes<T>>,
+    data: Partial<I>,
     entityManager?: EntityManager,
   ): Promise<T | null> {
     const builder = this.getQueryBuilder(entityManager).update();
@@ -235,19 +239,19 @@ export abstract class BaseDao<
   }
 
   public async updateById(
-    id: K,
-    data: Partial<EntityAttributes<T>>,
+    id: T['id'],
+    data: Partial<I>,
     entityManager?: EntityManager,
   ): Promise<T | null>;
   public async updateById(
-    id: K,
-    data: Partial<EntityAttributes<T>>,
+    id: T['id'],
+    data: Partial<I>,
     params?: U,
     entityManager?: EntityManager,
   ): Promise<T | null>;
   public async updateById(
-    id: K,
-    data: Partial<EntityAttributes<T>>,
+    id: T['id'],
+    data: Partial<I>,
     params?: U | EntityManager,
     entityManager?: EntityManager,
   ): Promise<T | null> {
@@ -271,14 +275,17 @@ export abstract class BaseDao<
     return (raw[0] as T) || null;
   }
 
-  public async getById(id: K, entityManager?: EntityManager): Promise<T | null>;
   public async getById(
-    id: K,
+    id: T['id'],
+    entityManager?: EntityManager,
+  ): Promise<T | null>;
+  public async getById(
+    id: T['id'],
     params: U & AdditionalParams,
     entityManager?: EntityManager,
   ): Promise<T | null>;
   public async getById(
-    id: K,
+    id: T['id'],
     params?: (U & AdditionalParams) | EntityManager,
     entityManager?: EntityManager,
   ): Promise<T | null> {
@@ -365,14 +372,17 @@ export abstract class BaseDao<
     }
   }
 
-  public async deleteById(id: K, entityManager?: EntityManager): Promise<void>;
   public async deleteById(
-    id: K,
+    id: T['id'],
+    entityManager?: EntityManager,
+  ): Promise<void>;
+  public async deleteById(
+    id: T['id'],
     params: U,
     entityManager?: EntityManager,
   ): Promise<void>;
   public async deleteById(
-    id: K,
+    id: T['id'],
     params?: U | EntityManager,
     entityManager?: EntityManager,
   ): Promise<void> {
@@ -421,14 +431,17 @@ export abstract class BaseDao<
     await builder.execute();
   }
 
-  public async restoreById(id: K, entityManager?: EntityManager): Promise<void>;
   public async restoreById(
-    id: K,
+    id: T['id'],
+    entityManager?: EntityManager,
+  ): Promise<void>;
+  public async restoreById(
+    id: T['id'],
     params: U,
     entityManager?: EntityManager,
   ): Promise<void>;
   public async restoreById(
-    id: K,
+    id: T['id'],
     params?: U | EntityManager,
     entityManager?: EntityManager,
   ): Promise<void> {
@@ -450,16 +463,16 @@ export abstract class BaseDao<
   }
 
   public async hardDeleteById(
-    id: K,
+    id: T['id'],
     entityManager?: EntityManager,
   ): Promise<void>;
   public async hardDeleteById(
-    id: K,
+    id: T['id'],
     params: U,
     entityManager?: EntityManager,
   ): Promise<void>;
   public async hardDeleteById(
-    id: K,
+    id: T['id'],
     params?: U | EntityManager,
     entityManager?: EntityManager,
   ): Promise<void> {

@@ -21,8 +21,7 @@ export type RuntimeInstanceSearchTerms = Partial<{
 @Injectable()
 export class RuntimeInstanceDao extends BaseDao<
   RuntimeInstanceEntity,
-  RuntimeInstanceSearchTerms,
-  string
+  RuntimeInstanceSearchTerms
 > {
   public get alias() {
     return 'ri';

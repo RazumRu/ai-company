@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 export const KnowledgeDocSchema = z.object({
   id: z.uuid(),
+  publicId: z.number().int(),
   content: z.string(),
   title: z.string(),
   summary: z.string().nullable().optional(),
@@ -15,6 +16,7 @@ export const KnowledgeDocSchema = z.object({
 
 export const KnowledgeChunkSchema = z.object({
   id: z.uuid(),
+  publicId: z.number().int(),
   docId: z.uuid(),
   chunkIndex: z.number().int(),
   label: z.string().nullable().optional(),

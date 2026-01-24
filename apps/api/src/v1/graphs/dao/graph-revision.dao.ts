@@ -17,8 +17,7 @@ export type SearchTerms = Partial<{
 @Injectable()
 export class GraphRevisionDao extends BaseDao<
   GraphRevisionEntity,
-  SearchTerms,
-  string
+  SearchTerms
 > {
   public get alias() {
     return 'gr';

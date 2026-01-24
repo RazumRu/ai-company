@@ -17,8 +17,7 @@ export type SearchTerms = Partial<{
 @Injectable()
 export class GraphCheckpointsWritesDao extends BaseDao<
   GraphCheckpointWritesEntity,
-  SearchTerms,
-  string
+  SearchTerms
 > {
   public get alias() {
     return 'chw';

@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
+import { markMessageHideForLlm } from '../../../agents/agents.utils';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { zodToAjvSchema } from '../../agent-tools.utils';
 import {
@@ -74,7 +75,7 @@ export class ReportStatusTool extends BaseTool<ReportStatusToolSchemaType> {
 
     return {
       output: { reported: true },
-      additionalMessages: [reportMessage],
+      additionalMessages: [markMessageHideForLlm(reportMessage)],
     };
   }
 }

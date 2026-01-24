@@ -16,7 +16,7 @@ export type SearchTerms = Partial<{
 }>;
 
 @Injectable()
-export class GraphDao extends BaseDao<GraphEntity, SearchTerms, string> {
+export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
   public get alias() {
     return 'g';
   }

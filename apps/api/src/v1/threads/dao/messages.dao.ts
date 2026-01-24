@@ -14,7 +14,7 @@ export type SearchTerms = Partial<{
 }>;
 
 @Injectable()
-export class MessagesDao extends BaseDao<MessageEntity, SearchTerms, string> {
+export class MessagesDao extends BaseDao<MessageEntity, SearchTerms> {
   public get alias() {
     return 'm';
   }

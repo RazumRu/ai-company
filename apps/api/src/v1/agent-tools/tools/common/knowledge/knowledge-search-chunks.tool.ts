@@ -30,7 +30,9 @@ export type KnowledgeSearchChunksSchemaType = z.infer<
 
 export type KnowledgeSearchChunksResult = {
   chunkId: string;
+  chunkPublicId: number;
   docId: string;
+  docPublicId: number | null;
   score: number;
   snippet: string;
 };
@@ -111,7 +113,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
       createdBy: graphCreatedBy,
       ids: args.docIds,
       tags: tagsFilter,
-      projection: ['id'],
+      projection: ['id', 'publicId'],
       order: { updatedAt: 'DESC' },
     });
 
@@ -120,6 +122,9 @@ export class KnowledgeSearchChunksTool extends BaseTool<
     }
 
     const docIds = docs.map((doc) => doc.id);
+    const docPublicIdById = new Map(
+      docs.map((doc) => [doc.id, doc.publicId] as const),
+    );
     const queryVariants = await this.generateQueryVariants(normalizedQuery);
     const embeddings = await this.embedTexts(queryVariants);
     if (embeddings.length === 0) {
@@ -130,7 +135,13 @@ export class KnowledgeSearchChunksTool extends BaseTool<
     const perQueryLimit = Math.max(topK, 1);
     const chunkById = new Map<
       string,
-      { id: string; docId: string; text: string; score: number }
+      {
+        id: string;
+        publicId: number;
+        docId: string;
+        text: string;
+        score: number;
+      }
     >();
 
     for (const embedding of embeddings) {
@@ -140,7 +151,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
         embedding: queryVector,
         rawData: true,
         limit: perQueryLimit,
-        projection: ['id', 'docId', 'text'],
+        projection: ['id', 'publicId', 'docId', 'text'],
         order: { score: 'DESC' },
         // updateSelectBuilder: (builder) => {
         //   builder.orderBy('score', 'DESC');
@@ -153,6 +164,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
         if (!existing || score > existing.score) {
           chunkById.set(chunk.id, {
             id: chunk.id,
+            publicId: chunk.publicId,
             docId: chunk.docId,
             text: chunk.text,
             score,
@@ -170,7 +182,9 @@ export class KnowledgeSearchChunksTool extends BaseTool<
       .slice(0, topK)
       .map((chunk) => ({
         chunkId: chunk.id,
+        chunkPublicId: chunk.publicId,
         docId: chunk.docId,
+        docPublicId: docPublicIdById.get(chunk.docId) ?? null,
         score: chunk.score,
         snippet: this.buildSnippet(chunk.text, keywords),
       }));

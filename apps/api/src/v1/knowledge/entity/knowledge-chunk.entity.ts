@@ -1,5 +1,11 @@
 import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Generated,
+  Index,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 const vectorTransformer = {
   to: (value?: number[] | null) =>
@@ -20,6 +26,11 @@ const vectorTransformer = {
 export class KnowledgeChunkEntity extends TimestampsEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Column({ type: 'int' })
+  @Generated('increment')
+  @Index({ unique: true })
+  publicId!: number;
 
   @Column({ type: 'uuid' })
   @Index()

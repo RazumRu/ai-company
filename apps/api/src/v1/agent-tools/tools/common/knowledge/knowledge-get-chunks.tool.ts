@@ -82,6 +82,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
       ids: args.chunkIds,
       projection: [
         'id',
+        'publicId',
         'docId',
         'chunkIndex',
         'text',
@@ -101,12 +102,20 @@ export class KnowledgeGetChunksTool extends BaseTool<
       ids: docIds,
       createdBy: graphCreatedBy,
       tags: tagsFilter,
-      projection: ['id'],
+      projection: ['id', 'publicId'],
     });
     const allowedDocIds = new Set(docs.map((doc) => doc.id));
+    const docPublicIdById = new Map(
+      docs.map((doc) => [doc.id, doc.publicId] as const),
+    );
     const output = chunks
       .filter((chunk) => allowedDocIds.has(chunk.docId))
-      .map((chunk) => this.prepareChunkResponse(chunk));
+      .map((chunk) =>
+        this.prepareChunkResponse(
+          chunk,
+          docPublicIdById.get(chunk.docId) ?? null,
+        ),
+      );
 
     const title = this.generateTitle?.(args, config);
 
@@ -125,16 +134,23 @@ export class KnowledgeGetChunksTool extends BaseTool<
     return `Fetch knowledge chunks (${args.chunkIds.length})`;
   }
 
-  private prepareChunkResponse(entity: KnowledgeChunkEntity): {
+  private prepareChunkResponse(
+    entity: KnowledgeChunkEntity,
+    docPublicId: number | null,
+  ): {
     id: string;
+    chunkPublicId: number;
     docId: string;
+    docPublicId: number | null;
     text: string;
     startOffset: number;
     endOffset: number;
   } {
     return {
       id: entity.id,
+      chunkPublicId: entity.publicId,
       docId: entity.docId,
+      docPublicId,
       text: entity.text,
       startOffset: entity.startOffset,
       endOffset: entity.endOffset,

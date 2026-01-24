@@ -37,4 +37,3 @@ const parseYamlContent = (input: string): unknown | undefined => {
     return undefined;
   }
 };
-

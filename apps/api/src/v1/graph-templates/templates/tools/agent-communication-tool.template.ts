@@ -12,8 +12,8 @@ import { AgentOutput } from '../../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
-import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { parseStructuredContent } from '../../../graphs/graphs.utils';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { ToolNodeBaseTemplate } from '../base-node.template';
 
