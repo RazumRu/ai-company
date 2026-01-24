@@ -21,6 +21,9 @@ else
   echo "Ollama is already running."
 fi
 
+echo "Pulling model: qwen3:32b-q4_K_M"
+ollama pull qwen3:32b-q4_K_M
+
 echo "Pulling model: qwen3-coder:30b"
 ollama pull qwen3-coder:30b
 

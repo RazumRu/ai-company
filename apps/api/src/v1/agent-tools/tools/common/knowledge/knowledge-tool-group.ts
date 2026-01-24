@@ -36,9 +36,10 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
 
   public getDetailedInstructions(): string {
     return [
-      'Mandatory before starting any work: use the knowledge tools to gather all necessary context.',
+      'Before starting non-trivial work, consider using the knowledge tools to gather necessary context.',
+      'Skip this for small/simple tasks (e.g., "show me file content") when no additional context is needed.',
       'Process:',
-      '1) Use knowledge_search_docs to find relevant documents for the current task.',
+      '1) If you need project context, use knowledge_search_docs to find relevant documents for the current task.',
       '   - When calling the tool inside a task input, specify the current project stack and technologies in the query.',
       '   - If no documents are returned, read the comment for guidance and refine the query.',
       '   - You may rerun knowledge_search_docs with a different query if it could surface relevant documents.',

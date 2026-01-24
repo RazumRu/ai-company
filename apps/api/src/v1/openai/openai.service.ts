@@ -26,7 +26,9 @@ export class OpenaiService {
     baseURL: environment.llmBaseUrl,
   });
 
-  constructor(private readonly litellmService: LitellmService) {}
+  constructor(
+    private readonly litellmService: LitellmService,
+  ) {}
 
   async response(
     data: {

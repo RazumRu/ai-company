@@ -38,10 +38,25 @@ export const environment = () =>
     llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'gpt-5.1-codex-mini'),
     llmMiniModel: getEnv('LLM_MINI_MODEL', 'gpt-5-mini'),
     llmUseOfflineModel: getEnv('LLM_USE_OFFLINE_MODEL', false),
-    llmOfflineModel: getEnv('LLM_OFFLINE_MODEL', 'qwen3-coder:30b'),
+    llmOfflineGeneralModel: getEnv(
+      'LLM_OFFLINE_GENERAL_MODEL',
+      'qwen3:32b-q4_K_M',
+    ),
+    llmOfflineCodingModel: getEnv(
+      'LLM_OFFLINE_CODING_MODEL',
+      'qwen3-coder:30b',
+    ),
+    llmOfflineEmbeddingModel: getEnv(
+      'LLM_OFFLINE_EMBEDDING_MODEL',
+      'qwen3-embedding:4b',
+    ),
     llmEmbeddingModel: getEnv(
       'LLM_EMBEDDING_MODEL',
       'openai/text-embedding-3-small',
+    ),
+    llmNoReasoningModels: getEnv(
+      'LLM_NO_REASONING_MODELS',
+      'qwen3-coder:30b',
     ),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),

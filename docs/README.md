@@ -91,7 +91,8 @@ Run the setup script from the repo root:
 ./scripts/install-local-models.sh
 ```
 
-This installs Ollama (if needed), starts it, and pulls `qwen3-coder:30b`.
+This installs Ollama (if needed), starts it, and pulls `qwen3:32b-q4_K_M`,
+`qwen3-coder:30b`, and `qwen3-embedding:4b`.
 
 ### Run the model manually (optional)
 
@@ -105,7 +106,10 @@ Set the environment variables:
 
 ```bash
 LLM_USE_OFFLINE_MODEL=true
-LLM_OFFLINE_MODEL=qwen3-coder:30b
+LLM_OFFLINE_GENERAL_MODEL=qwen3:32b-q4_K_M
+LLM_OFFLINE_CODING_MODEL=qwen3-coder:30b
+LLM_OFFLINE_EMBEDDING_MODEL=qwen3-embedding:4b
+LLM_NO_REASONING_MODELS=qwen3-coder:30b
 ```
 
 ## Need Help?

@@ -302,19 +302,25 @@ export class LitellmService {
     }
 
     const normalized = model.toLowerCase();
-    const configured = environment.llmOfflineModel.toLowerCase();
+    const configured = [
+      environment.llmOfflineGeneralModel,
+      environment.llmOfflineCodingModel,
+      environment.llmOfflineEmbeddingModel,
+    ].map((value) => value.toLowerCase());
 
-    if (normalized === configured) {
+    if (configured.includes(normalized)) {
       return true;
     }
 
     const normalizedShort = normalized.includes('/')
       ? normalized.split('/').pop()
       : normalized;
-    const configuredShort = configured.includes('/')
-      ? configured.split('/').pop()
-      : configured;
 
-    return normalizedShort === configuredShort;
+    return configured.some((value) => {
+      const configuredShort = value.includes('/')
+        ? value.split('/').pop()
+        : value;
+      return normalizedShort === configuredShort;
+    });
   }
 }

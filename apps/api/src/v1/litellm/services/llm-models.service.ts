@@ -11,42 +11,101 @@ export class LlmModelsService {
   };
 
   private isOfflineModel(model: string): boolean {
-    return (
-      environment.llmUseOfflineModel && model === environment.llmOfflineModel
-    );
+    if (!environment.llmUseOfflineModel) {
+      return false;
+    }
+
+    const normalized = model.toLowerCase();
+    const configured = [
+      environment.llmOfflineGeneralModel,
+      environment.llmOfflineCodingModel,
+    ].map((value) => value.toLowerCase());
+
+    if (configured.includes(normalized)) {
+      return true;
+    }
+
+    const normalizedShort = normalized.includes('/')
+      ? normalized.split('/').pop()
+      : normalized;
+    return configured.some((value) => {
+      const valueShort = value.includes('/') ? value.split('/').pop() : value;
+      return normalizedShort === valueShort;
+    });
   }
 
-  private offlineFallback(model: string): string {
-    return environment.llmUseOfflineModel ? environment.llmOfflineModel : model;
+  private offlineGeneralFallback(model: string): string {
+    return environment.llmUseOfflineModel
+      ? environment.llmOfflineGeneralModel
+      : model;
+  }
+
+  private offlineCodingFallback(model: string): string {
+    return environment.llmUseOfflineModel
+      ? environment.llmOfflineCodingModel
+      : model;
+  }
+
+  private offlineEmbeddingFallback(model: string): string {
+    return environment.llmUseOfflineModel
+      ? environment.llmOfflineEmbeddingModel
+      : model;
   }
 
   private buildResponseParams(
     model: string,
     reasoning?: (typeof LlmModelsService.DEFAULT_REASONING)[keyof typeof LlmModelsService.DEFAULT_REASONING],
   ): { model: string; reasoning?: { effort: 'low' | 'medium' | 'high' } } {
-    const resolvedModel = this.offlineFallback(model);
-    if (!reasoning || this.isOfflineModel(resolvedModel)) {
-      return { model: resolvedModel };
+    if (!reasoning || this.isModelInList(model, environment.llmNoReasoningModels)) {
+      return { model };
     }
-    return { model: resolvedModel, reasoning };
+    return { model, reasoning };
+  }
+
+  private isModelInList(model: string, list: string): boolean {
+    if (!model) {
+      return false;
+    }
+
+    const entries = list
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+    if (!entries.length) {
+      return false;
+    }
+
+    const normalized = model.toLowerCase();
+    if (entries.includes(normalized)) {
+      return true;
+    }
+
+    const normalizedShort = normalized.includes('/')
+      ? normalized.split('/').pop()
+      : normalized;
+    return entries.some((entry) => {
+      const entryShort = entry.includes('/') ? entry.split('/').pop() : entry;
+      return normalizedShort === entryShort;
+    });
   }
 
   getSummarizeModel(): string {
-    return this.offlineFallback(environment.llmMiniModel);
+    return this.offlineGeneralFallback(environment.llmMiniModel);
   }
 
   getFilesEditModel(smart: boolean): string {
-    return smart
+    const model = smart
       ? environment.llmLargeCodeModel
-      : this.offlineFallback(environment.llmMiniCodeModel);
+      : environment.llmMiniCodeModel;
+    return this.offlineCodingFallback(model);
   }
 
   getAiSuggestionsModel(): string {
-    return environment.llmLargeModel;
+    return this.offlineGeneralFallback(environment.llmLargeModel);
   }
 
   getThreadNameModel(): string {
-    return this.offlineFallback(environment.llmMiniModel);
+    return this.offlineGeneralFallback(environment.llmMiniModel);
   }
 
   getThreadNameParams(): {
@@ -69,8 +128,9 @@ export class LlmModelsService {
     );
   }
 
+
   getKnowledgeMetadataModel(): string {
-    return this.offlineFallback(environment.llmMiniModel);
+    return this.offlineGeneralFallback(environment.llmMiniModel);
   }
 
   getKnowledgeMetadataParams(): {
@@ -84,7 +144,7 @@ export class LlmModelsService {
   }
 
   getKnowledgeChunkingModel(): string {
-    return this.offlineFallback(environment.llmMiniModel);
+    return this.offlineGeneralFallback(environment.llmMiniModel);
   }
 
   getKnowledgeChunkingParams(): {
@@ -98,11 +158,11 @@ export class LlmModelsService {
   }
 
   getKnowledgeEmbeddingModel(): string {
-    return environment.llmEmbeddingModel;
+    return this.offlineEmbeddingFallback(environment.llmEmbeddingModel);
   }
 
   getKnowledgeSearchModel(): string {
-    return this.offlineFallback(environment.llmMiniModel);
+    return this.offlineGeneralFallback(environment.llmMiniModel);
   }
 
   getKnowledgeSearchParams(): {
