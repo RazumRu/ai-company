@@ -47,14 +47,6 @@ export const listKnowledgeDocs = (
     failOnStatusCode: false,
   });
 
-export const getKnowledgeChunks = (id: string, headers = reqHeaders) =>
-  cy.request<KnowledgeDocDto[]>({
-    url: `/api/v1/knowledge-docs/${id}/chunks`,
-    method: 'GET',
-    headers,
-    failOnStatusCode: false,
-  });
-
 export const deleteKnowledgeDoc = (id: string, headers = reqHeaders) =>
   cy.request({
     url: `/api/v1/knowledge-docs/${id}`,

@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
+import { QdrantModule } from '../qdrant/qdrant.module';
 import { CommunicationExecTool } from './tools/common/communication/communication-exec.tool';
 import { CommunicationToolGroup } from './tools/common/communication/communication-tool-group';
 import { FilesApplyChangesTool } from './tools/common/files/files-apply-changes.tool';
@@ -35,7 +36,7 @@ import { FinishTool } from './tools/core/finish.tool';
 import { ReportStatusTool } from './tools/core/report-status.tool';
 
 @Module({
-  imports: [LitellmModule, OpenaiModule, KnowledgeModule],
+  imports: [LitellmModule, OpenaiModule, KnowledgeModule, QdrantModule],
   controllers: [],
   providers: [
     ShellTool,

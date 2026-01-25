@@ -85,6 +85,9 @@ not want to call hosted providers.
 
 ### Install the local model
 
+> **Note:** Installing offline models locally requires at least 32GB RAM and
+> ~40GB of available disk space.
+
 Run the setup script from the repo root:
 
 ```bash

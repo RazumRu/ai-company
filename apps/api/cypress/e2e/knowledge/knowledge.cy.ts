@@ -1,7 +1,6 @@
 import {
   createKnowledgeDoc,
   deleteKnowledgeDoc,
-  getKnowledgeChunks,
   getKnowledgeDoc,
   listKnowledgeDocs,
   suggestKnowledgeContent,
@@ -9,7 +8,7 @@ import {
 } from './knowledge.helper';
 
 describe('Knowledge docs API', () => {
-  it('creates, updates, lists, fetches chunks, and deletes a doc', () => {
+  it('creates, updates, lists, and deletes a doc', () => {
     const initialContent = 'Cypress knowledge content';
     const updatedContent = 'Updated Cypress knowledge content';
 
@@ -34,11 +33,6 @@ describe('Knowledge docs API', () => {
       updateKnowledgeDoc(docId, updatedContent).then((updateResponse) => {
         expect(updateResponse.status).to.eq(200);
         expect(updateResponse.body.id).to.eq(docId);
-      });
-
-      getKnowledgeChunks(docId).then((chunksResponse) => {
-        expect(chunksResponse.status).to.eq(200);
-        expect(chunksResponse.body.length).to.be.greaterThan(0);
       });
 
       deleteKnowledgeDoc(docId).then((deleteResponse) => {

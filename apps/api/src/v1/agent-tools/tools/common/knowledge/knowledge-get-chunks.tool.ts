@@ -5,9 +5,8 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { KnowledgeChunkDao } from '../../../../knowledge/dao/knowledge-chunk.dao';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
-import { KnowledgeChunkEntity } from '../../../../knowledge/entity/knowledge-chunk.entity';
+import { QdrantService } from '../../../../qdrant/services/qdrant.service';
 import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   BaseTool,
@@ -34,7 +33,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
 
   constructor(
     private readonly docDao: KnowledgeDocDao,
-    private readonly chunkDao: KnowledgeChunkDao,
+    private readonly qdrantService: QdrantService,
   ) {
     super();
   }
@@ -78,26 +77,28 @@ export class KnowledgeGetChunksTool extends BaseTool<
       return { output: [] };
     }
 
-    const chunks = await this.chunkDao.getAll({
-      ids: args.chunkIds,
-      projection: [
-        'id',
-        'publicId',
-        'docId',
-        'chunkIndex',
-        'text',
-        'startOffset',
-        'endOffset',
-      ],
-      order: { docId: 'ASC', chunkIndex: 'ASC' },
-    });
+    const chunks = await this.qdrantService.retrievePoints(
+      this.knowledgeCollection,
+      { ids: args.chunkIds, with_payload: true },
+    );
 
     if (chunks.length === 0) {
       return { output: [] };
     }
 
     const tagsFilter = this.normalizeTags(config.tags);
-    const docIds = Array.from(new Set(chunks.map((chunk) => chunk.docId)));
+    const parsedChunks = chunks
+      .map((chunk) => this.parseChunkPayload(chunk))
+      .filter((chunk): chunk is StoredChunkPayload => Boolean(chunk));
+    parsedChunks.sort((a, b) => {
+      if (a.docId !== b.docId) {
+        return a.docId.localeCompare(b.docId);
+      }
+      return a.chunkIndex - b.chunkIndex;
+    });
+    const docIds = Array.from(
+      new Set(parsedChunks.map((chunk) => chunk.docId)),
+    );
     const docs = await this.docDao.getAll({
       ids: docIds,
       createdBy: graphCreatedBy,
@@ -108,7 +109,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
     const docPublicIdById = new Map(
       docs.map((doc) => [doc.id, doc.publicId] as const),
     );
-    const output = chunks
+    const output = parsedChunks
       .filter((chunk) => allowedDocIds.has(chunk.docId))
       .map((chunk) =>
         this.prepareChunkResponse(
@@ -135,7 +136,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
   }
 
   private prepareChunkResponse(
-    entity: KnowledgeChunkEntity,
+    entity: StoredChunkPayload,
     docPublicId: number | null,
   ): {
     id: string;
@@ -157,6 +158,33 @@ export class KnowledgeGetChunksTool extends BaseTool<
     };
   }
 
+  private parseChunkPayload(
+    point: Awaited<ReturnType<QdrantService['retrievePoints']>>[number],
+  ): StoredChunkPayload | null {
+    const payload = point.payload ?? {};
+    const docId = this.getString(payload.docId);
+    const text = this.getString(payload.text);
+    if (!docId || !text) return null;
+
+    return {
+      id: String(point.id),
+      docId,
+      publicId: this.getNumber(payload.publicId) ?? 0,
+      chunkIndex: this.getNumber(payload.chunkIndex) ?? 0,
+      text,
+      startOffset: this.getNumber(payload.startOffset) ?? 0,
+      endOffset: this.getNumber(payload.endOffset) ?? 0,
+    };
+  }
+
+  private getString(value: unknown): string | null {
+    return typeof value === 'string' ? value : null;
+  }
+
+  private getNumber(value: unknown): number | null {
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  }
+
   private normalizeTags(tags?: string[]): string[] | undefined {
     const merged = new Set<string>();
     for (const tag of tags ?? []) {
@@ -165,4 +193,18 @@ export class KnowledgeGetChunksTool extends BaseTool<
     }
     return merged.size ? Array.from(merged) : undefined;
   }
+
+  private get knowledgeCollection() {
+    return 'knowledge_chunks';
+  }
 }
+
+type StoredChunkPayload = {
+  id: string;
+  docId: string;
+  publicId: number;
+  chunkIndex: number;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+};

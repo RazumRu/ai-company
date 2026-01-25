@@ -31,8 +31,6 @@ import type {
   GetAllTemplatesResponses,
   GetCompiledNodesData,
   GetCompiledNodesResponses,
-  GetDocChunksData,
-  GetDocChunksResponses,
   GetDocData,
   GetDocResponses,
   GetGraphRevisionData,
@@ -153,16 +151,6 @@ export const updateDoc = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options.headers,
     },
-  });
-
-export const getDocChunks = <ThrowOnError extends boolean = false>(
-  options: Options<GetDocChunksData, ThrowOnError>,
-) =>
-  (options.client ?? client).get<GetDocChunksResponses, unknown, ThrowOnError>({
-    responseType: 'json',
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/knowledge-docs/{id}/chunks',
-    ...options,
   });
 
 export const suggestAgentInstructions = <ThrowOnError extends boolean = false>(

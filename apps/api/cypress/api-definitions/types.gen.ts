@@ -46,19 +46,6 @@ export type KnowledgeDocDto = {
   updatedAt: string;
 };
 
-export type KnowledgeChunkDto = {
-  id: string;
-  publicId: number;
-  docId: string;
-  chunkIndex: number;
-  label?: string | null;
-  keywords?: Array<string> | null;
-  text: string;
-  startOffset: number;
-  endOffset: number;
-  createdAt: string;
-};
-
 export type SuggestAgentInstructionsDto = {
   /**
    * User request describing how to adjust agent instructions
@@ -1448,22 +1435,6 @@ export type UpdateDocResponses = {
 };
 
 export type UpdateDocResponse = UpdateDocResponses[keyof UpdateDocResponses];
-
-export type GetDocChunksData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: '/api/v1/knowledge-docs/{id}/chunks';
-};
-
-export type GetDocChunksResponses = {
-  200: Array<KnowledgeChunkDto>;
-};
-
-export type GetDocChunksResponse =
-  GetDocChunksResponses[keyof GetDocChunksResponses];
 
 export type SuggestAgentInstructionsData = {
   body: SuggestAgentInstructionsDto;

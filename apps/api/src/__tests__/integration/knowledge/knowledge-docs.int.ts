@@ -2,30 +2,29 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { KnowledgeChunkDao } from '../../../v1/knowledge/dao/knowledge-chunk.dao';
 import { KnowledgeDocDao } from '../../../v1/knowledge/dao/knowledge-doc.dao';
 import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.service';
+import { KnowledgeChunksService } from '../../../v1/knowledge/services/knowledge-chunks.service';
 import { createTestModule } from '../setup';
 
 describe('KnowledgeService (integration)', () => {
   let app: INestApplication;
   let knowledgeService: KnowledgeService;
+  let knowledgeChunksService: KnowledgeChunksService;
   let docDao: KnowledgeDocDao;
-  let chunkDao: KnowledgeChunkDao;
   const createdDocIds: string[] = [];
 
   beforeAll(async () => {
     app = await createTestModule();
     knowledgeService = app.get(KnowledgeService);
+    knowledgeChunksService = app.get(KnowledgeChunksService);
     docDao = app.get(KnowledgeDocDao);
-    chunkDao = app.get(KnowledgeChunkDao);
     const dataSource = app.get(DataSource);
     await dataSource.synchronize();
   }, 120_000);
 
   afterEach(async () => {
     for (const id of createdDocIds) {
-      await chunkDao.hardDelete({ docId: id });
       await docDao.deleteById(id);
     }
     createdDocIds.length = 0;
@@ -99,7 +98,7 @@ describe('KnowledgeService (integration)', () => {
       expectIsoDate(doc.createdAt);
       expectIsoDate(doc.updatedAt);
 
-      const chunks = await knowledgeService.getDocChunks(doc.id);
+      const chunks = await knowledgeChunksService.getDocChunks(doc.id);
       expectChunksCoverContent(chunks, doc.id, content);
     },
   );
@@ -153,7 +152,7 @@ describe('KnowledgeService (integration)', () => {
         new Date(updated.createdAt).getTime(),
       );
 
-      const chunks = await knowledgeService.getDocChunks(doc.id);
+      const chunks = await knowledgeChunksService.getDocChunks(doc.id);
       expectChunksCoverContent(chunks, doc.id, updatedContent);
     },
   );

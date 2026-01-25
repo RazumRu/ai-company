@@ -56,7 +56,10 @@ export class LlmModelsService {
     model: string,
     reasoning?: (typeof LlmModelsService.DEFAULT_REASONING)[keyof typeof LlmModelsService.DEFAULT_REASONING],
   ): { model: string; reasoning?: { effort: 'low' | 'medium' | 'high' } } {
-    if (!reasoning || this.isModelInList(model, environment.llmNoReasoningModels)) {
+    if (
+      !reasoning ||
+      this.isModelInList(model, environment.llmNoReasoningModels)
+    ) {
       return { model };
     }
     return { model, reasoning };
@@ -127,7 +130,6 @@ export class LlmModelsService {
       LlmModelsService.DEFAULT_REASONING.low,
     );
   }
-
 
   getKnowledgeMetadataModel(): string {
     return this.offlineGeneralFallback(environment.llmMiniModel);

@@ -51,6 +51,7 @@
     "@packages/http-server": "workspace:*",
     "@packages/metrics": "workspace:*",
     "@packages/typeorm": "workspace:*",
+    "@qdrant/js-client-rest": "^1.16.2",
     "@tavily/core": "^0.6.3",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",

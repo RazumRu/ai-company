@@ -30,6 +30,8 @@ export const environment = () =>
     postgresRunMigrations: getEnv('POSTGRES_RUN_MIGRATIONS', true),
     llmBaseUrl: getEnv('LLM_BASE_URL'),
     redisUrl: getEnv('REDIS_URL'),
+    qdrantUrl: getEnv('QDRANT_URL'),
+    qdrantApiKey: getEnv('QDRANT_API_KEY'),
 
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY'),
@@ -54,10 +56,7 @@ export const environment = () =>
       'LLM_EMBEDDING_MODEL',
       'openai/text-embedding-3-small',
     ),
-    llmNoReasoningModels: getEnv(
-      'LLM_NO_REASONING_MODELS',
-      'qwen3-coder:30b',
-    ),
+    llmNoReasoningModels: getEnv('LLM_NO_REASONING_MODELS', 'qwen3-coder:30b'),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),
 

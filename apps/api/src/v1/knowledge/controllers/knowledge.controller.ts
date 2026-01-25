@@ -13,7 +13,6 @@ import { OnlyForAuthorized } from '@packages/http-server';
 
 import { EntityUUIDDto } from '../../../utils/dto/misc.dto';
 import {
-  KnowledgeChunkDto,
   KnowledgeDocDto,
   KnowledgeDocInputDto,
   KnowledgeDocListQueryDto,
@@ -55,12 +54,5 @@ export class KnowledgeController {
   @Get(':id')
   async getDoc(@Param() params: EntityUUIDDto): Promise<KnowledgeDocDto> {
     return this.knowledgeService.getDoc(params.id);
-  }
-
-  @Get(':id/chunks')
-  async getDocChunks(
-    @Param() params: EntityUUIDDto,
-  ): Promise<KnowledgeChunkDto[]> {
-    return this.knowledgeService.getDocChunks(params.id);
   }
 }

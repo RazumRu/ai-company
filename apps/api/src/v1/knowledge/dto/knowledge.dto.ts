@@ -14,19 +14,6 @@ export const KnowledgeDocSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
-export const KnowledgeChunkSchema = z.object({
-  id: z.uuid(),
-  publicId: z.number().int(),
-  docId: z.uuid(),
-  chunkIndex: z.number().int(),
-  label: z.string().nullable().optional(),
-  keywords: z.array(z.string()).nullable().optional(),
-  text: z.string(),
-  startOffset: z.number().int(),
-  endOffset: z.number().int(),
-  createdAt: z.iso.datetime(),
-});
-
 export const KnowledgeDocInputSchema = z.object({
   title: z.string().min(1).describe('Knowledge document title'),
   content: z.string().min(1).describe('Raw knowledge document content'),
@@ -53,7 +40,6 @@ export const KnowledgeDocListQuerySchema = z.object({
 });
 
 export class KnowledgeDocDto extends createZodDto(KnowledgeDocSchema) {}
-export class KnowledgeChunkDto extends createZodDto(KnowledgeChunkSchema) {}
 export class KnowledgeDocInputDto extends createZodDto(
   KnowledgeDocInputSchema,
 ) {}

@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
@@ -6,7 +7,6 @@ import { KnowledgeGetChunksTool } from '../../../v1/agent-tools/tools/common/kno
 import { KnowledgeGetDocTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-get-doc.tool';
 import { KnowledgeSearchChunksTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-chunks.tool';
 import { KnowledgeSearchDocsTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-docs.tool';
-import { KnowledgeChunkDao } from '../../../v1/knowledge/dao/knowledge-chunk.dao';
 import { KnowledgeDocDao } from '../../../v1/knowledge/dao/knowledge-doc.dao';
 import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.service';
 import { createTestModule, TEST_USER_ID } from '../setup';
@@ -19,7 +19,6 @@ describe('Knowledge tools (integration)', () => {
   let getChunksTool: KnowledgeGetChunksTool;
   let getDocTool: KnowledgeGetDocTool;
   let docDao: KnowledgeDocDao;
-  let chunkDao: KnowledgeChunkDao;
   const createdDocIds: string[] = [];
 
   beforeAll(async () => {
@@ -30,14 +29,12 @@ describe('Knowledge tools (integration)', () => {
     getChunksTool = await app.resolve(KnowledgeGetChunksTool);
     getDocTool = await app.resolve(KnowledgeGetDocTool);
     docDao = app.get(KnowledgeDocDao);
-    chunkDao = app.get(KnowledgeChunkDao);
     const dataSource = app.get(DataSource);
     await dataSource.synchronize();
   }, 120_000);
 
   afterEach(async () => {
     for (const id of createdDocIds) {
-      await chunkDao.hardDelete({ docId: id });
       await docDao.deleteById(id);
     }
     createdDocIds.length = 0;
@@ -55,15 +52,17 @@ describe('Knowledge tools (integration)', () => {
       const betaKeyword = 'umbracore';
       const alphaContent = `Alpha document content ${alphaKeyword}`;
       const betaContent = `Beta document content ${betaKeyword}`;
+      const alphaTag = `alpha-tag-${randomUUID()}`;
+      const betaTag = `beta-tag-${randomUUID()}`;
       const alphaDoc = await knowledgeService.createDoc({
         title: 'Alpha doc',
         content: alphaContent,
-        tags: ['alpha-tag'],
+        tags: [alphaTag],
       });
       const betaDoc = await knowledgeService.createDoc({
         title: 'Beta doc',
         content: betaContent,
-        tags: ['beta-tag'],
+        tags: [betaTag],
       });
       createdDocIds.push(alphaDoc.id, betaDoc.id);
 
@@ -71,13 +70,13 @@ describe('Knowledge tools (integration)', () => {
       expect(betaDoc.summary).toBeTruthy();
 
       const refreshedAlpha = await knowledgeService.getDoc(alphaDoc.id);
-      expect(refreshedAlpha.tags).toEqual(['alpha-tag']);
+      expect(refreshedAlpha.tags).toEqual([alphaTag]);
 
       const searchResult = await searchDocsTool.invoke(
         {
           task: `Find alpha-tag doc. Stack: NestJS + TypeScript. Keyword: ${alphaKeyword}`,
         },
-        { tags: ['alpha-tag'] },
+        { tags: [alphaTag] },
         {
           configurable: {
             thread_id: 'thread-1',
@@ -98,7 +97,7 @@ describe('Knowledge tools (integration)', () => {
       expect(output.documents).toHaveLength(1);
       expect(output.documents[0]?.documentId).toBe(alphaDoc.id);
       expect(output.documents[0]?.summary).toBe(refreshedAlpha.summary);
-      expect(output.documents[0]?.tags).toEqual(['alpha-tag']);
+      expect(output.documents[0]?.tags).toEqual([alphaTag]);
     },
   );
 
