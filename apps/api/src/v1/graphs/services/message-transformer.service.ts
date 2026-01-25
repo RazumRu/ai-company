@@ -132,10 +132,10 @@ export class MessageTransformerService {
         const toolName = msg.name || 'unknown';
         const toolCallId = msg.tool_call_id || '';
         const parsed = parseStructuredContent(msg.content);
-        const parsedRecord = isObject(parsed)
-          ? (parsed as Record<string, unknown>)
-          : Array.isArray(parsed)
-            ? { data: parsed }
+        const parsedRecord = Array.isArray(parsed)
+          ? { data: parsed }
+          : isObject(parsed)
+            ? (parsed as Record<string, unknown>)
             : { message: parsed };
         const title =
           typeof additionalKwargs?.__title === 'string'

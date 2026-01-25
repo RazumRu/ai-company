@@ -11,6 +11,8 @@ import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
 export type KnowledgeDocSearchTerms = Partial<{
   id: string;
   ids: string[];
+  publicId: number;
+  publicIds: number[];
   createdBy: string;
   tags: string[];
   search: string;
@@ -49,6 +51,14 @@ export class KnowledgeDocDao extends BaseDao<
 
     if (params?.id) {
       builder.andWhere({ id: params.id });
+    }
+
+    if (typeof params?.publicId === 'number') {
+      builder.andWhere({ publicId: params.publicId });
+    }
+
+    if (params?.publicIds && params.publicIds.length > 0) {
+      builder.andWhere({ publicId: In(params.publicIds) });
     }
 
     if (params?.createdBy) {

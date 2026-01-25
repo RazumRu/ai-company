@@ -15,13 +15,12 @@ import {
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
 
 export const KnowledgeGetDocSchema = z.object({
-  docId: z.uuid().describe('Document ID to retrieve'),
+  docId: z.number().int().positive().describe('Document public ID to retrieve'),
 });
 
 export type KnowledgeGetDocSchemaType = z.infer<typeof KnowledgeGetDocSchema>;
 
 export type KnowledgeGetDocResult = {
-  documentId: string;
   documentPublicId: number;
   title: string;
   summary: string | null;
@@ -62,6 +61,7 @@ export class KnowledgeGetDocTool extends BaseTool<
 
       ### When to Use
       Only after identifying a specific doc ID and when the document politic explicitly allows full content.
+      If you already fetched full content for this document, do NOT fetch its chunks.
 
       ### Permission Rule (Mandatory)
       You can request the full document content only if the document politic instructs you to fetch full content.
@@ -69,7 +69,7 @@ export class KnowledgeGetDocTool extends BaseTool<
 
       ### Examples
       \`\`\`json
-      {"docId": "2b0c3f5a-1f2c-4c2d-9c33-1ad9c1c1a123"}
+      {"docId": 101}
       \`\`\`
     `;
   }
@@ -89,11 +89,7 @@ export class KnowledgeGetDocTool extends BaseTool<
     }
 
     const tagsFilter = this.normalizeTags(config.tags);
-    const doc = await this.docDao.getOne({
-      id: args.docId,
-      createdBy: graphCreatedBy,
-      tags: tagsFilter,
-    });
+    const doc = await this.findDoc(args.docId, graphCreatedBy, tagsFilter);
 
     if (!doc) {
       return { output: null };
@@ -107,7 +103,6 @@ export class KnowledgeGetDocTool extends BaseTool<
 
     return {
       output: {
-        documentId: doc.id,
         documentPublicId: doc.publicId,
         title: doc.title,
         summary: doc.summary ?? null,
@@ -135,6 +130,18 @@ export class KnowledgeGetDocTool extends BaseTool<
       if (normalized) merged.add(normalized);
     }
     return merged.size ? Array.from(merged) : undefined;
+  }
+
+  private findDoc(
+    docId: KnowledgeGetDocSchemaType['docId'],
+    createdBy: string,
+    tagsFilter?: string[],
+  ) {
+    return this.docDao.getOne({
+      publicId: docId,
+      createdBy,
+      tags: tagsFilter,
+    });
   }
 
   private allowsFullContent(politic?: string | null): boolean {

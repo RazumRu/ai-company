@@ -173,62 +173,12 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
               enrichedConfig,
             );
 
-            // Extract the last message content or finish tool message from the agent's response
-            // Skip system messages (like summary markers) by iterating backwards
-            let lastMessage: BaseMessage | undefined;
-            for (let i = response.messages.length - 1; i >= 0; i--) {
-              const msg = response.messages[i];
-              if (msg && msg.type !== 'system') {
-                lastMessage = msg;
-                break;
-              }
-            }
+            const lastMessage = this.findLastNonSystemMessage(
+              response.messages,
+            );
+            const { responseMessage, needsMoreInfo } =
+              this.extractMessageContent(lastMessage);
 
-            let responseMessage: string | undefined;
-            let needsMoreInfo = false;
-
-            if (lastMessage) {
-              // Check if the last message is a tool message from finish tool
-              if (
-                lastMessage.type === 'tool' &&
-                lastMessage.name === 'finish'
-              ) {
-                const content =
-                  typeof lastMessage.content === 'string'
-                    ? lastMessage.content
-                    : JSON.stringify(lastMessage.content);
-
-                // Parse structured content to extract needsMoreInfo flag
-                const parsedContent = parseStructuredContent(content);
-                if (isObject(parsedContent)) {
-                  const rec = parsedContent as Record<string, unknown>;
-                  const parsedMessage = rec.message;
-
-                  responseMessage =
-                    typeof parsedMessage === 'string' &&
-                    parsedMessage.length > 0
-                      ? parsedMessage
-                      : content;
-                  needsMoreInfo = rec.needsMoreInfo === true;
-                } else {
-                  responseMessage = content;
-                }
-              } else if (lastMessage.type === 'ai') {
-                // For AI messages, use the content
-                responseMessage =
-                  typeof lastMessage.content === 'string'
-                    ? lastMessage.content
-                    : JSON.stringify(lastMessage.content);
-              } else if (lastMessage.type === 'human') {
-                // For human messages, use the content
-                responseMessage =
-                  typeof lastMessage.content === 'string'
-                    ? lastMessage.content
-                    : JSON.stringify(lastMessage.content);
-              }
-            }
-
-            // Return the agent's response message instead of all messages
             return {
               message: responseMessage || 'No response message available',
               needsMoreInfo,
@@ -256,5 +206,73 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
         instance.tools.length = 0;
       },
     };
+  }
+
+  private findLastNonSystemMessage(
+    messages: BaseMessage[],
+  ): BaseMessage | undefined {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg && msg.type !== 'system') {
+        return msg;
+      }
+    }
+    return undefined;
+  }
+
+  private extractMessageContent(message: BaseMessage | undefined): {
+    responseMessage: string | undefined;
+    needsMoreInfo: boolean;
+  } {
+    if (!message) {
+      return { responseMessage: undefined, needsMoreInfo: false };
+    }
+
+    if (message.type === 'tool' && message.name === 'finish') {
+      return this.extractFinishToolContent(message);
+    }
+
+    if (message.type === 'ai' || message.type === 'human') {
+      return {
+        responseMessage: this.stringifyContent(message.content),
+        needsMoreInfo: false,
+      };
+    }
+
+    return { responseMessage: undefined, needsMoreInfo: false };
+  }
+
+  private extractFinishToolContent(message: BaseMessage): {
+    responseMessage: string;
+    needsMoreInfo: boolean;
+  } {
+    const content = this.stringifyContent(message.content);
+    const parsedContent = parseStructuredContent(content);
+
+    if (!isObject(parsedContent)) {
+      return { responseMessage: content, needsMoreInfo: false };
+    }
+
+    const rec = parsedContent as Record<string, unknown>;
+    const parsedMessage = rec.message;
+
+    if (typeof parsedMessage === 'string' && parsedMessage.length > 0) {
+      return {
+        responseMessage: parsedMessage,
+        needsMoreInfo: rec.needsMoreInfo === true,
+      };
+    }
+
+    return {
+      responseMessage: content,
+      needsMoreInfo: rec.needsMoreInfo === true,
+    };
+  }
+
+  private stringifyContent(content: unknown): string {
+    if (typeof content === 'string') {
+      return content;
+    }
+    return JSON.stringify(content);
   }
 }

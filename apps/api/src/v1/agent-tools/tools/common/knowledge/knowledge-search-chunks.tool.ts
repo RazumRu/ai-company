@@ -16,7 +16,10 @@ import {
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
 
 export const KnowledgeSearchChunksSchema = z.object({
-  docIds: z.array(z.uuid()).min(1).describe('Document IDs to search within'),
+  docIds: z
+    .array(z.number().int().positive())
+    .min(1)
+    .describe('Document public IDs to search within'),
   query: z.string().min(1).describe('Natural language query to search for'),
   topK: z.number().int().min(1).max(20).optional().describe('Max chunks'),
 });
@@ -26,9 +29,7 @@ export type KnowledgeSearchChunksSchemaType = z.infer<
 >;
 
 export type KnowledgeSearchChunksResult = {
-  chunkId: string;
   chunkPublicId: number;
-  docId: string;
   docPublicId: number | null;
   score: number;
   snippet: string;
@@ -62,11 +63,11 @@ export class KnowledgeSearchChunksTool extends BaseTool<
       After you have identified relevant document IDs and need the best chunk snippets.
 
       ### Best Practices
-      Keep docIds focused. Use a concise query and keep topK small (3-7).
+      Keep docIds focused. Use document public IDs from knowledge_search_docs. Use a concise query and keep topK small (3-7).
 
       ### Examples
       \`\`\`json
-      {"docIds": ["2b0c3f5a-1f2c-4c2d-9c33-1ad9c1c1a123"], "query": "rate limits", "topK": 5}
+      {"docIds": [101], "query": "rate limits", "topK": 5}
       \`\`\`
     `;
   }
@@ -93,7 +94,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
     const tagsFilter = this.normalizeTags(config.tags);
     const docs = await this.docDao.getAll({
       createdBy: graphCreatedBy,
-      ids: args.docIds,
+      publicIds: args.docIds,
       tags: tagsFilter,
       projection: ['id', 'publicId'],
       order: { updatedAt: 'DESC' },
@@ -103,22 +104,20 @@ export class KnowledgeSearchChunksTool extends BaseTool<
       return { output: [] };
     }
 
-    const docIds = docs.map((doc) => doc.id);
+    const resolvedDocIds = docs.map((doc) => doc.id);
     const docPublicIdById = new Map(
       docs.map((doc) => [doc.id, doc.publicId] as const),
     );
 
     const topK = args.topK ?? 5;
     const chunks = await this.knowledgeChunksService.searchChunks({
-      docIds,
+      docIds: resolvedDocIds,
       query: normalizedQuery,
       topK,
     });
 
     const output = chunks.map((chunk) => ({
-      chunkId: chunk.id,
       chunkPublicId: chunk.publicId,
-      docId: chunk.docId,
       docPublicId: docPublicIdById.get(chunk.docId) ?? null,
       score: chunk.score,
       snippet: chunk.snippet,

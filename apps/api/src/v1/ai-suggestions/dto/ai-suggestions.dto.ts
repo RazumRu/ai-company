@@ -12,6 +12,12 @@ export const SuggestAgentInstructionsSchema = z.object({
     .describe(
       'Optional thread id to continue a previous suggestion conversation',
     ),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe('Optional LLM model to use for this suggestion'),
 });
 
 export const SuggestAgentInstructionsResponseSchema = z.object({
@@ -26,6 +32,12 @@ export const SuggestGraphInstructionsSchema = z.object({
     .string()
     .min(1)
     .describe('User request describing how to adjust agent instructions'),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe('Optional LLM model to use for this suggestion'),
 });
 
 export const SuggestGraphInstructionsResponseSchema = z.object({
@@ -65,6 +77,12 @@ export const ThreadAnalysisRequestSchema = z.object({
     .describe(
       'Optional LLM conversation id to continue the existing suggestion thread',
     ),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe('Optional LLM model to use for this analysis'),
 });
 
 export const KnowledgeContentSuggestionRequestSchema = z.object({
@@ -90,6 +108,12 @@ export const KnowledgeContentSuggestionRequestSchema = z.object({
     .describe(
       'Optional thread id to continue a previous suggestion conversation',
     ),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe('Optional LLM model to use for this suggestion'),
 });
 
 export const KnowledgeContentSuggestionResponseSchema = z.object({

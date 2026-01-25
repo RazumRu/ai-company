@@ -37,7 +37,7 @@ describe('AiSuggestionsService', () => {
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
   let authContext: Pick<AuthContextService, 'checkSub'>;
   let openaiService: { response: OpenaiService['response'] };
-  let llmModelsService: Pick<LlmModelsService, 'getAiSuggestionsModel'>;
+  let llmModelsService: Pick<LlmModelsService, 'getAiSuggestionsDefaultModel'>;
   let responseMock: ReturnType<typeof vi.fn> & OpenaiService['response'];
   let service: AiSuggestionsService;
 
@@ -62,7 +62,7 @@ describe('AiSuggestionsService', () => {
       response: responseMock,
     };
     llmModelsService = {
-      getAiSuggestionsModel: vi.fn().mockReturnValue('openai/gpt-5.2'),
+      getAiSuggestionsDefaultModel: vi.fn().mockReturnValue('openai/gpt-5.2'),
     };
 
     service = new AiSuggestionsService(
@@ -206,11 +206,27 @@ describe('AiSuggestionsService', () => {
       expect(responseMock).toHaveBeenCalledTimes(1);
       const [payload, params] = responseMock.mock.calls[0] as [
         { systemMessage?: string; message: string },
-        { previous_response_id?: string },
+        { previous_response_id?: string; model?: string },
       ];
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toBe('Make it concise');
+      expect(params.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBe('thread-1');
+    });
+
+    it('uses requested model when provided', async () => {
+      configureSuggestionHappyPath();
+
+      await service.suggest('graph-1', 'agent-1', {
+        userRequest: 'Make it concise',
+        model: 'openai/custom-model',
+      } as SuggestAgentInstructionsDto);
+
+      const [, params] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string },
+        { model?: string },
+      ];
+      expect(params.model).toBe('openai/custom-model');
     });
 
     it('falls back to current instructions when LLM returns empty', async () => {
@@ -228,12 +244,13 @@ describe('AiSuggestionsService', () => {
       expect(result.threadId).toBe('thread-1');
       const [payload, params] = responseMock.mock.calls[0] as [
         { systemMessage?: string; message: string },
-        { previous_response_id?: string },
+        { previous_response_id?: string; model?: string },
       ];
       expect(payload.systemMessage).toContain(
         'You rewrite agent system instructions.',
       );
       expect(payload.message).toContain('Base instructions');
+      expect(params.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBeUndefined();
     });
 
@@ -448,11 +465,63 @@ describe('AiSuggestionsService', () => {
       expect(calls.length).toBe(1);
       const [payload, params] = calls[0] as [
         { systemMessage?: string; message: string },
-        { previous_response_id?: string },
+        { previous_response_id?: string; model?: string },
       ];
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toBe('Focus on tooling issues');
+      expect(params.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBe('prev-thread');
+    });
+
+    it('uses requested model when provided', async () => {
+      (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildThread(),
+      );
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildGraph(),
+      );
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        buildCompiledGraph(),
+      );
+      (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      await service.analyzeThread('thread-1', {
+        model: 'openai/custom-model',
+      } as never);
+
+      const [, params] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string },
+        { model?: string },
+      ];
+      expect(params.model).toBe('openai/custom-model');
+    });
+  });
+
+  describe('suggestGraphInstructions', () => {
+    it('uses requested model when provided', async () => {
+      const graph = buildGraph();
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        buildCompiledGraph(),
+      );
+      (
+        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
+      ).mockReturnValue([]);
+      responseMock.mockResolvedValueOnce({
+        content: { updates: [{ nodeId: 'agent-1', instructions: 'Updated' }] },
+        conversationId: 'graph-1',
+      });
+
+      await service.suggestGraphInstructions('graph-1', {
+        userRequest: 'Update instructions',
+        model: 'openai/custom-model',
+      });
+
+      const [, params] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string },
+        { model?: string },
+      ];
+      expect(params.model).toBe('openai/custom-model');
     });
   });
 
@@ -483,10 +552,11 @@ describe('AiSuggestionsService', () => {
 
       const [payload, params] = responseMock.mock.calls[0] as [
         { systemMessage?: string; message: string },
-        { previous_response_id?: string },
+        { previous_response_id?: string; model?: string },
       ];
       expect(payload.systemMessage).toContain('knowledge base content');
       expect(payload.message).toContain('Old content');
+      expect(params.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBeUndefined();
     });
 
@@ -508,11 +578,33 @@ describe('AiSuggestionsService', () => {
 
       const [payload, params] = responseMock.mock.calls[0] as [
         { systemMessage?: string; message: string },
-        { previous_response_id?: string },
+        { previous_response_id?: string; model?: string },
       ];
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toBe('Add a troubleshooting section');
+      expect(params.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBe('prev-knowledge');
+    });
+
+    it('uses requested model when provided', async () => {
+      responseMock.mockResolvedValueOnce({
+        content: {
+          title: 'Updated title',
+          content: 'Updated content',
+        },
+        conversationId: 'knowledge-4',
+      });
+
+      await service.suggestKnowledgeContent({
+        userRequest: 'Add a section',
+        model: 'openai/custom-model',
+      } as KnowledgeContentSuggestionRequest);
+
+      const [, params] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string },
+        { model?: string },
+      ];
+      expect(params.model).toBe('openai/custom-model');
     });
 
     it('throws when LLM response is invalid', async () => {

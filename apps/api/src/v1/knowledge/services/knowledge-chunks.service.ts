@@ -1,3 +1,4 @@
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, InternalException } from '@packages/common';
 import { zodResponseFormat } from 'openai/helpers/zod';
@@ -5,7 +6,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
-import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
@@ -24,10 +24,10 @@ const ChunkBoundarySchema = z.object({
 const ChunkPlanSchema = z.object({
   chunks: z.array(ChunkBoundarySchema).min(1),
 });
-const ChunkPlanFormat = zodResponseFormat(ChunkPlanSchema, 'data');
 
 type SearchBatchItem = Parameters<QdrantService['searchMany']>[1][number];
 type KnowledgeUpsertPoints = Parameters<QdrantService['upsertPoints']>[1];
+type ChunkPlanAttempt = { plan: ChunkPlan | null; reason?: string };
 
 export type ChunkMaterial = {
   text: string;
@@ -67,11 +67,12 @@ export class KnowledgeChunksService {
     private readonly qdrantService: QdrantService,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
-    private readonly litellmService: LitellmService,
   ) {}
 
   async embedTexts(texts: string[]): Promise<number[][]> {
-    if (texts.length === 0) return [];
+    if (texts.length === 0) {
+      return [];
+    }
     return this.openaiService.embeddings({
       model: this.llmModelsService.getKnowledgeEmbeddingModel(),
       input: texts,
@@ -79,34 +80,11 @@ export class KnowledgeChunksService {
   }
 
   async generateChunkPlan(content: string): Promise<ChunkPlan> {
-    const attempt = async (fix?: { reason: string; previous: ChunkPlan }) => {
-      const plan = await this.requestChunkPlan(content, fix);
-      if (!plan) {
-        return { plan: null, error: 'LLM_OUTPUT_INVALID' };
-      }
-      const error = await this.validateChunkPlan(content, plan);
-      return { plan, error };
-    };
-
-    const first = await attempt();
-    if (!first.error && first.plan) {
-      return first.plan;
+    const plan = await this.buildChunkPlanFromTextSplitter(content);
+    if (!plan) {
+      throw new BadRequestException('INVALID_CHUNK_PLAN');
     }
-
-    const previous = first.plan ?? { chunks: [] };
-    const second = await attempt({
-      reason: first.error ?? 'INVALID_CHUNK_PLAN',
-      previous,
-    });
-
-    if (!second.error && second.plan) {
-      return second.plan;
-    }
-
-    throw new BadRequestException(
-      'INVALID_CHUNK_PLAN',
-      second.error ?? 'INVALID_CHUNK_PLAN',
-    );
+    return plan;
   }
 
   materializeChunks(
@@ -127,7 +105,10 @@ export class KnowledgeChunksService {
     query: string;
     topK: number;
   }): Promise<KnowledgeIndexResult[]> {
-    if (!params.docIds.length) return [];
+    if (!params.docIds.length) {
+      return [];
+    }
+
     const normalizedQuery = params.query.trim();
     if (!normalizedQuery) {
       throw new BadRequestException('QUERY_REQUIRED');
@@ -277,7 +258,10 @@ export class KnowledgeChunksService {
     chunks: StoredChunkInput[],
     embeddings: number[][],
   ): KnowledgeUpsertPoints {
-    if (chunks.length === 0) return [];
+    if (chunks.length === 0) {
+      return [];
+    }
+
     if (chunks.length !== embeddings.length) {
       throw new InternalException('EMBEDDING_COUNT_MISMATCH', {
         expected: chunks.length,
@@ -349,7 +333,7 @@ export class KnowledgeChunksService {
     const response = await this.openaiService.response<{ queries: string[] }>(
       { message: prompt },
       {
-        ...this.llmModelsService.getKnowledgeSearchParams(),
+        model: this.llmModelsService.getKnowledgeSearchModel(),
         text: {
           format: {
             ...QueryExpansionFormat.json_schema,
@@ -378,7 +362,10 @@ export class KnowledgeChunksService {
 
   private extractKeywords(text: string): string[] {
     const matches = text.toLowerCase().match(/[a-z0-9]+/g);
-    if (!matches) return [];
+    if (!matches) {
+      return [];
+    }
+
     const unique = new Set<string>();
     for (const match of matches) {
       if (match.length > 2) {
@@ -406,10 +393,14 @@ export class KnowledgeChunksService {
   private buildKeywordSnippet(text: string, keywords: string[]): string | null {
     const KEYWORD_WINDOW = 120;
 
-    if (keywords.length === 0) return null;
+    if (keywords.length === 0) {
+      return null;
+    }
+
     const lower = text.toLowerCase();
     let bestIndex = -1;
     let bestKeyword = '';
+
     for (const keyword of keywords) {
       const idx = lower.indexOf(keyword.toLowerCase());
       if (idx !== -1 && (bestIndex === -1 || idx < bestIndex)) {
@@ -440,23 +431,26 @@ export class KnowledgeChunksService {
     if (!sentences || sentences.length === 0) {
       return null;
     }
+
     if (keywords.length === 0) {
       return sentences[0]?.trim() ?? null;
     }
+
     let bestSentence = '';
     let bestScore = 0;
+
     for (const sentence of sentences) {
       const lowered = sentence.toLowerCase();
-      const score = keywords.reduce(
-        (sum, keyword) =>
-          lowered.includes(keyword.toLowerCase()) ? sum + 1 : sum,
-        0,
-      );
+      const score = keywords.reduce((sum, keyword) => {
+        return lowered.includes(keyword.toLowerCase()) ? sum + 1 : sum;
+      }, 0);
+
       if (score > bestScore) {
         bestScore = score;
         bestSentence = sentence.trim();
       }
     }
+
     return bestScore > 0 ? bestSentence : null;
   }
 
@@ -475,59 +469,6 @@ export class KnowledgeChunksService {
     return text.replace(/\s+/g, ' ').trim();
   }
 
-  private async requestChunkPlan(
-    content: string,
-    fix?: { reason: string; previous: ChunkPlan },
-  ): Promise<ChunkPlan | null> {
-    const basePrompt = [
-      'You split a document into semantic chunks WITHOUT rewriting.',
-      'Return ONLY JSON with key "chunks": [{ start, end, label? }].',
-      'Rules:',
-      '- start/end are character offsets into the ORIGINAL document.',
-      '- cover the full document from 0 to len(text) with no gaps or overlaps.',
-      '- do not exceed max chunk size in tokens.',
-      '- do not create empty chunks.',
-      '',
-      `MAX_TOKENS_PER_CHUNK: ${environment.knowledgeChunkMaxTokens}`,
-      `DOCUMENT_LENGTH: ${content.length}`,
-      '',
-      'DOCUMENT:',
-      content,
-    ];
-
-    const prompt = fix
-      ? [
-          ...basePrompt,
-          '',
-          'PREVIOUS_CHUNKS:',
-          JSON.stringify(fix.previous),
-          `ERROR: ${fix.reason}`,
-          'Fix the chunk boundaries and return JSON only.',
-        ].join('\n')
-      : basePrompt.join('\n');
-
-    const response = await this.openaiService.response<ChunkPlan>(
-      { message: prompt },
-      {
-        ...this.llmModelsService.getKnowledgeChunkingParams(),
-        text: {
-          format: {
-            ...ChunkPlanFormat.json_schema,
-            schema: ChunkPlanFormat.json_schema.schema!,
-            type: 'json_schema',
-          },
-        },
-      },
-      { json: true },
-    );
-
-    const validation = ChunkPlanSchema.safeParse(response.content);
-    if (!validation.success) {
-      return null;
-    }
-    return validation.data;
-  }
-
   private async validateChunkPlan(
     content: string,
     plan: ChunkPlan,
@@ -538,7 +479,8 @@ export class KnowledgeChunksService {
     }
 
     const totalLen = content.length;
-    if (chunks[0]?.start !== 0) {
+    const first = chunks[0];
+    if (!first || first.start !== 0) {
       return 'First chunk must start at 0';
     }
 
@@ -563,29 +505,120 @@ export class KnowledgeChunksService {
       }
     }
 
-    const tooLarge = await this.findOversizedChunk(content, chunks);
-    if (tooLarge !== null) {
-      return `Chunk ${tooLarge} exceeds ${environment.knowledgeChunkMaxTokens} tokens`;
+    const maxChars = Math.max(200, environment.knowledgeChunkMaxTokens * 4);
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]!;
+      const chunkLength = chunk.end - chunk.start;
+      if (chunkLength > maxChars) {
+        return `Chunk ${i} exceeds ${maxChars} characters`;
+      }
     }
 
     return null;
   }
 
-  private async findOversizedChunk(
+  private async buildChunkPlanFromTextSplitter(
     content: string,
-    chunks: KnowledgeChunkBoundary[],
-  ): Promise<number | null> {
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i]!;
-      const text = content.slice(chunk.start, chunk.end);
-      const tokens = await this.litellmService.countTokens(
-        this.llmModelsService.getKnowledgeChunkingModel(),
-        text,
-      );
-      if (tokens > environment.knowledgeChunkMaxTokens) {
-        return i;
+  ): Promise<ChunkPlan | null> {
+    const maxTokens = environment.knowledgeChunkMaxTokens;
+    const maxChars = Math.max(200, maxTokens * 4);
+    const maxCount = environment.knowledgeChunkMaxCount;
+    const baseSeparators = [
+      '\n## ',
+      '\n### ',
+      '\n#### ',
+      '\n##### ',
+      '\n###### ',
+      '\n# ',
+      '\n---\n',
+      '\n\n',
+      '\n',
+      ' ',
+      '',
+    ];
+
+    for (const chunkSize of this.buildChunkSizes(maxChars)) {
+      const splitter = new RecursiveCharacterTextSplitter({
+        chunkSize,
+        chunkOverlap: 0,
+        separators: baseSeparators,
+        keepSeparator: true,
+      });
+
+      const splits = await splitter.splitText(content);
+      const attempt = this.buildChunkPlanFromSplits(splits, content, maxCount);
+      if (!attempt.plan) {
+        continue;
+      }
+
+      const error = await this.validateChunkPlan(content, attempt.plan);
+      if (!error) {
+        return attempt.plan;
       }
     }
+
     return null;
+  }
+
+  private buildChunkSizes(maxChars: number): number[] {
+    const sizes: number[] = [];
+    let current = maxChars;
+    while (current >= 100) {
+      sizes.push(Math.floor(current));
+      current *= 0.8;
+    }
+    return Array.from(new Set(sizes));
+  }
+
+  private buildChunkPlanFromSplits(
+    splits: string[],
+    content: string,
+    maxCount: number,
+  ): ChunkPlanAttempt {
+    if (splits.length === 0) {
+      return { plan: null, reason: 'EMPTY_SPLITS' };
+    }
+
+    const chunks: KnowledgeChunkBoundary[] = [];
+    let offset = 0;
+
+    for (const split of splits) {
+      if (!split) {
+        return { plan: null, reason: 'EMPTY_SPLIT' };
+      }
+      const matchIndex = content.indexOf(split, offset);
+      if (matchIndex === -1) {
+        return { plan: null, reason: 'SPLIT_NOT_FOUND' };
+      }
+      const gap = content.slice(offset, matchIndex);
+      if (/\S/.test(gap)) {
+        return { plan: null, reason: 'GAP_NOT_WHITESPACE' };
+      }
+
+      const start = offset;
+      const end = matchIndex + split.length;
+      if (end <= start) {
+        return { plan: null, reason: 'INVALID_SPLIT_RANGE' };
+      }
+      chunks.push({ start, end, label: null });
+      offset = end;
+      if (chunks.length > maxCount) {
+        return { plan: null, reason: 'CHUNK_COUNT_EXCEEDED' };
+      }
+    }
+
+    if (offset !== content.length) {
+      const remainder = content.slice(offset);
+      if (/\S/.test(remainder)) {
+        return { plan: null, reason: 'OFFSET_MISMATCH' };
+      }
+      const lastChunk = chunks[chunks.length - 1];
+      if (!lastChunk) {
+        return { plan: null, reason: 'OFFSET_MISMATCH' };
+      }
+      lastChunk.end = content.length;
+    }
+
+    return { plan: { chunks } };
   }
 }

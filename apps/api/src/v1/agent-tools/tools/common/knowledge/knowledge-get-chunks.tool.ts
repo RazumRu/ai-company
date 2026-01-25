@@ -16,7 +16,10 @@ import {
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
 
 export const KnowledgeGetChunksSchema = z.object({
-  chunkIds: z.array(z.uuid()).min(1).describe('Chunk IDs to retrieve'),
+  chunkIds: z
+    .array(z.number().int().positive())
+    .min(1)
+    .describe('Chunk public IDs to retrieve'),
 });
 
 export type KnowledgeGetChunksSchemaType = z.infer<
@@ -48,13 +51,15 @@ export class KnowledgeGetChunksTool extends BaseTool<
 
       ### When to Use
       After you have selected chunkIds from knowledge_search_chunks and need the full text for those chunks.
+      If the document politic instructs full content retrieval, use knowledge_get_doc instead.
+      If you already fetched full content for a document, do NOT fetch its chunks.
 
       ### Best Practices
       Request only the chunks you need. Keep chunkIds focused to limit context size.
 
       ### Examples
       \`\`\`json
-      {"chunkIds": ["c2b3d4e5-6f70-4a8b-9c10-11aa22bb33cc"]}
+      {"chunkIds": [501]}
       \`\`\`
     `;
   }
@@ -77,9 +82,12 @@ export class KnowledgeGetChunksTool extends BaseTool<
       return { output: [] };
     }
 
-    const chunks = await this.qdrantService.retrievePoints(
+    const chunks = await this.qdrantService.scrollAll(
       this.knowledgeCollection,
-      { ids: args.chunkIds, with_payload: true },
+      {
+        filter: this.buildChunkFilter(args.chunkIds),
+        with_payload: true,
+      } as Parameters<QdrantService['scrollAll']>[1],
     );
 
     if (chunks.length === 0) {
@@ -139,18 +147,14 @@ export class KnowledgeGetChunksTool extends BaseTool<
     entity: StoredChunkPayload,
     docPublicId: number | null,
   ): {
-    id: string;
     chunkPublicId: number;
-    docId: string;
     docPublicId: number | null;
     text: string;
     startOffset: number;
     endOffset: number;
   } {
     return {
-      id: entity.id,
       chunkPublicId: entity.publicId,
-      docId: entity.docId,
       docPublicId,
       text: entity.text,
       startOffset: entity.startOffset,
@@ -159,7 +163,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
   }
 
   private parseChunkPayload(
-    point: Awaited<ReturnType<QdrantService['retrievePoints']>>[number],
+    point: Awaited<ReturnType<QdrantService['scrollAll']>>[number],
   ): StoredChunkPayload | null {
     const payload = point.payload ?? {};
     const docId = this.getString(payload.docId);
@@ -192,6 +196,28 @@ export class KnowledgeGetChunksTool extends BaseTool<
       if (normalized) merged.add(normalized);
     }
     return merged.size ? Array.from(merged) : undefined;
+  }
+
+  private buildChunkFilter(chunkPublicIds: number[]) {
+    if (chunkPublicIds.length === 1) {
+      return {
+        must: [
+          {
+            key: 'publicId',
+            match: { value: chunkPublicIds[0] },
+          },
+        ],
+      };
+    }
+
+    return {
+      must: [
+        {
+          key: 'publicId',
+          match: { any: chunkPublicIds },
+        },
+      ],
+    };
   }
 
   private get knowledgeCollection() {

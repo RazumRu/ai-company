@@ -53,7 +53,9 @@ export class QdrantService {
     distance: Distance = 'Cosine',
   ): Promise<void> {
     const cached = this.vectorSizeCache.get(name);
-    if (cached === vectorSize) return;
+    if (cached === vectorSize) {
+      return;
+    }
 
     const exists = await this.collectionExists(name);
     if (!exists) {
@@ -65,16 +67,18 @@ export class QdrantService {
     }
 
     const existingSize = await this.getCollectionVectorSize(name);
-    if (existingSize !== null && existingSize !== vectorSize) {
+    if (existingSize === null) {
+      return;
+    }
+
+    if (existingSize !== vectorSize) {
       throw new InternalException('QDRANT_VECTOR_SIZE_MISMATCH', {
         expected: existingSize,
         actual: vectorSize,
       });
     }
 
-    if (existingSize !== null) {
-      this.vectorSizeCache.set(name, existingSize);
-    }
+    this.vectorSizeCache.set(name, existingSize);
   }
 
   async upsertPoints(
@@ -86,18 +90,14 @@ export class QdrantService {
       distance?: Distance;
     },
   ): Promise<void> {
-    if (!points.length) return;
-
-    const first = points[0];
-    const vector = (first as { vector?: unknown }).vector;
-
-    if (!Array.isArray(vector) || typeof vector[0] !== 'number') {
-      throw new InternalException('QDRANT_VECTOR_MISSING');
+    if (!points.length) {
+      return;
     }
 
+    const vectorSize = this.extractVectorSize(points[0]);
     await this.ensureCollection(
       collection,
-      vector.length,
+      vectorSize,
       opts?.distance ?? 'Cosine',
     );
 
@@ -108,13 +108,25 @@ export class QdrantService {
     });
   }
 
+  private extractVectorSize(point: unknown): number {
+    const vector = (point as { vector?: unknown }).vector;
+
+    if (!Array.isArray(vector) || typeof vector[0] !== 'number') {
+      throw new InternalException('QDRANT_VECTOR_MISSING');
+    }
+
+    return vector.length;
+  }
+
   async deleteByFilter(
     collection: string,
     filter: DeleteFilter,
     opts?: { wait?: boolean },
   ): Promise<void> {
     const exists = await this.collectionExists(collection);
-    if (!exists) return;
+    if (!exists) {
+      return;
+    }
 
     await this.client.delete(collection, {
       wait: opts?.wait ?? true,
@@ -131,7 +143,9 @@ export class QdrantService {
       with_payload?: boolean;
     },
   ): Promise<SearchResultItem[]> {
-    if (!vector.length || limit <= 0) return [];
+    if (!vector.length || limit <= 0) {
+      return [];
+    }
 
     return this.client.search(collection, {
       vector,
@@ -146,7 +160,9 @@ export class QdrantService {
     collection: string,
     searches: SearchBatchItem[],
   ): Promise<SearchResultItem[][]> {
-    if (!searches.length) return [];
+    if (!searches.length) {
+      return [];
+    }
     return this.client.searchBatch(collection, { searches });
   }
 
@@ -154,9 +170,13 @@ export class QdrantService {
     collection: string,
     args: Omit<RetrieveArgs, 'with_vector'> & { with_vector?: false },
   ): Promise<RetrieveResultItem[]> {
-    if (!args.ids?.length) return [];
+    if (!args.ids?.length) {
+      return [];
+    }
     const exists = await this.collectionExists(collection);
-    if (!exists) return [];
+    if (!exists) {
+      return [];
+    }
 
     return this.client.retrieve(collection, {
       ...args,
@@ -172,7 +192,9 @@ export class QdrantService {
     },
   ): Promise<ScrollResult['points']> {
     const exists = await this.collectionExists(collection);
-    if (!exists) return [];
+    if (!exists) {
+      return [];
+    }
 
     const out: ScrollResult['points'] = [];
     let offset: ScrollOffset | undefined;
@@ -186,9 +208,10 @@ export class QdrantService {
 
       out.push(...res.points);
 
-      const next = res.next_page_offset;
-      if (next === null || next === undefined) break;
-      offset = next;
+      if (!res.next_page_offset) {
+        break;
+      }
+      offset = res.next_page_offset;
     }
 
     return out;

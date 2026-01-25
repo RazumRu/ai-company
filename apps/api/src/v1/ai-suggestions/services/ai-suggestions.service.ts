@@ -158,7 +158,7 @@ export class AiSuggestionsService {
         message,
       },
       {
-        model: this.llmModelsService.getAiSuggestionsModel(),
+        model: this.resolveAiSuggestionsModel(payload.model),
         reasoning: { effort: 'medium' },
         previous_response_id: payload.threadId,
       },
@@ -243,7 +243,7 @@ export class AiSuggestionsService {
         message,
       },
       {
-        model: this.llmModelsService.getAiSuggestionsModel(),
+        model: this.resolveAiSuggestionsModel(payload.model),
         reasoning: { effort: 'medium' },
         previous_response_id: threadId,
       },
@@ -353,7 +353,7 @@ export class AiSuggestionsService {
         message,
       },
       {
-        model: this.llmModelsService.getAiSuggestionsModel(),
+        model: this.resolveAiSuggestionsModel(payload.model),
         reasoning: { effort: 'medium' },
         text: {
           format: {
@@ -453,7 +453,7 @@ export class AiSuggestionsService {
         message,
       },
       {
-        model: this.llmModelsService.getAiSuggestionsModel(),
+        model: this.resolveAiSuggestionsModel(payload.model),
         reasoning: { effort: 'medium' },
         previous_response_id: payload.threadId,
       },
@@ -1298,5 +1298,9 @@ export class AiSuggestionsService {
     } catch {
       return String(value);
     }
+  }
+
+  private resolveAiSuggestionsModel(model?: string): string {
+    return model || this.llmModelsService.getAiSuggestionsDefaultModel();
   }
 }

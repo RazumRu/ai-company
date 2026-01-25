@@ -39,20 +39,27 @@ describe('KnowledgeSearchChunksTool', () => {
     ]);
 
     const result = await tool.invoke(
-      { docIds: ['doc-1'], query: 'rate limits', topK: 3 },
+      { docIds: [101], query: 'rate limits', topK: 3 },
       {},
       {
         configurable: { graph_created_by: 'user-1', thread_id: 'thread-1' },
       },
     );
 
+    expect(docDao.getAll).toHaveBeenCalledWith({
+      createdBy: 'user-1',
+      publicIds: [101],
+      tags: undefined,
+      projection: ['id', 'publicId'],
+      order: { updatedAt: 'DESC' },
+    });
     expect(knowledgeChunksService.searchChunks).toHaveBeenCalledWith({
       docIds: ['doc-1'],
       query: 'rate limits',
       topK: 3,
     });
     expect(result.output).toHaveLength(1);
-    expect(result.output[0]?.chunkId).toBe('chunk-1');
+    expect(result.output[0]?.chunkPublicId).toBe(501);
     expect(result.output[0]?.snippet.toLowerCase()).toContain('rate limits');
   });
 });

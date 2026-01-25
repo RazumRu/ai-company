@@ -87,7 +87,7 @@ describe('Knowledge tools (integration)', () => {
 
       const output = searchResult.output as {
         documents: {
-          documentId: string;
+          documentPublicId: number;
           title: string;
           summary: string | null;
           tags: string[];
@@ -95,7 +95,7 @@ describe('Knowledge tools (integration)', () => {
         comment?: string;
       };
       expect(output.documents).toHaveLength(1);
-      expect(output.documents[0]?.documentId).toBe(alphaDoc.id);
+      expect(output.documents[0]?.documentPublicId).toBe(alphaDoc.publicId);
       expect(output.documents[0]?.summary).toBe(refreshedAlpha.summary);
       expect(output.documents[0]?.tags).toEqual([alphaTag]);
     },
@@ -115,7 +115,7 @@ describe('Knowledge tools (integration)', () => {
       createdDocIds.push(doc.id);
 
       const chunksResult = await searchChunksTool.invoke(
-        { docIds: [doc.id], query: keyword, topK: 3 },
+        { docIds: [doc.publicId], query: keyword, topK: 3 },
         { tags: ['alpha-tag'] },
         {
           configurable: {
@@ -126,17 +126,17 @@ describe('Knowledge tools (integration)', () => {
       );
 
       const chunkSnippets = chunksResult.output as {
-        chunkId: string;
-        docId: string;
+        chunkPublicId: number;
+        docPublicId: number | null;
         score: number;
         snippet: string;
       }[];
       expect(chunkSnippets.length).toBeGreaterThan(0);
-      expect(chunkSnippets[0]?.docId).toBe(doc.id);
+      expect(chunkSnippets[0]?.docPublicId).toBe(doc.publicId);
       expect(chunkSnippets[0]?.snippet.toLowerCase()).toContain(keyword);
 
       const chunkResult = await getChunksTool.invoke(
-        { chunkIds: [chunkSnippets[0]!.chunkId] },
+        { chunkIds: [chunkSnippets[0]!.chunkPublicId] },
         { tags: ['alpha-tag'] },
         {
           configurable: {
@@ -147,15 +147,15 @@ describe('Knowledge tools (integration)', () => {
       );
 
       const chunks = chunkResult.output as {
-        id: string;
-        docId: string;
+        chunkPublicId: number;
+        docPublicId: number | null;
         text: string;
         startOffset: number;
         endOffset: number;
       }[];
       expect(chunks).toHaveLength(1);
       const chunk = chunks[0];
-      expect(chunk?.docId).toBe(doc.id);
+      expect(chunk?.docPublicId).toBe(doc.publicId);
 
       const refreshed = await knowledgeService.getDoc(doc.id);
       expect(chunk?.text).toBe(
@@ -203,7 +203,11 @@ describe('Knowledge tools (integration)', () => {
       createdDocIds.push(alphaDoc.id, betaDoc.id);
 
       const chunksResult = await searchChunksTool.invoke(
-        { docIds: [alphaDoc.id, betaDoc.id], query: alphaKeyword, topK: 5 },
+        {
+          docIds: [alphaDoc.publicId, betaDoc.publicId],
+          query: alphaKeyword,
+          topK: 5,
+        },
         { tags: ['alpha-tag'] },
         {
           configurable: {
@@ -214,18 +218,18 @@ describe('Knowledge tools (integration)', () => {
       );
 
       const chunkSnippets = chunksResult.output as {
-        chunkId: string;
-        docId: string;
+        chunkPublicId: number;
+        docPublicId: number | null;
         score: number;
         snippet: string;
       }[];
       expect(chunkSnippets.length).toBeGreaterThan(0);
-      expect(chunkSnippets.every((chunk) => chunk.docId === alphaDoc.id)).toBe(
-        true,
-      );
+      expect(
+        chunkSnippets.every((chunk) => chunk.docPublicId === alphaDoc.publicId),
+      ).toBe(true);
 
       const allowedChunks = await getChunksTool.invoke(
-        { chunkIds: [chunkSnippets[0]!.chunkId] },
+        { chunkIds: [chunkSnippets[0]!.chunkPublicId] },
         { tags: ['alpha-tag'] },
         {
           configurable: {
@@ -235,14 +239,14 @@ describe('Knowledge tools (integration)', () => {
         },
       );
       const allowedOutput = allowedChunks.output as {
-        id: string;
-        docId: string;
+        chunkPublicId: number;
+        docPublicId: number | null;
       }[];
       expect(allowedOutput).toHaveLength(1);
-      expect(allowedOutput[0]?.docId).toBe(alphaDoc.id);
+      expect(allowedOutput[0]?.docPublicId).toBe(alphaDoc.publicId);
 
       const blockedChunks = await getChunksTool.invoke(
-        { chunkIds: [chunkSnippets[0]!.chunkId] },
+        { chunkIds: [chunkSnippets[0]!.chunkPublicId] },
         { tags: ['beta-tag'] },
         {
           configurable: {
@@ -273,7 +277,7 @@ describe('Knowledge tools (integration)', () => {
       createdDocIds.push(allowedDoc.id, blockedDoc.id);
 
       const allowedResult = await getDocTool.invoke(
-        { docId: allowedDoc.id },
+        { docId: allowedDoc.publicId },
         {},
         {
           configurable: {
@@ -284,12 +288,12 @@ describe('Knowledge tools (integration)', () => {
       );
 
       expect(allowedResult.output).toBeTruthy();
-      expect(allowedResult.output?.documentId).toBe(allowedDoc.id);
+      expect(allowedResult.output?.documentPublicId).toBe(allowedDoc.publicId);
       expect(allowedResult.output?.content).toBe(allowedDoc.content);
 
       await expect(
         getDocTool.invoke(
-          { docId: blockedDoc.id },
+          { docId: blockedDoc.publicId },
           {},
           {
             configurable: {

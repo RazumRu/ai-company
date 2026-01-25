@@ -30,7 +30,7 @@ export type KnowledgeSearchDocsSchemaType = z.infer<
 >;
 
 export type KnowledgeSearchDocsResult = {
-  documentId: string;
+  documentPublicId: number;
   title: string;
   summary: string | null;
   politic: string | null;
@@ -38,12 +38,12 @@ export type KnowledgeSearchDocsResult = {
 };
 
 type KnowledgeDocSelection = {
-  ids: string[];
+  ids: number[];
   comment?: string;
 };
 
 const KnowledgeDocSelectionSchema = z.object({
-  ids: z.array(z.string().min(1)).max(10).default([]),
+  ids: z.array(z.number().int().positive()).max(10).default([]),
   comment: z.string().min(1).nullable().default(null),
 });
 
@@ -84,6 +84,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       Provide a clear task description and the relevant stack context (technology, language, framework).
       This tool returns up to 10 docs and may include a short report.
       If no documents are returned, read the comment for refinement tips and rerun with a better query.
+      Use the returned document public IDs to reference documents in other knowledge tools.
 
       ### Examples
       \`\`\`json
@@ -116,7 +117,15 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     const docs = await this.docDao.getAll({
       createdBy: graphCreatedBy,
       tags: tagsFilter,
-      projection: ['id', 'title', 'summary', 'politic', 'tags', 'updatedAt'],
+      projection: [
+        'id',
+        'publicId',
+        'title',
+        'summary',
+        'politic',
+        'tags',
+        'updatedAt',
+      ],
       order: { updatedAt: 'DESC' },
     });
 
@@ -126,13 +135,13 @@ export class KnowledgeSearchDocsTool extends BaseTool<
 
     const selection = await this.selectRelevantDocs(normalizedTask, docs);
 
-    const docById = new Map(docs.map((doc) => [doc.id, doc]));
+    const docByPublicId = new Map(docs.map((doc) => [doc.publicId, doc]));
     const documents = selection.ids
-      .map((id) => docById.get(id))
+      .map((id) => docByPublicId.get(id))
       .filter((doc): doc is (typeof docs)[number] => Boolean(doc))
       .slice(0, 10)
       .map((doc) => ({
-        documentId: doc.id,
+        documentPublicId: doc.publicId,
         title: doc.title,
         summary: doc.summary ?? null,
         politic: doc.politic ?? null,
@@ -178,7 +187,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     );
     const prompt = [
       'You select relevant knowledge documents for a query.',
-      'Return ONLY JSON with keys: "ids" (array of document IDs) and optional "comment" (string).',
+      'Return ONLY JSON with keys: "ids" (array of document public IDs) and optional "comment" (string).',
       'Rules:',
       '- ids must come from the provided documents.',
       '- return at most 10 ids.',
@@ -189,14 +198,14 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       'DOCUMENTS:',
       docs.map(
         (d) =>
-          `[Document ID: ${d.id}] ${d.title}\n[Summary] ${d.summary}\n[Politic] ${d.politic ?? 'N/A'}\n[Tags] ${d.tags.join()}`,
+          `[Document Public ID: ${d.publicId}] ${d.title}\n[Summary] ${d.summary}\n[Politic] ${d.politic ?? 'N/A'}\n[Tags] ${d.tags.join()}`,
       ),
     ].join('\n');
 
     const response = await this.openaiService.response<KnowledgeDocSelection>(
       { message: prompt },
       {
-        ...this.llmModelsService.getKnowledgeSearchParams(),
+        model: this.llmModelsService.getKnowledgeSearchModel(),
         text: {
           format: {
             ...compiledSchema.json_schema,
@@ -214,7 +223,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     }
 
     const rawSelection = validation.data.ids ?? [];
-    const validIds = new Set(docs.map((doc) => doc.id));
+    const validIds = new Set(docs.map((doc) => doc.publicId));
     const ids = Array.from(new Set(rawSelection))
       .filter((id) => validIds.has(id))
       .slice(0, 10);
