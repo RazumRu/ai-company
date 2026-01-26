@@ -46,6 +46,9 @@ export class ThreadNameGeneratorService {
           },
           {
             model: this.llmModelsService.getThreadNameModel(),
+            reasoning: {
+              effort: 'none',
+            },
             text: {
               format: {
                 ...compiledSchema.json_schema,

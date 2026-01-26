@@ -6,7 +6,6 @@ import { isPlainObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -487,7 +486,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
   }
 
   public get schema() {
-    return zodToAjvSchema(GhCreatePullRequestToolSchema);
+    return GhCreatePullRequestToolSchema;
   }
 
   public async invoke(

@@ -59,6 +59,10 @@ export const environment = () =>
     llmNoReasoningModels: getEnv('LLM_NO_REASONING_MODELS', 'qwen3-coder:30b'),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),
+    knowledgeChunksCollection: getEnv(
+      'KNOWLEDGE_CHUNKS_COLLECTION',
+      'knowledge_chunks',
+    ),
 
     // LLM model defaults for tools (do not override per-call)
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),

@@ -6,7 +6,6 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -75,7 +74,7 @@ export class KnowledgeGetDocTool extends BaseTool<
   }
 
   public get schema() {
-    return zodToAjvSchema(KnowledgeGetDocSchema);
+    return KnowledgeGetDocSchema;
   }
 
   public async invoke(

@@ -7,7 +7,6 @@ import { isObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -139,7 +138,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   }
 
   public get schema() {
-    return zodToAjvSchema(FilesSearchTextToolSchema);
+    return FilesSearchTextToolSchema;
   }
 
   public async invoke(

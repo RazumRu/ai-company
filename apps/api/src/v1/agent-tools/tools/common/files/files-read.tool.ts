@@ -7,7 +7,6 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -133,7 +132,7 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   }
 
   public get schema() {
-    return zodToAjvSchema(FilesReadToolSchema);
+    return FilesReadToolSchema;
   }
 
   protected createMarker(): string {

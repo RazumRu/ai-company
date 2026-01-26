@@ -263,29 +263,32 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
       // ---- invoke ----
       const toolsArray = this.getTools();
-      const shouldUseResponsesApi =
-        config.invokeModelReasoningEffort !== ReasoningEffort.None;
+      const useResponsesApi = await this.litellmService.supportsResponsesApi(
+        config.invokeModelName,
+      );
+      const useReasoning = await this.litellmService.supportsReasoning(
+        config.invokeModelName,
+      );
+      const useParallelToolCall =
+        await this.litellmService.supportsParallelToolCall(
+          config.invokeModelName,
+        );
+
       const invokeLlmNode = new InvokeLlmNode(
         this.litellmService,
-        this.buildLLM(
-          config.invokeModelName,
-          shouldUseResponsesApi
+        this.buildLLM(config.invokeModelName, {
+          useResponsesApi,
+          reasoning: useReasoning
             ? {
-                useResponsesApi: true,
-                reasoning: {
-                  effort: config.invokeModelReasoningEffort,
-                  summary: 'detailed',
-                },
+                effort: config.invokeModelReasoningEffort,
               }
-            : {
-                useResponsesApi: false,
-              },
-        ),
+            : undefined,
+        }),
         toolsArray,
         {
           systemPrompt: config.instructions,
           toolChoice: 'auto',
-          parallelToolCalls: true,
+          parallelToolCalls: useParallelToolCall,
         },
         this.logger,
       );

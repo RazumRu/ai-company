@@ -2,6 +2,7 @@ import {
   Brackets,
   DataSource,
   DeleteQueryBuilder,
+  DeleteQueryBuilder as TypeormDeleteQueryBuilder,
   EntityManager,
   EntityTarget,
   ObjectLiteral,
@@ -13,7 +14,6 @@ import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity
 
 import { removeKeysPrefix } from './utils';
 
-// New helpers/types
 type SortDir = 'ASC' | 'DESC';
 type OrderInput = Record<string, SortDir> | [string, SortDir][];
 
@@ -74,7 +74,7 @@ type EntityType = ObjectLiteral & { id: number | string };
 export abstract class BaseDao<
   T extends EntityType,
   U extends ObjectLiteral,
-  I = EntityAttributes<T>,
+  I extends Partial<EntityAttributes<T>> = EntityAttributes<T>,
 > {
   public abstract get alias(): string;
 
@@ -112,7 +112,7 @@ export abstract class BaseDao<
     }
 
     if (params?.customCondition) {
-      builder.andWhere(params?.customCondition);
+      builder.andWhere(params.customCondition);
     }
 
     this.applySearchParams?.(builder, params);
@@ -130,12 +130,13 @@ export abstract class BaseDao<
   ): void;
 
   private qualify(field: string) {
-    if (field.includes('.')) {
-      return field;
-    }
+    if (!field) return field;
+    if (field.includes('.')) return field;
+
     const hasColumn =
       this.repository.metadata.findColumnWithPropertyName(field) ??
       this.repository.metadata.findColumnWithPropertyPath(field);
+
     return hasColumn ? `${this.alias}.${field}` : field;
   }
 
@@ -144,19 +145,17 @@ export abstract class BaseDao<
       return order.map(([f, d]) => [this.qualify(f), d]);
     }
 
-    return Object.entries(order).map(([f, d]) => [
-      this.qualify(f),
-      d as SortDir,
-    ]);
+    return Object.entries(order).map(([f, d]) => [this.qualify(f), d]);
   }
 
   protected applyAdditionalParams(
     builder: SelectQueryBuilder<T>,
     params?: AdditionalParams<T>,
   ) {
-    if (params?.order && Object.keys(params.order).length) {
+    if (params?.order) {
       const entries = this.normalizeOrder(params.order);
       const [first, ...rest] = entries;
+
       if (first) {
         builder.orderBy(first[0], first[1]);
       }
@@ -165,27 +164,26 @@ export abstract class BaseDao<
         builder.addOrderBy(col, dir);
       }
     } else if (params?.orderBy) {
-      builder.orderBy(
-        this.qualify(params.orderBy),
-        params?.sortOrder || 'DESC',
-      );
+      builder.orderBy(this.qualify(params.orderBy), params.sortOrder || 'DESC');
     }
 
-    if (params?.limit) {
+    if (params?.limit != null) {
       builder.limit(params.limit);
     }
-    if (params?.offset) {
+
+    if (params?.offset != null) {
       builder.offset(params.offset);
     }
 
-    if (params?.projection) {
+    if (params?.projection?.length) {
       const qualifiedProjection = params.projection.map((p) => this.qualify(p));
       builder.select(qualifiedProjection);
     }
 
-    if (params?.relations) {
-      for (const r of params.relations)
+    if (params?.relations?.length) {
+      for (const r of params.relations) {
         builder.leftJoinAndSelect(`${this.alias}.${r}`, r);
+      }
     }
 
     if (params?.updateSelectBuilder) {
@@ -201,7 +199,7 @@ export abstract class BaseDao<
     return (
       await this.getQueryBuilder(entityManager)
         .insert()
-        .values(<QueryDeepPartialEntity<ObjectLiteral>>data)
+        .values(data as QueryDeepPartialEntity<ObjectLiteral>)
         .returning('*')
         .execute()
     ).generatedMaps[0] as T;
@@ -214,10 +212,78 @@ export abstract class BaseDao<
     return (
       await this.getQueryBuilder(entityManager)
         .insert()
-        .values(<QueryDeepPartialEntity<ObjectLiteral>>data)
+        .values(data as QueryDeepPartialEntity<ObjectLiteral>)
         .returning('*')
         .execute()
     ).generatedMaps as T[];
+  }
+
+  private getPrimaryColumns(): string[] {
+    return this.repository.metadata.primaryColumns.map((c) => c.propertyName);
+  }
+
+  private getAllColumns(): string[] {
+    return this.repository.metadata.columns.map((c) => c.propertyName);
+  }
+
+  private getUpsertOverwriteColumns(conflictTarget: string[]) {
+    const primary = new Set(this.getPrimaryColumns());
+    const conflict = new Set(conflictTarget);
+
+    return this.getAllColumns().filter(
+      (c) =>
+        !primary.has(c) &&
+        !conflict.has(c) &&
+        c !== 'createdAt' &&
+        c !== 'deletedAt',
+    );
+  }
+
+  public async upsertMany(
+    data: I[],
+    entityManager?: EntityManager,
+  ): Promise<T[]>;
+  public async upsertMany(
+    data: I[],
+    conflictPaths: string[],
+    entityManager?: EntityManager,
+  ): Promise<T[]>;
+  public async upsertMany(
+    data: I[],
+    conflictPaths?: string[] | EntityManager,
+    entityManager?: EntityManager,
+  ): Promise<T[]> {
+    if (conflictPaths instanceof EntityManager) {
+      entityManager = conflictPaths;
+      conflictPaths = undefined;
+    }
+
+    if (!data.length) return [];
+
+    const conflictTarget = conflictPaths?.length
+      ? conflictPaths
+      : this.getPrimaryColumns();
+
+    const overwrite = this.getUpsertOverwriteColumns(conflictTarget);
+
+    const builder = this.getQueryBuilder(entityManager).insert();
+    builder.values(data as QueryDeepPartialEntity<ObjectLiteral>);
+
+    if (!conflictTarget.length) {
+      const res = await builder.orIgnore().returning('*').execute();
+      return (
+        Array.isArray(res.raw) && res.raw?.length ? res.raw : res.generatedMaps
+      ) as T[];
+    }
+
+    const res = await builder
+      .orUpdate(overwrite.length ? overwrite : conflictTarget, conflictTarget)
+      .returning('*')
+      .execute();
+
+    return (
+      Array.isArray(res.raw) && res.raw?.length ? res.raw : res.generatedMaps
+    ) as T[];
   }
 
   public async updateMany(
@@ -227,10 +293,10 @@ export abstract class BaseDao<
   ): Promise<T | null> {
     const builder = this.getQueryBuilder(entityManager).update();
 
-    this.applySearchParamsInternal(builder, <U>params);
+    this.applySearchParamsInternal(builder, params);
 
     const result = await builder
-      .set(<QueryDeepPartialEntity<ObjectLiteral>>data)
+      .set(data as QueryDeepPartialEntity<ObjectLiteral>)
       .returning('*')
       .execute();
 
@@ -255,19 +321,18 @@ export abstract class BaseDao<
     params?: U | EntityManager,
     entityManager?: EntityManager,
   ): Promise<T | null> {
-    if (params && params instanceof EntityManager) {
+    if (params instanceof EntityManager) {
       entityManager = params;
       params = undefined;
     }
 
     const builder = this.getQueryBuilder(entityManager).update();
 
-    this.applySearchParamsInternal(builder, <U>params);
-
+    this.applySearchParamsInternal(builder, params as U);
     builder.andWhere({ id });
 
     const result = await builder
-      .set(<QueryDeepPartialEntity<ObjectLiteral>>data)
+      .set(data as QueryDeepPartialEntity<ObjectLiteral>)
       .returning('*')
       .execute();
 
@@ -289,28 +354,27 @@ export abstract class BaseDao<
     params?: (U & AdditionalParams) | EntityManager,
     entityManager?: EntityManager,
   ): Promise<T | null> {
-    if (!entityManager) {
-      entityManager = <EntityManager>params;
+    if (params instanceof EntityManager) {
+      entityManager = params;
       params = undefined;
     }
 
     const builder = this.getQueryBuilder(entityManager);
-
     builder.where({ id });
 
-    this.applyAdditionalParams(builder, <U & AdditionalParams>params);
-    this.applySearchParamsInternal(builder, <U & AdditionalParams>params);
+    this.applyAdditionalParams(builder, params as U & AdditionalParams);
+    this.applySearchParamsInternal(builder, params as U);
 
     if (this.applyMutationParams) {
-      this.applyMutationParams(builder, <U & AdditionalParams>params);
+      this.applyMutationParams(builder, params as U);
     }
 
-    if ((<AdditionalParams>params)?.rawData) {
+    if ((params as AdditionalParams)?.rawData) {
       const res = (await builder.getRawOne()) as Record<string, unknown> | null;
       return res ? (removeKeysPrefix(this.alias, res) as unknown as T) : null;
-    } else {
-      return builder.getOne();
     }
+
+    return builder.getOne();
   }
 
   public async count(
@@ -319,10 +383,10 @@ export abstract class BaseDao<
   ): Promise<number> {
     const builder = this.getQueryBuilder(entityManager);
 
-    this.applySearchParamsInternal(builder, params);
+    this.applySearchParamsInternal(builder, params as U);
 
     if (this.applyMutationParams) {
-      this.applyMutationParams(builder, params);
+      this.applyMutationParams(builder, params as U);
     }
 
     return builder.getCount();
@@ -335,19 +399,18 @@ export abstract class BaseDao<
     const builder = this.getQueryBuilder(entityManager);
 
     this.applyAdditionalParams(builder, params);
-    this.applySearchParamsInternal(builder, params);
+    this.applySearchParamsInternal(builder, params as U);
 
     if (this.applyMutationParams) {
-      this.applyMutationParams(builder, params);
+      this.applyMutationParams(builder, params as U);
     }
 
-    if ((<AdditionalParams>params)?.rawData) {
+    if ((params as AdditionalParams)?.rawData) {
       const res = await builder.getRawMany();
-
       return res?.map((el) => removeKeysPrefix(this.alias, el)) || [];
-    } else {
-      return builder.getMany();
     }
+
+    return builder.getMany();
   }
 
   public async getOne(
@@ -357,19 +420,18 @@ export abstract class BaseDao<
     const builder = this.getQueryBuilder(entityManager);
 
     this.applyAdditionalParams(builder, params);
-    this.applySearchParamsInternal(builder, params);
+    this.applySearchParamsInternal(builder, params as U);
 
     if (this.applyMutationParams) {
-      this.applyMutationParams(builder, params);
+      this.applyMutationParams(builder, params as U);
     }
 
-    if ((<AdditionalParams>params)?.rawData) {
+    if ((params as AdditionalParams)?.rawData) {
       const res = (await builder.getRawOne()) as Record<string, unknown> | null;
-
       return res ? (removeKeysPrefix(this.alias, res) as unknown as T) : null;
-    } else {
-      return builder.getOne();
     }
+
+    return builder.getOne();
   }
 
   public async deleteById(
@@ -386,8 +448,8 @@ export abstract class BaseDao<
     params?: U | EntityManager,
     entityManager?: EntityManager,
   ): Promise<void> {
-    if (!entityManager) {
-      entityManager = <EntityManager>params;
+    if (params instanceof EntityManager) {
+      entityManager = params;
       params = undefined;
     }
 
@@ -396,8 +458,8 @@ export abstract class BaseDao<
       .where({ id });
 
     this.applySearchParamsInternal(
-      <DeleteQueryBuilder<T>>(<unknown>builder),
-      <U>params,
+      builder as unknown as TypeormDeleteQueryBuilder<T>,
+      params as U,
     );
 
     await builder.execute();
@@ -410,8 +472,8 @@ export abstract class BaseDao<
     const builder = this.getQueryBuilder(entityManager).softDelete();
 
     this.applySearchParamsInternal(
-      <DeleteQueryBuilder<T>>(<unknown>builder),
-      <U>params,
+      builder as unknown as TypeormDeleteQueryBuilder<T>,
+      params as U,
     );
 
     await builder.execute();
@@ -424,8 +486,8 @@ export abstract class BaseDao<
     const builder = this.getQueryBuilder(entityManager).delete();
 
     this.applySearchParamsInternal(
-      <DeleteQueryBuilder<T>>(<unknown>builder),
-      <U>params,
+      builder as unknown as TypeormDeleteQueryBuilder<T>,
+      params as U,
     );
 
     await builder.execute();
@@ -445,21 +507,19 @@ export abstract class BaseDao<
     params?: U | EntityManager,
     entityManager?: EntityManager,
   ): Promise<void> {
-    if (!entityManager) {
-      entityManager = <EntityManager>params;
+    if (params instanceof EntityManager) {
+      entityManager = params;
       params = undefined;
     }
 
-    const builder = this.getQueryBuilder(entityManager)
-      .softDelete()
-      .where({ id });
+    const builder = this.getQueryBuilder(entityManager).restore().where({ id });
 
     this.applySearchParamsInternal(
-      <DeleteQueryBuilder<T>>(<unknown>builder),
-      <U>params,
+      builder as unknown as TypeormDeleteQueryBuilder<T>,
+      params as U,
     );
 
-    await builder.restore().execute();
+    await builder.execute();
   }
 
   public async hardDeleteById(
@@ -476,14 +536,17 @@ export abstract class BaseDao<
     params?: U | EntityManager,
     entityManager?: EntityManager,
   ): Promise<void> {
-    if (!entityManager) {
-      entityManager = <EntityManager>params;
+    if (params instanceof EntityManager) {
+      entityManager = params;
       params = undefined;
     }
 
     const builder = this.getQueryBuilder(entityManager).delete().where({ id });
 
-    this.applySearchParamsInternal(builder, <U>params);
+    this.applySearchParamsInternal(
+      builder as unknown as BaseQueryBuilder<T>,
+      params as U,
+    );
 
     await builder.execute();
   }

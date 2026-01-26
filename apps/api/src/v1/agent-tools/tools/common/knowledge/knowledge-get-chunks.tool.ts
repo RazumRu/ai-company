@@ -4,10 +4,10 @@ import { BadRequestException } from '@packages/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
+import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
 import { QdrantService } from '../../../../qdrant/services/qdrant.service';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -65,7 +65,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
   }
 
   public get schema() {
-    return zodToAjvSchema(KnowledgeGetChunksSchema);
+    return KnowledgeGetChunksSchema;
   }
 
   public async invoke(
@@ -111,11 +111,14 @@ export class KnowledgeGetChunksTool extends BaseTool<
       ids: docIds,
       createdBy: graphCreatedBy,
       tags: tagsFilter,
-      projection: ['id', 'publicId'],
+      projection: ['id', 'publicId', 'tags'],
     });
-    const allowedDocIds = new Set(docs.map((doc) => doc.id));
+    const allowedDocs = tagsFilter?.length
+      ? docs.filter((doc) => this.hasMatchingTag(doc.tags ?? [], tagsFilter))
+      : docs;
+    const allowedDocIds = new Set(allowedDocs.map((doc) => doc.id));
     const docPublicIdById = new Map(
-      docs.map((doc) => [doc.id, doc.publicId] as const),
+      allowedDocs.map((doc) => [doc.id, doc.publicId] as const),
     );
     const output = parsedChunks
       .filter((chunk) => allowedDocIds.has(chunk.docId))
@@ -198,6 +201,11 @@ export class KnowledgeGetChunksTool extends BaseTool<
     return merged.size ? Array.from(merged) : undefined;
   }
 
+  private hasMatchingTag(tags: string[], filter: string[]): boolean {
+    const normalized = new Set(tags.map((tag) => tag.trim().toLowerCase()));
+    return filter.some((tag) => normalized.has(tag));
+  }
+
   private buildChunkFilter(chunkPublicIds: number[]) {
     if (chunkPublicIds.length === 1) {
       return {
@@ -221,7 +229,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
   }
 
   private get knowledgeCollection() {
-    return 'knowledge_chunks';
+    return environment.knowledgeChunksCollection ?? 'knowledge_chunks';
   }
 }
 

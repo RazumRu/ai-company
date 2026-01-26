@@ -41,4 +41,8 @@ export const environment = () =>
       'DOCKER_INSECURE_REGISTRY',
       'registry-mirror:5000',
     ),
+    knowledgeChunksCollection: getEnv(
+      'KNOWLEDGE_CHUNKS_COLLECTION',
+      'knowledge_chunks',
+    ),
   }) as const satisfies Record<string, string | number | boolean>;

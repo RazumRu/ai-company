@@ -6,7 +6,6 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -68,7 +67,7 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
   }
 
   public get schema() {
-    return zodToAjvSchema(FilesDeleteToolSchema);
+    return FilesDeleteToolSchema;
   }
 
   public async invoke(

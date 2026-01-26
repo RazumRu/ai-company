@@ -4,7 +4,6 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -107,7 +106,7 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   }
 
   public get schema() {
-    return zodToAjvSchema(GhCommitToolSchema);
+    return GhCommitToolSchema;
   }
 
   private buildCommand(cmd: string, path?: string): string {

@@ -7,7 +7,6 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -82,7 +81,7 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
   }
 
   public get schema() {
-    return zodToAjvSchema(FilesWriteFileToolSchema);
+    return FilesWriteFileToolSchema;
   }
 
   public async invoke(

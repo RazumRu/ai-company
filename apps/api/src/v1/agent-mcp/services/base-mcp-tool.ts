@@ -1,10 +1,10 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import type { ListToolsResult } from '@modelcontextprotocol/sdk/types.js';
+import { ZodSchema } from 'zod';
 
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
-  type JSONSchema,
   ToolInvokeResult,
 } from '../../agent-tools/tools/base-tool';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
@@ -25,7 +25,7 @@ export class BaseMcpTool<TSchema, TConfig = unknown> extends BaseTool<
 
   public get schema() {
     // MCP tools already provide JSON schemas
-    return this.tool.inputSchema as unknown as JSONSchema;
+    return this.tool.inputSchema as unknown as ZodSchema;
   }
 
   constructor(

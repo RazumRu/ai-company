@@ -16,7 +16,7 @@ import {
   KnowledgeDocListQuery,
 } from '../dto/knowledge.dto';
 import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
-import { KnowledgeSummary } from '../knowledge.types';
+import { KnowledgeChunkBoundary, KnowledgeSummary } from '../knowledge.types';
 import {
   ChunkMaterial,
   KnowledgeChunksService,
@@ -108,10 +108,7 @@ export class KnowledgeService {
       this.knowledgeChunksService.generateChunkPlan(content),
     ]);
     const tags = this.normalizeTags(dto.tags ?? []);
-    const chunks = this.knowledgeChunksService.materializeChunks(
-      content,
-      plan.chunks,
-    );
+    const chunks = this.knowledgeChunksService.materializeChunks(content, plan);
     const embeddings = await this.knowledgeChunksService.embedTexts(
       chunks.map((c) => c.text),
     );
@@ -133,6 +130,7 @@ export class KnowledgeService {
 
     await this.knowledgeChunksService.upsertDocChunks(
       doc.id,
+      doc.publicId,
       chunks,
       embeddings,
     );
@@ -152,9 +150,7 @@ export class KnowledgeService {
 
     const updateData = pickBy(dto, (v) => !isUndefined(v));
 
-    let chunkPlan: Awaited<
-      ReturnType<KnowledgeChunksService['generateChunkPlan']>
-    > | null = null;
+    let chunkPlan: KnowledgeChunkBoundary[] | null = null;
     if (dto.content) {
       const [summary, plan] = await Promise.all([
         this.generateSummary(dto.content),
@@ -188,7 +184,7 @@ export class KnowledgeService {
             (await this.knowledgeChunksService.generateChunkPlan(dto.content));
           const chunks = this.knowledgeChunksService.materializeChunks(
             dto.content,
-            plan.chunks,
+            plan,
           );
           embeddings = await this.knowledgeChunksService.embedTexts(
             chunks.map((c) => c.text),
@@ -203,6 +199,7 @@ export class KnowledgeService {
     if (dto.content) {
       await this.knowledgeChunksService.upsertDocChunks(
         id,
+        updated.publicId,
         chunkInputs,
         embeddings,
       );
@@ -236,7 +233,7 @@ export class KnowledgeService {
     const response = await this.openaiService.response<KnowledgeSummary>(
       { message: prompt },
       {
-        ...this.llmModelsService.getKnowledgeMetadataParams(),
+        ...(await this.llmModelsService.getKnowledgeMetadataParams()),
         text: {
           format: {
             ...KnowledgeSummaryFormat.json_schema,

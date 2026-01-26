@@ -5,16 +5,12 @@ import {
   ToolRunnableConfig,
 } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
+import { ZodSchema } from 'zod';
 
 import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
-import {
-  fixRequiredWithDefaults,
-  getSchemaParameterDocs,
-} from '../agent-tools.utils';
+import { zodToAjvSchema } from '../agent-tools.utils';
 
 // NOTE: Zod v4's `z.toJSONSchema` is overloaded (schema vs registry), so
 // `ReturnType<typeof z.toJSONSchema>` resolves to the registry overload.
@@ -58,66 +54,44 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
 
   protected generateTitle?(args: TSchema, config: TConfig): string;
 
-  private ajv = new Ajv({
-    useDefaults: true,
-    coerceTypes: true,
-    removeAdditional: true,
-    // Explicitly configure for JSON Schema draft-07 to match our schema generation
-    strict: false,
-  });
-
-  constructor() {
-    addFormats(this.ajv);
-  }
-
-  protected getSchemaParameterDocs(schema: JSONSchema) {
-    return getSchemaParameterDocs(schema);
-  }
-
   public getDetailedInstructions?(
     config: TConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string;
 
   /**
-   * Returns the JSON Schema for this tool's arguments.
-   *
-   * **Important:** Use `zodToAjvSchema()` helper (from `agent-tools.utils.ts`) to convert
-   * Zod schemas to ensure consistency with Ajv validation (draft-07, definitions vs $defs, etc.).
+   * Returns the Zod schema for this tool's arguments.
    *
    * @example
    * ```ts
-   * import { zodToAjvSchema } from '../../agent-tools.utils';
-   *
    * public get schema() {
-   *   return zodToAjvSchema(MyToolSchema);
+   *   return MyToolSchema;
    * }
    * ```
    */
-  public abstract get schema(): JSONSchema;
+  public abstract get schema(): ZodSchema;
 
   /**
-   * Validates arguments against the JSON schema using Ajv
+   * Returns the JSON Schema (AJV-compatible) for this tool's arguments.
+   * This is automatically derived from the Zod schema.
+   */
+  public get ajvSchema(): JSONSchema {
+    return zodToAjvSchema(this.schema);
+  }
+
+  /**
+   * Validates arguments against the Zod schema
    * @throws Error if validation fails
    */
   public validate(args: unknown): TSchema {
-    const validate = this.ajv.compile(this.schema);
-    if (!validate(args)) {
-      const errors = validate.errors
-        ?.map((err) => `${err.instancePath} ${err.message}`)
-        .join(', ');
-      throw new Error(`Schema validation failed: ${errors}`);
-    }
-    return args as TSchema;
+    return this.schema.parse(args) as TSchema;
   }
 
   protected buildToolConfiguration(config?: ExtendedLangGraphRunnableConfig) {
     return {
       name: this.name,
       description: config?.description || this.description,
-      schema: fixRequiredWithDefaults(this.schema) as Parameters<
-        typeof tool
-      >[1]['schema'],
+      schema: this.schema,
       ...config,
     };
   }

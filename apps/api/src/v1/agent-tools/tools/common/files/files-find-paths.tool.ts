@@ -6,7 +6,6 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -126,7 +125,7 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
   }
 
   public get schema() {
-    return zodToAjvSchema(FilesFindPathsToolSchema);
+    return FilesFindPathsToolSchema;
   }
 
   public async invoke(

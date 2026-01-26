@@ -16,25 +16,16 @@ const QueryExpansionSchema = z.object({
 });
 const QueryExpansionFormat = zodResponseFormat(QueryExpansionSchema, 'data');
 
-const ChunkBoundarySchema = z.object({
-  start: z.number().int().nonnegative(),
-  end: z.number().int().positive(),
-  label: z.string().optional().nullable(),
-});
-const ChunkPlanSchema = z.object({
-  chunks: z.array(ChunkBoundarySchema).min(1),
-});
-
 type SearchBatchItem = Parameters<QdrantService['searchMany']>[1][number];
 type KnowledgeUpsertPoints = Parameters<QdrantService['upsertPoints']>[1];
-type ChunkPlanAttempt = { plan: ChunkPlan | null; reason?: string };
+type QdrantFilter = Parameters<QdrantService['deleteByFilter']>[1];
 
 export type ChunkMaterial = {
   text: string;
   startOffset: number;
   endOffset: number;
-  label?: string | null;
-  keywords?: string[] | null;
+  label?: string;
+  keywords?: string[];
 };
 
 export type StoredChunkInput = {
@@ -42,8 +33,8 @@ export type StoredChunkInput = {
   publicId: number;
   docId: string;
   chunkIndex: number;
-  label?: string | null;
-  keywords?: string[] | null;
+  label?: string;
+  keywords?: string[];
   text: string;
   startOffset: number;
   endOffset: number;
@@ -58,8 +49,6 @@ export type KnowledgeIndexResult = {
   text: string;
   snippet: string;
 };
-
-type ChunkPlan = z.infer<typeof ChunkPlanSchema>;
 
 @Injectable()
 export class KnowledgeChunksService {
@@ -79,7 +68,7 @@ export class KnowledgeChunksService {
     });
   }
 
-  async generateChunkPlan(content: string): Promise<ChunkPlan> {
+  async generateChunkPlan(content: string): Promise<KnowledgeChunkBoundary[]> {
     const plan = await this.buildChunkPlanFromTextSplitter(content);
     if (!plan) {
       throw new BadRequestException('INVALID_CHUNK_PLAN');
@@ -95,8 +84,7 @@ export class KnowledgeChunksService {
       text: content.slice(boundary.start, boundary.end),
       startOffset: boundary.start,
       endOffset: boundary.end,
-      label: boundary.label ?? null,
-      keywords: null,
+      label: boundary.label ?? undefined,
     }));
   }
 
@@ -160,10 +148,11 @@ export class KnowledgeChunksService {
 
   async upsertDocChunks(
     docId: string,
+    docPublicId: number,
     chunks: ChunkMaterial[],
     embeddings: number[][],
   ): Promise<void> {
-    const storedChunks = this.buildStoredChunks(docId, chunks);
+    const storedChunks = this.buildStoredChunks(docId, docPublicId, chunks);
     await this.qdrantService.deleteByFilter(
       this.knowledgeCollection,
       this.buildDocFilter([docId]),
@@ -196,7 +185,7 @@ export class KnowledgeChunksService {
   }
 
   private get knowledgeCollection() {
-    return 'knowledge_chunks';
+    return environment.knowledgeChunksCollection ?? 'knowledge_chunks';
   }
 
   private buildSearchBatch(
@@ -213,18 +202,7 @@ export class KnowledgeChunksService {
     }));
   }
 
-  private buildDocFilter(docIds: string[]) {
-    if (docIds.length === 1) {
-      return {
-        must: [
-          {
-            key: 'docId',
-            match: { value: docIds[0] },
-          },
-        ],
-      };
-    }
-
+  private buildDocFilter(docIds: string[]): QdrantFilter {
     return {
       must: [
         {
@@ -237,21 +215,27 @@ export class KnowledgeChunksService {
 
   private buildStoredChunks(
     docId: string,
+    docPublicId: number,
     chunks: ChunkMaterial[],
   ): StoredChunkInput[] {
     const createdAt = new Date().toISOString();
     return chunks.map((chunk, index) => ({
       id: uuidv4(),
-      publicId: index + 1,
+      publicId: this.buildChunkPublicId(docPublicId, index),
       docId,
       chunkIndex: index,
-      label: chunk.label ?? null,
-      keywords: chunk.keywords ?? null,
+      label: chunk.label,
+      keywords: chunk.keywords,
       text: chunk.text,
       startOffset: chunk.startOffset,
       endOffset: chunk.endOffset,
       createdAt,
     }));
+  }
+
+  private buildChunkPublicId(docPublicId: number, chunkIndex: number): number {
+    const offset = environment.knowledgeChunkMaxCount + 1;
+    return docPublicId * offset + chunkIndex + 1;
   }
 
   private buildVectorPoints(
@@ -269,21 +253,28 @@ export class KnowledgeChunksService {
       });
     }
 
-    return chunks.map((chunk, index) => ({
-      id: chunk.id,
-      vector: embeddings[index] ?? [],
-      payload: {
-        docId: chunk.docId,
-        publicId: chunk.publicId,
-        chunkIndex: chunk.chunkIndex,
-        label: chunk.label ?? null,
-        keywords: chunk.keywords ?? null,
-        text: chunk.text,
-        startOffset: chunk.startOffset,
-        endOffset: chunk.endOffset,
-        createdAt: chunk.createdAt,
-      },
-    }));
+    return chunks.map((chunk, index) => {
+      const vector = embeddings[index];
+      if (!vector) {
+        throw new InternalException('EMBEDDING_MISSING', { index });
+      }
+
+      return {
+        id: chunk.id,
+        vector,
+        payload: {
+          docId: chunk.docId,
+          publicId: chunk.publicId,
+          chunkIndex: chunk.chunkIndex,
+          label: chunk.label,
+          keywords: chunk.keywords,
+          text: chunk.text,
+          startOffset: chunk.startOffset,
+          endOffset: chunk.endOffset,
+          createdAt: chunk.createdAt,
+        },
+      };
+    });
   }
 
   private parseStoredChunk(
@@ -296,8 +287,8 @@ export class KnowledgeChunksService {
       docId: payload.docId,
       publicId: payload.publicId,
       chunkIndex: payload.chunkIndex,
-      label: payload.label ?? null,
-      keywords: payload.keywords ?? null,
+      label: payload.label,
+      keywords: payload.keywords,
       text: payload.text,
       startOffset: payload.startOffset,
       endOffset: payload.endOffset,
@@ -334,6 +325,9 @@ export class KnowledgeChunksService {
       { message: prompt },
       {
         model: this.llmModelsService.getKnowledgeSearchModel(),
+        reasoning: {
+          effort: 'none',
+        },
         text: {
           format: {
             ...QueryExpansionFormat.json_schema,
@@ -469,11 +463,14 @@ export class KnowledgeChunksService {
     return text.replace(/\s+/g, ' ').trim();
   }
 
-  private async validateChunkPlan(
+  private validateChunkPlan(
     content: string,
-    plan: ChunkPlan,
-  ): Promise<string | null> {
-    const chunks = [...plan.chunks].sort((a, b) => a.start - b.start);
+    plan: KnowledgeChunkBoundary[],
+  ): string | null {
+    const chunks = [...plan].sort((a, b) => a.start - b.start);
+    if (chunks.length === 0) {
+      return 'Chunk plan is empty';
+    }
     if (chunks.length > environment.knowledgeChunkMaxCount) {
       return `Chunk count ${chunks.length} exceeds max ${environment.knowledgeChunkMaxCount}`;
     }
@@ -519,7 +516,7 @@ export class KnowledgeChunksService {
 
   private async buildChunkPlanFromTextSplitter(
     content: string,
-  ): Promise<ChunkPlan | null> {
+  ): Promise<KnowledgeChunkBoundary[] | null> {
     const maxTokens = environment.knowledgeChunkMaxTokens;
     const maxChars = Math.max(200, maxTokens * 4);
     const maxCount = environment.knowledgeChunkMaxCount;
@@ -546,14 +543,14 @@ export class KnowledgeChunksService {
       });
 
       const splits = await splitter.splitText(content);
-      const attempt = this.buildChunkPlanFromSplits(splits, content, maxCount);
-      if (!attempt.plan) {
+      const plan = this.buildChunkPlanFromSplits(splits, content, maxCount);
+      if (!plan) {
         continue;
       }
 
-      const error = await this.validateChunkPlan(content, attempt.plan);
+      const error = this.validateChunkPlan(content, plan);
       if (!error) {
-        return attempt.plan;
+        return plan;
       }
     }
 
@@ -564,19 +561,22 @@ export class KnowledgeChunksService {
     const sizes: number[] = [];
     let current = maxChars;
     while (current >= 100) {
-      sizes.push(Math.floor(current));
+      const size = Math.floor(current);
+      if (sizes[sizes.length - 1] !== size) {
+        sizes.push(size);
+      }
       current *= 0.8;
     }
-    return Array.from(new Set(sizes));
+    return sizes;
   }
 
   private buildChunkPlanFromSplits(
     splits: string[],
     content: string,
     maxCount: number,
-  ): ChunkPlanAttempt {
+  ): KnowledgeChunkBoundary[] | null {
     if (splits.length === 0) {
-      return { plan: null, reason: 'EMPTY_SPLITS' };
+      return null;
     }
 
     const chunks: KnowledgeChunkBoundary[] = [];
@@ -584,41 +584,41 @@ export class KnowledgeChunksService {
 
     for (const split of splits) {
       if (!split) {
-        return { plan: null, reason: 'EMPTY_SPLIT' };
+        return null;
       }
       const matchIndex = content.indexOf(split, offset);
       if (matchIndex === -1) {
-        return { plan: null, reason: 'SPLIT_NOT_FOUND' };
+        return null;
       }
       const gap = content.slice(offset, matchIndex);
       if (/\S/.test(gap)) {
-        return { plan: null, reason: 'GAP_NOT_WHITESPACE' };
+        return null;
       }
 
       const start = offset;
       const end = matchIndex + split.length;
       if (end <= start) {
-        return { plan: null, reason: 'INVALID_SPLIT_RANGE' };
+        return null;
       }
-      chunks.push({ start, end, label: null });
+      chunks.push({ start, end });
       offset = end;
       if (chunks.length > maxCount) {
-        return { plan: null, reason: 'CHUNK_COUNT_EXCEEDED' };
+        return null;
       }
     }
 
     if (offset !== content.length) {
       const remainder = content.slice(offset);
       if (/\S/.test(remainder)) {
-        return { plan: null, reason: 'OFFSET_MISMATCH' };
+        return null;
       }
       const lastChunk = chunks[chunks.length - 1];
       if (!lastChunk) {
-        return { plan: null, reason: 'OFFSET_MISMATCH' };
+        return null;
       }
       lastChunk.end = content.length;
     }
 
-    return { plan: { chunks } };
+    return chunks;
   }
 }

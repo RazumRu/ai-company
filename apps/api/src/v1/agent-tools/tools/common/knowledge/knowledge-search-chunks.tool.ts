@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
 import { KnowledgeChunksService } from '../../../../knowledge/services/knowledge-chunks.service';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -73,7 +72,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
   }
 
   public get schema() {
-    return zodToAjvSchema(KnowledgeSearchChunksSchema);
+    return KnowledgeSearchChunksSchema;
   }
 
   public async invoke(

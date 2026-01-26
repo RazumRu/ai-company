@@ -52,3 +52,30 @@ export type MessageTokenUsage = {
   totalTokens: number;
   totalPrice?: number;
 };
+
+export type LLMTokenCostRates = {
+  inputCostPerToken: number;
+  outputCostPerToken: number;
+  inputCostPerCachedToken?: number;
+  outputCostPerReasoningToken?: number;
+};
+
+export type LiteLLMModelInfo = {
+  model_name: string;
+  litellm_params: {
+    model: string;
+    [key: string]: unknown;
+  };
+  model_info: {
+    key: string;
+    input_cost_per_token?: number;
+    input_cost_per_token_cache_hit?: number;
+    cache_read_input_token_cost?: number;
+    output_cost_per_token?: number;
+    output_cost_per_reasoning_token?: number;
+    supports_response_schema?: boolean;
+    supports_reasoning?: boolean;
+    supports_function_calling?: boolean;
+    supports_parallel_function_calling?: boolean;
+  } | null;
+};

@@ -3,7 +3,6 @@ import { tavily } from '@tavily/core';
 import dedent from 'dedent';
 import { z } from 'zod';
 
-import { zodToAjvSchema } from '../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -101,7 +100,7 @@ export class WebSearchTool extends BaseTool<
   }
 
   public get schema() {
-    return zodToAjvSchema(WebSearchToolSchema);
+    return WebSearchToolSchema;
   }
 
   public async invoke(

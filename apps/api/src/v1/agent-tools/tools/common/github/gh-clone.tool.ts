@@ -6,7 +6,6 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -92,7 +91,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   }
 
   public get schema() {
-    return zodToAjvSchema(GhCloneToolSchema);
+    return GhCloneToolSchema;
   }
 
   public async invoke(

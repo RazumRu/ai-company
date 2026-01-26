@@ -10,7 +10,6 @@ import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
 import { KnowledgeDocEntity } from '../../../../knowledge/entity/knowledge-doc.entity';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../../../openai/openai.service';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -94,7 +93,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
   }
 
   public get schema() {
-    return zodToAjvSchema(KnowledgeSearchDocsSchema);
+    return KnowledgeSearchDocsSchema;
   }
 
   public async invoke(
@@ -206,6 +205,9 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       { message: prompt },
       {
         model: this.llmModelsService.getKnowledgeSearchModel(),
+        reasoning: {
+          effort: 'none',
+        },
         text: {
           format: {
             ...compiledSchema.json_schema,

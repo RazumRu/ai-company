@@ -1,14 +1,16 @@
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { environment } from '../../../environments';
 import { KnowledgeGetChunksTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-get-chunks.tool';
 import { KnowledgeGetDocTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-get-doc.tool';
 import { KnowledgeSearchChunksTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-chunks.tool';
 import { KnowledgeSearchDocsTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-docs.tool';
 import { KnowledgeDocDao } from '../../../v1/knowledge/dao/knowledge-doc.dao';
 import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.service';
+import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 describe('Knowledge tools (integration)', () => {
@@ -19,6 +21,8 @@ describe('Knowledge tools (integration)', () => {
   let getChunksTool: KnowledgeGetChunksTool;
   let getDocTool: KnowledgeGetDocTool;
   let docDao: KnowledgeDocDao;
+  let qdrantService: QdrantService;
+  const testUserId = TEST_USER_ID;
   const createdDocIds: string[] = [];
 
   beforeAll(async () => {
@@ -29,6 +33,7 @@ describe('Knowledge tools (integration)', () => {
     getChunksTool = await app.resolve(KnowledgeGetChunksTool);
     getDocTool = await app.resolve(KnowledgeGetDocTool);
     docDao = app.get(KnowledgeDocDao);
+    qdrantService = app.get(QdrantService);
     const dataSource = app.get(DataSource);
     await dataSource.synchronize();
   }, 120_000);
@@ -41,6 +46,15 @@ describe('Knowledge tools (integration)', () => {
   });
 
   afterAll(async () => {
+    const collectionName =
+      environment.knowledgeChunksCollection ?? 'knowledge_chunks';
+    const collections = await qdrantService.raw.getCollections();
+    const exists = collections.collections.some(
+      (collection) => collection.name === collectionName,
+    );
+    if (exists) {
+      await qdrantService.raw.deleteCollection(collectionName);
+    }
     await app?.close();
   });
 
@@ -80,7 +94,7 @@ describe('Knowledge tools (integration)', () => {
         {
           configurable: {
             thread_id: 'thread-1',
-            graph_created_by: TEST_USER_ID,
+            graph_created_by: testUserId,
           },
         },
       );
@@ -120,7 +134,7 @@ describe('Knowledge tools (integration)', () => {
         {
           configurable: {
             thread_id: 'thread-1',
-            graph_created_by: TEST_USER_ID,
+            graph_created_by: testUserId,
           },
         },
       );
@@ -141,7 +155,7 @@ describe('Knowledge tools (integration)', () => {
         {
           configurable: {
             thread_id: 'thread-1',
-            graph_created_by: TEST_USER_ID,
+            graph_created_by: testUserId,
           },
         },
       );
@@ -212,7 +226,7 @@ describe('Knowledge tools (integration)', () => {
         {
           configurable: {
             thread_id: 'thread-1',
-            graph_created_by: TEST_USER_ID,
+            graph_created_by: testUserId,
           },
         },
       );
@@ -234,7 +248,7 @@ describe('Knowledge tools (integration)', () => {
         {
           configurable: {
             thread_id: 'thread-1',
-            graph_created_by: TEST_USER_ID,
+            graph_created_by: testUserId,
           },
         },
       );
@@ -251,7 +265,7 @@ describe('Knowledge tools (integration)', () => {
         {
           configurable: {
             thread_id: 'thread-1',
-            graph_created_by: TEST_USER_ID,
+            graph_created_by: testUserId,
           },
         },
       );
@@ -282,7 +296,7 @@ describe('Knowledge tools (integration)', () => {
         {
           configurable: {
             thread_id: 'thread-1',
-            graph_created_by: TEST_USER_ID,
+            graph_created_by: testUserId,
           },
         },
       );
@@ -298,7 +312,7 @@ describe('Knowledge tools (integration)', () => {
           {
             configurable: {
               thread_id: 'thread-1',
-              graph_created_by: TEST_USER_ID,
+              graph_created_by: testUserId,
             },
           },
         ),

@@ -1,10 +1,12 @@
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { environment } from '../../../environments';
 import { KnowledgeDocDao } from '../../../v1/knowledge/dao/knowledge-doc.dao';
 import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.service';
 import { KnowledgeChunksService } from '../../../v1/knowledge/services/knowledge-chunks.service';
+import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
 import { createTestModule } from '../setup';
 
 describe('KnowledgeService (integration)', () => {
@@ -12,6 +14,7 @@ describe('KnowledgeService (integration)', () => {
   let knowledgeService: KnowledgeService;
   let knowledgeChunksService: KnowledgeChunksService;
   let docDao: KnowledgeDocDao;
+  let qdrantService: QdrantService;
   const createdDocIds: string[] = [];
 
   beforeAll(async () => {
@@ -19,6 +22,7 @@ describe('KnowledgeService (integration)', () => {
     knowledgeService = app.get(KnowledgeService);
     knowledgeChunksService = app.get(KnowledgeChunksService);
     docDao = app.get(KnowledgeDocDao);
+    qdrantService = app.get(QdrantService);
     const dataSource = app.get(DataSource);
     await dataSource.synchronize();
   }, 120_000);
@@ -31,6 +35,15 @@ describe('KnowledgeService (integration)', () => {
   });
 
   afterAll(async () => {
+    const collectionName =
+      environment.knowledgeChunksCollection ?? 'knowledge_chunks';
+    const collections = await qdrantService.raw.getCollections();
+    const exists = collections.collections.some(
+      (collection) => collection.name === collectionName,
+    );
+    if (exists) {
+      await qdrantService.raw.deleteCollection(collectionName);
+    }
     await app?.close();
   });
 

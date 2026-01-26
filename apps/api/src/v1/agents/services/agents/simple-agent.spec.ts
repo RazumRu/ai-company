@@ -250,7 +250,6 @@ describe('SimpleAgent', () => {
       expect(ChatOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({
           model: 'gpt-5-mini',
-          useResponsesApi: true,
         }),
       );
     });

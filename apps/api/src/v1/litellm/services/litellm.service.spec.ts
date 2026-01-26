@@ -1,9 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LiteLLMModelInfo } from '../litellm.types';
 import { LitellmService } from './litellm.service';
 
-const createSvc = () =>
-  new LitellmService({ listModels: vi.fn() } as unknown as never);
+const buildModelInfo = (
+  overrides: Partial<LiteLLMModelInfo['model_info']> = {},
+): LiteLLMModelInfo => ({
+  model_name: 'gpt-4',
+  litellm_params: { model: 'openai/gpt-4' },
+  model_info: {
+    key: 'gpt-4',
+    input_cost_per_token: 0.00003,
+    output_cost_per_token: 0.00006,
+    ...overrides,
+  },
+});
+
+const createSvc = (modelInfo: LiteLLMModelInfo | null = null) => {
+  return new LitellmService({
+    listModels: vi.fn(),
+    getModelInfo: vi.fn().mockResolvedValue(modelInfo),
+  } as unknown as never);
+};
 
 describe('LitellmService', () => {
   beforeEach(() => {
@@ -19,15 +37,7 @@ describe('LitellmService', () => {
 
   describe('extractTokenUsageFromResponse', () => {
     it('returns a zeroed usage object when usage_metadata is missing', async () => {
-      const svc = createSvc();
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({}),
-        }),
-      );
+      const svc = createSvc(null);
       await expect(svc.extractTokenUsageFromResponse('gpt-4')).resolves.toEqual(
         {
           inputTokens: 0,
@@ -42,21 +52,7 @@ describe('LitellmService', () => {
     });
 
     it('extracts token usage from usage_metadata', async () => {
-      const svc = createSvc();
-
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            'gpt-4': {
-              input_cost_per_token: 0.00003,
-              output_cost_per_token: 0.00006,
-            },
-          }),
-        }),
-      );
+      const svc = createSvc(buildModelInfo());
 
       const result = await svc.extractTokenUsageFromResponse('gpt-4', {
         input_tokens: 10,
@@ -75,21 +71,7 @@ describe('LitellmService', () => {
     });
 
     it('extracts token usage with cached tokens', async () => {
-      const svc = createSvc();
-
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            'gpt-4': {
-              input_cost_per_token: 0.00003,
-              output_cost_per_token: 0.00006,
-            },
-          }),
-        }),
-      );
+      const svc = createSvc(buildModelInfo());
 
       const result = await svc.extractTokenUsageFromResponse('gpt-4', {
         input_tokens: 10,
@@ -106,19 +88,9 @@ describe('LitellmService', () => {
     });
 
     it('calculates price with cached tokens correctly', async () => {
-      const svc = createSvc();
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          'gpt-4': {
-            input_cost_per_token: 0.00003,
-            input_cost_per_token_cache_hit: 0.00001,
-            output_cost_per_token: 0.00006,
-          },
-        }),
-      });
-      vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+      const svc = createSvc(
+        buildModelInfo({ input_cost_per_token_cache_hit: 0.00001 }),
+      );
 
       const result = await svc.extractTokenUsageFromResponse('gpt-4', {
         input_tokens: 100,
@@ -136,21 +108,7 @@ describe('LitellmService', () => {
     });
 
     it('calculates price when no cached/reasoning tokens', async () => {
-      const svc = createSvc();
-
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            'gpt-4': {
-              input_cost_per_token: 0.00003,
-              output_cost_per_token: 0.00006,
-            },
-          }),
-        }),
-      );
+      const svc = createSvc(buildModelInfo());
 
       const result = await svc.extractTokenUsageFromResponse('gpt-4', {
         input_tokens: 10,
@@ -167,19 +125,9 @@ describe('LitellmService', () => {
 
   describe('estimateThreadTotalPriceFromModelRates', () => {
     it('calculates price with cached tokens correctly', async () => {
-      const svc = createSvc();
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          'gpt-4': {
-            input_cost_per_token: 0.00003,
-            input_cost_per_token_cache_hit: 0.000015,
-            output_cost_per_token: 0.00006,
-          },
-        }),
-      });
-      vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+      const svc = createSvc(
+        buildModelInfo({ input_cost_per_token_cache_hit: 0.000015 }),
+      );
 
       const price = await svc.estimateThreadTotalPriceFromModelRates({
         model: 'gpt-4',
@@ -197,19 +145,9 @@ describe('LitellmService', () => {
 
   describe('getTokenCostRatesForModel', () => {
     it('returns cost rates for a model', async () => {
-      const svc = createSvc();
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          'gpt-4': {
-            input_cost_per_token: 0.00003,
-            output_cost_per_token: 0.00006,
-            input_cost_per_token_cache_hit: 0.000015,
-          },
-        }),
-      });
-      vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+      const svc = createSvc(
+        buildModelInfo({ input_cost_per_token_cache_hit: 0.000015 }),
+      );
 
       const rates = await svc.getTokenCostRatesForModel('gpt-4');
 
@@ -221,13 +159,7 @@ describe('LitellmService', () => {
     });
 
     it('returns null for unknown model', async () => {
-      const svc = createSvc();
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({}),
-      });
-      vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+      const svc = createSvc(null);
 
       const rates = await svc.getTokenCostRatesForModel('unknown-model');
 

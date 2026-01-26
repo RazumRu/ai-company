@@ -4,32 +4,26 @@ import Decimal from 'decimal.js';
 
 import { environment } from '../../../environments';
 import { LiteLlmModelDto } from '../dto/models.dto';
-import { RequestTokenUsage, UsageMetadata } from '../litellm.types';
+import {
+  LiteLLMModelInfo,
+  LLMTokenCostRates,
+  RequestTokenUsage,
+  UsageMetadata,
+} from '../litellm.types';
 import { LiteLlmClient } from './litellm.client';
-
-type LiteLLMModelPriceEntry = Record<string, unknown>;
-type TokenCostRates = {
-  inputCostPerToken: number;
-  outputCostPerToken: number;
-  inputCostPerCachedToken?: number;
-  outputCostPerReasoningToken?: number;
-};
-
-export type MessageCostDirection = 'input' | 'output' | 'reasoning';
 
 @Injectable()
 export class LitellmService {
-  private static readonly MODEL_PRICES_URL =
-    'https://raw.githubusercontent.com/BerriAI/litellm/refs/heads/main/model_prices_and_context_window.json';
-  private static readonly MODEL_PRICES_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+  private static readonly MODEL_INFO_TTL_MS = 12 * 60 * 60 * 1000; // 12h
 
-  private modelPricesCache: {
-    expiresAt: number;
-    data: Record<string, LiteLLMModelPriceEntry>;
-  } | null = null;
-  private modelPricesInFlight: Promise<
-    Record<string, LiteLLMModelPriceEntry>
-  > | null = null;
+  private modelInfoCache = new Map<
+    string,
+    { expiresAt: number; data: LiteLLMModelInfo }
+  >();
+  private modelInfoInFlight = new Map<
+    string,
+    Promise<LiteLLMModelInfo | null>
+  >();
 
   constructor(private readonly liteLlmClient: LiteLlmClient) {}
 
@@ -161,58 +155,62 @@ export class LitellmService {
 
   async getTokenCostRatesForModel(
     model: string,
-  ): Promise<TokenCostRates | null> {
-    if (!model || typeof model !== 'string') return null;
-    const prices = await this.getLiteLLMModelPrices();
-
-    const candidates = [
-      model,
-      model.toLowerCase(),
-      model.includes('/') ? (model.split('/').pop() ?? model) : undefined,
-      model.toLowerCase().includes('/')
-        ? model.toLowerCase().split('/').pop()
-        : undefined,
-    ].filter((x): x is string => typeof x === 'string' && x.length > 0);
-
-    const entry =
-      candidates.map((c) => prices[c]).find((e) => e !== undefined) ?? null;
-    if (!entry) {
+  ): Promise<LLMTokenCostRates | null> {
+    const entry = await this.getLiteLLMModelInfo(model);
+    const modelInfo = entry?.model_info ?? null;
+    if (!modelInfo) {
       return null;
     }
 
-    // Helper to read number or string number
-    const readNumish = (v: unknown): number | undefined => {
-      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
-      if (typeof v === 'string' && v.length > 0) {
-        const n = Number(v);
-        return Number.isFinite(n) && n >= 0 ? n : undefined;
-      }
-      return undefined;
-    };
-
-    const inputCostPerToken = readNumish(entry.input_cost_per_token);
-    const outputCostPerToken = readNumish(entry.output_cost_per_token);
-    if (inputCostPerToken === undefined || outputCostPerToken === undefined) {
+    const inputCostPerToken = Number(modelInfo.input_cost_per_token);
+    const outputCostPerToken = Number(modelInfo.output_cost_per_token);
+    if (isNaN(inputCostPerToken) || isNaN(outputCostPerToken)) {
       return null;
     }
 
-    const inputCostPerCachedToken =
-      readNumish(entry.input_cost_per_token_cache_hit) ??
-      readNumish(entry.cache_read_input_token_cost);
-    const outputCostPerReasoningToken = readNumish(
-      entry.output_cost_per_reasoning_token,
+    const inputCostPerCachedToken = Number(
+      modelInfo.input_cost_per_token_cache_hit ??
+        modelInfo.cache_read_input_token_cost,
+    );
+    const outputCostPerReasoningToken = Number(
+      modelInfo.output_cost_per_reasoning_token,
     );
 
     return {
       inputCostPerToken,
       outputCostPerToken,
-      ...(inputCostPerCachedToken !== undefined
-        ? { inputCostPerCachedToken }
-        : {}),
-      ...(outputCostPerReasoningToken !== undefined
+      ...(!isNaN(inputCostPerCachedToken) ? { inputCostPerCachedToken } : {}),
+      ...(!isNaN(outputCostPerReasoningToken)
         ? { outputCostPerReasoningToken }
         : {}),
     };
+  }
+
+  async supportsResponsesApi(model: string): Promise<boolean> {
+    const entry = await this.getLiteLLMModelInfo(model);
+    if (!entry) {
+      return true;
+    }
+
+    return !!entry.model_info?.supports_response_schema;
+  }
+
+  async supportsReasoning(model: string): Promise<boolean> {
+    const entry = await this.getLiteLLMModelInfo(model);
+    if (!entry) {
+      return true;
+    }
+
+    return !!entry.model_info?.supports_reasoning;
+  }
+
+  async supportsParallelToolCall(model: string): Promise<boolean> {
+    const entry = await this.getLiteLLMModelInfo(model);
+    if (!entry) {
+      return true;
+    }
+
+    return !!entry.model_info?.supports_parallel_function_calling;
   }
 
   async estimateThreadTotalPriceFromModelRates(args: {
@@ -251,49 +249,40 @@ export class LitellmService {
       .toNumber();
   }
 
-  private async getLiteLLMModelPrices(): Promise<
-    Record<string, LiteLLMModelPriceEntry>
-  > {
+  private async getLiteLLMModelInfo(
+    model: string,
+  ): Promise<LiteLLMModelInfo | null> {
+    if (!model) {
+      return null;
+    }
+
     const now = Date.now();
-    if (this.modelPricesCache && this.modelPricesCache.expiresAt > now) {
-      return this.modelPricesCache.data;
-    }
-    if (this.modelPricesInFlight) {
-      return this.modelPricesInFlight;
+    const cached = this.modelInfoCache.get(model);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
     }
 
-    this.modelPricesInFlight = (async () => {
-      const fetchFn = globalThis.fetch;
-      if (typeof fetchFn !== 'function') {
-        throw new Error('fetch is not available in this runtime');
-      }
+    const inFlight = this.modelInfoInFlight.get(model);
+    if (inFlight) {
+      return inFlight;
+    }
 
-      const res = await fetchFn(LitellmService.MODEL_PRICES_URL);
-      if (!res.ok) {
-        throw new Error(`Failed to fetch model prices: ${res.status}`);
+    const promise = (async () => {
+      const entry = await this.liteLlmClient.getModelInfo(model);
+      if (!entry) {
+        return null;
       }
-      const json = (await res.json()) as unknown;
-      if (!json || typeof json !== 'object' || Array.isArray(json)) {
-        throw new Error('Invalid model prices JSON');
-      }
-
-      const out: Record<string, LiteLLMModelPriceEntry> = {};
-      for (const [k, v] of Object.entries(json as Record<string, unknown>)) {
-        if (v && typeof v === 'object' && !Array.isArray(v)) {
-          out[k] = v as LiteLLMModelPriceEntry;
-        }
-      }
-
-      this.modelPricesCache = {
-        expiresAt: Date.now() + LitellmService.MODEL_PRICES_TTL_MS,
-        data: out,
-      };
-      return out;
+      this.modelInfoCache.set(model, {
+        expiresAt: Date.now() + LitellmService.MODEL_INFO_TTL_MS,
+        data: entry,
+      });
+      return entry;
     })().finally(() => {
-      this.modelPricesInFlight = null;
+      this.modelInfoInFlight.delete(model);
     });
 
-    return this.modelPricesInFlight;
+    this.modelInfoInFlight.set(model, promise);
+    return promise;
   }
 
   private isOfflineModel(model: string): boolean {

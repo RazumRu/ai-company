@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { environment } from '../../../environments';
+import { LitellmService } from './litellm.service';
 
 @Injectable()
 export class LlmModelsService {
@@ -9,6 +10,8 @@ export class LlmModelsService {
     medium: { effort: 'medium' as const },
     high: { effort: 'high' as const },
   };
+
+  constructor(private readonly litellmService: LitellmService) {}
 
   private offlineGeneralFallback(model: string): string {
     return environment.llmUseOfflineModel
@@ -28,44 +31,22 @@ export class LlmModelsService {
       : model;
   }
 
-  private buildResponseParams(
+  private async buildResponseParams(
     model: string,
     reasoning?: (typeof LlmModelsService.DEFAULT_REASONING)[keyof typeof LlmModelsService.DEFAULT_REASONING],
-  ): { model: string; reasoning?: { effort: 'low' | 'medium' | 'high' } } {
-    if (
-      !reasoning ||
-      this.isModelInList(model, environment.llmNoReasoningModels)
-    ) {
+  ): Promise<{
+    model: string;
+    reasoning?: { effort: 'low' | 'medium' | 'high' };
+  }> {
+    if (!reasoning) {
+      return { model };
+    }
+    const supportsReasoning =
+      await this.litellmService.supportsReasoning(model);
+    if (!supportsReasoning) {
       return { model };
     }
     return { model, reasoning };
-  }
-
-  private isModelInList(model: string, list: string): boolean {
-    if (!model) {
-      return false;
-    }
-
-    const entries = list
-      .split(',')
-      .map((entry) => entry.trim().toLowerCase())
-      .filter(Boolean);
-    if (!entries.length) {
-      return false;
-    }
-
-    const normalized = model.toLowerCase();
-    if (entries.includes(normalized)) {
-      return true;
-    }
-
-    const normalizedShort = normalized.includes('/')
-      ? normalized.split('/').pop()
-      : normalized;
-    return entries.some((entry) => {
-      const entryShort = entry.includes('/') ? entry.split('/').pop() : entry;
-      return normalizedShort === entryShort;
-    });
   }
 
   getSummarizeModel(): string {
@@ -80,10 +61,10 @@ export class LlmModelsService {
     return this.offlineGeneralFallback(environment.llmMiniModel);
   }
 
-  getFilesEditParams(smart: boolean): {
+  async getFilesEditParams(smart: boolean): Promise<{
     model: string;
     reasoning?: { effort: 'low' | 'medium' | 'high' };
-  } {
+  }> {
     const model = smart
       ? environment.llmLargeCodeModel
       : environment.llmMiniCodeModel;
@@ -94,10 +75,10 @@ export class LlmModelsService {
     );
   }
 
-  getKnowledgeMetadataParams(): {
+  async getKnowledgeMetadataParams(): Promise<{
     model: string;
     reasoning?: { effort: 'low' | 'medium' | 'high' };
-  } {
+  }> {
     return this.buildResponseParams(
       this.offlineGeneralFallback(environment.llmMiniModel),
       LlmModelsService.DEFAULT_REASONING.medium,

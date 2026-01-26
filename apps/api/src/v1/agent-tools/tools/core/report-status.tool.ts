@@ -6,7 +6,6 @@ import { z } from 'zod';
 
 import { markMessageHideForLlm } from '../../../agents/agents.utils';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../agent-tools.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -60,7 +59,7 @@ export class ReportStatusTool extends BaseTool<ReportStatusToolSchemaType> {
   }
 
   public get schema() {
-    return zodToAjvSchema(ReportStatusToolSchema);
+    return ReportStatusToolSchema;
   }
 
   public invoke(

@@ -4,7 +4,6 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -82,7 +81,7 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
   }
 
   public get schema() {
-    return zodToAjvSchema(GhBranchToolSchema);
+    return GhBranchToolSchema;
   }
 
   /**

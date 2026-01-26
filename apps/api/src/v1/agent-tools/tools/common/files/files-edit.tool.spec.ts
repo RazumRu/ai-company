@@ -35,7 +35,7 @@ describe('FilesEditTool', () => {
 
     mockLlmModelsService = {
       getFilesEditModel: vi.fn().mockReturnValue('gpt-5-mini'),
-      getFilesEditParams: vi.fn().mockReturnValue({ model: 'gpt-5-mini' }),
+      getFilesEditParams: vi.fn().mockResolvedValue({ model: 'gpt-5-mini' }),
     } as unknown as LlmModelsService;
 
     tool = new FilesEditTool(
@@ -73,8 +73,11 @@ describe('FilesEditTool', () => {
     it('should have valid schema', () => {
       const schema = tool.schema;
       expect(schema).toBeDefined();
-      expect(schema.type).toBe('object');
-      expect(schema.properties).toBeDefined();
+      // schema is now a ZodSchema, check ajvSchema for JSON schema properties
+      const ajvSchema = tool.ajvSchema;
+      expect(ajvSchema).toBeDefined();
+      expect(ajvSchema).toHaveProperty('type', 'object');
+      expect(ajvSchema).toHaveProperty('properties');
     });
   });
 

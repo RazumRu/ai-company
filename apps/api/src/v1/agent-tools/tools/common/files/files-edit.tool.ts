@@ -12,7 +12,6 @@ import type { RequestTokenUsage } from '../../../../litellm/litellm.types';
 import { LitellmService } from '../../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../../../openai/openai.service';
-import { zodToAjvSchema } from '../../../agent-tools.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -164,7 +163,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   }
 
   public get schema() {
-    return zodToAjvSchema(FilesEditToolSchema);
+    return FilesEditToolSchema;
   }
 
   public getDetailedInstructions(
@@ -339,7 +338,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
       const callLLM = async (message: string) => {
         const modelParams =
-          this.llmModelsService.getFilesEditParams(useSmartModel);
+          await this.llmModelsService.getFilesEditParams(useSmartModel);
         const result = await this.openaiService.response(
           { message },
           {
