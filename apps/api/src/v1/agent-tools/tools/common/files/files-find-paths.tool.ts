@@ -29,7 +29,6 @@ export const FilesFindPathsToolSchema = z.object({
   includeSubdirectories: z
     .boolean()
     .optional()
-    .default(true)
     .describe(
       'Search in subdirectories recursively. Set to false to only search the specified directory.',
     ),
@@ -52,7 +51,6 @@ export const FilesFindPathsToolSchema = z.object({
     .int()
     .positive()
     .optional()
-    .default(200)
     .describe('Maximum number of file paths to return (default: 200)'),
 });
 

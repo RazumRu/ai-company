@@ -19,9 +19,10 @@ import {
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import { v4 } from 'uuid';
-import { z } from 'zod';
+import { z, ZodSchema } from 'zod';
 
 import { BaseMcp } from '../../../agent-mcp/services/base-mcp';
+import { zodToAjvSchema } from '../../../agent-tools/agent-tools.utils';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { ReportStatusTool } from '../../../agent-tools/tools/core/report-status.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
@@ -59,15 +60,15 @@ export const SimpleAgentSchema = z.object({
     .meta({ 'x-ui:textarea': true }),
   summarizeMaxTokens: z
     .number()
+    .catch(272000)
     .optional()
-    .default(272000)
     .describe(
       'Total token budget for summary + recent context. If current history exceeds this, older messages are folded into the rolling summary.',
     ),
   summarizeKeepTokens: z
     .number()
-    .optional()
     .default(30000)
+    .optional()
     .describe(
       'Token budget reserved for the most recent messages kept verbatim when summarizing (the "tail").',
     ),
@@ -86,8 +87,8 @@ export const SimpleAgentSchema = z.object({
     .meta({ 'x-ui:litellm-models-list-select': true }),
   invokeModelReasoningEffort: z
     .enum(ReasoningEffort)
-    .optional()
     .default(ReasoningEffort.None)
+    .optional()
     .describe('Reasoning effort')
     .meta({ 'x-ui:show-on-node': true })
     .meta({ 'x-ui:label': 'Reasoning' }),
@@ -254,8 +255,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         this.litellmService,
         this.buildLLM(this.llmModelsService.getSummarizeModel()),
         {
-          maxTokens: config.summarizeMaxTokens,
-          keepTokens: config.summarizeKeepTokens,
+          maxTokens: config.summarizeMaxTokens || 272000,
+          keepTokens: config.summarizeKeepTokens || 30000,
           tokenCountModel: config.invokeModelName,
         },
         this.logger,
@@ -273,6 +274,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         await this.litellmService.supportsParallelToolCall(
           config.invokeModelName,
         );
+      const supportsStreaming = await this.litellmService.supportsStreaming(
+        config.invokeModelName,
+      );
 
       const invokeLlmNode = new InvokeLlmNode(
         this.litellmService,
@@ -283,6 +287,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
                 effort: config.invokeModelReasoningEffort,
               }
             : undefined,
+          streaming: supportsStreaming,
         }),
         toolsArray,
         {
@@ -766,7 +771,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         name: t.name,
         description: t.description,
         // Tools in this codebase provide JSONSchema already (see BaseTool.buildToolConfiguration()).
-        schema: t.schema,
+        schema: zodToAjvSchema(t.schema as ZodSchema),
       })),
     };
 
@@ -991,16 +996,18 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     this.activeRuns.set(runId, runEntry);
 
+    const initialStateChange: BaseAgentStateChange = {
+      messages: {
+        mode: 'append',
+        items: updateMessages,
+      },
+      toolsMetadata: FinishTool.clearState(),
+      toolUsageGuardActivated: false,
+      toolUsageGuardActivatedCount: 0,
+    };
+
     const stream = await g.stream(
-      {
-        messages: {
-          mode: 'append',
-          items: updateMessages,
-        },
-        toolsMetadata: FinishTool.clearState(),
-        toolUsageGuardActivated: false,
-        toolUsageGuardActivatedCount: 0,
-      } satisfies BaseAgentStateChange,
+      initialStateChange as unknown as Record<string, unknown>,
       {
         ...mergedConfig,
         streamMode: ['updates', 'messages'],

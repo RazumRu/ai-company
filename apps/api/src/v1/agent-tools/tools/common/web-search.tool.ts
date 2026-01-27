@@ -18,10 +18,10 @@ export const WebSearchToolSchema = z.object({
     .min(1),
   searchDepth: z
     .enum(['basic', 'advanced'])
+    .default('basic')
     .describe(
       'How deep to search: "basic" for quick results on straightforward queries, "advanced" for thorough research on complex topics',
-    )
-    .default('basic'),
+    ),
   onlyFromDomains: z
     .array(z.string())
     .describe(

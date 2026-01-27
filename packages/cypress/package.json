@@ -6,16 +6,16 @@
     "cy-generate-api": "src/bin/generate-api.js"
   },
   "dependencies": {
-    "@hey-api/openapi-ts": "^0.89.2",
-    "@nestjs/common": "^11.1.11",
+    "@hey-api/openapi-ts": "^0.90.10",
+    "@nestjs/common": "^11.1.12",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "axios": "^1.13.2",
-    "cypress": "^15.8.1",
+    "axios": "^1.13.3",
+    "cypress": "^15.9.0",
     "reflect-metadata": "^0.2.2"
   },
   "devDependencies": {
-    "@types/node": "^25.0.3",
+    "@types/node": "^25.0.10",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3"
   },

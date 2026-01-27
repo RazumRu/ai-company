@@ -54,7 +54,7 @@ export class GraphsController {
     @Param() params: EntityUUIDDto,
     @Query() query: GraphNodesQueryDto,
   ): Promise<GraphNodeWithStatusDto[]> {
-    return await this.graphsService.getCompiledNodes(params.id, query);
+    return this.graphsService.getCompiledNodes(params.id, query);
   }
 
   @Put(':id')

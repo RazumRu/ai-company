@@ -26,7 +26,6 @@ export const FilesSearchTagsToolSchema = z.object({
     ),
   exactMatch: z
     .boolean()
-    .optional()
     .default(false)
     .describe(
       'If true, performs exact name matching. If false, treats query as a regex pattern.',

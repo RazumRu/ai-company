@@ -11,22 +11,22 @@
     "run-all-seeds": "src/bin/run-all-seeds.mjs"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.11",
-    "@nestjs/core": "^11.1.11",
+    "@nestjs/common": "^11.1.12",
+    "@nestjs/core": "^11.1.12",
     "@nestjs/typeorm": "^11.0.0",
     "@packages/common": "workspace:*",
-    "lodash": "^4.17.21",
-    "pg": "^8.16.3",
+    "lodash": "^4.17.23",
+    "pg": "^8.17.2",
     "reflect-metadata": "^0.2.2",
     "ts-node": "^10.9.2",
     "typeorm": "^0.3.28"
   },
   "devDependencies": {
-    "@types/lodash": "^4.17.21",
-    "@types/node": "^25.0.3",
+    "@types/lodash": "^4.17.23",
+    "@types/node": "^25.0.10",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "vitest": "^4.0.18"
   },
   "license": "ISC",
   "main": "dist/index.js",

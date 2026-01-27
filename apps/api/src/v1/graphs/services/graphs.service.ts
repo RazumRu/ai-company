@@ -121,7 +121,7 @@ export class GraphsService {
       );
     }
 
-    return compiledGraph.state.getSnapshots(data.threadId, data.runId);
+    return compiledGraph!.state.getSnapshots(data.threadId, data.runId);
   }
 
   async update(

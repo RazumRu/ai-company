@@ -43,9 +43,10 @@ export class ReportStatusTool extends BaseTool<ReportStatusToolSchemaType> {
       Report a status update to the user without ending your work. This tool appends a new AI message flagged with \`__isReportingMessage\` so the UI can treat it as a mid-work update.
 
       ### When to Use
-      Use when you want to share progress or an informative update and will continue working. Do NOT ask questions in the report. Only use this for important milestones or noteworthy reasoning, not for every step.
+      Use ONLY when you are already executing a multi-step task (research, long analysis, multi-file edits, running checks, etc.) and you want to share progress while continuing work. The update must be informative only and must not include questions. Use sparingly: only for meaningful milestones.
 
       ### When NOT to Use
+      Do NOT use for simple user questions or normal assistant replies. If you can answer directly in one response, just answer normally and do not call this tool.
       If you need user input, call \`finish\` with \`needsMoreInfo: true\`. If your work is done, call \`finish\` with \`needsMoreInfo: false\`.
 
       ### Important
@@ -53,7 +54,7 @@ export class ReportStatusTool extends BaseTool<ReportStatusToolSchemaType> {
 
       ### Example
       \`\`\`json
-      {"message": "I located the relevant config files and will update the schema next."}
+      {"message": "I found the root cause and I’m updating the config + tests next."}
       \`\`\`
     `;
   }

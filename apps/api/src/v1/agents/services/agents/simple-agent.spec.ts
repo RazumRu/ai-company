@@ -108,7 +108,9 @@ describe('SimpleAgent', () => {
         SimpleAgent,
         {
           provide: LitellmService,
-          useValue: {} as unknown as LitellmService,
+          useValue: {
+            supportsStreaming: vi.fn().mockResolvedValue(true),
+          } as unknown as LitellmService,
         },
         {
           provide: LlmModelsService,

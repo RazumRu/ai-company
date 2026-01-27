@@ -85,7 +85,16 @@ export class InvokeLlmNode extends BaseNode<
       ...preparedMessages,
     ];
 
-    const invokeLlm = () => runner.invoke(messages);
+    // Note: runner.invoke() is always non-streaming.
+    // If the model doesn't support streaming, we still use invoke() which is correct.
+    const invokeLlm = () =>
+      runner.invoke(messages, {
+        tags: [
+          cfg.configurable?.parent_thread_id ||
+            cfg.configurable?.thread_id ||
+            'unknown-thread',
+        ],
+      });
     const res = await this.invokeWithRetry(invokeLlm);
 
     const preparedRes = convertChunkToMessage(res);

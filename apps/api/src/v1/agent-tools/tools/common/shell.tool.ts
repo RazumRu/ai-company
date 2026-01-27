@@ -28,19 +28,15 @@ export const ShellToolSchema = z.object({
   command: z.string().min(1).describe('The shell command to execute'),
   timeoutMs: z
     .number()
-    .int()
     .positive()
     .optional()
-    .default(300_000)
     .describe(
       'Maximum time to wait in milliseconds (default: 300000 = 5 minutes)',
     ),
   tailTimeoutMs: z
     .number()
-    .int()
     .positive()
     .optional()
-    .default(60_000)
     .describe(
       'Time to keep listening after command finishes in milliseconds (default: 60000 = 1 minute)',
     ),
@@ -54,14 +50,14 @@ export const ShellToolSchema = z.object({
     .optional()
     .describe('Environment variables to set for this command'),
   maxOutputLength: z
-    .number()
     .int()
     .positive()
-    .default(10_000)
+    .optional()
     .describe(
       'Maximum characters to return. If output exceeds this, only the last N characters are kept (default: 10000)',
     ),
 });
+
 export type ShellToolSchemaType = z.infer<typeof ShellToolSchema>;
 
 export interface ShellToolOutput {
@@ -180,8 +176,9 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
     // Trim output to last N characters if it exceeds maxOutputLength
     const trimOutput = (output: string): string => {
-      if (maxOutputLength && output.length > maxOutputLength) {
-        return output.slice(-maxOutputLength);
+      const max = maxOutputLength || 10000;
+      if (output.length > max) {
+        return output.slice(-max);
       }
       return output;
     };

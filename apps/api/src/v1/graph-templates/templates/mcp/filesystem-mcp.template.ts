@@ -24,8 +24,6 @@ export const FilesystemMcpTemplateSchema = z
   .object({
     readOnly: z
       .boolean()
-      .optional()
-      .default(false)
       .describe(
         'If true, only read-only filesystem tools are exposed (no write/edit/move/create).',
       )

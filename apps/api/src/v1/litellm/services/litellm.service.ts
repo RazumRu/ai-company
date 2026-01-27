@@ -213,6 +213,15 @@ export class LitellmService {
     return !!entry.model_info?.supports_parallel_function_calling;
   }
 
+  async supportsStreaming(model: string): Promise<boolean> {
+    const entry = await this.getLiteLLMModelInfo(model);
+    if (!entry) {
+      return true;
+    }
+
+    return !!entry.model_info?.supports_native_streaming;
+  }
+
   async estimateThreadTotalPriceFromModelRates(args: {
     model: string;
     inputTokens: number;

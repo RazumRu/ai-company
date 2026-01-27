@@ -9,6 +9,7 @@ services:
       DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/litellm"
       LITELLM_MASTER_KEY: master
       LITELLM_SALT_KEY: salt
+      OLLAMA_API_BASE: "http://host:docker:internal:11434"
     ports:
       - "4000:4000"
     networks:

@@ -153,15 +153,6 @@ describe('ShellTool', () => {
       };
       expect(() => tool.validate(invalidData)).toThrow();
     });
-
-    it('should default maxOutputLength to 10000', () => {
-      const data = {
-        purpose: 'Testing default max output length',
-        command: 'echo "hello"',
-      };
-      const parsed = tool.validate(data);
-      expect(parsed.maxOutputLength).toBe(10000);
-    });
   });
 
   describe('build', () => {

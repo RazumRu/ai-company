@@ -77,5 +77,6 @@ export type LiteLLMModelInfo = {
     supports_reasoning?: boolean;
     supports_function_calling?: boolean;
     supports_parallel_function_calling?: boolean;
+    supports_native_streaming?: boolean;
   } | null;
 };

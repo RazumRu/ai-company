@@ -49,7 +49,6 @@ const FilesEditToolSchema = z.object({
   useSmartModel: z
     .boolean()
     .optional()
-    .default(false)
     .describe(
       'Retry mode: use only if previous diff is not as expected or parsing/apply failed',
     ),
