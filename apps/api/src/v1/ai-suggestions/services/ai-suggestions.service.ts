@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { isPlainObject, isString } from 'lodash';
-import { zodResponseFormat } from 'openai/helpers/zod';
 import type { UnknownRecord } from 'type-fest';
 import { z } from 'zod';
 
@@ -19,8 +18,15 @@ import {
   NodeKind,
 } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
-import { OpenaiService } from '../../openai/openai.service';
+import {
+  CompleteData,
+  CompleteJsonData,
+  OpenaiService,
+  ResponseData,
+  ResponseJsonData,
+} from '../../openai/openai.service';
 import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
@@ -79,6 +85,7 @@ export class AiSuggestionsService {
     private readonly authContext: AuthContextService,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
+    private readonly litellmService: LitellmService,
   ) {}
 
   async analyzeThread(
@@ -152,17 +159,20 @@ export class AiSuggestionsService {
           userInput: payload.userInput,
         });
 
-    const response = await this.openaiService.response(
-      {
-        systemMessage: systemPrompt,
-        message,
-      },
-      {
-        model: this.resolveAiSuggestionsModel(payload.model),
-        reasoning: { effort: 'medium' },
-        previous_response_id: payload.threadId,
-      },
-    );
+    const modelName = this.resolveAiSuggestionsModel(payload.model);
+    const supportsResponsesApi =
+      await this.litellmService.supportsResponsesApi(modelName);
+    const data: ResponseData | CompleteData = {
+      model: modelName,
+      systemMessage: systemPrompt,
+      message,
+      reasoning: { effort: 'medium' as const },
+    };
+    const response = supportsResponsesApi
+      ? await this.openaiService.response(data, {
+          previous_response_id: payload.threadId,
+        })
+      : await this.openaiService.complete(data);
 
     const analysis = String(response.content || '').trim();
 
@@ -237,17 +247,20 @@ export class AiSuggestionsService {
           mcpInstructions,
         );
 
-    const response = await this.openaiService.response(
-      {
-        systemMessage,
-        message,
-      },
-      {
-        model: this.resolveAiSuggestionsModel(payload.model),
-        reasoning: { effort: 'medium' },
-        previous_response_id: threadId,
-      },
-    );
+    const modelName = this.resolveAiSuggestionsModel(payload.model);
+    const supportsResponsesApi =
+      await this.litellmService.supportsResponsesApi(modelName);
+    const data: ResponseData | CompleteData = {
+      model: modelName,
+      systemMessage,
+      message,
+      reasoning: { effort: 'medium' as const },
+    };
+    const response = supportsResponsesApi
+      ? await this.openaiService.response(data, {
+          previous_response_id: threadId,
+        })
+      : await this.openaiService.complete(data);
 
     const updated = String(response.content || '').trim();
     const baseInstructions = this.stripInstructionExtras(effectiveInstructions);
@@ -343,28 +356,25 @@ export class AiSuggestionsService {
         }),
       ),
     });
-    const compiledSchema = zodResponseFormat(schema, 'data');
 
-    const response = await this.openaiService.response<{
-      updates?: { nodeId?: string; instructions?: string }[];
-    }>(
-      {
-        systemMessage,
-        message,
-      },
-      {
-        model: this.resolveAiSuggestionsModel(payload.model),
-        reasoning: { effort: 'medium' },
-        text: {
-          format: {
-            ...compiledSchema.json_schema,
-            schema: compiledSchema.json_schema.schema!,
-            type: 'json_schema',
-          },
-        },
-      },
-      { json: true },
-    );
+    const modelName = this.resolveAiSuggestionsModel(payload.model);
+    const supportsResponsesApi =
+      await this.litellmService.supportsResponsesApi(modelName);
+    const data: ResponseJsonData | CompleteJsonData = {
+      model: modelName,
+      systemMessage,
+      message,
+      json: true as const,
+      jsonSchema: schema,
+      reasoning: { effort: 'medium' as const },
+    };
+    const response = supportsResponsesApi
+      ? await this.openaiService.response<{
+          updates?: { nodeId?: string; instructions?: string }[];
+        }>(data)
+      : await this.openaiService.complete<{
+          updates?: { nodeId?: string; instructions?: string }[];
+        }>(data);
 
     const parsed = schema.safeParse(response.content);
     if (!parsed.success) {
@@ -443,22 +453,35 @@ export class AiSuggestionsService {
       ? payload.userRequest.trim()
       : this.buildKnowledgeSuggestionPrompt(payload);
 
-    const response = await this.openaiService.response<{
-      title?: string;
-      content?: string;
-      tags?: string[];
-    }>(
-      {
-        systemMessage,
-        message,
-      },
-      {
-        model: this.resolveAiSuggestionsModel(payload.model),
-        reasoning: { effort: 'medium' },
-        previous_response_id: payload.threadId,
-      },
-      { json: true },
-    );
+    const modelName = this.resolveAiSuggestionsModel(payload.model);
+    const supportsResponsesApi =
+      await this.litellmService.supportsResponsesApi(modelName);
+    const knowledgeSchema = z.object({
+      title: z.string().optional(),
+      content: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+    });
+    const data: ResponseJsonData | CompleteJsonData = {
+      model: modelName,
+      systemMessage,
+      message,
+      json: true as const,
+      jsonSchema: knowledgeSchema,
+      reasoning: { effort: 'medium' as const },
+    };
+    const response = supportsResponsesApi
+      ? await this.openaiService.response<{
+          title?: string;
+          content?: string;
+          tags?: string[];
+        }>(data, {
+          previous_response_id: payload.threadId,
+        })
+      : await this.openaiService.complete<{
+          title?: string;
+          content?: string;
+          tags?: string[];
+        }>(data);
 
     const validation = this.validateKnowledgeSuggestionResponse(
       response.content,

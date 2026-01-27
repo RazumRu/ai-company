@@ -1,20 +1,23 @@
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, InternalException } from '@packages/common';
-import { zodResponseFormat } from 'openai/helpers/zod';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
-import { OpenaiService } from '../../openai/openai.service';
+import {
+  CompleteJsonData,
+  OpenaiService,
+  ResponseJsonData,
+} from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { KnowledgeChunkBoundary } from '../knowledge.types';
 
 const QueryExpansionSchema = z.object({
   queries: z.array(z.string().min(1)).min(1).max(5),
 });
-const QueryExpansionFormat = zodResponseFormat(QueryExpansionSchema, 'data');
 
 type SearchBatchItem = Parameters<QdrantService['searchMany']>[1][number];
 type KnowledgeUpsertPoints = Parameters<QdrantService['upsertPoints']>[1];
@@ -56,6 +59,7 @@ export class KnowledgeChunksService {
     private readonly qdrantService: QdrantService,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
+    private readonly litellmService: LitellmService,
   ) {}
 
   async embedTexts(texts: string[]): Promise<number[][]> {
@@ -321,23 +325,21 @@ export class KnowledgeChunksService {
       `QUERY: ${query}`,
     ].join('\n');
 
-    const response = await this.openaiService.response<{ queries: string[] }>(
-      { message: prompt },
-      {
-        model: this.llmModelsService.getKnowledgeSearchModel(),
-        reasoning: {
-          effort: 'none',
-        },
-        text: {
-          format: {
-            ...QueryExpansionFormat.json_schema,
-            schema: QueryExpansionFormat.json_schema.schema!,
-            type: 'json_schema',
-          },
-        },
+    const modelName = this.llmModelsService.getKnowledgeSearchModel();
+    const supportsResponsesApi =
+      await this.litellmService.supportsResponsesApi(modelName);
+    const data: ResponseJsonData | CompleteJsonData = {
+      model: modelName,
+      message: prompt,
+      json: true as const,
+      jsonSchema: QueryExpansionSchema,
+      reasoning: {
+        effort: 'none' as const,
       },
-      { json: true },
-    );
+    };
+    const response = supportsResponsesApi
+      ? await this.openaiService.response<{ queries: string[] }>(data)
+      : await this.openaiService.complete<{ queries: string[] }>(data);
 
     const validation = QueryExpansionSchema.safeParse(response.content);
     if (!validation.success) {

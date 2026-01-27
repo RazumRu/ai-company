@@ -4,14 +4,17 @@ import { randomBytes } from 'node:crypto';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
-import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import type { RequestTokenUsage } from '../../../../litellm/litellm.types';
 import { LitellmService } from '../../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
-import { OpenaiService } from '../../../../openai/openai.service';
+import {
+  CompleteJsonData,
+  OpenaiService,
+  ResponseJsonData,
+} from '../../../../openai/openai.service';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -68,7 +71,6 @@ const ParsedHunkSchema = z.object({
 const LLMResponseSchema = z.object({
   hunks: z.array(ParsedHunkSchema).min(1, 'Must have at least one hunk'),
 });
-const LLMResponseFormat = zodResponseFormat(LLMResponseSchema, 'data');
 
 type ParsedHunk = z.input<typeof ParsedHunkSchema>;
 type NormalizedHunk = {
@@ -338,20 +340,24 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
       const callLLM = async (message: string) => {
         const modelParams =
           await this.llmModelsService.getFilesEditParams(useSmartModel);
-        const result = await this.openaiService.response(
-          { message },
-          {
-            ...modelParams,
-            text: {
-              verbosity: useSmartModel ? 'medium' : 'low',
-              format: {
-                ...LLMResponseFormat.json_schema,
-                schema: LLMResponseFormat.json_schema.schema!,
-                type: 'json_schema',
-              },
-            },
-          },
-        );
+        const modelName =
+          typeof modelParams.model === 'string'
+            ? modelParams.model
+            : String(modelParams.model);
+        const supportsResponsesApi =
+          await this.litellmService.supportsResponsesApi(modelName);
+        const data: ResponseJsonData | CompleteJsonData = {
+          model: modelName,
+          message,
+          json: true as const,
+          jsonSchema: LLMResponseSchema,
+          ...(modelParams.reasoning
+            ? { reasoning: modelParams.reasoning }
+            : {}),
+        };
+        const result = supportsResponsesApi
+          ? await this.openaiService.response(data)
+          : await this.openaiService.complete(data);
 
         // Aggregate usage
         if (result.usage) {
@@ -362,7 +368,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
             ]) ?? undefined;
         }
 
-        return result.content ?? '';
+        return String(result.content ?? '');
       };
 
       const safeContent = await callLLM(prompt);
@@ -463,7 +469,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         `}`;
 
         const retryContent = await callLLM(retryPrompt);
-        const retryJsonString = retryContent.trim();
+        const retryJsonString = String(retryContent).trim();
 
         if (!retryJsonString) {
           return {

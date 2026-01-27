@@ -3,12 +3,16 @@ import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { isUndefined, pickBy } from 'lodash';
-import { zodResponseFormat } from 'openai/helpers/zod';
 import { EntityManager } from 'typeorm';
 import { z } from 'zod';
 
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
-import { OpenaiService } from '../../openai/openai.service';
+import {
+  CompleteJsonData,
+  OpenaiService,
+  ResponseJsonData,
+} from '../../openai/openai.service';
 import { KnowledgeDocDao } from '../dao/knowledge-doc.dao';
 import {
   KnowledgeDocDto,
@@ -25,10 +29,6 @@ import {
 const KnowledgeSummarySchema = z.object({
   summary: z.string().min(1),
 });
-const KnowledgeSummaryFormat = zodResponseFormat(
-  KnowledgeSummarySchema,
-  'data',
-);
 
 @Injectable()
 export class KnowledgeService {
@@ -39,6 +39,7 @@ export class KnowledgeService {
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
     private readonly knowledgeChunksService: KnowledgeChunksService,
+    private readonly litellmService: LitellmService,
   ) {}
 
   async createDoc(dto: KnowledgeDocInput): Promise<KnowledgeDocDto> {
@@ -230,20 +231,24 @@ export class KnowledgeService {
       content,
     ].join('\n');
 
-    const response = await this.openaiService.response<KnowledgeSummary>(
-      { message: prompt },
-      {
-        ...(await this.llmModelsService.getKnowledgeMetadataParams()),
-        text: {
-          format: {
-            ...KnowledgeSummaryFormat.json_schema,
-            schema: KnowledgeSummaryFormat.json_schema.schema!,
-            type: 'json_schema',
-          },
-        },
-      },
-      { json: true },
-    );
+    const modelParams =
+      await this.llmModelsService.getKnowledgeMetadataParams();
+    const modelName =
+      typeof modelParams.model === 'string'
+        ? modelParams.model
+        : String(modelParams.model);
+    const supportsResponsesApi =
+      await this.litellmService.supportsResponsesApi(modelName);
+    const data: ResponseJsonData | CompleteJsonData = {
+      model: modelName,
+      message: prompt,
+      json: true as const,
+      jsonSchema: KnowledgeSummarySchema,
+      ...(modelParams.reasoning ? { reasoning: modelParams.reasoning } : {}),
+    };
+    const response = supportsResponsesApi
+      ? await this.openaiService.response<KnowledgeSummary>(data)
+      : await this.openaiService.complete<KnowledgeSummary>(data);
 
     const validation = KnowledgeSummarySchema.safeParse(response.content);
     if (!validation.success) {

@@ -1,12 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { compact, isObject } from 'lodash';
 import OpenAI from 'openai';
-import { ResponseCreateParams } from 'openai/resources/responses/responses';
+import { zodResponseFormat } from 'openai/helpers/zod';
+import {
+  ResponseFormatJSONObject,
+  ResponseFormatJSONSchema,
+  ResponseFormatText,
+} from 'openai/resources';
+import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
+import {
+  ResponseCreateParamsNonStreaming,
+  ResponseTextConfig,
+} from 'openai/resources/responses/responses';
+import { ZodType } from 'zod';
 
 import { environment } from '../../environments';
 import type { RequestTokenUsage } from '../litellm/litellm.types';
 import { LitellmService } from '../litellm/services/litellm.service';
-import ResponseCreateParamsNonStreaming = ResponseCreateParams.ResponseCreateParamsNonStreaming;
 
 type GenerateResult<T> = {
   content?: T;
@@ -19,6 +29,42 @@ type EmbeddingsInput = {
   input: string | string[];
 };
 
+type SortReasoning = { effort: 'low' | 'medium' | 'high' | 'none' };
+
+type BaseData = {
+  model: string;
+  message: string;
+  systemMessage?: string;
+  reasoning?: SortReasoning;
+};
+
+type JsonSchema = ZodType<unknown>;
+
+type JsonEnabled = {
+  json: true;
+  jsonSchema: JsonSchema;
+};
+
+type JsonDisabled = {
+  json?: false;
+};
+
+export type ResponseData = BaseData & JsonDisabled;
+export type ResponseJsonData = BaseData & JsonEnabled;
+
+export type CompleteData = BaseData & JsonDisabled;
+export type CompleteJsonData = BaseData & JsonEnabled;
+
+type CompletionParams = Omit<
+  ChatCompletionCreateParamsNonStreaming,
+  'model' | 'messages' | 'response_format'
+>;
+
+type ResponsesParams = Omit<
+  ResponseCreateParamsNonStreaming,
+  'model' | 'input' | 'text'
+>;
+
 @Injectable()
 export class OpenaiService {
   private readonly client = new OpenAI({
@@ -28,74 +74,121 @@ export class OpenaiService {
 
   constructor(private readonly litellmService: LitellmService) {}
 
+  async complete(
+    data: CompleteData,
+    params?: CompletionParams,
+  ): Promise<GenerateResult<string>>;
+  async complete<T>(
+    data: CompleteJsonData,
+    params?: CompletionParams,
+  ): Promise<GenerateResult<T>>;
+  async complete<T>(
+    data: CompleteData | CompleteJsonData,
+    params?: CompletionParams,
+  ): Promise<GenerateResult<T | string>> {
+    const messages = compact([
+      data.systemMessage
+        ? { role: 'system' as const, content: data.systemMessage }
+        : undefined,
+      { role: 'user' as const, content: data.message },
+    ]);
+
+    let responseFormat:
+      | ResponseFormatText
+      | ResponseFormatJSONSchema
+      | ResponseFormatJSONObject
+      | undefined;
+
+    if ('jsonSchema' in data) {
+      responseFormat = zodResponseFormat(data.jsonSchema as JsonSchema, 'data');
+    }
+
+    const response = await this.client.chat.completions.create({
+      ...(params ?? {}),
+      model: data.model,
+      messages,
+      ...(responseFormat ? { response_format: responseFormat } : {}),
+    });
+
+    const content = response.choices?.[0]?.message?.content ?? undefined;
+
+    const usage = response.usage
+      ? (await this.litellmService.extractTokenUsageFromResponse(data.model, {
+          input_tokens: response.usage.prompt_tokens ?? 0,
+          output_tokens: response.usage.completion_tokens ?? 0,
+          total_tokens: response.usage.total_tokens ?? 0,
+        })) || undefined
+      : undefined;
+
+    if ('jsonSchema' in data) {
+      return {
+        content: this.parseJson<T>(content) ?? undefined,
+        conversationId: String(response.id),
+        usage,
+      };
+    }
+
+    return {
+      content,
+      conversationId: String(response.id),
+      usage,
+    };
+  }
+
   async response(
-    data: {
-      message: string;
-      systemMessage?: string;
-    },
-    params: ResponseCreateParamsNonStreaming,
+    data: ResponseData,
+    params?: ResponsesParams,
   ): Promise<GenerateResult<string>>;
   async response<T>(
-    data: {
-      message: string;
-      systemMessage?: string;
-    },
-    params: ResponseCreateParamsNonStreaming,
-    options: {
-      json: true;
-    },
+    data: ResponseJsonData,
+    params?: ResponsesParams,
   ): Promise<GenerateResult<T>>;
   async response<T>(
-    data: {
-      message: string;
-      systemMessage?: string;
-    },
-    params: ResponseCreateParamsNonStreaming,
-    options?: {
-      json?: boolean;
-    },
+    data: ResponseData | ResponseJsonData,
+    params?: ResponsesParams,
   ): Promise<GenerateResult<T | string>> {
+    let text: ResponseTextConfig | undefined;
+
+    if ('jsonSchema' in data) {
+      const compiled = zodResponseFormat(data.jsonSchema as JsonSchema, 'data');
+      text = {
+        format: {
+          ...compiled.json_schema,
+          type: 'json_schema',
+          schema: compiled.json_schema.schema!,
+        },
+      };
+    }
+
     const response = await this.client.responses.create({
-      ...params,
+      ...(params ?? {}),
+      ...(data.reasoning ? { reasoning: data.reasoning } : {}),
+      model: data.model,
       input: compact([
         data.systemMessage
           ? { role: 'system', content: data.systemMessage }
           : undefined,
         { role: 'user', content: data.message },
       ]),
+      ...(text ? { text } : {}),
     });
 
-    const extractedContent =
-      response.output_text ?? this.extractFromOutput(response);
+    const outputText =
+      typeof (response as { output_text?: unknown }).output_text === 'string'
+        ? (response as { output_text: string }).output_text
+        : undefined;
 
-    // Use fallback to estimate price from model rates if not provided in response
-    const modelName = typeof params.model === 'string' ? params.model : '';
+    const extractedContent = outputText ?? this.extractFromOutput(response);
 
     const usage =
       (await this.litellmService.extractTokenUsageFromResponse(
-        modelName,
+        data.model,
         response.usage,
       )) || undefined;
 
-    if (options?.json) {
-      const parsed = (() => {
-        if (!extractedContent) return undefined;
-        const trimmed = extractedContent.trim();
-        if (!trimmed) return undefined;
-        const jsonString = trimmed.startsWith('```')
-          ? trimmed
-              .replace(/^```[a-zA-Z]*\n?/, '')
-              .replace(/```$/, '')
-              .trim()
-          : trimmed;
-        try {
-          return JSON.parse(jsonString) as unknown;
-        } catch {
-          return undefined;
-        }
-      })();
+    if ('jsonSchema' in data) {
       return {
-        content: parsed as T,
+        content: this.parseJson<T>(extractedContent) ?? undefined,
         conversationId: response.id,
         usage,
       };
@@ -117,37 +210,58 @@ export class OpenaiService {
   }
 
   private extractFromOutput(response: unknown): string | undefined {
-    const output = (response as { output?: unknown[] }).output;
-    if (!Array.isArray(output)) {
-      return undefined;
-    }
+    const output = isObject(response)
+      ? (response as { output?: unknown }).output
+      : undefined;
+    if (!Array.isArray(output)) return undefined;
 
     const parts = output
       .map((block) => {
-        const content = (block as { content?: unknown[] }).content;
+        const content = isObject(block)
+          ? (block as { content?: unknown }).content
+          : undefined;
         if (!Array.isArray(content)) return undefined;
 
         return content
           .map((item) => {
-            const textValue = (item as { text?: unknown }).text;
-            if (typeof textValue === 'string') {
-              return textValue;
-            }
+            const textValue = isObject(item)
+              ? (item as { text?: unknown }).text
+              : undefined;
+            if (typeof textValue === 'string') return textValue;
 
             if (isObject(textValue)) {
-              const valueHolder = textValue as { value?: unknown };
-              if (typeof valueHolder.value === 'string') {
-                return valueHolder.value;
-              }
+              const v = (textValue as { value?: unknown }).value;
+              if (typeof v === 'string') return v;
             }
+
             return undefined;
           })
-          .filter(Boolean)
+          .filter((x): x is string => typeof x === 'string')
           .join('\n');
       })
-      .filter(Boolean)
+      .filter((x): x is string => typeof x === 'string')
       .join('\n\n');
 
     return parts.length ? parts : undefined;
+  }
+
+  private parseJson<T>(content?: string): T | null {
+    if (!content) return null;
+
+    const trimmed = content.trim();
+    if (!trimmed) return null;
+
+    const jsonString = trimmed.startsWith('```')
+      ? trimmed
+          .replace(/^```[a-zA-Z]*\n?/, '')
+          .replace(/```$/, '')
+          .trim()
+      : trimmed;
+
+    try {
+      return JSON.parse(jsonString) as T;
+    } catch {
+      return null;
+    }
   }
 }

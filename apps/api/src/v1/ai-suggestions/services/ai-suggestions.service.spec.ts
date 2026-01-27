@@ -14,6 +14,7 @@ import {
 } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphStateManager } from '../../graphs/services/graph-state.manager';
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { MessagesDao } from '../../threads/dao/messages.dao';
@@ -36,9 +37,14 @@ describe('AiSuggestionsService', () => {
   >;
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
   let authContext: Pick<AuthContextService, 'checkSub'>;
-  let openaiService: { response: OpenaiService['response'] };
+  let openaiService: {
+    response: OpenaiService['response'];
+    complete: OpenaiService['complete'];
+  };
   let llmModelsService: Pick<LlmModelsService, 'getAiSuggestionsDefaultModel'>;
+  let litellmService: Pick<LitellmService, 'supportsResponsesApi'>;
   let responseMock: ReturnType<typeof vi.fn> & OpenaiService['response'];
+  let completeMock: ReturnType<typeof vi.fn> & OpenaiService['complete'];
   let service: AiSuggestionsService;
 
   beforeEach(() => {
@@ -58,11 +64,19 @@ describe('AiSuggestionsService', () => {
       content: 'Updated instructions',
       conversationId: 'thread-1',
     })) as ReturnType<typeof vi.fn> & OpenaiService['response'];
+    completeMock = vi.fn(async () => ({
+      content: 'Updated instructions',
+      conversationId: 'thread-1',
+    })) as ReturnType<typeof vi.fn> & OpenaiService['complete'];
     openaiService = {
       response: responseMock,
+      complete: completeMock,
     };
     llmModelsService = {
       getAiSuggestionsDefaultModel: vi.fn().mockReturnValue('openai/gpt-5.2'),
+    };
+    litellmService = {
+      supportsResponsesApi: vi.fn().mockResolvedValue(true),
     };
 
     service = new AiSuggestionsService(
@@ -74,6 +88,7 @@ describe('AiSuggestionsService', () => {
       authContext as AuthContextService,
       openaiService as OpenaiService,
       llmModelsService as LlmModelsService,
+      litellmService as LitellmService,
     );
   });
 
@@ -205,12 +220,12 @@ describe('AiSuggestionsService', () => {
       expect(result.threadId).toBe('thread-1');
       expect(responseMock).toHaveBeenCalledTimes(1);
       const [payload, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { previous_response_id?: string; model?: string },
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toBe('Make it concise');
-      expect(params.model).toBe('openai/gpt-5.2');
+      expect(payload.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBe('thread-1');
     });
 
@@ -222,11 +237,11 @@ describe('AiSuggestionsService', () => {
         model: 'openai/custom-model',
       } as SuggestAgentInstructionsDto);
 
-      const [, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { model?: string },
+      const [payload] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
-      expect(params.model).toBe('openai/custom-model');
+      expect(payload.model).toBe('openai/custom-model');
     });
 
     it('falls back to current instructions when LLM returns empty', async () => {
@@ -243,14 +258,14 @@ describe('AiSuggestionsService', () => {
       expect(result.instructions).toBe('Base instructions');
       expect(result.threadId).toBe('thread-1');
       const [payload, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { previous_response_id?: string; model?: string },
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
       expect(payload.systemMessage).toContain(
         'You rewrite agent system instructions.',
       );
       expect(payload.message).toContain('Base instructions');
-      expect(params.model).toBe('openai/gpt-5.2');
+      expect(payload.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBeUndefined();
     });
 
@@ -464,12 +479,12 @@ describe('AiSuggestionsService', () => {
       const calls = responseMock.mock.calls;
       expect(calls.length).toBe(1);
       const [payload, params] = calls[0] as [
-        { systemMessage?: string; message: string },
-        { previous_response_id?: string; model?: string },
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toBe('Focus on tooling issues');
-      expect(params.model).toBe('openai/gpt-5.2');
+      expect(payload.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBe('prev-thread');
     });
 
@@ -489,11 +504,11 @@ describe('AiSuggestionsService', () => {
         model: 'openai/custom-model',
       } as never);
 
-      const [, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { model?: string },
+      const [payload] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
-      expect(params.model).toBe('openai/custom-model');
+      expect(payload.model).toBe('openai/custom-model');
     });
   });
 
@@ -517,11 +532,11 @@ describe('AiSuggestionsService', () => {
         model: 'openai/custom-model',
       });
 
-      const [, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { model?: string },
+      const [payload] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
-      expect(params.model).toBe('openai/custom-model');
+      expect(payload.model).toBe('openai/custom-model');
     });
   });
 
@@ -551,12 +566,12 @@ describe('AiSuggestionsService', () => {
       });
 
       const [payload, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { previous_response_id?: string; model?: string },
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
       expect(payload.systemMessage).toContain('knowledge base content');
       expect(payload.message).toContain('Old content');
-      expect(params.model).toBe('openai/gpt-5.2');
+      expect(payload.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBeUndefined();
     });
 
@@ -577,12 +592,12 @@ describe('AiSuggestionsService', () => {
       expect(result.threadId).toBe('knowledge-2');
 
       const [payload, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { previous_response_id?: string; model?: string },
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
       expect(payload.systemMessage).toBeUndefined();
       expect(payload.message).toBe('Add a troubleshooting section');
-      expect(params.model).toBe('openai/gpt-5.2');
+      expect(payload.model).toBe('openai/gpt-5.2');
       expect(params.previous_response_id).toBe('prev-knowledge');
     });
 
@@ -600,11 +615,11 @@ describe('AiSuggestionsService', () => {
         model: 'openai/custom-model',
       } as KnowledgeContentSuggestionRequest);
 
-      const [, params] = responseMock.mock.calls[0] as [
-        { systemMessage?: string; message: string },
-        { model?: string },
+      const [payload] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string; model: string },
+        { previous_response_id?: string },
       ];
-      expect(params.model).toBe('openai/custom-model');
+      expect(payload.model).toBe('openai/custom-model');
     });
 
     it('throws when LLM response is invalid', async () => {

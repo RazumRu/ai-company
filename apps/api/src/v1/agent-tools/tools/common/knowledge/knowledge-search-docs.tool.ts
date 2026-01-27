@@ -2,14 +2,18 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable, Scope } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
 import dedent from 'dedent';
-import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
 import { KnowledgeDocEntity } from '../../../../knowledge/entity/knowledge-doc.entity';
+import { LitellmService } from '../../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
-import { OpenaiService } from '../../../../openai/openai.service';
+import {
+  CompleteJsonData,
+  OpenaiService,
+  ResponseJsonData,
+} from '../../../../openai/openai.service';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -64,6 +68,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     private readonly docDao: KnowledgeDocDao,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
+    private readonly litellmService: LitellmService,
   ) {
     super();
   }
@@ -180,10 +185,6 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     task: string,
     docs: KnowledgeDocEntity[],
   ): Promise<KnowledgeDocSelection> {
-    const compiledSchema = zodResponseFormat(
-      KnowledgeDocSelectionSchema,
-      'data',
-    );
     const prompt = [
       'You select relevant knowledge documents for a query.',
       'Return ONLY JSON with keys: "ids" (array of document public IDs) and optional "comment" (string).',
@@ -201,23 +202,21 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       ),
     ].join('\n');
 
-    const response = await this.openaiService.response<KnowledgeDocSelection>(
-      { message: prompt },
-      {
-        model: this.llmModelsService.getKnowledgeSearchModel(),
-        reasoning: {
-          effort: 'none',
-        },
-        text: {
-          format: {
-            ...compiledSchema.json_schema,
-            schema: compiledSchema.json_schema.schema!,
-            type: 'json_schema',
-          },
-        },
+    const modelName = this.llmModelsService.getKnowledgeSearchModel();
+    const supportsResponsesApi =
+      await this.litellmService.supportsResponsesApi(modelName);
+    const data: ResponseJsonData | CompleteJsonData = {
+      model: modelName,
+      message: prompt,
+      json: true as const,
+      jsonSchema: KnowledgeDocSelectionSchema,
+      reasoning: {
+        effort: 'none' as const,
       },
-      { json: true },
-    );
+    };
+    const response = supportsResponsesApi
+      ? await this.openaiService.response<KnowledgeDocSelection>(data)
+      : await this.openaiService.complete<KnowledgeDocSelection>(data);
 
     const validation = KnowledgeDocSelectionSchema.safeParse(response.content);
     if (!validation.success) {

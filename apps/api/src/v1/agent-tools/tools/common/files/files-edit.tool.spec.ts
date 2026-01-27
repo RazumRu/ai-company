@@ -27,10 +27,12 @@ describe('FilesEditTool', () => {
 
     mockOpenaiService = {
       response: vi.fn(),
+      complete: vi.fn(),
     } as unknown as OpenaiService;
 
     mockLitellmService = {
       sumTokenUsages: vi.fn().mockReturnValue(null),
+      supportsResponsesApi: vi.fn().mockResolvedValue(true),
     } as unknown as LitellmService;
 
     mockLlmModelsService = {
@@ -445,7 +447,7 @@ describe('FilesEditTool', () => {
       );
 
       expect(generateSpy).toHaveBeenCalled();
-      expect(generateSpy.mock.calls[0]?.[1]?.model).toBeDefined();
+      expect(generateSpy.mock.calls[0]?.[0]?.model).toBeDefined();
     });
   });
 

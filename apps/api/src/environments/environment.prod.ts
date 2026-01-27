@@ -48,9 +48,17 @@ export const environment = () =>
       'LLM_OFFLINE_CODING_MODEL',
       'qwen3-coder:30b',
     ),
+    llmOfflineCodingMiniModel: getEnv(
+      'LLM_OFFLINE_CODING_MINI_MODEL',
+      'qwen2.5-coder:7b',
+    ),
     llmOfflineEmbeddingModel: getEnv(
       'LLM_OFFLINE_EMBEDDING_MODEL',
       'qwen3-embedding:4b',
+    ),
+    llmOfflineMiniModel: getEnv(
+      'LLM_OFFLINE_MINI_MODEL',
+      'phi3.5:3.8b-mini-instruct-q4_K_M',
     ),
     llmEmbeddingModel: getEnv(
       'LLM_EMBEDDING_MODEL',

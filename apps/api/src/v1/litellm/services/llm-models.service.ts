@@ -25,9 +25,21 @@ export class LlmModelsService {
       : model;
   }
 
+  private offlineCodingMiniFallback(model: string): string {
+    return environment.llmUseOfflineModel
+      ? environment.llmOfflineCodingMiniModel
+      : model;
+  }
+
   private offlineEmbeddingFallback(model: string): string {
     return environment.llmUseOfflineModel
       ? environment.llmOfflineEmbeddingModel
+      : model;
+  }
+
+  private offlineMiniFallback(model: string): string {
+    return environment.llmUseOfflineModel
+      ? environment.llmOfflineMiniModel
       : model;
   }
 
@@ -58,7 +70,7 @@ export class LlmModelsService {
   }
 
   getThreadNameModel(): string {
-    return this.offlineGeneralFallback(environment.llmMiniModel);
+    return this.offlineMiniFallback(environment.llmMiniModel);
   }
 
   async getFilesEditParams(smart: boolean): Promise<{
@@ -66,11 +78,11 @@ export class LlmModelsService {
     reasoning?: { effort: 'low' | 'medium' | 'high' };
   }> {
     const model = smart
-      ? environment.llmLargeCodeModel
-      : environment.llmMiniCodeModel;
+      ? this.offlineCodingFallback(environment.llmLargeCodeModel)
+      : this.offlineCodingMiniFallback(environment.llmMiniCodeModel);
 
     return this.buildResponseParams(
-      this.offlineCodingFallback(model),
+      model,
       LlmModelsService.DEFAULT_REASONING.medium,
     );
   }
