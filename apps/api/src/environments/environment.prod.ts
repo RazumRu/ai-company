@@ -27,6 +27,8 @@ export const environment = () =>
     postgresUsername: getEnv('POSTGRES_USERNAME'),
     postgresPassword: getEnv('POSTGRES_PASSWORD'),
     postgresDatabase: getEnv('POSTGRES_DATABASE'),
+    postgresSchema: getEnv('POSTGRES_SCHEMA'),
+    postgresSsl: getEnv('POSTGRES_SSL', false),
     postgresRunMigrations: getEnv('POSTGRES_RUN_MIGRATIONS', true),
     llmBaseUrl: getEnv('LLM_BASE_URL'),
     redisUrl: getEnv('REDIS_URL'),
