@@ -16,7 +16,6 @@ import {
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
-  cleanMessagesForLlm,
   extractTextFromResponseContent,
   filterMessagesForLlm,
   markMessageHideForLlm,
@@ -77,9 +76,7 @@ export class SummarizeNode extends BaseNode<
     // - keep system messages as-is (never fold them)
     // - remove hidden-for-LLM messages
     // - remove dangling tool-call traces
-    const promptVisibleRaw = cleanMessagesForLlm(
-      filterMessagesForLlm(state.messages),
-    );
+    const promptVisibleRaw = filterMessagesForLlm(state.messages);
 
     // Drop transient/internal messages from compaction so they don't get pinned forever.
     const promptVisible = promptVisibleRaw.filter((m) => {

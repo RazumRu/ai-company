@@ -36,8 +36,18 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
 
   public getDetailedInstructions(): string {
     return [
-      'Before starting non-trivial work, consider using the knowledge tools to gather necessary context.',
-      'Skip this for small/simple tasks (e.g., "show me file content") when no additional context is needed.',
+      'Before starting non-trivial technical work, consider using the knowledge tools to gather necessary context.',
+      'This includes both implementation work and research/design work (e.g., architecture exploration, RFC/ADR, comparing approaches).',
+      'Skip this for small/simple questions that don’t need project context (e.g., "show me file content", "what’s the weather").',
+      '',
+      'Call it for:',
+      '- code changes, refactors, bugfixes',
+      '- research / architecture exploration (design, RFC, ADR, comparing approaches)',
+      '- investigating existing system behavior / repo structure where internal context matters',
+      '- tests (unit/integration/e2e), lint rules, formatting, CI constraints',
+      '- infra/deploy/config/security/auth/policies',
+      '- anything where “how this repo does it” matters',
+      '',
       'Process:',
       '1) If you need project context, use knowledge_search_docs to find relevant documents for the current task.',
       '   - When calling the tool inside a task input, specify the current project stack and technologies in the query.',
@@ -52,6 +62,7 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
       '4) Use knowledge_get_doc only when the document politic explicitly instructs you to fetch full content.',
       '   - Example: "If this document is relevant to the current task - always fetch the full content instead of fetching only specific chunks."',
       '5) If you already fetched full content for a document, do NOT fetch its chunks.',
+      '',
       'Example flow: knowledge_search_docs returns empty -> inspect project files/structure to learn stack -> rephrase the query -> run knowledge_search_docs again to locate docs.',
       'Then write a short note describing how you searched (queries/filters/tags) and what you found.',
     ].join('\n');

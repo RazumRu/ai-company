@@ -78,6 +78,7 @@ export class ToolUsageGuardNode extends BaseNode<
     });
     msg.additional_kwargs = {
       ...(msg.additional_kwargs ?? {}),
+      __requiresFinishTool: true,
       __hideForSummary: true,
     };
     return {

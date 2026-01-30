@@ -457,9 +457,9 @@ export class AiSuggestionsService {
     const supportsResponsesApi =
       await this.litellmService.supportsResponsesApi(modelName);
     const knowledgeSchema = z.object({
-      title: z.string().optional(),
-      content: z.string().optional(),
-      tags: z.array(z.string()).optional(),
+      title: z.string(),
+      content: z.string(),
+      tags: z.array(z.string()).nullable(),
     });
     const data: ResponseJsonData | CompleteJsonData = {
       model: modelName,
@@ -471,16 +471,16 @@ export class AiSuggestionsService {
     };
     const response = supportsResponsesApi
       ? await this.openaiService.response<{
-          title?: string;
-          content?: string;
-          tags?: string[];
+          title: string;
+          content: string;
+          tags: string[] | null;
         }>(data, {
           previous_response_id: payload.threadId,
         })
       : await this.openaiService.complete<{
-          title?: string;
-          content?: string;
-          tags?: string[];
+          title: string;
+          content: string;
+          tags: string[] | null;
         }>(data);
 
     const validation = this.validateKnowledgeSuggestionResponse(

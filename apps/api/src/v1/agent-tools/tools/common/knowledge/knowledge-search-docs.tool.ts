@@ -78,23 +78,35 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     return dedent`
-      ### Overview
-      Selects relevant knowledge documents for the current task by asking a model to review all available document metadata.
+    ### Overview
+    Selects relevant knowledge documents for the current task.
 
-      ### When to Use
-      Use this tool first to find which documents are relevant to your current task.
+    ### When to Use
+    Use this tool first to find which documents are relevant to your current task.
+    Always use this tool for any non-trivial technical work, including both implementation and research/design work (e.g. architecture proposals, RFC/ADR).
 
-      ### Best Practices
-      Provide a clear task description and the relevant stack context (technology, language, framework).
-      This tool returns up to 10 docs and may include a short report.
-      If no documents are returned, read the comment for refinement tips and rerun with a better query.
-      Use the returned document public IDs to reference documents in other knowledge tools.
+    Call this tool at the start if the task involves any of:
+    - implementing/changing code (implementation, refactor, bugfix)
+    - writing/updating tests
+    - research / architecture exploration (design, RFC, ADR, comparing approaches)
+    - investigating how the repo/system works (modules, flows, conventions)
+    - CI/CD, infra, deployment, configuration
+    - security/permissions, auth flows, policies
+    - repo conventions, coding standards, “how we do X here”
 
-      ### Examples
-      \`\`\`json
-      {"task": "Prepare a database migration checklist for schema changes. Stack: NestJS + TypeScript + TypeORM"}
-      \`\`\`
-    `;
+    Skip this tool for short/simple questions that don’t need project context (e.g., "what’s the weather", "what is HTTP", "explain JSON").
+
+    ### Best Practices
+    Provide a clear task description and the relevant stack context (technology, language, framework).
+    This tool returns up to 10 docs and may include a short report.
+    If no documents are returned, read the comment for refinement tips and rerun with a better query.
+    Use the returned document public IDs to reference documents in other knowledge tools.
+
+    ### Examples
+    \`\`\`json
+    {"task": "Prepare a database migration checklist for schema changes. Stack: NestJS + TypeScript + TypeORM"}
+    \`\`\`
+  `;
   }
 
   public get schema() {

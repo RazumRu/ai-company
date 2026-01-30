@@ -64,6 +64,11 @@ describe('ToolUsageGuardNode', () => {
     expect(change.messages?.mode).toBe('append');
     expect(change.messages?.items).toHaveLength(1);
     expect(change.messages?.items[0]?.content).toBe(restrictionMessage);
+    expect(change.messages?.items[0]?.additional_kwargs).toEqual(
+      expect.objectContaining({
+        __requiresFinishTool: true,
+      }),
+    );
   });
 
   it('deactivates guard when finish tool is called', async () => {
@@ -147,5 +152,10 @@ describe('ToolUsageGuardNode', () => {
     expect(change.messages?.mode).toBe('append');
     expect(change.messages?.items).toHaveLength(1);
     expect(change.messages?.items[0]?.content).toBe(restrictionMessage);
+    expect(change.messages?.items[0]?.additional_kwargs).toEqual(
+      expect.objectContaining({
+        __requiresFinishTool: true,
+      }),
+    );
   });
 });

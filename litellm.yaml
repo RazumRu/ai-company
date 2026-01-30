@@ -46,29 +46,54 @@ model_list:
 
   - model_name: qwen3-coder:30b
     litellm_params:
-      model: ollama/qwen3-coder:30b
-      api_base: http://host.docker.internal:11434
+      model: openai/qwen3-coder:30b
+      api_base: http://host.docker.internal:11434/v1/
     model_info:
       supports_function_calling: true
-      supports_parallel_function_calling: false
+      supports_parallel_function_calling: true
       supports_reasoning: false
+      supports_response_schema: true
 
   - model_name: qwen3:32b-q4_K_M
     litellm_params:
-      model: ollama/qwen3:32b-q4_K_M
-      api_base: http://host.docker.internal:11434
+      model: openai/qwen3:32b-q4_K_M
+      api_base: http://host.docker.internal:11434/v1/
       drop_params: true
     model_info:
       supports_function_calling: true
       supports_parallel_function_calling: false
       supports_reasoning: true
+      supports_response_schema: true
 
   - model_name: qwen3-embedding:4b
     litellm_params:
-      model: ollama/qwen3-embedding:4b
-      api_base: http://host.docker.internal:11434
+      model: openai/qwen3-embedding:4b
+      api_base: http://host.docker.internal:11434/v1/
       drop_params: true
     model_info:
       supports_function_calling: false
       supports_parallel_function_calling: false
       supports_reasoning: false
+      supports_response_schema: true
+
+  - model_name: qwen2.5-coder:7b
+    litellm_params:
+      model: openai/qwen2.5-coder:7b
+      api_base: http://host.docker.internal:11434/v1/
+      drop_params: true
+    model_info:
+      supports_function_calling: false
+      supports_parallel_function_calling: false
+      supports_reasoning: false
+      supports_response_schema: true
+
+  - model_name: phi3.5:3.8b-mini-instruct-q4_K_M
+    litellm_params:
+      model: openai/phi3.5:3.8b-mini-instruct-q4_K_M
+      api_base: http://host.docker.internal:11434/v1/
+      drop_params: true
+    model_info:
+      supports_function_calling: false
+      supports_parallel_function_calling: false
+      supports_reasoning: false
+      supports_response_schema: true

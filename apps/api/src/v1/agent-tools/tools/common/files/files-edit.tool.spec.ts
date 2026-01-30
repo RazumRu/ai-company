@@ -388,7 +388,7 @@ describe('FilesEditTool', () => {
     it('should handle malformed JSON from LLM', async () => {
       vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
         conversationId: 'test',
-        content: '{invalid json here',
+        content: undefined,
       });
 
       const result = await tool['parseLLM'](
@@ -400,13 +400,13 @@ describe('FilesEditTool', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
-      expect(result.error).toContain('Invalid JSON');
+      expect(result.error).toContain('LLM response is empty');
     });
 
     it('should handle empty hunks array from LLM', async () => {
       vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
         conversationId: 'test',
-        content: JSON.stringify({ hunks: [] }),
+        content: { hunks: [] },
       });
 
       const result = await tool['parseLLM'](
@@ -416,9 +416,8 @@ describe('FilesEditTool', () => {
         false,
       );
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain('hunk structure');
+      expect(result.success).toBe(true);
+      expect(result.hunks).toEqual([]);
     });
   });
 
@@ -727,7 +726,7 @@ describe('FilesEditTool', () => {
       // Mock LLM to return valid hunks
       vi.spyOn(mockOpenaiService, 'response').mockResolvedValue({
         conversationId: 'test',
-        content: JSON.stringify({
+        content: {
           hunks: [
             {
               beforeAnchor: 'const untouchedA = 0;\n// marker A',
@@ -735,7 +734,7 @@ describe('FilesEditTool', () => {
               replacement: 'const value = 2;',
             },
           ],
-        }),
+        },
       });
 
       const result = await tool.invoke(

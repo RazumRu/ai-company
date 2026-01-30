@@ -118,17 +118,50 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return `'${s.replace(/'/g, `'\\''`)}'`;
   }
 
-  private normalizeWhitespace(text: string): string {
-    // Normalize line endings
+  private collapseBlankRuns(lines: string[]): string[] {
+    const out: string[] = [];
+    let prevBlank = false;
+
+    for (const line of lines) {
+      const isBlank = line.trim().length === 0;
+      if (isBlank) {
+        if (!prevBlank) out.push('');
+        prevBlank = true;
+      } else {
+        out.push(line);
+        prevBlank = false;
+      }
+    }
+
+    return out;
+  }
+
+  private normalizeWhitespace(
+    text: string,
+    collapseBlankLines: boolean,
+  ): string {
     const normalized = text.replace(/\r\n/g, '\n');
 
-    // Remove trailing whitespace from each line, but preserve leading spaces
     const lines = normalized
       .split('\n')
-      .map((line) => line.replace(/[ \t]+$/g, ''));
+      .map((line) => line.replace(/[ \t]+$/g, ''))
+      .map((line) => (line.trim().length === 0 ? '' : line));
 
-    // Strip common indentation to preserve relative indentation
-    return this.stripCommonIndent(lines.join('\n')).trim();
+    const stripped = this.stripCommonIndent(lines.join('\n')).split('\n');
+
+    const finalLines = collapseBlankLines
+      ? this.collapseBlankRuns(stripped)
+      : stripped;
+
+    return finalLines.join('\n').trim();
+  }
+
+  private normalizeRawLines(text: string): string[] {
+    return text
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((l) => l.replace(/[ \t]+$/g, ''))
+      .map((l) => (l.trim().length === 0 ? '' : l));
   }
 
   private detectIndentationFromBlock(text: string): string {
@@ -159,10 +192,39 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     const lines = stripped.split('\n');
     return lines
       .map((line) => {
-        // Apply indentation to all non-empty lines
         return line.trim() === '' ? line : indentation + line;
       })
       .join('\n');
+  }
+
+  private tryMatchAt(
+    fileLinesRaw: string[],
+    fileLinesOriginal: string[],
+    startLine: number,
+    oldLinesRaw: string[],
+  ): { endLine: number; matchedText: string } | null {
+    let i = startLine;
+    let j = 0;
+
+    while (j < oldLinesRaw.length) {
+      if (oldLinesRaw[j] === '') {
+        while (j < oldLinesRaw.length && oldLinesRaw[j] === '') j++;
+        if (i >= fileLinesRaw.length || fileLinesRaw[i] !== '') return null;
+        while (i < fileLinesRaw.length && fileLinesRaw[i] === '') i++;
+        continue;
+      }
+
+      if (i >= fileLinesRaw.length) return null;
+      if (fileLinesRaw[i] !== oldLinesRaw[j]) return null;
+
+      i++;
+      j++;
+    }
+
+    const endLine = Math.max(startLine, i - 1);
+    const matchedText = fileLinesOriginal.slice(startLine, i).join('\n');
+
+    return { endLine, matchedText };
   }
 
   private findMatches(
@@ -170,7 +232,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     oldText: string,
     replaceAll: boolean,
   ): { matches: EditMatch[]; errors: string[] } {
-    const lines = fileContent.replace(/\r\n/g, '\n').split('\n');
+    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
+    const fileLinesRaw = originalLines
+      .map((l) => l.replace(/[ \t]+$/g, ''))
+      .map((l) => (l.trim().length === 0 ? '' : l));
+
     const matches: EditMatch[] = [];
     const errors: string[] = [];
 
@@ -178,44 +244,49 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       return { matches, errors };
     }
 
-    const normalizedOldText = this.normalizeWhitespace(oldText);
-    const searchLines = normalizedOldText.split('\n');
-    const searchLineCount = searchLines.length;
+    const oldLinesRaw = this.normalizeRawLines(oldText);
+
+    const normalizedOldText = this.normalizeWhitespace(oldText, true);
 
     const foundMatches: EditMatch[] = [];
 
-    for (
-      let lineIndex = 0;
-      lineIndex <= lines.length - searchLineCount;
-      lineIndex++
-    ) {
-      const candidateLines = lines.slice(
+    for (let lineIndex = 0; lineIndex < originalLines.length; lineIndex++) {
+      const candidate = this.tryMatchAt(
+        fileLinesRaw,
+        originalLines,
         lineIndex,
-        lineIndex + searchLineCount,
+        oldLinesRaw,
       );
+      if (!candidate) continue;
+
       const normalizedCandidate = this.normalizeWhitespace(
-        candidateLines.join('\n'),
+        candidate.matchedText,
+        true,
       );
 
       if (normalizedCandidate === normalizedOldText) {
-        const candidateBlock = candidateLines.join('\n');
-        const indentation = this.detectIndentationFromBlock(candidateBlock);
+        const indentation = this.detectIndentationFromBlock(
+          candidate.matchedText,
+        );
         foundMatches.push({
           editIndex: 0,
           startLine: lineIndex,
-          endLine: lineIndex + searchLineCount - 1,
-          matchedText: candidateBlock,
+          endLine: candidate.endLine,
+          matchedText: candidate.matchedText,
           indentation,
         });
       }
     }
 
     if (foundMatches.length === 0) {
-      const previewLines = normalizedOldText.split('\n').slice(0, 3);
+      const previewLines = this.normalizeWhitespace(oldText, true)
+        .split('\n')
+        .slice(0, 3);
       const preview =
-        previewLines.length < searchLines.length
-          ? `${previewLines.join('\\n')}...`
-          : normalizedOldText;
+        previewLines.length <
+        this.normalizeWhitespace(oldText, true).split('\n').length
+          ? `${previewLines.join('\n')}...`
+          : this.normalizeWhitespace(oldText, true);
       errors.push(
         `Could not find match for oldText in file. Searched for (normalized): "${preview}". TIP: Use files_read to copy the EXACT text from the file, then modify only what needs to change. Don't guess or type from memory.`,
       );

@@ -97,17 +97,17 @@ describe('FilesApplyChangesTool', () => {
 
   describe('normalizeWhitespace', () => {
     it('should trim each line and overall', () => {
-      const result = tool['normalizeWhitespace']('  hello world  ');
+      const result = tool['normalizeWhitespace']('  hello world  ', false);
       expect(result).toBe('hello world');
     });
 
     it('should trim leading and trailing whitespace', () => {
-      const result = tool['normalizeWhitespace']('  hello  ');
+      const result = tool['normalizeWhitespace']('  hello  ', false);
       expect(result).toBe('hello');
     });
 
     it('should normalize whitespace in multiline text', () => {
-      const result = tool['normalizeWhitespace']('  line1  \n  line2  ');
+      const result = tool['normalizeWhitespace']('  line1  \n  line2  ', false);
       expect(result).toBe('line1\nline2');
     });
   });
@@ -184,7 +184,7 @@ describe('FilesApplyChangesTool', () => {
 
       const { matches, errors } = tool['findMatches'](
         fileContent,
-        'line1\nline2',
+        '  line1\n  line2',
         false,
       );
 

@@ -9,6 +9,7 @@ export const KnowledgeDocSchema = z.object({
   title: z.string(),
   summary: z.string().nullable().optional(),
   politic: z.string().nullable().optional(),
+  embeddingModel: z.string().nullable().optional(),
   tags: z.array(z.string()),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),

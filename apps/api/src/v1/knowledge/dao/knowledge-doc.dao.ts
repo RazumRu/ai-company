@@ -82,4 +82,17 @@ export class KnowledgeDocDao extends BaseDao<
       );
     }
   }
+
+  async getEmbeddingModelMismatches(
+    currentModel: string,
+  ): Promise<KnowledgeDocEntity[]> {
+    const builder = this.getQueryBuilder();
+
+    builder.where(`${this.alias}.embeddingModel IS NULL`);
+    builder.orWhere(`${this.alias}.embeddingModel != :currentModel`, {
+      currentModel,
+    });
+
+    return builder.getMany();
+  }
 }

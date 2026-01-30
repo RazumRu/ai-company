@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildReasoningMessage,
-  cleanMessagesForLlm,
   convertChunkToMessage,
   extractTextFromResponseContent,
   filterMessagesForLlm,
@@ -103,9 +102,7 @@ describe('agents.utils', () => {
       const filtered = filterMessagesForLlm([]);
       expect(filtered).toHaveLength(0);
     });
-  });
 
-  describe('cleanMessagesForLlm', () => {
     it('should remove AI tool call messages that have missing tool results', () => {
       const toolCallId = 'call-1';
       const msgs = [
@@ -117,7 +114,7 @@ describe('agents.utils', () => {
         }),
       ];
 
-      const cleaned = cleanMessagesForLlm(msgs);
+      const cleaned = filterMessagesForLlm(msgs);
       expect(cleaned).toHaveLength(0);
     });
 
@@ -138,7 +135,7 @@ describe('agents.utils', () => {
         }),
       ];
 
-      const cleaned = cleanMessagesForLlm(msgs);
+      const cleaned = filterMessagesForLlm(msgs);
       expect(cleaned).toHaveLength(2);
     });
 
@@ -152,7 +149,7 @@ describe('agents.utils', () => {
         }),
       ];
 
-      const cleaned = cleanMessagesForLlm(msgs);
+      const cleaned = filterMessagesForLlm(msgs);
       expect(cleaned).toHaveLength(1);
       expect(cleaned[0]).toBeInstanceOf(HumanMessage);
     });
@@ -172,10 +169,10 @@ describe('agents.utils', () => {
         },
       });
 
-      const cleaned1 = cleanMessagesForLlm([aiWithKwToolCall]);
+      const cleaned1 = filterMessagesForLlm([aiWithKwToolCall]);
       expect(cleaned1).toHaveLength(0);
 
-      const cleaned2 = cleanMessagesForLlm([
+      const cleaned2 = filterMessagesForLlm([
         aiWithKwToolCall,
         new ToolMessage({
           tool_call_id: toolCallId,
@@ -188,7 +185,7 @@ describe('agents.utils', () => {
 
     it('should keep non-tool-calling AI messages unchanged', () => {
       const msgs = [new AIMessage('hello'), new HumanMessage('hi')];
-      const cleaned = cleanMessagesForLlm(msgs);
+      const cleaned = filterMessagesForLlm(msgs);
       expect(cleaned).toHaveLength(2);
     });
   });
@@ -230,9 +227,12 @@ describe('agents.utils', () => {
       expect(prepared).toHaveLength(1);
       const out = prepared[0] as AIMessage;
       expect((out as any).id).toBeUndefined();
-      expect((out as any).response_metadata).toEqual({});
-      expect((out as any).usage_metadata).toBeUndefined();
-      expect(out.additional_kwargs).toEqual({});
+      expect((out as any).response_metadata).toEqual({ foo: 'bar' });
+      expect((out as any).usage_metadata).toEqual({ input_tokens: 1 });
+      expect(out.additional_kwargs).toEqual({
+        __runId: 'run-1',
+        __hideForLlm: false,
+      });
       expect(out.content).toBe('Hello\nWorld');
     });
 
@@ -271,8 +271,10 @@ describe('agents.utils', () => {
       expect(toolMsg.tool_call_id).toBe(toolCallId);
       expect(toolMsg.name).toBe('test_tool');
       expect(toolMsg.content).toBe(toolContent);
-      // additional_kwargs should be cleared for safety, but core properties must remain
-      expect(toolMsg.additional_kwargs).toEqual({});
+      expect(toolMsg.additional_kwargs).toEqual({
+        __model: 'gpt-4',
+        __tokenUsage: { totalTokens: 10 },
+      });
     });
   });
 

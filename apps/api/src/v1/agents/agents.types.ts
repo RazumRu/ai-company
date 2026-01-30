@@ -32,6 +32,7 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
   __reasoningId?: string;
   __hideForLlm?: boolean;
   __hideForSummary?: boolean;
+  __requiresFinishTool?: boolean;
   __isAgentInstructionMessage?: boolean;
   __isReportingMessage?: boolean;
 

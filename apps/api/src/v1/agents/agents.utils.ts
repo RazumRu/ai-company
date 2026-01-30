@@ -38,33 +38,10 @@ function cloneMessage<T extends BaseMessage>(message: T): T {
 }
 
 function sanitizeMessageForLlm<T extends BaseMessage>(message: T): T {
-  const clone = cloneMessage(message);
+  const clone: BaseMessage = cloneMessage(message);
 
-  // The Responses API / LiteLLM can treat message `id` fields as references.
-  // We store ids for UI/traceability, but we should never send them back to the model.
-  if ('id' in (clone as unknown as Record<string, unknown>)) {
-    delete (clone as unknown as { id?: unknown }).id;
-  }
+  delete clone.id;
 
-  // Remove transport/provider metadata. These are useful for logs, but unsafe/unsupported
-  // to include in subsequent model calls.
-  //
-  // Note: @langchain/openai's completions converter currently assumes `response_metadata`
-  // exists and is an object. Keep an empty object to avoid runtime crashes while still
-  // stripping provider-specific fields.
-  (clone as unknown as { response_metadata?: unknown }).response_metadata = {};
-  if ('usage_metadata' in (clone as unknown as Record<string, unknown>)) {
-    delete (clone as unknown as { usage_metadata?: unknown }).usage_metadata;
-  }
-  if ('contentBlocks' in (clone as unknown as Record<string, unknown>)) {
-    delete (clone as unknown as { contentBlocks?: unknown }).contentBlocks;
-  }
-
-  // Clear any extra kwargs used for internal bookkeeping (run_id, UI flags, etc.).
-  clone.additional_kwargs = {};
-
-  // For AIMessage content, prefer flattening content blocks into plain text to avoid
-  // accidentally re-sending "reasoning" blocks or response-only structures.
   if (clone instanceof AIMessage) {
     const flattened = extractTextFromResponseContent(clone.content);
     if (flattened !== undefined) {
@@ -72,7 +49,7 @@ function sanitizeMessageForLlm<T extends BaseMessage>(message: T): T {
     }
   }
 
-  return clone;
+  return clone as T;
 }
 
 export function extractTextFromResponseContent(
@@ -180,7 +157,7 @@ export function markMessageHideForLlm<T extends BaseMessage>(message: T): T {
 }
 
 export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
-  return messages.filter((msg) => {
+  const visible = messages.filter((msg) => {
     // Defense-in-depth: "reasoning" messages must never be sent back to the LLM,
     // even if they were not explicitly marked with hideForLlm.
     const role = (msg as unknown as { role?: unknown }).role;
@@ -190,17 +167,9 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
 
     return !isHiddenForLlm(msg);
   });
-}
 
-/**
- * Cleans a message list so tool-calling AI messages are only kept if all their tool calls
- * have matching tool result messages present in the same list.
- *
- * This prevents sending "dangling" tool calls to the LLM (e.g. after trimming context).
- */
-export function cleanMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
   const toolResultIds = new Set(
-    messages
+    visible
       .filter((m) => m instanceof ToolMessage)
       .map((m) => (m as ToolMessage).tool_call_id),
   );
@@ -237,7 +206,7 @@ export function cleanMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
   const safeAiToolCallIds = new Set<string>();
   const keepAiMessage = new WeakSet<AIMessage>();
 
-  for (const m of messages) {
+  for (const m of visible) {
     if (!(m instanceof AIMessage)) continue;
 
     const callIds = getToolCallIdsFromAiMessage(m);
@@ -255,7 +224,7 @@ export function cleanMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
 
   // Second pass: filter out dangling tool calls AND dangling tool results.
   // ToolMessages without a matching tool call must not be sent to the model (invalid chat trace).
-  return messages.filter((m) => {
+  return visible.filter((m) => {
     if (m instanceof AIMessage) {
       return keepAiMessage.has(m);
     }
@@ -273,9 +242,7 @@ export function cleanMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
  * - Strips provider-specific ids/metadata and flattens structured content
  */
 export function prepareMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
-  return cleanMessagesForLlm(filterMessagesForLlm(messages)).map((m) =>
-    sanitizeMessageForLlm(m),
-  );
+  return filterMessagesForLlm(messages).map((m) => sanitizeMessageForLlm(m));
 }
 
 export function convertChunkToMessage(chunk: AIMessageChunk): AIMessage {

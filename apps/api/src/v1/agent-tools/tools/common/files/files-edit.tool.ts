@@ -62,15 +62,17 @@ export type FilesEditToolSchemaType = z.input<typeof FilesEditToolSchema>;
 // Zod schema for strict validation of LLM-proposed hunks
 // Empty anchors ("") are allowed for BOF/EOF (beginning/end of file) cases
 const ParsedHunkSchema = z.object({
-  beforeAnchor: z.string().max(10000, 'beforeAnchor too long').default(''),
-  afterAnchor: z.string().max(10000, 'afterAnchor too long').default(''),
-  replacement: z.string().max(50000, 'replacement too long'),
+  beforeAnchor: z.string().default(''),
+  afterAnchor: z.string().default(''),
+  replacement: z.string(),
   occurrence: z.number().int().positive().nullable().default(null),
 });
 
 const LLMResponseSchema = z.object({
   hunks: z.array(ParsedHunkSchema).min(1, 'Must have at least one hunk'),
 });
+
+export type LLMResponseSchemaType = z.infer<typeof LLMResponseSchema>;
 
 type ParsedHunk = z.input<typeof ParsedHunkSchema>;
 type NormalizedHunk = {
@@ -87,6 +89,7 @@ type ParseResult = {
   error?: string;
   needsLLM?: boolean;
   usage?: RequestTokenUsage;
+  markerlessViolation?: boolean;
 };
 
 type ErrorCode =
@@ -248,11 +251,8 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         return { success: false, error };
       }
 
-      // Track aggregated usage across all LLM calls
       let aggregatedUsage: RequestTokenUsage | undefined;
 
-      // IMPORTANT: Do NOT use `dedent` on file/sketch contents — it destroys indentation.
-      // Use fenced blocks to preserve whitespace exactly.
       const hasMarkers = sketch.includes(ANCHOR_MARKER);
       const prompt = [
         'You are the LLM alignment step in a code editor. Your role: propose exact edit operations.',
@@ -279,10 +279,11 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         ...(hasMarkers
           ? []
           : [
-              'MARKERLESS SKETCH:',
-              '- The sketch has NO "// ... existing code ..." markers.',
+              'MARKERLESS SKETCH (NO "// ... existing code ..." markers):',
               '- Treat this as a FULL FILE REWRITE.',
-              '- Return exactly ONE hunk with beforeAnchor="" and afterAnchor="".',
+              '- Output MUST be exactly ONE hunk.',
+              '- That hunk MUST have beforeAnchor="" and afterAnchor="".',
+              '- replacement MUST equal the entire sketch exactly.',
             ]),
         '',
         'EMPTY ANCHORS (for file boundaries):',
@@ -292,7 +293,6 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         '',
         'CRITICAL:',
         '1. Anchors MUST be exact copy/paste from CURRENT FILE above, including ALL leading spaces/tabs.',
-        '   - If the file has "  return {", then the anchor MUST include those 2 leading spaces.',
         '2. Do NOT retype or “normalize” anchors. Extract them from CURRENT FILE exactly as shown.',
         '3. NEVER include new code in anchors (only in replacement).',
         '4. beforeAnchor and afterAnchor MUST be DIFFERENT (never identical) unless one is empty.',
@@ -327,6 +327,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         'Output format:',
         '{"hunks":[{"beforeAnchor":"...","afterAnchor":"...","replacement":"...","occurrence":1}]}',
       ].join('\\n');
+
       const promptBytes = Buffer.byteLength(prompt, 'utf8');
       if (promptBytes > LIMITS.MAX_LLM_PROMPT_BYTES) {
         return {
@@ -344,8 +345,10 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           typeof modelParams.model === 'string'
             ? modelParams.model
             : String(modelParams.model);
+
         const supportsResponsesApi =
           await this.litellmService.supportsResponsesApi(modelName);
+
         const data: ResponseJsonData | CompleteJsonData = {
           model: modelName,
           message,
@@ -355,11 +358,11 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
             ? { reasoning: modelParams.reasoning }
             : {}),
         };
-        const result = supportsResponsesApi
-          ? await this.openaiService.response(data)
-          : await this.openaiService.complete(data);
 
-        // Aggregate usage
+        const result = supportsResponsesApi
+          ? await this.openaiService.response<LLMResponseSchemaType>(data)
+          : await this.openaiService.complete<LLMResponseSchemaType>(data);
+
         if (result.usage) {
           aggregatedUsage =
             this.litellmService.sumTokenUsages([
@@ -368,78 +371,37 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
             ]) ?? undefined;
         }
 
-        return String(result.content ?? '');
+        return result.content;
       };
 
       const safeContent = await callLLM(prompt);
 
-      // Parse clean JSON directly (no tags)
-      const jsonString = String(safeContent).trim();
-      if (!jsonString) {
-        return {
-          success: false,
-          error: useSmartModel
-            ? 'LLM returned empty response. Try files_apply_changes.'
-            : 'LLM returned empty response. Try with useSmartModel=true.',
-        };
+      if (!safeContent) {
+        return { success: false, error: `LLM response is empty` };
       }
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(jsonString);
-      } catch (parseError) {
-        return {
-          success: false,
-          error: useSmartModel
-            ? `Invalid JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. Try files_apply_changes.`
-            : `Invalid JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. Try with useSmartModel=true.`,
-        };
-      }
+      const hunks = safeContent.hunks;
 
-      // Validate with Zod schema
-      const validation = LLMResponseSchema.safeParse(parsed);
-      if (!validation.success) {
-        const issues = validation.error.issues
-          .map((i) => `${i.path.join('.')}: ${i.message}`)
-          .join('; ');
-        return {
-          success: false,
-          error: useSmartModel
-            ? `Invalid hunk structure: ${issues}. Try files_apply_changes.`
-            : `Invalid hunk structure: ${issues}. Try with useSmartModel=true or files_apply_changes.`,
-        };
-      }
-
-      const hunks = validation.data.hunks;
-
-      // Enforce markerless sketch = full rewrite (single hunk, empty anchors).
-      // NOTE: `hasMarkers` is computed above when building the prompt.
+      let markerlessViolation = false;
       if (!hasMarkers) {
-        if (hunks.length !== 1) {
-          return {
-            success: false,
-            error: `Markerless sketch produced ${hunks.length} hunks, expected exactly 1 (full rewrite).`,
-          };
-        }
-        const h = hunks[0];
-        if (!h || h.beforeAnchor !== '' || h.afterAnchor !== '') {
-          return {
-            success: false,
-            error:
-              'Markerless sketch must be treated as full rewrite: expected beforeAnchor="" and afterAnchor="".',
-          };
+        if (
+          hunks.length !== 1 ||
+          hunks[0]?.beforeAnchor !== '' ||
+          hunks[0]?.afterAnchor !== ''
+        ) {
+          markerlessViolation = true;
+          warnings.push(
+            'Markerless sketch expected full rewrite (one hunk with empty anchors). Will accept only if final file matches the sketch exactly.',
+          );
         }
       }
 
-      // Retry once if the model violates basic invariants (commonly: identical anchors).
       const invalidReasons: string[] = [];
       for (const h of hunks) {
-        // Empty strings are valid anchors for BOF/EOF/rewrite. Only missing fields are invalid.
         if (h.beforeAnchor === undefined || h.afterAnchor === undefined) {
           invalidReasons.push('Missing beforeAnchor/afterAnchor fields');
           continue;
         }
-        // Identical anchors are invalid unless both are empty (full rewrite) or one is empty (BOF/EOF).
         if (
           h.beforeAnchor === h.afterAnchor &&
           h.beforeAnchor !== '' &&
@@ -453,7 +415,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           bi === -1
             ? -1
             : fileContent.indexOf(h.afterAnchor, bi + h.beforeAnchor.length);
-        if (bi === -1 || ai === -1) {
+        if (bi === -1 || (h.afterAnchor !== '' && ai === -1)) {
           invalidReasons.push(
             'Anchors not found in CURRENT FILE in correct order',
           );
@@ -462,16 +424,15 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
 
       if (invalidReasons.length > 0) {
         const retryPrompt = `${prompt}\n\n${dedent`
-          Your previous output was invalid:
-          - ${Array.from(new Set(invalidReasons)).join('\n- ')}
+        Your previous output was invalid:
+        - ${Array.from(new Set(invalidReasons)).join('\n- ')}
 
-          Fix and return JSON only in the same shape.
-        `}`;
+        Fix and return JSON only in the same shape.
+      `}`;
 
         const retryContent = await callLLM(retryPrompt);
-        const retryJsonString = String(retryContent).trim();
 
-        if (!retryJsonString) {
+        if (!retryContent) {
           return {
             success: false,
             error: useSmartModel
@@ -480,19 +441,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           };
         }
 
-        let retryParsed: unknown;
-        try {
-          retryParsed = JSON.parse(retryJsonString);
-        } catch {
-          return {
-            success: false,
-            error: useSmartModel
-              ? 'LLM retry returned invalid JSON. Try files_apply_changes.'
-              : 'LLM retry returned invalid JSON. Try with useSmartModel=true.',
-          };
-        }
-
-        const retryValidation = LLMResponseSchema.safeParse(retryParsed);
+        const retryValidation = LLMResponseSchema.safeParse(retryContent);
         if (!retryValidation.success) {
           return {
             success: false,
@@ -506,6 +455,8 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           success: true,
           hunks: retryValidation.data.hunks,
           usage: aggregatedUsage,
+          warnings: warnings.length > 0 ? warnings : undefined,
+          markerlessViolation,
         };
       }
 
@@ -514,6 +465,7 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         hunks,
         warnings: warnings.length > 0 ? warnings : undefined,
         usage: aggregatedUsage,
+        markerlessViolation,
       };
     } catch (error) {
       return {
@@ -1141,6 +1093,36 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         },
         messageMetadata,
       };
+    }
+
+    const hasMarkers = args.codeSketch.includes(ANCHOR_MARKER);
+
+    const normalizeForCompare = (s: string) => {
+      const t = s.replace(/\r\n/g, '\n');
+      return t.endsWith('\n') ? t.slice(0, -1) : t;
+    };
+
+    if (!hasMarkers) {
+      const sketchNorm = normalizeForCompare(args.codeSketch);
+      const modifiedNorm = normalizeForCompare(modifiedContent);
+
+      if (modifiedNorm !== sketchNorm) {
+        return {
+          output: {
+            success: false,
+            error:
+              'Markerless sketch requires the final file to match the sketch exactly. The applied edits did not produce the sketch result.',
+            filePath: args.filePath,
+            errorCode: 'APPLY_FAILED',
+            modelUsed: useSmartModel ? 'smart' : 'light',
+            suggestedNextAction: useSmartModel
+              ? 'use_apply_changes'
+              : 'retry_with_smart_model',
+          },
+          messageMetadata,
+          toolRequestUsage: parseResult.usage,
+        };
+      }
     }
 
     const diff = this.generateUnifiedDiff(fileContent, modifiedContent, edits);

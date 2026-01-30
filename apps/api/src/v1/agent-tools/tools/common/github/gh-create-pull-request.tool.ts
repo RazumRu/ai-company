@@ -30,19 +30,10 @@ export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
   draft: z.boolean().optional().describe('Create as draft PR (default false).'),
 
   labels: z.array(z.string().min(1)).optional(),
-  assignees: z
-    .array(z.string().min(1))
-    .max(10)
-    .optional()
-    .describe('Usernames'),
-  reviewers: z
-    .array(z.string().min(1))
-    .max(15)
-    .optional()
-    .describe('Usernames'),
+  assignees: z.array(z.string().min(1)).optional().describe('Usernames'),
+  reviewers: z.array(z.string().min(1)).optional().describe('Usernames'),
   teamReviewers: z
     .array(z.string().min(1))
-    .max(15)
     .optional()
     .describe('Team slugs (org only)'),
 

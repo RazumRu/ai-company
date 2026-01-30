@@ -55,6 +55,8 @@ export type KnowledgeIndexResult = {
 
 @Injectable()
 export class KnowledgeChunksService {
+  private knowledgeVectorSizePromise?: Promise<number>;
+
   constructor(
     private readonly qdrantService: QdrantService,
     private readonly openaiService: OpenaiService,
@@ -112,13 +114,16 @@ export class KnowledgeChunksService {
       throw new BadRequestException('EMBEDDING_FAILED');
     }
 
+    const collection = this.buildSizedCollectionName(
+      this.getVectorSizeFromEmbeddings(embeddings),
+    );
     const searches = this.buildSearchBatch(
       embeddings,
       params.docIds,
       params.topK,
     );
     const batchResults = await this.qdrantService.searchMany(
-      this.knowledgeCollection,
+      collection,
       searches,
     );
 
@@ -157,31 +162,33 @@ export class KnowledgeChunksService {
     embeddings: number[][],
   ): Promise<void> {
     const storedChunks = this.buildStoredChunks(docId, docPublicId, chunks);
+    const collection = this.buildSizedCollectionName(
+      this.getVectorSizeFromEmbeddings(embeddings),
+    );
     await this.qdrantService.deleteByFilter(
-      this.knowledgeCollection,
+      collection,
       this.buildDocFilter([docId]),
     );
     await this.qdrantService.upsertPoints(
-      this.knowledgeCollection,
+      collection,
       this.buildVectorPoints(storedChunks, embeddings),
     );
   }
 
   async deleteDocChunks(docId: string): Promise<void> {
+    const collection = await this.getKnowledgeCollectionForCurrentModel();
     await this.qdrantService.deleteByFilter(
-      this.knowledgeCollection,
+      collection,
       this.buildDocFilter([docId]),
     );
   }
 
   async getDocChunks(docId: string): Promise<StoredChunkInput[]> {
-    const chunks = await this.qdrantService.scrollAll(
-      this.knowledgeCollection,
-      {
-        filter: this.buildDocFilter([docId]),
-        with_payload: true,
-      } as Parameters<QdrantService['scrollAll']>[1],
-    );
+    const collection = await this.getKnowledgeCollectionForCurrentModel();
+    const chunks = await this.qdrantService.scrollAll(collection, {
+      filter: this.buildDocFilter([docId]),
+      with_payload: true,
+    } as Parameters<QdrantService['scrollAll']>[1]);
 
     return chunks
       .map((chunk) => this.parseStoredChunk(chunk))
@@ -190,6 +197,32 @@ export class KnowledgeChunksService {
 
   private get knowledgeCollection() {
     return environment.knowledgeChunksCollection ?? 'knowledge_chunks';
+  }
+
+  private buildSizedCollectionName(vectorSize: number): string {
+    return `${this.knowledgeCollection}_${vectorSize}`;
+  }
+
+  private getVectorSizeFromEmbeddings(embeddings: number[][]): number {
+    const vectorSize = embeddings[0]?.length;
+    if (!vectorSize) {
+      throw new InternalException('EMBEDDING_MISSING', { index: 0 });
+    }
+    return vectorSize;
+  }
+
+  private async getKnowledgeCollectionForCurrentModel(): Promise<string> {
+    const vectorSize = await this.getKnowledgeVectorSize();
+    return this.buildSizedCollectionName(vectorSize);
+  }
+
+  private async getKnowledgeVectorSize(): Promise<number> {
+    if (!this.knowledgeVectorSizePromise) {
+      this.knowledgeVectorSizePromise = this.embedTexts(['ping']).then(
+        (embeddings) => this.getVectorSizeFromEmbeddings(embeddings),
+      );
+    }
+    return this.knowledgeVectorSizePromise;
   }
 
   private buildSearchBatch(

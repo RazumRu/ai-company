@@ -92,7 +92,7 @@ describe('GhCreatePullRequestTool', () => {
       ).toThrow();
     });
 
-    it('should reject too many assignees via schema', () => {
+    it('should allow larger assignee lists via schema', () => {
       expect(() =>
         tool.validate({
           owner: 'acme',
@@ -102,7 +102,7 @@ describe('GhCreatePullRequestTool', () => {
           base: 'main',
           assignees: new Array(11).fill('octocat'),
         }),
-      ).toThrow();
+      ).not.toThrow();
     });
 
     it('should reject too many combined reviewers via schema', () => {

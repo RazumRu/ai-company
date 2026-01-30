@@ -59,7 +59,7 @@ export class InvokeLlmNode extends BaseNode<
       hasNewHumanMessage && Boolean(finishState?.needsMoreInfo);
 
     const runner = this.llm.bindTools(this.tools, {
-      tool_choice: this.tools.length ? this.opts?.toolChoice : undefined,
+      tool_choice: this.getToolChoice(state),
       parallel_tool_calls: this.tools.length
         ? this.opts?.parallelToolCalls
         : undefined,
@@ -314,5 +314,38 @@ export class InvokeLlmNode extends BaseNode<
     }
 
     return Array.from(new Set(names));
+  }
+
+  private getToolChoice(
+    state: BaseAgentState,
+  ): BaseChatOpenAICallOptions['tool_choice'] | undefined {
+    if (this.tools.length === 0) {
+      return undefined;
+    }
+
+    if (this.shouldForceFinishTool(state)) {
+      return {
+        type: 'function',
+        function: { name: FinishTool.TOOL_NAME },
+      };
+    }
+
+    return this.opts?.toolChoice;
+  }
+
+  private shouldForceFinishTool(state: BaseAgentState): boolean {
+    const lastMessage = state.messages[state.messages.length - 1];
+    if (!(lastMessage instanceof SystemMessage)) {
+      return false;
+    }
+
+    const kw = lastMessage.additional_kwargs as
+      | Record<string, unknown>
+      | undefined;
+    if (kw?.__requiresFinishTool !== true) {
+      return false;
+    }
+
+    return this.tools.some((tool) => tool.name === FinishTool.TOOL_NAME);
   }
 }

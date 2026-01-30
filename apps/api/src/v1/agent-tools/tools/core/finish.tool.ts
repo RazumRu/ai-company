@@ -79,16 +79,16 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Call ONCE when completely done to end work or request required info. This is the ONLY way to properly end your work. You must ALWAYS end your response by calling the finish tool (never end with a plain message).
+      Call ONCE when completely done to end work or request required info. This is the ONLY way to properly end your work. You must ALWAYS end your response by calling the finish tool (never end with a plain message or "assistant" reply).
 
       ### When to Use
-      All tasks complete and have results to report, OR cannot proceed without specific required information. If you are ready to respond to the user, you must call finish instead of sending a normal assistant message.
+      All tasks complete and have results to report, OR cannot proceed without specific required information. If you are ready to respond to the user (including a simple greeting or one-shot answer), you must call finish instead of sending a normal assistant message.
 
       ### When NOT to Use
-      Don't call mid-work, alongside other tools, or before completing ALL work.
+      Don't call mid-work, alongside other tools, or before completing ALL work. Never output your internal reasoning or a plain-text final response without calling finish.
 
       ### Best Practices
-      Prefer completion over asking (use defaults/assumptions). If asking, be specific about what's needed with examples. In \`message\`, summarize accomplishments clearly or ask precise questions. Set \`needsMoreInfo: true\` only when information is strictly required and cannot be reasonably assumed.
+      Prefer completion over asking (use defaults/assumptions). If asking, be specific about what's needed with examples. In \`message\`, provide the exact user-facing response (the final answer or question). Set \`needsMoreInfo: true\` only when information is strictly required and cannot be reasonably assumed.
 
       ### Workflow
       1. Call tools → 2. See results → 3. Call more tools if needed → 4. Call finish ONCE when done (not alongside other tools)
@@ -97,6 +97,11 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       **Completion:**
       \`\`\`json
       {"purpose": "Report completion", "message": "Successfully implemented user auth endpoint. Changes:\\n- Created POST /api/auth/login\\n- Added JWT validation\\n- Added tests\\n\\nReady for testing.", "needsMoreInfo": false}
+      \`\`\`
+
+      **Completion (simple response):**
+      \`\`\`json
+      {"purpose": "Respond to greeting", "message": "Hi! How can I help?", "needsMoreInfo": false}
       \`\`\`
 
       **Requesting info:**

@@ -1,18 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { compact, isObject } from 'lodash';
 import OpenAI from 'openai';
-import { zodResponseFormat } from 'openai/helpers/zod';
-import {
-  ResponseFormatJSONObject,
-  ResponseFormatJSONSchema,
-  ResponseFormatText,
-} from 'openai/resources';
+import { zodResponseFormat, zodTextFormat } from 'openai/helpers/zod';
 import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 import {
   ResponseCreateParamsNonStreaming,
   ResponseTextConfig,
 } from 'openai/resources/responses/responses';
-import { ZodType } from 'zod';
+import { ZodObject } from 'zod';
 
 import { environment } from '../../environments';
 import type { RequestTokenUsage } from '../litellm/litellm.types';
@@ -38,11 +33,9 @@ type BaseData = {
   reasoning?: SortReasoning;
 };
 
-type JsonSchema = ZodType<unknown>;
-
 type JsonEnabled = {
   json: true;
-  jsonSchema: JsonSchema;
+  jsonSchema: ZodObject;
 };
 
 type JsonDisabled = {
@@ -93,21 +86,17 @@ export class OpenaiService {
       { role: 'user' as const, content: data.message },
     ]);
 
-    let responseFormat:
-      | ResponseFormatText
-      | ResponseFormatJSONSchema
-      | ResponseFormatJSONObject
-      | undefined;
-
-    if ('jsonSchema' in data) {
-      responseFormat = zodResponseFormat(data.jsonSchema as JsonSchema, 'data');
-    }
-
+    const generatedSchema =
+      'jsonSchema' in data && zodResponseFormat(data.jsonSchema, 'schema');
     const response = await this.client.chat.completions.create({
       ...(params ?? {}),
       model: data.model,
       messages,
-      ...(responseFormat ? { response_format: responseFormat } : {}),
+      ...(generatedSchema
+        ? {
+            response_format: generatedSchema,
+          }
+        : {}),
     });
 
     const content = response.choices?.[0]?.message?.content ?? undefined;
@@ -149,20 +138,19 @@ export class OpenaiService {
   ): Promise<GenerateResult<T | string>> {
     let text: ResponseTextConfig | undefined;
 
-    if ('jsonSchema' in data) {
-      const compiled = zodResponseFormat(data.jsonSchema as JsonSchema, 'data');
-      text = {
-        format: {
-          ...compiled.json_schema,
-          type: 'json_schema',
-          schema: compiled.json_schema.schema!,
-        },
-      };
-    }
+    const generatedSchema =
+      'jsonSchema' in data && zodTextFormat(data.jsonSchema, 'schema');
 
     const response = await this.client.responses.create({
       ...(params ?? {}),
       ...(data.reasoning ? { reasoning: data.reasoning } : {}),
+      ...(generatedSchema
+        ? {
+            text: {
+              format: generatedSchema,
+            },
+          }
+        : {}),
       model: data.model,
       input: compact([
         data.systemMessage
