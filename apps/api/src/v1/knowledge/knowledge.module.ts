@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { LitellmModule } from '../litellm/litellm.module';
@@ -9,6 +9,7 @@ import { KnowledgeDocDao } from './dao/knowledge-doc.dao';
 import { KnowledgeDocEntity } from './entity/knowledge-doc.entity';
 import { KnowledgeService } from './services/knowledge.service';
 import { KnowledgeChunksService } from './services/knowledge-chunks.service';
+import { KnowledgeReindexService } from './services/knowledge-reindex.service';
 
 @Module({
   imports: [
@@ -18,7 +19,18 @@ import { KnowledgeChunksService } from './services/knowledge-chunks.service';
     QdrantModule,
   ],
   controllers: [KnowledgeController],
-  providers: [KnowledgeDocDao, KnowledgeChunksService, KnowledgeService],
+  providers: [
+    KnowledgeDocDao,
+    KnowledgeChunksService,
+    KnowledgeReindexService,
+    KnowledgeService,
+  ],
   exports: [KnowledgeService, KnowledgeDocDao, KnowledgeChunksService],
 })
-export class KnowledgeModule {}
+export class KnowledgeModule implements OnModuleInit {
+  constructor(private readonly reindexService: KnowledgeReindexService) {}
+
+  onModuleInit(): void {
+    void this.reindexService.reindexDocsWithEmbeddingModelMismatch();
+  }
+}
