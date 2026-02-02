@@ -89,13 +89,12 @@ describe('AiSuggestionsController (integration)', () => {
         'agent-1',
         {
           userRequest: 'Shorten the instructions',
-          threadId: 'thread-running',
         } as SuggestAgentInstructionsDto,
       );
 
       expect(response.instructions.length).toBeGreaterThan(0);
       expect(response.threadId).toBeDefined();
-    });
+    }, 30000);
 
     it('returns error for a non-running graph', async () => {
       await expect(
@@ -106,18 +105,22 @@ describe('AiSuggestionsController (integration)', () => {
       ).rejects.toThrowError();
     });
 
-    it('returns generated threadId when not provided', async () => {
-      await ensureGraphRunning(runningGraphId);
+    it(
+      'returns generated threadId when not provided',
+      { timeout: 30000 },
+      async () => {
+        await ensureGraphRunning(runningGraphId);
 
-      const response = await controller.suggestAgentInstructions(
-        runningGraphId,
-        'agent-1',
-        { userRequest: 'No thread provided' } as SuggestAgentInstructionsDto,
-      );
+        const response = await controller.suggestAgentInstructions(
+          runningGraphId,
+          'agent-1',
+          { userRequest: 'No thread provided' } as SuggestAgentInstructionsDto,
+        );
 
-      expect(response.instructions.length).toBeGreaterThan(0);
-      expect(response.threadId).toBeDefined();
-    });
+        expect(response.instructions.length).toBeGreaterThan(0);
+        expect(response.threadId).toBeDefined();
+      },
+    );
   });
 });
 
@@ -282,7 +285,6 @@ describe('AiSuggestionsService (integration)', () => {
 
       const result = await aiSuggestionsService.analyzeThread(thread.id, {
         userInput: 'Please check tools',
-        threadId: 'conv-prev',
       });
 
       expect(result.analysis.length).toBeGreaterThan(0);

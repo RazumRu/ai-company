@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import type { LiteLLMModelInfo } from '../../../v1/litellm/litellm.types';
 import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { LitellmService } from '../../../v1/litellm/services/litellm.service';
 import { createTestModule } from '../../integration/setup';
@@ -19,12 +20,26 @@ describe('LiteLLM (integration)', () => {
     },
   ];
 
+  const mockModelInfo = (model: string): LiteLLMModelInfo => ({
+    model_name: model,
+    litellm_params: { model },
+    model_info: {
+      key: model,
+      input_cost_per_token: 0.00000175,
+      input_cost_per_token_cache_hit: 0.000000175,
+      cache_read_input_token_cost: 0.000000175,
+      output_cost_per_token: 0.000014,
+      output_cost_per_reasoning_token: 0,
+    },
+  });
+
   beforeAll(async () => {
     app = await createTestModule(async (moduleBuilder) =>
       moduleBuilder
         .overrideProvider(LiteLlmClient)
         .useValue({
           listModels: async () => mockResponse,
+          getModelInfo: async (model: string) => mockModelInfo(model),
         })
         .compile(),
     );
@@ -44,7 +59,7 @@ describe('LiteLLM (integration)', () => {
   it('returns cost rates for model', async () => {
     const model = 'gpt-5.2';
     const result = await modelsService.getTokenCostRatesForModel(model);
-    expect(result?.outputCostPerToken).toBeDefined();
+    expect(result?.inputCostPerToken).toBeDefined();
     expect(result?.outputCostPerToken).toBeDefined();
   });
 

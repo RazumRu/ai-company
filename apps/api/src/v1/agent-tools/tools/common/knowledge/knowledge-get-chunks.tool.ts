@@ -4,9 +4,9 @@ import { BadRequestException } from '@packages/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
-import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
+import { KnowledgeChunksService } from '../../../../knowledge/services/knowledge-chunks.service';
 import { QdrantService } from '../../../../qdrant/services/qdrant.service';
 import {
   BaseTool,
@@ -26,6 +26,14 @@ export type KnowledgeGetChunksSchemaType = z.infer<
   typeof KnowledgeGetChunksSchema
 >;
 
+export type KnowledgeGetChunksOutput = {
+  chunkPublicId: number;
+  docPublicId: number | null;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+}[];
+
 @Injectable({ scope: Scope.TRANSIENT })
 export class KnowledgeGetChunksTool extends BaseTool<
   KnowledgeGetChunksSchemaType,
@@ -37,6 +45,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
   constructor(
     private readonly docDao: KnowledgeDocDao,
     private readonly qdrantService: QdrantService,
+    private readonly knowledgeChunksService: KnowledgeChunksService,
   ) {
     super();
   }
@@ -72,7 +81,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
     args: KnowledgeGetChunksSchemaType,
     config: KnowledgeToolGroupConfig,
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<ToolInvokeResult<unknown>> {
+  ): Promise<ToolInvokeResult<KnowledgeGetChunksOutput>> {
     const graphCreatedBy = runnableConfig.configurable?.graph_created_by;
     if (!graphCreatedBy) {
       throw new BadRequestException(undefined, 'graph_created_by is required');
@@ -82,13 +91,11 @@ export class KnowledgeGetChunksTool extends BaseTool<
       return { output: [] };
     }
 
-    const chunks = await this.qdrantService.scrollAll(
-      this.knowledgeCollection,
-      {
-        filter: this.buildChunkFilter(args.chunkIds),
-        with_payload: true,
-      } as Parameters<QdrantService['scrollAll']>[1],
-    );
+    const collection = await this.knowledgeChunksService.getCollectionName();
+    const chunks = await this.qdrantService.scrollAll(collection, {
+      filter: this.buildChunkFilter(args.chunkIds),
+      with_payload: true,
+    } as Parameters<QdrantService['scrollAll']>[1]);
 
     if (chunks.length === 0) {
       return { output: [] };
@@ -226,10 +233,6 @@ export class KnowledgeGetChunksTool extends BaseTool<
         },
       ],
     };
-  }
-
-  private get knowledgeCollection() {
-    return environment.knowledgeChunksCollection ?? 'knowledge_chunks';
   }
 }
 

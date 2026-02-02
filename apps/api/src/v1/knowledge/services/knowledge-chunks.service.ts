@@ -186,6 +186,11 @@ export class KnowledgeChunksService {
     );
   }
 
+  /** Resolves the Qdrant collection name used for knowledge chunks (sized by embedding dimension). */
+  async getCollectionName(): Promise<string> {
+    return this.getKnowledgeCollectionForCurrentModel();
+  }
+
   async getDocChunks(docId: string): Promise<StoredChunkInput[]> {
     const collection = await this.getKnowledgeCollectionForCurrentModel();
     const chunks = await this.qdrantService.scrollAll(collection, {
@@ -361,9 +366,6 @@ export class KnowledgeChunksService {
       message: prompt,
       json: true as const,
       jsonSchema: QueryExpansionSchema,
-      reasoning: {
-        effort: 'none' as const,
-      },
     };
     const response = supportsResponsesApi
       ? await this.openaiService.response<{ queries: string[] }>(data)

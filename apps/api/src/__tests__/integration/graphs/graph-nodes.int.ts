@@ -213,7 +213,9 @@ describe('Graph Nodes Integration Tests', () => {
             {
               id: 'mcp-1',
               template: 'filesystem-mcp',
-              config: {},
+              config: {
+                readOnly: false,
+              },
             },
             {
               id: AGENT_NODE_ID,

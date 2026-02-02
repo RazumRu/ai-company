@@ -222,9 +222,6 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       message: prompt,
       json: true as const,
       jsonSchema: KnowledgeDocSelectionSchema,
-      reasoning: {
-        effort: 'none' as const,
-      },
     };
     const response = supportsResponsesApi
       ? await this.openaiService.response<KnowledgeDocSelection>(data)

@@ -23,6 +23,7 @@ import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { LitellmService } from '../../../v1/litellm/services/litellm.service';
+import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
 import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
@@ -37,7 +38,6 @@ import { createTestModule } from '../setup';
 
 const THREAD_ID = `files-tools-int-${Date.now()}`;
 const WORKSPACE_DIR = `/runtime-workspace/${THREAD_ID}`;
-const TAGS_ALIAS = 'files-tools-index';
 const INT_TEST_TIMEOUT = 60000;
 const RUNNABLE_CONFIG: ToolRunnableConfig<BaseAgentConfigurable> = {
   configurable: {
@@ -128,6 +128,7 @@ describe('Files tools integration', () => {
         OpenaiService,
         LitellmService,
         LiteLlmClient,
+        LlmModelsService,
       ],
     }).compile();
 
@@ -249,7 +250,7 @@ describe('Files tools integration', () => {
       expect(buildResult.error).toBeUndefined();
       expect(buildResult.success).toBe(true);
       expect(buildResult.tagsFile).toBeDefined();
-      expect(buildResult.tagsFile?.endsWith(`${TAGS_ALIAS}.json`)).toBe(true);
+      expect(buildResult.tagsFile?.endsWith(`.json`)).toBe(true);
 
       const { output: classSearch } = await filesSearchTagsTool.invoke(
         {

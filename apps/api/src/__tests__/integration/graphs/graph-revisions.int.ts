@@ -1834,7 +1834,9 @@ describe('Graph Revisions Integration Tests', () => {
               {
                 id: 'mcp-fs-1',
                 template: 'filesystem-mcp',
-                config: {},
+                config: {
+                  readOnly: false,
+                },
               },
             ],
             edges: [{ from: 'mcp-fs-1', to: 'runtime-1' }],

@@ -50,9 +50,6 @@ export class ThreadNameGeneratorService {
         message: `Generate a concise title for this conversation based on the first user message:\n\n${normalized}`,
         json: true as const,
         jsonSchema: ThreadTitleSchema,
-        reasoning: {
-          effort: 'none' as const,
-        },
       };
       const llmContentOrEmptyPromise = (
         supportsResponsesApi

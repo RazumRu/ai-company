@@ -4,7 +4,10 @@ import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
-import { KnowledgeGetChunksTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-get-chunks.tool';
+import {
+  KnowledgeGetChunksOutput,
+  KnowledgeGetChunksTool,
+} from '../../../v1/agent-tools/tools/common/knowledge/knowledge-get-chunks.tool';
 import { KnowledgeGetDocTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-get-doc.tool';
 import { KnowledgeSearchChunksTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-chunks.tool';
 import { KnowledgeSearchDocsTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-docs.tool';
@@ -139,12 +142,7 @@ describe('Knowledge tools (integration)', () => {
         },
       );
 
-      const chunkSnippets = chunksResult.output as {
-        chunkPublicId: number;
-        docPublicId: number | null;
-        score: number;
-        snippet: string;
-      }[];
+      const chunkSnippets = chunksResult.output;
       expect(chunkSnippets.length).toBeGreaterThan(0);
       expect(chunkSnippets[0]?.docPublicId).toBe(doc.publicId);
       expect(chunkSnippets[0]?.snippet.toLowerCase()).toContain(keyword);
@@ -160,13 +158,7 @@ describe('Knowledge tools (integration)', () => {
         },
       );
 
-      const chunks = chunkResult.output as {
-        chunkPublicId: number;
-        docPublicId: number | null;
-        text: string;
-        startOffset: number;
-        endOffset: number;
-      }[];
+      const chunks: KnowledgeGetChunksOutput = chunkResult.output;
       expect(chunks).toHaveLength(1);
       const chunk = chunks[0];
       expect(chunk?.docPublicId).toBe(doc.publicId);
@@ -252,10 +244,7 @@ describe('Knowledge tools (integration)', () => {
           },
         },
       );
-      const allowedOutput = allowedChunks.output as {
-        chunkPublicId: number;
-        docPublicId: number | null;
-      }[];
+      const allowedOutput: KnowledgeGetChunksOutput = allowedChunks.output;
       expect(allowedOutput).toHaveLength(1);
       expect(allowedOutput[0]?.docPublicId).toBe(alphaDoc.publicId);
 
@@ -269,7 +258,8 @@ describe('Knowledge tools (integration)', () => {
           },
         },
       );
-      expect(blockedChunks.output as unknown[]).toHaveLength(0);
+      const blockedOutput: KnowledgeGetChunksOutput = blockedChunks.output;
+      expect(blockedOutput).toHaveLength(0);
     },
   );
 
