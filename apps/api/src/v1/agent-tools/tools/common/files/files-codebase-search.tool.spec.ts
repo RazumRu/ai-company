@@ -1,5 +1,6 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
+import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
@@ -20,6 +21,7 @@ describe('FilesCodebaseSearchTool', () => {
   let mockOpenaiService: OpenaiService;
   let mockModelsService: LlmModelsService;
   let mockLitellmService: LitellmService;
+  let mockLogger: DefaultLogger;
 
   beforeEach(async () => {
     mockRuntime = {
@@ -54,6 +56,11 @@ describe('FilesCodebaseSearchTool', () => {
     } as unknown as LlmModelsService;
 
     mockLitellmService = {
+      countTokens: vi.fn().mockResolvedValue(1),
+      getTokenizer: vi.fn().mockResolvedValue({
+        encode: (text: string) => Array.from(text).map((_, idx) => idx),
+        decode: (tokens: number[]) => tokens.map(() => 'x').join(''),
+      }),
       sumTokenUsages: vi.fn(
         (usages: (RequestTokenUsage | null | undefined)[]) => {
           let inputTokens = 0;
@@ -76,6 +83,13 @@ describe('FilesCodebaseSearchTool', () => {
       ),
     } as unknown as LitellmService;
 
+    mockLogger = {
+      debug: vi.fn(),
+      error: vi.fn(),
+      system: vi.fn(),
+      warn: vi.fn(),
+    } as unknown as DefaultLogger;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FilesCodebaseSearchTool,
@@ -83,6 +97,7 @@ describe('FilesCodebaseSearchTool', () => {
         { provide: OpenaiService, useValue: mockOpenaiService },
         { provide: LitellmService, useValue: mockLitellmService },
         { provide: LlmModelsService, useValue: mockModelsService },
+        { provide: DefaultLogger, useValue: mockLogger },
       ],
     }).compile();
 
@@ -102,7 +117,9 @@ describe('FilesCodebaseSearchTool', () => {
 
   describe('schema', () => {
     it('should validate required query field', () => {
-      expect(() => tool.validate({ query: 'find auth' })).not.toThrow();
+      expect(() =>
+        tool.validate({ query: 'find auth', directory: 'apps/api' }),
+      ).not.toThrow();
     });
 
     it('should reject missing query field', () => {
@@ -110,7 +127,13 @@ describe('FilesCodebaseSearchTool', () => {
     });
 
     it('should reject empty query field', () => {
-      expect(() => tool.validate({ query: '' })).toThrow();
+      expect(() =>
+        tool.validate({ query: '', directory: 'apps/api' }),
+      ).toThrow();
+    });
+
+    it('should reject missing directory field', () => {
+      expect(() => tool.validate({ query: 'find auth' })).toThrow();
     });
   });
 
@@ -130,7 +153,7 @@ describe('FilesCodebaseSearchTool', () => {
       });
 
       const { output } = await tool.invoke(
-        { query: 'search term' },
+        { query: 'search term', directory: 'apps/api' },
         mockConfig,
         mockCfg,
       );
@@ -202,7 +225,7 @@ describe('FilesCodebaseSearchTool', () => {
       const { output } = await tool.invoke(
         {
           query: 'index',
-          path_prefix: 'apps/api',
+          directory: 'apps/api',
           language: 'ts',
           top_k: 5,
         },
@@ -259,7 +282,7 @@ describe('FilesCodebaseSearchTool', () => {
         .mockResolvedValue(undefined);
 
       const { output } = await tool.invoke(
-        { query: 'search' },
+        { query: 'search', directory: 'apps/api' },
         mockConfig,
         mockCfg,
       );

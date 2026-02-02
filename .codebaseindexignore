@@ -1,0 +1,11 @@
+/.cursor
+/.docker
+/.github
+/.husky
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+/release.config.cjs
+/scripts
+**/tsconfig.*
+/turbo.json
+**/vitest.config.*

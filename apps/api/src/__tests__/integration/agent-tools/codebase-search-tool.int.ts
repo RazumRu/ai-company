@@ -165,7 +165,7 @@ EOF`,
       const collection = resolveCollectionName(repoRoot);
 
       const initial = await tool.invoke(
-        { query: alphaToken, top_k: 5 },
+        { query: alphaToken, top_k: 5, directory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -197,7 +197,7 @@ EOF`,
       await execInRuntime('git commit -m "update"');
 
       const updated = await tool.invoke(
-        { query: betaToken, top_k: 5 },
+        { query: betaToken, top_k: 5, directory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -209,7 +209,7 @@ EOF`,
       ).toBe(true);
 
       const alphaSearch = await tool.invoke(
-        { query: alphaToken, top_k: 5 },
+        { query: alphaToken, top_k: 5, directory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );

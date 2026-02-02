@@ -62,7 +62,7 @@ export class LlmModelsService {
   }
 
   getSummarizeModel(): string {
-    return this.offlineGeneralFallback(environment.llmMiniModel);
+    return this.offlineMiniFallback(environment.llmMiniModel);
   }
 
   getAiSuggestionsDefaultModel(): string {
@@ -92,7 +92,7 @@ export class LlmModelsService {
     reasoning?: { effort: 'low' | 'medium' | 'high' };
   }> {
     return this.buildResponseParams(
-      this.offlineGeneralFallback(environment.llmMiniModel),
+      this.offlineMiniFallback(environment.llmMiniModel),
       LlmModelsService.DEFAULT_REASONING.medium,
     );
   }
@@ -102,6 +102,6 @@ export class LlmModelsService {
   }
 
   getKnowledgeSearchModel(): string {
-    return this.offlineGeneralFallback(environment.llmMiniModel);
+    return this.offlineMiniFallback(environment.llmMiniModel);
   }
 }

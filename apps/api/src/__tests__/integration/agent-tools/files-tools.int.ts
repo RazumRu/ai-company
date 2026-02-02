@@ -7,12 +7,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { FilesApplyChangesTool } from '../../../v1/agent-tools/tools/common/files/files-apply-changes.tool';
-import { FilesBuildTagsTool } from '../../../v1/agent-tools/tools/common/files/files-build-tags.tool';
 import { FilesDeleteTool } from '../../../v1/agent-tools/tools/common/files/files-delete.tool';
 import { FilesEditTool } from '../../../v1/agent-tools/tools/common/files/files-edit.tool';
 import { FilesFindPathsTool } from '../../../v1/agent-tools/tools/common/files/files-find-paths.tool';
 import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-read.tool';
-import { FilesSearchTagsTool } from '../../../v1/agent-tools/tools/common/files/files-search-tags.tool';
 import { FilesSearchTextTool } from '../../../v1/agent-tools/tools/common/files/files-search-text.tool';
 import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -61,9 +59,6 @@ const SAMPLE_TS_CONTENT = [
 type SearchTextResult = Awaited<
   ReturnType<FilesSearchTextTool['invoke']>
 >['output'];
-type SearchTagsResult = Awaited<
-  ReturnType<FilesSearchTagsTool['invoke']>
->['output'];
 
 const hasTextMatch = (result: SearchTextResult, snippet: string) =>
   Array.isArray(result.matches) &&
@@ -71,14 +66,6 @@ const hasTextMatch = (result: SearchTextResult, snippet: string) =>
     (match) =>
       typeof match?.data?.lines?.text === 'string' &&
       match.data.lines.text.includes(snippet),
-  );
-
-const hasNamedTag = (result: SearchTagsResult, name: string) =>
-  Array.isArray(result.matches) &&
-  result.matches.some(
-    (match) =>
-      typeof (match as { name?: unknown }).name === 'string' &&
-      (match as { name: string }).name === name,
   );
 
 describe('Files tools integration', () => {
@@ -89,8 +76,6 @@ describe('Files tools integration', () => {
   let filesReadTool: FilesReadTool;
   let filesSearchTextTool: FilesSearchTextTool;
   let filesApplyChangesTool: FilesApplyChangesTool;
-  let filesBuildTagsTool: FilesBuildTagsTool;
-  let filesSearchTagsTool: FilesSearchTagsTool;
   let filesDeleteTool: FilesDeleteTool;
   let filesEditTool: FilesEditTool;
   let shellTool: ShellTool;
@@ -120,8 +105,6 @@ describe('Files tools integration', () => {
         FilesReadTool,
         FilesSearchTextTool,
         FilesApplyChangesTool,
-        FilesBuildTagsTool,
-        FilesSearchTagsTool,
         FilesDeleteTool,
         FilesEditTool,
         ShellTool,
@@ -136,8 +119,6 @@ describe('Files tools integration', () => {
     filesReadTool = moduleRef.get(FilesReadTool);
     filesSearchTextTool = moduleRef.get(FilesSearchTextTool);
     filesApplyChangesTool = moduleRef.get(FilesApplyChangesTool);
-    filesBuildTagsTool = moduleRef.get(FilesBuildTagsTool);
-    filesSearchTagsTool = moduleRef.get(FilesSearchTagsTool);
     filesDeleteTool = moduleRef.get(FilesDeleteTool);
     filesEditTool = moduleRef.get(FilesEditTool);
     shellTool = moduleRef.get(ShellTool);
@@ -232,51 +213,6 @@ describe('Files tools integration', () => {
 
       expect(searchResult.error).toBeUndefined();
       expect(hasTextMatch(searchResult, 'class HelperService')).toBe(true);
-    },
-  );
-
-  it(
-    'builds a ctags index and searches for symbols',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      await writeSampleFile('tags.ts');
-
-      const { output: buildResult } = await filesBuildTagsTool.invoke(
-        { directoryPath: WORKSPACE_DIR },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      expect(buildResult.error).toBeUndefined();
-      expect(buildResult.success).toBe(true);
-      expect(buildResult.tagsFile).toBeDefined();
-      expect(buildResult.tagsFile?.endsWith(`.json`)).toBe(true);
-
-      const { output: classSearch } = await filesSearchTagsTool.invoke(
-        {
-          directoryPath: WORKSPACE_DIR,
-          symbolQuery: 'HelperService',
-          exactMatch: true,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      expect(classSearch.error).toBeUndefined();
-      expect(hasNamedTag(classSearch, 'HelperService')).toBe(true);
-
-      const { output: functionSearch } = await filesSearchTagsTool.invoke(
-        {
-          directoryPath: WORKSPACE_DIR,
-          symbolQuery: 'greet',
-          exactMatch: true,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      expect(functionSearch.error).toBeUndefined();
-      expect(hasNamedTag(functionSearch, 'greet')).toBe(true);
     },
   );
 

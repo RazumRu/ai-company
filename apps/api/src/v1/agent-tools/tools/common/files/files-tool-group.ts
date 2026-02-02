@@ -8,7 +8,6 @@ import {
 import { BaseToolGroup } from '../../base-tool-group';
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
-import { FilesBuildTagsTool } from './files-build-tags.tool';
 import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
 import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
@@ -17,7 +16,6 @@ import { FilesEditTool } from './files-edit.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
-import { FilesSearchTagsTool } from './files-search-tags.tool';
 import { FilesSearchTextTool } from './files-search-text.tool';
 import { FilesWriteFileTool } from './files-write-file.tool';
 
@@ -36,8 +34,6 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     private readonly filesDirectoryTreeTool: FilesDirectoryTreeTool,
     private readonly filesReadTool: FilesReadTool,
     private readonly filesSearchTextTool: FilesSearchTextTool,
-    private readonly filesBuildTagsTool: FilesBuildTagsTool,
-    private readonly filesSearchTagsTool: FilesSearchTagsTool,
     private readonly filesCodebaseSearchTool: FilesCodebaseSearchTool,
     private readonly filesCreateDirectoryTool: FilesCreateDirectoryTool,
     private readonly filesMoveFileTool: FilesMoveFileTool,
@@ -60,28 +56,28 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       `You have access to file system tools for working with the repository at: ${workdir}`,
       '',
       '**🔍 Discovery Workflow (CRITICAL - Follow This):**',
-      '**MANDATORY FIRST STEP:** Run `files_build_tags` once at the start of work in any repo/directory. This indexes all symbols (functions, classes, methods) for fast lookup.',
-      '',
-      '**PRIMARY SEARCH METHOD:** Use `files_search_tags` to find symbol definitions (functions, classes, methods). This is:',
-      '- ⚡ **MUCH FASTER** than text search',
-      '- 🎯 **MORE PRECISE** - finds exact definitions, not usages/comments',
-      '- ✅ **PREFERRED** for code navigation and symbol lookup',
+      '**PRIMARY SEARCH METHOD:** Always start with `codebase_search` for any codebase question.',
+      '- ⚡ **FAST** for large repos',
+      '- 🎯 **SEMANTIC** - finds relevant code even without exact matches',
+      '- ✅ **PREFERRED** entry point for discovery and navigation',
       '',
       '**WHEN TO USE EACH SEARCH TOOL:**',
-      '1) **files_search_tags** (PREFERRED): Finding where functions/classes/methods are DEFINED',
+      '1) **codebase_search** (DEFAULT): Find relevant files/chunks by intent or description',
       '   - Example: "Where is UserService defined?"',
       '   - Example: "Find the handleRequest method"',
-      '   - Example: "Show me all React hooks (^use[A-Z])"',
-      "2) **files_search_text** (FALLBACK): Finding usages, comments, strings, or when tags aren't built",
+      '   - Example: "Show me all React hooks"',
+      '   - Always provide `directory` to scope results',
+      '2) **files_search_text** (FOLLOW-UP): Exact usages, comments, or strings AFTER semantic discovery',
       '   - Example: "Where is UserService being called?"',
       '   - Example: "Find TODO comments"',
       '   - Example: "Search for API endpoint \'/users\'"',
       '3) **files_directory_tree** (OVERVIEW): Understanding project structure',
       '',
-      '**TAG WORKFLOW:**',
-      '1) Run `files_build_tags` once per repo/session (give it an alias like "project")',
-      '2) Use `files_search_tags` for ALL symbol lookups (with the same alias)',
-      '3) After file changes, rebuild tags before searching again',
+      '**SEARCH WORKFLOW (REQUIRED ORDER):**',
+      '1) Run `codebase_search` with a semantic query to find relevant files/chunks.',
+      '2) Read the top matches with `files_read` to confirm context.',
+      '3) Use `files_search_text` for exact strings/usages or deeper scans.',
+      '4) Use `files_find_paths` or `files_directory_tree` for path discovery/structure.',
       '',
       includeEditActions
         ? '**✏️ Editing Workflow (CRITICAL - Read This):**'
@@ -98,10 +94,6 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       includeEditActions
         ? '7) **LAST RESORT:** Use `files_write_file` ONLY for creating new files. NEVER for modifying existing files.'
         : '',
-      includeEditActions
-        ? '8) After ANY file changes, rebuild tags with `files_build_tags` BEFORE using `files_search_tags` again.'
-        : '5) If the repo changes externally, rebuild tags before using `files_search_tags` again.',
-      '',
       '**📊 Tool Priority for Editing:**',
       includeEditActions
         ? '1. files_edit (preferred - handles multiple changes)'
@@ -114,7 +106,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
         : '',
       '',
       '**Available Operations:**',
-      '- 🏷️ **TAG SEARCH (PRIMARY):** Build/search semantic tags for FAST symbol lookup',
+      '- 🔍 **CODEBASE SEARCH (PRIMARY):** Semantic search across the repo',
       includeEditActions
         ? '- Read/search + create/modify/move/delete files and directories'
         : '- Read/search only (edit actions disabled)',
@@ -126,12 +118,10 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
         : '',
       '',
       '**⚠️ Critical Rules:**',
-      '- 🏷️ **ALWAYS build tags first** with `files_build_tags` at the start of work in a repo',
-      '- 🔍 **PREFER `files_search_tags`** over `files_search_text` for finding symbol definitions',
-      '- ♻️ **Rebuild tags** after file changes (new/modified/renamed files) before searching again',
+      '- 🔍 **ALWAYS start with `codebase_search`** for codebase discovery',
       includeEditActions
         ? '- 📖 **ALWAYS read file** with `files_read` before editing (no exceptions)'
-        : '- Tag search results can become stale after external changes',
+        : '- Search results can become stale after external changes',
       includeEditActions
         ? '- ✏️ **Try `files_edit` first**, fallback to `files_apply_changes` if needed'
         : '',
@@ -156,8 +146,6 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       this.filesDirectoryTreeTool.build(config, lgConfig),
       this.filesReadTool.build(config, lgConfig),
       this.filesSearchTextTool.build(config, lgConfig),
-      this.filesBuildTagsTool.build(config, lgConfig),
-      this.filesSearchTagsTool.build(config, lgConfig),
       this.filesCodebaseSearchTool.build(config, lgConfig),
     ];
 

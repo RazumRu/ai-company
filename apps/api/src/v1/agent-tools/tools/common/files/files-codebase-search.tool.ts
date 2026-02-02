@@ -3,6 +3,7 @@ import { extname, join as joinPath } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
 import ignore from 'ignore';
 import { v5 as uuidv5 } from 'uuid';
@@ -15,6 +16,7 @@ import { LitellmService } from '../../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../../../openai/openai.service';
 import { QdrantService } from '../../../../qdrant/services/qdrant.service';
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -33,11 +35,10 @@ const CodebaseSearchSchema = z.object({
     .max(MAX_TOP_K)
     .optional()
     .describe('Maximum number of results to return.'),
-  path_prefix: z
+  directory: z
     .string()
     .min(1)
-    .optional()
-    .describe('Optional path prefix to constrain results (repo-relative).'),
+    .describe('Absolute path to the cloned repository directory.'),
   language: z
     .string()
     .min(1)
@@ -79,6 +80,7 @@ type ChunkDescriptor = {
   startLine: number;
   endLine: number;
   chunkHash: string;
+  tokenCount: number;
 };
 
 type ChunkBatchItem = {
@@ -125,6 +127,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     private readonly openaiService: OpenaiService,
     private readonly litellmService: LitellmService,
     private readonly llmModelsService: LlmModelsService,
+    private readonly logger: DefaultLogger,
   ) {
     super();
   }
@@ -138,16 +141,23 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       Semantic codebase search that indexes a git repository into Qdrant on demand.
 
       ### When to Use
+      - FIRST STEP for any codebase discovery or "where is X?" question
       - Large repos where reading many files is slow
       - Locating relevant code chunks by description
 
       ### Requirements
       - Must be inside a git repository
+      - \`directory\` is required (absolute path to the repo)
       - Indexing happens only when this tool is invoked
+
+      ### Recommended Flow
+      1) Run \`codebase_search\` with a semantic query.
+      2) Read top results with \`files_read\`.
+      3) Use \`files_search_text\` for exact usages or strings.
 
       ### Example
       \`\`\`json
-      {"query":"where is auth middleware created?","top_k":5,"path_prefix":"apps/api/src","language":"ts"}
+      {"query":"where is auth middleware created?","top_k":5,"directory":"apps/api/src","language":"ts"}
       \`\`\`
     `;
   }
@@ -179,7 +189,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       };
     }
 
-    const repoRoot = await this.resolveRepoRoot(config, cfg);
+    const repoRoot = await this.resolveRepoRoot(config, cfg, args.directory);
     if (!repoRoot) {
       return {
         output: {
@@ -276,7 +286,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     const filtered = matches
       .map((match) => this.parseSearchResult(match))
       .filter((match): match is CodebaseSearchResultInternal => Boolean(match))
-      .filter((match) => this.matchesPathPrefix(match, args.path_prefix))
+      .filter((match) => this.matchesPathPrefix(match, args.directory))
       .filter((match) => this.matchesLanguage(match, args.language))
       .slice(0, args.top_k ?? DEFAULT_TOP_K)
       .map((match) => ({
@@ -307,9 +317,14 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
   private async resolveRepoRoot(
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    directory: string,
   ): Promise<string | null> {
+    const trimmed = directory.trim();
+    const absoluteDir = trimmed.startsWith(BASE_RUNTIME_WORKDIR)
+      ? trimmed
+      : joinPath(BASE_RUNTIME_WORKDIR, trimmed.replace(/^\/+/, ''));
     const res = await this.execCommand(
-      { cmd: 'git rev-parse --show-toplevel' },
+      { cmd: `git -C ${shQuote(absoluteDir)} rev-parse --show-toplevel` },
       config,
       cfg,
     );
@@ -408,6 +423,72 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     });
     this.addUsage(usageCollector, result.usage);
     return result.embeddings;
+  }
+
+  private buildEmbeddingBatches(
+    texts: string[],
+    tokenCounts: number[],
+    maxTokens: number,
+  ): { items: string[]; tokenCounts: number[] }[] {
+    const batches: { items: string[]; tokenCounts: number[] }[] = [];
+    let currentItems: string[] = [];
+    let currentTokenCounts: number[] = [];
+    let currentTokens = 0;
+
+    for (let i = 0; i < texts.length; i += 1) {
+      const text = texts[i];
+      const tokens = tokenCounts[i] ?? 0;
+      if (currentTokens + tokens > maxTokens && currentItems.length > 0) {
+        batches.push({ items: currentItems, tokenCounts: currentTokenCounts });
+        currentItems = [];
+        currentTokenCounts = [];
+        currentTokens = 0;
+      }
+      currentItems.push(text ?? '');
+      currentTokenCounts.push(tokens);
+      currentTokens += tokens;
+    }
+
+    if (currentItems.length > 0) {
+      batches.push({ items: currentItems, tokenCounts: currentTokenCounts });
+    }
+
+    return batches;
+  }
+
+  private async embedTextsWithUsageConcurrent(
+    texts: string[],
+    tokenCounts: number[],
+    model: string,
+    usageCollector: { usage: RequestTokenUsage | null },
+    maxTokens: number,
+    concurrency = environment.codebaseEmbeddingConcurrency,
+  ): Promise<number[][]> {
+    if (texts.length === 0) {
+      return [];
+    }
+
+    const batches = this.buildEmbeddingBatches(texts, tokenCounts, maxTokens);
+    const results: number[][] = [];
+
+    for (let i = 0; i < batches.length; i += concurrency) {
+      const slice = batches.slice(i, i + concurrency);
+      const sliceResults = await Promise.all(
+        slice.map(async (batch) => {
+          const result = await this.openaiService.embeddings({
+            model,
+            input: batch.items,
+          });
+          this.addUsage(usageCollector, result.usage);
+          return result.embeddings;
+        }),
+      );
+      for (const embeddingSet of sliceResults) {
+        results.push(...embeddingSet);
+      }
+    }
+
+    return results;
   }
 
   private addUsage(
@@ -546,8 +627,23 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       this.buildRepoFilter(repoInfo.repoId),
     );
 
+    const totalFiles = filtered.length;
+    const progressStep = Math.max(1, Math.floor(totalFiles / 10));
+    let processedFiles = 0;
+    let indexedFiles = 0;
+    let skippedFiles = 0;
+
+    this.logger.debug('Codebase index: starting full index', {
+      repoId: repoInfo.repoId,
+      repoRoot: repoInfo.repoRoot,
+      totalFiles,
+    });
+
     const batch: ChunkBatchItem[] = [];
+    let batchTokenCount = 0;
+    const maxTokens = environment.codebaseEmbeddingMaxTokens;
     for (const relativePath of filtered) {
+      processedFiles += 1;
       const fileInput = await this.prepareFileIndexInput(
         repoInfo.repoRoot,
         relativePath,
@@ -555,22 +651,60 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
         cfg,
       );
       if (!fileInput) {
+        skippedFiles += 1;
+        if (
+          processedFiles % progressStep === 0 ||
+          processedFiles === totalFiles
+        ) {
+          this.logger.debug('Codebase index progress', {
+            processedFiles,
+            totalFiles,
+            indexedFiles,
+            skippedFiles,
+          });
+        }
         continue;
       }
-      this.addChunksToBatch(
-        batch,
-        repoInfo.repoId,
-        repoInfo.currentCommit,
-        fileInput,
-      );
-      if (batch.length >= environment.codebaseEmbeddingBatchSize) {
-        await this.flushChunkBatch(
-          collection,
-          batch,
-          vectorSize,
-          embeddingModel,
-          usageCollector,
-        );
+      const chunks = await this.chunkText(fileInput.content, embeddingModel);
+      if (chunks.length === 0) {
+        skippedFiles += 1;
+      } else {
+        indexedFiles += 1;
+      }
+      for (const chunk of chunks) {
+        if (
+          batchTokenCount + chunk.tokenCount > maxTokens &&
+          batch.length > 0
+        ) {
+          await this.flushChunkBatch(
+            collection,
+            batch,
+            vectorSize,
+            embeddingModel,
+            usageCollector,
+            maxTokens,
+          );
+          batchTokenCount = 0;
+        }
+        batch.push({
+          repoId: repoInfo.repoId,
+          commit: repoInfo.currentCommit,
+          filePath: fileInput.relativePath,
+          fileHash: fileInput.fileHash,
+          chunk,
+        });
+        batchTokenCount += chunk.tokenCount;
+      }
+      if (
+        processedFiles % progressStep === 0 ||
+        processedFiles === totalFiles
+      ) {
+        this.logger.debug('Codebase index progress', {
+          processedFiles,
+          totalFiles,
+          indexedFiles,
+          skippedFiles,
+        });
       }
     }
     await this.flushChunkBatch(
@@ -579,6 +713,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       vectorSize,
       embeddingModel,
       usageCollector,
+      maxTokens,
     );
   }
 
@@ -627,8 +762,23 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     );
     const allPaths = new Set([...diffPaths, ...statusPaths]);
 
+    const totalFiles = allPaths.size;
+    const progressStep = Math.max(1, Math.floor(totalFiles / 10));
+    let processedFiles = 0;
+    let indexedFiles = 0;
+    let skippedFiles = 0;
+
+    this.logger.debug('Codebase index: starting incremental index', {
+      repoId: repoInfo.repoId,
+      repoRoot: repoInfo.repoRoot,
+      totalFiles,
+    });
+
     const batch: ChunkBatchItem[] = [];
+    let batchTokenCount = 0;
+    const maxTokens = environment.codebaseEmbeddingMaxTokens;
     for (const relativePath of allPaths) {
+      processedFiles += 1;
       const shouldIndex = await this.shouldIndexPath(
         relativePath,
         repoInfo.repoRoot,
@@ -642,6 +792,18 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       );
 
       if (!shouldIndex) {
+        skippedFiles += 1;
+        if (
+          processedFiles % progressStep === 0 ||
+          processedFiles === totalFiles
+        ) {
+          this.logger.debug('Codebase index progress', {
+            processedFiles,
+            totalFiles,
+            indexedFiles,
+            skippedFiles,
+          });
+        }
         continue;
       }
 
@@ -652,6 +814,18 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
         cfg,
       );
       if (!exists) {
+        skippedFiles += 1;
+        if (
+          processedFiles % progressStep === 0 ||
+          processedFiles === totalFiles
+        ) {
+          this.logger.debug('Codebase index progress', {
+            processedFiles,
+            totalFiles,
+            indexedFiles,
+            skippedFiles,
+          });
+        }
         continue;
       }
 
@@ -662,23 +836,61 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
         cfg,
       );
       if (!fileInput) {
+        skippedFiles += 1;
+        if (
+          processedFiles % progressStep === 0 ||
+          processedFiles === totalFiles
+        ) {
+          this.logger.debug('Codebase index progress', {
+            processedFiles,
+            totalFiles,
+            indexedFiles,
+            skippedFiles,
+          });
+        }
         continue;
       }
 
-      this.addChunksToBatch(
-        batch,
-        repoInfo.repoId,
-        repoInfo.currentCommit,
-        fileInput,
-      );
-      if (batch.length >= environment.codebaseEmbeddingBatchSize) {
-        await this.flushChunkBatch(
-          collection,
-          batch,
-          vectorSize,
-          embeddingModel,
-          usageCollector,
-        );
+      const chunks = await this.chunkText(fileInput.content, embeddingModel);
+      if (chunks.length === 0) {
+        skippedFiles += 1;
+      } else {
+        indexedFiles += 1;
+      }
+      for (const chunk of chunks) {
+        if (
+          batchTokenCount + chunk.tokenCount > maxTokens &&
+          batch.length > 0
+        ) {
+          await this.flushChunkBatch(
+            collection,
+            batch,
+            vectorSize,
+            embeddingModel,
+            usageCollector,
+            maxTokens,
+          );
+          batchTokenCount = 0;
+        }
+        batch.push({
+          repoId: repoInfo.repoId,
+          commit: repoInfo.currentCommit,
+          filePath: fileInput.relativePath,
+          fileHash: fileInput.fileHash,
+          chunk,
+        });
+        batchTokenCount += chunk.tokenCount;
+      }
+      if (
+        processedFiles % progressStep === 0 ||
+        processedFiles === totalFiles
+      ) {
+        this.logger.debug('Codebase index progress', {
+          processedFiles,
+          totalFiles,
+          indexedFiles,
+          skippedFiles,
+        });
       }
     }
     await this.flushChunkBatch(
@@ -687,6 +899,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       vectorSize,
       embeddingModel,
       usageCollector,
+      maxTokens,
     );
   }
 
@@ -872,43 +1085,27 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     };
   }
 
-  private addChunksToBatch(
-    batch: ChunkBatchItem[],
-    repoId: string,
-    commit: string,
-    file: FileIndexInput,
-  ): void {
-    const chunks = this.chunkText(file.content);
-    if (chunks.length === 0) {
-      return;
-    }
-    for (const chunk of chunks) {
-      batch.push({
-        repoId,
-        commit,
-        filePath: file.relativePath,
-        fileHash: file.fileHash,
-        chunk,
-      });
-    }
-  }
-
   private async flushChunkBatch(
     collection: string,
     batch: ChunkBatchItem[],
     vectorSize: number,
     embeddingModel: string,
     usageCollector: { usage: RequestTokenUsage | null },
+    maxTokens: number,
   ): Promise<void> {
     if (batch.length === 0) {
       return;
     }
     const texts = batch.map((item) => item.chunk.text);
-    const embeddings = await this.embedTextsWithUsage(
+    const tokenCounts = batch.map((item) => item.chunk.tokenCount);
+    const embeddings = await this.embedTextsWithUsageConcurrent(
       texts,
+      tokenCounts,
       embeddingModel,
       usageCollector,
+      maxTokens,
     );
+
     const actualVectorSize =
       this.qdrantService.getVectorSizeFromEmbeddings(embeddings);
     if (actualVectorSize !== vectorSize) {
@@ -947,46 +1144,69 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     batch.length = 0;
   }
 
-  private chunkText(content: string): ChunkDescriptor[] {
+  private async chunkText(
+    content: string,
+    embeddingModel: string,
+  ): Promise<ChunkDescriptor[]> {
     if (!content) {
       return [];
     }
+    const encoding = await this.litellmService.getTokenizer(embeddingModel);
+    const tokens = encoding.encode(content);
+    if (tokens.length === 0) {
+      return [];
+    }
     const lineStarts = this.buildLineStartOffsets(content);
+    const targetTokens = Math.min(
+      environment.codebaseChunkTargetTokens,
+      environment.codebaseEmbeddingMaxTokens,
+    );
+    const overlapTokens = Math.min(
+      environment.codebaseChunkOverlapTokens,
+      Math.max(0, targetTokens - 1),
+    );
+    const tokenOffsets = Array.from({ length: tokens.length + 1 }, () => 0);
+    for (let i = 0; i < tokens.length; i += 1) {
+      const tokenValue = tokens[i] ?? 0;
+      const tokenText = String(encoding.decode([tokenValue]));
+      tokenOffsets[i + 1] = (tokenOffsets[i] ?? 0) + tokenText.length;
+    }
     const chunks: ChunkDescriptor[] = [];
-    let start = 0;
+    let startToken = 0;
     let guard = 0;
 
-    while (start < content.length && guard < 10_000) {
+    while (startToken < tokens.length && guard < 10_000) {
       guard += 1;
-      let end = Math.min(
-        start + environment.codebaseChunkTargetSize,
-        content.length,
-      );
-      if (end < content.length) {
-        const lastBreak = content.lastIndexOf('\n', end);
-        if (lastBreak > start + environment.codebaseChunkTargetSize / 2) {
-          end = lastBreak + 1;
-        }
-      }
-      if (end <= start) {
+      const endToken = Math.min(startToken + targetTokens, tokens.length);
+      if (endToken <= startToken) {
         break;
       }
-      const text = content.slice(start, end);
-      const startLine = this.lineForOffset(lineStarts, start);
-      const endLine = this.lineForOffset(lineStarts, Math.max(end - 1, start));
+      const startOffset = tokenOffsets[startToken] ?? 0;
+      const endOffset = tokenOffsets[endToken] ?? startOffset;
+      const text = content.slice(startOffset, endOffset);
+      const startLine = this.lineForOffset(lineStarts, startOffset);
+      const endLine = this.lineForOffset(
+        lineStarts,
+        Math.max(endOffset - 1, startOffset),
+      );
       const chunkHash = this.sha1(text);
+      const tokenCount = await this.litellmService.countTokens(
+        embeddingModel,
+        text,
+      );
       chunks.push({
         text,
-        startOffset: start,
-        endOffset: end,
+        startOffset,
+        endOffset,
         startLine,
         endLine,
         chunkHash,
+        tokenCount,
       });
-      if (end >= content.length) {
+      if (endToken >= tokens.length) {
         break;
       }
-      start = Math.max(0, end - environment.codebaseChunkOverlap);
+      startToken = Math.max(0, endToken - overlapTokens);
     }
     return chunks;
   }
@@ -1067,13 +1287,16 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
   private matchesPathPrefix(
     match: CodebaseSearchResult,
-    prefix?: string,
+    directory?: string,
   ): boolean {
-    if (!prefix) {
+    if (!directory) {
       return true;
     }
-    const normalized = prefix.replace(/\\/g, '/').replace(/^\/+/, '');
-    return match.path.startsWith(normalized);
+    const normalized = directory.replace(/\\/g, '/').replace(/^\/+/, '');
+    const withoutSlash = normalized.replace(/\/+$/, '');
+    return (
+      match.path === withoutSlash || match.path.startsWith(`${withoutSlash}/`)
+    );
   }
 
   private matchesLanguage(
@@ -1097,9 +1320,10 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
   private buildChunkingSignature(): Record<string, unknown> {
     return {
-      chunk_target_size: environment.codebaseChunkTargetSize,
-      chunk_overlap: environment.codebaseChunkOverlap,
-      break_strategy: 'newline-near-end',
+      chunk_target_tokens: environment.codebaseChunkTargetTokens,
+      chunk_overlap_tokens: environment.codebaseChunkOverlapTokens,
+      embedding_max_tokens: environment.codebaseEmbeddingMaxTokens,
+      break_strategy: 'token-window',
       line_counting: 'line-start-offsets',
       max_file_bytes: environment.codebaseMaxFileBytes,
       ignore_rules: {

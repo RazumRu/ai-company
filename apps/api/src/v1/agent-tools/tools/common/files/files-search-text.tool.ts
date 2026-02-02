@@ -106,16 +106,17 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       Search file contents with ripgrep (regex). Returns file paths and line matches.
 
       ### When to Use
-      - Finding definitions/usages or patterns across files
-      - Locating config values or error strings
-      - Identifying TODOs or migration markers
+      - After \`codebase_search\`, to find exact usages or strings
+      - Locating config values, error strings, TODOs, or migration markers
+      - Confirming precise matches within known areas
 
       ### When NOT to Use
+      - Discovery or "where is X?" questions -> \`codebase_search\` first
       - Exact file known -> \`files_read\`
       - Path discovery -> \`files_find_paths\`
-      - Symbol definitions -> \`files_search_tags\` (after build)
 
       ### Best Practices
+      - Start with a semantic query in \`codebase_search\`, then refine here.
       - Prefer one regex with alternation instead of multiple calls.
       - Use onlyInFilesMatching/skipFilesMatching to limit scope.
       - After a match, read a small range with \`files_read\`.

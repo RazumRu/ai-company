@@ -1,6 +1,7 @@
 import { encodingForModel, getEncoding } from '@langchain/core/utils/tiktoken';
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
+import { Tiktoken, TiktokenModel } from 'js-tiktoken/lite';
 
 import { environment } from '../../../environments';
 import { LiteLlmModelDto } from '../dto/models.dto';
@@ -25,7 +26,32 @@ export class LitellmService {
     Promise<LiteLLMModelInfo | null>
   >();
 
+  private tiktokenCache = new Map<string, Tiktoken>();
+
   constructor(private readonly liteLlmClient: LiteLlmClient) {}
+
+  async getTokenizer(model: string): Promise<Tiktoken> {
+    const key = model.trim() || 'cl100k_base';
+    const cached = this.tiktokenCache.get(key);
+    if (cached) {
+      return cached;
+    }
+    let tiktoken: Tiktoken | null = null;
+    if (model.length > 0) {
+      try {
+        tiktoken = await encodingForModel(model as TiktokenModel);
+      } catch {
+        tiktoken = null;
+      }
+    }
+    if (!tiktoken) {
+      tiktoken = await getEncoding('cl100k_base');
+    }
+
+    this.tiktokenCache.set(key, tiktoken);
+
+    return tiktoken;
+  }
 
   async listModels(): Promise<LiteLlmModelDto[]> {
     const response = await this.liteLlmClient.listModels();
@@ -39,15 +65,8 @@ export class LitellmService {
   async countTokens(model: string, content: unknown): Promise<number> {
     const text =
       typeof content === 'string' ? content : JSON.stringify(content ?? '');
-    try {
-      const enc =
-        (typeof model === 'string' && model.length > 0
-          ? await encodingForModel(model as never)
-          : null) ?? (await getEncoding('cl100k_base'));
-      return enc.encode(text).length;
-    } catch {
-      return Math.max(0, Math.ceil(text.length / 4));
-    }
+    const tiktoken = await this.getTokenizer(model as TiktokenModel);
+    return tiktoken.encode(text).length;
   }
 
   sumTokenUsages(
@@ -101,10 +120,6 @@ export class LitellmService {
    * Extract token usage and cost from LangChain's ChatOpenAI response.
    * Automatically recalculates price when cached or reasoning tokens are present.
    *
-   * @param args.model - Model name for price lookup
-   * @param args.usage_metadata - LangChain usage metadata
-   * @param args.response_metadata - LangChain response metadata
-   * @returns Token usage with accurate cost calculation
    */
   async extractTokenUsageFromResponse(
     model: string,

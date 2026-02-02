@@ -216,6 +216,9 @@ importers:
       ioredis:
         specifier: ^5.9.2
         version: 5.9.2
+      js-tiktoken:
+        specifier: ^1.0.21
+        version: 1.0.21
       langchain:
         specifier: ^1.2.14
         version: 1.2.14(@langchain/core@1.1.17(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.5.0(@opentelemetry/api@1.9.0))(openai@6.16.0(zod@4.3.6)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.5.0(@opentelemetry/api@1.9.0))(openai@6.16.0(zod@4.3.6))(zod-to-json-schema@3.25.1(zod@4.3.6))
