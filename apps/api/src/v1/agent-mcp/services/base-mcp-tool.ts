@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import type { ListToolsResult } from '@modelcontextprotocol/sdk/types.js';
 import { ZodSchema } from 'zod';
@@ -24,8 +26,12 @@ export class BaseMcpTool<TSchema, TConfig = unknown> extends BaseTool<
   public description = '';
 
   public get schema() {
-    // MCP tools already provide JSON schemas
-    return this.tool.inputSchema as unknown as ZodSchema;
+    const require = createRequire(__filename);
+    const { jsonSchemaToZod } = require('@n8n/json-schema-to-zod') as {
+      jsonSchemaToZod: (schema: unknown) => ZodSchema;
+    };
+
+    return jsonSchemaToZod(this.tool.inputSchema);
   }
 
   constructor(

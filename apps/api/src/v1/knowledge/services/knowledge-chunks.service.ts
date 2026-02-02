@@ -68,10 +68,11 @@ export class KnowledgeChunksService {
     if (texts.length === 0) {
       return [];
     }
-    return this.openaiService.embeddings({
+    const result = await this.openaiService.embeddings({
       model: this.llmModelsService.getKnowledgeEmbeddingModel(),
       input: texts,
     });
+    return result.embeddings;
   }
 
   async generateChunkPlan(content: string): Promise<KnowledgeChunkBoundary[]> {
@@ -114,8 +115,9 @@ export class KnowledgeChunksService {
       throw new BadRequestException('EMBEDDING_FAILED');
     }
 
-    const collection = this.buildSizedCollectionName(
-      this.getVectorSizeFromEmbeddings(embeddings),
+    const collection = this.qdrantService.buildSizedCollectionName(
+      this.knowledgeCollection,
+      this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
     );
     const searches = this.buildSearchBatch(
       embeddings,
@@ -162,8 +164,9 @@ export class KnowledgeChunksService {
     embeddings: number[][],
   ): Promise<void> {
     const storedChunks = this.buildStoredChunks(docId, docPublicId, chunks);
-    const collection = this.buildSizedCollectionName(
-      this.getVectorSizeFromEmbeddings(embeddings),
+    const collection = this.qdrantService.buildSizedCollectionName(
+      this.knowledgeCollection,
+      this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
     );
     await this.qdrantService.deleteByFilter(
       collection,
@@ -199,27 +202,19 @@ export class KnowledgeChunksService {
     return environment.knowledgeChunksCollection ?? 'knowledge_chunks';
   }
 
-  private buildSizedCollectionName(vectorSize: number): string {
-    return `${this.knowledgeCollection}_${vectorSize}`;
-  }
-
-  private getVectorSizeFromEmbeddings(embeddings: number[][]): number {
-    const vectorSize = embeddings[0]?.length;
-    if (!vectorSize) {
-      throw new InternalException('EMBEDDING_MISSING', { index: 0 });
-    }
-    return vectorSize;
-  }
-
   private async getKnowledgeCollectionForCurrentModel(): Promise<string> {
     const vectorSize = await this.getKnowledgeVectorSize();
-    return this.buildSizedCollectionName(vectorSize);
+    return this.qdrantService.buildSizedCollectionName(
+      this.knowledgeCollection,
+      vectorSize,
+    );
   }
 
   private async getKnowledgeVectorSize(): Promise<number> {
     if (!this.knowledgeVectorSizePromise) {
       this.knowledgeVectorSizePromise = this.embedTexts(['ping']).then(
-        (embeddings) => this.getVectorSizeFromEmbeddings(embeddings),
+        (embeddings) =>
+          this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
       );
     }
     return this.knowledgeVectorSizePromise;

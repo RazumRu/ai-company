@@ -81,6 +81,18 @@ export class QdrantService {
     this.vectorSizeCache.set(name, existingSize);
   }
 
+  buildSizedCollectionName(baseName: string, vectorSize: number): string {
+    return `${baseName}_${vectorSize}`;
+  }
+
+  getVectorSizeFromEmbeddings(embeddings: number[][]): number {
+    const vectorSize = embeddings[0]?.length;
+    if (!vectorSize) {
+      throw new InternalException('EMBEDDING_MISSING', { index: 0 });
+    }
+    return vectorSize;
+  }
+
   async upsertPoints(
     collection: string,
     points: UpsertPoints,

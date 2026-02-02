@@ -1,6 +1,7 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
+import { environment } from '../../environments';
 import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
 import { QdrantModule } from '../qdrant/qdrant.module';
@@ -31,6 +32,9 @@ export class KnowledgeModule implements OnModuleInit {
   constructor(private readonly reindexService: KnowledgeReindexService) {}
 
   onModuleInit(): void {
+    if (!environment.knowledgeReindexOnStartup) {
+      return;
+    }
     void this.reindexService.reindexDocsWithEmbeddingModelMismatch();
   }
 }

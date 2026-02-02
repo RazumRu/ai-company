@@ -8,6 +8,7 @@ import { CommunicationExecTool } from './tools/common/communication/communicatio
 import { CommunicationToolGroup } from './tools/common/communication/communication-tool-group';
 import { FilesApplyChangesTool } from './tools/common/files/files-apply-changes.tool';
 import { FilesBuildTagsTool } from './tools/common/files/files-build-tags.tool';
+import { FilesCodebaseSearchTool } from './tools/common/files/files-codebase-search.tool';
 import { FilesCreateDirectoryTool } from './tools/common/files/files-create-directory.tool';
 import { FilesDeleteTool } from './tools/common/files/files-delete.tool';
 import { FilesDirectoryTreeTool } from './tools/common/files/files-directory-tree.tool';
@@ -62,6 +63,7 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     FilesSearchTextTool,
     FilesBuildTagsTool,
     FilesSearchTagsTool,
+    FilesCodebaseSearchTool,
     FilesCreateDirectoryTool,
     FilesMoveFileTool,
     FilesWriteFileTool,
@@ -94,6 +96,7 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     FilesSearchTextTool,
     FilesBuildTagsTool,
     FilesSearchTagsTool,
+    FilesCodebaseSearchTool,
     FilesCreateDirectoryTool,
     FilesMoveFileTool,
     FilesWriteFileTool,

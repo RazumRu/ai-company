@@ -69,10 +69,20 @@ export const environment = () =>
     llmNoReasoningModels: getEnv('LLM_NO_REASONING_MODELS', 'qwen3-coder:30b'),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),
+    knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', true),
     knowledgeChunksCollection: getEnv(
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks',
     ),
+    // --- FilesCodebaseSearchTool ---
+    codebaseUuidNamespace: getEnv(
+      'CODEBASE_UUID_NAMESPACE',
+      '6ba7b811-9dad-11d1-80b4-00c04fd430c8',
+    ),
+    codebaseEmbeddingBatchSize: +getEnv('CODEBASE_EMBEDDING_BATCH_SIZE', '32'),
+    codebaseChunkTargetSize: +getEnv('CODEBASE_CHUNK_TARGET_SIZE', '3000'),
+    codebaseChunkOverlap: +getEnv('CODEBASE_CHUNK_OVERLAP', '500'),
+    codebaseMaxFileBytes: +getEnv('CODEBASE_MAX_FILE_BYTES', '1048576'),
 
     // LLM model defaults for tools (do not override per-call)
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBuildTagsTool } from './files-build-tags.tool';
+import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
 import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
@@ -24,6 +25,7 @@ describe('FilesToolGroup', () => {
   let mockFilesSearchTextTool: FilesSearchTextTool;
   let mockFilesBuildTagsTool: FilesBuildTagsTool;
   let mockFilesSearchTagsTool: FilesSearchTagsTool;
+  let mockFilesCodebaseSearchTool: FilesCodebaseSearchTool;
   let mockFilesCreateDirectoryTool: FilesCreateDirectoryTool;
   let mockFilesMoveFileTool: FilesMoveFileTool;
   let mockFilesWriteFileTool: FilesWriteFileTool;
@@ -55,6 +57,10 @@ describe('FilesToolGroup', () => {
     mockFilesSearchTagsTool = {
       build: vi.fn(),
     } as unknown as FilesSearchTagsTool;
+
+    mockFilesCodebaseSearchTool = {
+      build: vi.fn(),
+    } as unknown as FilesCodebaseSearchTool;
 
     mockFilesCreateDirectoryTool = {
       build: vi.fn(),
@@ -108,6 +114,10 @@ describe('FilesToolGroup', () => {
           useValue: mockFilesSearchTagsTool,
         },
         {
+          provide: FilesCodebaseSearchTool,
+          useValue: mockFilesCodebaseSearchTool,
+        },
+        {
           provide: FilesCreateDirectoryTool,
           useValue: mockFilesCreateDirectoryTool,
         },
@@ -157,6 +167,9 @@ describe('FilesToolGroup', () => {
       const mockFilesSearchTagsToolInstance = {
         name: 'files_search_tags',
       } as DynamicStructuredTool;
+      const mockFilesCodebaseSearchToolInstance = {
+        name: 'codebase_search',
+      } as DynamicStructuredTool;
       const mockFilesCreateDirectoryToolInstance = {
         name: 'files_create_directory',
       } as DynamicStructuredTool;
@@ -190,6 +203,9 @@ describe('FilesToolGroup', () => {
       mockFilesSearchTagsTool.build = vi
         .fn()
         .mockReturnValue(mockFilesSearchTagsToolInstance);
+      mockFilesCodebaseSearchTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesCodebaseSearchToolInstance);
       mockFilesCreateDirectoryTool.build = vi
         .fn()
         .mockReturnValue(mockFilesCreateDirectoryToolInstance);
@@ -215,7 +231,7 @@ describe('FilesToolGroup', () => {
       expect(result).toBeDefined();
       expect(result.tools).toBeDefined();
       expect(Array.isArray(result.tools)).toBe(true);
-      expect(result.tools.length).toBe(12);
+      expect(result.tools.length).toBe(13);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       // Check that group instructions are returned
       expect(result.instructions).toBeDefined();
@@ -239,6 +255,10 @@ describe('FilesToolGroup', () => {
         undefined,
       );
       expect(mockFilesSearchTagsTool.build).toHaveBeenCalledWith(
+        config,
+        undefined,
+      );
+      expect(mockFilesCodebaseSearchTool.build).toHaveBeenCalledWith(
         config,
         undefined,
       );
@@ -280,6 +300,9 @@ describe('FilesToolGroup', () => {
       const mockFilesSearchTagsToolInstance = {
         name: 'files_search_tags',
       } as DynamicStructuredTool;
+      const mockFilesCodebaseSearchToolInstance = {
+        name: 'codebase_search',
+      } as DynamicStructuredTool;
 
       mockFilesFindPathsTool.build = vi
         .fn()
@@ -299,6 +322,9 @@ describe('FilesToolGroup', () => {
       mockFilesSearchTagsTool.build = vi
         .fn()
         .mockReturnValue(mockFilesSearchTagsToolInstance);
+      mockFilesCodebaseSearchTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesCodebaseSearchToolInstance);
 
       const config: FilesToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
@@ -307,7 +333,7 @@ describe('FilesToolGroup', () => {
 
       const result = toolGroup.buildTools(config);
 
-      expect(result.tools.length).toBe(6);
+      expect(result.tools.length).toBe(7);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       // Check that group instructions are returned even in read-only mode
       expect(result.instructions).toBeDefined();
@@ -339,6 +365,9 @@ describe('FilesToolGroup', () => {
       } as DynamicStructuredTool;
       const mockFilesSearchTagsToolInstance = {
         name: 'files_search_tags',
+      } as DynamicStructuredTool;
+      const mockFilesCodebaseSearchToolInstance = {
+        name: 'codebase_search',
       } as DynamicStructuredTool;
       const mockFilesCreateDirectoryToolInstance = {
         name: 'files_create_directory',
@@ -374,6 +403,9 @@ describe('FilesToolGroup', () => {
       mockFilesSearchTagsTool.build = vi
         .fn()
         .mockReturnValue(mockFilesSearchTagsToolInstance);
+      mockFilesCodebaseSearchTool.build = vi
+        .fn()
+        .mockReturnValue(mockFilesCodebaseSearchToolInstance);
       mockFilesCreateDirectoryTool.build = vi
         .fn()
         .mockReturnValue(mockFilesCreateDirectoryToolInstance);
@@ -396,7 +428,7 @@ describe('FilesToolGroup', () => {
 
       const result = toolGroup.buildTools(config, lgConfig);
 
-      expect(result.tools.length).toBe(12);
+      expect(result.tools.length).toBe(13);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       expect(mockFilesFindPathsTool.build).toHaveBeenCalledWith(
         config,
@@ -416,6 +448,10 @@ describe('FilesToolGroup', () => {
         lgConfig,
       );
       expect(mockFilesSearchTagsTool.build).toHaveBeenCalledWith(
+        config,
+        lgConfig,
+      );
+      expect(mockFilesCodebaseSearchTool.build).toHaveBeenCalledWith(
         config,
         lgConfig,
       );

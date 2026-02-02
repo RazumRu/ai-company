@@ -45,4 +45,5 @@ export const environment = () =>
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks',
     ),
+    knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', true),
   }) as const satisfies Record<string, string | number | boolean>;

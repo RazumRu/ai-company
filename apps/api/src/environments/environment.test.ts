@@ -10,6 +10,7 @@ export const environment = () =>
     llmUseOfflineModel: false,
     postgresRunMigrations: getEnv('POSTGRES_RUN_MIGRATIONS', false),
     restoreGraphs: getEnv('RESTORE_GRAPHS', false),
+    knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', false),
     knowledgeChunksCollection: getEnv(
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks_test',

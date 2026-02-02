@@ -24,7 +24,12 @@ type EmbeddingsInput = {
   input: string | string[];
 };
 
-type SortReasoning = { effort: 'low' | 'medium' | 'high' | 'none' };
+export type EmbeddingsResult = {
+  embeddings: number[][];
+  usage?: RequestTokenUsage;
+};
+
+type SortReasoning = { effort: 'minimal' | 'low' | 'medium' | 'high' };
 
 type BaseData = {
   model: string;
@@ -189,12 +194,23 @@ export class OpenaiService {
     };
   }
 
-  async embeddings(args: EmbeddingsInput): Promise<number[][]> {
+  async embeddings(args: EmbeddingsInput): Promise<EmbeddingsResult> {
     const response = await this.client.embeddings.create({
       model: args.model,
       input: args.input,
     });
-    return response.data.map((item) => item.embedding);
+    const usage = response.usage
+      ? (await this.litellmService.extractTokenUsageFromResponse(args.model, {
+          input_tokens: response.usage.prompt_tokens ?? 0,
+          output_tokens: 0,
+          total_tokens: response.usage.total_tokens ?? 0,
+        })) || undefined
+      : undefined;
+
+    return {
+      embeddings: response.data.map((item) => item.embedding),
+      usage,
+    };
   }
 
   private extractFromOutput(response: unknown): string | undefined {

@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import { BaseException, DefaultLogger } from '@packages/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { environment } from '../../../environments';
 import { FilesystemMcp } from '../../../v1/agent-mcp/services/mcp/filesystem-mcp';
 import { JiraMcp } from '../../../v1/agent-mcp/services/mcp/jira-mcp';
 import { PlaywrightMcp } from '../../../v1/agent-mcp/services/mcp/playwright-mcp';
@@ -129,7 +130,7 @@ describe('MCP Integration Tests', () => {
   };
 
   beforeAll(async () => {
-    runtime = new DockerRuntime();
+    runtime = new DockerRuntime({ socketPath: environment.dockerSocket });
     await runtime.start({
       // Alpine + npx occasionally flakes in CI/containers with TAR_ENTRY_ERROR / missing files.
       // Debian-based node image is more stable for npx-based MCP servers.
@@ -228,6 +229,7 @@ describe('MCP Integration Tests', () => {
       );
 
       const tools = await mcp.discoverTools();
+
       const listDirTool = tools.find((t) => t.name === 'list_directory');
       const readFileTool = tools.find((t) => t.name === 'read_text_file');
 
@@ -307,7 +309,9 @@ describe('MCP Integration Tests', () => {
 
   describe('PlaywrightMcp', () => {
     beforeAll(async () => {
-      playwrightRuntime = new DockerRuntime();
+      playwrightRuntime = new DockerRuntime({
+        socketPath: environment.dockerSocket,
+      });
       await playwrightRuntime.start({
         image: 'docker:24.0-dind',
         containerName: 'mcp-playwright-integration-test',
@@ -329,74 +333,6 @@ describe('MCP Integration Tests', () => {
 
     const getToolNames = (tools: { name: string }[]) =>
       tools.map((t) => t.name).sort();
-
-    const buildMinimalArgsFromSchema = (
-      schema: unknown,
-    ): Record<string, unknown> => {
-      const s = schema as {
-        required?: unknown;
-        properties?: Record<string, unknown>;
-      };
-
-      const required = Array.isArray(s?.required)
-        ? (s.required as string[])
-        : [];
-      const properties =
-        (s?.properties as Record<string, unknown> | undefined) || {};
-
-      const args: Record<string, unknown> = {};
-      for (const key of required) {
-        const prop = properties[key] as
-          | {
-              type?: string | string[];
-              enum?: unknown[];
-            }
-          | undefined;
-
-        if (prop?.enum && Array.isArray(prop.enum) && prop.enum.length > 0) {
-          args[key] = prop.enum[0];
-          continue;
-        }
-
-        const type = Array.isArray(prop?.type) ? prop?.type : [prop?.type];
-        if (type.includes('string')) {
-          if (/url/i.test(key)) {
-            args[key] = 'https://example.com';
-          } else if (/selector/i.test(key)) {
-            args[key] = 'body';
-          } else {
-            args[key] = 'test';
-          }
-          continue;
-        }
-        if (type.includes('integer') || type.includes('number')) {
-          args[key] = 1;
-          continue;
-        }
-        if (type.includes('boolean')) {
-          args[key] = true;
-          continue;
-        }
-        if (type.includes('array')) {
-          args[key] = [];
-          continue;
-        }
-        if (type.includes('object')) {
-          args[key] = {};
-          continue;
-        }
-
-        // Last resort — may still fail schema validation if server requires more structure.
-        args[key] = null;
-      }
-
-      // Helpful fallback for common navigation tools.
-      if (!('url' in args) && typeof properties.url === 'object') {
-        args.url = 'https://example.com';
-      }
-
-      return args;
-    };
 
     it('should setup and discover tools successfully', async () => {
       const runtimeThreadProvider =
@@ -440,9 +376,9 @@ describe('MCP Integration Tests', () => {
       );
 
       expect(navigateTool).toBeDefined();
-      // Navigate to a stable page (example.com). Build minimal args from tool schema.
-      const schema = (navigateTool as unknown as { schema?: unknown }).schema;
-      const args = buildMinimalArgsFromSchema(schema);
+      const args = {
+        url: 'https://google.com',
+      };
 
       const result = await navigateTool!.invoke(
         args,
@@ -470,7 +406,9 @@ describe('MCP Integration Tests', () => {
               {
                 id: 'mcp-1',
                 template: 'filesystem-mcp',
-                config: {},
+                config: {
+                  readOnly: false,
+                },
               },
               {
                 id: FULL_AGENT_NODE_ID,

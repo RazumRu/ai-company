@@ -9,6 +9,7 @@ import { BaseToolGroup } from '../../base-tool-group';
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
 import { FilesBuildTagsTool } from './files-build-tags.tool';
+import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
 import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
@@ -37,6 +38,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     private readonly filesSearchTextTool: FilesSearchTextTool,
     private readonly filesBuildTagsTool: FilesBuildTagsTool,
     private readonly filesSearchTagsTool: FilesSearchTagsTool,
+    private readonly filesCodebaseSearchTool: FilesCodebaseSearchTool,
     private readonly filesCreateDirectoryTool: FilesCreateDirectoryTool,
     private readonly filesMoveFileTool: FilesMoveFileTool,
     private readonly filesWriteFileTool: FilesWriteFileTool,
@@ -156,6 +158,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       this.filesSearchTextTool.build(config, lgConfig),
       this.filesBuildTagsTool.build(config, lgConfig),
       this.filesSearchTagsTool.build(config, lgConfig),
+      this.filesCodebaseSearchTool.build(config, lgConfig),
     ];
 
     if (includeEditActions) {

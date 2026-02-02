@@ -282,11 +282,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         this.litellmService,
         this.buildLLM(config.invokeModelName, {
           useResponsesApi,
-          reasoning: useReasoning
-            ? {
-                effort: config.invokeModelReasoningEffort,
-              }
-            : undefined,
+          reasoning:
+            useReasoning &&
+            config.invokeModelReasoningEffort !== ReasoningEffort.None
+              ? {
+                  effort: config.invokeModelReasoningEffort,
+                }
+              : undefined,
           streaming: supportsStreaming,
         }),
         toolsArray,

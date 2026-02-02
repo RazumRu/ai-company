@@ -123,6 +123,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.3
         version: 1.25.3(@cfworker/json-schema@4.1.1)(hono@4.11.3)(zod@4.3.6)
+      '@n8n/json-schema-to-zod':
+        specifier: ^1.6.0
+        version: 1.6.0(zod@4.3.6)
       '@nestjs/common':
         specifier: ^11.1.12
         version: 11.1.12(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -207,6 +210,9 @@ importers:
       fastify:
         specifier: ^5.7.2
         version: 5.7.2
+      ignore:
+        specifier: ^7.0.5
+        version: 7.0.5
       ioredis:
         specifier: ^5.9.2
         version: 5.9.2
@@ -1178,6 +1184,11 @@ packages:
     resolution: {integrity: sha512-x0fWaQtYp4E6sktbsdAqnehxDgEc/VwM7uLsRCYWaiGu0ykYdZPiS8zCWdnjHwyiumousxfBm4SO31eXqwEZhQ==}
     cpu: [x64]
     os: [win32]
+
+  '@n8n/json-schema-to-zod@1.6.0':
+    resolution: {integrity: sha512-5AryA/GdX0U0+Qx2u3S14vME9ZK4ubS+rOC2MYlRDtRPCalBMGd5heVzU+W5o95JWAm4XQL/s0PZGM9a1xEhHg==}
+    peerDependencies:
+      zod: ^3.0.0
 
   '@nestjs/common@11.1.12':
     resolution: {integrity: sha512-v6U3O01YohHO+IE3EIFXuRuu3VJILWzyMmSYZXpyBbnp0hk0mFyHxK2w3dF4I5WnbwiRbWlEXdeXFvPQ7qaZzw==}
@@ -6605,6 +6616,10 @@ snapshots:
 
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
+
+  '@n8n/json-schema-to-zod@1.6.0(zod@4.3.6)':
+    dependencies:
+      zod: 4.3.6
 
   '@nestjs/common@11.1.12(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)':
     dependencies:

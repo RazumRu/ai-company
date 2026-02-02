@@ -1,8 +1,14 @@
 import * as dotenv from 'dotenv';
 
+const appRoot = resolve(__dirname, '..', '..');
+
 dotenv.config({
+  path: resolve(appRoot, '.env'),
   quiet: true,
+  override: true,
 });
+
+import { resolve } from 'node:path';
 
 import { environment as dev } from './environment.dev';
 import { environment as prod } from './environment.prod';
