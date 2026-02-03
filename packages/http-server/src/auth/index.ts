@@ -3,8 +3,9 @@ import { IAppBootstrapperExtension } from '@packages/common';
 import { AuthModule } from './auth.module';
 import { IAuthModuleParams } from './auth.types';
 import { AuthContextService } from './auth-context.service';
+import { AuthContextStorage } from './auth-context-storage';
 
-export { AuthContextService, AuthModule };
+export { AuthContextService, AuthContextStorage, AuthModule };
 export * from './auth.types';
 export * from './auth-context-data-builder';
 export * from './decorators/context-data.decorator';

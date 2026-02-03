@@ -1,7 +1,7 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { isEqual, omit } from 'lodash';
 import { coerce, compare as compareSemver } from 'semver';
@@ -41,9 +41,8 @@ export class GraphsService {
     private readonly graphRegistry: GraphRegistry,
     private readonly graphRevisionService: GraphRevisionService,
     private readonly typeorm: TypeormService,
-    private readonly threadsDao: ThreadsDao,
     private readonly notificationsService: NotificationsService,
-    private readonly authContext: AuthContextService,
+    private readonly threadsDao: ThreadsDao,
   ) {}
 
   private prepareResponse(entity: GraphEntity): GraphDto {
@@ -54,17 +53,21 @@ export class GraphsService {
     };
   }
 
-  async create(data: CreateGraphDto): Promise<GraphDto> {
+  async create(
+    ctx: AuthContextStorage,
+    data: CreateGraphDto,
+  ): Promise<GraphDto> {
     // Validate schema before creating the graph
     this.graphCompiler.validateSchema(data.schema);
 
     return this.typeorm.trx(async (entityManager: EntityManager) => {
       const initialVersion = '1.0.0';
+      const userId = ctx.checkSub();
       const row = await this.graphDao.create(
         {
           ...data,
           status: GraphStatus.Created,
-          createdBy: this.authContext.checkSub(),
+          createdBy: userId,
           temporary: data.temporary ?? false,
           version: initialVersion,
           targetVersion: initialVersion,
@@ -76,10 +79,11 @@ export class GraphsService {
     });
   }
 
-  async findById(id: string): Promise<GraphDto> {
+  async findById(ctx: AuthContextStorage, id: string): Promise<GraphDto> {
+    const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id,
-      createdBy: this.authContext.checkSub(),
+      createdBy: userId,
     });
     if (!graph) {
       throw new NotFoundException('GRAPH_NOT_FOUND');
@@ -88,9 +92,13 @@ export class GraphsService {
     return this.prepareResponse(graph);
   }
 
-  async getAll(query?: GetAllGraphsQueryDto): Promise<GraphDto[]> {
+  async getAll(
+    ctx: AuthContextStorage,
+    query?: GetAllGraphsQueryDto,
+  ): Promise<GraphDto[]> {
+    const userId = ctx.checkSub();
     const row = await this.graphDao.getAll({
-      createdBy: this.authContext.checkSub(),
+      createdBy: userId,
       ...query,
       order: {
         updatedAt: 'DESC',
@@ -101,12 +109,14 @@ export class GraphsService {
   }
 
   async getCompiledNodes(
+    ctx: AuthContextStorage,
     id: string,
     data: GraphNodesQueryDto,
   ): Promise<GraphNodeWithStatusDto[]> {
+    const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id,
-      createdBy: this.authContext.checkSub(),
+      createdBy: userId,
     });
 
     if (!graph) {
@@ -125,9 +135,11 @@ export class GraphsService {
   }
 
   async update(
+    ctx: AuthContextStorage,
     id: string,
     data: UpdateGraphDto,
   ): Promise<UpdateGraphResponseDto> {
+    const userId = ctx.checkSub();
     const { currentVersion, metadata, schema, name, description, temporary } =
       data;
 
@@ -141,7 +153,7 @@ export class GraphsService {
         const graph = await this.graphDao.getOne(
           {
             id: id,
-            createdBy: this.authContext.checkSub(),
+            createdBy: userId,
             lock: 'pessimistic_write',
           },
           entityManager,
@@ -220,6 +232,7 @@ export class GraphsService {
         if (revisionRelevantChanged) {
           const { metadata: _ignored, ...nextConfig } = nextGraph;
           const revision = await this.graphRevisionService.queueRevision(
+            ctx,
             graph,
             currentVersion,
             nextConfig,
@@ -265,22 +278,30 @@ export class GraphsService {
     return compareSemver(av, bv) === -1;
   }
 
-  async delete(id: string): Promise<void> {
-    const graph = await this.graphDao.getById(id);
+  async delete(ctx: AuthContextStorage, id: string): Promise<void> {
+    const userId = ctx.checkSub();
+    const graph = await this.graphDao.getOne({
+      id,
+      createdBy: userId,
+    });
     if (!graph) {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
     // Stop and destroy the graph if it's running
     if (graph.status === GraphStatus.Running) {
-      await this.destroy(id);
+      await this.destroy(ctx, id);
     }
 
     await this.graphDao.deleteById(id);
   }
 
-  async run(id: string): Promise<GraphDto> {
-    const graph = await this.graphDao.getById(id);
+  async run(ctx: AuthContextStorage, id: string): Promise<GraphDto> {
+    const userId = ctx.checkSub();
+    const graph = await this.graphDao.getOne({
+      id,
+      createdBy: userId,
+    });
     if (!graph) {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
@@ -431,8 +452,12 @@ export class GraphsService {
     return results.some((r) => r.status === 'fulfilled' && r.value === true);
   }
 
-  async destroy(id: string): Promise<GraphDto> {
-    const graph = await this.graphDao.getById(id);
+  async destroy(ctx: AuthContextStorage, id: string): Promise<GraphDto> {
+    const userId = ctx.checkSub();
+    const graph = await this.graphDao.getOne({
+      id,
+      createdBy: userId,
+    });
     if (!graph) {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
@@ -465,14 +490,16 @@ export class GraphsService {
   }
 
   async executeTrigger(
+    ctx: AuthContextStorage,
     graphId: string,
     triggerId: string,
     dto: ExecuteTriggerDto,
   ): Promise<ExecuteTriggerResponseDto> {
+    const userId = ctx.checkSub();
     // Verify graph exists and user has access
     const graph = await this.graphDao.getOne({
       id: graphId,
-      createdBy: this.authContext.checkSub(),
+      createdBy: userId,
     });
 
     if (!graph) {

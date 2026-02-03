@@ -4,7 +4,7 @@ import {
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import { AdditionalParams, TypeormService } from '@packages/typeorm';
 import { UnrecoverableError } from 'bullmq';
 import { compare, type Operation } from 'fast-json-patch';
@@ -49,29 +49,29 @@ import {
 @Injectable()
 export class GraphRevisionService {
   constructor(
-    private readonly graphRevisionDao: GraphRevisionDao,
+    private readonly logger: DefaultLogger,
+    private readonly typeorm: TypeormService,
     private readonly graphDao: GraphDao,
-    private readonly graphRevisionQueue: GraphRevisionQueueService,
-    private readonly graphRegistry: GraphRegistry,
+    private readonly graphRevisionDao: GraphRevisionDao,
+    private readonly notificationsService: NotificationsService,
     private readonly graphCompiler: GraphCompiler,
     private readonly graphMergeService: GraphMergeService,
-    private readonly typeorm: TypeormService,
-    private readonly notificationsService: NotificationsService,
-    private readonly authContext: AuthContextService,
-    private readonly logger: DefaultLogger,
+    private readonly graphRegistry: GraphRegistry,
+    private readonly graphRevisionQueue: GraphRevisionQueueService,
     private readonly templateRegistry: TemplateRegistry,
   ) {
     this.graphRevisionQueue.setProcessor(this.applyRevision.bind(this));
   }
 
   async queueRevision(
+    ctx: AuthContextStorage,
     graph: GraphEntity,
     baseVersion: string,
     clientConfig: GraphRevisionConfig,
     entityManager?: EntityManager,
     options?: { enqueueImmediately?: boolean },
   ): Promise<GraphRevisionDto> {
-    const userId = this.authContext.checkSub();
+    const userId = ctx.checkSub();
 
     const revision = await this.typeorm.trx(async (em: EntityManager) => {
       const { headVersion, headSchema } = await this.resolveHeadSchema(
@@ -1008,12 +1008,14 @@ export class GraphRevisionService {
   }
 
   async getRevisions(
+    ctx: AuthContextStorage,
     graphId: string,
     query: GraphRevisionQueryDto,
   ): Promise<GraphRevisionDto[]> {
+    const userId = ctx.checkSub();
     const searchTerms: SearchTerms = {
       graphId,
-      createdBy: this.authContext.checkSub(),
+      createdBy: userId,
     };
 
     if (query.status) {
@@ -1036,13 +1038,15 @@ export class GraphRevisionService {
   }
 
   async getRevisionById(
+    ctx: AuthContextStorage,
     graphId: string,
     revisionId: string,
   ): Promise<GraphRevisionDto> {
+    const userId = ctx.checkSub();
     const revision = await this.graphRevisionDao.getOne({
       id: revisionId,
       graphId,
-      createdBy: this.authContext.checkSub(),
+      createdBy: userId,
     });
 
     if (!revision) {

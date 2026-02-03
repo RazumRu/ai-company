@@ -1,6 +1,7 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException, DefaultLogger } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
@@ -21,7 +22,7 @@ import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
 import { wait } from '../../test-utils';
 import { createMockGraphData } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const FULL_AGENT_NODE_ID = 'agent-1';
 const FULL_TRIGGER_NODE_ID = 'trigger-1';
@@ -73,6 +74,8 @@ class TestRuntimeThreadProvider {
   }
 }
 
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+
 describe('MCP Integration Tests', () => {
   let runtime: DockerRuntime;
   let playwrightRuntime: DockerRuntime;
@@ -83,7 +86,7 @@ describe('MCP Integration Tests', () => {
 
   const cleanupGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -95,7 +98,7 @@ describe('MCP Integration Tests', () => {
     }
 
     try {
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -113,7 +116,7 @@ describe('MCP Integration Tests', () => {
     const startedAt = Date.now();
 
     while (true) {
-      const graph = await graphsService.findById(graphId);
+      const graph = await graphsService.findById(contextDataStorage, graphId);
 
       if (graph.status === GraphStatus.Running) {
         return graph;
@@ -177,9 +180,9 @@ describe('MCP Integration Tests', () => {
   });
 
   const ensureGraphRunning = async (graphId: string) => {
-    const graph = await graphsService.findById(graphId);
+    const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(graphId);
+    await graphsService.run(contextDataStorage, graphId);
     await waitForGraphToBeRunning(graphId);
   };
 
@@ -395,6 +398,7 @@ describe('MCP Integration Tests', () => {
   describe('Full Agent Integration', () => {
     beforeAll(async () => {
       const graph = await graphsService.create(
+        contextDataStorage,
         createMockGraphData({
           schema: {
             nodes: [
@@ -433,7 +437,7 @@ describe('MCP Integration Tests', () => {
       );
       fullAgentGraphId = graph.id;
 
-      await graphsService.run(fullAgentGraphId);
+      await graphsService.run(contextDataStorage, fullAgentGraphId);
       await waitForGraphToBeRunning(fullAgentGraphId);
     }, 180_000);
 
@@ -445,6 +449,7 @@ describe('MCP Integration Tests', () => {
 
         // Verify MCP tools are available in metadata immediately after graph creation (BEFORE execution)
         const nodesBeforeRun = await graphsService.getCompiledNodes(
+          contextDataStorage,
           fullAgentGraphId,
           {},
         );
@@ -468,6 +473,7 @@ describe('MCP Integration Tests', () => {
 
         // Execute the trigger to run the agent (just to trigger graph build)
         const execution = await graphsService.executeTrigger(
+          contextDataStorage,
           fullAgentGraphId,
           FULL_TRIGGER_NODE_ID,
           {
@@ -478,9 +484,13 @@ describe('MCP Integration Tests', () => {
         );
 
         // Get node state and verify MCP tools are in metadata
-        const nodes = await graphsService.getCompiledNodes(fullAgentGraphId, {
-          threadId: execution.externalThreadId,
-        });
+        const nodes = await graphsService.getCompiledNodes(
+          contextDataStorage,
+          fullAgentGraphId,
+          {
+            threadId: execution.externalThreadId,
+          },
+        );
 
         const agentNode = nodes.find((n) => n.id === FULL_AGENT_NODE_ID);
         expect(agentNode).toBeDefined();

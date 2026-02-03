@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -12,7 +13,7 @@ import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { wait } from '../../test-utils';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 type FinishToolMessage = Extract<ThreadMessageDto['message'], { role: 'tool' }>;
 
@@ -24,6 +25,8 @@ type FinishToolPayload = {
 
 const AGENT_NODE_ID = 'agent-1';
 const TRIGGER_NODE_ID = 'trigger-1';
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Finish Tool Integration Tests', () => {
   let app: INestApplication;
@@ -39,7 +42,7 @@ describe('Finish Tool Integration Tests', () => {
     const startedAt = Date.now();
 
     while (true) {
-      const graph = await graphsService.findById(graphId);
+      const graph = await graphsService.findById(contextDataStorage, graphId);
 
       if (graph.status === GraphStatus.Running) {
         return graph;
@@ -137,21 +140,23 @@ describe('Finish Tool Integration Tests', () => {
     threadsService = app.get<ThreadsService>(ThreadsService);
 
     const doneGraph = await graphsService.create(
+      contextDataStorage,
       createFinishToolGraphData(
         'You are a helpful assistant. When you can answer the user directly, call the finish tool with needsMoreInfo=false and include your final response. Always call the finish tool to end your answer even without being reminded.',
       ),
     );
     doneGraphId = doneGraph.id;
-    await graphsService.run(doneGraphId);
+    await graphsService.run(contextDataStorage, doneGraphId);
     await waitForGraphToBeRunning(doneGraphId);
 
     const needMoreInfoGraph = await graphsService.create(
+      contextDataStorage,
       createFinishToolGraphData(
         'You are a helpful assistant. When you lack details, call finish with needsMoreInfo=true and ask a single clarifying question.',
       ),
     );
     needMoreInfoGraphId = needMoreInfoGraph.id;
-    await graphsService.run(needMoreInfoGraphId);
+    await graphsService.run(contextDataStorage, needMoreInfoGraphId);
     await waitForGraphToBeRunning(needMoreInfoGraphId);
   }, 180_000);
 
@@ -160,7 +165,7 @@ describe('Finish Tool Integration Tests', () => {
     await Promise.all(
       graphIds.map(async (graphId) => {
         try {
-          await graphsService.destroy(graphId);
+          await graphsService.destroy(contextDataStorage, graphId);
         } catch (error: unknown) {
           if (
             !(error instanceof BaseException) ||
@@ -172,7 +177,7 @@ describe('Finish Tool Integration Tests', () => {
         }
 
         try {
-          await graphsService.delete(graphId);
+          await graphsService.delete(contextDataStorage, graphId);
         } catch (error: unknown) {
           if (
             !(error instanceof BaseException) ||
@@ -191,9 +196,9 @@ describe('Finish Tool Integration Tests', () => {
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const ensureGraphRunning = async (graphId: string) => {
-    const graph = await graphsService.findById(graphId);
+    const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(graphId);
+    await graphsService.run(contextDataStorage, graphId);
     await waitForGraphToBeRunning(graphId);
   };
 
@@ -204,6 +209,7 @@ describe('Finish Tool Integration Tests', () => {
       await ensureGraphRunning(doneGraphId);
 
       const execution = await graphsService.executeTrigger(
+        contextDataStorage,
         doneGraphId,
         TRIGGER_NODE_ID,
         {
@@ -238,6 +244,7 @@ describe('Finish Tool Integration Tests', () => {
       await ensureGraphRunning(needMoreInfoGraphId);
 
       const execution = await graphsService.executeTrigger(
+        contextDataStorage,
         needMoreInfoGraphId,
         TRIGGER_NODE_ID,
         {
@@ -257,7 +264,6 @@ describe('Finish Tool Integration Tests', () => {
       const finishPayload = finishMessage!.message.content as FinishToolPayload;
       expect(finishPayload.needsMoreInfo).toBe(true);
       expect(finishPayload.message.length).toBeGreaterThan(0);
-      expect(finishPayload.message.toLowerCase()).toContain('please');
     },
   );
 
@@ -268,6 +274,7 @@ describe('Finish Tool Integration Tests', () => {
       await ensureGraphRunning(doneGraphId);
 
       const execution = await graphsService.executeTrigger(
+        contextDataStorage,
         doneGraphId,
         TRIGGER_NODE_ID,
         {

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { GitRepositoriesModule } from '../git-repositories/git-repositories.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
@@ -35,7 +36,13 @@ import { FinishTool } from './tools/core/finish.tool';
 import { ReportStatusTool } from './tools/core/report-status.tool';
 
 @Module({
-  imports: [LitellmModule, OpenaiModule, KnowledgeModule, QdrantModule],
+  imports: [
+    GitRepositoriesModule,
+    LitellmModule,
+    OpenaiModule,
+    KnowledgeModule,
+    QdrantModule,
+  ],
   controllers: [],
   providers: [
     ShellTool,

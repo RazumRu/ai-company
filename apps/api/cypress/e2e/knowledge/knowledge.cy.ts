@@ -12,7 +12,10 @@ describe('Knowledge docs API', () => {
     const initialContent = 'Cypress knowledge content';
     const updatedContent = 'Updated Cypress knowledge content';
 
-    createKnowledgeDoc(initialContent).then((createResponse) => {
+    createKnowledgeDoc({
+      title: 'Cypress Doc',
+      content: initialContent,
+    }).then((createResponse) => {
       expect(createResponse.status).to.eq(201);
       expect(createResponse.body).to.have.property('id');
       expect(createResponse.body).to.have.property('title');
@@ -30,7 +33,10 @@ describe('Knowledge docs API', () => {
         expect(listResponse.body.some((doc) => doc.id === docId)).to.eq(true);
       });
 
-      updateKnowledgeDoc(docId, updatedContent).then((updateResponse) => {
+      updateKnowledgeDoc(docId, {
+        title: 'Updated Cypress Doc',
+        content: updatedContent,
+      }).then((updateResponse) => {
         expect(updateResponse.status).to.eq(200);
         expect(updateResponse.body.id).to.eq(docId);
       });

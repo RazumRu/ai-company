@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -15,6 +16,8 @@ import { KnowledgeDocDao } from '../../../v1/knowledge/dao/knowledge-doc.dao';
 import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.service';
 import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
 import { createTestModule, TEST_USER_ID } from '../setup';
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Knowledge tools (integration)', () => {
   let app: INestApplication;
@@ -71,12 +74,12 @@ describe('Knowledge tools (integration)', () => {
       const betaContent = `Beta document content ${betaKeyword}`;
       const alphaTag = `alpha-tag-${randomUUID()}`;
       const betaTag = `beta-tag-${randomUUID()}`;
-      const alphaDoc = await knowledgeService.createDoc({
+      const alphaDoc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Alpha doc',
         content: alphaContent,
         tags: [alphaTag],
       });
-      const betaDoc = await knowledgeService.createDoc({
+      const betaDoc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Beta doc',
         content: betaContent,
         tags: [betaTag],
@@ -86,7 +89,10 @@ describe('Knowledge tools (integration)', () => {
       expect(alphaDoc.summary).toBeTruthy();
       expect(betaDoc.summary).toBeTruthy();
 
-      const refreshedAlpha = await knowledgeService.getDoc(alphaDoc.id);
+      const refreshedAlpha = await knowledgeService.getDoc(
+        contextDataStorage,
+        alphaDoc.id,
+      );
       expect(refreshedAlpha.tags).toEqual([alphaTag]);
 
       const searchResult = await searchDocsTool.invoke(
@@ -124,7 +130,7 @@ describe('Knowledge tools (integration)', () => {
     async () => {
       const keyword = 'zephyrox';
       const content = `Alpha document content ${keyword} and more text.`;
-      const doc = await knowledgeService.createDoc({
+      const doc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Alpha doc',
         content,
         tags: ['alpha-tag'],
@@ -163,7 +169,10 @@ describe('Knowledge tools (integration)', () => {
       const chunk = chunks[0];
       expect(chunk?.docPublicId).toBe(doc.publicId);
 
-      const refreshed = await knowledgeService.getDoc(doc.id);
+      const refreshed = await knowledgeService.getDoc(
+        contextDataStorage,
+        doc.id,
+      );
       expect(chunk?.text).toBe(
         refreshed.content.slice(chunk?.startOffset ?? 0, chunk?.endOffset ?? 0),
       );
@@ -173,17 +182,21 @@ describe('Knowledge tools (integration)', () => {
   it('updates summaries when content changes', { timeout: 60000 }, async () => {
     const originalKeyword = 'orionflux';
     const updatedKeyword = 'novaquill';
-    const original = await knowledgeService.createDoc({
+    const original = await knowledgeService.createDoc(contextDataStorage, {
       title: 'Original doc',
       content: `Original content ${originalKeyword}.`,
     });
     createdDocIds.push(original.id);
     expect(original.summary).toBeTruthy();
 
-    const updated = await knowledgeService.updateDoc(original.id, {
-      title: 'Updated doc',
-      content: `Updated content ${updatedKeyword}.`,
-    });
+    const updated = await knowledgeService.updateDoc(
+      contextDataStorage,
+      original.id,
+      {
+        title: 'Updated doc',
+        content: `Updated content ${updatedKeyword}.`,
+      },
+    );
 
     expect(updated.summary).toBeTruthy();
     expect(updated.summary).not.toBe(original.summary);
@@ -196,12 +209,12 @@ describe('Knowledge tools (integration)', () => {
     async () => {
       const alphaKeyword = 'solaris';
       const betaKeyword = 'umbria';
-      const alphaDoc = await knowledgeService.createDoc({
+      const alphaDoc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Alpha doc',
         content: `Alpha content ${alphaKeyword}.`,
         tags: ['alpha-tag'],
       });
-      const betaDoc = await knowledgeService.createDoc({
+      const betaDoc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Beta doc',
         content: `Beta content ${betaKeyword}.`,
         tags: ['beta-tag'],
@@ -267,13 +280,13 @@ describe('Knowledge tools (integration)', () => {
     'returns full doc content only when politic allows it',
     { timeout: 60000 },
     async () => {
-      const allowedDoc = await knowledgeService.createDoc({
+      const allowedDoc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Allowed doc',
         content: 'Full content is allowed here.',
         politic:
           'If this document is relevant to the current task - always fetch the full content instead of fetching only specific chunks.',
       });
-      const blockedDoc = await knowledgeService.createDoc({
+      const blockedDoc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Blocked doc',
         content: 'This should not be returned.',
         politic: 'Summarize only; do not share full content.',

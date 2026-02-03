@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -11,7 +12,7 @@ import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const TRIGGER_NODE_ID = 'trigger-1';
 const AGENT_NODE_ID = 'agent-1';
@@ -27,6 +28,8 @@ const THREAD_COMPLETION_STATUSES: ThreadStatus[] = [
   ThreadStatus.Stopped,
 ];
 
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+
 describe('Shell Execution Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
@@ -40,30 +43,33 @@ describe('Shell Execution Integration Tests', () => {
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
     const defaultGraph = await graphsService.create(
+      contextDataStorage,
       createShellExecutionGraphData(),
     );
     defaultGraphId = defaultGraph.id;
-    await graphsService.run(defaultGraphId);
+    await graphsService.run(contextDataStorage, defaultGraphId);
     await waitForGraphStatus(defaultGraphId, GraphStatus.Running);
 
     const envGraph = await graphsService.create(
+      contextDataStorage,
       createShellExecutionGraphData({
         env: { FOO: 'bar' },
         description: 'Integration test graph for shell execution (env)',
       }),
     );
     envGraphId = envGraph.id;
-    await graphsService.run(envGraphId);
+    await graphsService.run(contextDataStorage, envGraphId);
     await waitForGraphStatus(envGraphId, GraphStatus.Running);
 
     const alpineGraph = await graphsService.create(
+      contextDataStorage,
       createShellExecutionGraphData({
         dockerImage: 'alpine:latest',
         description: 'Integration test graph for shell execution (alpine)',
       }),
     );
     alpineGraphId = alpineGraph.id;
-    await graphsService.run(alpineGraphId);
+    await graphsService.run(contextDataStorage, alpineGraphId);
     await waitForGraphStatus(alpineGraphId, GraphStatus.Running);
   }, 300_000);
 
@@ -76,7 +82,7 @@ describe('Shell Execution Integration Tests', () => {
 
   const cleanupGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -88,7 +94,7 @@ describe('Shell Execution Integration Tests', () => {
     }
 
     try {
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -105,7 +111,7 @@ describe('Shell Execution Integration Tests', () => {
     timeoutMs = 240_000,
   ) => {
     return waitForCondition(
-      () => graphsService.findById(graphId),
+      () => graphsService.findById(contextDataStorage, graphId),
       (graph) => graph.status === status,
       { timeout: timeoutMs, interval: 1_000 },
     );
@@ -267,9 +273,9 @@ describe('Shell Execution Integration Tests', () => {
   };
 
   const ensureGraphRunning = async (graphId: string) => {
-    const graph = await graphsService.findById(graphId);
+    const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(graphId);
+    await graphsService.run(contextDataStorage, graphId);
     await waitForGraphStatus(graphId, GraphStatus.Running);
   };
 
@@ -289,6 +295,7 @@ describe('Shell Execution Integration Tests', () => {
     await ensureGraphRunning(graphId);
     const threadSubId = options.threadSubId ?? uniqueThreadSubId('shell');
     const execution = await graphsService.executeTrigger(
+      contextDataStorage,
       graphId,
       TRIGGER_NODE_ID,
       {
@@ -325,6 +332,7 @@ describe('Shell Execution Integration Tests', () => {
         await ensureGraphRunning(defaultGraphId);
 
         const execution = await graphsService.executeTrigger(
+          contextDataStorage,
           defaultGraphId,
           TRIGGER_NODE_ID,
           {

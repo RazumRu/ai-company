@@ -2,10 +2,13 @@ import path from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
+import { GitRepositoryProvider } from '../../../../git-repositories/git-repositories.types';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -46,6 +49,13 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   public name = 'gh_clone';
   public description =
     'Clone a GitHub repository into the running container using authenticated HTTPS.';
+
+  constructor(
+    private readonly gitRepositoriesDao: GitRepositoriesDao,
+    private readonly logger: DefaultLogger,
+  ) {
+    super();
+  }
 
   protected override generateTitle(
     args: GhCloneToolSchemaType,
@@ -143,11 +153,52 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       ? args.workdir
       : path.join(res.execPath || '', args.repo);
 
+    // Track the cloned repository
+    const userId = cfg.configurable?.userId as string | undefined;
+    if (userId) {
+      await this.upsertGitRepository(args, userId);
+    }
+
     return {
       output: {
         path: clonePath,
       },
       messageMetadata,
     };
+  }
+
+  private async upsertGitRepository(
+    args: GhCloneToolSchemaType,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const existing = await this.gitRepositoriesDao.getOne({
+        owner: args.owner,
+        repo: args.repo,
+        provider: GitRepositoryProvider.GITHUB,
+        createdBy: userId,
+      });
+
+      const url = `https://github.com/${args.owner}/${args.repo}.git`;
+
+      if (existing) {
+        await this.gitRepositoriesDao.updateById(existing.id, {
+          url,
+        });
+      } else {
+        await this.gitRepositoriesDao.create({
+          owner: args.owner,
+          repo: args.repo,
+          url,
+          provider: GitRepositoryProvider.GITHUB,
+          createdBy: userId,
+        });
+      }
+    } catch (error) {
+      // Log error but don't fail the clone operation
+      this.logger.warn(
+        `Failed to track repository ${args.owner}/${args.repo}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }

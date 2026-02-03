@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -17,7 +18,7 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 type GraphNodeWithStatus = z.infer<typeof GraphNodeWithStatusSchema>;
 
@@ -30,6 +31,8 @@ const ALLOWED_STATUSES: GraphNodeStatus[] = [
   GraphNodeStatus.Starting,
   GraphNodeStatus.Stopped,
 ];
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Graph Nodes Integration Tests', () => {
   let app: INestApplication;
@@ -47,7 +50,7 @@ describe('Graph Nodes Integration Tests', () => {
 
   const cleanupGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -59,7 +62,7 @@ describe('Graph Nodes Integration Tests', () => {
     }
 
     try {
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -77,7 +80,7 @@ describe('Graph Nodes Integration Tests', () => {
     const startedAt = Date.now();
 
     while (true) {
-      const graph = await graphsService.findById(graphId);
+      const graph = await graphsService.findById(contextDataStorage, graphId);
 
       if (graph.status === GraphStatus.Running) {
         return graph;
@@ -180,7 +183,11 @@ describe('Graph Nodes Integration Tests', () => {
   ) => {
     return waitForCondition(
       () =>
-        graphsService.getCompiledNodes(graphId, query as GraphNodesQueryDto),
+        graphsService.getCompiledNodes(
+          contextDataStorage,
+          graphId,
+          query as GraphNodesQueryDto,
+        ),
       predicate,
       { timeout: timeoutMs, interval: 1_000 },
     );
@@ -191,16 +198,18 @@ describe('Graph Nodes Integration Tests', () => {
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
     const basic = await graphsService.create(
+      contextDataStorage,
       createMockGraphData({
         name: `Graph Nodes Basic ${Date.now()}`,
       }),
     );
     basicGraphId = basic.id;
     registerGraph(basicGraphId);
-    await graphsService.run(basicGraphId);
+    await graphsService.run(contextDataStorage, basicGraphId);
     await waitForGraphToBeRunning(basicGraphId);
 
     const mcpGraph = await graphsService.create(
+      contextDataStorage,
       createMockGraphData({
         name: `Graph Nodes MCP ${Date.now()}`,
         schema: {
@@ -240,7 +249,7 @@ describe('Graph Nodes Integration Tests', () => {
     );
     mcpGraphId = mcpGraph.id;
     registerGraph(mcpGraphId);
-    await graphsService.run(mcpGraphId);
+    await graphsService.run(contextDataStorage, mcpGraphId);
     await waitForGraphToBeRunning(mcpGraphId, 180_000);
   }, 300_000);
 
@@ -258,18 +267,25 @@ describe('Graph Nodes Integration Tests', () => {
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const ensureGraphRunning = async (graphId: string) => {
-    const graph = await graphsService.findById(graphId);
+    const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(graphId);
+    await graphsService.run(contextDataStorage, graphId);
     await waitForGraphToBeRunning(graphId);
   };
 
   it('rejects compiled node requests when graph is not running', async () => {
-    const graph = await graphsService.create(createMockGraphData());
+    const graph = await graphsService.create(
+      contextDataStorage,
+      createMockGraphData(),
+    );
     registerGraph(graph.id);
 
     await expect(
-      graphsService.getCompiledNodes(graph.id, {} as GraphNodesQueryDto),
+      graphsService.getCompiledNodes(
+        contextDataStorage,
+        graph.id,
+        {} as GraphNodesQueryDto,
+      ),
     ).rejects.toMatchObject({
       errorCode: 'GRAPH_NOT_RUNNING',
       statusCode: 400,
@@ -281,7 +297,10 @@ describe('Graph Nodes Integration Tests', () => {
     { timeout: 120_000 },
     async () => {
       await ensureGraphRunning(basicGraphId);
-      const graph = await graphsService.findById(basicGraphId);
+      const graph = await graphsService.findById(
+        contextDataStorage,
+        basicGraphId,
+      );
 
       const nodes = await waitForSnapshots(
         basicGraphId,
@@ -312,6 +331,7 @@ describe('Graph Nodes Integration Tests', () => {
       await ensureGraphRunning(basicGraphId);
 
       const execution = await graphsService.executeTrigger(
+        contextDataStorage,
         basicGraphId,
         TRIGGER_NODE_ID,
         {
@@ -370,10 +390,14 @@ describe('Graph Nodes Integration Tests', () => {
         expect(ALLOWED_STATUSES).toContain(node.status);
       });
 
-      await graphsService.destroy(basicGraphId);
+      await graphsService.destroy(contextDataStorage, basicGraphId);
 
       await expect(
-        graphsService.getCompiledNodes(basicGraphId, {} as GraphNodesQueryDto),
+        graphsService.getCompiledNodes(
+          contextDataStorage,
+          basicGraphId,
+          {} as GraphNodesQueryDto,
+        ),
       ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_RUNNING',
         statusCode: 400,
@@ -389,6 +413,7 @@ describe('Graph Nodes Integration Tests', () => {
 
       const threadSubId = uniqueThreadSubId('pending-metadata-thread');
       const firstExecution = await graphsService.executeTrigger(
+        contextDataStorage,
         basicGraphId,
         TRIGGER_NODE_ID,
         {
@@ -407,11 +432,16 @@ describe('Graph Nodes Integration Tests', () => {
         ),
       );
 
-      await graphsService.executeTrigger(basicGraphId, TRIGGER_NODE_ID, {
-        messages: ['Follow-up while running'],
-        threadSubId,
-        async: true,
-      });
+      await graphsService.executeTrigger(
+        contextDataStorage,
+        basicGraphId,
+        TRIGGER_NODE_ID,
+        {
+          messages: ['Follow-up while running'],
+          threadSubId,
+          async: true,
+        },
+      );
 
       const nodesWithPending = await waitForSnapshots(
         basicGraphId,
@@ -482,6 +512,7 @@ describe('Graph Nodes Integration Tests', () => {
       await ensureGraphRunning(mcpGraphId);
 
       const execution = await graphsService.executeTrigger(
+        contextDataStorage,
         mcpGraphId,
         TRIGGER_NODE_ID,
         {

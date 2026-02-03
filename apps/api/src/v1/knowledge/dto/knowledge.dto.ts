@@ -1,3 +1,4 @@
+import { PartialType } from '@nestjs/swagger';
 import { zodQueryArray } from '@packages/http-server';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
@@ -41,8 +42,11 @@ export const KnowledgeDocListQuerySchema = z.object({
 });
 
 export class KnowledgeDocDto extends createZodDto(KnowledgeDocSchema) {}
-export class KnowledgeDocInputDto extends createZodDto(
+export class KnowledgeDocCreateDto extends createZodDto(
   KnowledgeDocInputSchema,
+) {}
+export class KnowledgeDocUpdateDto extends PartialType(
+  createZodDto(KnowledgeDocInputSchema),
 ) {}
 export class KnowledgeDocListQueryDto extends createZodDto(
   KnowledgeDocListQuerySchema,

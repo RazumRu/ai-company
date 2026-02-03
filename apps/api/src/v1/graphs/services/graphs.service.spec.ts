@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,7 +41,6 @@ describe('GraphsService', () => {
   let graphCompiler: GraphCompiler;
   let graphRegistry: GraphRegistry;
   let typeorm: TypeormService;
-  let authContext: AuthContextService;
   let _graphCheckpointsDao: GraphCheckpointsDao;
   let _pgCheckpointSaver: PgCheckpointSaver;
   let messageTransformer: MessageTransformerService;
@@ -50,6 +49,7 @@ describe('GraphsService', () => {
   let threadsDao: ThreadsDao;
 
   const mockUserId = 'user-123';
+  const mockCtx = new AuthContextStorage({ sub: mockUserId });
   const mockGraphId = 'graph-456';
 
   const createMockGraphEntity = (
@@ -157,7 +157,6 @@ describe('GraphsService', () => {
             getAll: vi.fn(),
             updateById: vi.fn(),
             deleteById: vi.fn(),
-            getById: vi.fn(),
           },
         },
         {
@@ -189,12 +188,6 @@ describe('GraphsService', () => {
           provide: TypeormService,
           useValue: {
             trx: vi.fn(),
-          },
-        },
-        {
-          provide: AuthContextService,
-          useValue: {
-            checkSub: vi.fn(),
           },
         },
         {
@@ -242,7 +235,6 @@ describe('GraphsService', () => {
     graphCompiler = module.get<GraphCompiler>(GraphCompiler);
     graphRegistry = module.get<GraphRegistry>(GraphRegistry);
     typeorm = module.get<TypeormService>(TypeormService);
-    authContext = module.get<AuthContextService>(AuthContextService);
     _graphCheckpointsDao = module.get<GraphCheckpointsDao>(GraphCheckpointsDao);
     _pgCheckpointSaver = module.get<PgCheckpointSaver>(PgCheckpointSaver);
     messageTransformer = module.get<MessageTransformerService>(
@@ -285,7 +277,6 @@ describe('GraphsService', () => {
     );
 
     // Setup default mocks
-    vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
     vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
       const mockEntityManager = {
         createQueryBuilder: vi.fn().mockReturnValue({
@@ -380,7 +371,7 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.create).mockResolvedValue(expectedEntity);
 
-      const result = await service.create(createData);
+      const result = await service.create(mockCtx, createData);
 
       expect(result).toMatchObject(expectedGraph);
       expect(graphDao.create).toHaveBeenCalledWith(
@@ -394,7 +385,6 @@ describe('GraphsService', () => {
         },
         expect.any(Object), // EntityManager
       );
-      expect(authContext.checkSub).toHaveBeenCalled();
     });
 
     it('should handle creation errors', async () => {
@@ -413,7 +403,7 @@ describe('GraphsService', () => {
       const error = new Error('Database error');
       vi.mocked(graphDao.create).mockRejectedValue(error);
 
-      await expect(service.create(createData)).rejects.toThrow(
+      await expect(service.create(mockCtx, createData)).rejects.toThrow(
         'Database error',
       );
     });
@@ -447,7 +437,7 @@ describe('GraphsService', () => {
       vi.mocked(graphDao.create).mockResolvedValue(expectedEntity);
       vi.mocked(graphCompiler.validateSchema).mockImplementation(() => {});
 
-      await service.create(createData);
+      await service.create(mockCtx, createData);
 
       expect(graphCompiler.validateSchema).toHaveBeenCalledWith(
         createData.schema,
@@ -480,7 +470,9 @@ describe('GraphsService', () => {
         throw validationError;
       });
 
-      await expect(service.create(createData)).rejects.toThrow(validationError);
+      await expect(service.create(mockCtx, createData)).rejects.toThrow(
+        validationError,
+      );
       expect(graphDao.create).not.toHaveBeenCalled();
     });
 
@@ -515,7 +507,9 @@ describe('GraphsService', () => {
         throw validationError;
       });
 
-      await expect(service.create(createData)).rejects.toThrow(validationError);
+      await expect(service.create(mockCtx, createData)).rejects.toThrow(
+        validationError,
+      );
       expect(graphDao.create).not.toHaveBeenCalled();
     });
 
@@ -550,7 +544,9 @@ describe('GraphsService', () => {
         throw validationError;
       });
 
-      await expect(service.create(createData)).rejects.toThrow(validationError);
+      await expect(service.create(mockCtx, createData)).rejects.toThrow(
+        validationError,
+      );
       expect(graphDao.create).not.toHaveBeenCalled();
     });
   });
@@ -561,7 +557,7 @@ describe('GraphsService', () => {
       const expectedGraph = createMockGraphDto();
       vi.mocked(graphDao.getOne).mockResolvedValue(expectedEntity);
 
-      const result = await service.findById(mockGraphId);
+      const result = await service.findById(mockCtx, mockGraphId);
 
       expect(result).toMatchObject(expectedGraph);
       expect(graphDao.getOne).toHaveBeenCalledWith({
@@ -573,7 +569,7 @@ describe('GraphsService', () => {
     it('should throw NotFoundException when graph not found', async () => {
       vi.mocked(graphDao.getOne).mockResolvedValue(null);
 
-      await expect(service.findById(mockGraphId)).rejects.toThrow(
+      await expect(service.findById(mockCtx, mockGraphId)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -591,7 +587,7 @@ describe('GraphsService', () => {
       ];
       vi.mocked(graphDao.getAll).mockResolvedValue(entities);
 
-      const result = await service.getAll();
+      const result = await service.getAll(mockCtx);
 
       expect(result).toMatchObject(expectedGraphs);
       expect(graphDao.getAll).toHaveBeenCalledWith(
@@ -604,7 +600,7 @@ describe('GraphsService', () => {
     it('should return empty array when no graphs found', async () => {
       vi.mocked(graphDao.getAll).mockResolvedValue([]);
 
-      const result = await service.getAll();
+      const result = await service.getAll(mockCtx);
 
       expect(result).toEqual([]);
     });
@@ -615,7 +611,11 @@ describe('GraphsService', () => {
       vi.mocked(graphDao.getOne).mockResolvedValue(null);
 
       await expect(
-        service.getCompiledNodes(mockGraphId, {} as GraphNodesQueryDto),
+        service.getCompiledNodes(
+          mockCtx,
+          mockGraphId,
+          {} as GraphNodesQueryDto,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -624,7 +624,11 @@ describe('GraphsService', () => {
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
 
       await expect(
-        service.getCompiledNodes(mockGraphId, {} as GraphNodesQueryDto),
+        service.getCompiledNodes(
+          mockCtx,
+          mockGraphId,
+          {} as GraphNodesQueryDto,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -656,6 +660,7 @@ describe('GraphsService', () => {
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
 
       const result = await service.getCompiledNodes(
+        mockCtx,
         mockGraphId,
         {} as GraphNodesQueryDto,
       );
@@ -698,7 +703,7 @@ describe('GraphsService', () => {
         },
       ]);
 
-      await service.getCompiledNodes(mockGraphId, {
+      await service.getCompiledNodes(mockCtx, mockGraphId, {
         threadId: 'thread-123',
         runId: 'run-456',
       } as GraphNodesQueryDto);
@@ -724,13 +729,14 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(result.revision).toBeDefined();
       expect(result.graph.version).toBe(mockGraph.version);
       expect(result.graph.targetVersion).toBe('1.0.1');
 
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockCtx,
         mockGraph,
         '1.0.0',
         expect.objectContaining({
@@ -764,10 +770,11 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(result.revision).toBeDefined();
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockCtx,
         mockGraph,
         '1.0.0',
         expect.objectContaining({
@@ -789,9 +796,9 @@ describe('GraphsService', () => {
       };
       vi.mocked(graphDao.updateById).mockResolvedValue(null);
 
-      await expect(service.update(mockGraphId, updateData)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.update(mockCtx, mockGraphId, updateData),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException when currentVersion is missing', async () => {
@@ -802,9 +809,9 @@ describe('GraphsService', () => {
       const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      await expect(service.update(mockGraphId, updateData)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.update(mockCtx, mockGraphId, updateData),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException when currentVersion mismatches', async () => {
@@ -816,9 +823,9 @@ describe('GraphsService', () => {
       const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      await expect(service.update(mockGraphId, updateData)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.update(mockCtx, mockGraphId, updateData),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should queue revision when updating running graph schema', async () => {
@@ -839,9 +846,10 @@ describe('GraphsService', () => {
       const mockGraph = createMockGraphEntity({ status: GraphStatus.Running });
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockCtx,
         mockGraph,
         '1.0.0',
         expect.objectContaining({
@@ -874,7 +882,7 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
       expect(
@@ -895,10 +903,11 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(result.revision).toBeDefined();
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockCtx,
         mockGraph,
         mockGraph.version,
         expect.objectContaining({
@@ -933,9 +942,10 @@ describe('GraphsService', () => {
       });
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockCtx,
         mockGraph,
         '1.0.0',
         expect.objectContaining({
@@ -978,10 +988,11 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(result.revision).toBeDefined();
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockCtx,
         mockGraph,
         '1.0.0',
         expect.objectContaining({
@@ -1005,7 +1016,7 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(graphDao.updateById).not.toHaveBeenCalled();
       expect(result.graph.version).toBe(mockGraph.version);
@@ -1022,10 +1033,11 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
 
-      const result = await service.update(mockGraphId, updateData);
+      const result = await service.update(mockCtx, mockGraphId, updateData);
 
       expect(result.revision).toBeDefined();
       expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
+        mockCtx,
         mockGraph,
         mockGraph.version,
         expect.objectContaining({
@@ -1044,19 +1056,22 @@ describe('GraphsService', () => {
   describe('delete', () => {
     it('should delete graph successfully when not running', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Created });
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
 
-      await service.delete(mockGraphId);
+      await service.delete(mockCtx, mockGraphId);
 
-      expect(graphDao.getById).toHaveBeenCalledWith(mockGraphId);
+      expect(graphDao.getOne).toHaveBeenCalledWith({
+        id: mockGraphId,
+        createdBy: mockUserId,
+      });
       expect(graphDao.deleteById).toHaveBeenCalledWith(mockGraphId);
       expect(graphRegistry.destroy).not.toHaveBeenCalled();
     });
 
     it('should destroy running graph before deletion', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Running });
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(createMockCompiledGraph());
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
       vi.mocked(graphDao.updateById).mockResolvedValue(
@@ -1064,16 +1079,16 @@ describe('GraphsService', () => {
       );
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
 
-      await service.delete(mockGraphId);
+      await service.delete(mockCtx, mockGraphId);
 
       expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
       expect(graphDao.deleteById).toHaveBeenCalledWith(mockGraphId);
     });
 
     it('should throw NotFoundException when graph not found', async () => {
-      vi.mocked(graphDao.getById).mockResolvedValue(null);
+      vi.mocked(graphDao.getOne).mockResolvedValue(null);
 
-      await expect(service.delete(mockGraphId)).rejects.toThrow(
+      await expect(service.delete(mockCtx, mockGraphId)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -1093,14 +1108,14 @@ describe('GraphsService', () => {
         status: GraphStatus.Running,
       });
 
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
       vi.mocked(graphDao.updateById)
         .mockResolvedValueOnce(compilingEntity)
         .mockResolvedValueOnce(updatedEntity);
 
-      const result = await service.run(mockGraphId);
+      const result = await service.run(mockCtx, mockGraphId);
 
       expect(result).toMatchObject(updatedGraph);
       expect(graphCompiler.compile).toHaveBeenCalledWith(graph, {
@@ -1143,20 +1158,22 @@ describe('GraphsService', () => {
 
     it('should throw BadRequestException when graph is already running', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Created });
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.getStatus).mockReturnValueOnce(
         GraphStatus.Running,
       );
 
-      await expect(service.run(mockGraphId)).rejects.toThrow(
+      await expect(service.run(mockCtx, mockGraphId)).rejects.toThrow(
         BadRequestException,
       );
     });
 
     it('should throw NotFoundException when graph not found', async () => {
-      vi.mocked(graphDao.getById).mockResolvedValue(null);
+      vi.mocked(graphDao.getOne).mockResolvedValue(null);
 
-      await expect(service.run(mockGraphId)).rejects.toThrow(NotFoundException);
+      await expect(service.run(mockCtx, mockGraphId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should handle compilation errors and cleanup', async () => {
@@ -1170,14 +1187,14 @@ describe('GraphsService', () => {
         error: 'Compilation failed',
       });
 
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.compile).mockRejectedValue(compilationError);
       vi.mocked(graphDao.updateById)
         .mockResolvedValueOnce(compilingEntity)
         .mockResolvedValueOnce(errorEntity);
 
-      await expect(service.run(mockGraphId)).rejects.toThrow(
+      await expect(service.run(mockCtx, mockGraphId)).rejects.toThrow(
         'Compilation failed',
       );
 
@@ -1219,7 +1236,7 @@ describe('GraphsService', () => {
         status: GraphStatus.Compiling,
       });
 
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.compile).mockRejectedValue(compilationError);
       vi.mocked(graphDao.updateById)
@@ -1238,7 +1255,7 @@ describe('GraphsService', () => {
       vi.mocked(threadsDao.getAll).mockResolvedValue([runningThread]);
       vi.mocked(threadsDao.updateById).mockResolvedValue(runningThread);
 
-      await expect(service.run(mockGraphId)).rejects.toThrow(
+      await expect(service.run(mockCtx, mockGraphId)).rejects.toThrow(
         'Compilation failed',
       );
 
@@ -1259,7 +1276,7 @@ describe('GraphsService', () => {
         status: GraphStatus.Compiling,
       });
 
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
       vi.mocked(graphDao.updateById)
@@ -1267,7 +1284,9 @@ describe('GraphsService', () => {
         .mockResolvedValueOnce(null);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
 
-      await expect(service.run(mockGraphId)).rejects.toThrow(NotFoundException);
+      await expect(service.run(mockCtx, mockGraphId)).rejects.toThrow(
+        NotFoundException,
+      );
 
       // GraphRegistry.register is now called by GraphCompiler, not by service
       expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
@@ -1298,7 +1317,7 @@ describe('GraphsService', () => {
         error: 'Compilation failed',
       });
 
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphCompiler.compile).mockRejectedValue(compilationError);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
@@ -1306,7 +1325,7 @@ describe('GraphsService', () => {
         .mockResolvedValueOnce(compilingEntity)
         .mockResolvedValueOnce(errorEntity);
 
-      await expect(service.run(mockGraphId)).rejects.toThrow(
+      await expect(service.run(mockCtx, mockGraphId)).rejects.toThrow(
         'Compilation failed',
       );
 
@@ -1354,12 +1373,12 @@ describe('GraphsService', () => {
         status: GraphStatus.Stopped,
       });
 
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
       vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
-      const result = await service.destroy(mockGraphId);
+      const result = await service.destroy(mockCtx, mockGraphId);
 
       expect(result).toMatchObject(updatedGraph);
       expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
@@ -1383,11 +1402,11 @@ describe('GraphsService', () => {
         status: GraphStatus.Stopped,
       });
 
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
-      const result = await service.destroy(mockGraphId);
+      const result = await service.destroy(mockCtx, mockGraphId);
 
       expect(result).toMatchObject(updatedGraph);
       expect(graphRegistry.destroy).not.toHaveBeenCalled();
@@ -1403,9 +1422,9 @@ describe('GraphsService', () => {
     });
 
     it('should throw NotFoundException when graph not found', async () => {
-      vi.mocked(graphDao.getById).mockResolvedValue(null);
+      vi.mocked(graphDao.getOne).mockResolvedValue(null);
 
-      await expect(service.destroy(mockGraphId)).rejects.toThrow(
+      await expect(service.destroy(mockCtx, mockGraphId)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -1414,12 +1433,12 @@ describe('GraphsService', () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Running });
       const compiledGraph = createMockCompiledGraph();
 
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
       vi.mocked(graphDao.updateById).mockResolvedValue(null);
 
-      await expect(service.destroy(mockGraphId)).rejects.toThrow(
+      await expect(service.destroy(mockCtx, mockGraphId)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -1474,11 +1493,16 @@ describe('GraphsService', () => {
         mockTriggerNode as unknown as CompiledGraphNode,
       );
 
-      const result = await service.executeTrigger(mockGraphId, triggerId, {
-        messages: ['Async test message'],
-        threadSubId: customThreadId,
-        async: true,
-      });
+      const result = await service.executeTrigger(
+        mockCtx,
+        mockGraphId,
+        triggerId,
+        {
+          messages: ['Async test message'],
+          threadSubId: customThreadId,
+          async: true,
+        },
+      );
 
       expect(result).toEqual({
         externalThreadId: expectedThreadId,
@@ -1537,10 +1561,15 @@ describe('GraphsService', () => {
         mockTriggerNode as unknown as CompiledGraphNode,
       );
 
-      const result = await service.executeTrigger(mockGraphId, triggerId, {
-        messages: ['Async test message'],
-        async: true,
-      });
+      const result = await service.executeTrigger(
+        mockCtx,
+        mockGraphId,
+        triggerId,
+        {
+          messages: ['Async test message'],
+          async: true,
+        },
+      );
 
       expect(result.externalThreadId).toMatch(new RegExp(`^${mockGraphId}:`));
       expect(result).toHaveProperty('checkpointNs');
@@ -1598,10 +1627,15 @@ describe('GraphsService', () => {
         mockTriggerNode as unknown as CompiledGraphNode,
       );
 
-      const result = await service.executeTrigger(mockGraphId, triggerId, {
-        messages: ['Test message'],
-        threadSubId: customThreadId,
-      });
+      const result = await service.executeTrigger(
+        mockCtx,
+        mockGraphId,
+        triggerId,
+        {
+          messages: ['Test message'],
+          threadSubId: customThreadId,
+        },
+      );
 
       expect(result).toEqual({
         externalThreadId: expectedThreadId,
@@ -1669,9 +1703,14 @@ describe('GraphsService', () => {
         mockTriggerNode as unknown as CompiledGraphNode,
       );
 
-      const result = await service.executeTrigger(mockGraphId, triggerId, {
-        messages: ['Test message'],
-      });
+      const result = await service.executeTrigger(
+        mockCtx,
+        mockGraphId,
+        triggerId,
+        {
+          messages: ['Test message'],
+        },
+      );
 
       // Verify externalThreadId format is graphId:generated or similar
       expect(result.externalThreadId).toMatch(new RegExp(`^${mockGraphId}:`));
@@ -1692,7 +1731,7 @@ describe('GraphsService', () => {
       vi.mocked(graphDao.getOne).mockResolvedValue(null);
 
       await expect(
-        service.executeTrigger(mockGraphId, 'trigger-1', {
+        service.executeTrigger(mockCtx, mockGraphId, 'trigger-1', {
           messages: ['Test'],
         }),
       ).rejects.toThrow(NotFoundException);
@@ -1704,7 +1743,7 @@ describe('GraphsService', () => {
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
 
       await expect(
-        service.executeTrigger(mockGraphId, 'trigger-1', {
+        service.executeTrigger(mockCtx, mockGraphId, 'trigger-1', {
           messages: ['Test'],
         }),
       ).rejects.toThrow(BadRequestException);
@@ -1718,7 +1757,7 @@ describe('GraphsService', () => {
       vi.mocked(graphRegistry.getNode).mockReturnValue(undefined);
 
       await expect(
-        service.executeTrigger(mockGraphId, 'trigger-1', {
+        service.executeTrigger(mockCtx, mockGraphId, 'trigger-1', {
           messages: ['Test'],
         }),
       ).rejects.toThrow(NotFoundException);
@@ -1742,7 +1781,9 @@ describe('GraphsService', () => {
       );
 
       await expect(
-        service.executeTrigger(mockGraphId, 'node-1', { messages: ['Test'] }),
+        service.executeTrigger(mockCtx, mockGraphId, 'node-1', {
+          messages: ['Test'],
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -1774,7 +1815,9 @@ describe('GraphsService', () => {
       );
 
       await expect(
-        service.executeTrigger(mockGraphId, triggerId, { messages: ['Test'] }),
+        service.executeTrigger(mockCtx, mockGraphId, triggerId, {
+          messages: ['Test'],
+        }),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -1815,10 +1858,10 @@ describe('GraphsService', () => {
       const compiledGraph = createMockCompiledGraph();
 
       vi.mocked(graphDao.create).mockResolvedValue(createdGraph);
-      const created = await service.create(createData);
+      const created = await service.create(mockCtx, createData);
       expect(created.status).toBe(GraphStatus.Created);
 
-      vi.mocked(graphDao.getById).mockResolvedValue(createdGraph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(createdGraph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
       vi.mocked(graphDao.updateById)
@@ -1830,19 +1873,19 @@ describe('GraphsService', () => {
         )
         .mockResolvedValueOnce(runningGraph)
         .mockResolvedValueOnce(stoppedGraph);
-      const running = await service.run('lifecycle-graph');
+      const running = await service.run(mockCtx, 'lifecycle-graph');
       expect(running.status).toBe(GraphStatus.Running);
 
       // Destroy
-      vi.mocked(graphDao.getById).mockResolvedValue(runningGraph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(runningGraph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
-      const stopped = await service.destroy('lifecycle-graph');
+      const stopped = await service.destroy(mockCtx, 'lifecycle-graph');
       expect(stopped.status).toBe(GraphStatus.Stopped);
 
-      vi.mocked(graphDao.getById).mockResolvedValue(stoppedGraph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(stoppedGraph);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
-      await service.delete('lifecycle-graph');
+      await service.delete(mockCtx, 'lifecycle-graph');
     });
 
     it('should handle error recovery scenarios', async () => {
@@ -1850,7 +1893,7 @@ describe('GraphsService', () => {
       const compiledGraph = createMockCompiledGraph();
 
       // Simulate compilation error with registry cleanup
-      vi.mocked(graphDao.getById).mockResolvedValue(graph);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphCompiler.compile).mockRejectedValue(
         new Error('Compilation failed'),
@@ -1867,7 +1910,7 @@ describe('GraphsService', () => {
           }),
         );
 
-      await expect(service.run(mockGraphId)).rejects.toThrow(
+      await expect(service.run(mockCtx, mockGraphId)).rejects.toThrow(
         'Compilation failed',
       );
 

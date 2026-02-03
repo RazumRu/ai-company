@@ -21,6 +21,7 @@ export class FetchContextDataMiddleware implements NestMiddleware {
       .init()
       .then((contextData) => {
         req.__contextData = contextData;
+        req.__contextDataStorage = this.contextService.contextStorage();
 
         return next();
       })

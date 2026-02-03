@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
@@ -79,7 +80,10 @@ export class GraphRestorationService {
       const graphsService = await this.moduleRef.create(GraphsService);
 
       // Use the run method from GraphsService
-      await graphsService.run(id);
+      const contextDataStorage = new AuthContextStorage({
+        sub: graph.createdBy,
+      });
+      await graphsService.run(contextDataStorage, id);
 
       // Stop interrupted threads instead of resuming them
       await this.stopInterruptedThreads(id);

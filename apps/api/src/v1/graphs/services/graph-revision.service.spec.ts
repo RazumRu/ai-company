@@ -4,7 +4,7 @@ import {
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { compare } from 'fast-json-patch';
 import * as timers from 'timers/promises';
@@ -40,14 +40,18 @@ describe('GraphRevisionService', () => {
   let graphCompiler: GraphCompiler;
   let graphMergeService: GraphMergeService;
   let graphRegistry: GraphRegistry;
+  let templateRegistry: TemplateRegistry;
   let typeorm: TypeormService;
   let notificationsService: NotificationsService;
-  let authContext: AuthContextService;
-  let templateRegistry: TemplateRegistry;
-
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
   const mockUpdateId = 'update-789';
+
+  const mockCtx = new AuthContextStorage({
+    userId: mockUserId,
+    sub: mockUserId,
+    email: 'test@example.com',
+  });
 
   const createMockGraphEntity = (
     overrides: Partial<GraphEntity> = {},
@@ -203,12 +207,6 @@ describe('GraphRevisionService', () => {
           },
         },
         {
-          provide: AuthContextService,
-          useValue: {
-            checkSub: vi.fn(),
-          },
-        },
-        {
           provide: DefaultLogger,
           useValue: {
             log: vi.fn(),
@@ -238,7 +236,7 @@ describe('GraphRevisionService', () => {
     typeorm = module.get<TypeormService>(TypeormService);
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
-    authContext = module.get<AuthContextService>(AuthContextService);
+    // authContext removal
     templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
   });
 
@@ -258,7 +256,7 @@ describe('GraphRevisionService', () => {
         edges: [],
       };
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
         return await callback({} as EntityManager);
       });
@@ -273,12 +271,17 @@ describe('GraphRevisionService', () => {
       vi.mocked(graphUpdateQueue.addRevision).mockResolvedValue(undefined);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
-      const result = await service.queueRevision(mockGraph, baseVersion, {
-        schema: clientSchema,
-        name: mockGraph.name,
-        description: mockGraph.description ?? null,
-        temporary: mockGraph.temporary,
-      });
+      const result = await service.queueRevision(
+        mockCtx,
+        mockGraph,
+        baseVersion,
+        {
+          schema: clientSchema,
+          name: mockGraph.name,
+          description: mockGraph.description ?? null,
+          temporary: mockGraph.temporary,
+        },
+      );
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -308,7 +311,7 @@ describe('GraphRevisionService', () => {
       const mockGraph = createMockGraphEntity();
       const mockUpdate = createMockUpdateEntity();
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
         return await callback({} as EntityManager);
       });
@@ -323,6 +326,7 @@ describe('GraphRevisionService', () => {
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
       await service.queueRevision(
+        mockCtx,
         mockGraph,
         mockGraph.version,
         mockUpdate.newConfig,
@@ -334,7 +338,7 @@ describe('GraphRevisionService', () => {
     });
 
     it('should validate schema before queuing', async () => {
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
         return await callback({} as EntityManager);
       });
@@ -348,7 +352,7 @@ describe('GraphRevisionService', () => {
       });
 
       await expect(
-        service.queueRevision(mockGraph, baseVersion, {
+        service.queueRevision(mockCtx, mockGraph, baseVersion, {
           schema: clientSchema,
           name: mockGraph.name,
           description: mockGraph.description ?? null,
@@ -376,7 +380,7 @@ describe('GraphRevisionService', () => {
         edges: [],
       };
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
         return await callback({} as EntityManager);
       });
@@ -398,7 +402,7 @@ describe('GraphRevisionService', () => {
       vi.mocked(graphUpdateQueue.addRevision).mockResolvedValue(undefined);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
-      await service.queueRevision(mockGraph, baseVersion, {
+      await service.queueRevision(mockCtx, mockGraph, baseVersion, {
         schema: clientSchema,
         name: mockGraph.name,
         description: mockGraph.description ?? null,
@@ -418,7 +422,7 @@ describe('GraphRevisionService', () => {
       const baseVersion = mockGraph.version;
       const clientSchema = JSON.parse(JSON.stringify(mockGraph.schema));
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
         return await callback({} as EntityManager);
       });
@@ -430,7 +434,7 @@ describe('GraphRevisionService', () => {
       });
 
       await expect(
-        service.queueRevision(mockGraph, baseVersion, {
+        service.queueRevision(mockCtx, mockGraph, baseVersion, {
           schema: clientSchema,
           name: mockGraph.name,
           description: mockGraph.description ?? null,
@@ -447,7 +451,7 @@ describe('GraphRevisionService', () => {
       const baseVersion = '1.0.0';
       const clientSchema = { nodes: [], edges: [] };
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
         return await callback({} as EntityManager);
       });
@@ -467,7 +471,7 @@ describe('GraphRevisionService', () => {
       });
 
       await expect(
-        service.queueRevision(mockGraph, baseVersion, {
+        service.queueRevision(mockCtx, mockGraph, baseVersion, {
           schema: clientSchema,
           name: mockGraph.name,
           description: mockGraph.description ?? null,
@@ -484,10 +488,10 @@ describe('GraphRevisionService', () => {
         createMockUpdateEntity({ id: 'update-2' }),
       ];
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(graphUpdateDao.getAll).mockResolvedValue(mockRevisions);
 
-      const result = await service.getRevisions(mockGraphId, {});
+      const result = await service.getRevisions(mockCtx, mockGraphId, {});
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual(
@@ -515,10 +519,10 @@ describe('GraphRevisionService', () => {
         createMockUpdateEntity({ status: GraphRevisionStatus.Applied }),
       ];
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(graphUpdateDao.getAll).mockResolvedValue(mockRevisions);
 
-      await service.getRevisions(mockGraphId, {
+      await service.getRevisions(mockCtx, mockGraphId, {
         status: GraphRevisionStatus.Applied,
       });
 
@@ -536,10 +540,10 @@ describe('GraphRevisionService', () => {
     it('should apply limit when provided', async () => {
       const mockRevisions = [createMockUpdateEntity()];
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(graphUpdateDao.getAll).mockResolvedValue(mockRevisions);
 
-      await service.getRevisions(mockGraphId, { limit: 1 } as any);
+      await service.getRevisions(mockCtx, mockGraphId, { limit: 1 } as any);
 
       expect(graphUpdateDao.getAll).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -557,10 +561,14 @@ describe('GraphRevisionService', () => {
     it('should return a specific revision', async () => {
       const mockRevision = createMockUpdateEntity();
 
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(graphUpdateDao.getOne).mockResolvedValue(mockRevision);
 
-      const result = await service.getRevisionById(mockGraphId, mockUpdateId);
+      const result = await service.getRevisionById(
+        mockCtx,
+        mockGraphId,
+        mockUpdateId,
+      );
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -577,11 +585,11 @@ describe('GraphRevisionService', () => {
     });
 
     it('should throw NotFoundException when revision does not exist', async () => {
-      vi.mocked(authContext.checkSub).mockReturnValue(mockUserId);
+      // authContext expectation removal
       vi.mocked(graphUpdateDao.getOne).mockResolvedValue(null);
 
       await expect(
-        service.getRevisionById(mockGraphId, mockUpdateId),
+        service.getRevisionById(mockCtx, mockGraphId, mockUpdateId),
       ).rejects.toThrow(NotFoundException);
     });
   });

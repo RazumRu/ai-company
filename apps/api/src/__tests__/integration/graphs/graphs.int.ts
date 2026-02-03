@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -23,7 +24,7 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const TEST_AGENT_NODE_ID = 'agent-1';
 const TEST_TRIGGER_NODE_ID = 'trigger-1';
@@ -33,6 +34,8 @@ const NON_EXISTENT_GRAPH_ID = '00000000-0000-0000-0000-000000000000';
 
 const COMMAND_AGENT_INSTRUCTIONS =
   'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, describe what happened. If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Graphs Integration Tests', () => {
   let app: INestApplication;
@@ -57,7 +60,7 @@ describe('Graphs Integration Tests', () => {
 
   const cleanupGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -69,7 +72,7 @@ describe('Graphs Integration Tests', () => {
     }
 
     try {
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -86,7 +89,7 @@ describe('Graphs Integration Tests', () => {
     timeoutMs = 60000,
   ) => {
     return waitForCondition(
-      () => graphsService.findById(graphId),
+      () => graphsService.findById(contextDataStorage, graphId),
       (graph) => graph.status === status,
       { timeout: timeoutMs, interval: 1000 },
     );
@@ -173,15 +176,15 @@ describe('Graphs Integration Tests', () => {
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const ensureGraphRunning = async (graphId: string) => {
-    const graph = await graphsService.findById(graphId);
+    const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(graphId);
+    await graphsService.run(contextDataStorage, graphId);
     await waitForGraphStatus(graphId, GraphStatus.Running);
   };
 
   const restartGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch {
       // best effort
     }
@@ -192,7 +195,10 @@ describe('Graphs Integration Tests', () => {
     it('creates a new graph with the default schema', async () => {
       const graphData = createMockGraphData();
 
-      const response = await graphsService.create(graphData);
+      const response = await graphsService.create(
+        contextDataStorage,
+        graphData,
+      );
       registerGraph(response.id);
 
       expect(response.id).toBeDefined();
@@ -208,7 +214,10 @@ describe('Graphs Integration Tests', () => {
         temporary: false,
       });
 
-      const response = await graphsService.create(graphData);
+      const response = await graphsService.create(
+        contextDataStorage,
+        graphData,
+      );
       registerGraph(response.id);
 
       expect(response.description ?? null).toBeNull();
@@ -240,7 +249,9 @@ describe('Graphs Integration Tests', () => {
         },
       });
 
-      await expect(graphsService.create(invalidData)).rejects.toMatchObject({
+      await expect(
+        graphsService.create(contextDataStorage, invalidData),
+      ).rejects.toMatchObject({
         errorCode: 'GRAPH_DUPLICATE_NODE',
         statusCode: 400,
       });
@@ -260,7 +271,9 @@ describe('Graphs Integration Tests', () => {
         },
       });
 
-      await expect(graphsService.create(invalidData)).rejects.toMatchObject({
+      await expect(
+        graphsService.create(contextDataStorage, invalidData),
+      ).rejects.toMatchObject({
         errorCode: 'TEMPLATE_NOT_REGISTERED',
         statusCode: 400,
       });
@@ -285,7 +298,9 @@ describe('Graphs Integration Tests', () => {
         },
       });
 
-      await expect(graphsService.create(invalidData)).rejects.toMatchObject({
+      await expect(
+        graphsService.create(contextDataStorage, invalidData),
+      ).rejects.toMatchObject({
         errorCode: 'GRAPH_EDGE_NOT_FOUND',
         statusCode: 400,
       });
@@ -310,7 +325,9 @@ describe('Graphs Integration Tests', () => {
         },
       });
 
-      await expect(graphsService.create(invalidData)).rejects.toMatchObject({
+      await expect(
+        graphsService.create(contextDataStorage, invalidData),
+      ).rejects.toMatchObject({
         errorCode: 'GRAPH_EDGE_NOT_FOUND',
         statusCode: 400,
       });
@@ -330,7 +347,7 @@ describe('Graphs Integration Tests', () => {
       );
 
       await expect(
-        graphsService.create({
+        graphsService.create(contextDataStorage, {
           ...graphData,
           schema: invalidAgentSchema,
         }),
@@ -343,12 +360,18 @@ describe('Graphs Integration Tests', () => {
 
   describe('graph retrieval', () => {
     it('returns all graphs including newly created ones', async () => {
-      const graphA = await graphsService.create(createMockGraphData());
-      const graphB = await graphsService.create(createMockGraphData());
+      const graphA = await graphsService.create(
+        contextDataStorage,
+        createMockGraphData(),
+      );
+      const graphB = await graphsService.create(
+        contextDataStorage,
+        createMockGraphData(),
+      );
       registerGraph(graphA.id);
       registerGraph(graphB.id);
 
-      const graphs = await graphsService.getAll();
+      const graphs = await graphsService.getAll(contextDataStorage);
 
       const ids = graphs.map((graph) => graph.id);
       expect(ids).toContain(graphA.id);
@@ -356,17 +379,23 @@ describe('Graphs Integration Tests', () => {
     });
 
     it('fetches a graph by id', async () => {
-      const graph = await graphsService.create(createMockGraphData());
+      const graph = await graphsService.create(
+        contextDataStorage,
+        createMockGraphData(),
+      );
       registerGraph(graph.id);
 
-      const fetched = await graphsService.findById(graph.id);
+      const fetched = await graphsService.findById(
+        contextDataStorage,
+        graph.id,
+      );
       expect(fetched.id).toBe(graph.id);
       expect(fetched.schema).toMatchObject(graph.schema);
     });
 
     it('throws an error when graph is missing', async () => {
       await expect(
-        graphsService.findById(NON_EXISTENT_GRAPH_ID),
+        graphsService.findById(contextDataStorage, NON_EXISTENT_GRAPH_ID),
       ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_FOUND',
         statusCode: 404,
@@ -381,8 +410,14 @@ describe('Graphs Integration Tests', () => {
 
   describe('graph updates', () => {
     it('updates mutable fields (partial + full) without touching schema or version', async () => {
-      const graphForPartial = await graphsService.create(createMockGraphData());
-      const graphForFull = await graphsService.create(createMockGraphData());
+      const graphForPartial = await graphsService.create(
+        contextDataStorage,
+        createMockGraphData(),
+      );
+      const graphForFull = await graphsService.create(
+        contextDataStorage,
+        createMockGraphData(),
+      );
       registerGraph(graphForPartial.id);
       registerGraph(graphForFull.id);
 
@@ -392,6 +427,7 @@ describe('Graphs Integration Tests', () => {
       };
 
       const partialResponse = await graphsService.update(
+        contextDataStorage,
         graphForPartial.id,
         partialUpdate,
       );
@@ -419,6 +455,7 @@ describe('Graphs Integration Tests', () => {
       };
 
       const fullResponse = await graphsService.update(
+        contextDataStorage,
         graphForFull.id,
         fullUpdate,
       );
@@ -444,7 +481,11 @@ describe('Graphs Integration Tests', () => {
       };
 
       await expect(
-        graphsService.update(NON_EXISTENT_GRAPH_ID, updatePayload),
+        graphsService.update(
+          contextDataStorage,
+          NON_EXISTENT_GRAPH_ID,
+          updatePayload,
+        ),
       ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_FOUND',
         statusCode: 404,
@@ -452,7 +493,10 @@ describe('Graphs Integration Tests', () => {
     });
 
     it('increments version on schema change and rejects stale edits (version conflict)', async () => {
-      const graph = await graphsService.create(createMockGraphData());
+      const graph = await graphsService.create(
+        contextDataStorage,
+        createMockGraphData(),
+      );
       registerGraph(graph.id);
 
       const updatedSchema = cloneDeep(graph.schema);
@@ -468,10 +512,14 @@ describe('Graphs Integration Tests', () => {
           : node,
       );
 
-      const response = await graphsService.update(graph.id, {
-        schema: updatedSchema,
-        currentVersion: graph.version,
-      });
+      const response = await graphsService.update(
+        contextDataStorage,
+        graph.id,
+        {
+          schema: updatedSchema,
+          currentVersion: graph.version,
+        },
+      );
 
       // Schema edits create a revision and advance targetVersion (head), but the graph's applied
       // version remains unchanged until the revision is applied by the background worker.
@@ -501,7 +549,7 @@ describe('Graphs Integration Tests', () => {
       );
 
       await expect(
-        graphsService.update(graph.id, {
+        graphsService.update(contextDataStorage, graph.id, {
           schema: staleSchema,
           currentVersion: graph.version,
         }),
@@ -515,16 +563,21 @@ describe('Graphs Integration Tests', () => {
 
   describe('running graphs', () => {
     it('runs a graph, registers it, and prevents re-running while already running', async () => {
-      const graph = await graphsService.create(createMockGraphData());
+      const graph = await graphsService.create(
+        contextDataStorage,
+        createMockGraphData(),
+      );
       registerGraph(graph.id);
 
-      const runResponse = await graphsService.run(graph.id);
+      const runResponse = await graphsService.run(contextDataStorage, graph.id);
       expect(runResponse.status).toBe(GraphStatus.Running);
 
       await waitForGraphStatus(graph.id, GraphStatus.Running);
       expect(graphRegistry.get(graph.id)).toBeDefined();
 
-      await expect(graphsService.run(graph.id)).rejects.toMatchObject({
+      await expect(
+        graphsService.run(contextDataStorage, graph.id),
+      ).rejects.toMatchObject({
         errorCode: 'GRAPH_ALREADY_RUNNING',
         statusCode: 400,
       });
@@ -532,7 +585,7 @@ describe('Graphs Integration Tests', () => {
 
     it('throws when trying to run a missing graph', async () => {
       await expect(
-        graphsService.run(NON_EXISTENT_GRAPH_ID),
+        graphsService.run(contextDataStorage, NON_EXISTENT_GRAPH_ID),
       ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_FOUND',
         statusCode: 404,
@@ -545,25 +598,34 @@ describe('Graphs Integration Tests', () => {
       'stops a running graph and returns it in the stopped state',
       { timeout: 60000 },
       async () => {
-        const graph = await graphsService.create(createMockGraphData());
+        const graph = await graphsService.create(
+          contextDataStorage,
+          createMockGraphData(),
+        );
         registerGraph(graph.id);
 
-        await graphsService.run(graph.id);
+        await graphsService.run(contextDataStorage, graph.id);
         await waitForGraphStatus(graph.id, GraphStatus.Running);
         expect(graphRegistry.get(graph.id)).toBeDefined();
 
-        const destroyResponse = await graphsService.destroy(graph.id);
+        const destroyResponse = await graphsService.destroy(
+          contextDataStorage,
+          graph.id,
+        );
         expect(destroyResponse.status).toBe(GraphStatus.Stopped);
         expect(graphRegistry.get(graph.id)).toBeUndefined();
 
-        const refreshed = await graphsService.findById(graph.id);
+        const refreshed = await graphsService.findById(
+          contextDataStorage,
+          graph.id,
+        );
         expect(refreshed.status).toBe(GraphStatus.Stopped);
       },
     );
 
     it('throws when destroying a missing graph', async () => {
       await expect(
-        graphsService.destroy(NON_EXISTENT_GRAPH_ID),
+        graphsService.destroy(contextDataStorage, NON_EXISTENT_GRAPH_ID),
       ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_FOUND',
         statusCode: 404,
@@ -573,13 +635,18 @@ describe('Graphs Integration Tests', () => {
 
   describe('deleting graphs', () => {
     it('deletes a graph permanently', async () => {
-      const graph = await graphsService.create(createMockGraphData());
+      const graph = await graphsService.create(
+        contextDataStorage,
+        createMockGraphData(),
+      );
       registerGraph(graph.id);
 
-      await graphsService.delete(graph.id);
+      await graphsService.delete(contextDataStorage, graph.id);
       unregisterGraph(graph.id);
 
-      await expect(graphsService.findById(graph.id)).rejects.toMatchObject({
+      await expect(
+        graphsService.findById(contextDataStorage, graph.id),
+      ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_FOUND',
         statusCode: 404,
       });
@@ -587,7 +654,7 @@ describe('Graphs Integration Tests', () => {
 
     it('throws when deleting a missing graph', async () => {
       await expect(
-        graphsService.delete(NON_EXISTENT_GRAPH_ID),
+        graphsService.delete(contextDataStorage, NON_EXISTENT_GRAPH_ID),
       ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_FOUND',
         statusCode: 404,
@@ -598,18 +665,23 @@ describe('Graphs Integration Tests', () => {
       'stops a running graph before deleting it',
       { timeout: 60000 },
       async () => {
-        const graph = await graphsService.create(createMockGraphData());
+        const graph = await graphsService.create(
+          contextDataStorage,
+          createMockGraphData(),
+        );
         registerGraph(graph.id);
 
-        await graphsService.run(graph.id);
+        await graphsService.run(contextDataStorage, graph.id);
         await waitForGraphStatus(graph.id, GraphStatus.Running);
         expect(graphRegistry.get(graph.id)).toBeDefined();
 
-        await graphsService.delete(graph.id);
+        await graphsService.delete(contextDataStorage, graph.id);
         unregisterGraph(graph.id);
         expect(graphRegistry.get(graph.id)).toBeUndefined();
 
-        await expect(graphsService.findById(graph.id)).rejects.toMatchObject({
+        await expect(
+          graphsService.findById(contextDataStorage, graph.id),
+        ).rejects.toMatchObject({
           errorCode: 'GRAPH_NOT_FOUND',
           statusCode: 404,
         });
@@ -619,7 +691,10 @@ describe('Graphs Integration Tests', () => {
 
   describe('destroying graphs with active executions', () => {
     beforeAll(async () => {
-      const graph = await graphsService.create(createCommandGraphData());
+      const graph = await graphsService.create(
+        contextDataStorage,
+        createCommandGraphData(),
+      );
       commandGraphId = graph.id;
       registerGraph(commandGraphId);
     });
@@ -631,6 +706,7 @@ describe('Graphs Integration Tests', () => {
         await restartGraph(commandGraphId);
 
         const execution = await graphsService.executeTrigger(
+          contextDataStorage,
           commandGraphId,
           TEST_TRIGGER_NODE_ID,
           {
@@ -646,7 +722,10 @@ describe('Graphs Integration Tests', () => {
           60000,
         );
 
-        const destroyResponse = await graphsService.destroy(commandGraphId);
+        const destroyResponse = await graphsService.destroy(
+          contextDataStorage,
+          commandGraphId,
+        );
         expect(destroyResponse.status).toBe(GraphStatus.Stopped);
 
         const thread = await waitForThreadStatus(
@@ -704,6 +783,7 @@ describe('Graphs Integration Tests', () => {
           ['First concurrent execution', 'Second concurrent execution'].map(
             (message) =>
               graphsService.executeTrigger(
+                contextDataStorage,
                 commandGraphId,
                 TEST_TRIGGER_NODE_ID,
                 {
@@ -716,7 +796,7 @@ describe('Graphs Integration Tests', () => {
         );
 
         await wait(1000);
-        await graphsService.destroy(commandGraphId);
+        await graphsService.destroy(contextDataStorage, commandGraphId);
 
         for (const execution of executions) {
           const thread = await waitForThreadStatus(execution.externalThreadId, [
@@ -736,7 +816,10 @@ describe('Graphs Integration Tests', () => {
       async () => {
         await restartGraph(commandGraphId);
 
-        const destroyResponse = await graphsService.destroy(commandGraphId);
+        const destroyResponse = await graphsService.destroy(
+          contextDataStorage,
+          commandGraphId,
+        );
         expect(destroyResponse.status).toBe(GraphStatus.Stopped);
         expect(graphRegistry.get(commandGraphId)).toBeUndefined();
       },

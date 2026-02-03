@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AiSuggestionsController } from '../../../v1/ai-suggestions/controllers/ai-suggestions.controller';
@@ -42,30 +43,38 @@ afterAll(async () => {
   await app?.close();
 }, 180_000);
 
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+
 describe('AiSuggestionsController (integration)', () => {
   let runningGraphId: string;
   let stoppedGraphId: string;
 
   const cleanupGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch {
       // Graph might not be running or may already be removed
     }
 
     try {
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
     } catch {
       // Graph may already be deleted
     }
   };
 
   beforeAll(async () => {
-    const runningGraph = await graphsService.create(createMockGraphData());
+    const runningGraph = await graphsService.create(
+      contextDataStorage,
+      createMockGraphData(),
+    );
     runningGraphId = runningGraph.id;
-    await graphsService.run(runningGraphId);
+    await graphsService.run(contextDataStorage, runningGraphId);
 
-    const stoppedGraph = await graphsService.create(createMockGraphData());
+    const stoppedGraph = await graphsService.create(
+      contextDataStorage,
+      createMockGraphData(),
+    );
     stoppedGraphId = stoppedGraph.id;
   }, 180_000);
 
@@ -75,9 +84,9 @@ describe('AiSuggestionsController (integration)', () => {
   }, 180_000);
 
   const ensureGraphRunning = async (graphId: string) => {
-    const graph = await graphsService.findById(graphId);
+    const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(graphId);
+    await graphsService.run(contextDataStorage, graphId);
   };
 
   describe('agent instructions', () => {

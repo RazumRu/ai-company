@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
@@ -7,7 +8,9 @@ import { KnowledgeDocDao } from '../../../v1/knowledge/dao/knowledge-doc.dao';
 import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.service';
 import { KnowledgeChunksService } from '../../../v1/knowledge/services/knowledge-chunks.service';
 import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('KnowledgeService (integration)', () => {
   let app: INestApplication;
@@ -99,7 +102,11 @@ describe('KnowledgeService (integration)', () => {
       const content = 'Alpha document content';
       const tags = [' Alpha ', 'BETA'];
 
-      const doc = await knowledgeService.createDoc({ title, content, tags });
+      const doc = await knowledgeService.createDoc(contextDataStorage, {
+        title,
+        content,
+        tags,
+      });
       createdDocIds.push(doc.id);
 
       expect(doc.content).toBe(content);
@@ -118,7 +125,10 @@ describe('KnowledgeService (integration)', () => {
 
   it('rejects empty content', async () => {
     await expect(
-      knowledgeService.createDoc({ title: 'Alpha doc', content: '   ' }),
+      knowledgeService.createDoc(contextDataStorage, {
+        title: 'Alpha doc',
+        content: '   ',
+      }),
     ).rejects.toThrow('CONTENT_REQUIRED');
   });
 
@@ -130,13 +140,17 @@ describe('KnowledgeService (integration)', () => {
       const content = 'Alpha document content';
       const tags = ['alpha-tag', 'beta-tag'];
 
-      const doc = await knowledgeService.createDoc({ title, content, tags });
+      const doc = await knowledgeService.createDoc(contextDataStorage, {
+        title,
+        content,
+        tags,
+      });
       createdDocIds.push(doc.id);
 
       const tagsFilter = doc.tags.slice(0, 1);
       expect(tagsFilter.length).toBe(1);
 
-      const results = await knowledgeService.listDocs({
+      const results = await knowledgeService.listDocs(contextDataStorage, {
         tags: tagsFilter,
         limit: 10,
         offset: 0,
@@ -151,10 +165,14 @@ describe('KnowledgeService (integration)', () => {
       const updatedTitle = 'Beta doc';
       const updatedContent = 'Beta document content with new details';
 
-      const updated = await knowledgeService.updateDoc(doc.id, {
-        title: updatedTitle,
-        content: updatedContent,
-      });
+      const updated = await knowledgeService.updateDoc(
+        contextDataStorage,
+        doc.id,
+        {
+          title: updatedTitle,
+          content: updatedContent,
+        },
+      );
       expect(updated.content).toBe(updatedContent);
       expect(updated.title).toBe(updatedTitle);
       expect(updated.title.length).toBeGreaterThan(0);
@@ -175,13 +193,22 @@ describe('KnowledgeService (integration)', () => {
     const content = 'Alpha document content';
     const tags = ['alpha-tag'];
 
-    const doc = await knowledgeService.createDoc({ title, content, tags });
+    const doc = await knowledgeService.createDoc(contextDataStorage, {
+      title,
+      content,
+      tags,
+    });
     createdDocIds.push(doc.id);
 
-    await knowledgeService.deleteDoc(doc.id);
-    const remaining = await knowledgeService.listDocs({ limit: 10, offset: 0 });
+    await knowledgeService.deleteDoc(contextDataStorage, doc.id);
+    const remaining = await knowledgeService.listDocs(contextDataStorage, {
+      limit: 10,
+      offset: 0,
+    });
     expect(remaining.some((entry) => entry.id === doc.id)).toBe(false);
 
-    await expect(knowledgeService.getDoc(doc.id)).rejects.toThrow();
+    await expect(
+      knowledgeService.getDoc(contextDataStorage, doc.id),
+    ).rejects.toThrow();
   });
 });

@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -11,7 +12,7 @@ import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const TRIGGER_NODE_ID = 'trigger-1';
 const AGENT_NODE_ID = 'agent-1';
@@ -24,6 +25,8 @@ const COMMAND_AGENT_INSTRUCTIONS =
 
 const THREAD_COMPLETION_STATUS = ThreadStatus.Done;
 
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+
 describe('Graph Resources Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
@@ -32,7 +35,7 @@ describe('Graph Resources Integration Tests', () => {
 
   const cleanupGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -44,7 +47,7 @@ describe('Graph Resources Integration Tests', () => {
     }
 
     try {
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -61,7 +64,7 @@ describe('Graph Resources Integration Tests', () => {
     timeoutMs = 180_000,
   ) => {
     return waitForCondition(
-      () => graphsService.findById(graphId),
+      () => graphsService.findById(contextDataStorage, graphId),
       (graph) => graph.status === status,
       { timeout: timeoutMs, interval: 1_000 },
     );
@@ -221,10 +224,13 @@ describe('Graph Resources Integration Tests', () => {
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
-    const graph = await graphsService.create(createResourceGraphData());
+    const graph = await graphsService.create(
+      contextDataStorage,
+      createResourceGraphData(),
+    );
     resourceGraphId = graph.id;
 
-    await graphsService.run(resourceGraphId);
+    await graphsService.run(contextDataStorage, resourceGraphId);
     await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 240_000);
   }, 300_000);
 
@@ -236,10 +242,13 @@ describe('Graph Resources Integration Tests', () => {
   }, 300_000);
 
   const ensureGraphRunning = async () => {
-    const graph = await graphsService.findById(resourceGraphId);
+    const graph = await graphsService.findById(
+      contextDataStorage,
+      resourceGraphId,
+    );
     if (graph.status === GraphStatus.Running) return;
 
-    await graphsService.run(resourceGraphId);
+    await graphsService.run(contextDataStorage, resourceGraphId);
     await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 240_000);
   };
 
@@ -254,6 +263,7 @@ describe('Graph Resources Integration Tests', () => {
         await ensureGraphRunning();
 
         const execution = await graphsService.executeTrigger(
+          contextDataStorage,
           resourceGraphId,
           TRIGGER_NODE_ID,
           {

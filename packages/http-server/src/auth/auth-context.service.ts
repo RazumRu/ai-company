@@ -6,6 +6,7 @@ import { UnknownRecord } from 'type-fest';
 
 import type { IContextData } from './auth.types';
 import { AuthContextDataBuilder } from './auth-context-data-builder';
+import { AuthContextStorage } from './auth-context-storage';
 import { AuthProvider } from './providers/auth.provider';
 
 @Injectable({ scope: Scope.REQUEST })
@@ -61,6 +62,10 @@ export class AuthContextService {
 
   public context<T extends IContextData>(): T {
     return this.contextData as T;
+  }
+
+  public contextStorage<T extends IContextData>(): AuthContextStorage<T> {
+    return new AuthContextStorage<T>(this.contextData as T);
   }
 
   public get isAuthorized() {

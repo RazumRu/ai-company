@@ -32,7 +32,9 @@ describe('MCP Integration E2E', () => {
             {
               id: 'mcp-1',
               template: 'filesystem-mcp',
-              config: {},
+              config: {
+                readOnly: false,
+              },
             },
             {
               id: 'agent-1',
@@ -105,38 +107,6 @@ describe('MCP Integration E2E', () => {
         destroyGraph(createdGraphId).then((response) => {
           expect(response.status).to.equal(201);
         });
-      });
-    });
-  });
-
-  describe('MCP Configuration Validation', () => {
-    it('should accept empty config', () => {
-      const graphData = createMockGraphData({
-        schema: {
-          nodes: [
-            {
-              id: 'runtime-1',
-              template: 'docker-runtime',
-              config: {
-                runtimeType: 'Docker',
-              },
-            },
-            {
-              id: 'mcp-1',
-              template: 'filesystem-mcp',
-              config: {},
-            },
-          ],
-          edges: [{ from: 'mcp-1', to: 'runtime-1' }],
-        },
-      });
-
-      createGraph(graphData, reqHeaders).then((response) => {
-        expect(response.status).to.equal(201);
-        // Clean up
-        if (response.body?.id) {
-          destroyGraph(response.body.id);
-        }
       });
     });
   });

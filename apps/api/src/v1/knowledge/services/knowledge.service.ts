@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { isUndefined, pickBy } from 'lodash';
 import { EntityManager } from 'typeorm';
@@ -15,9 +15,10 @@ import {
 } from '../../openai/openai.service';
 import { KnowledgeDocDao } from '../dao/knowledge-doc.dao';
 import {
+  KnowledgeDocCreateDto,
   KnowledgeDocDto,
-  KnowledgeDocInput,
   KnowledgeDocListQuery,
+  KnowledgeDocUpdateDto,
 } from '../dto/knowledge.dto';
 import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
 import { KnowledgeChunkBoundary, KnowledgeSummary } from '../knowledge.types';
@@ -35,70 +36,18 @@ export class KnowledgeService {
   constructor(
     private readonly docDao: KnowledgeDocDao,
     private readonly typeorm: TypeormService,
-    private readonly authContext: AuthContextService,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
     private readonly knowledgeChunksService: KnowledgeChunksService,
     private readonly litellmService: LitellmService,
   ) {}
 
-  async createDoc(dto: KnowledgeDocInput): Promise<KnowledgeDocDto> {
-    const userId = this.authContext.checkSub();
-    return this.createDocForUser(userId, dto);
-  }
-
-  async updateDoc(
-    id: string,
-    dto: KnowledgeDocInput,
+  async createDoc(
+    ctx: AuthContextStorage,
+    dto: KnowledgeDocCreateDto,
   ): Promise<KnowledgeDocDto> {
-    const userId = this.authContext.checkSub();
-    return this.updateDocForUser(userId, id, dto);
-  }
+    const userId = ctx.checkSub();
 
-  async deleteDoc(id: string): Promise<void> {
-    const userId = this.authContext.checkSub();
-
-    const existing = await this.docDao.getOne({ id, createdBy: userId });
-    if (!existing) {
-      throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
-    }
-
-    await this.typeorm.trx(async (entityManager: EntityManager) => {
-      await this.docDao.deleteById(id, entityManager);
-    });
-
-    await this.knowledgeChunksService.deleteDocChunks(id);
-  }
-
-  async listDocs(query: KnowledgeDocListQuery): Promise<KnowledgeDocDto[]> {
-    const userId = this.authContext.checkSub();
-    const tags = this.normalizeFilterTags(query.tags);
-
-    const rows = await this.docDao.getAll({
-      createdBy: userId,
-      tags,
-      search: query.search,
-      limit: query.limit,
-      offset: query.offset,
-      order: { updatedAt: 'DESC' },
-    });
-
-    return rows.map((row) => this.prepareDocResponse(row));
-  }
-
-  async getDoc(id: string): Promise<KnowledgeDocDto> {
-    const userId = this.authContext.checkSub();
-    const doc = await this.docDao.getOne({ id, createdBy: userId });
-    if (!doc) {
-      throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
-    }
-    return this.prepareDocResponse(doc);
-  }
-
-  private async createDocForUser(
-    userId: string,
-    dto: KnowledgeDocInput,
-  ): Promise<KnowledgeDocDto> {
     const content = dto.content.trim();
     if (!content) {
       throw new BadRequestException('CONTENT_REQUIRED');
@@ -141,17 +90,22 @@ export class KnowledgeService {
     return this.prepareDocResponse(doc);
   }
 
-  private async updateDocForUser(
-    userId: string,
+  async updateDoc(
+    ctx: AuthContextStorage,
     id: string,
-    dto: KnowledgeDocInput,
+    dto: KnowledgeDocUpdateDto,
   ): Promise<KnowledgeDocDto> {
+    const userId = ctx.checkSub();
+
     const existing = await this.docDao.getOne({ id, createdBy: userId });
     if (!existing) {
       throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
     }
 
-    const updateData = pickBy(dto, (v) => !isUndefined(v));
+    const updateData: Partial<KnowledgeDocEntity> = pickBy(
+      dto,
+      (v) => !isUndefined(v),
+    );
 
     let chunkPlan: KnowledgeChunkBoundary[] | null = null;
     let embeddingModel: string | null = null;
@@ -212,6 +166,51 @@ export class KnowledgeService {
     }
 
     return this.prepareDocResponse(updated);
+  }
+
+  async deleteDoc(ctx: AuthContextStorage, id: string): Promise<void> {
+    const userId = ctx.checkSub();
+
+    const existing = await this.docDao.getOne({ id, createdBy: userId });
+    if (!existing) {
+      throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
+    }
+
+    await this.typeorm.trx(async (entityManager: EntityManager) => {
+      await this.docDao.deleteById(id, entityManager);
+    });
+
+    await this.knowledgeChunksService.deleteDocChunks(id);
+  }
+
+  async listDocs(
+    ctx: AuthContextStorage,
+    query: KnowledgeDocListQuery,
+  ): Promise<KnowledgeDocDto[]> {
+    const userId = ctx.checkSub();
+
+    const tags = this.normalizeFilterTags(query.tags);
+
+    const rows = await this.docDao.getAll({
+      createdBy: userId,
+      tags,
+      search: query.search,
+      limit: query.limit,
+      offset: query.offset,
+      order: { updatedAt: 'DESC' },
+    });
+
+    return rows.map((row) => this.prepareDocResponse(row));
+  }
+
+  async getDoc(ctx: AuthContextStorage, id: string): Promise<KnowledgeDocDto> {
+    const userId = ctx.checkSub();
+
+    const doc = await this.docDao.getOne({ id, createdBy: userId });
+    if (!doc) {
+      throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
+    }
+    return this.prepareDocResponse(doc);
   }
 
   private prepareDocResponse(entity: KnowledgeDocEntity): KnowledgeDocDto {

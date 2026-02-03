@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -15,7 +16,7 @@ import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { wait } from '../../test-utils';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const DOCKER_RUNTIME_NODE_ID = 'runtime-1';
 const SHELL_TOOL_NODE_ID = 'shell-tool-1';
@@ -28,6 +29,8 @@ const DOCKER_DIND_INIT_SCRIPT = [
   'dockerd --host=unix:///var/run/docker.sock > /var/log/dockerd.log 2>&1 &',
   "sh -c 'i=0; while [ $i -lt 120 ]; do docker info >/dev/null 2>&1 && exit 0; i=$((i+1)); sleep 1; done; exit 1'",
 ];
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Docker Runtime Integration', () => {
   let app: INestApplication;
@@ -42,7 +45,7 @@ describe('Docker Runtime Integration', () => {
     const startedAt = Date.now();
 
     while (true) {
-      const graph = await graphsService.findById(graphId);
+      const graph = await graphsService.findById(contextDataStorage, graphId);
 
       if (graph.status === GraphStatus.Running) {
         return graph;
@@ -214,7 +217,7 @@ describe('Docker Runtime Integration', () => {
     await Promise.all(
       createdGraphIds.map(async (graphId) => {
         try {
-          await graphsService.destroy(graphId);
+          await graphsService.destroy(contextDataStorage, graphId);
         } catch (error: unknown) {
           if (
             !(error instanceof BaseException) ||
@@ -230,7 +233,7 @@ describe('Docker Runtime Integration', () => {
         }
 
         try {
-          await graphsService.delete(graphId);
+          await graphsService.delete(contextDataStorage, graphId);
         } catch (error: unknown) {
           if (
             !(error instanceof BaseException) ||
@@ -252,7 +255,10 @@ describe('Docker Runtime Integration', () => {
     async () => {
       const graphData = createDockerInDockerGraphData();
 
-      const createResponse = await graphsService.create(graphData);
+      const createResponse = await graphsService.create(
+        contextDataStorage,
+        graphData,
+      );
       const graphId = createResponse.id;
       createdGraphIds.push(graphId);
 
@@ -265,12 +271,13 @@ describe('Docker Runtime Integration', () => {
       expect(runtimeNode?.template).toBe('docker-runtime');
       expect(runtimeNode?.config.image).toBe(DOCKER_DIND_IMAGE);
 
-      const runResponse = await graphsService.run(graphId);
+      const runResponse = await graphsService.run(contextDataStorage, graphId);
       expect(runResponse.status).toBe(GraphStatus.Running);
 
       await waitForGraphToBeRunning(graphId);
 
       const execution = await graphsService.executeTrigger(
+        contextDataStorage,
         graphId,
         TRIGGER_NODE_ID,
         {
@@ -312,12 +319,17 @@ describe('Docker Runtime Integration', () => {
       expect(stdout.length).toBeGreaterThan(0);
       expect(/CONTAINER|IMAGE/i.test(stdout)).toBe(true);
 
-      const destroyResponse = await graphsService.destroy(graphId);
+      const destroyResponse = await graphsService.destroy(
+        contextDataStorage,
+        graphId,
+      );
       expect(destroyResponse.status).toBe(GraphStatus.Stopped);
 
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
 
-      await expect(graphsService.findById(graphId)).rejects.toMatchObject({
+      await expect(
+        graphsService.findById(contextDataStorage, graphId),
+      ).rejects.toMatchObject({
         errorCode: 'GRAPH_NOT_FOUND',
       });
 

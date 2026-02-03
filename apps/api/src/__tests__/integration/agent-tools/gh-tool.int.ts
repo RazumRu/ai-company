@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -11,7 +12,7 @@ import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const TRIGGER_NODE_ID = 'trigger-1';
 const AGENT_NODE_ID = 'agent-1';
@@ -26,6 +27,8 @@ const THREAD_COMPLETION_STATUSES: ThreadStatus[] = [
   ThreadStatus.NeedMoreInfo,
 ];
 
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+
 describe('GitHub Tool Integration Tests', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
@@ -34,7 +37,7 @@ describe('GitHub Tool Integration Tests', () => {
 
   const cleanupGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -46,7 +49,7 @@ describe('GitHub Tool Integration Tests', () => {
     }
 
     try {
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -63,7 +66,7 @@ describe('GitHub Tool Integration Tests', () => {
     timeoutMs = 180_000,
   ) => {
     return waitForCondition(
-      () => graphsService.findById(graphId),
+      () => graphsService.findById(contextDataStorage, graphId),
       (graph) => graph.status === status,
       { timeout: timeoutMs, interval: 1_000 },
     );
@@ -192,9 +195,12 @@ describe('GitHub Tool Integration Tests', () => {
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
-    const graph = await graphsService.create(createGhToolGraphData());
+    const graph = await graphsService.create(
+      contextDataStorage,
+      createGhToolGraphData(),
+    );
     ghGraphId = graph.id;
-    await graphsService.run(ghGraphId);
+    await graphsService.run(contextDataStorage, ghGraphId);
     await waitForGraphStatus(ghGraphId, GraphStatus.Running, 300_000);
   }, 360_000);
 
@@ -209,9 +215,9 @@ describe('GitHub Tool Integration Tests', () => {
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const ensureGraphRunning = async (graphId: string) => {
-    const graph = await graphsService.findById(graphId);
+    const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(graphId);
+    await graphsService.run(contextDataStorage, graphId);
     await waitForGraphStatus(graphId, GraphStatus.Running, 300_000);
   };
 
@@ -220,7 +226,10 @@ describe('GitHub Tool Integration Tests', () => {
       'creates a graph with GitHub tool + runtime + resource nodes',
       { timeout: 120_000 },
       async () => {
-        const graph = await graphsService.findById(ghGraphId);
+        const graph = await graphsService.findById(
+          contextDataStorage,
+          ghGraphId,
+        );
         expect(graph.id).toBeDefined();
         expect([GraphStatus.Created, GraphStatus.Running]).toContain(
           graph.status,
@@ -245,6 +254,7 @@ describe('GitHub Tool Integration Tests', () => {
         await ensureGraphRunning(ghGraphId);
 
         const execution = await graphsService.executeTrigger(
+          contextDataStorage,
           ghGraphId,
           TRIGGER_NODE_ID,
           {
@@ -309,7 +319,9 @@ describe('GitHub Tool Integration Tests', () => {
           );
         }
 
-        await expect(graphsService.create(graphData)).rejects.toMatchObject({
+        await expect(
+          graphsService.create(contextDataStorage, graphData),
+        ).rejects.toMatchObject({
           errorCode: expect.any(String),
           statusCode: expect.any(Number),
         });
@@ -332,7 +344,9 @@ describe('GitHub Tool Integration Tests', () => {
           );
         }
 
-        await expect(graphsService.create(graphData)).rejects.toMatchObject({
+        await expect(
+          graphsService.create(contextDataStorage, graphData),
+        ).rejects.toMatchObject({
           errorCode: expect.any(String),
           statusCode: expect.any(Number),
         });

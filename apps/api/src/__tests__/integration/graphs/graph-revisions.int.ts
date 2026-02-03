@@ -1,6 +1,7 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -33,12 +34,14 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const TEST_AGENT_NODE_ID = 'agent-1';
 
 const COMMAND_AGENT_INSTRUCTIONS =
   'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, call the finish tool with the stdout (and stderr if present). If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Graph Revisions Integration Tests', () => {
   let app: INestApplication;
@@ -54,7 +57,7 @@ describe('Graph Revisions Integration Tests', () => {
     const startedAt = Date.now();
 
     while (true) {
-      const graph = await graphsService.findById(id);
+      const graph = await graphsService.findById(contextDataStorage, id);
 
       if (graph.status === GraphStatus.Running) {
         return graph;
@@ -81,6 +84,7 @@ describe('Graph Revisions Integration Tests', () => {
 
     while (true) {
       const revision = await revisionsService.getRevisionById(
+        contextDataStorage,
         graphId,
         revisionId,
       );
@@ -332,6 +336,7 @@ describe('Graph Revisions Integration Tests', () => {
     // Shared graph for revision/merge/conflict semantics. These tests do not require
     // a clean 1.0.0 baseline; they validate relative behavior using the current version.
     const coreGraph = await graphsService.create(
+      contextDataStorage,
       createMockGraphData({
         name: `Graph Revisions Core ${Date.now()}`,
       }),
@@ -339,7 +344,7 @@ describe('Graph Revisions Integration Tests', () => {
     coreGraphId = coreGraph.id;
     createdGraphIds.push(coreGraphId);
 
-    await graphsService.run(coreGraphId);
+    await graphsService.run(contextDataStorage, coreGraphId);
     await waitForGraphToBeRunning(coreGraphId, 120000);
   }, 180000);
 
@@ -347,7 +352,7 @@ describe('Graph Revisions Integration Tests', () => {
     await Promise.all(
       createdGraphIds.map(async (graphId) => {
         try {
-          await graphsService.destroy(graphId);
+          await graphsService.destroy(contextDataStorage, graphId);
         } catch (error: unknown) {
           if (
             error instanceof BaseException &&
@@ -362,7 +367,7 @@ describe('Graph Revisions Integration Tests', () => {
           }
         }
         try {
-          await graphsService.delete(graphId);
+          await graphsService.delete(contextDataStorage, graphId);
         } catch (error: unknown) {
           if (
             error instanceof BaseException &&
@@ -379,9 +384,9 @@ describe('Graph Revisions Integration Tests', () => {
   }, 180000);
 
   const ensureCoreGraphRunning = async () => {
-    const graph = await graphsService.findById(coreGraphId);
+    const graph = await graphsService.findById(contextDataStorage, coreGraphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(coreGraphId);
+    await graphsService.run(contextDataStorage, coreGraphId);
     await waitForGraphToBeRunning(coreGraphId, 120000);
   };
 
@@ -389,7 +394,10 @@ describe('Graph Revisions Integration Tests', () => {
     const newInstructions = 'Updated instructions for live revision';
 
     await ensureCoreGraphRunning();
-    const baseGraph = await graphsService.findById(coreGraphId);
+    const baseGraph = await graphsService.findById(
+      contextDataStorage,
+      coreGraphId,
+    );
     const baseVersion = baseGraph.version;
 
     const updatedSchema = cloneDeep(baseGraph.schema);
@@ -404,10 +412,14 @@ describe('Graph Revisions Integration Tests', () => {
           }
         : node,
     );
-    const updateResponse = await graphsService.update(coreGraphId, {
-      schema: updatedSchema,
-      currentVersion: baseVersion,
-    });
+    const updateResponse = await graphsService.update(
+      contextDataStorage,
+      coreGraphId,
+      {
+        schema: updatedSchema,
+        currentVersion: baseVersion,
+      },
+    );
 
     expect(updateResponse.revision).toBeDefined();
     expect(updateResponse.revision!.status).toBe(GraphRevisionStatus.Pending);
@@ -423,7 +435,10 @@ describe('Graph Revisions Integration Tests', () => {
     expect(revision.status).toBe(GraphRevisionStatus.Applied);
     expect(revision.error).toBeUndefined();
 
-    const updatedGraph = await graphsService.findById(coreGraphId);
+    const updatedGraph = await graphsService.findById(
+      contextDataStorage,
+      coreGraphId,
+    );
     expect(updatedGraph.version).toBe(revision.toVersion);
     expect(updatedGraph.targetVersion).toBe(revision.toVersion);
 
@@ -438,7 +453,10 @@ describe('Graph Revisions Integration Tests', () => {
     { timeout: 60000 },
     async () => {
       await ensureCoreGraphRunning();
-      const baseGraph = await graphsService.findById(coreGraphId);
+      const baseGraph = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       const baseVersion = baseGraph.version;
 
       const firstSchema = cloneDeep(baseGraph.schema);
@@ -454,10 +472,14 @@ describe('Graph Revisions Integration Tests', () => {
           : node,
       );
 
-      const firstUpdateResponse = await graphsService.update(coreGraphId, {
-        schema: firstSchema,
-        currentVersion: baseVersion,
-      });
+      const firstUpdateResponse = await graphsService.update(
+        contextDataStorage,
+        coreGraphId,
+        {
+          schema: firstSchema,
+          currentVersion: baseVersion,
+        },
+      );
 
       expect(firstUpdateResponse.revision).toBeDefined();
       const firstRevision = firstUpdateResponse.revision!;
@@ -469,7 +491,10 @@ describe('Graph Revisions Integration Tests', () => {
         GraphRevisionStatus.Applied,
       );
 
-      const graphAfterFirst = await graphsService.findById(coreGraphId);
+      const graphAfterFirst = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       expect(graphAfterFirst.version).toBe(firstRevision.toVersion);
 
       const secondSchema = cloneDeep(graphAfterFirst.schema);
@@ -485,10 +510,14 @@ describe('Graph Revisions Integration Tests', () => {
           : node,
       );
 
-      const secondUpdateResponse = await graphsService.update(coreGraphId, {
-        schema: secondSchema,
-        currentVersion: graphAfterFirst.version,
-      });
+      const secondUpdateResponse = await graphsService.update(
+        contextDataStorage,
+        coreGraphId,
+        {
+          schema: secondSchema,
+          currentVersion: graphAfterFirst.version,
+        },
+      );
 
       expect(secondUpdateResponse.revision).toBeDefined();
       const secondRevision = secondUpdateResponse.revision!;
@@ -500,7 +529,10 @@ describe('Graph Revisions Integration Tests', () => {
         GraphRevisionStatus.Applied,
       );
 
-      const finalGraph = await graphsService.findById(coreGraphId);
+      const finalGraph = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       expect(finalGraph.version).toBe(secondRevision.toVersion);
       expect(finalGraph.targetVersion).toBe(secondRevision.toVersion);
 
@@ -518,7 +550,10 @@ describe('Graph Revisions Integration Tests', () => {
     { timeout: 60000 },
     async () => {
       await ensureCoreGraphRunning();
-      const baseGraph = await graphsService.findById(coreGraphId);
+      const baseGraph = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       const baseVersion = baseGraph.version;
       const baseSchema = baseGraph.schema;
 
@@ -535,10 +570,14 @@ describe('Graph Revisions Integration Tests', () => {
           : node,
       );
 
-      const userAUpdate = await graphsService.update(coreGraphId, {
-        schema: userASchema,
-        currentVersion: baseVersion,
-      });
+      const userAUpdate = await graphsService.update(
+        contextDataStorage,
+        coreGraphId,
+        {
+          schema: userASchema,
+          currentVersion: baseVersion,
+        },
+      );
 
       const userARevisionId = userAUpdate.revision?.id;
 
@@ -555,10 +594,14 @@ describe('Graph Revisions Integration Tests', () => {
           : node,
       );
 
-      const userBUpdate = await graphsService.update(coreGraphId, {
-        schema: userBSchema,
-        currentVersion: baseVersion,
-      });
+      const userBUpdate = await graphsService.update(
+        contextDataStorage,
+        coreGraphId,
+        {
+          schema: userBSchema,
+          currentVersion: baseVersion,
+        },
+      );
 
       const userBRevisionId = userBUpdate.revision?.id;
 
@@ -576,7 +619,7 @@ describe('Graph Revisions Integration Tests', () => {
       }
 
       await waitForCondition(
-        () => graphsService.findById(coreGraphId),
+        () => graphsService.findById(contextDataStorage, coreGraphId),
         (graph) =>
           graph.version !== baseVersion &&
           graph.targetVersion === graph.version,
@@ -585,7 +628,10 @@ describe('Graph Revisions Integration Tests', () => {
 
       await wait(500);
 
-      const finalGraph = await graphsService.findById(coreGraphId);
+      const finalGraph = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       const agentNode = finalGraph.schema.nodes.find(
         (node: GraphNodeSchemaType) => node.id === TEST_AGENT_NODE_ID,
       );
@@ -601,7 +647,10 @@ describe('Graph Revisions Integration Tests', () => {
     { timeout: 60000 },
     async () => {
       await ensureCoreGraphRunning();
-      const baseGraph = await graphsService.findById(coreGraphId);
+      const baseGraph = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       const baseVersion = baseGraph.version;
       const baseSchema = baseGraph.schema;
 
@@ -621,10 +670,14 @@ describe('Graph Revisions Integration Tests', () => {
           : node,
       );
 
-      const userAUpdate = await graphsService.update(coreGraphId, {
-        schema: userASchema,
-        currentVersion: baseVersion,
-      });
+      const userAUpdate = await graphsService.update(
+        contextDataStorage,
+        coreGraphId,
+        {
+          schema: userASchema,
+          currentVersion: baseVersion,
+        },
+      );
 
       expect(userAUpdate.revision).toBeDefined();
       await waitForRevisionStatus(
@@ -633,7 +686,10 @@ describe('Graph Revisions Integration Tests', () => {
         GraphRevisionStatus.Applied,
       );
 
-      const graphAfterUserA = await graphsService.findById(coreGraphId);
+      const graphAfterUserA = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       const currentVersion = graphAfterUserA.version;
 
       const userBSchema = cloneDeep(baseSchema);
@@ -650,7 +706,7 @@ describe('Graph Revisions Integration Tests', () => {
       );
 
       await expect(
-        graphsService.update(coreGraphId, {
+        graphsService.update(contextDataStorage, coreGraphId, {
           schema: userBSchema,
           currentVersion: baseVersion,
         }),
@@ -659,10 +715,14 @@ describe('Graph Revisions Integration Tests', () => {
         errorCode: 'VERSION_CONFLICT',
       });
 
-      const userBUpdate = await graphsService.update(coreGraphId, {
-        schema: userBSchema,
-        currentVersion: currentVersion,
-      });
+      const userBUpdate = await graphsService.update(
+        contextDataStorage,
+        coreGraphId,
+        {
+          schema: userBSchema,
+          currentVersion: currentVersion,
+        },
+      );
 
       expect(userBUpdate.revision).toBeDefined();
 
@@ -672,7 +732,10 @@ describe('Graph Revisions Integration Tests', () => {
         GraphRevisionStatus.Applied,
       );
 
-      const finalGraph = await graphsService.findById(coreGraphId);
+      const finalGraph = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       const agentNode = finalGraph.schema.nodes.find(
         (node: GraphNodeSchemaType) => node.id === TEST_AGENT_NODE_ID,
       );
@@ -685,7 +748,10 @@ describe('Graph Revisions Integration Tests', () => {
     { timeout: 60000 },
     async () => {
       await ensureCoreGraphRunning();
-      const baseGraph = await graphsService.findById(coreGraphId);
+      const baseGraph = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       const baseVersion = baseGraph.version;
       const baseSchema = baseGraph.schema;
 
@@ -702,10 +768,14 @@ describe('Graph Revisions Integration Tests', () => {
           : node,
       );
 
-      const firstResponse = await graphsService.update(coreGraphId, {
-        schema: schema1,
-        currentVersion: baseVersion,
-      });
+      const firstResponse = await graphsService.update(
+        contextDataStorage,
+        coreGraphId,
+        {
+          schema: schema1,
+          currentVersion: baseVersion,
+        },
+      );
       expect(firstResponse.revision).toBeDefined();
 
       const schema2 = cloneDeep(baseSchema);
@@ -722,7 +792,7 @@ describe('Graph Revisions Integration Tests', () => {
       );
 
       await expect(
-        graphsService.update(coreGraphId, {
+        graphsService.update(contextDataStorage, coreGraphId, {
           schema: schema2,
           currentVersion: baseVersion,
         }),
@@ -737,7 +807,10 @@ describe('Graph Revisions Integration Tests', () => {
         GraphRevisionStatus.Applied,
       );
 
-      const finalGraph = await graphsService.findById(coreGraphId);
+      const finalGraph = await graphsService.findById(
+        contextDataStorage,
+        coreGraphId,
+      );
       const agentNode = finalGraph.schema.nodes.find(
         (node: GraphNodeSchemaType) => node.id === TEST_AGENT_NODE_ID,
       );
@@ -751,7 +824,10 @@ describe('Graph Revisions Integration Tests', () => {
     async () => {
       const graphData = createMockGraphData();
 
-      const createResponse = await graphsService.create(graphData);
+      const createResponse = await graphsService.create(
+        contextDataStorage,
+        graphData,
+      );
       const graphId = createResponse.id;
       createdGraphIds.push(graphId);
 
@@ -771,10 +847,14 @@ describe('Graph Revisions Integration Tests', () => {
           : node,
       );
 
-      const updateResponse = await graphsService.update(graphId, {
-        schema: updatedSchema,
-        currentVersion,
-      });
+      const updateResponse = await graphsService.update(
+        contextDataStorage,
+        graphId,
+        {
+          schema: updatedSchema,
+          currentVersion,
+        },
+      );
 
       // Should now create a revision even for non-running graphs
       expect(updateResponse.revision).toBeDefined();
@@ -788,7 +868,10 @@ describe('Graph Revisions Integration Tests', () => {
         30000,
       );
 
-      const updatedGraph = await graphsService.findById(graphId);
+      const updatedGraph = await graphsService.findById(
+        contextDataStorage,
+        graphId,
+      );
       expect(updatedGraph.version).not.toBe(currentVersion);
       expect(updatedGraph.version).toBe(updatedGraph.targetVersion);
 
@@ -807,7 +890,10 @@ describe('Graph Revisions Integration Tests', () => {
     async () => {
       const graphData = createMockGraphData();
 
-      const createResponse = await graphsService.create(graphData);
+      const createResponse = await graphsService.create(
+        contextDataStorage,
+        graphData,
+      );
       const graphId = createResponse.id;
       createdGraphIds.push(graphId);
 
@@ -816,10 +902,14 @@ describe('Graph Revisions Integration Tests', () => {
 
       const newName = `Renamed graph ${Date.now()}`;
 
-      const updateResponse = await graphsService.update(graphId, {
-        name: newName,
-        currentVersion,
-      });
+      const updateResponse = await graphsService.update(
+        contextDataStorage,
+        graphId,
+        {
+          name: newName,
+          currentVersion,
+        },
+      );
 
       expect(updateResponse.revision).toBeDefined();
       const revisionId = updateResponse.revision!.id;
@@ -831,7 +921,10 @@ describe('Graph Revisions Integration Tests', () => {
         30000,
       );
 
-      const updatedGraph = await graphsService.findById(graphId);
+      const updatedGraph = await graphsService.findById(
+        contextDataStorage,
+        graphId,
+      );
       expect(updatedGraph.name).toBe(newName);
       expect(updatedGraph.version).not.toBe(currentVersion);
       expect(updatedGraph.version).toBe(updatedGraph.targetVersion);
@@ -845,12 +938,15 @@ describe('Graph Revisions Integration Tests', () => {
       const graphData = createMockGraphData();
       const newInstructions = 'Updated instructions for stopped graph';
 
-      const createResponse = await graphsService.create(graphData);
+      const createResponse = await graphsService.create(
+        contextDataStorage,
+        graphData,
+      );
       const graphId = createResponse.id;
       createdGraphIds.push(graphId);
       const currentVersion = createResponse.version;
 
-      await graphsService.run(graphId);
+      await graphsService.run(contextDataStorage, graphId);
       await waitForGraphToBeRunning(graphId);
 
       const updatedSchema = cloneDeep(createResponse.schema);
@@ -866,15 +962,19 @@ describe('Graph Revisions Integration Tests', () => {
           : node,
       );
 
-      const updateResponse = await graphsService.update(graphId, {
-        schema: updatedSchema,
-        currentVersion,
-      });
+      const updateResponse = await graphsService.update(
+        contextDataStorage,
+        graphId,
+        {
+          schema: updatedSchema,
+          currentVersion,
+        },
+      );
 
       expect(updateResponse.revision).toBeDefined();
       const revisionId = updateResponse.revision!.id;
 
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
 
       await waitForRevisionStatus(
         graphId,
@@ -884,12 +984,16 @@ describe('Graph Revisions Integration Tests', () => {
       );
 
       const appliedRevision = await revisionsService.getRevisionById(
+        contextDataStorage,
         graphId,
         revisionId,
       );
       expect(appliedRevision.status).toBe(GraphRevisionStatus.Applied);
 
-      const updatedGraph = await graphsService.findById(graphId);
+      const updatedGraph = await graphsService.findById(
+        contextDataStorage,
+        graphId,
+      );
       expect(updatedGraph.status).toBe(GraphStatus.Stopped);
       expect(updatedGraph.version).toBe(appliedRevision.toVersion);
 
@@ -907,7 +1011,10 @@ describe('Graph Revisions Integration Tests', () => {
       const graphData = createMockGraphData();
       const newInstructions = 'Updated instructions during compilation';
 
-      const createResponse = await graphsService.create(graphData);
+      const createResponse = await graphsService.create(
+        contextDataStorage,
+        graphData,
+      );
       const graphId = createResponse.id;
       createdGraphIds.push(graphId);
       const currentVersion = createResponse.version;
@@ -919,10 +1026,10 @@ describe('Graph Revisions Integration Tests', () => {
       };
 
       try {
-        const runPromise = graphsService.run(graphId);
+        const runPromise = graphsService.run(contextDataStorage, graphId);
 
         await waitForCondition(
-          () => graphsService.findById(graphId),
+          () => graphsService.findById(contextDataStorage, graphId),
           (graph) => graph.status === GraphStatus.Compiling,
           { timeout: 10000, interval: 200 },
         );
@@ -940,10 +1047,14 @@ describe('Graph Revisions Integration Tests', () => {
             : node,
         );
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revision = updateResponse.revision!;
@@ -957,7 +1068,10 @@ describe('Graph Revisions Integration Tests', () => {
           GraphRevisionStatus.Applied,
         );
 
-        const updatedGraph = await graphsService.findById(graphId);
+        const updatedGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const agentNode = updatedGraph.schema.nodes.find(
           (node: GraphNodeSchemaType) => node.id === TEST_AGENT_NODE_ID,
         );
@@ -975,25 +1089,37 @@ describe('Graph Revisions Integration Tests', () => {
       async () => {
         const graphData = createMockGraphData();
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const invalidSchema = cloneDeep(createResponse.schema);
         invalidSchema.edges = [];
 
-        const graphBeforeUpdate = await graphsService.findById(graphId);
+        const graphBeforeUpdate = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         expect(graphBeforeUpdate.status).toBe(GraphStatus.Running);
 
-        const graphAfterFailed = await graphsService.findById(graphId);
+        const graphAfterFailed = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         expect(graphAfterFailed.version).toBe(currentVersion);
         expect(graphAfterFailed.schema.edges).toHaveLength(1);
 
-        const graphBeforeValid = await graphsService.findById(graphId);
+        const graphBeforeValid = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const currentVersionForSecond = graphBeforeValid.version;
 
         const validSchema = cloneDeep(graphBeforeValid.schema);
@@ -1011,7 +1137,7 @@ describe('Graph Revisions Integration Tests', () => {
 
         // First update: invalid schema should be rejected before a revision is created.
         await expect(
-          graphsService.update(graphId, {
+          graphsService.update(contextDataStorage, graphId, {
             schema: invalidSchema,
             currentVersion,
           }),
@@ -1021,10 +1147,14 @@ describe('Graph Revisions Integration Tests', () => {
         });
 
         // Second update: valid schema should still apply as a live revision.
-        const secondUpdateResponse = await graphsService.update(graphId, {
-          schema: validSchema,
-          currentVersion: currentVersionForSecond,
-        });
+        const secondUpdateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: validSchema,
+            currentVersion: currentVersionForSecond,
+          },
+        );
 
         expect(secondUpdateResponse.revision).toBeDefined();
         const secondRevisionId = secondUpdateResponse.revision!.id;
@@ -1037,7 +1167,10 @@ describe('Graph Revisions Integration Tests', () => {
         );
         expect(appliedRevision.status).toBe(GraphRevisionStatus.Applied);
 
-        const finalGraph = await graphsService.findById(graphId);
+        const finalGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         expect(finalGraph.version).toBe(appliedRevision.toVersion);
         expect(finalGraph.schema.edges).toHaveLength(1);
         expect(finalGraph.schema.edges![0]).toEqual({
@@ -1062,7 +1195,10 @@ describe('Graph Revisions Integration Tests', () => {
       async () => {
         const graphData = createMockGraphData();
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const originalModel = (
@@ -1071,10 +1207,11 @@ describe('Graph Revisions Integration Tests', () => {
           )?.config as SimpleAgentSchemaType
         ).invokeModelName;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const firstExecutionResult = await graphsService.executeTrigger(
+          contextDataStorage,
           graphId,
           'trigger-1',
           {
@@ -1101,10 +1238,14 @@ describe('Graph Revisions Integration Tests', () => {
             : node,
         );
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion: createResponse.version,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion: createResponse.version,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
@@ -1115,7 +1256,10 @@ describe('Graph Revisions Integration Tests', () => {
           GraphRevisionStatus.Applied,
         );
 
-        const updatedGraph = await graphsService.findById(graphId);
+        const updatedGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const updatedAgentNode = updatedGraph.schema.nodes.find(
           (node: GraphNodeSchemaType) => node.id === TEST_AGENT_NODE_ID,
         );
@@ -1127,6 +1271,7 @@ describe('Graph Revisions Integration Tests', () => {
         ).not.toBe(originalModel);
 
         const secondExecutionResult = await graphsService.executeTrigger(
+          contextDataStorage,
           graphId,
           'trigger-1',
           {
@@ -1197,12 +1342,15 @@ describe('Graph Revisions Integration Tests', () => {
           },
         };
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const threadId = `${graphId}:runtime-update-${Date.now()}`;
@@ -1235,10 +1383,14 @@ describe('Graph Revisions Integration Tests', () => {
             : node,
         );
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
@@ -1249,7 +1401,10 @@ describe('Graph Revisions Integration Tests', () => {
           GraphRevisionStatus.Applied,
         );
 
-        const updatedGraph = await graphsService.findById(graphId);
+        const updatedGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const runtimeNode = updatedGraph.schema.nodes.find(
           (node: GraphNodeSchemaType) => node.id === 'runtime-1',
         );
@@ -1329,12 +1484,15 @@ describe('Graph Revisions Integration Tests', () => {
           },
         };
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const threadId = `${graphId}:shell-reload-${Date.now()}`;
@@ -1373,10 +1531,14 @@ describe('Graph Revisions Integration Tests', () => {
             : node,
         );
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
@@ -1465,15 +1627,19 @@ describe('Graph Revisions Integration Tests', () => {
           },
         };
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const firstResult = await graphsService.executeTrigger(
+          contextDataStorage,
           graphId,
           'trigger-1',
           {
@@ -1516,10 +1682,14 @@ describe('Graph Revisions Integration Tests', () => {
           (e) => e.to !== 'runtime-1' && e.to !== 'shell-1',
         );
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
@@ -1530,7 +1700,10 @@ describe('Graph Revisions Integration Tests', () => {
           GraphRevisionStatus.Applied,
         );
 
-        const updatedGraph = await graphsService.findById(graphId);
+        const updatedGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const runtimeNode = updatedGraph.schema.nodes.find(
           (node: GraphNodeSchemaType) => node.id === 'runtime-1',
         );
@@ -1584,12 +1757,15 @@ describe('Graph Revisions Integration Tests', () => {
           },
         };
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const updatedSchema = cloneDeep(graphData.schema);
@@ -1616,10 +1792,14 @@ describe('Graph Revisions Integration Tests', () => {
           to: 'runtime-1',
         });
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
@@ -1630,7 +1810,10 @@ describe('Graph Revisions Integration Tests', () => {
           GraphRevisionStatus.Applied,
         );
 
-        const updatedGraph = await graphsService.findById(graphId);
+        const updatedGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const shellNode = updatedGraph.schema.nodes.find(
           (node: GraphNodeSchemaType) => node.id === 'shell-1',
         );
@@ -1644,6 +1827,7 @@ describe('Graph Revisions Integration Tests', () => {
 
         const executeWithNewTool = async () => {
           const result = await graphsService.executeTrigger(
+            contextDataStorage,
             graphId,
             'trigger-1',
             {
@@ -1736,12 +1920,15 @@ describe('Graph Revisions Integration Tests', () => {
           },
         };
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const updatedSchema = cloneDeep(graphData.schema);
@@ -1760,10 +1947,14 @@ describe('Graph Revisions Integration Tests', () => {
             : node,
         );
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
@@ -1774,7 +1965,10 @@ describe('Graph Revisions Integration Tests', () => {
           GraphRevisionStatus.Applied,
         );
 
-        const updatedGraph = await graphsService.findById(graphId);
+        const updatedGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const runtimeNode = updatedGraph.schema.nodes.find(
           (node: GraphNodeSchemaType) => node.id === 'runtime-1',
         );
@@ -1784,6 +1978,7 @@ describe('Graph Revisions Integration Tests', () => {
         });
 
         const result = await graphsService.executeTrigger(
+          contextDataStorage,
           graphId,
           'trigger-1',
           {
@@ -1843,12 +2038,15 @@ describe('Graph Revisions Integration Tests', () => {
           },
         };
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const mcpThreadId = `${graphId}:mcp-${Date.now()}`;
@@ -1889,10 +2087,14 @@ describe('Graph Revisions Integration Tests', () => {
             : node,
         );
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
@@ -1987,12 +2189,15 @@ describe('Graph Revisions Integration Tests', () => {
           },
         };
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
 
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const mcpThreadId = `${graphId}:mcp-${Date.now()}`;
@@ -2021,7 +2226,7 @@ describe('Graph Revisions Integration Tests', () => {
         ).toBeDefined();
 
         // Update runtime config to force a revision
-        const graph = await graphsService.findById(graphId);
+        const graph = await graphsService.findById(contextDataStorage, graphId);
         const updatedSchema = cloneDeep(graph.schema);
         const runtimeNode = updatedSchema.nodes.find(
           (n) => n.id === 'runtime-1',
@@ -2033,10 +2238,14 @@ describe('Graph Revisions Integration Tests', () => {
           };
         }
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         expect(updateResponse.revision).toBeDefined();
         const revisionId = updateResponse.revision!.id;
@@ -2066,7 +2275,10 @@ describe('Graph Revisions Integration Tests', () => {
         expect(afterResult.output).toBeDefined();
 
         // Change readOnly mode to true and verify toolset updates
-        const graphAfterRuntime = await graphsService.findById(graphId);
+        const graphAfterRuntime = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const readOnlySchema = cloneDeep(graphAfterRuntime.schema);
         const mcpNode = readOnlySchema.nodes.find((n) => n.id === 'mcp-fs-1');
         if (mcpNode) {
@@ -2076,10 +2288,14 @@ describe('Graph Revisions Integration Tests', () => {
           };
         }
 
-        const readOnlyUpdate = await graphsService.update(graphId, {
-          schema: readOnlySchema,
-          currentVersion: graphAfterRuntime.version,
-        });
+        const readOnlyUpdate = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: readOnlySchema,
+            currentVersion: graphAfterRuntime.version,
+          },
+        );
 
         expect(readOnlyUpdate.revision).toBeDefined();
         const readOnlyRevisionId = readOnlyUpdate.revision!.id;
@@ -2094,7 +2310,10 @@ describe('Graph Revisions Integration Tests', () => {
         await waitForGraphToBeRunning(graphId);
         await wait(5000);
 
-        const updatedGraph = await graphsService.findById(graphId);
+        const updatedGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         const updatedMcpNode = updatedGraph.schema.nodes.find(
           (node: GraphNodeSchemaType) => node.id === 'mcp-fs-1',
         );
@@ -2172,7 +2391,10 @@ describe('Graph Revisions Integration Tests', () => {
           },
         };
 
-        const createResponse = await graphsService.create(graphData);
+        const createResponse = await graphsService.create(
+          contextDataStorage,
+          graphData,
+        );
         const graphId = createResponse.id;
         createdGraphIds.push(graphId);
         const currentVersion = createResponse.version;
@@ -2189,10 +2411,14 @@ describe('Graph Revisions Integration Tests', () => {
           };
         }
 
-        const updateResponse = await graphsService.update(graphId, {
-          schema: updatedSchema,
-          currentVersion,
-        });
+        const updateResponse = await graphsService.update(
+          contextDataStorage,
+          graphId,
+          {
+            schema: updatedSchema,
+            currentVersion,
+          },
+        );
 
         // Should create a revision even for non-running graph
         expect(updateResponse.revision).toBeDefined();
@@ -2207,7 +2433,10 @@ describe('Graph Revisions Integration Tests', () => {
         );
 
         // Verify the schema was updated
-        const updatedGraph = await graphsService.findById(graphId);
+        const updatedGraph = await graphsService.findById(
+          contextDataStorage,
+          graphId,
+        );
         expect(updatedGraph.version).not.toBe(currentVersion);
         expect(updatedGraph.version).toBe(updatedGraph.targetVersion);
 
@@ -2217,7 +2446,7 @@ describe('Graph Revisions Integration Tests', () => {
         expect(updatedMcpNode?.config.readOnly).toBe(true);
 
         // Now run the graph and verify it works with the updated config
-        await graphsService.run(graphId);
+        await graphsService.run(contextDataStorage, graphId);
         await waitForGraphToBeRunning(graphId);
 
         const mcp = getMcpOutput(graphId, 'mcp-fs-1');

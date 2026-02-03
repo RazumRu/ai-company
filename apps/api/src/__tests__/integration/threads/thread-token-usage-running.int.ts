@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
@@ -7,7 +8,9 @@ import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Thread token usage + cost from running graph state (integration)', () => {
   let app: INestApplication;
@@ -33,7 +36,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       if (!graphId) continue;
 
       try {
-        await graphsService.destroy(graphId);
+        await graphsService.destroy(contextDataStorage, graphId);
       } catch (error: unknown) {
         if (
           !(error instanceof BaseException) ||
@@ -45,7 +48,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       }
 
       try {
-        await graphsService.delete(graphId);
+        await graphsService.delete(contextDataStorage, graphId);
       } catch (error: unknown) {
         if (
           !(error instanceof BaseException) ||
@@ -65,7 +68,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
     'creates a graph, executes it, returns tokenUsage statistics via separate endpoint while running and after stop',
     { timeout: 180_000 },
     async () => {
-      const graph = await graphsService.create({
+      const graph = await graphsService.create(contextDataStorage, {
         name: `Thread token usage test ${Date.now()}`,
         description: 'integration test for thread token usage aggregation',
         temporary: true,
@@ -95,14 +98,15 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       });
       createdGraphIds.push(graph.id);
 
-      await graphsService.run(graph.id);
+      await graphsService.run(contextDataStorage, graph.id);
       await waitForCondition(
-        () => graphsService.findById(graph.id),
+        () => graphsService.findById(contextDataStorage, graph.id),
         (g) => g.status === GraphStatus.Running,
         { timeout: 60_000, interval: 1_000 },
       );
 
       const execution = await graphsService.executeTrigger(
+        contextDataStorage,
         graph.id,
         'trigger-1',
         {
@@ -169,9 +173,9 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       );
 
       // Stop the graph (unregisters it) so ThreadsService uses checkpoint fallback.
-      await graphsService.destroy(graph.id);
+      await graphsService.destroy(contextDataStorage, graph.id);
       await waitForCondition(
-        () => graphsService.findById(graph.id),
+        () => graphsService.findById(contextDataStorage, graph.id),
         (g) => g.status !== GraphStatus.Running,
         { timeout: 60_000, interval: 1_000 },
       );
@@ -221,7 +225,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
     'accumulates token usage and cost across two executions on the same thread (integration)',
     { timeout: 240_000 },
     async () => {
-      const graph = await graphsService.create({
+      const graph = await graphsService.create(contextDataStorage, {
         name: `Thread token usage two-runs test ${Date.now()}`,
         description:
           'integration test ensuring token usage & cost accumulate across multiple runs on the same thread',
@@ -248,20 +252,25 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       });
       createdGraphIds.push(graph.id);
 
-      await graphsService.run(graph.id);
+      await graphsService.run(contextDataStorage, graph.id);
       await waitForCondition(
-        () => graphsService.findById(graph.id),
+        () => graphsService.findById(contextDataStorage, graph.id),
         (g) => g.status === GraphStatus.Running,
         { timeout: 60_000, interval: 1_000 },
       );
 
       const threadSubId = `token-usage-two-runs-${Date.now()}`;
 
-      const exec1 = await graphsService.executeTrigger(graph.id, 'trigger-1', {
-        messages: ['hello'],
-        async: true,
-        threadSubId,
-      });
+      const exec1 = await graphsService.executeTrigger(
+        contextDataStorage,
+        graph.id,
+        'trigger-1',
+        {
+          messages: ['hello'],
+          async: true,
+          threadSubId,
+        },
+      );
 
       const createdThread = await waitForCondition(
         () => threadsService.getThreadByExternalId(exec1.externalThreadId),
@@ -297,11 +306,16 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       expect(sumTokensFirst).toBe(firstTotalTokens);
 
       // Second execution on the same thread (same threadSubId) must increase totals.
-      await graphsService.executeTrigger(graph.id, 'trigger-1', {
-        messages: ['hello again'],
-        async: true,
-        threadSubId,
-      });
+      await graphsService.executeTrigger(
+        contextDataStorage,
+        graph.id,
+        'trigger-1',
+        {
+          messages: ['hello again'],
+          async: true,
+          threadSubId,
+        },
+      );
 
       const usageAfterSecond = await waitForCondition(
         async () => {
@@ -339,9 +353,9 @@ describe('Thread token usage + cost from running graph state (integration)', () 
         { timeout: 120_000, interval: 2_000 },
       );
 
-      await graphsService.destroy(graph.id);
+      await graphsService.destroy(contextDataStorage, graph.id);
       await waitForCondition(
-        () => graphsService.findById(graph.id),
+        () => graphsService.findById(contextDataStorage, graph.id),
         (g) => g.status !== GraphStatus.Running,
         { timeout: 60_000, interval: 1_000 },
       );
@@ -368,7 +382,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
     'does not reset tokenUsage when a communication tool triggers nested agent runs (integration)',
     { timeout: 240_000 },
     async () => {
-      const graph = await graphsService.create({
+      const graph = await graphsService.create(contextDataStorage, {
         name: `Thread token usage comm test ${Date.now()}`,
         description:
           'integration test ensuring token usage does not reset after communication tool calls',
@@ -419,20 +433,25 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       });
       createdGraphIds.push(graph.id);
 
-      await graphsService.run(graph.id);
+      await graphsService.run(contextDataStorage, graph.id);
       await waitForCondition(
-        () => graphsService.findById(graph.id),
+        () => graphsService.findById(contextDataStorage, graph.id),
         (g) => g.status === GraphStatus.Running,
         { timeout: 60_000, interval: 1_000 },
       );
 
       const threadSubId = `token-usage-comm-${Date.now()}`;
 
-      const exec1 = await graphsService.executeTrigger(graph.id, 'trigger-1', {
-        messages: ['Please ask the callee agent: what is 2+2?'],
-        async: true,
-        threadSubId,
-      });
+      const exec1 = await graphsService.executeTrigger(
+        contextDataStorage,
+        graph.id,
+        'trigger-1',
+        {
+          messages: ['Please ask the callee agent: what is 2+2?'],
+          async: true,
+          threadSubId,
+        },
+      );
 
       const thread1 = await waitForCondition(
         () => threadsService.getThreadByExternalId(exec1.externalThreadId),
@@ -479,11 +498,16 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       ).toBeGreaterThan(0);
 
       // Second message on the same thread: totals must not drop (no "reset").
-      await graphsService.executeTrigger(graph.id, 'trigger-1', {
-        messages: ['Ask again: what is 3+3?'],
-        async: true,
-        threadSubId,
-      });
+      await graphsService.executeTrigger(
+        contextDataStorage,
+        graph.id,
+        'trigger-1',
+        {
+          messages: ['Ask again: what is 3+3?'],
+          async: true,
+          threadSubId,
+        },
+      );
 
       const usageAfterSecond = await waitForCondition(
         async () => {
@@ -517,7 +541,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       // - First run: agents 1 and 2 execute
       // - Second run: agents 1 and 3 execute
       // - Expected: byNode should contain all three agents after both runs
-      const graph = await graphsService.create({
+      const graph = await graphsService.create(contextDataStorage, {
         name: `Thread per-node preservation test ${Date.now()}`,
         description:
           'integration test ensuring per-node token usage is preserved across runs with different agents',
@@ -583,9 +607,9 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       });
       createdGraphIds.push(graph.id);
 
-      await graphsService.run(graph.id);
+      await graphsService.run(contextDataStorage, graph.id);
       await waitForCondition(
-        () => graphsService.findById(graph.id),
+        () => graphsService.findById(contextDataStorage, graph.id),
         (g) => g.status === GraphStatus.Running,
         { timeout: 60_000, interval: 1_000 },
       );
@@ -593,11 +617,16 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       const threadSubId = `token-usage-per-node-${Date.now()}`;
 
       // ========== FIRST RUN: Agent 1 delegates to Agent 2 ==========
-      const exec1 = await graphsService.executeTrigger(graph.id, 'trigger-1', {
-        messages: ['Please delegate this to Worker Agent 2'],
-        async: true,
-        threadSubId,
-      });
+      const exec1 = await graphsService.executeTrigger(
+        contextDataStorage,
+        graph.id,
+        'trigger-1',
+        {
+          messages: ['Please delegate this to Worker Agent 2'],
+          async: true,
+          threadSubId,
+        },
+      );
 
       const thread = await waitForCondition(
         () => threadsService.getThreadByExternalId(exec1.externalThreadId),
@@ -666,11 +695,16 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       expect(usageAfterFirstComplete.byNode?.['agent-3']).toBeUndefined();
 
       // ========== SECOND RUN: Agent 1 delegates to Agent 3 ==========
-      await graphsService.executeTrigger(graph.id, 'trigger-1', {
-        messages: ['Please delegate this to Worker Agent 3'],
-        async: true,
-        threadSubId,
-      });
+      await graphsService.executeTrigger(
+        contextDataStorage,
+        graph.id,
+        'trigger-1',
+        {
+          messages: ['Please delegate this to Worker Agent 3'],
+          async: true,
+          threadSubId,
+        },
+      );
 
       // Wait for second communication tool execution
       await waitForCondition(

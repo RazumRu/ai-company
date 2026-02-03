@@ -2,28 +2,32 @@ import {
   KnowledgeContentSuggestionRequestDto,
   KnowledgeContentSuggestionResponseDto,
   KnowledgeDocDto,
+  KnowledgeDocInputDto,
 } from '../../api-definitions';
 import { reqHeaders } from '../common.helper';
 
-export const createKnowledgeDoc = (content: string, headers = reqHeaders) =>
+export const createKnowledgeDoc = (
+  data: KnowledgeDocInputDto,
+  headers = reqHeaders,
+) =>
   cy.request<KnowledgeDocDto>({
     url: '/api/v1/knowledge-docs',
     method: 'POST',
     headers,
-    body: { content },
+    body: data,
     failOnStatusCode: false,
   });
 
 export const updateKnowledgeDoc = (
   id: string,
-  content: string,
+  data: KnowledgeDocInputDto,
   headers = reqHeaders,
 ) =>
   cy.request<KnowledgeDocDto>({
     url: `/api/v1/knowledge-docs/${id}`,
     method: 'PUT',
     headers,
-    body: { content },
+    body: data,
     failOnStatusCode: false,
   });
 

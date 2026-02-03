@@ -2,6 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BaseException } from '@packages/common';
+import { AuthContextStorage } from '@packages/http-server';
 import dedent from 'dedent';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
@@ -32,7 +33,7 @@ import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 const THREAD_ID = `files-tools-int-${Date.now()}`;
 const WORKSPACE_DIR = `/runtime-workspace/${THREAD_ID}`;
@@ -67,6 +68,8 @@ const hasTextMatch = (result: SearchTextResult, snippet: string) =>
       typeof match?.data?.lines?.text === 'string' &&
       match.data.lines.text.includes(snippet),
   );
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Files tools integration', () => {
   let moduleRef: TestingModule;
@@ -959,7 +962,7 @@ describe('Files tools graph execution', () => {
 
   const cleanupGraph = async (graphId: string) => {
     try {
-      await graphsService.destroy(graphId);
+      await graphsService.destroy(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -971,7 +974,7 @@ describe('Files tools graph execution', () => {
     }
 
     try {
-      await graphsService.delete(graphId);
+      await graphsService.delete(contextDataStorage, graphId);
     } catch (error: unknown) {
       if (
         !(error instanceof BaseException) ||
@@ -988,7 +991,7 @@ describe('Files tools graph execution', () => {
     timeoutMs = 180_000,
   ) => {
     return waitForCondition(
-      () => graphsService.findById(graphId),
+      () => graphsService.findById(contextDataStorage, graphId),
       (graph) => graph.status === status,
       { timeout: timeoutMs, interval: 1_000 },
     );
@@ -1121,13 +1124,17 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
     'runs files_search_text via graph trigger and returns matches',
     { timeout: 45000 },
     async () => {
-      const graph = await graphsService.create(createFilesSearchGraphData());
+      const graph = await graphsService.create(
+        contextDataStorage,
+        createFilesSearchGraphData(),
+      );
       registerGraph(graph.id);
 
-      await graphsService.run(graph.id);
+      await graphsService.run(contextDataStorage, graph.id);
       await waitForGraphStatus(graph.id, GraphStatus.Running, 30000);
 
       const execution = await graphsService.executeTrigger(
+        contextDataStorage,
         graph.id,
         'trigger-1',
         {

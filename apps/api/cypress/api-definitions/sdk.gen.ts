@@ -13,10 +13,14 @@ import type {
   CreateDocResponses,
   CreateGraphData,
   CreateGraphResponses,
+  CreateRepositoryData,
+  CreateRepositoryResponses,
   DeleteDocData,
   DeleteDocResponses,
   DeleteGraphData,
   DeleteGraphResponses,
+  DeleteRepositoryData,
+  DeleteRepositoryResponses,
   DeleteThreadData,
   DeleteThreadResponses,
   DestroyGraphData,
@@ -37,6 +41,10 @@ import type {
   GetGraphRevisionResponses,
   GetGraphRevisionsData,
   GetGraphRevisionsResponses,
+  GetRepositoriesData,
+  GetRepositoriesResponses,
+  GetRepositoryByIdData,
+  GetRepositoryByIdResponses,
   GetThreadByExternalIdData,
   GetThreadByExternalIdResponses,
   GetThreadByIdData,
@@ -67,6 +75,8 @@ import type {
   UpdateDocResponses,
   UpdateGraphData,
   UpdateGraphResponses,
+  UpdateRepositoryData,
+  UpdateRepositoryResponses,
 } from './types.gen.js';
 
 export type Options<
@@ -85,6 +95,83 @@ export type Options<
    */
   meta?: Record<string, unknown>;
 };
+
+export const getRepositories = <ThrowOnError extends boolean = false>(
+  options?: Options<GetRepositoriesData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    GetRepositoriesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories',
+    ...options,
+  });
+
+export const createRepository = <ThrowOnError extends boolean = false>(
+  options: Options<CreateRepositoryData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    CreateRepositoryResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const deleteRepository = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteRepositoryData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<
+    DeleteRepositoryResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories/{id}',
+    ...options,
+  });
+
+export const getRepositoryById = <ThrowOnError extends boolean = false>(
+  options: Options<GetRepositoryByIdData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    GetRepositoryByIdResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories/{id}',
+    ...options,
+  });
+
+export const updateRepository = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateRepositoryData, ThrowOnError>,
+) =>
+  (options.client ?? client).patch<
+    UpdateRepositoryResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories/{id}',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
 
 export const listModels = <ThrowOnError extends boolean = false>(
   options?: Options<ListModelsData, ThrowOnError>,

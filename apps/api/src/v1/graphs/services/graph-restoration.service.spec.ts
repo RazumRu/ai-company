@@ -211,7 +211,10 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
+      expect(graphsService.run).toHaveBeenCalledWith(
+        expect.anything(),
+        mockGraph.id,
+      );
     });
 
     it('should handle no running graphs', async () => {
@@ -243,7 +246,10 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
+      expect(graphsService.run).toHaveBeenCalledWith(
+        expect.anything(),
+        mockGraph.id,
+      );
     });
 
     it('should skip already registered graphs', async () => {
@@ -298,8 +304,14 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(graphsService.run).toHaveBeenCalledWith(mockGraph.id);
-      expect(graphsService.run).toHaveBeenCalledWith(mockGraph2.id);
+      expect(graphsService.run).toHaveBeenCalledWith(
+        expect.anything(),
+        mockGraph.id,
+      );
+      expect(graphsService.run).toHaveBeenCalledWith(
+        expect.anything(),
+        mockGraph2.id,
+      );
     });
 
     it('should delete temporary graphs before restoring', async () => {
@@ -353,7 +365,10 @@ describe('GraphRestorationService', () => {
       expect(graphDao.getAll).toHaveBeenCalledWith({
         statuses: [GraphStatus.Running, GraphStatus.Compiling],
       });
-      expect(graphsService.run).toHaveBeenCalledWith(permanentGraph.id);
+      expect(graphsService.run).toHaveBeenCalledWith(
+        expect.anything(),
+        permanentGraph.id,
+      );
     });
 
     it('should handle errors when deleting temporary graphs', async () => {

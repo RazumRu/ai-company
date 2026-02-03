@@ -1,11 +1,12 @@
 import { INestApplication } from '@nestjs/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 /**
  * Integration coverage for `tokenUsage.currentContext`.
@@ -14,6 +15,8 @@ import { createTestModule } from '../setup';
  * - currentContext must update on every invoke_llm call.
  * - currentContext must represent the request context size the provider counted.
  */
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Thread currentContext from invoke_llm input_tokens (integration)', () => {
   let app: INestApplication;
@@ -30,13 +33,13 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
 
     const waitForRunning = async (graphId: string) => {
       await waitForCondition(
-        () => graphsService.findById(graphId),
+        () => graphsService.findById(contextDataStorage, graphId),
         (g) => g.status === GraphStatus.Running,
         { timeout: 60_000, interval: 1_000 },
       );
     };
 
-    const noSummarizeGraph = await graphsService.create({
+    const noSummarizeGraph = await graphsService.create(contextDataStorage, {
       name: `currentContext no-summarize test ${Date.now()}`,
       description:
         'integration test for invoke_llm currentContext without summarization',
@@ -64,10 +67,10 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
     });
 
     noSummarizeGraphId = noSummarizeGraph.id;
-    await graphsService.run(noSummarizeGraphId);
+    await graphsService.run(contextDataStorage, noSummarizeGraphId);
     await waitForRunning(noSummarizeGraphId);
 
-    const summarizeGraph = await graphsService.create({
+    const summarizeGraph = await graphsService.create(contextDataStorage, {
       name: `currentContext summarize test ${Date.now()}`,
       description: 'integration test for summarize reducing invoke_llm context',
       temporary: true,
@@ -93,19 +96,19 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
       },
     });
     summarizeGraphId = summarizeGraph.id;
-    await graphsService.run(summarizeGraphId);
+    await graphsService.run(contextDataStorage, summarizeGraphId);
     await waitForRunning(summarizeGraphId);
   }, 180_000);
 
   afterAll(async () => {
     const cleanup = async (graphId: string) => {
       try {
-        await graphsService.destroy(graphId);
+        await graphsService.destroy(contextDataStorage, graphId);
       } catch {
         // best effort
       }
       try {
-        await graphsService.delete(graphId);
+        await graphsService.delete(contextDataStorage, graphId);
       } catch {
         // best effort
       }
@@ -120,11 +123,11 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const ensureGraphRunning = async (graphId: string) => {
-    const graph = await graphsService.findById(graphId);
+    const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) return;
-    await graphsService.run(graphId);
+    await graphsService.run(contextDataStorage, graphId);
     await waitForCondition(
-      () => graphsService.findById(graphId),
+      () => graphsService.findById(contextDataStorage, graphId),
       (g) => g.status === GraphStatus.Running,
       { timeout: 60_000, interval: 1_000 },
     );
@@ -136,11 +139,16 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
     message: string,
     prevTotalTokens?: number,
   ) => {
-    const exec = await graphsService.executeTrigger(graphId, 'trigger-1', {
-      messages: [message],
-      async: true,
-      threadSubId,
-    });
+    const exec = await graphsService.executeTrigger(
+      contextDataStorage,
+      graphId,
+      'trigger-1',
+      {
+        messages: [message],
+        async: true,
+        threadSubId,
+      },
+    );
 
     const thread = await waitForCondition(
       () => threadsService.getThreadByExternalId(exec.externalThreadId),

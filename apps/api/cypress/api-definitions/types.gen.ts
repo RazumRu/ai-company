@@ -4,6 +4,61 @@ export type ClientOptions = {
   baseURL: string;
 };
 
+export type CreateRepositoryDto = {
+  /**
+   * Repository owner
+   */
+  owner: string;
+  /**
+   * Repository name
+   */
+  repo: string;
+  /**
+   * HTTPS URL of the repository
+   */
+  url: string;
+  /**
+   * Git repository host provider
+   */
+  provider?: 'GITHUB';
+};
+
+export type GitRepositoryDto = {
+  /**
+   * Repository ID
+   */
+  id: string;
+  /**
+   * Repository owner (GitHub username or organization)
+   */
+  owner: string;
+  /**
+   * Repository name
+   */
+  repo: string;
+  /**
+   * HTTPS URL of the repository
+   */
+  url: string;
+  /**
+   * Git repository host provider
+   */
+  provider: 'GITHUB';
+  /**
+   * User ID who cloned the repository
+   */
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UpdateRepositoryDto = {
+  /**
+   * HTTPS URL of the repository
+   */
+  url?: string;
+};
+
 export type LiteLlmModelDto = {
   /**
    * Model identifier
@@ -41,6 +96,7 @@ export type KnowledgeDocDto = {
   title: string;
   summary?: string | null;
   politic?: string | null;
+  embeddingModel?: string | null;
   tags: Array<string>;
   createdAt: string;
   updatedAt: string;
@@ -55,6 +111,10 @@ export type SuggestAgentInstructionsDto = {
    * Optional thread id to continue a previous suggestion conversation
    */
   threadId?: string;
+  /**
+   * Optional LLM model to use for this suggestion
+   */
+  model?: string;
 };
 
 export type SuggestAgentInstructionsResponseDto = {
@@ -73,6 +133,10 @@ export type SuggestGraphInstructionsDto = {
    * User request describing how to adjust agent instructions
    */
   userRequest: string;
+  /**
+   * Optional LLM model to use for this suggestion
+   */
+  model?: string;
 };
 
 export type SuggestGraphInstructionsResponseDto = {
@@ -104,6 +168,10 @@ export type ThreadAnalysisRequestDto = {
    * Optional LLM conversation id to continue the existing suggestion thread
    */
   threadId?: string;
+  /**
+   * Optional LLM model to use for this analysis
+   */
+  model?: string;
 };
 
 export type ThreadAnalysisResponseDto = {
@@ -138,6 +206,10 @@ export type KnowledgeContentSuggestionRequestDto = {
    * Optional thread id to continue a previous suggestion conversation
    */
   threadId?: string;
+  /**
+   * Optional LLM model to use for this suggestion
+   */
+  model?: string;
 };
 
 export type KnowledgeContentSuggestionResponseDto = {
@@ -1342,6 +1414,100 @@ export type ThreadUsageStatisticsDto = {
     requestCount: number;
   };
 };
+
+export type GetRepositoriesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Filter by repository owner
+     */
+    owner?: string;
+    /**
+     * Filter by repository name
+     */
+    repo?: string;
+    /**
+     * Filter by host provider
+     */
+    provider?: 'GITHUB';
+    /**
+     * Maximum number of repositories to return
+     */
+    limit?: number;
+    /**
+     * Number of repositories to skip
+     */
+    offset?: number;
+  };
+  url: '/api/v1/git-repositories';
+};
+
+export type GetRepositoriesResponses = {
+  200: Array<GitRepositoryDto>;
+};
+
+export type GetRepositoriesResponse =
+  GetRepositoriesResponses[keyof GetRepositoriesResponses];
+
+export type CreateRepositoryData = {
+  body: CreateRepositoryDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/git-repositories';
+};
+
+export type CreateRepositoryResponses = {
+  201: GitRepositoryDto;
+};
+
+export type CreateRepositoryResponse =
+  CreateRepositoryResponses[keyof CreateRepositoryResponses];
+
+export type DeleteRepositoryData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/git-repositories/{id}';
+};
+
+export type DeleteRepositoryResponses = {
+  200: unknown;
+};
+
+export type GetRepositoryByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/git-repositories/{id}';
+};
+
+export type GetRepositoryByIdResponses = {
+  200: GitRepositoryDto;
+};
+
+export type GetRepositoryByIdResponse =
+  GetRepositoryByIdResponses[keyof GetRepositoryByIdResponses];
+
+export type UpdateRepositoryData = {
+  body: UpdateRepositoryDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/git-repositories/{id}';
+};
+
+export type UpdateRepositoryResponses = {
+  200: GitRepositoryDto;
+};
+
+export type UpdateRepositoryResponse =
+  UpdateRepositoryResponses[keyof UpdateRepositoryResponses];
 
 export type ListModelsData = {
   body?: never;
