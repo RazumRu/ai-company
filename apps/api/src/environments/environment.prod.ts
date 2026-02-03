@@ -87,8 +87,8 @@ export const environment = () =>
       'CODEBASE_EMBEDDING_CONCURRENCY',
       '2',
     ),
-    codebaseChunkTargetTokens: +getEnv('CODEBASE_CHUNK_TARGET_TOKENS', '300'),
-    codebaseChunkOverlapTokens: +getEnv('CODEBASE_CHUNK_OVERLAP_TOKENS', '50'),
+    codebaseChunkTargetTokens: +getEnv('CODEBASE_CHUNK_TARGET_TOKENS', '250'),
+    codebaseChunkOverlapTokens: +getEnv('CODEBASE_CHUNK_OVERLAP_TOKENS', '30'),
     codebaseMaxFileBytes: +getEnv('CODEBASE_MAX_FILE_BYTES', '1048576'),
 
     // LLM model defaults for tools (do not override per-call)

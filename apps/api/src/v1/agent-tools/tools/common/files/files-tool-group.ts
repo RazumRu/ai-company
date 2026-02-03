@@ -63,6 +63,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       '',
       '**WHEN TO USE EACH SEARCH TOOL:**',
       '1) **codebase_search** (DEFAULT): Find relevant files/chunks by intent or description',
+      '   - Query must be a human-readable phrase or question (not a single word)',
       '   - Example: "Where is UserService defined?"',
       '   - Example: "Find the handleRequest method"',
       '   - Example: "Show me all React hooks"',

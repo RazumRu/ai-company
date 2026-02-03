@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { extname, join as joinPath } from 'node:path';
+import {
+  extname,
+  isAbsolute,
+  join as joinPath,
+  relative,
+  resolve,
+} from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
@@ -24,10 +30,15 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 const DEFAULT_TOP_K = 10;
-const MAX_TOP_K = 20;
+const MAX_TOP_K = 15;
 
 const CodebaseSearchSchema = z.object({
-  query: z.string().min(1).describe('Query to search for in the codebase.'),
+  query: z
+    .string()
+    .min(1)
+    .describe(
+      'Query to search for in the codebase. Use a human-readable phrase or question, not a single word.',
+    ),
   top_k: z
     .number()
     .int()
@@ -149,6 +160,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       - Must be inside a git repository
       - \`directory\` is required (absolute path to the repo)
       - Indexing happens only when this tool is invoked
+      - Query must be a human-readable phrase or question (not a single word)
 
       ### Recommended Flow
       1) Run \`codebase_search\` with a semantic query.
@@ -282,11 +294,15 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
         with_payload: true,
       },
     );
+    const directoryFilter = this.normalizeDirectoryFilter(
+      args.directory,
+      repoRoot,
+    );
 
     const filtered = matches
       .map((match) => this.parseSearchResult(match))
       .filter((match): match is CodebaseSearchResultInternal => Boolean(match))
-      .filter((match) => this.matchesPathPrefix(match, args.directory))
+      .filter((match) => this.matchesPathPrefix(match, directoryFilter))
       .filter((match) => this.matchesLanguage(match, args.language))
       .slice(0, args.top_k ?? DEFAULT_TOP_K)
       .map((match) => ({
@@ -1285,6 +1301,25 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     };
   }
 
+  private normalizeDirectoryFilter(
+    directory: string | undefined,
+    repoRoot: string,
+  ): string | undefined {
+    const trimmed = directory?.trim();
+    if (!trimmed) return undefined;
+    const resolved = isAbsolute(trimmed)
+      ? resolve(trimmed)
+      : resolve(repoRoot, trimmed);
+    const relativeToRepo = relative(repoRoot, resolved);
+    if (!relativeToRepo || relativeToRepo === '.') {
+      return '';
+    }
+    if (!relativeToRepo.startsWith('..') && !isAbsolute(relativeToRepo)) {
+      return this.normalizePath(relativeToRepo);
+    }
+    return this.normalizePath(trimmed);
+  }
+
   private matchesPathPrefix(
     match: CodebaseSearchResult,
     directory?: string,
@@ -1294,6 +1329,9 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     }
     const normalized = directory.replace(/\\/g, '/').replace(/^\/+/, '');
     const withoutSlash = normalized.replace(/\/+$/, '');
+    if (!withoutSlash) {
+      return true;
+    }
     return (
       match.path === withoutSlash || match.path.startsWith(`${withoutSlash}/`)
     );
