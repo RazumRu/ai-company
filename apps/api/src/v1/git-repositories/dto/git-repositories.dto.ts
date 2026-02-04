@@ -48,10 +48,18 @@ export const CreateRepositorySchema = z.object({
   repo: z.string().describe('Repository name'),
   url: z.string().url().describe('HTTPS URL of the repository'),
   provider: GitRepositoryProviderSchema.default(GitRepositoryProvider.GITHUB),
+  token: z
+    .string()
+    .optional()
+    .describe('GitHub personal access token (encrypted at rest, write-only)'),
 });
 
 export const UpdateRepositorySchema = z.object({
   url: z.string().url().describe('HTTPS URL of the repository').optional(),
+  token: z
+    .string()
+    .optional()
+    .describe('GitHub personal access token (encrypted at rest, write-only)'),
 });
 
 // Type exports

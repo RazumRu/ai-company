@@ -21,6 +21,10 @@ export type CreateRepositoryDto = {
    * Git repository host provider
    */
   provider?: 'GITHUB';
+  /**
+   * GitHub personal access token (encrypted at rest, write-only)
+   */
+  token?: string;
 };
 
 export type GitRepositoryDto = {
@@ -57,6 +61,10 @@ export type UpdateRepositoryDto = {
    * HTTPS URL of the repository
    */
   url?: string;
+  /**
+   * GitHub personal access token (encrypted at rest, write-only)
+   */
+  token?: string;
 };
 
 export type LiteLlmModelDto = {
@@ -70,7 +78,7 @@ export type LiteLlmModelDto = {
   ownedBy: string;
 };
 
-export type KnowledgeDocInputDto = {
+export type KnowledgeDocCreateDto = {
   /**
    * Knowledge document title
    */
@@ -100,6 +108,25 @@ export type KnowledgeDocDto = {
   tags: Array<string>;
   createdAt: string;
   updatedAt: string;
+};
+
+export type KnowledgeDocUpdateDto = {
+  /**
+   * Knowledge document title
+   */
+  title?: string;
+  /**
+   * Raw knowledge document content
+   */
+  content?: string;
+  /**
+   * Optional LLM usage guidance for this document. If the politic instructs to fetch full content (e.g. "always fetch the full content instead of fetching only specific chunks"), full document retrieval is permitted.
+   */
+  politic?: string;
+  /**
+   * Optional tags to apply to the document
+   */
+  tags?: Array<string>;
 };
 
 export type SuggestAgentInstructionsDto = {
@@ -1547,7 +1574,7 @@ export type ListDocsResponses = {
 export type ListDocsResponse = ListDocsResponses[keyof ListDocsResponses];
 
 export type CreateDocData = {
-  body: KnowledgeDocInputDto;
+  body: KnowledgeDocCreateDto;
   path?: never;
   query?: never;
   url: '/api/v1/knowledge-docs';
@@ -1569,8 +1596,10 @@ export type DeleteDocData = {
 };
 
 export type DeleteDocResponses = {
-  200: unknown;
+  204: void;
 };
+
+export type DeleteDocResponse = DeleteDocResponses[keyof DeleteDocResponses];
 
 export type GetDocData = {
   body?: never;
@@ -1588,7 +1617,7 @@ export type GetDocResponses = {
 export type GetDocResponse = GetDocResponses[keyof GetDocResponses];
 
 export type UpdateDocData = {
-  body: KnowledgeDocInputDto;
+  body: KnowledgeDocUpdateDto;
   path: {
     id: string;
   };

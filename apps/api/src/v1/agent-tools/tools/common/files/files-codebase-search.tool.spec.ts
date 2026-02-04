@@ -1,14 +1,11 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
-import type { RequestTokenUsage } from '../../../../litellm/litellm.types';
-import { LitellmService } from '../../../../litellm/services/litellm.service';
-import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
-import { OpenaiService } from '../../../../openai/openai.service';
-import { QdrantService } from '../../../../qdrant/services/qdrant.service';
+import { RepoIndexStatus } from '../../../../git-repositories/git-repositories.types';
+import { RepoIndexService } from '../../../../git-repositories/services/repo-index.service';
+import type { GetOrInitIndexResult } from '../../../../git-repositories/services/repo-index.types';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
 import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
@@ -17,11 +14,7 @@ describe('FilesCodebaseSearchTool', () => {
   let tool: FilesCodebaseSearchTool;
   let mockRuntime: BaseRuntime;
   let mockConfig: FilesBaseToolConfig;
-  let mockQdrantService: QdrantService;
-  let mockOpenaiService: OpenaiService;
-  let mockModelsService: LlmModelsService;
-  let mockLitellmService: LitellmService;
-  let mockLogger: DefaultLogger;
+  let mockRepoIndexService: RepoIndexService;
 
   beforeEach(async () => {
     mockRuntime = {
@@ -36,68 +29,20 @@ describe('FilesCodebaseSearchTool', () => {
       } as any,
     };
 
-    mockQdrantService = {
-      buildSizedCollectionName: vi.fn((base: string, size: number) => {
-        return `${base}_${size}`;
-      }),
-      getVectorSizeFromEmbeddings: vi.fn().mockReturnValue(2),
-      searchPoints: vi.fn().mockResolvedValue([]),
-      retrievePoints: vi.fn().mockResolvedValue([]),
-      upsertPoints: vi.fn().mockResolvedValue(undefined),
-      deleteByFilter: vi.fn().mockResolvedValue(undefined),
-    } as unknown as QdrantService;
-
-    mockOpenaiService = {
-      embeddings: vi.fn().mockResolvedValue({ embeddings: [[0, 0]] }),
-    } as unknown as OpenaiService;
-
-    mockModelsService = {
-      getKnowledgeEmbeddingModel: vi.fn().mockReturnValue('test-embedding'),
-    } as unknown as LlmModelsService;
-
-    mockLitellmService = {
-      countTokens: vi.fn().mockResolvedValue(1),
-      getTokenizer: vi.fn().mockResolvedValue({
-        encode: (text: string) => Array.from(text).map((_, idx) => idx),
-        decode: (tokens: number[]) => tokens.map(() => 'x').join(''),
-      }),
-      sumTokenUsages: vi.fn(
-        (usages: (RequestTokenUsage | null | undefined)[]) => {
-          let inputTokens = 0;
-          let outputTokens = 0;
-          let totalTokens = 0;
-          let totalPrice = 0;
-          let sawAny = false;
-          for (const usage of usages) {
-            if (!usage) continue;
-            sawAny = true;
-            inputTokens += usage.inputTokens;
-            outputTokens += usage.outputTokens;
-            totalTokens += usage.totalTokens;
-            totalPrice += usage.totalPrice ?? 0;
-          }
-          return sawAny
-            ? { inputTokens, outputTokens, totalTokens, totalPrice }
-            : null;
+    mockRepoIndexService = {
+      getOrInitIndexForRepo: vi.fn().mockResolvedValue({
+        status: 'ready',
+        repoIndex: {
+          qdrantCollection: 'codebase_test_repo_main_1536',
         },
-      ),
-    } as unknown as LitellmService;
-
-    mockLogger = {
-      debug: vi.fn(),
-      error: vi.fn(),
-      system: vi.fn(),
-      warn: vi.fn(),
-    } as unknown as DefaultLogger;
+      } as GetOrInitIndexResult),
+      searchCodebase: vi.fn().mockResolvedValue([]),
+    } as unknown as RepoIndexService;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FilesCodebaseSearchTool,
-        { provide: QdrantService, useValue: mockQdrantService },
-        { provide: OpenaiService, useValue: mockOpenaiService },
-        { provide: LitellmService, useValue: mockLitellmService },
-        { provide: LlmModelsService, useValue: mockModelsService },
-        { provide: DefaultLogger, useValue: mockLogger },
+        { provide: RepoIndexService, useValue: mockRepoIndexService },
       ],
     }).compile();
 
@@ -162,17 +107,11 @@ describe('FilesCodebaseSearchTool', () => {
       expect(output.results).toBeUndefined();
     });
 
-    it('should return filtered search results', async () => {
+    it('should return filtered search results when index is ready', async () => {
       vi.spyOn(tool as any, 'execCommand')
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '/repo',
-          stderr: '',
-          execPath: '',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: 'abc123',
           stderr: '',
           execPath: '',
         })
@@ -183,42 +122,31 @@ describe('FilesCodebaseSearchTool', () => {
           execPath: '',
         });
 
-      const signatureHash = (tool as any).getChunkingSignatureHash();
-      vi.spyOn(tool as any, 'getIndexState').mockResolvedValue({
-        repo_id: 'https://github.com/org/repo',
-        last_indexed_commit: 'abc123',
-        last_indexed_at: '2024-01-01T00:00:00.000Z',
-        embedding_model: 'test-embedding',
-        vector_size: 2,
-        chunking_signature_hash: signatureHash,
-      });
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'ready',
+        repoIndex: {
+          id: 'index-1',
+          repositoryId: 'repo-uuid',
+          status: RepoIndexStatus.Completed,
+          qdrantCollection: 'codebase_test_repo_main_1536',
+        },
+      } as GetOrInitIndexResult);
 
       (
-        mockQdrantService.searchPoints as unknown as ReturnType<typeof vi.fn>
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
       ).mockResolvedValue([
         {
-          id: '1',
+          path: 'apps/api/src/index.ts',
+          start_line: 1,
+          end_line: 10,
+          text: 'const value = 1;',
           score: 0.9,
-          payload: {
-            repo_id: 'https://github.com/org/repo',
-            path: 'apps/api/src/index.ts',
-            language: 'ts',
-            start_line: 1,
-            end_line: 10,
-            text: 'const value = 1;',
-          },
-        },
-        {
-          id: '2',
-          score: 0.5,
-          payload: {
-            repo_id: 'https://github.com/org/repo',
-            path: 'docs/readme.md',
-            language: 'md',
-            start_line: 1,
-            end_line: 3,
-            text: 'Readme content',
-          },
         },
       ]);
 
@@ -236,24 +164,29 @@ describe('FilesCodebaseSearchTool', () => {
       expect(output.error).toBeUndefined();
       expect(output.results).toHaveLength(1);
       expect(output.results?.[0]?.path).toBe('apps/api/src/index.ts');
-      expect(mockQdrantService.searchPoints).toHaveBeenCalledTimes(1);
-      expect(mockQdrantService.buildSizedCollectionName).toHaveBeenCalledWith(
-        'codebase_https_github_com_org_repo',
-        2,
+      expect(mockRepoIndexService.searchCodebase).toHaveBeenCalledTimes(1);
+      expect(mockRepoIndexService.searchCodebase).toHaveBeenCalledWith({
+        collection: 'codebase_test_repo_main_1536',
+        query: 'index',
+        repoId: 'https://github.com/org/repo',
+        topK: 5,
+        directoryFilter: expect.any(String),
+        languageFilter: 'ts',
+      });
+      expect(mockRepoIndexService.getOrInitIndexForRepo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          repositoryId: expect.any(String),
+          repoUrl: 'https://github.com/org/repo',
+          repoRoot: '/repo',
+        }),
       );
     });
 
-    it('should trigger incremental index when commits differ', async () => {
+    it('should return status message when indexing is in progress', async () => {
       vi.spyOn(tool as any, 'execCommand')
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '/repo',
-          stderr: '',
-          execPath: '',
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: 'newcommit',
           stderr: '',
           execPath: '',
         })
@@ -264,22 +197,17 @@ describe('FilesCodebaseSearchTool', () => {
           execPath: '',
         });
 
-      const signatureHash = (tool as any).getChunkingSignatureHash();
-      vi.spyOn(tool as any, 'getIndexState').mockResolvedValue({
-        repo_id: 'https://github.com/org/repo',
-        last_indexed_commit: 'oldcommit',
-        last_indexed_at: '2024-01-01T00:00:00.000Z',
-        embedding_model: 'test-embedding',
-        vector_size: 2,
-        chunking_signature_hash: signatureHash,
-      });
-
-      const incrementalSpy = vi
-        .spyOn(tool as any, 'incrementalIndexRepo')
-        .mockResolvedValue(undefined);
-      const writeStateSpy = vi
-        .spyOn(tool as any, 'writeIndexState')
-        .mockResolvedValue(undefined);
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'in_progress',
+        repoIndex: {
+          id: 'index-1',
+          status: RepoIndexStatus.InProgress,
+        },
+      } as GetOrInitIndexResult);
 
       const { output } = await tool.invoke(
         { query: 'search', directory: 'apps/api' },
@@ -287,65 +215,51 @@ describe('FilesCodebaseSearchTool', () => {
         mockCfg,
       );
 
-      expect(output.error).toBeUndefined();
-      expect(incrementalSpy).toHaveBeenCalledWith(
-        'codebase_https_github_com_org_repo_2',
-        {
-          repoId: 'https://github.com/org/repo',
-          repoRoot: '/repo',
-          repoSlug: 'https_github_com_org_repo',
-          currentCommit: 'newcommit',
+      expect(output.error).toBe(
+        'Repository indexing is in progress. Please retry shortly.',
+      );
+      expect(output.results).toBeUndefined();
+      expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
+    });
+
+    it('should return status message when indexing is pending', async () => {
+      vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'pending',
+        repoIndex: {
+          id: 'index-1',
+          status: RepoIndexStatus.Pending,
         },
-        'oldcommit',
-        2,
-        'test-embedding',
-        expect.any(Object),
-        mockConfig,
-        mockCfg,
-      );
-      expect(writeStateSpy).toHaveBeenCalled();
-    });
-  });
+      } as GetOrInitIndexResult);
 
-  describe('ignore rules', () => {
-    const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
-      configurable: {
-        thread_id: 'test-thread-123',
-      },
-    };
-
-    it('should honor .codebaseindexignore patterns', async () => {
-      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: 'dist/\n# comment\n\n**/*.min.js\n!src/app.min.js\n',
-        stderr: '',
-        execPath: '',
-      });
-
-      const matcher = await (tool as any).loadIgnoreMatcher(
-        '/repo',
+      const { output } = await tool.invoke(
+        { query: 'search', directory: 'apps/api' },
         mockConfig,
         mockCfg,
       );
 
-      expect(matcher.ignores('dist/app.js')).toBe(true);
-      expect(matcher.ignores('src/app.min.js')).toBe(false);
-      expect(matcher.ignores('src/other.min.js')).toBe(true);
-      expect(matcher.ignores('src/app.ts')).toBe(false);
-    });
-
-    it('should cache ignore matcher per repo root', async () => {
-      const execSpy = vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-        execPath: '',
-      });
-
-      await (tool as any).loadIgnoreMatcher('/repo', mockConfig, mockCfg);
-      await (tool as any).loadIgnoreMatcher('/repo', mockConfig, mockCfg);
-
-      expect(execSpy).toHaveBeenCalledTimes(1);
+      expect(output.error).toBe(
+        'Repository indexing is in progress. Please retry shortly.',
+      );
+      expect(output.results).toBeUndefined();
+      expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
     });
   });
 });

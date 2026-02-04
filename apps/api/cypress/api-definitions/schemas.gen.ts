@@ -18,6 +18,9 @@ export const CreateRepositoryDtoSchema = {
       default: 'GITHUB',
       enum: ['GITHUB'],
     },
+    token: {
+      type: 'string',
+    },
   },
   required: ['owner', 'repo', 'url'],
 } as const;
@@ -83,6 +86,9 @@ export const UpdateRepositoryDtoSchema = {
       type: 'string',
       format: 'uri',
     },
+    token: {
+      type: 'string',
+    },
   },
 } as const;
 
@@ -99,7 +105,7 @@ export const LiteLlmModelDtoSchema = {
   required: ['id', 'ownedBy'],
 } as const;
 
-export const KnowledgeDocInputDtoSchema = {
+export const KnowledgeDocCreateDtoSchema = {
   type: 'object',
   properties: {
     title: {
@@ -203,6 +209,31 @@ export const KnowledgeDocDtoSchema = {
     'createdAt',
     'updatedAt',
   ],
+} as const;
+
+export const KnowledgeDocUpdateDtoSchema = {
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      minLength: 1,
+    },
+    content: {
+      type: 'string',
+      minLength: 1,
+    },
+    politic: {
+      type: 'string',
+      minLength: 1,
+    },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'string',
+        minLength: 1,
+      },
+    },
+  },
 } as const;
 
 export const SuggestAgentInstructionsDtoSchema = {

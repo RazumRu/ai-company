@@ -5,6 +5,7 @@ import { HttpServerAuthParams } from '../http-server.types';
 import { IAuthModuleParams } from './auth.types';
 import { AuthContextService } from './auth-context.service';
 import { AuthContextDataBuilder } from './auth-context-data-builder';
+import { AuthGuard } from './guards/auth.guard';
 import { FetchContextDataMiddleware } from './middleware/fetch-context-data.middleware';
 import { AuthProvider } from './providers/auth.provider';
 
@@ -22,6 +23,8 @@ export class AuthModule {
       },
       AuthContextService,
       AuthContextDataBuilder,
+      AuthGuard,
+      FetchContextDataMiddleware,
     ]);
 
     return {

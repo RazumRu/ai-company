@@ -1,0 +1,174 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
+## Authoritative docs
+
+The `/docs` directory is the single source of truth for architecture, style, and process rules. Read the relevant files there before writing or changing code. This file is a condensed version for quick reference.
+
+---
+
+## Commands
+
+All commands run from the **repo root** unless noted otherwise.
+
+### Daily development
+```bash
+pnpm install                          # Install dependencies
+pnpm deps:up                          # Start local services (Podman: Postgres, Redis, Qdrant, Keycloak, LiteLLM)
+cd apps/api && pnpm start:dev         # Dev server with hot-reload (port 5000)
+```
+
+### Build & lint
+```bash
+pnpm build                            # Full monorepo build (Turbo)
+pnpm build:tests                      # Compile test files (run after build)
+pnpm lint:fix                         # Auto-fix lint + formatting
+pnpm lint                             # Lint without fixing (to see remaining issues)
+```
+
+### Testing
+```bash
+pnpm test:unit                        # Vitest unit tests (*.spec.ts) — mandatory
+pnpm test:integration                 # Vitest integration tests (*.int.ts) — NOT required in agent environment
+pnpm test:integration {filename}      # test only specific file
+
+# E2E (Cypress) — requires server running + deps up:
+cd apps/api
+pnpm test:e2e:generate-api            # Regenerate API types from Swagger (do this before E2E runs)
+pnpm test:e2e:local                   # Full E2E suite
+pnpm test:e2e:local --spec "cypress/e2e/path/to/spec.cy.ts"   # Single spec (preferred for iteration)
+```
+
+### Mandatory before finishing any work
+```bash
+pnpm run full-check                   # build + build:tests + lint:fix + unit tests — must pass
+```
+
+### Database
+```bash
+cd apps/api
+pnpm run migration:generate           # Auto-generate migration from entity changes — NEVER hand-write migrations
+pnpm migration:revert                 # Revert last migration
+pnpm seed:create                      # Create a new seed file
+pnpm seed:run-all                     # Run all seeds in timestamp order
+```
+
+### Commits
+```bash
+pnpm commit                           # Conventional commit via commitizen (type(scope): message)
+```
+
+### Script flag note
+Never use `--` as a separator when running pnpm scripts. Pass flags directly:
+```bash
+# ✅  pnpm test:e2e:local --spec "path"
+# ❌  pnpm test:e2e:local -- --spec "path"
+```
+
+---
+
+## Architecture overview
+
+This is a **pnpm + Turbo monorepo**. The single application lives in `apps/api` (NestJS on Fastify). Shared libraries live in `packages/`.
+
+```
+apps/api/src/
+├── main.ts                   # Entry point
+├── app.module.ts             # Root NestJS module
+├── v1/                       # Feature modules (see below)
+├── db/
+│   ├── migrations/           # Auto-generated TypeORM migrations
+│   ├── seeds/                # Seed files (timestamped, run in order)
+│   └── typeormconfig.ts
+├── environments/             # Env loading (dotenv)
+├── utils/                    # Shared utilities
+└── __tests__/integration/    # Integration tests (*.int.ts)
+
+packages/
+├── common/      # Logger (Pino+Sentry), custom exception classes, bootstrapper
+├── http-server/ # Fastify setup, Swagger, auth (Keycloak), middleware, request tracing
+├── metrics/     # Prometheus integration
+├── typeorm/     # TypeORM config wrapper, BaseDao, migration/seed CLI utilities
+└── cypress/     # Cypress helpers + API type generator (cy-generate-api)
+```
+
+### Layered architecture (per feature)
+
+Each feature in `src/v1/<feature-name>/` follows a strict layer structure:
+
+```
+Controller  →  Service  →  DAO  →  Entity  →  PostgreSQL
+(HTTP/validation)  (business logic)  (queries)  (ORM mapping)
+```
+
+```
+src/v1/feature-name/
+├── dto/                    # Zod-backed DTOs (all in one file per module)
+├── entities/               # TypeORM entities
+├── feature.controller.ts
+├── feature.service.ts
+├── feature.dao.ts
+└── feature.module.ts
+```
+
+- **Controllers** are thin: route + validate only.
+- **Services** own business logic and orchestrate DAOs.
+- **DAOs** use generic filter-based `find()` methods with a filters interface — avoid proliferating `findByX` methods. Only add specific methods when they involve complex joins/relations.
+- **DTOs** use Zod schemas with `createZodDto()` from `nestjs-zod`. Keep all DTOs for a module in a single file.
+- **Entities** are plain TypeORM-decorated classes. Schema changes must go through `migration:generate`.
+
+### Key modules in `src/v1/`
+
+| Module | Role |
+|---|---|
+| `graphs` | Core: graph CRUD, execution lifecycle, versioning, schema compilation |
+| `agents` | LangGraph-based agent runtime |
+| `agent-tools` | Tool implementations: web search, shell, file ops, GitHub, codebase search |
+| `agent-triggers` | Trigger execution (e.g. manual) |
+| `threads` | Thread/message/checkpoint persistence |
+| `graph-templates` | Pluggable node template registry |
+| `runtime` | Docker-based isolated execution (Dockerode) |
+| `notifications` | Socket.IO WebSocket event broadcasting |
+| `knowledge` | Vector embeddings + semantic search (Qdrant) |
+| `litellm` | LLM proxy integration |
+| `git-repositories` | GitHub repo management (Octokit) |
+| `agent-mcp` | Model Context Protocol server integration |
+| `cache` | Redis caching layer |
+| `qdrant` | Qdrant client wrapper |
+
+### Cross-cutting infrastructure
+
+- **Auth**: Keycloak-backed. `AuthContextService` provides the current user. Dev-mode bypass available via `AUTH_DEV_MODE=true`.
+- **Real-time**: Socket.IO for pushing graph/thread lifecycle events to clients.
+- **Task queue**: BullMQ (Redis) for async work like revision processing and knowledge reindexing.
+- **Observability**: Pino structured logging, Prometheus metrics at `/metrics`, optional Sentry.
+- **Vector search**: Qdrant stores knowledge chunk embeddings; queries use `text-embedding-3-small` via LiteLLM.
+- **LLM routing**: All model calls go through a local LiteLLM proxy (port 4000). Supports OpenAI, and Ollama for offline use.
+
+---
+
+## Coding conventions
+
+- **No `any`** — use specific types, generics, or `unknown` + type guards.
+- **No inline imports** — all imports at the top of the file.
+- **Naming**: PascalCase for classes/interfaces/enums/types; camelCase for variables/functions; PascalCase for enum members.
+- **Errors**: Throw custom exceptions from `@packages/common` (e.g. `NotFoundException`, `BadRequestException`). Never swallow errors silently.
+- **Migrations**: Always `pnpm run migration:generate`. Never hand-write or use `migration:create`.
+- **Generated files**: Never manually edit `cypress/api-definitions/` — regenerate with `pnpm test:e2e:generate-api`.
+- **Imports**: Shared packages are aliased as `@packages/*` (e.g. `import { … } from '@packages/common'`).
+
+---
+
+## Testing conventions
+
+- **Unit tests** (`*.spec.ts`): placed next to the source file. Use Vitest. Prefer updating an existing spec file over creating a new one.
+- **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). Not required in the agent environment.
+- **E2E tests** (`*.cy.ts`): in `apps/api/cypress/e2e/`. Smoke-test endpoints over HTTP. Require a running server + deps.
+- **Must-fail policy**: Tests must never conditionally skip based on missing env vars or services. If a prerequisite is absent, the test must fail with a clear error — no `it.skip` or early returns.
+- **Coverage thresholds** (when enabled): 90% lines/functions/statements, 80% branches.
+- **E2E logging**: use `cy.task('log', message)` to print to terminal output.
+
+---

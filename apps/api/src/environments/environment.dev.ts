@@ -46,4 +46,10 @@ export const environment = () =>
       'knowledge_chunks',
     ),
     knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', true),
+
+    // credential encryption (dev default key - DO NOT use in production)
+    credentialEncryptionKey: getEnv(
+      'CREDENTIAL_ENCRYPTION_KEY',
+      '7851424f98bd5e2a8941af9c4a43aea5e547790176d9689554ddbbfcf94bd8fa',
+    ),
   }) as const satisfies Record<string, string | number | boolean>;

@@ -15,4 +15,10 @@ export const environment = () =>
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks_test',
     ),
+
+    // credential encryption (test default key - DO NOT use in production)
+    credentialEncryptionKey: getEnv(
+      'CREDENTIAL_ENCRYPTION_KEY',
+      'a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890',
+    ),
   }) as const satisfies Record<string, string | number | boolean>;

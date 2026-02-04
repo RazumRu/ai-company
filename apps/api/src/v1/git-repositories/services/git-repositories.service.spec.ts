@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@packages/common';
+import { InternalException, NotFoundException } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -73,6 +73,7 @@ describe('GitRepositoriesService', () => {
         url: 'https://github.com/octocat/Hello-World.git',
         provider: GitRepositoryProvider.GITHUB,
         createdBy: mockUserId,
+        encryptedToken: null,
       });
       expect(result).toMatchObject({
         owner: 'octocat',
@@ -175,6 +176,47 @@ describe('GitRepositoriesService', () => {
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
       expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
+    });
+  });
+
+  describe('credential encryption', () => {
+    describe('encryptCredential', () => {
+      it('produces a string with three colon-separated base64 segments', () => {
+        const result = service.encryptCredential('hello');
+        const parts = result.split(':');
+        expect(parts).toHaveLength(3);
+        parts.forEach((part) => {
+          expect(() => Buffer.from(part, 'base64')).not.toThrow();
+        });
+      });
+
+      it('produces different ciphertexts for the same plaintext (IV randomness)', () => {
+        const a = service.encryptCredential('secret');
+        const b = service.encryptCredential('secret');
+        expect(a).not.toBe(b);
+      });
+    });
+
+    describe('decryptCredential', () => {
+      it('round-trips: decrypt(encrypt(x)) === x', () => {
+        const original = 'ghp_abc123XYZ';
+        const encrypted = service.encryptCredential(original);
+        const decrypted = service.decryptCredential(encrypted);
+        expect(decrypted).toBe(original);
+      });
+
+      it('round-trips with unicode content', () => {
+        const original = 'token_with_spëcîal_çhàrs_🔐';
+        const encrypted = service.encryptCredential(original);
+        const decrypted = service.decryptCredential(encrypted);
+        expect(decrypted).toBe(original);
+      });
+
+      it('throws DECRYPTION_FAILED with malformed ciphertext', () => {
+        expect(() => service.decryptCredential('not-valid')).toThrow(
+          InternalException,
+        );
+      });
     });
   });
 });

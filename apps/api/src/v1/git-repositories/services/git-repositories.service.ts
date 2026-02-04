@@ -1,14 +1,22 @@
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
+import { InternalException, NotFoundException } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 
+import { environment } from '../../../environments';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import {
   CreateRepository,
   GetRepositoriesQueryDto,
   GitRepositoryDto,
+  UpdateRepository,
 } from '../dto/git-repositories.dto';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
+
+const ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 12;
+const KEY_HEX_LENGTH = 64; // 32 bytes = 256 bits
 
 @Injectable()
 export class GitRepositoriesService {
@@ -26,6 +34,7 @@ export class GitRepositoriesService {
       url: data.url,
       provider: data.provider,
       createdBy: userId,
+      encryptedToken: data.token ? this.encryptCredential(data.token) : null,
     });
 
     return this.prepareRepositoryResponse(created);
@@ -34,11 +43,10 @@ export class GitRepositoriesService {
   async updateRepository(
     ctx: AuthContextStorage,
     id: string,
-    data: Partial<CreateRepository>,
+    data: UpdateRepository,
   ): Promise<GitRepositoryDto> {
     const userId = ctx.checkSub();
 
-    // Verify ownership
     const existing = await this.gitRepositoriesDao.getOne({
       id,
       createdBy: userId,
@@ -48,7 +56,15 @@ export class GitRepositoriesService {
       throw new NotFoundException('REPOSITORY_NOT_FOUND');
     }
 
-    const updated = await this.gitRepositoriesDao.updateById(id, data);
+    const updatePayload: Record<string, unknown> = {};
+    if (data.url) {
+      updatePayload.url = data.url;
+    }
+    if (data.token) {
+      updatePayload.encryptedToken = this.encryptCredential(data.token);
+    }
+
+    const updated = await this.gitRepositoriesDao.updateById(id, updatePayload);
 
     return this.prepareRepositoryResponse(updated!);
   }
@@ -119,5 +135,55 @@ export class GitRepositoriesService {
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Credential encryption
+  // ---------------------------------------------------------------------------
+
+  private parseKey(key: string | undefined): Buffer {
+    if (!key || key.length !== KEY_HEX_LENGTH) {
+      throw new InternalException('CREDENTIAL_ENCRYPTION_KEY_MISSING');
+    }
+    return Buffer.from(key, 'hex');
+  }
+
+  encryptCredential(plaintext: string): string {
+    const keyBuffer = this.parseKey(environment.credentialEncryptionKey);
+    const iv = randomBytes(IV_LENGTH);
+    const cipher = createCipheriv(ALGORITHM, keyBuffer, iv);
+
+    let encrypted = cipher.update(plaintext, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+
+    const authTag = cipher.getAuthTag().toString('base64');
+    const ivBase64 = iv.toString('base64');
+
+    return `${ivBase64}:${authTag}:${encrypted}`;
+  }
+
+  decryptCredential(ciphertext: string): string {
+    const keyBuffer = this.parseKey(environment.credentialEncryptionKey);
+
+    const parts = ciphertext.split(':');
+    if (parts.length !== 3) {
+      throw new InternalException('DECRYPTION_FAILED');
+    }
+
+    const [ivBase64, authTagBase64, encrypted] = parts;
+
+    try {
+      const iv = Buffer.from(ivBase64!, 'base64');
+      const authTag = Buffer.from(authTagBase64!, 'base64');
+      const decipher = createDecipheriv(ALGORITHM, keyBuffer, iv);
+      decipher.setAuthTag(authTag);
+
+      let decrypted = decipher.update(encrypted!, 'base64', 'utf8');
+      decrypted += decipher.final('utf8');
+
+      return decrypted;
+    } catch {
+      throw new InternalException('DECRYPTION_FAILED');
+    }
   }
 }

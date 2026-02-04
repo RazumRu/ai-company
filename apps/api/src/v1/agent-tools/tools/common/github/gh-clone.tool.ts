@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
 import { GitRepositoryProvider } from '../../../../git-repositories/git-repositories.types';
+import { GitRepositoriesService } from '../../../../git-repositories/services/git-repositories.service';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -52,6 +53,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
 
   constructor(
     private readonly gitRepositoriesDao: GitRepositoriesDao,
+    private readonly gitRepositoriesService: GitRepositoriesService,
     private readonly logger: DefaultLogger,
   ) {
     super();
@@ -153,10 +155,10 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       ? args.workdir
       : path.join(res.execPath || '', args.repo);
 
-    // Track the cloned repository
+    // Track the cloned repository with GitHub token
     const userId = cfg.configurable?.userId as string | undefined;
     if (userId) {
-      await this.upsertGitRepository(args, userId);
+      await this.upsertGitRepository(args, userId, config.patToken);
     }
 
     return {
@@ -170,6 +172,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   private async upsertGitRepository(
     args: GhCloneToolSchemaType,
     userId: string,
+    patToken: string,
   ): Promise<void> {
     try {
       const existing = await this.gitRepositoriesDao.getOne({
@@ -180,10 +183,13 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       });
 
       const url = `https://github.com/${args.owner}/${args.repo}.git`;
+      const encryptedToken =
+        this.gitRepositoriesService.encryptCredential(patToken);
 
       if (existing) {
         await this.gitRepositoriesDao.updateById(existing.id, {
           url,
+          encryptedToken,
         });
       } else {
         await this.gitRepositoriesDao.create({
@@ -192,6 +198,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
           url,
           provider: GitRepositoryProvider.GITHUB,
           createdBy: userId,
+          encryptedToken,
         });
       }
     } catch (error) {

@@ -17,6 +17,7 @@ import { environment } from '../../environments';
 import { GraphCheckpointEntity } from '../../v1/agents/entity/graph-chekpoints.entity';
 import { GraphCheckpointWritesEntity } from '../../v1/agents/entity/graph-chekpoints-writes.entity';
 import { GitRepositoryEntity } from '../../v1/git-repositories/entity/git-repository.entity';
+import { RepoIndexEntity } from '../../v1/git-repositories/entity/repo-index.entity';
 import { GraphEntity } from '../../v1/graphs/entity/graph.entity';
 import { GraphRevisionEntity } from '../../v1/graphs/entity/graph-revision.entity';
 import { KnowledgeDocEntity } from '../../v1/knowledge/entity/knowledge-doc.entity';
@@ -82,6 +83,7 @@ export const createTestModule = async (
           KnowledgeDocEntity,
           RuntimeInstanceEntity,
           GitRepositoryEntity,
+          RepoIndexEntity,
         ],
       }),
     ),

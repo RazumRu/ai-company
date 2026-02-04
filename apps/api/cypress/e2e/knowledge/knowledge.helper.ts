@@ -2,12 +2,13 @@ import {
   KnowledgeContentSuggestionRequestDto,
   KnowledgeContentSuggestionResponseDto,
   KnowledgeDocDto,
-  KnowledgeDocInputDto,
+  KnowledgeDocCreateDto,
+  KnowledgeDocUpdateDto,
 } from '../../api-definitions';
 import { reqHeaders } from '../common.helper';
 
 export const createKnowledgeDoc = (
-  data: KnowledgeDocInputDto,
+  data: KnowledgeDocCreateDto,
   headers = reqHeaders,
 ) =>
   cy.request<KnowledgeDocDto>({
@@ -20,7 +21,7 @@ export const createKnowledgeDoc = (
 
 export const updateKnowledgeDoc = (
   id: string,
-  data: KnowledgeDocInputDto,
+  data: KnowledgeDocUpdateDto,
   headers = reqHeaders,
 ) =>
   cy.request<KnowledgeDocDto>({

@@ -29,4 +29,7 @@ export class GitRepositoryEntity extends TimestampsEntity {
   @Column({ type: 'uuid' })
   @Index()
   createdBy!: string;
+
+  @Column({ type: 'text', nullable: true })
+  encryptedToken!: string | null;
 }

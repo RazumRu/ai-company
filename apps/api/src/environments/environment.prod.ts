@@ -74,7 +74,16 @@ export const environment = () =>
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks',
     ),
-    // --- FilesCodebaseSearchTool ---
+    // --- Credential encryption ---
+    // Required: 64-char hex string (32 bytes) for AES-256-GCM encryption
+    // Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+    credentialEncryptionKey: getEnv('CREDENTIAL_ENCRYPTION_KEY'),
+
+    // --- Codebase indexing ---
+    codebaseIndexTokenThreshold: +getEnv(
+      'CODEBASE_INDEX_TOKEN_THRESHOLD',
+      '30000',
+    ),
     codebaseUuidNamespace: getEnv(
       'CODEBASE_UUID_NAMESPACE',
       '6ba7b811-9dad-11d1-80b4-00c04fd430c8',
