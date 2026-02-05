@@ -68,6 +68,7 @@ export class OpenaiService {
   private readonly client = new OpenAI({
     apiKey: environment.litellmMasterKey,
     baseURL: environment.llmBaseUrl,
+    timeout: environment.llmRequestTimeoutMs,
   });
 
   constructor(private readonly litellmService: LitellmService) {}

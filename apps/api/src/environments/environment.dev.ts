@@ -26,6 +26,7 @@ export const environment = () =>
 
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY', 'master'),
+    llmRequestTimeoutMs: +getEnv('LLM_REQUEST_TIMEOUT_MS', '600000'),
 
     // auth
     authDevMode: getEnv('AUTH_DEV_MODE', true),

@@ -17,8 +17,8 @@ import {
 } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
-const DEFAULT_TOP_K = 10;
-const MAX_TOP_K = 15;
+const DEFAULT_TOP_K = 15;
+const MAX_TOP_K = 30;
 
 const CodebaseSearchSchema = z.object({
   query: z
@@ -87,6 +87,11 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       indexing runs in the background — in that case the tool will indicate that
       indexing is in progress and you should retry shortly.
 
+      ### Prerequisites
+      - Repository MUST be cloned first. Use \`gh_clone\` if not already done.
+      - Use the exact path returned by gh_clone for gitRepoDirectory.
+      - \`gitRepoDirectory\` must point to the repository root (containing .git folder).
+
       ### When to Use
       - FIRST STEP for any codebase discovery or "where is X?" question
       - Large repos where reading many files is slow
@@ -94,17 +99,17 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
       ### Requirements
       - Must be inside a git repository
-      - \`gitRepoDirectory\` must point to the repository root (containing .git folder)
       - Query must be a human-readable phrase or question (not a single word)
 
       ### Recommended Flow
-      1) Run \`codebase_search\` with a semantic query.
-      2) Read top results with \`files_read\`.
-      3) Use \`files_search_text\` for exact usages or strings.
+      1) Clone repo with \`gh_clone\` (if not already cloned).
+      2) Run \`codebase_search\` with a semantic query using the cloned path.
+      3) Read top results with \`files_read\`.
+      4) Use \`files_search_text\` for exact usages or strings.
 
       ### Example
       \`\`\`json
-      {"query":"where is auth middleware created?","top_k":5,"gitRepoDirectory":"/workspace/project","language":"ts"}
+      {"query":"where is auth middleware created?","top_k":5,"gitRepoDirectory":"/runtime-workspace/project","language":"ts"}
       \`\`\`
     `;
   }
@@ -144,8 +149,17 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     if (!repoRoot) {
       return {
         output: {
-          error:
-            'codebase_search requires a cloned git repository (no git work tree detected).',
+          error: dedent`
+            codebase_search requires a cloned git repository.
+
+            No git repository found at: ${args.gitRepoDirectory}
+
+            REQUIRED ACTION: Clone the repository first using gh_clone, then retry with the returned path.
+
+            Example workflow:
+            1. gh_clone({"owner": "owner", "repo": "repo-name"}) -> returns {"path": "/runtime-workspace/repo-name"}
+            2. codebase_search({"query": "your query", "gitRepoDirectory": "/runtime-workspace/repo-name"})
+          `,
         },
         messageMetadata,
       };

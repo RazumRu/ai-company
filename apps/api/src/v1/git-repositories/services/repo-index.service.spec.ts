@@ -51,6 +51,7 @@ const mockRepoIndexerService = {
   buildCollectionName: vi.fn().mockReturnValue('codebase_my_repo_main_1536'),
   runFullIndex: vi.fn().mockResolvedValue(undefined),
   runIncrementalIndex: vi.fn().mockResolvedValue(undefined),
+  getTotalIndexedTokens: vi.fn().mockResolvedValue(50000),
 };
 
 const mockRepoIndexQueueService = {

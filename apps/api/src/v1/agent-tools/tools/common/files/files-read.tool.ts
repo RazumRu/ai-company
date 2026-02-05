@@ -97,6 +97,17 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       ### Overview
       Read file contents by absolute path. Supports line ranges and multiple files per call.
 
+      ### CRITICAL: Path Requirements
+      - ALL paths MUST be absolute (start with /runtime-workspace/)
+      - NEVER use relative paths like "apps/api/src/..."
+      - Use paths exactly as returned by \`files_find_paths\` or \`codebase_search\`
+
+      ### Correct Path Examples
+      ✅ /runtime-workspace/my-project/src/index.ts
+      ✅ /runtime-workspace/ai-company/apps/api/src/main.ts
+      ❌ apps/api/src/main.ts (WRONG - relative path)
+      ❌ src/index.ts (WRONG - relative path)
+
       ### When to Use
       - View source/config before edits
       - Pull context around a search match
@@ -116,17 +127,17 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       ### Examples
       **1) Read a line range:**
       \`\`\`json
-      {"filesToRead":[{"filePath":"/repo/src/large.ts","fromLineNumber":120,"toLineNumber":160}]}
+      {"filesToRead":[{"filePath":"/runtime-workspace/project/src/large.ts","fromLineNumber":120,"toLineNumber":160}]}
       \`\`\`
 
       **2) Read multiple files at once:**
       \`\`\`json
-      {"filesToRead":[{"filePath":"/repo/tsconfig.json"},{"filePath":"/repo/package.json"}]}
+      {"filesToRead":[{"filePath":"/runtime-workspace/project/tsconfig.json"},{"filePath":"/runtime-workspace/project/package.json"}]}
       \`\`\`
 
       **3) Batch + range:**
       \`\`\`json
-      {"filesToRead":[{"filePath":"/repo/src/a.ts","fromLineNumber":10,"toLineNumber":40},{"filePath":"/repo/package.json"}]}
+      {"filesToRead":[{"filePath":"/runtime-workspace/project/src/a.ts","fromLineNumber":10,"toLineNumber":40},{"filePath":"/runtime-workspace/project/package.json"}]}
       \`\`\`
     `;
   }
@@ -148,6 +159,23 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     const messageMetadata = { __title: title };
 
     for (const read of args.filesToRead) {
+      // Early validation for path mistakes
+      if (!read.filePath.startsWith('/')) {
+        return {
+          output: {
+            error: dedent`
+              Invalid path: "${read.filePath}" is a relative path.
+
+              All paths must be absolute and start with /runtime-workspace/.
+
+              TIP: Use paths exactly as returned by codebase_search or files_find_paths.
+              Example: /runtime-workspace/my-project/${read.filePath}
+            `,
+          },
+          messageMetadata,
+        };
+      }
+
       const hasStart = read.fromLineNumber !== undefined;
       const hasEnd = read.toLineNumber !== undefined;
       if (hasStart && !hasEnd) {

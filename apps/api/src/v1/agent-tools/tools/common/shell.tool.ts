@@ -89,8 +89,33 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       ### Overview
       Executes shell commands in runtime environment. Commands within same thread share persistent session (env/cwd persist). Default cwd: \`/runtime-workspace\`. Use absolute paths under \`/runtime-workspace\` for cross-tool compatibility.
 
-      **IMPORTANT: Persistent Shell Session**
-      All commands execute in ONE continuous session - the current directory and environment variables persist between commands. Do NOT run \`cd\` at the beginning of every command; the working directory stays where you left it.
+      ### CRITICAL: Working Directory After Clone
+      - Default starting directory: /runtime-workspace
+      - After gh_clone returns {"path": "/runtime-workspace/my-repo"}:
+        - Either: \`cd /runtime-workspace/my-repo\` first
+        - Or: use full absolute paths in all commands
+
+      ### Common Mistake
+      ❌ \`npm install\` right after clone (still in /runtime-workspace - will fail!)
+      ✅ \`cd /runtime-workspace/my-repo && npm install\`
+      ✅ Or: run \`cd /runtime-workspace/my-repo\` first, then \`npm install\` in next command
+
+      ### Session Persistence
+      - \`cd\` changes persist between shell calls within the same thread
+      - No need to repeat \`cd\` if already in correct directory
+      - Environment variables also persist
+
+      **Example:**
+      \`\`\`bash
+      # First command: change directory
+      cd /runtime-workspace/myproject
+
+      # Second command: you're ALREADY in /runtime-workspace/myproject
+      npm install  # NO need for "cd && npm install"
+
+      # Third command: still in the same directory
+      npm test  # Still in /runtime-workspace/myproject
+      \`\`\`
 
       ### When to Use
       File/git operations, build/test/install commands, system inspection, custom scripts, or when specialized tools don't exist.
@@ -99,35 +124,12 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       For reading/finding/searching/editing files → use specialized file tools (better structured output, safer operations).
 
       ### Best Practices
-      **1. Session persists - avoid redundant \`cd\` commands:**
-      \`\`\`bash
-      # First command: change directory
-      cd /runtime-workspace/myproject
-
-      # Second command: you're ALREADY in /runtime-workspace/myproject
-      npm install  # NO need for "cd /runtime-workspace/myproject && npm install"
-
-      # Third command: still in the same directory
-      npm test  # Still in /runtime-workspace/myproject
-      \`\`\`
-
-      **2. Chain related commands (only when needed in single call):**
-      \`\`\`bash
-      # Only chain if you need it all in one command
-      cd /repo && npm install && npm test
-
-      # Better: use session persistence across separate commands
-      # Command 1: cd /repo
-      # Command 2: npm install  (already in /repo)
-      # Command 3: npm test     (still in /repo)
-      \`\`\`
-
-      **3. Quote paths with spaces:**
+      **1. Quote paths with spaces:**
       \`\`\`bash
       cat "/path/with spaces/file.txt"
       \`\`\`
 
-      **4. Constrain output to avoid token waste:**
+      **2. Constrain output to avoid token waste:**
       \`\`\`bash
       rg "TODO" --max-count=10 /workspace/src
       \`\`\`
@@ -202,20 +204,32 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         cfg,
       );
 
-      const stderr =
-        res.exitCode === 124
-          ? trimOutput(
-              `${res.stderr ? `${res.stderr}\n` : ''}Command timed out after ${
-                (res.timeout || timeoutMs) ?? 'the configured'
-              } ms (exit code 124).`,
-            )
-          : trimOutput(res.stderr);
+      let stderr = res.stderr;
+
+      // Handle timeout
+      if (res.exitCode === 124) {
+        stderr = `${stderr ? `${stderr}\n` : ''}Command timed out after ${
+          (res.timeout || timeoutMs) ?? 'the configured'
+        } ms (exit code 124).`;
+      }
+
+      // Add helpful context for common directory-related errors
+      if (
+        res.exitCode !== 0 &&
+        (stderr.includes('ENOENT') ||
+          stderr.includes('No such file or directory') ||
+          stderr.includes('No package.json') ||
+          stderr.includes('ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND') ||
+          stderr.includes("can't cd to"))
+      ) {
+        stderr = `${stderr}\n\nTIP: You may be in the wrong directory. After cloning a repo with gh_clone, you must cd into it first (e.g., cd /runtime-workspace/repo-name) before running npm/pnpm commands.`;
+      }
 
       return {
         output: {
           exitCode: res.exitCode,
           stdout: trimOutput(res.stdout),
-          stderr,
+          stderr: trimOutput(stderr),
         },
         messageMetadata: {
           __title: title,

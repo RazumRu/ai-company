@@ -80,9 +80,23 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       ### Overview
       Replace exact text blocks (oldText -> newText). Use for precise edits or when \`files_edit\` fails.
 
-      ### Required
-      - Run \`files_read\` first and copy exact oldText from the file.
-      - Matching uses whitespace-normalized block comparison.
+      ### CRITICAL: How to Use oldText Correctly
+      1. **ALWAYS run files_read first** to get the current file content
+      2. **Copy-paste the EXACT text** from the files_read output - DO NOT type from memory
+      3. Include enough context to make the match unique (3-5 lines)
+      4. Whitespace and indentation MUST match exactly
+
+      ### Why This Matters
+      - The tool uses exact text matching
+      - Even one wrong space or character will fail
+      - File content may have changed since you last read it
+
+      ### Correct Workflow
+      \`\`\`
+      Step 1: files_read({"filesToRead": [{"filePath": "/runtime-workspace/project/file.ts"}]})
+      Step 2: Copy exact text from output
+      Step 3: files_apply_changes with copied oldText
+      \`\`\`
 
       ### How Matching Works
       - OldText must match exactly once unless \`replaceAll: true\`.
@@ -104,12 +118,12 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       ### Examples
       **1) Replace all occurrences:**
       \`\`\`json
-      {"filePath":"/repo/config.ts","oldText":"oldFunctionName","newText":"newFunctionName","replaceAll":true}
+      {"filePath":"/runtime-workspace/project/config.ts","oldText":"oldFunctionName","newText":"newFunctionName","replaceAll":true}
       \`\`\`
 
       **2) Unique block with context:**
       \`\`\`json
-      {"filePath":"/repo/module.ts","oldText":"  providers: [\\n    AService,\\n    BService,\\n  ],","newText":"  providers: [\\n    AService,\\n    BService,\\n    CService,\\n  ],"}
+      {"filePath":"/runtime-workspace/project/module.ts","oldText":"  providers: [\\n    AService,\\n    BService,\\n  ],","newText":"  providers: [\\n    AService,\\n    BService,\\n    CService,\\n  ],"}
       \`\`\`
     `;
   }
@@ -279,16 +293,30 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     if (foundMatches.length === 0) {
-      const previewLines = this.normalizeWhitespace(oldText, true)
-        .split('\n')
-        .slice(0, 3);
+      const normalizedOld = this.normalizeWhitespace(oldText, true);
+      const previewLines = normalizedOld.split('\n').slice(0, 3);
       const preview =
-        previewLines.length <
-        this.normalizeWhitespace(oldText, true).split('\n').length
+        previewLines.length < normalizedOld.split('\n').length
           ? `${previewLines.join('\n')}...`
-          : this.normalizeWhitespace(oldText, true);
+          : normalizedOld;
       errors.push(
-        `Could not find match for oldText in file. Searched for (normalized): "${preview}". TIP: Use files_read to copy the EXACT text from the file, then modify only what needs to change. Don't guess or type from memory.`,
+        dedent`
+          Could not find match for oldText in file.
+
+          Searched for (normalized):
+          "${preview}"
+
+          REQUIRED ACTION:
+          1. Run files_read on this file to see current content
+          2. Copy the EXACT text from the output (including whitespace)
+          3. Do NOT type from memory or guess
+
+          Common mistakes:
+          - Wrong indentation or spaces
+          - Different quote styles (" vs ')
+          - Missing or extra newlines
+          - File was modified since last read
+        `,
       );
     } else if (foundMatches.length > 1 && !replaceAll) {
       const matchLocations = foundMatches
@@ -394,6 +422,18 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): Promise<ToolInvokeResult<FilesApplyChangesToolOutput>> {
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
+
+    // Detect no-op calls early (oldText === newText)
+    if (args.oldText !== '' && args.oldText === args.newText) {
+      return {
+        output: {
+          success: false,
+          error:
+            'oldText and newText are identical - no changes would be made. This is a no-op.',
+        },
+        messageMetadata,
+      };
+    }
 
     const isNewFile = args.oldText === '';
 

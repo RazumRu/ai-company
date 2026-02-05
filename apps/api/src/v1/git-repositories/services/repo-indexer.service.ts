@@ -53,6 +53,7 @@ type QdrantPointPayload = {
   file_hash: string;
   commit: string;
   indexed_at: string;
+  token_count: number;
 };
 
 export interface RepoIndexParams {
@@ -871,6 +872,7 @@ export class RepoIndexerService {
         file_hash: item.fileHash,
         commit: item.commit,
         indexed_at: indexedAt,
+        token_count: chunk.tokenCount,
       };
       return { id, vector, payload };
     });
@@ -1084,15 +1086,18 @@ export class RepoIndexerService {
       }
 
       // File content exists - copy all chunks with updated path and commit
-      // Also calculate token counts for progress tracking
+      // Use stored token_count if available, otherwise compute (backwards compatibility)
       const copiedPointsWithTokens = await Promise.all(
         allPoints.map(async (point) => {
           const payload = point.payload as QdrantPointPayload;
-          // Calculate token count from chunk text
-          const chunkTokenCount = await this.litellmService.countTokens(
-            embeddingModel,
-            payload.text,
-          );
+
+          // Use stored token_count if available, fall back to computing for old data
+          const chunkTokenCount =
+            payload.token_count ??
+            (await this.litellmService.countTokens(
+              embeddingModel,
+              payload.text,
+            ));
 
           // Generate new point ID based on new path
           const newId = this.buildPointId(repoId, newPath, payload.chunk_hash);
@@ -1105,6 +1110,7 @@ export class RepoIndexerService {
                 path: newPath,
                 commit: currentCommit,
                 indexed_at: new Date().toISOString(),
+                token_count: chunkTokenCount, // Ensure token_count is set
               },
             },
             tokenCount: chunkTokenCount,
@@ -1204,16 +1210,14 @@ export class RepoIndexerService {
 
   /**
    * Calculate total tokens stored in Qdrant for this repo.
-   * This gives an accurate count of all indexed content.
-   * Uses batched parallel processing for better performance.
+   * Uses token_count stored in payload for efficiency.
+   * Falls back to counting tokens for old data without token_count.
    */
   async getTotalIndexedTokens(
     collection: string,
     repoId: string,
     embeddingModel: string,
   ): Promise<number> {
-    const BATCH_SIZE = 100; // Process tokens in parallel batches
-
     try {
       const allPoints = await this.qdrantService.scrollAll(collection, {
         filter: this.buildRepoFilter(repoId),
@@ -1222,23 +1226,31 @@ export class RepoIndexerService {
       } as Parameters<QdrantService['scrollAll']>[1]);
 
       let totalTokens = 0;
+      const pointsNeedingCount: { text: string }[] = [];
 
-      // Process in batches for parallel token counting
-      for (let i = 0; i < allPoints.length; i += BATCH_SIZE) {
-        const batch = allPoints.slice(i, i + BATCH_SIZE);
-        const tokenCounts = await Promise.all(
-          batch.map(async (point) => {
-            const payload = point.payload as QdrantPointPayload | undefined;
-            if (payload?.text) {
-              return this.litellmService.countTokens(
-                embeddingModel,
-                payload.text,
-              );
-            }
-            return 0;
-          }),
-        );
-        totalTokens += tokenCounts.reduce((sum, count) => sum + count, 0);
+      // First pass: sum stored token_count, collect points that need counting
+      for (const point of allPoints) {
+        const payload = point.payload as QdrantPointPayload | undefined;
+        if (payload?.token_count) {
+          totalTokens += payload.token_count;
+        } else if (payload?.text) {
+          // Old data without token_count - needs counting
+          pointsNeedingCount.push({ text: payload.text });
+        }
+      }
+
+      // Second pass: count tokens for old data (backwards compatibility)
+      if (pointsNeedingCount.length > 0) {
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < pointsNeedingCount.length; i += BATCH_SIZE) {
+          const batch = pointsNeedingCount.slice(i, i + BATCH_SIZE);
+          const tokenCounts = await Promise.all(
+            batch.map((p) =>
+              this.litellmService.countTokens(embeddingModel, p.text),
+            ),
+          );
+          totalTokens += tokenCounts.reduce((sum, count) => sum + count, 0);
+        }
       }
 
       return totalTokens;

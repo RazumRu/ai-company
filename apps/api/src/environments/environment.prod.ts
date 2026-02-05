@@ -37,6 +37,7 @@ export const environment = () =>
 
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY'),
+    llmRequestTimeoutMs: +getEnv('LLM_REQUEST_TIMEOUT_MS', '600000'),
     llmLargeModel: getEnv('LLM_LARGE_MODEL', 'openai/gpt-5.2'),
     llmLargeCodeModel: getEnv('LLM_LARGE_CODE_MODEL', 'gpt-5.2-codex'),
     llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'gpt-5.1-codex-mini'),

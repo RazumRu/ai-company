@@ -771,7 +771,7 @@ describe('FilesEditTool', () => {
       expect(result.error).toBeDefined();
       if (result.error) {
         expect(result.error).toContain('Could not find anchors');
-        expect(result.error).toContain('EXACT text from the current file');
+        expect(result.error).toContain('EXACT text');
       }
     });
 

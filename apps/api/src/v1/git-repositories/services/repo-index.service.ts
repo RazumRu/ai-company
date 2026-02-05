@@ -252,10 +252,20 @@ export class RepoIndexService implements OnModuleInit {
           );
         }
 
+        // Get total tokens from Qdrant - this gives accurate count of all indexed content
+        const totalIndexedTokens =
+          await this.repoIndexerService.getTotalIndexedTokens(
+            collection,
+            repoUrl,
+            embeddingModel,
+          );
+
         await this.repoIndexDao.updateById(entity.id, {
           status: RepoIndexStatus.Completed,
           lastIndexedCommit: currentCommit,
           errorMessage: null,
+          indexedTokens: totalIndexedTokens,
+          estimatedTokens: totalIndexedTokens, // Update to reflect actual total
         });
 
         return {
@@ -264,6 +274,8 @@ export class RepoIndexService implements OnModuleInit {
             ...entity,
             status: RepoIndexStatus.Completed,
             lastIndexedCommit: currentCommit,
+            indexedTokens: totalIndexedTokens,
+            estimatedTokens: totalIndexedTokens,
           },
         };
       } catch (err) {
@@ -526,6 +538,7 @@ export class RepoIndexService implements OnModuleInit {
         qdrantCollection: collection,
         errorMessage: null,
         indexedTokens: totalIndexedTokens,
+        estimatedTokens: totalIndexedTokens, // Update to reflect actual total
       });
 
       this.logger.debug('Repo index job completed', {

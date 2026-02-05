@@ -703,7 +703,21 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
           }
         }
         return {
-          error: `Could not find anchors in file. beforeAnchor: "${normalized.beforeAnchor.substring(0, 100)}...", afterAnchor: "${normalized.afterAnchor.substring(0, 100)}...". The anchors must be EXACT text from the current file. Try with useSmartModel=true or files_apply_changes if you know the exact oldText/newText.`,
+          error: dedent`
+            Could not find anchors in file.
+
+            beforeAnchor: "${normalized.beforeAnchor.substring(0, 80)}..."
+            afterAnchor: "${normalized.afterAnchor.substring(0, 80)}..."
+
+            SUGGESTED ACTIONS:
+            1. Run files_read first to get current file content
+            2. Ensure your codeSketch anchors match EXACT text in the file
+            3. Include more unique context (function names, imports, comments)
+
+            Alternative: Use files_apply_changes with exact oldText/newText copied from files_read output.
+
+            If this is a retry, try useSmartModel=true for better anchor extraction.
+          `,
         };
       }
 
@@ -989,6 +1003,27 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
         },
         messageMetadata,
       };
+    }
+
+    // Early no-op detection for markerless sketches (full file rewrite that matches current content)
+    if (!args.codeSketch.includes(ANCHOR_MARKER)) {
+      const normalizeForNoopCheck = (s: string) => {
+        const t = s.replace(/\r\n/g, '\n').trim();
+        return t;
+      };
+      const normalizedSketch = normalizeForNoopCheck(args.codeSketch);
+      const normalizedFile = normalizeForNoopCheck(fileContent);
+      if (normalizedSketch === normalizedFile) {
+        return {
+          output: {
+            success: false,
+            error:
+              'Sketch is identical to current file content - no changes would be made.',
+            filePath: args.filePath,
+          },
+          messageMetadata,
+        };
+      }
     }
 
     const useSmartModel = args.useSmartModel ?? false;
