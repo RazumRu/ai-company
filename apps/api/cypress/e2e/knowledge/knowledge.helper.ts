@@ -1,8 +1,8 @@
 import {
   KnowledgeContentSuggestionRequestDto,
   KnowledgeContentSuggestionResponseDto,
-  KnowledgeDocDto,
   KnowledgeDocCreateDto,
+  KnowledgeDocDto,
   KnowledgeDocUpdateDto,
 } from '../../api-definitions';
 import { reqHeaders } from '../common.helper';

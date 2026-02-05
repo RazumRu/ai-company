@@ -75,6 +75,9 @@ export class ReportStatusTool extends BaseTool<ReportStatusToolSchemaType> {
 
     return {
       output: { reported: true },
+      messageMetadata: {
+        __hideForLlm: true, // Hide the tool message itself - only the AI message should be visible
+      },
       additionalMessages: [markMessageHideForLlm(reportMessage)],
     };
   }

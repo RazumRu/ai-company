@@ -38,6 +38,9 @@ export class RepoIndexEntity extends TimestampsEntity {
   @Column({ type: 'int', nullable: true })
   estimatedTokens!: number | null;
 
+  @Column({ type: 'int', nullable: true, default: 0 })
+  indexedTokens!: number | null;
+
   @Column({ type: 'text', nullable: true })
   errorMessage!: string | null;
 }

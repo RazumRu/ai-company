@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { environment } from '../../../environments';
 import { FilesCodebaseSearchTool } from '../../../v1/agent-tools/tools/common/files/files-codebase-search.tool';
 import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
-import { RepoIndexService } from '../../../v1/git-repositories/services/repo-index.service';
+import { RepoIndexDao } from '../../../v1/git-repositories/dao/repo-index.dao';
 import { RepoIndexerService } from '../../../v1/git-repositories/services/repo-indexer.service';
 import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
 import { OpenaiService } from '../../../v1/openai/openai.service';
@@ -44,6 +44,7 @@ describe('Codebase search tool (integration)', () => {
   let tool: FilesCodebaseSearchTool;
   let qdrantService: QdrantService;
   let repoIndexerService: RepoIndexerService;
+  let repoIndexDao: RepoIndexDao;
   let runtime: BaseRuntime;
   let runtimeThreadProvider: RuntimeThreadProvider;
   let collectionName: string | null = null;
@@ -90,6 +91,7 @@ describe('Codebase search tool (integration)', () => {
     tool = await app.resolve(FilesCodebaseSearchTool);
     qdrantService = app.get(QdrantService);
     repoIndexerService = app.get(RepoIndexerService);
+    repoIndexDao = app.get(RepoIndexDao);
 
     runtime = new DockerRuntime({ socketPath: environment.dockerSocket });
     await runtime.start({
@@ -166,7 +168,7 @@ EOF`,
       const collection = resolveCollectionName(repoRoot);
 
       const initial = await tool.invoke(
-        { query: alphaToken, top_k: 5, directory: repoRoot },
+        { query: alphaToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -188,7 +190,7 @@ EOF`,
       await execInRuntime('git commit -m "update"');
 
       const updated = await tool.invoke(
-        { query: betaToken, top_k: 5, directory: repoRoot },
+        { query: betaToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -200,7 +202,7 @@ EOF`,
       ).toBe(true);
 
       const alphaSearch = await tool.invoke(
-        { query: alphaToken, top_k: 5, directory: repoRoot },
+        { query: alphaToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -261,7 +263,7 @@ EOF`,
       const repoRoot = '/runtime-workspace';
 
       const searchA = await tool.invoke(
-        { query: fileAToken, top_k: 5, directory: repoRoot },
+        { query: fileAToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -271,7 +273,7 @@ EOF`,
       ).toBe(true);
 
       const searchB = await tool.invoke(
-        { query: fileBToken, top_k: 5, directory: repoRoot },
+        { query: fileBToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -285,7 +287,7 @@ EOF`,
       await execInRuntime('git commit -m "delete fileA"');
 
       const afterDelete = await tool.invoke(
-        { query: fileAToken, top_k: 5, directory: repoRoot },
+        { query: fileAToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -294,7 +296,7 @@ EOF`,
       ).toBe(false);
 
       const searchBAfterDelete = await tool.invoke(
-        { query: fileBToken, top_k: 5, directory: repoRoot },
+        { query: fileBToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -341,7 +343,7 @@ EOF`,
       const repoRoot = '/runtime-workspace';
 
       const searchRoot = await tool.invoke(
-        { query: rootToken, top_k: 5, directory: repoRoot },
+        { query: rootToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -350,7 +352,7 @@ EOF`,
       ).toBe(true);
 
       const searchUtils = await tool.invoke(
-        { query: utilsToken, top_k: 5, directory: repoRoot },
+        { query: utilsToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -362,7 +364,7 @@ EOF`,
         {
           query: utilsToken,
           top_k: 5,
-          directory: `${repoRoot}/src/utils`,
+          gitRepoDirectory: `${repoRoot}/src/utils`,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -382,7 +384,7 @@ EOF`,
         {
           query: rootToken,
           top_k: 5,
-          directory: `${repoRoot}/src/utils`,
+          gitRepoDirectory: `${repoRoot}/src/utils`,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -428,7 +430,7 @@ EOF`,
       const repoRoot = '/runtime-workspace';
 
       const searchAll = await tool.invoke(
-        { query: tsToken, top_k: 5, directory: repoRoot },
+        { query: tsToken, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -437,7 +439,12 @@ EOF`,
       ).toBe(true);
 
       const searchTsFiltered = await tool.invoke(
-        { query: tsToken, top_k: 5, directory: repoRoot, language: 'ts' },
+        {
+          query: tsToken,
+          top_k: 5,
+          gitRepoDirectory: repoRoot,
+          language: 'ts',
+        },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -449,7 +456,12 @@ EOF`,
       ).toBe(true);
 
       const searchPyFiltered = await tool.invoke(
-        { query: pyToken, top_k: 5, directory: repoRoot, language: 'py' },
+        {
+          query: pyToken,
+          top_k: 5,
+          gitRepoDirectory: repoRoot,
+          language: 'py',
+        },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -461,7 +473,12 @@ EOF`,
       ).toBe(true);
 
       const searchWrongLanguage = await tool.invoke(
-        { query: tsToken, top_k: 5, directory: repoRoot, language: 'py' },
+        {
+          query: tsToken,
+          top_k: 5,
+          gitRepoDirectory: repoRoot,
+          language: 'py',
+        },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -499,7 +516,7 @@ EOF`,
       const repoRoot = '/runtime-workspace';
 
       const firstSearch = await tool.invoke(
-        { query: token, top_k: 5, directory: repoRoot },
+        { query: token, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -512,7 +529,7 @@ EOF`,
       await execInRuntime('git commit -m "touch file" --allow-empty');
 
       const secondSearch = await tool.invoke(
-        { query: token, top_k: 5, directory: repoRoot },
+        { query: token, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -549,7 +566,7 @@ EOF`,
       const repoRoot = '/runtime-workspace';
 
       const search1 = await tool.invoke(
-        { query: file1Token, top_k: 5, directory: repoRoot },
+        { query: file1Token, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -568,7 +585,7 @@ EOF`,
       await execInRuntime('git commit -m "add file2"');
 
       const search2 = await tool.invoke(
-        { query: file2Token, top_k: 5, directory: repoRoot },
+        { query: file2Token, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -577,7 +594,7 @@ EOF`,
       ).toBe(true);
 
       const search1Again = await tool.invoke(
-        { query: file1Token, top_k: 5, directory: repoRoot },
+        { query: file1Token, top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
@@ -598,13 +615,111 @@ EOF`,
       const repoRoot = '/runtime-workspace';
 
       const result = await tool.invoke(
-        { query: 'test query', top_k: 5, directory: repoRoot },
+        { query: 'test query', top_k: 5, gitRepoDirectory: repoRoot },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
       expect(result.output.error).toBeDefined();
       expect(result.output.error).toContain('git repository');
+    },
+  );
+
+  it(
+    'reuses existing Qdrant chunks when repo_index row is deleted and re-created',
+    { timeout: INT_TEST_TIMEOUT },
+    async () => {
+      const token = `alpha-needle-${randomUUID()}`;
+
+      // Clean up and create fresh repo
+      await execInRuntime(
+        'rm -rf /runtime-workspace/.git /runtime-workspace/src',
+      );
+      await execInRuntime('mkdir -p /runtime-workspace/src');
+      await execInRuntime(
+        `cat <<'EOF' > /runtime-workspace/src/app.ts
+export const handler = () => {
+  return "${token}";
+};
+EOF`,
+      );
+      await execInRuntime('git init -b main');
+      await execInRuntime('git config user.email "test@example.com"');
+      await execInRuntime('git config user.name "Test User"');
+      await execInRuntime('git add .');
+      await execInRuntime('git commit -m "initial"');
+
+      const repoRoot = '/runtime-workspace';
+      const collection = resolveCollectionName(repoRoot);
+
+      // First search - indexes the repo and stores chunks in Qdrant
+      const firstSearch = await tool.invoke(
+        { query: token, top_k: 5, gitRepoDirectory: repoRoot },
+        { runtimeProvider: runtimeThreadProvider },
+        RUNNABLE_CONFIG,
+      );
+      expect(
+        firstSearch.output.results?.some((m) => m.text.includes(token)),
+      ).toBe(true);
+
+      // Verify chunks exist in Qdrant
+      const repoId = `local:${repoRoot}`;
+      const pointsBeforeDelete = await qdrantService.scrollAll(collection, {
+        filter: {
+          must: [{ key: 'repo_id', match: { value: repoId } }],
+        },
+        limit: 50,
+        with_payload: true,
+      } as Parameters<QdrantService['scrollAll']>[1]);
+      expect(pointsBeforeDelete.length).toBeGreaterThan(0);
+
+      // Get the repo_index entity
+      const repositoryId = uuidv5(repoId, environment.codebaseUuidNamespace);
+      const repoIndexEntity = await repoIndexDao.getOne({ repositoryId });
+      expect(repoIndexEntity).not.toBeNull();
+
+      // Delete the repo_index row (simulating user action to re-index from scratch)
+      await repoIndexDao.deleteById(repoIndexEntity!.id);
+
+      // Verify repo_index was deleted
+      const deletedEntity = await repoIndexDao.getOne({ repositoryId });
+      expect(deletedEntity).toBeNull();
+
+      // Verify chunks still exist in Qdrant (they should not be deleted)
+      const pointsAfterDbDelete = await qdrantService.scrollAll(collection, {
+        filter: {
+          must: [{ key: 'repo_id', match: { value: repoId } }],
+        },
+        limit: 50,
+        with_payload: true,
+      } as Parameters<QdrantService['scrollAll']>[1]);
+      expect(pointsAfterDbDelete.length).toBeGreaterThan(0);
+      expect(pointsAfterDbDelete.length).toBe(pointsBeforeDelete.length);
+
+      // Search again - this should trigger full re-index but REUSE existing chunks
+      const secondSearch = await tool.invoke(
+        { query: token, top_k: 5, gitRepoDirectory: repoRoot },
+        { runtimeProvider: runtimeThreadProvider },
+        RUNNABLE_CONFIG,
+      );
+      expect(
+        secondSearch.output.results?.some((m) => m.text.includes(token)),
+      ).toBe(true);
+
+      // Verify new repo_index was created
+      const newRepoIndexEntity = await repoIndexDao.getOne({ repositoryId });
+      expect(newRepoIndexEntity).not.toBeNull();
+      expect(newRepoIndexEntity!.id).not.toBe(repoIndexEntity!.id);
+
+      // Verify chunks still exist and search still works
+      const pointsAfterReindex = await qdrantService.scrollAll(collection, {
+        filter: {
+          must: [{ key: 'repo_id', match: { value: repoId } }],
+        },
+        limit: 50,
+        with_payload: true,
+      } as Parameters<QdrantService['scrollAll']>[1]);
+      expect(pointsAfterReindex.length).toBeGreaterThan(0);
     },
   );
 });

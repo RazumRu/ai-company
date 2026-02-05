@@ -1,4 +1,4 @@
-import { AIMessage, ToolMessage } from '@langchain/core/messages';
+import { AIMessage, BaseMessage, ToolMessage } from '@langchain/core/messages';
 import {
   DynamicStructuredTool,
   ToolRunnableConfig,
@@ -146,20 +146,28 @@ export class ToolExecutorNode extends BaseNode<
       }),
     );
 
-    const toolMessages = results.map((r) => r.toolMessage);
-    const extraMessages = results.flatMap((r) => r.additionalMessages ?? []);
+    // Build interleaved message list: each tool message followed by its additionalMessages
+    const interleavedMessages: BaseMessage[] = [];
 
-    // Attach token usage to tool messages that have it
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
-      if (result && result.toolRequestUsage) {
-        const msg = toolMessages[i];
-        if (msg) {
-          msg.additional_kwargs = {
-            ...(msg.additional_kwargs ?? {}),
-            __requestUsage: result.toolRequestUsage,
-          };
-        }
+      const toolMsg = result?.toolMessage;
+
+      if (!toolMsg) continue;
+
+      // Attach token usage to tool message if present
+      if (result.toolRequestUsage) {
+        toolMsg.additional_kwargs = {
+          ...(toolMsg.additional_kwargs ?? {}),
+          __requestUsage: result.toolRequestUsage,
+        };
+      }
+
+      interleavedMessages.push(toolMsg);
+
+      // Append any additional messages (e.g., from report_status) immediately after the tool result
+      if (result.additionalMessages && result.additionalMessages.length > 0) {
+        interleavedMessages.push(...result.additionalMessages);
       }
     }
 
@@ -174,7 +182,7 @@ export class ToolExecutorNode extends BaseNode<
     );
 
     const messagesWithMetadata = updateMessagesListWithMetadata(
-      [...toolMessages, ...extraMessages],
+      interleavedMessages,
       cfg,
     );
 

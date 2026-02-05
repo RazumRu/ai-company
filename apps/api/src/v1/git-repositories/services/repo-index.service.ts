@@ -5,6 +5,7 @@ import { environment } from '../../../environments';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
+import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeType } from '../../runtime/runtime.types';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
@@ -38,11 +39,91 @@ export class RepoIndexService implements OnModuleInit {
     private readonly openaiService: OpenaiService,
     private readonly qdrantService: QdrantService,
     private readonly runtimeProvider: RuntimeProvider,
+    private readonly runtimeInstanceDao: RuntimeInstanceDao,
     private readonly logger: DefaultLogger,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    this.repoIndexQueueService.setProcessor(this.processIndexJob.bind(this));
+    this.repoIndexQueueService.setCallbacks({
+      onProcess: this.processIndexJob.bind(this),
+      onStalled: this.handleStalledJob.bind(this),
+      onFailed: this.handleFailedJob.bind(this),
+    });
+    await this.recoverStuckJobs();
+  }
+
+  /**
+   * Called when a job is detected as stalled (server died mid-processing).
+   * Resets the database status so the job can be reprocessed.
+   */
+  private async handleStalledJob(repoIndexId: string): Promise<void> {
+    this.logger.warn('Repo index job stalled, resetting status', {
+      repoIndexId,
+    });
+
+    await this.repoIndexDao.updateById(repoIndexId, {
+      status: RepoIndexStatus.Pending,
+    });
+  }
+
+  /**
+   * Called when a job fails after all retries are exhausted.
+   */
+  private async handleFailedJob(
+    repoIndexId: string,
+    error: Error,
+  ): Promise<void> {
+    this.logger.error(error, 'Repo index job failed permanently', {
+      repoIndexId,
+    });
+
+    await this.repoIndexDao.updateById(repoIndexId, {
+      status: RepoIndexStatus.Failed,
+      errorMessage: error.message,
+    });
+  }
+
+  /**
+   * On server restart, re-enqueue any incomplete indexing jobs.
+   * The database is the source of truth - if status is Pending/InProgress,
+   * the job needs to be in the queue.
+   */
+  private async recoverStuckJobs(): Promise<void> {
+    try {
+      const incompleteJobs = await this.repoIndexDao.getAll({
+        status: [RepoIndexStatus.InProgress, RepoIndexStatus.Pending],
+      });
+
+      if (incompleteJobs.length === 0) {
+        return;
+      }
+
+      this.logger.warn('Recovering incomplete repo index jobs on startup', {
+        count: incompleteJobs.length,
+      });
+
+      for (const index of incompleteJobs) {
+        // Reset to Pending (in case it was InProgress when server died)
+        await this.repoIndexDao.updateById(index.id, {
+          status: RepoIndexStatus.Pending,
+        });
+
+        await this.repoIndexQueueService.addIndexJob({
+          repoIndexId: index.id,
+          repoUrl: index.repoUrl,
+        });
+
+        this.logger.debug('Re-enqueued incomplete repo index job', {
+          repoIndexId: index.id,
+          previousStatus: index.status,
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        err instanceof Error ? err : new Error(String(err)),
+        'Failed to recover incomplete repo index jobs',
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -138,12 +219,45 @@ export class RepoIndexService implements OnModuleInit {
       });
 
       try {
+        // Create a callback to update indexed token progress
+        // We batch logging to reduce noise - log every 50k tokens or at milestones
+        let lastLoggedTokens = 0;
+        const LOG_TOKEN_INTERVAL = 50_000;
+
+        const onProgressUpdate = async (tokenCount: number) => {
+          const currentEntity = await this.repoIndexDao.getOne({
+            id: entity.id,
+          });
+          const currentIndexedTokens = currentEntity?.indexedTokens ?? 0;
+          const newIndexedTokens = currentIndexedTokens + tokenCount;
+
+          await this.repoIndexDao.updateById(entity.id, {
+            indexedTokens: newIndexedTokens,
+          });
+
+          // Only log at intervals to reduce noise
+          if (newIndexedTokens - lastLoggedTokens >= LOG_TOKEN_INTERVAL) {
+            this.logger.debug('Indexing progress updated (inline)', {
+              repoIndexId: entity.id,
+              totalTokens: newIndexedTokens,
+            });
+            lastLoggedTokens = newIndexedTokens;
+          }
+        };
+
         if (needsFullReindex) {
-          await this.repoIndexerService.runFullIndex(indexParams, execFn);
+          await this.repoIndexerService.runFullIndex(
+            indexParams,
+            execFn,
+            undefined,
+            onProgressUpdate,
+          );
         } else {
           await this.repoIndexerService.runIncrementalIndex(
             indexParams,
             execFn,
+            undefined,
+            onProgressUpdate,
           );
         }
 
@@ -258,6 +372,11 @@ export class RepoIndexService implements OnModuleInit {
   private async processIndexJob(data: RepoIndexJobData): Promise<void> {
     const { repoIndexId, repoUrl } = data;
 
+    this.logger.debug('Processing repo index job', {
+      repoIndexId,
+      repoUrl,
+    });
+
     const entity = await this.repoIndexDao.getOne({ id: repoIndexId });
     if (!entity) {
       this.logger.warn('Repo index entity not found, skipping job', {
@@ -272,12 +391,18 @@ export class RepoIndexService implements OnModuleInit {
       return;
     }
 
+    // Store current indexedTokens before potentially resetting - we may preserve it
+    // if incremental index finds nothing to do
+    const previousIndexedTokens = entity.indexedTokens ?? 0;
+
     await this.repoIndexDao.updateById(repoIndexId, {
       status: RepoIndexStatus.InProgress,
       errorMessage: null,
+      indexedTokens: 0, // Reset progress counter (will be updated as we index)
     });
 
-    const graphId = 'system-repo-indexing';
+    // Use UUID namespace for system graph ID (consistent UUID for system operations)
+    const graphId = '00000000-0000-0000-0000-000000000001';
     const runtimeNodeId = 'repo-indexer';
     const threadId = repoIndexId;
 
@@ -286,6 +411,10 @@ export class RepoIndexService implements OnModuleInit {
     > | null = null;
 
     try {
+      this.logger.debug('Spinning up ephemeral container for repo indexing', {
+        repoIndexId,
+      });
+
       // Spin up ephemeral container
       runtimeInstance = await this.runtimeProvider.provide({
         graphId,
@@ -294,6 +423,11 @@ export class RepoIndexService implements OnModuleInit {
         type: RuntimeType.Docker,
         temporary: true,
         runtimeStartParams: {},
+      });
+
+      this.logger.debug('Container started, beginning clone', {
+        repoIndexId,
+        repoUrl,
       });
 
       const runtime = runtimeInstance.runtime;
@@ -314,6 +448,11 @@ export class RepoIndexService implements OnModuleInit {
 
       // Build authenticated clone URL
       const cloneUrl = await this.buildCloneUrl(repoUrl);
+
+      // Clean up any existing repo directory from previous runs
+      await execFn({
+        cmd: `rm -rf ${shQuote(REPO_CLONE_DIR)}`,
+      });
 
       // Clone repo (default branch)
       const cloneRes = await execFn({
@@ -359,11 +498,59 @@ export class RepoIndexService implements OnModuleInit {
           : (entity.lastIndexedCommit ?? undefined),
       };
 
+      // Create a callback to update runtime activity (keeps container alive during indexing)
+      const updateRuntimeActivity = async () => {
+        await this.updateRuntimeLastUsedAt(graphId, runtimeNodeId, threadId);
+      };
+
+      // Create a callback to update indexed token progress
+      // We batch logging to reduce noise - log every 50k tokens or at milestones
+      let lastLoggedTokens = 0;
+      const LOG_TOKEN_INTERVAL = 50_000;
+
+      const onProgressUpdate = async (tokenCount: number) => {
+        // Get current indexed tokens and increment
+        const currentEntity = await this.repoIndexDao.getOne({
+          id: repoIndexId,
+        });
+        const currentIndexedTokens = currentEntity?.indexedTokens ?? 0;
+        const newIndexedTokens = currentIndexedTokens + tokenCount;
+
+        await this.repoIndexDao.updateById(repoIndexId, {
+          indexedTokens: newIndexedTokens,
+        });
+
+        // Only log at intervals to reduce noise
+        if (newIndexedTokens - lastLoggedTokens >= LOG_TOKEN_INTERVAL) {
+          this.logger.debug('Indexing progress updated', {
+            repoIndexId,
+            totalTokens: newIndexedTokens,
+            estimatedTokens: entity.estimatedTokens,
+          });
+          lastLoggedTokens = newIndexedTokens;
+        }
+      };
+
       if (needsFullReindex) {
-        await this.repoIndexerService.runFullIndex(indexParams, execFn);
+        await this.repoIndexerService.runFullIndex(
+          indexParams,
+          execFn,
+          updateRuntimeActivity,
+          onProgressUpdate,
+        );
       } else {
-        await this.repoIndexerService.runIncrementalIndex(indexParams, execFn);
+        await this.repoIndexerService.runIncrementalIndex(
+          indexParams,
+          execFn,
+          updateRuntimeActivity,
+          onProgressUpdate,
+        );
       }
+
+      // Check if any tokens were actually indexed
+      // If not (incremental with no changes), restore previous indexedTokens
+      const finalEntity = await this.repoIndexDao.getOne({ id: repoIndexId });
+      const finalIndexedTokens = finalEntity?.indexedTokens ?? 0;
 
       await this.repoIndexDao.updateById(repoIndexId, {
         status: RepoIndexStatus.Completed,
@@ -373,19 +560,17 @@ export class RepoIndexService implements OnModuleInit {
         chunkingSignatureHash,
         qdrantCollection: collection,
         errorMessage: null,
+        // If no new tokens were indexed, preserve previous count
+        indexedTokens:
+          finalIndexedTokens === 0 ? previousIndexedTokens : finalIndexedTokens,
       });
 
       this.logger.debug('Repo index job completed', {
         repoIndexId,
         currentCommit,
+        indexedTokens:
+          finalIndexedTokens === 0 ? previousIndexedTokens : finalIndexedTokens,
       });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      await this.repoIndexDao.updateById(repoIndexId, {
-        status: RepoIndexStatus.Failed,
-        errorMessage,
-      });
-      throw err; // rethrow for BullMQ retry
     } finally {
       // Cleanup ephemeral container
       if (runtimeInstance) {
@@ -404,6 +589,38 @@ export class RepoIndexService implements OnModuleInit {
   // ---------------------------------------------------------------------------
   // Private: helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Updates the runtime instance's lastUsedAt timestamp to prevent cleanup
+   * during long-running indexing operations
+   */
+  private async updateRuntimeLastUsedAt(
+    graphId: string,
+    nodeId: string,
+    threadId: string,
+  ): Promise<void> {
+    try {
+      const instance = await this.runtimeInstanceDao.getOne({
+        graphId,
+        nodeId,
+        threadId,
+      });
+
+      if (instance) {
+        await this.runtimeInstanceDao.updateById(instance.id, {
+          lastUsedAt: new Date(),
+        });
+      }
+    } catch (error) {
+      // Don't fail indexing if we can't update lastUsedAt
+      this.logger.warn('Failed to update runtime lastUsedAt', {
+        graphId,
+        nodeId,
+        threadId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   private async buildCloneUrl(repoUrl: string): Promise<string> {
     // Try to find credentials for this repo
@@ -452,6 +669,7 @@ export class RepoIndexService implements OnModuleInit {
       vectorSize: params.vectorSize,
       chunkingSignatureHash: params.chunkingSignatureHash,
       estimatedTokens: params.estimatedTokens,
+      indexedTokens: 0, // Reset progress counter when starting
       errorMessage: null,
     };
 

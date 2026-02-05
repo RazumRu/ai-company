@@ -77,6 +77,27 @@ describe('AgentMessageNotificationHandler', () => {
                 updatedAt: new Date('2024-01-01T00:00:00Z'),
               };
             }),
+            createMany: vi
+              .fn()
+              .mockImplementation(async (dataArray: unknown[]) => {
+                return dataArray.map((data) => {
+                  const record = data as Record<string, unknown>;
+                  return {
+                    id: '22222222-2222-4222-8222-222222222222',
+                    threadId: record.threadId,
+                    externalThreadId: record.externalThreadId,
+                    nodeId: record.nodeId,
+                    message: record.message,
+                    requestTokenUsage: record.requestTokenUsage,
+                    role: record.role,
+                    name: record.name,
+                    toolCallNames: record.toolCallNames,
+                    answeredToolCallNames: record.answeredToolCallNames,
+                    createdAt: new Date('2024-01-01T00:00:00Z'),
+                    updatedAt: new Date('2024-01-01T00:00:00Z'),
+                  };
+                });
+              }),
           },
         },
         {
@@ -159,20 +180,19 @@ describe('AgentMessageNotificationHandler', () => {
       externalThreadId: mockParentThreadId,
     });
 
-    expect(messagesDao.create).toHaveBeenCalledTimes(2);
+    expect(messagesDao.createMany).toHaveBeenCalledTimes(1);
 
-    const firstCreate = (
-      messagesDao.create as unknown as ReturnType<typeof vi.fn>
-    ).mock.calls[0]?.[0] as Record<string, unknown>;
-    const secondCreate = (
-      messagesDao.create as unknown as ReturnType<typeof vi.fn>
-    ).mock.calls[1]?.[0] as Record<string, unknown>;
+    const createManyCall = (
+      messagesDao.createMany as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls[0]?.[0] as Record<string, unknown>[];
+
+    expect(createManyCall).toHaveLength(2);
 
     // AI message should have requestTokenUsage (from LLM request)
-    expect(firstCreate.requestTokenUsage).toEqual(aiTokenUsage);
+    expect(createManyCall[0]?.requestTokenUsage).toEqual(aiTokenUsage);
 
     // Tool message should NOT have requestTokenUsage (it's a function execution result, not an LLM response)
-    expect(secondCreate.requestTokenUsage).toBeUndefined();
+    expect(createManyCall[1]?.requestTokenUsage).toBeUndefined();
   });
 
   it('AI messages have __requestUsage, tool messages do not', async () => {
@@ -242,25 +262,28 @@ describe('AgentMessageNotificationHandler', () => {
 
     await handler.handle(notification);
 
-    // Verify messagesDao.create was called twice
-    expect(messagesDao.create).toHaveBeenCalledTimes(2);
+    // Verify messagesDao.createMany was called once with an array of 2 messages
+    expect(messagesDao.createMany).toHaveBeenCalledTimes(1);
 
-    const calls = (messagesDao.create as unknown as ReturnType<typeof vi.fn>)
-      .mock.calls;
+    const createManyCall = (
+      messagesDao.createMany as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls[0]?.[0] as Record<string, unknown>[];
+
+    expect(createManyCall).toHaveLength(2);
 
     // Check AI message - should have requestTokenUsage from LLM request
-    const aiCreateCall = calls[0]?.[0] as Record<string, unknown>;
-    expect(aiCreateCall.requestTokenUsage).toEqual(requestUsage);
-    expect(aiCreateCall.toolCallNames).toEqual(['finish']);
-    expect(aiCreateCall.role).toBe('ai');
+    const aiCreateData = createManyCall[0];
+    expect(aiCreateData?.requestTokenUsage).toEqual(requestUsage);
+    expect(aiCreateData?.toolCallNames).toEqual(['finish']);
+    expect(aiCreateData?.role).toBe('ai');
 
     // Check Tool message - should NOT have requestTokenUsage
     // (it's a function execution result, not an LLM response)
-    const toolCreateCall = calls[1]?.[0] as Record<string, unknown>;
-    expect(toolCreateCall.requestTokenUsage).toBeUndefined();
-    expect(toolCreateCall.toolCallNames).toBeUndefined();
-    expect(toolCreateCall.role).toBe('tool');
-    expect(toolCreateCall.name).toBe('finish');
+    const toolCreateData = createManyCall[1];
+    expect(toolCreateData?.requestTokenUsage).toBeUndefined();
+    expect(toolCreateData?.toolCallNames).toBeUndefined();
+    expect(toolCreateData?.role).toBe('tool');
+    expect(toolCreateData?.name).toBe('finish');
   });
 
   it('does not save requestTokenUsage for human messages', async () => {
@@ -299,21 +322,24 @@ describe('AgentMessageNotificationHandler', () => {
 
     await handler.handle(notification);
 
-    expect(messagesDao.create).toHaveBeenCalledTimes(2);
+    expect(messagesDao.createMany).toHaveBeenCalledTimes(1);
 
-    const calls = (messagesDao.create as unknown as ReturnType<typeof vi.fn>)
-      .mock.calls;
+    const createManyCall = (
+      messagesDao.createMany as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls[0]?.[0] as Record<string, unknown>[];
+
+    expect(createManyCall).toHaveLength(2);
 
     // Check human message - should NOT have requestTokenUsage
-    const humanCreateCall = calls[0]?.[0] as Record<string, unknown>;
-    expect(humanCreateCall.requestTokenUsage).toBeUndefined();
-    expect(humanCreateCall.toolCallNames).toBeUndefined();
-    expect(humanCreateCall.role).toBe('human');
+    const humanCreateData = createManyCall[0];
+    expect(humanCreateData?.requestTokenUsage).toBeUndefined();
+    expect(humanCreateData?.toolCallNames).toBeUndefined();
+    expect(humanCreateData?.role).toBe('human');
 
     // Check AI message - SHOULD have requestTokenUsage (no tool calls)
-    const aiCreateCall = calls[1]?.[0] as Record<string, unknown>;
-    expect(aiCreateCall.requestTokenUsage).toEqual(aiTokenUsage);
-    expect(aiCreateCall.toolCallNames).toBeUndefined(); // No toolCalls in this AI message
-    expect(aiCreateCall.role).toBe('ai');
+    const aiCreateData = createManyCall[1];
+    expect(aiCreateData?.requestTokenUsage).toEqual(aiTokenUsage);
+    expect(aiCreateData?.toolCallNames).toBeUndefined(); // No toolCalls in this AI message
+    expect(aiCreateData?.role).toBe('ai');
   });
 });

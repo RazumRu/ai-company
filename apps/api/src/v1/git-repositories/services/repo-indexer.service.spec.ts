@@ -12,6 +12,7 @@ const mockQdrantService = {
   deleteByFilter: vi.fn().mockResolvedValue(undefined),
   upsertPoints: vi.fn().mockResolvedValue(undefined),
   scrollAll: vi.fn().mockResolvedValue([]),
+  scrollAllWithVectors: vi.fn().mockResolvedValue([]),
   buildSizedCollectionName: vi.fn(
     (base: string, size: number) => `${base}_${size}`,
   ),

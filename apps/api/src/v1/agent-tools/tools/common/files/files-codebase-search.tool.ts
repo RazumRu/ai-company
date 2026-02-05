@@ -9,7 +9,6 @@ import { z } from 'zod';
 import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { RepoIndexService } from '../../../../git-repositories/services/repo-index.service';
-import type { GetOrInitIndexResult } from '../../../../git-repositories/services/repo-index.types';
 import { RepoExecFn } from '../../../../git-repositories/services/repo-indexer.service';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import {
@@ -35,10 +34,12 @@ const CodebaseSearchSchema = z.object({
     .max(MAX_TOP_K)
     .optional()
     .describe('Maximum number of results to return.'),
-  directory: z
+  gitRepoDirectory: z
     .string()
     .min(1)
-    .describe('Absolute path to the cloned repository directory.'),
+    .describe(
+      'Absolute path to the git repository directory (the root directory containing .git folder).',
+    ),
   language: z
     .string()
     .min(1)
@@ -93,7 +94,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
       ### Requirements
       - Must be inside a git repository
-      - \`directory\` is required (absolute path to the repo)
+      - \`gitRepoDirectory\` must point to the repository root (containing .git folder)
       - Query must be a human-readable phrase or question (not a single word)
 
       ### Recommended Flow
@@ -103,7 +104,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
       ### Example
       \`\`\`json
-      {"query":"where is auth middleware created?","top_k":5,"directory":"apps/api/src","language":"ts"}
+      {"query":"where is auth middleware created?","top_k":5,"gitRepoDirectory":"/workspace/project","language":"ts"}
       \`\`\`
     `;
   }
@@ -135,7 +136,11 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       };
     }
 
-    const repoRoot = await this.resolveRepoRoot(config, cfg, args.directory);
+    const repoRoot = await this.resolveRepoRoot(
+      config,
+      cfg,
+      args.gitRepoDirectory,
+    );
     if (!repoRoot) {
       return {
         output: {
@@ -171,7 +176,9 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     if (indexResult.status !== 'ready' || !indexResult.repoIndex) {
       return {
         output: {
-          error: 'Repository indexing is in progress. Please retry shortly.',
+          results: [],
+          error:
+            'Repository indexing is currently in progress. This is normal for the first search in a repository.',
         },
         messageMetadata,
       };
@@ -179,7 +186,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
     const collection = indexResult.repoIndex.qdrantCollection;
     const directoryFilter = this.normalizeDirectoryFilter(
-      args.directory,
+      args.gitRepoDirectory,
       repoRoot,
     );
 

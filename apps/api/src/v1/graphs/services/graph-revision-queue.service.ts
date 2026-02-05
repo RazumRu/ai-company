@@ -44,6 +44,9 @@ export class GraphRevisionQueueService
       {
         connection: this.redis,
         concurrency: 1,
+        // Graph revision processing can take time for complex graphs
+        // Set lock duration to 5 minutes to prevent premature stall detection
+        lockDuration: 5 * 60 * 1000, // 5 minutes in milliseconds
       },
     );
 

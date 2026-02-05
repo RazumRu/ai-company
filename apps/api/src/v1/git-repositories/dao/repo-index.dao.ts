@@ -8,7 +8,7 @@ import { RepoIndexStatus } from '../git-repositories.types';
 export type RepoIndexSearchTerms = Partial<{
   id: string;
   repositoryId: string;
-  status: RepoIndexStatus;
+  status: RepoIndexStatus | RepoIndexStatus[];
 }>;
 
 @Injectable()
@@ -41,7 +41,13 @@ export class RepoIndexDao extends BaseDao<
     }
 
     if (params?.status) {
-      builder.andWhere({ status: params.status });
+      if (Array.isArray(params.status)) {
+        builder.andWhere(`${this.alias}.status IN (:...statuses)`, {
+          statuses: params.status,
+        });
+      } else {
+        builder.andWhere({ status: params.status });
+      }
     }
   }
 }

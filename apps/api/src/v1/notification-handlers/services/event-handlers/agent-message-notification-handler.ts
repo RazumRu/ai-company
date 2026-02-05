@@ -69,7 +69,8 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
       event.data.messages,
     );
 
-    for (const [i, messageDto] of messageDtos.entries()) {
+    // Prepare all messages for batch insert
+    const messagesToCreate = messageDtos.map((messageDto, i) => {
       const originalMessage = event.data.messages[i];
       const additionalKwargs = originalMessage?.additional_kwargs as
         | MessageAdditionalKwargs
@@ -89,8 +90,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
               .filter((name): name is string => typeof name === 'string')
           : undefined;
 
-      // Save message to database with correct internal thread ID
-      const createdMessage = await this.messagesDao.create({
+      return {
         threadId: internalThread.id,
         externalThreadId: event.threadId,
         nodeId: event.nodeId,
@@ -102,8 +102,17 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         name: 'name' in messageDto ? (messageDto.name as string) : undefined,
         ...(toolCallNames && toolCallNames.length > 0 ? { toolCallNames } : {}),
         answeredToolCallNames: additionalKwargs?.__answeredToolCallNames,
-      });
+      };
+    });
 
+    // Batch insert all messages in a single transaction
+    const createdMessages =
+      messagesToCreate.length > 0
+        ? await this.messagesDao.createMany(messagesToCreate)
+        : [];
+
+    // Build notification events for each created message
+    for (const createdMessage of createdMessages) {
       out.push({
         type: EnrichedNotificationEvent.AgentMessage,
         graphId: event.graphId,

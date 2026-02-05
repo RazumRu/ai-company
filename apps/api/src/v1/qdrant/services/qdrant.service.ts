@@ -229,6 +229,35 @@ export class QdrantService {
     return out;
   }
 
+  async scrollAllWithVectors(
+    collection: string,
+    args: Omit<ScrollArgs, 'offset'>,
+  ): Promise<ScrollResult['points']> {
+    const exists = await this.collectionExists(collection);
+    if (!exists) {
+      return [];
+    }
+
+    const out: ScrollResult['points'] = [];
+    let offset: ScrollOffset | undefined;
+
+    while (true) {
+      const res = await this.client.scroll(collection, {
+        ...args,
+        offset,
+      });
+
+      out.push(...res.points);
+
+      if (!res.next_page_offset) {
+        break;
+      }
+      offset = res.next_page_offset;
+    }
+
+    return out;
+  }
+
   private async collectionExists(name: string): Promise<boolean> {
     const res = await this.client.getCollections();
     return res.collections.some((c) => c.name === name);

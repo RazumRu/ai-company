@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
+import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
@@ -24,6 +25,7 @@ vi.mock('../../../environments', () => ({
 
 const mockRepoIndexDao = {
   getOne: vi.fn(),
+  getAll: vi.fn().mockResolvedValue([]), // For recoverStuckJobs
   create: vi.fn(),
   updateById: vi.fn(),
 };
@@ -50,7 +52,7 @@ const mockRepoIndexerService = {
 };
 
 const mockRepoIndexQueueService = {
-  setProcessor: vi.fn(),
+  setCallbacks: vi.fn(),
   addIndexJob: vi.fn().mockResolvedValue(undefined),
 };
 
@@ -61,6 +63,10 @@ const mockLlmModelsService = {
 const mockOpenaiService = {};
 const mockQdrantService = {};
 const mockRuntimeProvider = {};
+const mockRuntimeInstanceDao = {
+  getOne: vi.fn(),
+  updateById: vi.fn(),
+};
 
 const mockLogger = {
   debug: vi.fn(),
@@ -90,6 +96,7 @@ describe('RepoIndexService', () => {
       mockOpenaiService as unknown as OpenaiService,
       mockQdrantService as unknown as QdrantService,
       mockRuntimeProvider as unknown as RuntimeProvider,
+      mockRuntimeInstanceDao as unknown as RuntimeInstanceDao,
       mockLogger as unknown as DefaultLogger,
     );
     await service.onModuleInit();

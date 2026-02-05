@@ -207,6 +207,13 @@ export class LitellmService {
       return true;
     }
 
+    // useResponsesApi is an OpenAI-specific feature and should not be used with Gemini
+    // even though Gemini supports response_schema, it doesn't support the Responses API format
+    const provider = entry.model_info?.litellm_provider?.toLowerCase();
+    if (provider === 'gemini') {
+      return false;
+    }
+
     return !!entry.model_info?.supports_response_schema;
   }
 

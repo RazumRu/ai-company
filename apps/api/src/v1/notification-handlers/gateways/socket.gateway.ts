@@ -1,5 +1,7 @@
+import { OnModuleDestroy } from '@nestjs/common';
 import {
   OnGatewayConnection,
+  OnGatewayDisconnect,
   OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
@@ -29,7 +31,13 @@ import { NotificationHandler } from '../services/notification-handler.service';
     credentials: true,
   },
 })
-export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
+export class SocketGateway
+  implements
+    OnGatewayInit,
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnModuleDestroy
+{
   @WebSocketServer()
   private ws!: Server;
 
@@ -121,6 +129,11 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
     }
   }
 
+  handleDisconnect(client: Socket) {
+    const userId = (client.data as Record<string, unknown>).userId;
+    this.logger.debug('WebSocket client disconnected', { userId });
+  }
+
   public broadcast<T>(event: string, payload: T) {
     this.ws.emit(event, payload);
   }
@@ -180,5 +193,25 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection {
       this.logger.error(err as Error, 'Unsubscribe graph error');
       this.emitError(err as Error, client);
     }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    this.logger.log('Closing WebSocket server gracefully');
+
+    // Disconnect all connected clients
+    const sockets = await this.ws.fetchSockets();
+    this.logger.debug(`Disconnecting ${sockets.length} WebSocket clients`);
+
+    for (const socket of sockets) {
+      socket.disconnect(true);
+    }
+
+    // Close the Socket.IO server and release the port
+    await new Promise<void>((resolve) => {
+      this.ws.close(() => {
+        this.logger.log('WebSocket server closed');
+        resolve();
+      });
+    });
   }
 }

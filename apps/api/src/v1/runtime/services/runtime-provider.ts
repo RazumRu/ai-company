@@ -174,8 +174,14 @@ export class RuntimeProvider {
   }
 
   async cleanupTemporaryRuntimes(): Promise<number> {
+    // Only cleanup temporary containers that haven't been used in the last 10 minutes
+    // This prevents cleanup of actively running temporary containers (e.g., repo indexing)
+    const TEMPORARY_ACTIVE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+    const lastUsedBefore = new Date(Date.now() - TEMPORARY_ACTIVE_THRESHOLD_MS);
+
     const instances = await this.runtimeInstanceDao.getAll({
       temporary: true,
+      lastUsedBefore,
     });
 
     if (!instances.length) {

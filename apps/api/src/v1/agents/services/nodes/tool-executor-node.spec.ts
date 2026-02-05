@@ -615,5 +615,225 @@ describe('ToolExecutorNode', () => {
         result.messages?.items?.[0]?.additional_kwargs?.__requestUsage,
       ).toBeUndefined();
     });
+
+    it('should interleave additional messages immediately after their corresponding tool result', async () => {
+      const toolCall1 = {
+        id: 'call-1',
+        name: 'test-tool-1',
+        args: { input: 'test1' },
+      };
+
+      const toolCall2 = {
+        id: 'call-2',
+        name: 'test-tool-2',
+        args: { input: 'test2' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Using multiple tools',
+        tool_calls: [toolCall1, toolCall2],
+      });
+
+      mockState.messages = [aiMessage];
+
+      // Tool 1 returns a result WITH additional messages (e.g., from report_status)
+      const additionalMsg1 = new AIMessage({
+        content: 'Tool 1 status report',
+        additional_kwargs: { __isReportingMessage: true },
+      });
+
+      mockTool1.invoke = vi.fn().mockResolvedValue({
+        output: 'Result from tool 1',
+        additionalMessages: [additionalMsg1],
+      });
+
+      // Tool 2 returns a result WITHOUT additional messages
+      mockTool2.invoke = vi.fn().mockResolvedValue({
+        output: 'Result from tool 2',
+      });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      // Should have 3 messages: tool1 result, additional message, tool2 result
+      expect(result.messages?.items).toHaveLength(3);
+
+      // First message should be tool 1 result
+      expect(result.messages?.items?.[0]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items?.[0]?.content).toBe('Result from tool 1');
+
+      // Second message should be the additional message from tool 1
+      expect(result.messages?.items?.[1]).toBeInstanceOf(AIMessage);
+      expect(result.messages?.items?.[1]?.content).toBe('Tool 1 status report');
+      expect(
+        result.messages?.items?.[1]?.additional_kwargs?.__isReportingMessage,
+      ).toBe(true);
+
+      // Third message should be tool 2 result
+      expect(result.messages?.items?.[2]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items?.[2]?.content).toBe('Result from tool 2');
+    });
+
+    it('should handle multiple additional messages from a single tool', async () => {
+      const toolCall = {
+        id: 'call-1',
+        name: 'test-tool-1',
+        args: { input: 'test' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Using tool',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+
+      const additionalMsg1 = new AIMessage({
+        content: 'First status update',
+        additional_kwargs: { __isReportingMessage: true },
+      });
+
+      const additionalMsg2 = new AIMessage({
+        content: 'Second status update',
+        additional_kwargs: { __isReportingMessage: true },
+      });
+
+      mockTool1.invoke = vi.fn().mockResolvedValue({
+        output: 'Tool result',
+        additionalMessages: [additionalMsg1, additionalMsg2],
+      });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      // Should have 3 messages: tool result + 2 additional messages
+      expect(result.messages?.items).toHaveLength(3);
+
+      // First should be tool result
+      expect(result.messages?.items?.[0]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items?.[0]?.content).toBe('Tool result');
+
+      // Second should be first additional message
+      expect(result.messages?.items?.[1]).toBeInstanceOf(AIMessage);
+      expect(result.messages?.items?.[1]?.content).toBe('First status update');
+
+      // Third should be second additional message
+      expect(result.messages?.items?.[2]).toBeInstanceOf(AIMessage);
+      expect(result.messages?.items?.[2]?.content).toBe('Second status update');
+    });
+
+    it('should mark tool message with __hideForLlm when messageMetadata specifies it', async () => {
+      const toolCall = {
+        id: 'call-1',
+        name: 'test-tool-1',
+        args: { message: 'Status update' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Reporting status',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+
+      // Tool returns result with messageMetadata.__hideForLlm (like report_status tool)
+      const additionalMsg = new AIMessage({
+        content: 'Status update for user',
+        additional_kwargs: {
+          __isReportingMessage: true,
+          __hideForLlm: true,
+        },
+      });
+
+      mockTool1.invoke = vi.fn().mockResolvedValue({
+        output: { reported: true },
+        messageMetadata: {
+          __hideForLlm: true, // This should hide the tool message
+        },
+        additionalMessages: [additionalMsg],
+      });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      // Should have 2 messages: tool result + additional message
+      expect(result.messages?.items).toHaveLength(2);
+
+      // Tool message should have __hideForLlm from messageMetadata
+      expect(result.messages?.items?.[0]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items?.[0]?.additional_kwargs?.__hideForLlm).toBe(
+        true,
+      );
+
+      // Additional AI message should have __isReportingMessage and __hideForLlm
+      expect(result.messages?.items?.[1]).toBeInstanceOf(AIMessage);
+      expect(
+        result.messages?.items?.[1]?.additional_kwargs?.__isReportingMessage,
+      ).toBe(true);
+      expect(result.messages?.items?.[1]?.additional_kwargs?.__hideForLlm).toBe(
+        true,
+      );
+    });
+
+    it('should properly handle report_status tool pattern to prevent duplicate reporting', async () => {
+      // This test verifies the fix for the duplicate report_status messages issue
+      const toolCall = {
+        id: 'call-1',
+        name: 'report_status',
+        args: {
+          message:
+            "I'm starting on your request to search for knowledge-related files.",
+        },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Reporting progress',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+
+      // Simulate report_status tool behavior
+      const reportMessage = new AIMessage({
+        content:
+          "I'm starting on your request to search for knowledge-related files.",
+        additional_kwargs: {
+          __isReportingMessage: true,
+          __hideForLlm: true,
+        },
+      });
+
+      mockTool1.name = 'report_status';
+      mockTool1.invoke = vi.fn().mockResolvedValue({
+        output: { reported: true },
+        messageMetadata: {
+          __hideForLlm: true, // Tool message should be hidden
+        },
+        additionalMessages: [reportMessage],
+      });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      // Should have 2 messages: hidden tool message + visible AI message
+      expect(result.messages?.items).toHaveLength(2);
+
+      // First message: tool message with {reported: true}, marked as hidden
+      const toolMessage = result.messages?.items?.[0] as ToolMessage;
+      expect(toolMessage).toBeInstanceOf(ToolMessage);
+      expect(toolMessage.name).toBe('report_status');
+      expect(toolMessage.additional_kwargs?.__hideForLlm).toBe(true);
+
+      // Second message: AI message with actual report content
+      const aiReportMessage = result.messages?.items?.[1] as AIMessage;
+      expect(aiReportMessage).toBeInstanceOf(AIMessage);
+      expect(aiReportMessage.content).toBe(
+        "I'm starting on your request to search for knowledge-related files.",
+      );
+      expect(aiReportMessage.additional_kwargs?.__isReportingMessage).toBe(
+        true,
+      );
+      expect(aiReportMessage.additional_kwargs?.__hideForLlm).toBe(true);
+
+      // The key assertion: tool message should be hidden from both UI and LLM
+      // Only the AI message with __isReportingMessage should be displayed to users
+      expect(toolMessage.additional_kwargs?.__hideForLlm).toBe(true);
+    });
   });
 });

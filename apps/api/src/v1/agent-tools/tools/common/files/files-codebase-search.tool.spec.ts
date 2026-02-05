@@ -63,7 +63,7 @@ describe('FilesCodebaseSearchTool', () => {
   describe('schema', () => {
     it('should validate required query field', () => {
       expect(() =>
-        tool.validate({ query: 'find auth', directory: 'apps/api' }),
+        tool.validate({ query: 'find auth', gitRepoDirectory: 'apps/api' }),
       ).not.toThrow();
     });
 
@@ -73,11 +73,11 @@ describe('FilesCodebaseSearchTool', () => {
 
     it('should reject empty query field', () => {
       expect(() =>
-        tool.validate({ query: '', directory: 'apps/api' }),
+        tool.validate({ query: '', gitRepoDirectory: 'apps/api' }),
       ).toThrow();
     });
 
-    it('should reject missing directory field', () => {
+    it('should reject missing gitRepoDirectory field', () => {
       expect(() => tool.validate({ query: 'find auth' })).toThrow();
     });
   });
@@ -98,7 +98,7 @@ describe('FilesCodebaseSearchTool', () => {
       });
 
       const { output } = await tool.invoke(
-        { query: 'search term', directory: 'apps/api' },
+        { query: 'search term', gitRepoDirectory: 'apps/api' },
         mockConfig,
         mockCfg,
       );
@@ -153,7 +153,7 @@ describe('FilesCodebaseSearchTool', () => {
       const { output } = await tool.invoke(
         {
           query: 'index',
-          directory: 'apps/api',
+          gitRepoDirectory: 'apps/api',
           language: 'ts',
           top_k: 5,
         },
@@ -210,15 +210,15 @@ describe('FilesCodebaseSearchTool', () => {
       } as GetOrInitIndexResult);
 
       const { output } = await tool.invoke(
-        { query: 'search', directory: 'apps/api' },
+        { query: 'search', gitRepoDirectory: 'apps/api' },
         mockConfig,
         mockCfg,
       );
 
       expect(output.error).toBe(
-        'Repository indexing is in progress. Please retry shortly.',
+        'Repository indexing is currently in progress. This is normal for the first search in a repository.',
       );
-      expect(output.results).toBeUndefined();
+      expect(output.results).toEqual([]);
       expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
     });
 
@@ -250,15 +250,15 @@ describe('FilesCodebaseSearchTool', () => {
       } as GetOrInitIndexResult);
 
       const { output } = await tool.invoke(
-        { query: 'search', directory: 'apps/api' },
+        { query: 'search', gitRepoDirectory: 'apps/api' },
         mockConfig,
         mockCfg,
       );
 
       expect(output.error).toBe(
-        'Repository indexing is in progress. Please retry shortly.',
+        'Repository indexing is currently in progress. This is normal for the first search in a repository.',
       );
-      expect(output.results).toBeUndefined();
+      expect(output.results).toEqual([]);
       expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
     });
   });

@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   RepoIndexJobData,
+  RepoIndexQueueCallbacks,
   RepoIndexQueueService,
 } from './repo-index-queue.service';
 
 const mockQueue = {
   add: vi.fn().mockResolvedValue(undefined),
   close: vi.fn().mockResolvedValue(undefined),
+  getJob: vi.fn().mockResolvedValue(null),
 };
 
 const mockWorker = {
@@ -53,12 +55,16 @@ describe('RepoIndexQueueService', () => {
     await service.onModuleInit();
   });
 
-  describe('setProcessor', () => {
-    it('stores the processor callback', () => {
-      const processor = vi.fn();
-      service.setProcessor(processor);
-      // Processor is stored privately; verified via processJob behavior
-      expect(processor).not.toHaveBeenCalled();
+  describe('setCallbacks', () => {
+    it('stores the callbacks', () => {
+      const callbacks: RepoIndexQueueCallbacks = {
+        onProcess: vi.fn(),
+        onStalled: vi.fn(),
+        onFailed: vi.fn(),
+      };
+      service.setCallbacks(callbacks);
+      // Callbacks are stored privately; verified via event handling behavior
+      expect(callbacks.onProcess).not.toHaveBeenCalled();
     });
   });
 
@@ -81,7 +87,7 @@ describe('RepoIndexQueueService', () => {
     it('closes worker, queue, and redis', async () => {
       await service.onModuleDestroy();
 
-      expect(mockWorker.close).toHaveBeenCalled();
+      expect(mockWorker.close).toHaveBeenCalledWith(true);
       expect(mockQueue.close).toHaveBeenCalled();
       expect(mockRedis.quit).toHaveBeenCalled();
     });
