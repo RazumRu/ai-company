@@ -1131,6 +1131,49 @@ export class RepoIndexerService {
   }
 
   // ---------------------------------------------------------------------------
+  // Public: total token count from Qdrant
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Calculate total tokens stored in Qdrant for this repo.
+   * This gives an accurate count of all indexed content.
+   */
+  async getTotalIndexedTokens(
+    collection: string,
+    repoId: string,
+    embeddingModel: string,
+  ): Promise<number> {
+    try {
+      const allPoints = await this.qdrantService.scrollAll(collection, {
+        filter: this.buildRepoFilter(repoId),
+        limit: 100000,
+        with_payload: true,
+      } as Parameters<QdrantService['scrollAll']>[1]);
+
+      let totalTokens = 0;
+      for (const point of allPoints) {
+        const payload = point.payload as QdrantPointPayload | undefined;
+        if (payload?.text) {
+          const tokenCount = await this.litellmService.countTokens(
+            embeddingModel,
+            payload.text,
+          );
+          totalTokens += tokenCount;
+        }
+      }
+
+      return totalTokens;
+    } catch (error) {
+      this.logger.warn('Failed to calculate total indexed tokens', {
+        collection,
+        repoId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Private: utility
   // ---------------------------------------------------------------------------
 

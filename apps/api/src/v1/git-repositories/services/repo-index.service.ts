@@ -391,10 +391,6 @@ export class RepoIndexService implements OnModuleInit {
       return;
     }
 
-    // Store current indexedTokens before potentially resetting - we may preserve it
-    // if incremental index finds nothing to do
-    const previousIndexedTokens = entity.indexedTokens ?? 0;
-
     await this.repoIndexDao.updateById(repoIndexId, {
       status: RepoIndexStatus.InProgress,
       errorMessage: null,
@@ -547,10 +543,13 @@ export class RepoIndexService implements OnModuleInit {
         );
       }
 
-      // Check if any tokens were actually indexed
-      // If not (incremental with no changes), restore previous indexedTokens
-      const finalEntity = await this.repoIndexDao.getOne({ id: repoIndexId });
-      const finalIndexedTokens = finalEntity?.indexedTokens ?? 0;
+      // Get total tokens from Qdrant - this gives accurate count of all indexed content
+      const totalIndexedTokens =
+        await this.repoIndexerService.getTotalIndexedTokens(
+          collection,
+          repoUrl,
+          embeddingModel,
+        );
 
       await this.repoIndexDao.updateById(repoIndexId, {
         status: RepoIndexStatus.Completed,
@@ -560,16 +559,13 @@ export class RepoIndexService implements OnModuleInit {
         chunkingSignatureHash,
         qdrantCollection: collection,
         errorMessage: null,
-        // If no new tokens were indexed, preserve previous count
-        indexedTokens:
-          finalIndexedTokens === 0 ? previousIndexedTokens : finalIndexedTokens,
+        indexedTokens: totalIndexedTokens,
       });
 
       this.logger.debug('Repo index job completed', {
         repoIndexId,
         currentCommit,
-        indexedTokens:
-          finalIndexedTokens === 0 ? previousIndexedTokens : finalIndexedTokens,
+        indexedTokens: totalIndexedTokens,
       });
     } finally {
       // Cleanup ephemeral container
