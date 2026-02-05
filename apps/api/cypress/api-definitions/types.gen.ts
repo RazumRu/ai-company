@@ -67,6 +67,125 @@ export type UpdateRepositoryDto = {
   token?: string;
 };
 
+export type RepoIndexDto = {
+  /**
+   * Index ID
+   */
+  id: string;
+  /**
+   * Repository ID
+   */
+  repositoryId: string;
+  /**
+   * Repository URL
+   */
+  repoUrl: string;
+  /**
+   * Indexing status
+   */
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  /**
+   * Qdrant collection name
+   */
+  qdrantCollection: string;
+  /**
+   * Last indexed commit hash
+   */
+  lastIndexedCommit: string | null;
+  /**
+   * Embedding model used
+   */
+  embeddingModel: string | null;
+  /**
+   * Vector dimension size
+   */
+  vectorSize: number | null;
+  /**
+   * Chunking configuration hash
+   */
+  chunkingSignatureHash: string | null;
+  /**
+   * Estimated token count
+   */
+  estimatedTokens: number | null;
+  /**
+   * Actual indexed tokens
+   */
+  indexedTokens: number | null;
+  /**
+   * Error message if failed
+   */
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TriggerReindexDto = {
+  /**
+   * Repository ID to reindex
+   */
+  repositoryId: string;
+};
+
+export type TriggerReindexResponseDto = {
+  repoIndex: {
+    /**
+     * Index ID
+     */
+    id: string;
+    /**
+     * Repository ID
+     */
+    repositoryId: string;
+    /**
+     * Repository URL
+     */
+    repoUrl: string;
+    /**
+     * Indexing status
+     */
+    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+    /**
+     * Qdrant collection name
+     */
+    qdrantCollection: string;
+    /**
+     * Last indexed commit hash
+     */
+    lastIndexedCommit: string | null;
+    /**
+     * Embedding model used
+     */
+    embeddingModel: string | null;
+    /**
+     * Vector dimension size
+     */
+    vectorSize: number | null;
+    /**
+     * Chunking configuration hash
+     */
+    chunkingSignatureHash: string | null;
+    /**
+     * Estimated token count
+     */
+    estimatedTokens: number | null;
+    /**
+     * Actual indexed tokens
+     */
+    indexedTokens: number | null;
+    /**
+     * Error message if failed
+     */
+    errorMessage: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  /**
+   * Human-readable status message
+   */
+  message: string;
+};
+
 export type LiteLlmModelDto = {
   /**
    * Model identifier
@@ -1535,6 +1654,69 @@ export type UpdateRepositoryResponses = {
 
 export type UpdateRepositoryResponse =
   UpdateRepositoryResponses[keyof UpdateRepositoryResponses];
+
+export type GetRepoIndexesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Filter by repository ID
+     */
+    repositoryId?: string;
+    /**
+     * Filter by status
+     */
+    status?: 'pending' | 'in_progress' | 'completed' | 'failed';
+    /**
+     * Maximum number of indexes to return
+     */
+    limit?: number;
+    /**
+     * Number of indexes to skip
+     */
+    offset?: number;
+  };
+  url: '/api/v1/git-repositories/indexes';
+};
+
+export type GetRepoIndexesResponses = {
+  200: Array<RepoIndexDto>;
+};
+
+export type GetRepoIndexesResponse =
+  GetRepoIndexesResponses[keyof GetRepoIndexesResponses];
+
+export type GetRepoIndexByRepositoryIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/git-repositories/{id}/index';
+};
+
+export type GetRepoIndexByRepositoryIdResponses = {
+  200: {
+    [key: string]: unknown;
+  };
+};
+
+export type GetRepoIndexByRepositoryIdResponse =
+  GetRepoIndexByRepositoryIdResponses[keyof GetRepoIndexByRepositoryIdResponses];
+
+export type TriggerReindexData = {
+  body: TriggerReindexDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/git-repositories/reindex';
+};
+
+export type TriggerReindexResponses = {
+  201: TriggerReindexResponseDto;
+};
+
+export type TriggerReindexResponse =
+  TriggerReindexResponses[keyof TriggerReindexResponses];
 
 export type ListModelsData = {
   body?: never;

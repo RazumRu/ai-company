@@ -41,6 +41,10 @@ import type {
   GetGraphRevisionResponses,
   GetGraphRevisionsData,
   GetGraphRevisionsResponses,
+  GetRepoIndexByRepositoryIdData,
+  GetRepoIndexByRepositoryIdResponses,
+  GetRepoIndexesData,
+  GetRepoIndexesResponses,
   GetRepositoriesData,
   GetRepositoriesResponses,
   GetRepositoryByIdData,
@@ -71,6 +75,8 @@ import type {
   SuggestGraphInstructionsResponses,
   SuggestKnowledgeContentData,
   SuggestKnowledgeContentResponses,
+  TriggerReindexData,
+  TriggerReindexResponses,
   UpdateDocData,
   UpdateDocResponses,
   UpdateGraphData,
@@ -166,6 +172,54 @@ export const updateRepository = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/git-repositories/{id}',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const getRepoIndexes = <ThrowOnError extends boolean = false>(
+  options?: Options<GetRepoIndexesData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    GetRepoIndexesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories/indexes',
+    ...options,
+  });
+
+export const getRepoIndexByRepositoryId = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetRepoIndexByRepositoryIdData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    GetRepoIndexByRepositoryIdResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories/{id}/index',
+    ...options,
+  });
+
+export const triggerReindex = <ThrowOnError extends boolean = false>(
+  options: Options<TriggerReindexData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    TriggerReindexResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories/reindex',
     ...options,
     headers: {
       'Content-Type': 'application/json',

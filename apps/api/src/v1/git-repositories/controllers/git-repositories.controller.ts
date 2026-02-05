@@ -17,11 +17,16 @@ import {
 
 import {
   CreateRepositoryDto,
+  GetRepoIndexesQueryDto,
   GetRepositoriesQueryDto,
   GitRepositoryDto,
+  RepoIndexDto,
+  TriggerReindexDto,
+  TriggerReindexResponseDto,
   UpdateRepositoryDto,
 } from '../dto/git-repositories.dto';
 import { GitRepositoriesService } from '../services/git-repositories.service';
+import { RepoIndexService } from '../services/repo-index.service';
 
 @ApiTags('git-repositories')
 @Controller('git-repositories')
@@ -30,6 +35,7 @@ import { GitRepositoriesService } from '../services/git-repositories.service';
 export class GitRepositoriesController {
   constructor(
     private readonly gitRepositoriesService: GitRepositoriesService,
+    private readonly repoIndexService: RepoIndexService,
   ) {}
 
   @Post()
@@ -84,5 +90,35 @@ export class GitRepositoriesController {
     @CtxStorage() contextDataStorage: AuthContextStorage,
   ): Promise<void> {
     return this.gitRepositoriesService.deleteRepository(contextDataStorage, id);
+  }
+
+  @Get('indexes')
+  async getRepoIndexes(
+    @Query() query: GetRepoIndexesQueryDto,
+    @CtxStorage() contextDataStorage: AuthContextStorage,
+  ): Promise<RepoIndexDto[]> {
+    return this.gitRepositoriesService.getRepoIndexes(
+      contextDataStorage,
+      query,
+    );
+  }
+
+  @Get(':id/index')
+  async getRepoIndexByRepositoryId(
+    @Param('id') id: string,
+    @CtxStorage() contextDataStorage: AuthContextStorage,
+  ): Promise<RepoIndexDto | null> {
+    return this.gitRepositoriesService.getRepoIndexByRepositoryId(
+      contextDataStorage,
+      id,
+    );
+  }
+
+  @Post('reindex')
+  async triggerReindex(
+    @Body() dto: TriggerReindexDto,
+    @CtxStorage() contextDataStorage: AuthContextStorage,
+  ): Promise<TriggerReindexResponseDto> {
+    return this.gitRepositoriesService.triggerReindex(contextDataStorage, dto);
   }
 }

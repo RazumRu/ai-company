@@ -92,6 +92,292 @@ export const UpdateRepositoryDtoSchema = {
   },
 } as const;
 
+export const RepoIndexDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    repositoryId: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    repoUrl: {
+      type: 'string',
+    },
+    status: {
+      type: 'string',
+      enum: ['pending', 'in_progress', 'completed', 'failed'],
+    },
+    qdrantCollection: {
+      type: 'string',
+    },
+    lastIndexedCommit: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    embeddingModel: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    vectorSize: {
+      anyOf: [
+        {
+          type: 'integer',
+          minimum: -9007199254740991,
+          maximum: 9007199254740991,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    chunkingSignatureHash: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    estimatedTokens: {
+      anyOf: [
+        {
+          type: 'integer',
+          minimum: -9007199254740991,
+          maximum: 9007199254740991,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    indexedTokens: {
+      anyOf: [
+        {
+          type: 'integer',
+          minimum: -9007199254740991,
+          maximum: 9007199254740991,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    errorMessage: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+  },
+  required: [
+    'id',
+    'repositoryId',
+    'repoUrl',
+    'status',
+    'qdrantCollection',
+    'lastIndexedCommit',
+    'embeddingModel',
+    'vectorSize',
+    'chunkingSignatureHash',
+    'estimatedTokens',
+    'indexedTokens',
+    'errorMessage',
+    'createdAt',
+    'updatedAt',
+  ],
+} as const;
+
+export const TriggerReindexDtoSchema = {
+  type: 'object',
+  properties: {
+    repositoryId: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+  },
+  required: ['repositoryId'],
+} as const;
+
+export const TriggerReindexResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    repoIndex: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          format: 'uuid',
+          pattern:
+            '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+        },
+        repositoryId: {
+          type: 'string',
+          format: 'uuid',
+          pattern:
+            '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+        },
+        repoUrl: {
+          type: 'string',
+        },
+        status: {
+          type: 'string',
+          enum: ['pending', 'in_progress', 'completed', 'failed'],
+        },
+        qdrantCollection: {
+          type: 'string',
+        },
+        lastIndexedCommit: {
+          anyOf: [
+            {
+              type: 'string',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        embeddingModel: {
+          anyOf: [
+            {
+              type: 'string',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        vectorSize: {
+          anyOf: [
+            {
+              type: 'integer',
+              minimum: -9007199254740991,
+              maximum: 9007199254740991,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        chunkingSignatureHash: {
+          anyOf: [
+            {
+              type: 'string',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        estimatedTokens: {
+          anyOf: [
+            {
+              type: 'integer',
+              minimum: -9007199254740991,
+              maximum: 9007199254740991,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        indexedTokens: {
+          anyOf: [
+            {
+              type: 'integer',
+              minimum: -9007199254740991,
+              maximum: 9007199254740991,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        errorMessage: {
+          anyOf: [
+            {
+              type: 'string',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        createdAt: {
+          type: 'string',
+          format: 'date-time',
+          pattern:
+            '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+        },
+        updatedAt: {
+          type: 'string',
+          format: 'date-time',
+          pattern:
+            '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+        },
+      },
+      required: [
+        'id',
+        'repositoryId',
+        'repoUrl',
+        'status',
+        'qdrantCollection',
+        'lastIndexedCommit',
+        'embeddingModel',
+        'vectorSize',
+        'chunkingSignatureHash',
+        'estimatedTokens',
+        'indexedTokens',
+        'errorMessage',
+        'createdAt',
+        'updatedAt',
+      ],
+    },
+    message: {
+      type: 'string',
+    },
+  },
+  required: ['repoIndex', 'message'],
+} as const;
+
 export const LiteLlmModelDtoSchema = {
   type: 'object',
   properties: {

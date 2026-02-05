@@ -4,10 +4,12 @@ import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
+import { RepoIndexDao } from '../dao/repo-index.dao';
 import { GetRepositoriesQueryDto } from '../dto/git-repositories.dto';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
 import { GitRepositoryProvider } from '../git-repositories.types';
 import { GitRepositoriesService } from './git-repositories.service';
+import { RepoIndexQueueService } from './repo-index-queue.service';
 
 describe('GitRepositoriesService', () => {
   let service: GitRepositoriesService;
@@ -45,6 +47,24 @@ describe('GitRepositoriesService', () => {
             create: vi.fn(),
             updateById: vi.fn(),
             deleteById: vi.fn(),
+          },
+        },
+        {
+          provide: RepoIndexDao,
+          useValue: {
+            getAll: vi.fn(),
+            getOne: vi.fn(),
+            create: vi.fn(),
+            updateById: vi.fn(),
+            deleteById: vi.fn(),
+            incrementIndexedTokens: vi.fn(),
+          },
+        },
+        {
+          provide: RepoIndexQueueService,
+          useValue: {
+            addIndexJob: vi.fn(),
+            setCallbacks: vi.fn(),
           },
         },
       ],
