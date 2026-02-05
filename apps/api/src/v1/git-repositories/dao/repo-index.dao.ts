@@ -50,4 +50,18 @@ export class RepoIndexDao extends BaseDao<
       }
     }
   }
+
+  /**
+   * Atomically increment indexedTokens column to avoid race conditions
+   * when multiple batches complete concurrently.
+   */
+  async incrementIndexedTokens(id: string, amount: number): Promise<void> {
+    await this.getQueryBuilder()
+      .update()
+      .set({
+        indexedTokens: () => `"indexedTokens" + ${amount}`,
+      })
+      .where('id = :id', { id })
+      .execute();
+  }
 }

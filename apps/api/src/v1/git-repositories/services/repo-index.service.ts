@@ -180,19 +180,33 @@ export class RepoIndexService implements OnModuleInit {
     const needsFullReindex =
       !existing ||
       existing.status === RepoIndexStatus.Failed ||
-      existing.embeddingModel !== embeddingModel ||
-      existing.vectorSize !== vectorSize ||
-      existing.chunkingSignatureHash !== chunkingSignatureHash;
+      this.needsFullReindexDueToConfigChange(existing, {
+        embeddingModel,
+        vectorSize,
+        chunkingSignatureHash,
+      });
 
     const lastIndexedCommit = needsFullReindex
       ? undefined
       : (existing!.lastIndexedCommit ?? undefined);
 
     // Estimate size to decide inline vs background
-    const estimatedTokens = await this.repoIndexerService.estimateTokenCount(
-      repoRoot,
-      execFn,
-    );
+    // For incremental indexing, only estimate the changed files
+    let estimatedTokens: number;
+    if (needsFullReindex) {
+      estimatedTokens = await this.repoIndexerService.estimateTokenCount(
+        repoRoot,
+        execFn,
+      );
+    } else {
+      // Incremental: estimate only changed files
+      estimatedTokens = await this.repoIndexerService.estimateChangedTokenCount(
+        repoRoot,
+        lastIndexedCommit!,
+        currentCommit,
+        execFn,
+      );
+    }
 
     const indexParams = {
       repoId: repoUrl,
@@ -219,31 +233,8 @@ export class RepoIndexService implements OnModuleInit {
       });
 
       try {
-        // Create a callback to update indexed token progress
-        // We batch logging to reduce noise - log every 50k tokens or at milestones
-        let lastLoggedTokens = 0;
-        const LOG_TOKEN_INTERVAL = 50_000;
-
-        const onProgressUpdate = async (tokenCount: number) => {
-          const currentEntity = await this.repoIndexDao.getOne({
-            id: entity.id,
-          });
-          const currentIndexedTokens = currentEntity?.indexedTokens ?? 0;
-          const newIndexedTokens = currentIndexedTokens + tokenCount;
-
-          await this.repoIndexDao.updateById(entity.id, {
-            indexedTokens: newIndexedTokens,
-          });
-
-          // Only log at intervals to reduce noise
-          if (newIndexedTokens - lastLoggedTokens >= LOG_TOKEN_INTERVAL) {
-            this.logger.debug('Indexing progress updated (inline)', {
-              repoIndexId: entity.id,
-              totalTokens: newIndexedTokens,
-            });
-            lastLoggedTokens = newIndexedTokens;
-          }
-        };
+        // Create a callback to update indexed token progress using atomic increment
+        const onProgressUpdate = this.createProgressCallback(entity.id);
 
         if (needsFullReindex) {
           await this.repoIndexerService.runFullIndex(
@@ -476,11 +467,11 @@ export class RepoIndexService implements OnModuleInit {
         vectorSize,
       );
 
-      const needsFullReindex =
-        !entity.lastIndexedCommit ||
-        entity.embeddingModel !== embeddingModel ||
-        entity.vectorSize !== vectorSize ||
-        entity.chunkingSignatureHash !== chunkingSignatureHash;
+      const needsFullReindex = this.needsFullReindexDueToConfigChange(entity, {
+        embeddingModel,
+        vectorSize,
+        chunkingSignatureHash,
+      });
 
       const indexParams = {
         repoId: repoUrl,
@@ -499,33 +490,8 @@ export class RepoIndexService implements OnModuleInit {
         await this.updateRuntimeLastUsedAt(graphId, runtimeNodeId, threadId);
       };
 
-      // Create a callback to update indexed token progress
-      // We batch logging to reduce noise - log every 50k tokens or at milestones
-      let lastLoggedTokens = 0;
-      const LOG_TOKEN_INTERVAL = 50_000;
-
-      const onProgressUpdate = async (tokenCount: number) => {
-        // Get current indexed tokens and increment
-        const currentEntity = await this.repoIndexDao.getOne({
-          id: repoIndexId,
-        });
-        const currentIndexedTokens = currentEntity?.indexedTokens ?? 0;
-        const newIndexedTokens = currentIndexedTokens + tokenCount;
-
-        await this.repoIndexDao.updateById(repoIndexId, {
-          indexedTokens: newIndexedTokens,
-        });
-
-        // Only log at intervals to reduce noise
-        if (newIndexedTokens - lastLoggedTokens >= LOG_TOKEN_INTERVAL) {
-          this.logger.debug('Indexing progress updated', {
-            repoIndexId,
-            totalTokens: newIndexedTokens,
-            estimatedTokens: entity.estimatedTokens,
-          });
-          lastLoggedTokens = newIndexedTokens;
-        }
-      };
+      // Create a callback to update indexed token progress using atomic increment
+      const onProgressUpdate = this.createProgressCallback(repoIndexId);
 
       if (needsFullReindex) {
         await this.repoIndexerService.runFullIndex(
@@ -586,6 +552,41 @@ export class RepoIndexService implements OnModuleInit {
   // Private: helpers
   // ---------------------------------------------------------------------------
 
+  private static readonly LOG_TOKEN_INTERVAL = 50_000;
+
+  /**
+   * Creates a progress callback for indexing operations.
+   * Uses atomic increment to avoid race conditions when batches complete concurrently.
+   * Logs progress at intervals to reduce noise.
+   */
+  private createProgressCallback(
+    repoIndexId: string,
+  ): (tokenCount: number) => Promise<void> {
+    let totalTokensProcessed = 0;
+    let lastLoggedThreshold = 0;
+
+    return async (tokenCount: number) => {
+      // Atomically increment the token counter in DB
+      await this.repoIndexDao.incrementIndexedTokens(repoIndexId, tokenCount);
+
+      // Track locally for logging decisions (approximate is fine for logging)
+      totalTokensProcessed += tokenCount;
+
+      // Log when we cross a new threshold
+      const currentThreshold =
+        Math.floor(totalTokensProcessed / RepoIndexService.LOG_TOKEN_INTERVAL) *
+        RepoIndexService.LOG_TOKEN_INTERVAL;
+
+      if (currentThreshold > lastLoggedThreshold) {
+        this.logger.debug('Indexing progress updated', {
+          repoIndexId,
+          approximateTokens: totalTokensProcessed,
+        });
+        lastLoggedThreshold = currentThreshold;
+      }
+    };
+  }
+
   /**
    * Updates the runtime instance's lastUsedAt timestamp to prevent cleanup
    * during long-running indexing operations
@@ -616,6 +617,31 @@ export class RepoIndexService implements OnModuleInit {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * Determines if a full reindex is needed due to config changes.
+   * Does NOT check for entity existence or status - caller handles those.
+   */
+  private needsFullReindexDueToConfigChange(
+    entity: {
+      lastIndexedCommit: string | null;
+      embeddingModel: string | null;
+      vectorSize: number | null;
+      chunkingSignatureHash: string | null;
+    },
+    currentConfig: {
+      embeddingModel: string;
+      vectorSize: number;
+      chunkingSignatureHash: string;
+    },
+  ): boolean {
+    return (
+      !entity.lastIndexedCommit ||
+      entity.embeddingModel !== currentConfig.embeddingModel ||
+      entity.vectorSize !== currentConfig.vectorSize ||
+      entity.chunkingSignatureHash !== currentConfig.chunkingSignatureHash
+    );
   }
 
   private async buildCloneUrl(repoUrl: string): Promise<string> {
@@ -742,11 +768,7 @@ export class RepoIndexService implements OnModuleInit {
       return true;
     }
 
-    const extension = match.path
-      .split('.')
-      .pop()
-      ?.toLowerCase()
-      .replace('.', '');
+    const extension = match.path.split('.').pop()?.toLowerCase();
 
     return extension === normalized;
   }

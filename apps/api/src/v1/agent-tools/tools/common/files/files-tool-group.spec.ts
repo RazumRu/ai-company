@@ -286,8 +286,8 @@ describe('FilesToolGroup', () => {
       // Check that group instructions are returned even in read-only mode
       expect(result.instructions).toBeDefined();
       expect(typeof result.instructions).toBe('string');
-      expect(result.instructions).toContain('(Read-only)');
-      expect(result.instructions).toContain('edit actions disabled');
+      expect(result.instructions).toContain('Read-Only Mode');
+      expect(result.instructions).toContain('codebase_search');
       expect(mockFilesApplyChangesTool.build).not.toHaveBeenCalled();
       expect(mockFilesDeleteTool.build).not.toHaveBeenCalled();
       expect(mockFilesCreateDirectoryTool.build).not.toHaveBeenCalled();
@@ -417,7 +417,8 @@ describe('FilesToolGroup', () => {
 
       expect(result).toBeDefined();
       expect(result).toContain('/runtime-workspace');
-      expect(result).toContain('Read/search + create/modify/move/delete');
+      expect(result).toContain('MUST USE codebase_search FIRST');
+      expect(result).toContain('files_edit');
       expect(result).toContain('files_apply_changes');
       expect(result).toContain('codebase_search');
     });
@@ -432,9 +433,9 @@ describe('FilesToolGroup', () => {
 
       expect(result).toBeDefined();
       expect(result).toContain('/runtime-workspace');
-      expect(result).toContain('(Read-only)');
-      expect(result).toContain('edit actions disabled');
+      expect(result).toContain('Read-Only Mode');
       expect(result).not.toContain('files_apply_changes');
+      expect(result).not.toContain('files_edit');
       expect(result).toContain('codebase_search');
     });
   });

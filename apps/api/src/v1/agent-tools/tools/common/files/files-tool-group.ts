@@ -55,83 +55,77 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     const lines: string[] = [
       `You have access to file system tools for working with the repository at: ${workdir}`,
       '',
-      '**🔍 Discovery Workflow (CRITICAL - Follow This):**',
-      '**PRIMARY SEARCH METHOD:** Always start with `codebase_search` for any codebase question.',
-      '- ⚡ **FAST** for large repos',
-      '- 🎯 **SEMANTIC** - finds relevant code even without exact matches',
-      '- ✅ **PREFERRED** entry point for discovery and navigation',
+      '╔══════════════════════════════════════════════════════════════════════════════╗',
+      '║  🚨🚨🚨 MANDATORY RULE: YOU MUST USE codebase_search FIRST 🚨🚨🚨            ║',
+      '╚══════════════════════════════════════════════════════════════════════════════╝',
       '',
-      '**WHEN TO USE EACH SEARCH TOOL:**',
-      '1) **codebase_search** (DEFAULT): Find relevant files/chunks by intent or description',
-      '   - Query must be a human-readable phrase or question (not a single word)',
-      '   - Example: "Where is UserService defined?"',
-      '   - Example: "Find the handleRequest method"',
-      '   - Example: "Show me all React hooks"',
-      '   - Always provide `directory` to scope results',
-      '2) **files_search_text** (FOLLOW-UP): Exact usages, comments, or strings AFTER semantic discovery',
-      '   - Example: "Where is UserService being called?"',
-      '   - Example: "Find TODO comments"',
-      '   - Example: "Search for API endpoint \'/users\'"',
-      '3) **files_directory_tree** (OVERVIEW): Understanding project structure',
+      '**THIS IS A STRICT REQUIREMENT - NOT A SUGGESTION:**',
       '',
-      '**SEARCH WORKFLOW (REQUIRED ORDER):**',
-      '1) Run `codebase_search` with a semantic query to find relevant files/chunks.',
-      '2) Read the top matches with `files_read` to confirm context.',
-      '3) Use `files_search_text` for exact strings/usages or deeper scans.',
-      '4) Use `files_find_paths` or `files_directory_tree` for path discovery/structure.',
+      'Before you call ANY other file tool (`files_directory_tree`, `files_find_paths`, `files_search_text`, `files_read`),',
+      'you MUST FIRST call `codebase_search` to find relevant files and code.',
+      '',
+      '**VIOLATION OF THIS RULE IS NOT ACCEPTABLE.**',
+      '',
+      '**THE ONLY EXCEPTIONS where you may skip codebase_search:**',
+      '1. You already know the EXACT file path from a previous codebase_search result',
+      '2. The user explicitly provided the exact file path to read/edit',
+      '3. You are performing a follow-up action on a file you already found via codebase_search',
+      '',
+      '**FOR ANY OF THESE TASKS, YOU MUST USE codebase_search FIRST:**',
+      '- Finding where something is implemented',
+      '- Exploring the codebase structure',
+      '- Locating a class, function, or module',
+      '- Understanding how a feature works',
+      '- Finding related code',
+      '- Answering "where is X?" questions',
+      '- Looking for configuration files',
+      '- Finding tests for a component',
+      '',
+      '**WHY THIS IS MANDATORY:**',
+      '- `codebase_search` is 10-100x FASTER than directory browsing',
+      '- It uses semantic search - finds code by intent, not just text matching',
+      '- It searches the ENTIRE codebase instantly',
+      '- Other tools require you to guess paths or browse slowly',
+      '',
+      '**CORRECT WORKFLOW (MUST FOLLOW):**',
+      '```',
+      '1. User asks about code → CALL codebase_search FIRST',
+      '2. Get results from codebase_search → THEN call files_read on relevant files',
+      '3. Need exact matches? → THEN call files_search_text (AFTER codebase_search)',
+      '4. Need folder structure? → THEN call files_directory_tree (AFTER codebase_search)',
+      '```',
+      '',
+      '**EXAMPLES:**',
+      '',
+      'User: "Find the authentication middleware"',
+      '❌ WRONG: Call files_directory_tree or files_find_paths',
+      '✅ CORRECT: Call codebase_search with query "authentication middleware implementation"',
+      '',
+      'User: "Where is the UserService class?"',
+      '❌ WRONG: Call files_search_text with pattern "class UserService"',
+      '✅ CORRECT: Call codebase_search with query "UserService class definition"',
+      '',
+      'User: "Show me how database connections work"',
+      '❌ WRONG: Call files_directory_tree to browse for database files',
+      '✅ CORRECT: Call codebase_search with query "database connection configuration setup"',
       '',
       includeEditActions
-        ? '**✏️ Editing Workflow (CRITICAL - Read This):**'
-        : '**📖 Read-Only Mode (Read-only):**',
+        ? '**✏️ Editing Workflow (after finding files with codebase_search):**'
+        : '**📖 Read-Only Mode:**',
       includeEditActions
-        ? '4) **MANDATORY FIRST STEP:** Use `files_read` to get current file content. NEVER edit without reading first.'
-        : '4) Use `files_read` to inspect exact code.',
+        ? '1. Use `files_read` to get current file content BEFORE any edit'
+        : '- Use `files_read` to inspect exact code after finding it with codebase_search.',
       includeEditActions
-        ? '5) **PRIMARY TOOL:** Use `files_edit` (sketch-based) for most edits. Start with useSmartModel=false; retry with useSmartModel=true if needed.'
+        ? '2. Use `files_edit` (sketch-based) for most edits'
         : '',
       includeEditActions
-        ? '6) **FALLBACK:** If `files_edit` fails, use `files_apply_changes` with exact oldText/newText copied from `files_read`.'
+        ? '3. Use `files_apply_changes` as fallback with exact oldText/newText'
         : '',
       includeEditActions
-        ? '7) **LAST RESORT:** Use `files_write_file` ONLY for creating new files. NEVER for modifying existing files.'
-        : '',
-      '**📊 Tool Priority for Editing:**',
-      includeEditActions
-        ? '1. files_edit (preferred - handles multiple changes)'
-        : '',
-      includeEditActions
-        ? '2. files_apply_changes (fallback - exact oldText/newText)'
-        : '',
-      includeEditActions
-        ? '3. files_write_file (last resort - ONLY for new files)'
+        ? '4. Use `files_write_file` ONLY for creating NEW files'
         : '',
       '',
-      '**Available Operations:**',
-      '- 🔍 **CODEBASE SEARCH (PRIMARY):** Semantic search across the repo',
-      includeEditActions
-        ? '- Read/search + create/modify/move/delete files and directories'
-        : '- Read/search only (edit actions disabled)',
-      includeEditActions
-        ? '- Sketch-based editing with `files_edit` (use useSmartModel flag for retry)'
-        : '',
-      includeEditActions
-        ? '- Exact text replacement with `files_apply_changes` (manual control)'
-        : '',
-      '',
-      '**⚠️ Critical Rules:**',
-      '- 🔍 **ALWAYS start with `codebase_search`** for codebase discovery',
-      includeEditActions
-        ? '- 📖 **ALWAYS read file** with `files_read` before editing (no exceptions)'
-        : '- Search results can become stale after external changes',
-      includeEditActions
-        ? '- ✏️ **Try `files_edit` first**, fallback to `files_apply_changes` if needed'
-        : '',
-      includeEditActions
-        ? '- 📝 **For `files_apply_changes`**: copy EXACT text from `files_read`, never guess'
-        : '',
-      includeEditActions
-        ? '- ⚠️ **Use `files_write_file` ONLY for new files**, not for editing existing files'
-        : '',
+      '**REMEMBER: codebase_search MUST be your FIRST tool call when exploring code.**',
     ];
 
     return lines.filter(Boolean).join('\n');

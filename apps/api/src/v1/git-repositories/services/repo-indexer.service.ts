@@ -115,6 +115,58 @@ export class RepoIndexerService {
     return Math.floor(totalBytes / 4);
   }
 
+  /**
+   * Estimate token count for only the changed files between two commits.
+   * Used to decide if incremental indexing can run inline vs background.
+   */
+  async estimateChangedTokenCount(
+    repoRoot: string,
+    fromCommit: string,
+    toCommit: string,
+    execFn: RepoExecFn,
+  ): Promise<number> {
+    // Get list of changed files
+    const diffRes = await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} diff --name-only ${shQuote(fromCommit)}..${shQuote(toCommit)}`,
+    });
+    if (diffRes.exitCode !== 0) {
+      // If diff fails, fall back to full estimate
+      return this.estimateTokenCount(repoRoot, execFn);
+    }
+
+    const changedFiles = diffRes.stdout
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    if (changedFiles.length === 0) {
+      return 0;
+    }
+
+    // Get sizes of changed files
+    let totalBytes = 0;
+    for (const file of changedFiles) {
+      const sizeRes = await execFn({
+        cmd: `git -C ${shQuote(repoRoot)} ls-tree -l HEAD -- ${shQuote(file)}`,
+      });
+      if (sizeRes.exitCode === 0 && sizeRes.stdout.trim()) {
+        // Format: <mode> <type> <hash> <size>\t<path>
+        const line = sizeRes.stdout.trim();
+        const tabIndex = line.indexOf('\t');
+        if (tabIndex !== -1) {
+          const meta = line.slice(0, tabIndex).trim();
+          const parts = meta.split(/\s+/);
+          const size = Number.parseInt(parts[3] ?? '0', 10);
+          if (Number.isFinite(size)) {
+            totalBytes += size;
+          }
+        }
+      }
+    }
+
+    return Math.floor(totalBytes / 4);
+  }
+
   async resolveCurrentCommit(
     repoRoot: string,
     execFn: RepoExecFn,
@@ -122,7 +174,16 @@ export class RepoIndexerService {
     const res = await execFn({
       cmd: `git -C ${shQuote(repoRoot)} rev-parse HEAD`,
     });
-    return res.stdout.trim();
+    if (res.exitCode !== 0) {
+      throw new Error(
+        `Failed to resolve current commit: ${res.stderr || 'unknown error'}`,
+      );
+    }
+    const commit = res.stdout.trim();
+    if (!commit) {
+      throw new Error('Failed to resolve current commit: empty result');
+    }
+    return commit;
   }
 
   async getCurrentBranch(
@@ -1024,8 +1085,7 @@ export class RepoIndexerService {
 
       // File content exists - copy all chunks with updated path and commit
       // Also calculate token counts for progress tracking
-      let totalTokens = 0;
-      const copiedPoints = await Promise.all(
+      const copiedPointsWithTokens = await Promise.all(
         allPoints.map(async (point) => {
           const payload = point.payload as QdrantPointPayload;
           // Calculate token count from chunk text
@@ -1033,21 +1093,29 @@ export class RepoIndexerService {
             embeddingModel,
             payload.text,
           );
-          totalTokens += chunkTokenCount;
 
           // Generate new point ID based on new path
           const newId = this.buildPointId(repoId, newPath, payload.chunk_hash);
           return {
-            id: newId,
-            vector: point.vector as number[],
-            payload: {
-              ...payload,
-              path: newPath,
-              commit: currentCommit,
-              indexed_at: new Date().toISOString(),
+            point: {
+              id: newId,
+              vector: point.vector as number[],
+              payload: {
+                ...payload,
+                path: newPath,
+                commit: currentCommit,
+                indexed_at: new Date().toISOString(),
+              },
             },
+            tokenCount: chunkTokenCount,
           };
         }),
+      );
+
+      const copiedPoints = copiedPointsWithTokens.map((p) => p.point);
+      const totalTokens = copiedPointsWithTokens.reduce(
+        (sum, p) => sum + p.tokenCount,
+        0,
       );
 
       if (copiedPoints.length > 0) {
@@ -1137,12 +1205,15 @@ export class RepoIndexerService {
   /**
    * Calculate total tokens stored in Qdrant for this repo.
    * This gives an accurate count of all indexed content.
+   * Uses batched parallel processing for better performance.
    */
   async getTotalIndexedTokens(
     collection: string,
     repoId: string,
     embeddingModel: string,
   ): Promise<number> {
+    const BATCH_SIZE = 100; // Process tokens in parallel batches
+
     try {
       const allPoints = await this.qdrantService.scrollAll(collection, {
         filter: this.buildRepoFilter(repoId),
@@ -1151,15 +1222,23 @@ export class RepoIndexerService {
       } as Parameters<QdrantService['scrollAll']>[1]);
 
       let totalTokens = 0;
-      for (const point of allPoints) {
-        const payload = point.payload as QdrantPointPayload | undefined;
-        if (payload?.text) {
-          const tokenCount = await this.litellmService.countTokens(
-            embeddingModel,
-            payload.text,
-          );
-          totalTokens += tokenCount;
-        }
+
+      // Process in batches for parallel token counting
+      for (let i = 0; i < allPoints.length; i += BATCH_SIZE) {
+        const batch = allPoints.slice(i, i + BATCH_SIZE);
+        const tokenCounts = await Promise.all(
+          batch.map(async (point) => {
+            const payload = point.payload as QdrantPointPayload | undefined;
+            if (payload?.text) {
+              return this.litellmService.countTokens(
+                embeddingModel,
+                payload.text,
+              );
+            }
+            return 0;
+          }),
+        );
+        totalTokens += tokenCounts.reduce((sum, count) => sum + count, 0);
       }
 
       return totalTokens;

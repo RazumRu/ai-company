@@ -28,6 +28,7 @@ const mockRepoIndexDao = {
   getAll: vi.fn().mockResolvedValue([]), // For recoverStuckJobs
   create: vi.fn(),
   updateById: vi.fn(),
+  incrementIndexedTokens: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockGitRepositoriesDao = {
@@ -41,6 +42,7 @@ const mockGitRepositoriesService = {
 
 const mockRepoIndexerService = {
   estimateTokenCount: vi.fn().mockResolvedValue(100),
+  estimateChangedTokenCount: vi.fn().mockResolvedValue(100),
   resolveCurrentCommit: vi.fn().mockResolvedValue('abc123'),
   getCurrentBranch: vi.fn().mockResolvedValue('main'),
   getVectorSizeForModel: vi.fn().mockResolvedValue(1536),
@@ -204,7 +206,8 @@ describe('RepoIndexService', () => {
       } as unknown as RepoIndexEntity;
 
       mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
-      mockRepoIndexerService.estimateTokenCount.mockResolvedValue(1000);
+      // For incremental, estimateChangedTokenCount is used instead of estimateTokenCount
+      mockRepoIndexerService.estimateChangedTokenCount.mockResolvedValue(1000);
       mockRepoIndexDao.updateById.mockResolvedValue(existingEntity);
 
       const result = await service.getOrInitIndexForRepo(baseParams);
@@ -212,6 +215,10 @@ describe('RepoIndexService', () => {
       expect(result.status).toBe('ready');
       expect(mockRepoIndexerService.runIncrementalIndex).toHaveBeenCalled();
       expect(mockRepoIndexerService.runFullIndex).not.toHaveBeenCalled();
+      // Verify that estimateChangedTokenCount was called for incremental
+      expect(
+        mockRepoIndexerService.estimateChangedTokenCount,
+      ).toHaveBeenCalled();
     });
 
     it('sets entity to failed on inline indexing error', async () => {
