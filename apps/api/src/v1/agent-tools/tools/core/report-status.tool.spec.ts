@@ -16,9 +16,8 @@ describe('ReportStatusTool', () => {
     expect(result.output).toEqual({ reported: true });
   });
 
-  it('should mark tool message metadata with __hideForLlm and __createdAt', () => {
+  it('should NOT hide tool message from LLM to prevent parallel execution issues', () => {
     const tool = new ReportStatusTool();
-    const beforeInvoke = new Date();
 
     const result = tool.invoke(
       { message: 'Processing your request...' },
@@ -26,25 +25,19 @@ describe('ReportStatusTool', () => {
       {} as never,
     );
 
-    const afterInvoke = new Date();
-
-    expect(result.messageMetadata?.__hideForLlm).toBe(true);
-    expect(result.messageMetadata?.__createdAt).toBeDefined();
-
-    // Verify timestamp is within the invocation window
-    const createdAt = new Date(result.messageMetadata?.__createdAt as string);
-    expect(createdAt.getTime()).toBeGreaterThanOrEqual(beforeInvoke.getTime());
-    expect(createdAt.getTime()).toBeLessThanOrEqual(afterInvoke.getTime());
+    // IMPORTANT: The ToolMessage must NOT be hidden from the LLM.
+    // When report_status is called in parallel with other tools, hiding the ToolMessage
+    // causes filterMessagesForLlm() to filter out the AIMessage that called all tools
+    // (because not all tool calls have visible results), which orphans the other tools'
+    // results and causes the agent to loop.
+    expect(result.messageMetadata?.__hideForLlm).toBeUndefined();
   });
 
-  it('should create AI message with report content, __isReportingMessage flag, and __createdAt', () => {
+  it('should create AI message with report content and __isReportingMessage flag', () => {
     const tool = new ReportStatusTool();
     const reportMessage = 'Processing your request...';
-    const beforeInvoke = new Date();
 
     const result = tool.invoke({ message: reportMessage }, {}, {} as never);
-
-    const afterInvoke = new Date();
 
     expect(result.additionalMessages).toHaveLength(1);
 
@@ -55,15 +48,6 @@ describe('ReportStatusTool', () => {
       __isReportingMessage: true,
       __hideForLlm: true,
     });
-
-    // Verify __createdAt is set at invocation time
-    const createdAt = aiMessage.additional_kwargs?.__createdAt as string;
-    expect(createdAt).toBeDefined();
-    const createdAtDate = new Date(createdAt);
-    expect(createdAtDate.getTime()).toBeGreaterThanOrEqual(
-      beforeInvoke.getTime(),
-    );
-    expect(createdAtDate.getTime()).toBeLessThanOrEqual(afterInvoke.getTime());
   });
 
   it('should hide AI message from LLM using markMessageHideForLlm', () => {
@@ -123,8 +107,8 @@ Now updating the config and tests.`;
 
       const result = tool.invoke({ message: statusUpdate }, {}, {} as never);
 
-      // Tool message should be hidden (via messageMetadata)
-      expect(result.messageMetadata?.__hideForLlm).toBe(true);
+      // Tool message should NOT be hidden to prevent parallel execution issues
+      expect(result.messageMetadata?.__hideForLlm).toBeUndefined();
 
       // Output for tool message should be minimal
       expect(result.output).toEqual({ reported: true });
@@ -143,7 +127,7 @@ Now updating the config and tests.`;
       expect(aiMessage.content).toBe(statusUpdate);
     });
 
-    it('should prevent duplicate reporting messages scenario', () => {
+    it('should allow parallel execution with other tools without causing loops', () => {
       const tool = new ReportStatusTool();
 
       const result = tool.invoke(
@@ -155,45 +139,21 @@ Now updating the config and tests.`;
         {} as never,
       );
 
-      // This is the fix for the reported issue:
-      // The tool message (with {reported: true}) should be hidden
-      expect(result.messageMetadata?.__hideForLlm).toBe(true);
+      // CRITICAL: The tool message must NOT be hidden.
+      // When report_status is called in parallel with other tools (e.g., communication_exec),
+      // hiding the ToolMessage causes filterMessagesForLlm() to:
+      // 1. Exclude the report_status tool_call_id from toolResultIds
+      // 2. Filter out the AIMessage that called all tools (because not all calls have visible results)
+      // 3. Orphan ALL tool results (including the other tool's result)
+      // 4. Cause the LLM to not see any tool execution and retry, creating loops
+      expect(result.messageMetadata?.__hideForLlm).toBeUndefined();
 
       // Only the AI message with __isReportingMessage should be visible to users
       const aiMessage = result.additionalMessages?.[0] as AIMessage;
       expect(aiMessage.additional_kwargs?.__isReportingMessage).toBe(true);
 
-      // The AI message should also be hidden from the LLM to avoid confusion
+      // The AI message should be hidden from the LLM to avoid confusion
       expect(aiMessage.additional_kwargs?.__hideForLlm).toBe(true);
-    });
-
-    it('should capture timestamp at invocation time for correct ordering in parallel execution', () => {
-      const tool = new ReportStatusTool();
-      const beforeInvoke = new Date();
-
-      const result = tool.invoke(
-        { message: 'Starting work...' },
-        {},
-        {} as never,
-      );
-
-      // Both the tool message metadata and the AI message should have __createdAt
-      // set at invocation time (before Promise.all completes for parallel tools)
-      const toolMsgCreatedAt = result.messageMetadata?.__createdAt as string;
-      const aiMsgCreatedAt = (result.additionalMessages?.[0] as AIMessage)
-        .additional_kwargs?.__createdAt as string;
-
-      expect(toolMsgCreatedAt).toBeDefined();
-      expect(aiMsgCreatedAt).toBeDefined();
-
-      // Both should have the same timestamp (captured at the same moment)
-      expect(toolMsgCreatedAt).toBe(aiMsgCreatedAt);
-
-      // The timestamp should be from invocation time
-      const createdAt = new Date(toolMsgCreatedAt);
-      expect(createdAt.getTime()).toBeGreaterThanOrEqual(
-        beforeInvoke.getTime(),
-      );
     });
   });
 });

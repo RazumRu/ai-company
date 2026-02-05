@@ -42,7 +42,7 @@ describe('Knowledge docs API', () => {
       });
 
       deleteKnowledgeDoc(docId).then((deleteResponse) => {
-        expect(deleteResponse.status).to.eq(200);
+        expect(deleteResponse.status).to.eq(204);
       });
     });
   });

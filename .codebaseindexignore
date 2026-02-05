@@ -9,3 +9,4 @@
 **/tsconfig.*
 /turbo.json
 **/vitest.config.*
+**/cypress/api-definitions

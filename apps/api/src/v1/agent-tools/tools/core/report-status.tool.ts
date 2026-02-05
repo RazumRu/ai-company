@@ -49,12 +49,26 @@ export class ReportStatusTool extends BaseTool<ReportStatusToolSchemaType> {
       Do NOT use for simple user questions or normal assistant replies. If you can answer directly in one response, just answer normally and do not call this tool.
       If you need user input, call \`finish\` with \`needsMoreInfo: true\`. If your work is done, call \`finish\` with \`needsMoreInfo: false\`.
 
+      ### Critical: Always Call Alone
+      **NEVER call \`report_status\` in parallel with other tools.** Always call it as the only tool in a turn. If you need to report status AND perform another action, first call \`report_status\` alone, then call the other tool(s) in the next turn.
+
+      **WRONG:**
+      \`\`\`
+      Turn 1: [report_status(...), communication_exec(...)]  ❌
+      \`\`\`
+
+      **CORRECT:**
+      \`\`\`
+      Turn 1: [report_status(...)]  ✓
+      Turn 2: [communication_exec(...)]  ✓
+      \`\`\`
+
       ### Important
       If you want to report status (without questions) and continue working, do NOT send a normal assistant message. Call \`report_status\` instead.
 
       ### Example
       \`\`\`json
-      {"message": "I found the root cause and I’m updating the config + tests next."}
+      {"message": "I found the root cause and I'm updating the config + tests next."}
       \`\`\`
     `;
   }
@@ -73,11 +87,14 @@ export class ReportStatusTool extends BaseTool<ReportStatusToolSchemaType> {
       additional_kwargs: { __isReportingMessage: true },
     });
 
+    // IMPORTANT: The ToolMessage must NOT be hidden from the LLM.
+    // When report_status is called in parallel with other tools, hiding the ToolMessage
+    // causes filterMessagesForLlm() to filter out the AIMessage that called all tools
+    // (because not all tool calls have visible results), which orphans the other tools'
+    // results and causes the agent to loop.
+    // Only the additional AIMessage (the user-facing report) should be hidden from the LLM.
     return {
       output: { reported: true },
-      messageMetadata: {
-        __hideForLlm: true, // Hide the tool message itself - only the AI message should be visible
-      },
       additionalMessages: [markMessageHideForLlm(reportMessage)],
     };
   }
