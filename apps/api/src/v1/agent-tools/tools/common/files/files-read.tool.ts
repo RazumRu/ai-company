@@ -55,6 +55,7 @@ type FilesReadToolFileOutput = {
   error?: string;
   content?: string;
   lineCount?: number;
+  fileSizeBytes?: number;
 };
 
 type FilesReadToolOutput = {
@@ -115,26 +116,40 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       - Finding paths -> use \`files_find_paths\`
       - Searching content -> use \`files_search_text\`
 
+      ### CRITICAL: Reading Strategy to Minimize Tool Calls
+      **Default to reading ENTIRE files unless they are very large (>300 lines).**
+      - Reading the whole file once is cheaper than multiple small reads
+      - Line ranges are for LARGE files only (>300 lines)
+      - If you need multiple sections of the same file, read it ONCE without line ranges
+      - After initial read, you have the full context - don't re-read the same file
+
+      **Examples of CORRECT usage:**
+      ✅ Read entire file: {"filesToRead":[{"filePath":"/path/to/service.ts"}]}
+      ✅ Large file chunks: {"filesToRead":[{"filePath":"/path/to/large.ts","fromLineNumber":1,"toLineNumber":300}]}
+      ❌ WRONG - multiple small reads: files_read lines 1-30, then 101-300, then 250-350 (wasteful!)
+      ✅ CORRECT - one read: files_read entire file once, then reference specific parts in your analysis
+
       ### Best Practices
-      - Read only line ranges for large files to minimize tokens.
-      - Batch related reads into one call to reduce tool invocations.
-      - Use file paths returned by \`files_find_paths\` to avoid path mistakes.
-      - After \`files_search_text\`, read a small context window (e.g., 10-30 lines).
+      - **Default to reading entire files** - only use line ranges for files >300 lines
+      - Batch ALL related files into ONE call
+      - Never re-read a file you've already read in the same conversation
+      - Use file paths returned by \`files_find_paths\` to avoid path mistakes
+      - After \`files_search_text\`, read the entire file (not just a window) unless it's huge
 
       ### Examples
-      **1) Read a line range:**
+      **1) Read entire file (PREFERRED for most files):**
       \`\`\`json
-      {"filesToRead":[{"filePath":"/runtime-workspace/project/src/large.ts","fromLineNumber":120,"toLineNumber":160}]}
+      {"filesToRead":[{"filePath":"/runtime-workspace/project/src/service.ts"}]}
       \`\`\`
 
-      **2) Read multiple files at once:**
+      **2) Read multiple complete files at once:**
       \`\`\`json
-      {"filesToRead":[{"filePath":"/runtime-workspace/project/tsconfig.json"},{"filePath":"/runtime-workspace/project/package.json"}]}
+      {"filesToRead":[{"filePath":"/runtime-workspace/project/tsconfig.json"},{"filePath":"/runtime-workspace/project/package.json"},{"filePath":"/runtime-workspace/project/src/main.ts"}]}
       \`\`\`
 
-      **3) Batch + range:**
+      **3) Large file with line range (only when file is >300 lines):**
       \`\`\`json
-      {"filesToRead":[{"filePath":"/runtime-workspace/project/src/a.ts","fromLineNumber":10,"toLineNumber":40},{"filePath":"/runtime-workspace/project/package.json"}]}
+      {"filesToRead":[{"filePath":"/runtime-workspace/project/src/large.ts","fromLineNumber":1,"toLineNumber":300}]}
       \`\`\`
     `;
   }
@@ -223,8 +238,10 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
         read.fromLineNumber !== undefined && read.toLineNumber !== undefined
           ? `sed -n '${read.fromLineNumber},${read.toLineNumber}p' ${shQuote(filePath)}`
           : `cat ${shQuote(filePath)}`;
+      // Also get file size using wc -c
+      const sizeCmd = `wc -c < ${shQuote(filePath)} 2>/dev/null || echo "0"`;
       scriptParts.push(
-        `__out="$({ ${cmd}; } 2>&1)"; __ec=$?; printf "%s\\n" "${beginPrefix}${idx}"; printf "%s\\n" "${exitPrefix}${idx}:$__ec"; printf "%s\\n" "${payloadPrefix}${idx}"; printf "%s" "$__out"; printf "\\n%s\\n" "${endPrefix}${idx}"`,
+        `__out="$({ ${cmd}; } 2>&1)"; __ec=$?; __size=$(${sizeCmd}); printf "%s\\n" "${beginPrefix}${idx}"; printf "%s\\n" "${exitPrefix}${idx}:$__ec"; printf "%s\\n" "__SIZE__:$__size"; printf "%s\\n" "${payloadPrefix}${idx}"; printf "%s" "$__out"; printf "\\n%s\\n" "${endPrefix}${idx}"`,
       );
     }
 
@@ -268,7 +285,8 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       }
 
       const exitLine = stdoutLines[beginIdx + 1];
-      const payloadMarker = stdoutLines[beginIdx + 2];
+      const sizeLine = stdoutLines[beginIdx + 2];
+      const payloadMarker = stdoutLines[beginIdx + 3];
       if (!exitLine || !exitLine.startsWith(exitLinePrefix)) {
         files.push({
           filePath,
@@ -284,7 +302,7 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
         continue;
       }
 
-      const endIdx = stdoutLines.indexOf(endLine, beginIdx + 3);
+      const endIdx = stdoutLines.indexOf(endLine, beginIdx + 4);
       if (endIdx === -1) {
         files.push({
           filePath,
@@ -295,7 +313,13 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
 
       const exitCodeRaw = exitLine.slice(exitLinePrefix.length).trim();
       const exitCode = Number.parseInt(exitCodeRaw || '1', 10);
-      const payload = stdoutLines.slice(beginIdx + 3, endIdx).join('\n');
+
+      // Parse file size
+      const fileSizeBytes = sizeLine?.startsWith('__SIZE__:')
+        ? Number.parseInt(sizeLine.slice('__SIZE__:'.length).trim() || '0', 10)
+        : undefined;
+
+      const payload = stdoutLines.slice(beginIdx + 4, endIdx).join('\n');
 
       if (exitCode !== 0) {
         files.push({
@@ -307,7 +331,7 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
 
       const content = payload;
       const lineCount = content.split('\n').length;
-      files.push({ filePath, content, lineCount });
+      files.push({ filePath, content, lineCount, fileSizeBytes });
     }
 
     return {
