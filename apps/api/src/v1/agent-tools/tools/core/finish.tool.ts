@@ -87,26 +87,57 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       ### When NOT to Use
       Don't call mid-work, alongside other tools, or before completing ALL work. Never output your internal reasoning or a plain-text final response without calling finish.
 
+      ### CRITICAL: Output Delivery for Research/Design/Analysis Tasks
+      **Your complete detailed output MUST be provided via the tool call mechanism, NOT in the message parameter:**
+
+      - **message parameter**: Brief 1-3 sentence summary only (e.g., "Research complete. Analyzed auth module and designed 3 improvements.")
+      - **Detailed output**: Provide in the tool call's additional instructions/metadata (your LLM framework will handle this automatically when you structure your response correctly)
+
+      **WRONG - Do NOT do this:**
+      1. Write your full detailed research/design as a normal assistant message
+      2. Then call finish with only a summary in the message parameter
+
+      **CORRECT - Do this:**
+      1. Use report_status for brief progress updates while working
+      2. When complete, call finish with:
+         - message: Brief summary (1-3 sentences)
+         - Your framework will capture your full reasoning/output in the tool call metadata
+
+      For research/design tasks, structure your complete detailed output with:
+      - High-level checklist (3-7 bullets)
+      - Detailed findings/analysis section
+      - Technical specifications
+      - Implementation steps
+      - Acceptance criteria
+      - Key files identified
+      - Assumptions and follow-ups
+
       ### Best Practices
-      Prefer completion over asking (use defaults/assumptions). If asking, be specific about what's needed with examples. In \`message\`, provide the exact user-facing response (the final answer or question). Set \`needsMoreInfo: true\` only when information is strictly required and cannot be reasonably assumed.
+      Prefer completion over asking (use defaults/assumptions). If asking, be specific about what's needed with examples. Set \`needsMoreInfo: true\` only when information is strictly required and cannot be reasonably assumed.
 
       ### Workflow
       1. Call tools → 2. See results → 3. Call more tools if needed → 4. Call finish ONCE when done (not alongside other tools)
 
       ### Examples
-      **Completion:**
+      **Simple completion:**
       \`\`\`json
-      {"purpose": "Report completion", "message": "Successfully implemented user auth endpoint. Changes:\\n- Created POST /api/auth/login\\n- Added JWT validation\\n- Added tests\\n\\nReady for testing.", "needsMoreInfo": false}
+      {"purpose": "Report completion", "message": "Successfully implemented user auth endpoint with login, JWT validation, and tests.", "needsMoreInfo": false}
       \`\`\`
 
-      **Completion (simple response):**
+      **Research/design completion (brief summary in message):**
+      \`\`\`json
+      {"purpose": "Report research completion", "message": "Research complete. Analyzed authentication flow and designed 3 improvements with implementation steps.", "needsMoreInfo": false}
+      \`\`\`
+      Note: Your detailed research output will be captured automatically in the tool call metadata, not in the message field.
+
+      **Simple response:**
       \`\`\`json
       {"purpose": "Respond to greeting", "message": "Hi! How can I help?", "needsMoreInfo": false}
       \`\`\`
 
       **Requesting info:**
       \`\`\`json
-      {"purpose": "Request required info", "message": "Need the API key to proceed. Please provide the production API key.", "needsMoreInfo": true}
+      {"purpose": "Request required info", "message": "Need the production API key to proceed. Please provide it.", "needsMoreInfo": true}
       \`\`\`
 
       **WRONG - calling alongside other tools:**
