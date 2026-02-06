@@ -1,7 +1,15 @@
 import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  OneToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 import { RepoIndexStatus } from '../git-repositories.types';
+import { GitRepositoryEntity } from './git-repository.entity';
 
 @Entity('repo_indexes')
 @Index(['status']) // For efficient queries by status (e.g., recovering stuck jobs)
@@ -11,6 +19,10 @@ export class RepoIndexEntity extends TimestampsEntity {
 
   @Column({ type: 'uuid', unique: true })
   repositoryId!: string;
+
+  @OneToOne(() => GitRepositoryEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'repositoryId' })
+  repository?: GitRepositoryEntity;
 
   @Column({ type: 'varchar' })
   repoUrl!: string;

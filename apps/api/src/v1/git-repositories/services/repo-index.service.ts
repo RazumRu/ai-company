@@ -11,6 +11,7 @@ import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { shQuote } from '../../utils/shell.utils';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
+import { GitRepositoryEntity } from '../entity/git-repository.entity';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
 import { RepoIndexStatus } from '../git-repositories.types';
 import { GitRepositoriesService } from './git-repositories.service';
@@ -134,7 +135,16 @@ export class RepoIndexService implements OnModuleInit {
   async getOrInitIndexForRepo(
     params: GetOrInitIndexParams,
   ): Promise<GetOrInitIndexResult> {
-    const { repositoryId, repoUrl, repoRoot, execFn } = params;
+    let { repositoryId } = params;
+    const { repoUrl, repoRoot, execFn } = params;
+
+    // Resolve the real git_repositories record so we use its actual ID
+    // instead of the caller-computed UUID. This ensures we find the existing
+    // repo_indexes row and reuse it for incremental reindexing.
+    const resolvedRepo = await this.resolveGitRepository(repoUrl);
+    if (resolvedRepo) {
+      repositoryId = resolvedRepo.id;
+    }
 
     const existing = await this.repoIndexDao.getOne({
       repositoryId,
@@ -222,6 +232,12 @@ export class RepoIndexService implements OnModuleInit {
       },
     );
 
+    // For incremental reindex, carry previous total so the progress bar stays meaningful
+    const previousTotalTokens =
+      !needsFullReindex && existing?.estimatedTokens
+        ? existing.estimatedTokens
+        : undefined;
+
     if (estimatedTokens <= environment.codebaseIndexTokenThreshold) {
       // Inline indexing — small repo, do it now
       this.logger.debug('Using inline indexing strategy');
@@ -235,6 +251,7 @@ export class RepoIndexService implements OnModuleInit {
         vectorSize,
         chunkingSignatureHash,
         estimatedTokens,
+        previousTotalTokens,
       });
 
       try {
@@ -305,6 +322,7 @@ export class RepoIndexService implements OnModuleInit {
       vectorSize,
       chunkingSignatureHash,
       estimatedTokens,
+      previousTotalTokens,
     });
 
     const jobData: RepoIndexJobData = {
@@ -403,7 +421,9 @@ export class RepoIndexService implements OnModuleInit {
     await this.repoIndexDao.updateById(repoIndexId, {
       status: RepoIndexStatus.InProgress,
       errorMessage: null,
-      indexedTokens: 0, // Reset progress counter (will be updated as we index)
+      // Preserve indexedTokens from pending state (for incremental reindex this
+      // already accounts for the untouched portion set by upsertIndexEntity)
+      indexedTokens: entity.indexedTokens ?? 0,
       // Preserve estimatedTokens from pending state (will be recalculated in container)
       estimatedTokens: entity.estimatedTokens,
     });
@@ -488,7 +508,7 @@ export class RepoIndexService implements OnModuleInit {
       });
 
       // Calculate estimated tokens before indexing
-      const estimatedTokens = needsFullReindex
+      const changedTokens = needsFullReindex
         ? await this.repoIndexerService.estimateTokenCount(
             REPO_CLONE_DIR,
             execFn,
@@ -500,9 +520,16 @@ export class RepoIndexService implements OnModuleInit {
             execFn,
           );
 
+      // For incremental reindex, keep the previous total as the estimate
+      // so the progress bar stays meaningful (previous total ≈ final total).
+      const effectiveEstimated =
+        !needsFullReindex && entity.estimatedTokens
+          ? entity.estimatedTokens
+          : changedTokens;
+
       this.logger.debug('Estimated tokens calculated for indexing', {
         repoIndexId,
-        estimatedTokens,
+        estimatedTokens: effectiveEstimated,
         needsFullReindex,
       });
 
@@ -512,7 +539,7 @@ export class RepoIndexService implements OnModuleInit {
         vectorSize,
         chunkingSignatureHash,
         qdrantCollection: collection,
-        estimatedTokens,
+        estimatedTokens: effectiveEstimated,
       });
 
       const indexParams = {
@@ -697,6 +724,29 @@ export class RepoIndexService implements OnModuleInit {
     );
   }
 
+  /**
+   * Try to find the real GitRepositoryEntity by parsing owner/repo from a URL.
+   * Returns null if the URL can't be parsed or no matching record exists.
+   */
+  private async resolveGitRepository(
+    repoUrl: string,
+  ): Promise<GitRepositoryEntity | null> {
+    try {
+      const url = new URL(repoUrl);
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      if (pathParts.length >= 2) {
+        const owner = pathParts[0];
+        const repo = pathParts[1]?.replace(/\.git$/, '');
+        if (owner && repo) {
+          return await this.gitRepositoriesDao.getOne({ owner, repo });
+        }
+      }
+    } catch {
+      // Not a valid URL (e.g. local:... paths), fall through
+    }
+    return null;
+  }
+
   private async buildCloneUrl(repoUrl: string): Promise<string> {
     // Try to find credentials for this repo
     try {
@@ -736,15 +786,26 @@ export class RepoIndexService implements OnModuleInit {
     vectorSize: number;
     chunkingSignatureHash: string;
     estimatedTokens: number;
+    /** For incremental reindex: carry over the previous total as estimatedTokens
+     *  and set indexedTokens to (previousTotal - changedEstimate) instead of 0. */
+    previousTotalTokens?: number;
   }): Promise<RepoIndexEntity> {
+    // For incremental reindex keep the previous total as the estimate
+    // and set indexedTokens to the untouched portion so progress starts close to max.
+    const effectiveEstimated =
+      params.previousTotalTokens ?? params.estimatedTokens;
+    const effectiveIndexed = params.previousTotalTokens
+      ? Math.max(0, params.previousTotalTokens - params.estimatedTokens)
+      : 0;
+
     const payload = {
       status: params.status,
       qdrantCollection: params.qdrantCollection,
       embeddingModel: params.embeddingModel,
       vectorSize: params.vectorSize,
       chunkingSignatureHash: params.chunkingSignatureHash,
-      estimatedTokens: params.estimatedTokens,
-      indexedTokens: 0, // Reset progress counter when starting
+      estimatedTokens: effectiveEstimated,
+      indexedTokens: effectiveIndexed,
       errorMessage: null,
     };
 

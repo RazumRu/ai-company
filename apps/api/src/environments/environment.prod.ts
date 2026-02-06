@@ -76,7 +76,7 @@ export const environment = () =>
     // --- Codebase indexing ---
     codebaseIndexTokenThreshold: +getEnv(
       'CODEBASE_INDEX_TOKEN_THRESHOLD',
-      '30000',
+      '50000',
     ),
     codebaseUuidNamespace: getEnv(
       'CODEBASE_UUID_NAMESPACE',
