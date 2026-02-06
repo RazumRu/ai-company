@@ -43,14 +43,7 @@ export const environment = () =>
     llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'gpt-5.1-codex-mini'),
     llmMiniModel: getEnv('LLM_MINI_MODEL', 'gpt-5-mini'),
     llmUseOfflineModel: getEnv('LLM_USE_OFFLINE_MODEL', false),
-    llmOfflineGeneralModel: getEnv(
-      'LLM_OFFLINE_GENERAL_MODEL',
-      'qwen3:32b-q4_K_M',
-    ),
-    llmOfflineCodingModel: getEnv(
-      'LLM_OFFLINE_CODING_MODEL',
-      'qwen3-coder:30b',
-    ),
+    llmOfflineCodingModel: getEnv('LLM_OFFLINE_CODING_MODEL', 'glm-4.7-flash'),
     llmOfflineCodingMiniModel: getEnv(
       'LLM_OFFLINE_CODING_MINI_MODEL',
       'qwen2.5-coder:7b',

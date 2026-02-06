@@ -147,15 +147,13 @@ export class LitellmService {
 
     const totalTokens = usageMetadata?.total_tokens ?? 0;
 
-    const totalPrice = this.isOfflineModel(model)
-      ? 0
-      : await this.estimateThreadTotalPriceFromModelRates({
-          model,
-          inputTokens,
-          cachedInputTokens,
-          outputTokens,
-          reasoningTokens,
-        });
+    const totalPrice = await this.estimateThreadTotalPriceFromModelRates({
+      model,
+      inputTokens,
+      cachedInputTokens,
+      outputTokens,
+      reasoningTokens,
+    });
 
     return {
       inputTokens,
@@ -251,9 +249,6 @@ export class LitellmService {
     outputTokens: number;
     reasoningTokens?: number;
   }): Promise<number | null> {
-    if (this.isOfflineModel(args.model)) {
-      return 0;
-    }
     const rates = await this.getTokenCostRatesForModel(args.model);
     if (!rates) {
       return null;
@@ -314,33 +309,5 @@ export class LitellmService {
 
     this.modelInfoInFlight.set(model, promise);
     return promise;
-  }
-
-  private isOfflineModel(model: string): boolean {
-    if (!model || !environment.llmUseOfflineModel) {
-      return false;
-    }
-
-    const normalized = model.toLowerCase();
-    const configured = [
-      environment.llmOfflineGeneralModel,
-      environment.llmOfflineCodingModel,
-      environment.llmOfflineEmbeddingModel,
-    ].map((value) => value.toLowerCase());
-
-    if (configured.includes(normalized)) {
-      return true;
-    }
-
-    const normalizedShort = normalized.includes('/')
-      ? normalized.split('/').pop()
-      : normalized;
-
-    return configured.some((value) => {
-      const configuredShort = value.includes('/')
-        ? value.split('/').pop()
-        : value;
-      return normalizedShort === configuredShort;
-    });
   }
 }

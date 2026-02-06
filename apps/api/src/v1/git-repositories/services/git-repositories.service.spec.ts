@@ -3,6 +3,8 @@ import { InternalException, NotFoundException } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LlmModelsService } from '../../litellm/services/llm-models.service';
+import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { GetRepositoriesQueryDto } from '../dto/git-repositories.dto';
@@ -10,10 +12,13 @@ import { GitRepositoryEntity } from '../entity/git-repository.entity';
 import { GitRepositoryProvider } from '../git-repositories.types';
 import { GitRepositoriesService } from './git-repositories.service';
 import { RepoIndexQueueService } from './repo-index-queue.service';
+import { RepoIndexerService } from './repo-indexer.service';
 
 describe('GitRepositoriesService', () => {
   let service: GitRepositoriesService;
   let dao: GitRepositoriesDao;
+  let repoIndexDao: RepoIndexDao;
+  let qdrantService: QdrantService;
 
   const mockUserId = 'user-123';
   const mockRepositoryId = 'repo-456';
@@ -67,11 +72,39 @@ describe('GitRepositoriesService', () => {
             setCallbacks: vi.fn(),
           },
         },
+        {
+          provide: RepoIndexerService,
+          useValue: {
+            calculateIndexMetadata: vi.fn().mockResolvedValue({
+              embeddingModel: 'text-embedding-3-small',
+              vectorSize: 1536,
+              chunkingSignatureHash: 'sig-hash-123',
+              repoSlug: 'my_repo',
+              collection: 'codebase_my_repo_1536',
+            }),
+          },
+        },
+        {
+          provide: LlmModelsService,
+          useValue: {
+            getKnowledgeEmbeddingModel: vi.fn(() => 'text-embedding-3-small'),
+          },
+        },
+        {
+          provide: QdrantService,
+          useValue: {
+            raw: {
+              deleteCollection: vi.fn(),
+            },
+          },
+        },
       ],
     }).compile();
 
     service = module.get<GitRepositoriesService>(GitRepositoriesService);
     dao = module.get<GitRepositoriesDao>(GitRepositoriesDao);
+    repoIndexDao = module.get<RepoIndexDao>(RepoIndexDao);
+    qdrantService = module.get<QdrantService>(QdrantService);
   });
 
   describe('createRepository', () => {
@@ -187,12 +220,65 @@ describe('GitRepositoriesService', () => {
   });
 
   describe('deleteRepository', () => {
-    it('should delete repository when owned by user', async () => {
+    it('should delete repository and cleanup Qdrant collection when it exists', async () => {
+      const mockRepository = createMockRepositoryEntity();
+      const mockRepoIndex = {
+        id: 'index-123',
+        repositoryId: mockRepositoryId,
+        repoUrl: 'https://github.com/octocat/Hello-World.git',
+        qdrantCollection: 'codebase_my_repo_1536',
+        status: 'completed',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(mockRepoIndex as any);
+      vi.spyOn(qdrantService.raw, 'deleteCollection').mockResolvedValue(
+        undefined as any,
+      );
+      vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
+
+      await service.deleteRepository(mockCtx, mockRepositoryId);
+
+      expect(repoIndexDao.getOne).toHaveBeenCalledWith({
+        repositoryId: mockRepositoryId,
+      });
+      expect(qdrantService.raw.deleteCollection).toHaveBeenCalledWith(
+        'codebase_my_repo_1536',
+      );
+      expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
+    });
+
+    it('should delete repository when no repo index exists', async () => {
       const mockRepository = createMockRepositoryEntity();
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(null);
       vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
 
+      await service.deleteRepository(mockCtx, mockRepositoryId);
+
+      expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
+      expect(qdrantService.raw.deleteCollection).not.toHaveBeenCalled();
+    });
+
+    it('should delete repository even if Qdrant cleanup fails', async () => {
+      const mockRepository = createMockRepositoryEntity();
+      const mockRepoIndex = {
+        id: 'index-123',
+        repositoryId: mockRepositoryId,
+        qdrantCollection: 'codebase_my_repo_1536',
+      };
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(mockRepoIndex as any);
+      vi.spyOn(qdrantService.raw, 'deleteCollection').mockRejectedValue(
+        new Error('Qdrant connection failed'),
+      );
+      vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
+
+      // Should not throw, just warn and continue
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
       expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);

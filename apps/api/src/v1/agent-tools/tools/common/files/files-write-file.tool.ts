@@ -7,6 +7,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -33,10 +34,6 @@ type FilesWriteFileToolOutput = {
   success?: boolean;
   error?: string;
 };
-
-function shQuote(value: string) {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 @Injectable()
 export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaType> {

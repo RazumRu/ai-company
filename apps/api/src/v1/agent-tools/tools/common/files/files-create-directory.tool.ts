@@ -6,6 +6,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -27,10 +28,6 @@ type FilesCreateDirectoryToolOutput = {
   success?: boolean;
   error?: string;
 };
-
-function shQuote(value: string) {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 @Injectable()
 export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectoryToolSchemaType> {

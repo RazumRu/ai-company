@@ -11,6 +11,7 @@ import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-no
 import { RepoIndexService } from '../../../../git-repositories/services/repo-index.service';
 import { RepoExecFn } from '../../../../git-repositories/services/repo-indexer.service';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -61,10 +62,6 @@ type CodebaseSearchOutput = {
   error?: string;
   results?: CodebaseSearchResult[];
 };
-
-function shQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 @Injectable()
 export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaType> {

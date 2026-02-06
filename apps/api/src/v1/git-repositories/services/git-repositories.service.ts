@@ -9,6 +9,8 @@ import {
 import { AuthContextStorage } from '@packages/http-server';
 
 import { environment } from '../../../environments';
+import { LlmModelsService } from '../../litellm/services/llm-models.service';
+import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import {
@@ -25,6 +27,7 @@ import { GitRepositoryEntity } from '../entity/git-repository.entity';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
 import { RepoIndexStatus } from '../git-repositories.types';
 import { RepoIndexQueueService } from './repo-index-queue.service';
+import { RepoIndexerService } from './repo-indexer.service';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -36,6 +39,9 @@ export class GitRepositoriesService {
     private readonly gitRepositoriesDao: GitRepositoriesDao,
     private readonly repoIndexDao: RepoIndexDao,
     private readonly repoIndexQueueService: RepoIndexQueueService,
+    private readonly repoIndexerService: RepoIndexerService,
+    private readonly llmModelsService: LlmModelsService,
+    private readonly qdrantService: QdrantService,
   ) {}
 
   async createRepository(
@@ -135,6 +141,26 @@ export class GitRepositoriesService {
       throw new NotFoundException('REPOSITORY_NOT_FOUND');
     }
 
+    // Clean up associated Qdrant collection if it exists
+    const repoIndex = await this.repoIndexDao.getOne({
+      repositoryId: id,
+    });
+
+    if (repoIndex?.qdrantCollection) {
+      try {
+        await this.qdrantService.raw.deleteCollection(
+          repoIndex.qdrantCollection,
+        );
+      } catch (error) {
+        // Log but don't fail deletion if Qdrant cleanup fails
+        console.warn(
+          `Failed to delete Qdrant collection ${repoIndex.qdrantCollection}:`,
+          error,
+        );
+      }
+    }
+
+    // Delete the repository
     await this.gitRepositoriesDao.deleteById(id);
   }
 
@@ -244,33 +270,50 @@ export class GitRepositoriesService {
       throw new BadRequestException('INDEXING_ALREADY_IN_PROGRESS');
     }
 
+    // Calculate metadata fields upfront so they're available immediately
+    const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
+      await this.repoIndexerService.calculateIndexMetadata(data.repositoryId);
+
     // Reset the index to pending status and enqueue
     let repoIndex: RepoIndexEntity;
 
     if (existingIndex) {
-      // Reset existing index
+      // Reset existing index with calculated metadata
+      // Keep previous estimatedTokens as a rough estimate until new calculation completes
       await this.repoIndexDao.updateById(existingIndex.id, {
         status: RepoIndexStatus.Pending,
+        qdrantCollection: collection,
+        embeddingModel,
+        vectorSize,
+        chunkingSignatureHash,
         errorMessage: null,
         indexedTokens: 0,
+        // Preserve estimatedTokens from previous index as initial estimate
+        estimatedTokens: existingIndex.estimatedTokens,
       });
       repoIndex = {
         ...existingIndex,
         status: RepoIndexStatus.Pending,
+        qdrantCollection: collection,
+        embeddingModel,
+        vectorSize,
+        chunkingSignatureHash,
         errorMessage: null,
         indexedTokens: 0,
+        // Preserve estimatedTokens from previous index as initial estimate
+        estimatedTokens: existingIndex.estimatedTokens,
       };
     } else {
-      // Create new index entry (shouldn't normally happen, but handle gracefully)
+      // Create new index entry with calculated metadata
       repoIndex = await this.repoIndexDao.create({
         repositoryId: data.repositoryId,
         repoUrl: repository.url,
         status: RepoIndexStatus.Pending,
-        qdrantCollection: '',
+        qdrantCollection: collection,
         lastIndexedCommit: null,
-        embeddingModel: null,
-        vectorSize: null,
-        chunkingSignatureHash: null,
+        embeddingModel,
+        vectorSize,
+        chunkingSignatureHash,
         estimatedTokens: null,
         indexedTokens: 0,
         errorMessage: null,

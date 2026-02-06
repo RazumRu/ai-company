@@ -1,9 +1,10 @@
 import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 import { RepoIndexStatus } from '../git-repositories.types';
 
 @Entity('repo_indexes')
+@Index(['status']) // For efficient queries by status (e.g., recovering stuck jobs)
 export class RepoIndexEntity extends TimestampsEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

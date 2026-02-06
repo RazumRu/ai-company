@@ -49,6 +49,13 @@ const mockRepoIndexerService = {
   getChunkingSignatureHash: vi.fn().mockReturnValue('sig-hash-123'),
   deriveRepoSlug: vi.fn().mockReturnValue('my_repo'),
   buildCollectionName: vi.fn().mockReturnValue('codebase_my_repo_main_1536'),
+  calculateIndexMetadata: vi.fn().mockResolvedValue({
+    embeddingModel: 'text-embedding-3-small',
+    vectorSize: 1536,
+    chunkingSignatureHash: 'sig-hash-123',
+    repoSlug: 'my_repo',
+    collection: 'codebase_my_repo_main_1536',
+  }),
   runFullIndex: vi.fn().mockResolvedValue(undefined),
   runIncrementalIndex: vi.fn().mockResolvedValue(undefined),
   getTotalIndexedTokens: vi.fn().mockResolvedValue(50000),

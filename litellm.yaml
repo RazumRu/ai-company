@@ -66,14 +66,23 @@ model_list:
       supports_reasoning: false
       supports_response_schema: true
 
-  - model_name: qwen3:32b-q4_K_M
+  - model_name: qwen3-coder-next
     litellm_params:
-      model: openai/qwen3:32b-q4_K_M
+      model: openai/qwen3-coder-next
       api_base: http://host.docker.internal:11434/v1/
-      drop_params: true
     model_info:
       supports_function_calling: true
-      supports_parallel_function_calling: false
+      supports_parallel_function_calling: true
+      supports_reasoning: false
+      supports_response_schema: true
+
+  - model_name: glm-4.7-flash
+    litellm_params:
+      model: openai/glm-4.7-flash
+      api_base: http://host.docker.internal:11434/v1/
+    model_info:
+      supports_function_calling: true
+      supports_parallel_function_calling: true
       supports_reasoning: true
       supports_response_schema: true
 

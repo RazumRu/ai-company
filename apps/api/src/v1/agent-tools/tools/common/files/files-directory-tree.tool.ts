@@ -6,6 +6,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -39,10 +40,6 @@ type FilesDirectoryTreeToolOutput = {
   error?: string;
   tree?: string;
 };
-
-function shQuote(value: string) {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 type TreeNode = {
   children: Map<string, TreeNode>;

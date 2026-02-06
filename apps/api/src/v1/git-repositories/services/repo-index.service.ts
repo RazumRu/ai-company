@@ -8,6 +8,7 @@ import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeType } from '../../runtime/runtime.types';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
+import { shQuote } from '../../utils/shell.utils';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
@@ -149,19 +150,11 @@ export class RepoIndexService implements OnModuleInit {
     }
 
     // Determine current state
-    const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
-    const vectorSize =
-      await this.repoIndexerService.getVectorSizeForModel(embeddingModel);
+    const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
+      await this.repoIndexerService.calculateIndexMetadata(repositoryId);
     const currentCommit = await this.repoIndexerService.resolveCurrentCommit(
       repoRoot,
       execFn,
-    );
-    const chunkingSignatureHash =
-      this.repoIndexerService.getChunkingSignatureHash();
-    const repoSlug = this.repoIndexerService.deriveRepoSlug(repositoryId);
-    const collection = this.repoIndexerService.buildCollectionName(
-      repoSlug,
-      vectorSize,
     );
 
     // If completed and up-to-date, return ready
@@ -218,8 +211,20 @@ export class RepoIndexService implements OnModuleInit {
       lastIndexedCommit,
     };
 
+    this.logger.debug(
+      'Estimated tokens calculated, deciding indexing strategy',
+      {
+        repoIndexId: existing?.id,
+        estimatedTokens,
+        threshold: environment.codebaseIndexTokenThreshold,
+        willIndexInline:
+          estimatedTokens <= environment.codebaseIndexTokenThreshold,
+      },
+    );
+
     if (estimatedTokens <= environment.codebaseIndexTokenThreshold) {
       // Inline indexing — small repo, do it now
+      this.logger.debug('Using inline indexing strategy');
       const entity = await this.upsertIndexEntity({
         existing,
         repositoryId,
@@ -289,6 +294,7 @@ export class RepoIndexService implements OnModuleInit {
     }
 
     // Background indexing — large repo
+    this.logger.debug('Using background indexing strategy');
     const entity = await this.upsertIndexEntity({
       existing,
       repositoryId,
@@ -398,6 +404,8 @@ export class RepoIndexService implements OnModuleInit {
       status: RepoIndexStatus.InProgress,
       errorMessage: null,
       indexedTokens: 0, // Reset progress counter (will be updated as we index)
+      // Preserve estimatedTokens from pending state (will be recalculated in container)
+      estimatedTokens: entity.estimatedTokens,
     });
 
     // Use UUID namespace for system graph ID (consistent UUID for system operations)
@@ -453,36 +461,58 @@ export class RepoIndexService implements OnModuleInit {
         cmd: `rm -rf ${shQuote(REPO_CLONE_DIR)}`,
       });
 
-      // Clone repo (default branch)
+      // Clone repo (default branch) with depth limit to avoid OOM for very large repos
+      // Depth of 100 is sufficient for most indexing needs while saving memory/time
       const cloneRes = await execFn({
-        cmd: `git clone ${shQuote(cloneUrl)} ${shQuote(REPO_CLONE_DIR)}`,
+        cmd: `git clone --depth 100 ${shQuote(cloneUrl)} ${shQuote(REPO_CLONE_DIR)}`,
       });
       if (cloneRes.exitCode !== 0) {
         throw new Error(`git clone failed: ${cloneRes.stderr}`);
       }
 
       // Resolve current state in the fresh clone
-      const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
-      const vectorSize =
-        await this.repoIndexerService.getVectorSizeForModel(embeddingModel);
+      const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
+        await this.repoIndexerService.calculateIndexMetadata(
+          entity.repositoryId,
+        );
       const currentCommit = await this.repoIndexerService.resolveCurrentCommit(
         REPO_CLONE_DIR,
         execFn,
       );
-      const chunkingSignatureHash =
-        this.repoIndexerService.getChunkingSignatureHash();
-      const repoSlug = this.repoIndexerService.deriveRepoSlug(
-        entity.repositoryId,
-      );
-      const collection = this.repoIndexerService.buildCollectionName(
-        repoSlug,
-        vectorSize,
-      );
 
+      // Determine if full reindex is needed
       const needsFullReindex = this.needsFullReindexDueToConfigChange(entity, {
         embeddingModel,
         vectorSize,
         chunkingSignatureHash,
+      });
+
+      // Calculate estimated tokens before indexing
+      const estimatedTokens = needsFullReindex
+        ? await this.repoIndexerService.estimateTokenCount(
+            REPO_CLONE_DIR,
+            execFn,
+          )
+        : await this.repoIndexerService.estimateChangedTokenCount(
+            REPO_CLONE_DIR,
+            entity.lastIndexedCommit!,
+            currentCommit,
+            execFn,
+          );
+
+      this.logger.debug('Estimated tokens calculated for indexing', {
+        repoIndexId,
+        estimatedTokens,
+        needsFullReindex,
+      });
+
+      // Update metadata fields now so they're visible during indexing
+      await this.repoIndexDao.updateById(repoIndexId, {
+        embeddingModel,
+        vectorSize,
+        chunkingSignatureHash,
+        qdrantCollection: collection,
+        estimatedTokens,
       });
 
       const indexParams = {
@@ -556,7 +586,17 @@ export class RepoIndexService implements OnModuleInit {
             threadId,
             type: RuntimeType.Docker,
           })
-          .catch(() => undefined);
+          .catch((err) => {
+            this.logger.warn(
+              'Failed to cleanup runtime instance after indexing',
+              {
+                graphId,
+                runtimeNodeId,
+                threadId,
+                error: err instanceof Error ? err.message : String(err),
+              },
+            );
+          });
       }
     }
   }
@@ -785,8 +825,4 @@ export class RepoIndexService implements OnModuleInit {
 
     return extension === normalized;
   }
-}
-
-function shQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

@@ -7,6 +7,7 @@ import { isObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -76,10 +77,6 @@ type FilesSearchTextToolOutput = {
     };
   }[];
 };
-
-function shQuote(s: string) {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
 
 @Injectable()
 export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchemaType> {

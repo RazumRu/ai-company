@@ -156,7 +156,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       : path.join(res.execPath || '', args.repo);
 
     // Track the cloned repository with GitHub token
-    const userId = cfg.configurable?.userId as string | undefined;
+    const userId = cfg.configurable?.graph_created_by as string | undefined;
     if (userId) {
       await this.upsertGitRepository(args, userId, config.patToken);
     }

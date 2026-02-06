@@ -10,6 +10,7 @@ import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
+import { shQuote } from '../../utils/shell.utils';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 
 // Batch size for upserting copied chunks to avoid overwhelming Qdrant
@@ -64,10 +65,6 @@ export interface RepoIndexParams {
   vectorSize: number;
   embeddingModel: string;
   lastIndexedCommit?: string;
-}
-
-function shQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 @Injectable()
@@ -237,6 +234,32 @@ export class RepoIndexerService {
 
   getChunkingSignatureHash(): string {
     return this.sha1(this.stableStringify(this.buildChunkingSignature()));
+  }
+
+  /**
+   * Calculates all metadata fields needed for repository indexing.
+   * This centralizes the logic that was duplicated across multiple services.
+   */
+  async calculateIndexMetadata(repositoryId: string): Promise<{
+    embeddingModel: string;
+    vectorSize: number;
+    chunkingSignatureHash: string;
+    repoSlug: string;
+    collection: string;
+  }> {
+    const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
+    const vectorSize = await this.getVectorSizeForModel(embeddingModel);
+    const chunkingSignatureHash = this.getChunkingSignatureHash();
+    const repoSlug = this.deriveRepoSlug(repositoryId);
+    const collection = this.buildCollectionName(repoSlug, vectorSize);
+
+    return {
+      embeddingModel,
+      vectorSize,
+      chunkingSignatureHash,
+      repoSlug,
+      collection,
+    };
   }
 
   // ---------------------------------------------------------------------------

@@ -13,12 +13,6 @@ export class LlmModelsService {
 
   constructor(private readonly litellmService: LitellmService) {}
 
-  private offlineGeneralFallback(model: string): string {
-    return environment.llmUseOfflineModel
-      ? environment.llmOfflineGeneralModel
-      : model;
-  }
-
   private offlineCodingFallback(model: string): string {
     return environment.llmUseOfflineModel
       ? environment.llmOfflineCodingModel

@@ -7,6 +7,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -60,10 +61,6 @@ type FilesReadToolOutput = {
   error?: string;
   files?: FilesReadToolFileOutput[];
 };
-
-function shQuote(value: string) {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 @Injectable()
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
