@@ -241,6 +241,50 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return { endLine, matchedText };
   }
 
+  private findSimilarBlocks(
+    fileContent: string,
+    oldText: string,
+    maxResults = 3,
+  ): { lineStart: number; lineEnd: number; text: string }[] {
+    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
+    const oldLines = oldText
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .filter((l) => l.trim().length > 0);
+
+    if (oldLines.length === 0) return [];
+
+    const firstOldLineNormalized = oldLines[0]
+      ?.trim()
+      .toLowerCase()
+      .substring(0, 50);
+    if (!firstOldLineNormalized) return [];
+
+    const candidates: {
+      lineStart: number;
+      lineEnd: number;
+      text: string;
+    }[] = [];
+
+    for (let i = 0; i < originalLines.length; i++) {
+      const lineNormalized = originalLines[i]
+        ?.trim()
+        .toLowerCase()
+        .substring(0, 50);
+      if (lineNormalized?.includes(firstOldLineNormalized.substring(0, 20))) {
+        const endLine = Math.min(i + oldLines.length + 2, originalLines.length);
+        const blockText = originalLines.slice(i, endLine).join('\n');
+        candidates.push({
+          lineStart: i,
+          lineEnd: endLine - 1,
+          text: blockText,
+        });
+      }
+    }
+
+    return candidates.slice(0, maxResults);
+  }
+
   private findMatches(
     fileContent: string,
     oldText: string,
@@ -299,17 +343,37 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         previewLines.length < normalizedOld.split('\n').length
           ? `${previewLines.join('\n')}...`
           : normalizedOld;
+
+      const similarBlocks = this.findSimilarBlocks(fileContent, oldText, 2);
+      let similarContext = '';
+      if (similarBlocks.length > 0) {
+        similarContext = dedent`
+
+          Possible similar blocks found in the file (these are NOT exact matches):
+          ${similarBlocks
+            .map(
+              (b) =>
+                `Lines ${b.lineStart + 1}-${b.lineEnd + 1}:\n${b.text.split('\n').slice(0, 5).join('\n')}${b.text.split('\n').length > 5 ? '\n...' : ''}`,
+            )
+            .join('\n\n')}
+
+          Compare these with what you were searching for to see the differences.
+        `;
+      }
+
       errors.push(
         dedent`
           Could not find match for oldText in file.
 
           Searched for (normalized):
           "${preview}"
+          ${similarContext}
 
           REQUIRED ACTION:
           1. Run files_read on this file to see current content
           2. Copy the EXACT text from the output (including whitespace)
           3. Do NOT type from memory or guess
+          4. Compare the "Searched for" text above with actual file content
 
           Common mistakes:
           - Wrong indentation or spaces

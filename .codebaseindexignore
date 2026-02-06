@@ -2,9 +2,13 @@
 /.docker
 /.github
 /.husky
+/docs
 /pnpm-lock.yaml
 /pnpm-workspace.yaml
 /release.config.cjs
+/CLAUDE.md
+/LICENSE
+/README.md
 /scripts
 **/tsconfig.*
 /turbo.json

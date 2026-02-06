@@ -67,7 +67,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read file contents by absolute path (optionally with a line range).';
+    'Read file contents by absolute path. ALWAYS batch multiple files into ONE call to minimize tool invocations.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,
@@ -94,6 +94,7 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     return dedent`
       ### Overview
       Read file contents by absolute path. Supports line ranges and multiple files per call.
+      **CRITICAL: ALWAYS batch multiple files into ONE call instead of making separate calls for each file.**
 
       ### CRITICAL: Path Requirements
       - ALL paths MUST be absolute (start with /runtime-workspace/)
@@ -117,39 +118,58 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       - Searching content -> use \`files_search_text\`
 
       ### CRITICAL: Reading Strategy to Minimize Tool Calls
-      **Default to reading ENTIRE files unless they are very large (>300 lines).**
+      **ALWAYS batch multiple files into ONE tool call. NEVER make separate calls for each file.**
+      - Reading 5 files in one call is MUCH better than 5 separate calls
+      - Default to reading ENTIRE files unless they are very large (>300 lines)
       - Reading the whole file once is cheaper than multiple small reads
       - Line ranges are for LARGE files only (>300 lines)
       - If you need multiple sections of the same file, read it ONCE without line ranges
       - After initial read, you have the full context - don't re-read the same file
 
       **Examples of CORRECT usage:**
+      ✅ Read multiple files in ONE call: {"filesToRead":[{"filePath":"/path/to/service.ts"},{"filePath":"/path/to/dao.ts"},{"filePath":"/path/to/controller.ts"}]}
       ✅ Read entire file: {"filesToRead":[{"filePath":"/path/to/service.ts"}]}
       ✅ Large file chunks: {"filesToRead":[{"filePath":"/path/to/large.ts","fromLineNumber":1,"toLineNumber":300}]}
+      ❌ WRONG - separate calls: files_read service.ts, then files_read dao.ts, then files_read controller.ts (wasteful!)
       ❌ WRONG - multiple small reads: files_read lines 1-30, then 101-300, then 250-350 (wasteful!)
-      ✅ CORRECT - one read: files_read entire file once, then reference specific parts in your analysis
+      ✅ CORRECT - one batched read: files_read all 3 files in one call
 
       ### Best Practices
+      - **ALWAYS batch multiple files into ONE call** - this is the #1 optimization
       - **Default to reading entire files** - only use line ranges for files >300 lines
-      - Batch ALL related files into ONE call
+      - Plan ahead: if you'll need service.ts, dao.ts, and controller.ts, read all THREE in one call
       - Never re-read a file you've already read in the same conversation
       - Use file paths returned by \`files_find_paths\` to avoid path mistakes
-      - After \`files_search_text\`, read the entire file (not just a window) unless it's huge
+      - After \`files_search_text\`, read all matching files in one batched call
 
       ### Examples
-      **1) Read entire file (PREFERRED for most files):**
+      **1) Read multiple files in ONE call (PREFERRED - always batch!):**
       \`\`\`json
-      {"filesToRead":[{"filePath":"/runtime-workspace/project/src/service.ts"}]}
+      {"filesToRead":[
+        {"filePath":"/runtime-workspace/project/src/service.ts"},
+        {"filePath":"/runtime-workspace/project/src/dao.ts"},
+        {"filePath":"/runtime-workspace/project/src/controller.ts"},
+        {"filePath":"/runtime-workspace/project/tsconfig.json"}
+      ]}
       \`\`\`
 
-      **2) Read multiple complete files at once:**
+      **2) Read single entire file (when you truly only need one file):**
       \`\`\`json
-      {"filesToRead":[{"filePath":"/runtime-workspace/project/tsconfig.json"},{"filePath":"/runtime-workspace/project/package.json"},{"filePath":"/runtime-workspace/project/src/main.ts"}]}
+      {"filesToRead":[{"filePath":"/runtime-workspace/project/src/service.ts"}]}
       \`\`\`
 
       **3) Large file with line range (only when file is >300 lines):**
       \`\`\`json
       {"filesToRead":[{"filePath":"/runtime-workspace/project/src/large.ts","fromLineNumber":1,"toLineNumber":300}]}
+      \`\`\`
+
+      **4) Mix of full files and large file ranges in ONE call:**
+      \`\`\`json
+      {"filesToRead":[
+        {"filePath":"/runtime-workspace/project/src/small.ts"},
+        {"filePath":"/runtime-workspace/project/src/large.ts","fromLineNumber":1,"toLineNumber":300},
+        {"filePath":"/runtime-workspace/project/package.json"}
+      ]}
       \`\`\`
     `;
   }
