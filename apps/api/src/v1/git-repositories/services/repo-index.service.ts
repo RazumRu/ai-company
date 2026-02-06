@@ -135,8 +135,8 @@ export class RepoIndexService implements OnModuleInit {
   async getOrInitIndexForRepo(
     params: GetOrInitIndexParams,
   ): Promise<GetOrInitIndexResult> {
-    let { repositoryId } = params;
-    const { repoUrl, repoRoot, execFn } = params;
+    let { repositoryId, repoUrl } = params;
+    const { repoRoot, execFn } = params;
 
     // Resolve the real git_repositories record so we use its actual ID
     // instead of the caller-computed UUID. This ensures we find the existing
@@ -149,6 +149,12 @@ export class RepoIndexService implements OnModuleInit {
     const existing = await this.repoIndexDao.getOne({
       repositoryId,
     });
+
+    // Use the existing index's repoUrl to keep the Qdrant repo_id filter
+    // consistent between old and new points (e.g. URL with/without .git suffix).
+    if (existing) {
+      repoUrl = existing.repoUrl;
+    }
 
     // If indexing is actively running, return immediately
     if (

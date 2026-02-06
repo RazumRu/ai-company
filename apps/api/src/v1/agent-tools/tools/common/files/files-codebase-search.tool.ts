@@ -204,7 +204,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     const results = await this.repoIndexService.searchCodebase({
       collection,
       query: normalizedQuery,
-      repoId: repoInfo.repoId,
+      repoId: indexResult.repoIndex.repoUrl,
       topK: args.top_k ?? DEFAULT_TOP_K,
       directoryFilter,
       languageFilter: args.language,

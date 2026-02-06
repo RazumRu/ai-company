@@ -131,6 +131,7 @@ describe('FilesCodebaseSearchTool', () => {
         repoIndex: {
           id: 'index-1',
           repositoryId: 'repo-uuid',
+          repoUrl: 'https://github.com/org/repo',
           status: RepoIndexStatus.Completed,
           qdrantCollection: 'codebase_test_repo_main_1536',
         },
