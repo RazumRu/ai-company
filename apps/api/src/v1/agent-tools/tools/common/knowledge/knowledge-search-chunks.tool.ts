@@ -18,9 +18,24 @@ export const KnowledgeSearchChunksSchema = z.object({
   docIds: z
     .array(z.number().int().positive())
     .min(1)
-    .describe('Document public IDs to search within'),
-  query: z.string().min(1).describe('Natural language query to search for'),
-  topK: z.number().int().min(1).max(20).optional().describe('Max chunks'),
+    .describe(
+      'Document public IDs to search within (obtained from knowledge_search_docs results). Keep this focused — searching fewer documents yields more relevant results.',
+    ),
+  query: z
+    .string()
+    .min(1)
+    .describe(
+      'Natural-language query describing what information you need (e.g., "rate limit configuration", "database migration process"). Semantic search — phrasing matters.',
+    ),
+  topK: z
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .optional()
+    .describe(
+      'Maximum number of chunk snippets to return (default: 5, max: 20). Start with 3-7 for focused queries.',
+    ),
 });
 
 export type KnowledgeSearchChunksSchemaType = z.infer<
@@ -41,7 +56,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
 > {
   public name = 'knowledge_search_chunks';
   public description =
-    'Search knowledge chunks for specific documents and return snippets.';
+    'Search within specific knowledge documents using vector similarity and return the most relevant content snippets. Requires document public IDs from knowledge_search_docs. Returns chunk snippets with scores and chunk IDs that can be used with knowledge_get_chunks to retrieve full chunk text. Use this when you need to find specific information within known documents rather than reading entire documents.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,

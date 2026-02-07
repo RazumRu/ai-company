@@ -13,34 +13,70 @@ import {
 import { GhBaseTool, GhBaseToolConfig, GhBaseToolSchema } from './gh-base.tool';
 
 export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
-  title: z.string().min(1),
-  body: z.string().optional(),
+  title: z
+    .string()
+    .min(1)
+    .describe(
+      'The title of the pull request. Keep it concise and descriptive (e.g., "Add user authentication endpoint").',
+    ),
+  body: z
+    .string()
+    .optional()
+    .describe(
+      'Markdown body/description for the PR. Include context about the changes, motivation, and testing notes.',
+    ),
 
   head: z
     .string()
     .min(1)
     .describe(
-      "The name of the branch where your changes are implemented. For same-repo: 'feature-branch'. For forks: 'owner:branch'.",
+      "The source branch containing your changes. For same-repo PRs, use the branch name (e.g., 'feat/add-auth'). For cross-fork PRs, use 'owner:branch' format.",
     ),
   base: z
     .string()
     .min(1)
-    .describe("The branch you want to merge into (e.g., 'main')."),
+    .describe(
+      "The target branch to merge into (e.g., 'main', 'develop'). This is the branch that will receive the changes.",
+    ),
 
-  draft: z.boolean().optional().describe('Create as draft PR (default false).'),
+  draft: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, create the PR as a draft that cannot be merged until marked ready. Default: false.',
+    ),
 
-  labels: z.array(z.string().min(1)).optional(),
-  assignees: z.array(z.string().min(1)).optional().describe('Usernames'),
-  reviewers: z.array(z.string().min(1)).optional().describe('Usernames'),
+  labels: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      'Labels to apply to the PR (e.g., ["bug", "priority:high"]). Labels must already exist in the repository.',
+    ),
+  assignees: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      'GitHub usernames to assign to the PR (e.g., ["octocat", "contributor1"]).',
+    ),
+  reviewers: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      'GitHub usernames to request as reviewers (e.g., ["reviewer1"]). Combined with teamReviewers, cannot exceed 15 total.',
+    ),
   teamReviewers: z
     .array(z.string().min(1))
     .optional()
-    .describe('Team slugs (org only)'),
+    .describe(
+      'Organization team slugs to request as reviewers (e.g., ["platform-team"]). Only available for organization repositories. Combined with reviewers, cannot exceed 15 total.',
+    ),
 
   closesIssues: z
     .array(z.number().int().positive())
     .optional()
-    .describe('Issue numbers to reference in body (tool can append).'),
+    .describe(
+      'Issue numbers to auto-close when the PR is merged. Appends "Closes #N" lines to the PR body automatically if not already present.',
+    ),
 }).superRefine((val, ctx) => {
   const count = (val.reviewers?.length ?? 0) + (val.teamReviewers?.length ?? 0);
   if (count > 15) {
@@ -145,7 +181,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
 > {
   public name = 'gh_create_pull_request';
   public description =
-    'Create a GitHub Pull Request in a repository and optionally apply metadata (labels, assignees, reviewers).';
+    'Create a GitHub Pull Request from a head branch into a base branch, and optionally apply metadata (labels, assignees, reviewers, team reviewers) in a single call. The branch must be pushed to the remote first with gh_push. Returns the PR URL and number on success. Supports draft PRs, auto-closing of referenced issues via closesIssues, and up to 15 combined reviewers/team reviewers.';
 
   private getLabelsToApply(
     args: GhCreatePullRequestToolSchemaType,

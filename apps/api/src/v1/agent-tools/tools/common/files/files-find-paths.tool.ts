@@ -73,7 +73,7 @@ export type FilesFindPathsToolOutput = {
 export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaType> {
   public name = 'files_find_paths';
   public description =
-    'Find file paths by glob and return absolute paths (no content search).';
+    'Find file paths matching a glob pattern and return their absolute paths without reading file content. Useful for discovering project structure, locating files by extension or name, and listing directory contents. Returns up to maxResults paths (default 200). Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Set includeSubdirectories=false to search only the specified directory without recursion.';
 
   protected override generateTitle(
     args: FilesFindPathsToolSchemaType,

@@ -16,7 +16,9 @@ export const FilesDeleteToolSchema = z.object({
   filePath: z
     .string()
     .min(1)
-    .describe('Absolute path to the file that should be deleted.'),
+    .describe(
+      'Absolute path to the file to delete. Must point to a file, not a directory. Verify the path with files_find_paths or files_read before deleting.',
+    ),
 });
 
 export type FilesDeleteToolSchemaType = z.infer<typeof FilesDeleteToolSchema>;
@@ -30,7 +32,7 @@ type FilesDeleteToolOutput = {
 export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
   public name = 'files_delete';
   public description =
-    'Delete a single file by absolute path (destructive; rejects directories).';
+    'Permanently delete a single file by absolute path. This operation is destructive and cannot be undone. Only files are accepted — directories are rejected with an error. Before deleting, verify the path using files_find_paths or files_read to avoid accidental removal of the wrong file. Do not use this for editing content; use files_apply_changes instead.';
 
   protected override generateTitle(
     args: FilesDeleteToolSchemaType,

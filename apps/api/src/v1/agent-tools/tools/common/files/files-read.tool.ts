@@ -19,7 +19,7 @@ const FilesReadToolReadSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Path to the file you want to read. Can use paths directly from `files_find_paths` output.',
+      'Absolute path to the file to read (must start with /runtime-workspace/). Use paths directly from codebase_search or files_find_paths output.',
     ),
   fromLineNumber: z
     .number()
@@ -69,7 +69,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read file contents with line numbers. Batch multiple files in one call. Returns numbered lines (NNN\\tcode).';
+    'Read one or more files and return their contents with line numbers in the format "NNN\\tcode". Supports batching multiple files in a single call for efficiency, and optional line ranges for large files. All file paths must be absolute (starting with /runtime-workspace/). Returns a contentHash per file that can be passed to files_apply_changes for stale-read detection. Always read a file before editing it.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,

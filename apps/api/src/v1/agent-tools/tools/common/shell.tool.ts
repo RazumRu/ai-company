@@ -25,7 +25,12 @@ export const ShellToolSchema = z.object({
     .describe(
       'Why you need to run this command (keep it brief, under 120 characters)',
     ),
-  command: z.string().min(1).describe('The shell command to execute'),
+  command: z
+    .string()
+    .min(1)
+    .describe(
+      'The shell command to execute. Supports pipes, chaining (&&, ||), and subshells. Use absolute paths under /runtime-workspace for reliability.',
+    ),
   timeoutMs: z
     .number()
     .positive()
@@ -48,7 +53,9 @@ export const ShellToolSchema = z.object({
       }),
     )
     .optional()
-    .describe('Environment variables to set for this command'),
+    .describe(
+      'Environment variables to set for this command. These are merged with any pre-configured env vars and persist for the session.',
+    ),
   maxOutputLength: z
     .int()
     .positive()
@@ -70,7 +77,7 @@ export interface ShellToolOutput {
 export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public name = 'shell';
   public description =
-    'Run arbitrary shell commands inside the runtime (output may be truncated).';
+    'Execute a shell command inside the runtime container and return its exit code, stdout, and stderr. Commands within the same thread share a persistent session, so environment variables and working directory changes (cd) persist across calls. Output is truncated to the last maxOutputLength characters (default 10000). Use this for git operations, build/test/install commands, and system inspection — but prefer specialized file tools (files_read, files_search_text, etc.) for reading, searching, and editing files.';
 
   protected override generateTitle(
     args: ShellToolSchemaType,

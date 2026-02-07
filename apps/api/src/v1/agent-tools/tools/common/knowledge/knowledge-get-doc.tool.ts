@@ -14,7 +14,13 @@ import {
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
 
 export const KnowledgeGetDocSchema = z.object({
-  docId: z.number().int().positive().describe('Document public ID to retrieve'),
+  docId: z
+    .number()
+    .int()
+    .positive()
+    .describe(
+      'The document public ID to retrieve (obtained from knowledge_search_docs results). The document politic must allow full content retrieval, otherwise this call will fail.',
+    ),
 });
 
 export type KnowledgeGetDocSchemaType = z.infer<typeof KnowledgeGetDocSchema>;
@@ -44,7 +50,7 @@ export class KnowledgeGetDocTool extends BaseTool<
 > {
   public name = 'knowledge_get_doc';
   public description =
-    'Fetch the full content of a knowledge document when allowed by its politic.';
+    'Retrieve the full content of a single knowledge document by its public ID. This tool is restricted by the document politic (policy) — it will only succeed if the politic explicitly instructs to fetch full content (e.g., "always fetch the full content instead of chunks"). If the politic does not allow full retrieval, use knowledge_search_chunks and knowledge_get_chunks instead. If you already fetched the full document, do not also fetch its chunks.';
 
   constructor(private readonly docDao: KnowledgeDocDao) {
     super();

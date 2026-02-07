@@ -17,7 +17,9 @@ export const FilesCreateDirectoryToolSchema = z.object({
   directoryPath: z
     .string()
     .min(1)
-    .describe('Absolute path to the directory to create.'),
+    .describe(
+      'Absolute path to the directory to create (e.g., "/runtime-workspace/project/src/utils"). All missing parent directories are created automatically.',
+    ),
 });
 
 export type FilesCreateDirectoryToolSchemaType = z.infer<
@@ -32,7 +34,8 @@ type FilesCreateDirectoryToolOutput = {
 @Injectable()
 export class FilesCreateDirectoryTool extends FilesBaseTool<FilesCreateDirectoryToolSchemaType> {
   public name = 'files_create_directory';
-  public description = 'Create a directory (mkdir -p) at an absolute path.';
+  public description =
+    'Create a directory at an absolute path, including any missing parent directories (equivalent to mkdir -p). Safe to call if the directory already exists — it will succeed without error. Use this to prepare directory structures before writing files with files_write_file. For creating files, use files_write_file instead. For moving or renaming, use files_move_file.';
 
   protected override generateTitle(
     args: FilesCreateDirectoryToolSchemaType,

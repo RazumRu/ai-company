@@ -15,15 +15,22 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 const FilesApplyChangesToolSchemaBase = z.object({
-  filePath: z.string().min(1).describe('Absolute path to the file to edit'),
+  filePath: z
+    .string()
+    .min(1)
+    .describe(
+      'Absolute path to the file to edit (must start with /runtime-workspace/).',
+    ),
   oldText: z
     .string()
     .describe(
-      'Text block to search for (copied verbatim from files_read output, without line number prefixes). Empty string means create/overwrite file.',
+      'The exact text block to find and replace, copied verbatim from files_read output without line number prefixes. Use an empty string ("") to create a new file, overwrite an existing file, or insert text when combined with insertAfterLine.',
     ),
   newText: z
     .string()
-    .describe('Text to replace with. Indentation will be preserved.'),
+    .describe(
+      'The replacement text. Indentation of the first line is automatically adjusted to match the matched oldText indentation.',
+    ),
   replaceAll: z
     .boolean()
     .optional()
@@ -79,7 +86,7 @@ const MAX_FUZZY_OLD_TEXT_LINES = 50;
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Replace exact text blocks in a file. Requires oldText copied verbatim from files_read. Use for precise edits or find/replace with replaceAll.';
+    'Replace exact text blocks in a file or insert new text at a specific line. Copy oldText verbatim from files_read output (without line number prefixes) and provide the replacement in newText. Supports three matching strategies tried in order: exact, trimmed (ignoring leading/trailing whitespace), and fuzzy (up to 15% edit distance). Set replaceAll=true to replace every occurrence, or use insertAfterLine with an empty oldText to insert without replacing. Pass expectedHash from files_read to prevent edits on stale content.';
 
   protected override generateTitle(
     args: FilesApplyChangesToolSchemaType,

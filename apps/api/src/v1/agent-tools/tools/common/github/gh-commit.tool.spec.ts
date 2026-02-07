@@ -43,7 +43,7 @@ describe('GhCommitTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Create a git (GitHub) commit');
+      expect(tool.description).toContain('Create a local git commit');
     });
   });
 

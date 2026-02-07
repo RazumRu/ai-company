@@ -21,7 +21,7 @@ describe('FinishTool', () => {
 
     it('should have correct description', () => {
       expect(tool.description).toContain(
-        'End your work by signaling completion',
+        'Signal that all work is complete',
       );
     });
   });

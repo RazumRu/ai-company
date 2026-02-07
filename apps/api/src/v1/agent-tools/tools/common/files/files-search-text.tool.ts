@@ -28,7 +28,7 @@ export const FilesSearchTextToolSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Text or regex pattern to search for in file contents (regex supported by ripgrep)',
+      'Text or regex pattern to search for in file contents. Supports full regex syntax (e.g., "function\\s+createUser", "import.*from").',
     ),
   filePath: z
     .string()
@@ -82,7 +82,7 @@ type FilesSearchTextToolOutput = {
 export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchemaType> {
   public name = 'files_search_text';
   public description =
-    'Search file contents using regex (ripgrep). Use after codebase_search for exact pattern matching. Returns paths and line numbers.';
+    'Search file contents using a regex pattern and return matching file paths, line numbers, and matched text. Returns up to 15 matches. Best used after codebase_search for exact pattern matching (function names, variable references, import paths). Supports include/exclude glob filters via onlyInFilesMatching and skipFilesMatching. Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default.';
 
   protected override generateTitle(
     args: FilesSearchTextToolSchemaType,
@@ -100,7 +100,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   ): string {
     return dedent`
       ### Overview
-      Search file contents using regex (ripgrep). Use after \`codebase_search\` for exact pattern matching.
+      Search file contents using regex. Use after \`codebase_search\` for exact pattern matching.
 
       ### Best Practices
       - Use \`codebase_search\` first for discovery, then this tool for exact matches

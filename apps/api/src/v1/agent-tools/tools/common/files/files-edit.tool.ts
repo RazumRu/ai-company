@@ -42,18 +42,27 @@ type EditOperation = {
 };
 
 const FilesEditToolSchema = z.object({
-  filePath: z.string().min(1).describe('Path to the file to edit'),
-  editInstructions: z.string().describe('Single sentence, first person'),
+  filePath: z
+    .string()
+    .min(1)
+    .describe(
+      'Absolute path to the file to edit. Must have been read with files_read first.',
+    ),
+  editInstructions: z
+    .string()
+    .describe(
+      'A single-sentence, first-person description of what to change (e.g., "I want to add input validation to the createUser function").',
+    ),
   codeSketch: z
     .string()
     .describe(
-      'Precise edits with minimal unchanged context. Use // ... existing code ... marker to skip spans.',
+      'A sketch of the desired file state showing only changed regions and minimal surrounding context. Use the exact marker "// ... existing code ..." to represent unchanged spans. Include enough unchanged context lines around each edit for unambiguous anchoring.',
     ),
   useSmartModel: z
     .boolean()
     .optional()
     .describe(
-      'Retry mode: use only if previous diff is not as expected or parsing/apply failed',
+      'Set to true to use a more capable LLM for diff interpretation. Only use this on retry when the previous attempt produced an incorrect diff or failed to parse/apply.',
     ),
 });
 
@@ -148,7 +157,7 @@ const ANCHOR_MARKER = '// ... existing code ...';
 export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   public name = 'files_edit';
   public description =
-    'Edit a file with a sketch of the desired result using "// ... existing code ..." markers. Best for complex multi-region edits. Requires files_read first.';
+    'Edit a file using a natural-language instruction and a code sketch that uses "// ... existing code ..." markers to indicate unchanged regions. An LLM interprets the sketch to produce precise hunks, which are then applied to the file. Best suited for complex multi-region edits where writing exact oldText/newText pairs (files_apply_changes) would be tedious. Always read the file with files_read first. If the edit fails, retry with useSmartModel=true. Maximum file size: 1 MB.';
 
   constructor(
     private readonly openaiService: OpenaiService,

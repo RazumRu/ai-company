@@ -17,18 +17,22 @@ export const FilesDirectoryTreeToolSchema = z.object({
   directoryPath: z
     .string()
     .min(1)
-    .describe('Absolute path to the directory to scan.'),
+    .describe(
+      'Absolute path to the directory to scan (e.g., "/runtime-workspace/project/src").',
+    ),
   maxDepth: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('Optional maximum depth to traverse.'),
+    .describe(
+      'Maximum directory depth to traverse. Start with 3-5 for large repos and increase if needed. Omit for unlimited depth (not recommended for large projects).',
+    ),
   skipPatterns: z
     .array(z.string().min(1))
     .optional()
     .describe(
-      'Optional glob patterns to exclude (fd syntax). If omitted, some common junk folders are excluded.',
+      'Glob patterns to exclude from the tree (fd syntax, e.g., ["node_modules/**", "dist/**"]). Defaults to excluding node_modules, dist, build, coverage, and .turbo if not specified.',
     ),
 });
 
@@ -86,7 +90,7 @@ function renderTree(node: TreeNode, prefix = ''): string[] {
 export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeToolSchemaType> {
   public name = 'files_directory_tree';
   public description =
-    'Generate a tree overview of a directory (structure; not content search).';
+    'Generate a visual tree representation of a directory structure showing files and subdirectories in an indented text format (similar to the Unix "tree" command). Start with a shallow maxDepth (3-5) and narrow down to specific subdirectories for large repositories. Common build/cache directories (node_modules, dist, .turbo, etc.) are excluded by default. This tool does not return file contents — use files_read for that.';
 
   protected override generateTitle(
     args: FilesDirectoryTreeToolSchemaType,

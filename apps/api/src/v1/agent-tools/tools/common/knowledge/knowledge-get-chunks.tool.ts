@@ -19,7 +19,9 @@ export const KnowledgeGetChunksSchema = z.object({
   chunkIds: z
     .array(z.number().int().positive())
     .min(1)
-    .describe('Chunk public IDs to retrieve'),
+    .describe(
+      'Chunk public IDs to retrieve (obtained from knowledge_search_chunks results). Only request the chunks you actually need to keep context size manageable.',
+    ),
 });
 
 export type KnowledgeGetChunksSchemaType = z.infer<
@@ -40,7 +42,8 @@ export class KnowledgeGetChunksTool extends BaseTool<
   KnowledgeToolGroupConfig
 > {
   public name = 'knowledge_get_chunks';
-  public description = 'Fetch full text for selected knowledge chunks.';
+  public description =
+    'Retrieve the full text content for specific knowledge chunks by their public IDs. Use this after knowledge_search_chunks has identified relevant chunks and you need the complete text (search only returns snippets). If the document politic instructs full content retrieval, use knowledge_get_doc instead. Do not fetch chunks for a document whose full content you have already retrieved.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,

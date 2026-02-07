@@ -25,10 +25,28 @@ export enum SemanticCommitType {
 }
 
 export const GhCommitToolSchema = z.object({
-  semanticType: z.enum(SemanticCommitType).describe('Semantic commit type'),
-  title: z.string().min(1).describe('Commit title'),
-  body: z.string().optional().describe('Optional commit body'),
-  path: z.string().describe('Path to the git repository'),
+  semanticType: z
+    .enum(SemanticCommitType)
+    .describe(
+      'Semantic commit type prefix. Use feat for new features, fix for bug fixes, refactor for code restructuring, docs for documentation, test for tests, chore for maintenance, etc.',
+    ),
+  title: z
+    .string()
+    .min(1)
+    .describe(
+      'Short, descriptive commit title (e.g., "add user authentication endpoint"). Will be prefixed with the semantic type and [AI] marker automatically.',
+    ),
+  body: z
+    .string()
+    .optional()
+    .describe(
+      'Extended commit body with additional context. Supports multiline text with \\n for line breaks. Use for explaining "why" behind changes, listing affected areas, or noting breaking changes.',
+    ),
+  path: z
+    .string()
+    .describe(
+      'Absolute path to the git repository root (use the path returned by gh_clone).',
+    ),
 });
 
 export type GhCommitToolSchemaType = z.infer<typeof GhCommitToolSchema>;
@@ -43,7 +61,7 @@ type GhCommitToolOutput = {
 export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   public name = 'gh_commit';
   public description =
-    'Create a git (GitHub) commit locally with a semantic commit message.';
+    'Create a local git commit with a semantic commit message in the format "{semanticType}: [AI] {title}". Changes must be staged first using shell with "git add" — this tool will fail if there are no staged changes. Returns the commit hash on success. Use gh_push afterwards to push commits to the remote repository.';
 
   protected override generateTitle(
     args: GhCommitToolSchemaType,

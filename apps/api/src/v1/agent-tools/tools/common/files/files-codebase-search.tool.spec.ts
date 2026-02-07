@@ -55,8 +55,8 @@ describe('FilesCodebaseSearchTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Semantic search');
-      expect(tool.description).toContain('Qdrant');
+      expect(tool.description).toContain('semantic search');
+      expect(tool.description).toContain('vector embeddings');
     });
   });
 

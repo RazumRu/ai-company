@@ -13,7 +13,7 @@ export const WebSearchToolSchema = z.object({
   searchQuery: z
     .string()
     .describe(
-      'What you want to search for on the internet. Be specific and include relevant keywords.',
+      'The search query to run against the web. Be specific: include technology names, version numbers, and exact error messages when applicable. E.g., "NestJS 10 guard decorator not working with Fastify" rather than "NestJS guard issue".',
     )
     .min(1),
   searchDepth: z
@@ -30,7 +30,9 @@ export const WebSearchToolSchema = z.object({
     .optional(),
   skipDomains: z
     .array(z.string())
-    .describe("Don't search these websites")
+    .describe(
+      'Exclude results from these domains (e.g., ["pinterest.com", "w3schools.com"]). Useful for filtering out low-quality sources.',
+    )
     .optional(),
   maxResults: z
     .number()
@@ -57,7 +59,7 @@ export class WebSearchTool extends BaseTool<
 > {
   public name = 'web_search';
   public description =
-    'Search the web for up-to-date information and return top results.';
+    'Search the web and return structured results containing titles, URLs, and content snippets. Use this when you need current documentation, error solutions, best practices, or any information not available in the local codebase. It should not be used for information already present locally — prefer files_search_text or codebase_search for codebase queries. Include tech versions and error messages verbatim in searchQuery for best results.';
 
   public getDetailedInstructions(
     _config: WebSearchToolConfig,

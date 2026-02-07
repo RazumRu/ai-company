@@ -12,15 +12,28 @@ import { GhBaseTool, GhBaseToolConfig } from './gh-base.tool';
 import { SemanticCommitType } from './gh-commit.tool';
 
 export const GhBranchToolSchema = z.object({
-  semanticType: z.enum(SemanticCommitType).describe('Semantic commit type'),
-  title: z.string().min(1).describe('Branch title'),
+  semanticType: z
+    .enum(SemanticCommitType)
+    .describe(
+      'Semantic type prefix for the branch name (e.g., feat, fix, refactor). Combined with title to produce names like "feat/add-oauth-support".',
+    ),
+  title: z
+    .string()
+    .min(1)
+    .describe(
+      'Human-readable branch title that will be converted to kebab-case (e.g., "Add OAuth Support" becomes "add-oauth-support"). Keep it concise for readable branch names.',
+    ),
   base: z
     .string()
     .optional()
-    .describe('Base branch to create from (default: main)'),
+    .describe(
+      'The base branch to create the new branch from (default: "main"). The tool checks out this branch first before creating the new one.',
+    ),
   path: z
     .string()
-    .describe('Path to the git repository (use path returned by gh_clone)'),
+    .describe(
+      'Absolute path to the git repository root (use the path returned by gh_clone).',
+    ),
 });
 
 export type GhBranchToolSchemaType = z.infer<typeof GhBranchToolSchema>;
@@ -35,7 +48,7 @@ type GhBranchToolOutput = {
 export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
   public name = 'gh_branch';
   public description =
-    'Create a new git (GitHub) branch locally with a semantic branch name.';
+    'Create and checkout a new local git branch with a semantic naming convention: "{semanticType}/{title-in-kebab-case}". Checks out the base branch first (default: main), then creates the new branch from it. Use this before making changes that will be pushed as a separate branch for a pull request. The repository must already be cloned with gh_clone.';
 
   protected override generateTitle(
     args: GhBranchToolSchemaType,

@@ -18,11 +18,13 @@ export const FilesWriteFileToolSchema = z.object({
   filePath: z
     .string()
     .min(1)
-    .describe('Absolute path to the file you want to write.'),
+    .describe(
+      'Absolute path to the file to create or overwrite (must start with /runtime-workspace/). Parent directories are created automatically.',
+    ),
   fileContent: z
     .string()
     .describe(
-      'Full content to write to the file. Note: This will overwrite any existing contents.',
+      'The complete file content to write. This fully replaces any existing file content — there is no append mode.',
     ),
 });
 
@@ -39,7 +41,7 @@ type FilesWriteFileToolOutput = {
 export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaType> {
   public name = 'files_write_file';
   public description =
-    'Create a new file or fully overwrite an existing one. Use only for new files; prefer files_apply_changes for edits.';
+    'Create a new file or completely overwrite an existing file with the provided content. Parent directories are created automatically. This tool should primarily be used for creating new files from scratch. For editing existing files, prefer files_apply_changes (precise replacements) or files_edit (sketch-based edits), as they preserve unmodified content. If the file already exists, read it first with files_read to avoid accidental data loss.';
 
   protected override generateTitle(
     args: FilesWriteFileToolSchemaType,

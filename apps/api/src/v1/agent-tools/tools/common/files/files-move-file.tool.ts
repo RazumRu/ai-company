@@ -14,11 +14,18 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesMoveFileToolSchema = z.object({
-  sourcePath: z.string().min(1).describe('Absolute path to the source file.'),
+  sourcePath: z
+    .string()
+    .min(1)
+    .describe(
+      'Absolute path to the file to move or rename. The file must exist.',
+    ),
   destinationPath: z
     .string()
     .min(1)
-    .describe('Absolute path to the destination file path.'),
+    .describe(
+      'Absolute path for the new location. Parent directories are created automatically if they do not exist.',
+    ),
 });
 
 export type FilesMoveFileToolSchemaType = z.infer<
@@ -34,7 +41,7 @@ type FilesMoveFileToolOutput = {
 export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType> {
   public name = 'files_move_file';
   public description =
-    'Move/rename a file (source → destination); creates destination parent directories.';
+    'Move or rename a file from sourcePath to destinationPath. Parent directories for the destination are created automatically if they do not exist. This is a move operation, not a copy — the source file will no longer exist after a successful call. Use this for renaming files or reorganizing directory structures. Do not use for editing file content — use files_apply_changes or files_edit instead.';
 
   protected override generateTitle(
     args: FilesMoveFileToolSchemaType,
