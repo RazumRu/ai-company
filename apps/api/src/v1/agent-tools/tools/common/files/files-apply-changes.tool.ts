@@ -19,7 +19,7 @@ const FilesApplyChangesToolSchemaBase = z.object({
     .string()
     .min(1)
     .describe(
-      'Absolute path to the file to edit (must start with /runtime-workspace/).',
+      'Absolute path to the file to edit.',
     ),
   oldText: z
     .string()

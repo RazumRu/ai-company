@@ -18,7 +18,7 @@ export const FilesDirectoryTreeToolSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Absolute path to the directory to scan (e.g., "/runtime-workspace/project/src").',
+      'Absolute path to the directory to scan.',
     ),
   maxDepth: z
     .number()

@@ -19,7 +19,7 @@ export const FilesWriteFileToolSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Absolute path to the file to create or overwrite (must start with /runtime-workspace/). Parent directories are created automatically.',
+      'Absolute path to the file to create or overwrite. Parent directories are created automatically.',
     ),
   fileContent: z
     .string()
@@ -74,7 +74,7 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
       - Provide the **complete** file content; partial content will result in a truncated file
 
       ### Best Practices
-      - Use absolute paths starting with \`/runtime-workspace/\`
+      - Use absolute paths
       - Include proper file headers, imports, and structure for the target language
       - For large files, consider whether \`files_edit\` with a sketch would be more appropriate
 
