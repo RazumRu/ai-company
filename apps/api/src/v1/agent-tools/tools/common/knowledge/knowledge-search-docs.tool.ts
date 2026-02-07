@@ -64,7 +64,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
 > {
   public name = 'knowledge_search_docs';
   public description =
-    'Find and select knowledge documents relevant to the current task, returning their titles, summaries, policies, and tags. Use this as the first step before accessing knowledge content — it identifies which documents contain useful information. Returns up to 10 documents along with an optional report. Use the returned document public IDs with knowledge_search_chunks or knowledge_get_doc to retrieve actual content. Call this for any non-trivial task that may benefit from project context (implementation, refactoring, architecture, conventions).';
+    'Find and select knowledge documents relevant to the current task, returning titles, summaries, policies, and tags. Use this as the first step before accessing knowledge content. Returns up to 10 documents — use the returned public IDs with knowledge_search_chunks or knowledge_get_doc to retrieve actual content.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,

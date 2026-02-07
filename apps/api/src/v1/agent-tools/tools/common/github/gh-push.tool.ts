@@ -41,7 +41,7 @@ type GhPushToolOutput = {
 export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   public name = 'gh_push';
   public description =
-    'Push local commits to the remote GitHub repository using the configured authentication. Pushes to the specified branch or the current branch if none is specified. Use this after creating commits with gh_commit. Pushing to protected branches (e.g., main) may be blocked by repository rules — create a pull request with gh_create_pull_request instead.';
+    'Push local commits to the remote GitHub repository. Pushes to the specified branch or the current branch if none is specified. Use this after creating commits with gh_commit.';
 
   protected override generateTitle(
     args: GhPushToolSchemaType,

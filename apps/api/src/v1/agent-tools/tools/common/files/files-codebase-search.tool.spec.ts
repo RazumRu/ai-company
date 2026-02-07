@@ -56,7 +56,7 @@ describe('FilesCodebaseSearchTool', () => {
 
     it('should have correct description', () => {
       expect(tool.description).toContain('semantic search');
-      expect(tool.description).toContain('vector embeddings');
+      expect(tool.description).toContain('natural-language queries');
     });
   });
 

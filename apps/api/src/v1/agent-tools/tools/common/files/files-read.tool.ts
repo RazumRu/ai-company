@@ -69,7 +69,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read one or more files and return their contents with line numbers in the format "NNN\\tcode". Supports batching multiple files in a single call for efficiency, and optional line ranges for large files. All file paths must be absolute (starting with /runtime-workspace/). Returns a contentHash per file that can be passed to files_apply_changes for stale-read detection. Always read a file before editing it.';
+    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges for large files. All file paths must be absolute. Always read a file before editing it.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,
@@ -110,6 +110,9 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       ### Output Format
       Each line is prefixed with its line number and a tab: \`42\\tconst x = 1;\`
       Line numbers are for reference only. Do NOT include the \`NNN\\t\` prefix when copying text to \`oldText\` in edit tools.
+
+      ### Content Hash
+      Each file response includes a \`contentHash\` — pass it to \`files_apply_changes\` as \`expectedHash\` to detect stale reads (file changed since you read it).
 
       ### Example — batch read:
       \`\`\`json

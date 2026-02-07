@@ -108,8 +108,10 @@ Do not mention internal implementation libraries, frameworks, or infrastructure 
 |---|---|
 | "Search using ripgrep" | "Search file contents using regex" |
 | "Powered by Tavily API" | "Search the web" |
-| "Stored in Qdrant" | "Using vector embeddings" |
+| "Stored in Qdrant" | "Semantic search" |
 | "Via gh CLI" | "Using authenticated HTTPS" |
+| "Vector similarity search" | "Semantic search" |
+| "An LLM interprets the sketch" | "The sketch is interpreted to produce edits" |
 
 ### No Redundant Restating
 
@@ -123,13 +125,70 @@ Our tool system has two levels of documentation:
 
 | Field | Where it appears | Purpose |
 |---|---|---|
-| `description` | In the JSON schema sent with every tool call | Quick disambiguation — the model reads all descriptions to pick the right tool |
-| `getDetailedInstructions()` | Injected into the system prompt | Deep guidance — workflows, examples, edge cases, error handling |
+| `description` | In the JSON schema sent with every tool call | **Concise tool selection** — the model reads ALL descriptions to pick the right tool |
+| `getDetailedInstructions()` | Injected into the system prompt | **Comprehensive guidance** — workflows, examples, edge cases, error handling |
 
-### Guidelines
+### Key Rule: Heavy Details Belong in `getDetailedInstructions()`
 
-- **`description`**: Keep it to 3-6 sentences. Focus on *what*, *when*, *returns*, and *caveats*. Must stand alone without `getDetailedInstructions`.
-- **`getDetailedInstructions()`**: Can be much longer. Include step-by-step workflows, JSON examples, prerequisite chains, error troubleshooting, and best practices.
+The `description` field is included in every API call. It should be **short and focused on tool selection** — just enough for the model to know when to use this tool vs. another. All heavy information (matching strategies, retry workflows, code examples, error recovery, permission rules, etc.) belongs in `getDetailedInstructions()`.
+
+### `description` Guidelines (2-4 concise sentences)
+
+- **What** the tool does and what it returns
+- **When** to use it (primary use case, one line)
+- **When NOT** to use it or which alternative to prefer
+- NO implementation details, NO workflow steps, NO examples, NO limits
+
+### `getDetailedInstructions()` Guidelines (comprehensive)
+
+Structure with markdown headers:
+
+```
+### Overview
+Brief summary (1-2 sentences)
+
+### When to Use
+- Bulleted list of specific use cases
+
+### When NOT to Use
+- Common mis-selections with the correct alternative tool
+
+### Best Practices / How to Use
+- Step-by-step workflow with context
+- Matching strategies, retry logic, permission rules, etc.
+
+### Examples
+Concrete JSON examples for common scenarios
+
+### Common Errors / Troubleshooting
+- Error messages and their resolutions
+```
+
+### Examples of the Split
+
+**Description (concise — for tool selection):**
+```ts
+public description =
+  'Replace exact text blocks in a file or insert new text at a specific line. '
+  + 'Supports progressive matching with whitespace tolerance. '
+  + 'Set replaceAll=true to replace every occurrence.';
+```
+
+**getDetailedInstructions (comprehensive — for usage guidance):**
+```ts
+### Matching Strategy (Progressive Fallback)
+Three strategies tried in order:
+1. **Exact**: whitespace-normalized comparison
+2. **Trimmed**: ignores leading whitespace per line
+3. **Fuzzy**: Levenshtein distance ≤ 15%
+
+### Stale-Read Protection
+Pass `expectedHash` from `files_read` to detect changes...
+
+### Examples
+**1. Simple replacement:**
+{"filePath": "...", "oldText": "...", "newText": "..."}
+```
 
 ---
 

@@ -71,7 +71,7 @@ type CodebaseSearchOutput = {
 export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaType> {
   public name = 'codebase_search';
   public description =
-    'Perform semantic search across a git repository codebase using vector embeddings. The repository is automatically indexed on first use (indexing may run in the background for large repos — retry shortly if indicated). Use natural-language queries (not single keywords) to find relevant code chunks by meaning. Returns file paths, line ranges, and code snippets ranked by relevance. This should be the first tool used for codebase discovery or "where is X?" questions. The repository must be cloned first with gh_clone. For exact string/regex matching, follow up with files_search_text.';
+    'Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, and code snippets ranked by relevance. This should be the first tool for codebase discovery or "where is X?" questions. The repository must be cloned first with gh_clone.';
 
   constructor(private readonly repoIndexService: RepoIndexService) {
     super();

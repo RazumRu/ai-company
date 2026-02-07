@@ -67,7 +67,7 @@ export class WebSearchTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Searches web using Tavily to find current information. Returns structured results with titles, URLs, and content snippets.
+      Searches the web to find current information. Returns structured results with titles, URLs, and content snippets.
 
       ### When to Use
       Finding current documentation, error solutions, best practices, recent news, or information not in local codebase.

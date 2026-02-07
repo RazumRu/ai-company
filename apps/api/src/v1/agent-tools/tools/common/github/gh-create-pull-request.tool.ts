@@ -181,7 +181,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
 > {
   public name = 'gh_create_pull_request';
   public description =
-    'Create a GitHub Pull Request from a head branch into a base branch, and optionally apply metadata (labels, assignees, reviewers, team reviewers) in a single call. The branch must be pushed to the remote first with gh_push. Returns the PR URL and number on success. Supports draft PRs, auto-closing of referenced issues via closesIssues, and up to 15 combined reviewers/team reviewers.';
+    'Create a GitHub Pull Request from a head branch into a base branch, optionally with labels, assignees, and reviewers in a single call. The branch must be pushed first with gh_push. Returns the PR URL and number on success.';
 
   private getLabelsToApply(
     args: GhCreatePullRequestToolSchemaType,
