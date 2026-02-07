@@ -40,7 +40,9 @@ describe('GhBranchTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Create and checkout a new local git branch');
+      expect(tool.description).toContain(
+        'Create and checkout a new local git branch',
+      );
     });
   });
 

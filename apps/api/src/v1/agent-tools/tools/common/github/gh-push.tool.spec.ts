@@ -39,7 +39,9 @@ describe('GhPushTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Push local commits to the remote GitHub repository');
+      expect(tool.description).toContain(
+        'Push local commits to the remote GitHub repository',
+      );
     });
   });
 

@@ -20,9 +20,7 @@ describe('FinishTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain(
-        'Signal that all work is complete',
-      );
+      expect(tool.description).toContain('Signal that all work is complete');
     });
   });
 
