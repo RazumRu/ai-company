@@ -13,8 +13,7 @@ import { GhBaseTool, GhBaseToolConfig } from './gh-base.tool';
 export const GhPushToolSchema = z.object({
   path: z
     .string()
-    .optional()
-    .describe('Path to the git repository (default: current directory)'),
+    .describe('Path to the git repository (use path returned by gh_clone)'),
   remote: z
     .string()
     .optional()
@@ -62,17 +61,17 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       No commits exist → use gh_commit first. Protected branch → may need PR workflow. Changes need review → wait for confirmation.
 
       ### Best Practices
-      Push feature branches, not main (may be blocked). Verify current branch before pushing with shell: \`git branch --show-current\`.
+      Always pass \`path\` (use the path returned by gh_clone). Push feature branches, not main (may be blocked). Verify current branch before pushing with shell: \`git branch --show-current\`.
 
       ### Examples
       **1. Push feature branch:**
       \`\`\`json
-      {"path": "/repo", "branch": "feat/add-authentication"}
+      {"path": "/runtime-workspace/repo", "branch": "feat/add-authentication"}
       \`\`\`
 
-      **2. After cd into repo:**
+      **2. Push current branch:**
       \`\`\`json
-      {"branch": "feat/add-search"}
+      {"path": "/runtime-workspace/repo"}
       \`\`\`
 
       ### Common Errors

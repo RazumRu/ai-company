@@ -68,8 +68,8 @@ describe('FilesEditTool', () => {
     });
 
     it('should have meaningful description', () => {
-      expect(tool.description).toContain('sketch-based edits');
-      expect(tool.description).toContain('anchor');
+      expect(tool.description).toContain('sketch');
+      expect(tool.description).toContain('// ... existing code ...');
     });
 
     it('should have valid schema', () => {
@@ -361,7 +361,7 @@ describe('FilesEditTool', () => {
       const instructions = tool.getDetailedInstructions(mockConfig);
 
       expect(instructions).toContain('// ... existing code ...');
-      expect(instructions).toContain('ritical'); // matches both "Critical" and "CRITICAL"
+      expect(instructions).toContain('files_read');
       expect(instructions).toContain('useSmartModel');
       expect(instructions).toContain('Retry Strategy');
     });

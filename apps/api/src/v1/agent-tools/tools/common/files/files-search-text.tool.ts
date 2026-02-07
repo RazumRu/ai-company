@@ -82,7 +82,7 @@ type FilesSearchTextToolOutput = {
 export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchemaType> {
   public name = 'files_search_text';
   public description =
-    'Search file contents with ripgrep (regex) and return structured matches.';
+    'Search file contents using regex (ripgrep). Use after codebase_search for exact pattern matching. Returns paths and line numbers.';
 
   protected override generateTitle(
     args: FilesSearchTextToolSchemaType,
@@ -100,37 +100,17 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   ): string {
     return dedent`
       ### Overview
-      Search file contents with ripgrep (regex). Returns file paths and line matches.
-
-      ### When to Use
-      - After \`codebase_search\`, to find exact usages or strings
-      - Locating config values, error strings, TODOs, or migration markers
-      - Confirming precise matches within known areas
-
-      ### When NOT to Use
-      - Discovery or "where is X?" questions -> \`codebase_search\` first
-      - Exact file known -> \`files_read\`
-      - Path discovery -> \`files_find_paths\`
+      Search file contents using regex (ripgrep). Use after \`codebase_search\` for exact pattern matching.
 
       ### Best Practices
-      - Start with a semantic query in \`codebase_search\`, then refine here.
-      - Prefer one regex with alternation instead of multiple calls.
-      - Use onlyInFilesMatching/skipFilesMatching to limit scope.
-      - After a match, read a small range with \`files_read\`.
-      - Escape regex special characters if you need literal matches.
+      - Use \`codebase_search\` first for discovery, then this tool for exact matches
+      - Prefer one regex with alternation over multiple calls
+      - Use \`onlyInFilesMatching\`/\`skipFilesMatching\` to limit scope
+      - Common build/cache folders are excluded by default
 
-      ### Default excludes
-      If skipFilesMatching is omitted, common build/cache folders are excluded. If you set skipFilesMatching, include your own exclusions.
-
-      ### Examples
-      **1) Type/enum definition search:**
+      ### Example
       \`\`\`json
       {"searchInDirectory":"/repo","textPattern":"(enum|type|interface)\\\\s+UserRole","onlyInFilesMatching":["*.ts"]}
-      \`\`\`
-
-      **2) Search a single file:**
-      \`\`\`json
-      {"filePath":"/repo/src/app.ts","textPattern":"health/check"}
       \`\`\`
     `;
   }

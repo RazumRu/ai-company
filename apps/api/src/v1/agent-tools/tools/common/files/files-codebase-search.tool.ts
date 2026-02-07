@@ -101,7 +101,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       ### Recommended Flow
       1) Clone repo with \`gh_clone\` (if not already cloned).
       2) Run \`codebase_search\` with a semantic query using the cloned path.
-      3) Read top results with \`files_read\`.
+      3) Read top results with \`files_read\` using the \`path\` field directly — do NOT call files_find_paths first.
       4) Use \`files_search_text\` for exact usages or strings.
 
       ### Example

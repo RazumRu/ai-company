@@ -89,32 +89,16 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Find file paths by glob (path/name only). Returns absolute paths.
-
-      ### When to Use
-      - Locating files before read/edit
-      - Quick directory listing
-      - Finding config files by pattern
-
-      ### When NOT to Use
-      - Content search -> \`files_search_text\`
-      - Structure overview -> \`files_directory_tree\`
+      Find file paths by glob pattern. Returns absolute paths (no content).
 
       ### Best Practices
-      - Use specific patterns and small maxResults to limit output.
-      - For listing a folder: includeSubdirectories=false + filenamePattern="*".
-      - Use maxDepth to limit traversal.
-      - Add skipPatterns if results include build artifacts.
+      - Use specific patterns and small \`maxResults\` to limit output
+      - For listing a folder: \`includeSubdirectories=false\` + \`filenamePattern="*"\`
+      - Common build/cache folders are excluded by default
 
-      ### Examples
-      **1) List a single directory (non-recursive):**
+      ### Example
       \`\`\`json
-      {"searchInDirectory":"/repo/src","filenamePattern":"*","includeSubdirectories":false}
-      \`\`\`
-
-      **2) Find all TypeScript files (limited):**
-      \`\`\`json
-      {"searchInDirectory":"/repo","filenamePattern":"**/*.ts","maxResults":100}
+      {"searchInDirectory":"/repo/src","filenamePattern":"*.ts","maxResults":50}
       \`\`\`
     `;
   }

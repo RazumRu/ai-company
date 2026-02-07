@@ -102,30 +102,8 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
   ): string {
     return dedent`
       ### Overview
-      Tree view of a directory (structure only).
-
-      ### When to Use
-      Quick overview before searching/reading.
-
-      ### When NOT to Use
-      - Finding specific paths -> \`files_find_paths\`
-      - Searching content -> \`files_search_text\`
-
-      ### Best Practices
-      - Start shallow (maxDepth 3-5).
-      - Add skipPatterns for build/cache dirs.
-      - Narrow to a subdirectory when possible.
-
-      ### Examples
-      **1) Repo overview:**
-      \`\`\`json
-      {"directoryPath":"/repo","maxDepth":4}
-      \`\`\`
-
-      **2) Subfolder with exclusions:**
-      \`\`\`json
-      {"directoryPath":"/repo/apps/api","maxDepth":6,"skipPatterns":["node_modules/**","dist/**","build/**"]}
-      \`\`\`
+      Visual tree view of a directory structure. Start shallow (maxDepth 3-5) and narrow to subdirectories when possible.
+      Common build/cache folders are excluded by default.
     `;
   }
 

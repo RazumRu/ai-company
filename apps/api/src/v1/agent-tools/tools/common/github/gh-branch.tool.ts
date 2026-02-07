@@ -20,8 +20,7 @@ export const GhBranchToolSchema = z.object({
     .describe('Base branch to create from (default: main)'),
   path: z
     .string()
-    .optional()
-    .describe('Path to the git repository (default: current directory)'),
+    .describe('Path to the git repository (use path returned by gh_clone)'),
 });
 
 export type GhBranchToolSchemaType = z.infer<typeof GhBranchToolSchema>;
@@ -60,22 +59,17 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
       Want custom format → use shell with git checkout -b. Switching to existing branch → use shell with git checkout. Repo not cloned → use gh_clone first.
 
       ### Best Practices
-      Choose appropriate semantic type (feat, fix, refactor). Use descriptive titles. Keep titles concise for readable branch names.
+      Always pass \`path\` (use the path returned by gh_clone). Choose appropriate semantic type (feat, fix, refactor). Use descriptive titles. Keep titles concise for readable branch names.
 
       ### Examples
       **1. Feature branch:**
       \`\`\`json
-      {"semanticType": "feat", "title": "Add OAuth Support", "path": "/repo"}
+      {"semanticType": "feat", "title": "Add OAuth Support", "path": "/runtime-workspace/repo"}
       \`\`\`
 
       **2. Bug fix:**
       \`\`\`json
-      {"semanticType": "fix", "title": "Resolve Null Pointer", "path": "/repo"}
-      \`\`\`
-
-      **3. After cd into repo:**
-      \`\`\`json
-      {"semanticType": "refactor", "title": "Extract Validation Logic"}
+      {"semanticType": "fix", "title": "Resolve Null Pointer", "path": "/runtime-workspace/repo"}
       \`\`\`
     `;
   }

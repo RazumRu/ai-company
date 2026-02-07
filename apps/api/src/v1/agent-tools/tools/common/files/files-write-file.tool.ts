@@ -39,7 +39,7 @@ type FilesWriteFileToolOutput = {
 export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaType> {
   public name = 'files_write_file';
   public description =
-    'Write a file by full overwrite (destructive: replaces entire contents).';
+    'Create a new file or fully overwrite an existing one. Use only for new files; prefer files_apply_changes for edits.';
 
   protected override generateTitle(
     args: FilesWriteFileToolSchemaType,
@@ -54,26 +54,14 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Overwrites the entire file. Use ONLY for new files or intentional full rewrites.
+      Create a new file or fully overwrite an existing one. Parent directories are created automatically.
 
       ### When to Use
-      - Creating a brand-new file from scratch
-      - Generating a file that does not exist yet
-      - Intentional full-file replacement (rare)
+      - Creating new files from scratch
+      - Full-file replacement (rare — prefer \`files_apply_changes\` for edits)
 
-      ### When NOT to Use
-      - Editing existing files -> use \`files_edit\` or \`files_apply_changes\`
-      - Deleting files -> use \`files_delete\`
-
-      ### Safety Tips
-      - If the file might exist, read it first (\`files_read\`) to avoid data loss.
-      - Create parent folders if needed (\`files_create_directory\`).
-      - Prefer \`files_apply_changes\` if you can express the change as oldText/newText.
-
-      ### Example (new file)
-      \`\`\`json
-      {"filePath":"/repo/new-config.json","fileContent":"{\\n  \\"version\\": \\"2.0\\"\\n}"}
-      \`\`\`
+      ### Safety
+      - If the file might exist, read it first (\`files_read\`) to avoid data loss
     `;
   }
 

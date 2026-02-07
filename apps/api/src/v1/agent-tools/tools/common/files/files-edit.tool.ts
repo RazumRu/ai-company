@@ -148,7 +148,7 @@ const ANCHOR_MARKER = '// ... existing code ...';
 export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   public name = 'files_edit';
   public description =
-    'Apply sketch-based edits to a file using anchor markers. Call with useSmartModel=false first; if diff is wrong or parsing fails, retry with useSmartModel=true.';
+    'Edit a file with a sketch of the desired result using "// ... existing code ..." markers. Best for complex multi-region edits. Requires files_read first.';
 
   constructor(
     private readonly openaiService: OpenaiService,
@@ -176,44 +176,22 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Primary edit tool. Provide a sketch of the final state using "// ... existing code ..." markers.
+      Sketch-based edit tool for complex multi-region changes. Provide the desired final state using "// ... existing code ..." markers to skip unchanged sections.
 
-      ### CRITICAL: Always Read First
-      **MANDATORY**: Run \`files_read\` before editing to avoid stale or missing context.
-      Critical: editing without a fresh read often fails or applies to the wrong place.
-
-      ### Retry Strategy
-      1) Run \`files_read\` first (mandatory).
-      2) Call \`files_edit\` with useSmartModel=false (default).
-      3) If parsing/diff fails, retry with useSmartModel=true.
-      4) If still failing, use \`files_apply_changes\` with exact oldText/newText.
+      ### When to Use (prefer files_apply_changes for simple edits)
+      - Multiple related changes in one file (e.g., add import + use it)
+      - Structured edits where showing the final state is clearer than oldText/newText
 
       ### Sketch Rules
-      - Show the final state (not a diff).
-      - Use "// ... existing code ..." to skip unchanged sections.
-      - Include 3-8 lines around each change to make anchors unique.
-      - If similar code repeats, include more surrounding context (function/class names).
+      - Show the final state, not a diff
+      - Use "// ... existing code ..." to skip unchanged sections
+      - Include 3-8 unique context lines around each change for reliable anchoring
 
-      ### When to Use
-      - Multiple related changes in one file
-      - Adding imports + using them in the same file
-      - Structured edits where a sketch is clearer than a patch
-
-      ### When NOT to Use
-      - New files -> \`files_write_file\`
-      - Simple find/replace -> \`files_apply_changes\` with replaceAll
-      - Extremely large files -> prefer \`files_apply_changes\`
-
-      ### Examples
-      **1) Simple edit with markers:**
-      \`\`\`json
-      {"filePath":"/repo/src/user.service.ts","editInstructions":"Add email validation","codeSketch":"async saveUser(user: User) {\\n  if (!user.name) {\\n    throw new Error('Name required');\\n  }\\n// ... existing code ...\\n  if (!isValidEmail(user.email)) {\\n    throw new Error('Invalid email');\\n  }\\n// ... existing code ...\\n}"}
-      \`\`\`
-
-      **2) Retry with smart model:**
-      \`\`\`json
-      {"filePath":"/repo/src/config.ts","editInstructions":"Add timeout config","codeSketch":"export const config = {\\n  apiVersion: '2.0',\\n// ... existing code ...\\n  timeout: 30000,\\n// ... existing code ...\\n};","useSmartModel":true}
-      \`\`\`
+      ### Retry Strategy
+      1. Run \`files_read\` first (mandatory)
+      2. Call with useSmartModel=false (default)
+      3. If fails, retry with useSmartModel=true
+      4. If still failing, fall back to \`files_apply_changes\`
     `;
   }
 
