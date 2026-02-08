@@ -3,7 +3,6 @@ import { basename } from 'node:path';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
-import { isObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
@@ -219,7 +218,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     for (const line of lines) {
       try {
         const parsed = JSON.parse(line) as unknown;
-        if (!isObject(parsed)) continue;
+        if (typeof parsed !== 'object' || parsed === null) continue;
         const record = parsed as Record<string, unknown>;
         if (record.type !== 'match') continue;
         if (matches.length >= MAX_MATCHES) break;

@@ -69,7 +69,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges for large files. All file paths must be absolute. Always read a file before editing it.';
+    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges for large files. All file paths must be absolute. Always read a file before editing it. This is a read-only tool — to modify files use files_apply_changes, to create new files use files_write_file.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,

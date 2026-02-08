@@ -148,13 +148,9 @@ describe('FilesApplyChangesTool', () => {
 
   describe('findMatches', () => {
     it('should find single match', () => {
-      const fileContent = 'line1\nline2\nline3';
+      const lines = ['line1', 'line2', 'line3'];
 
-      const { matches, errors } = tool['findMatches'](
-        fileContent,
-        'line2',
-        false,
-      );
+      const { matches, errors } = tool['findMatches'](lines, 'line2', false);
 
       expect(matches).toHaveLength(1);
       expect(errors).toHaveLength(0);
@@ -164,10 +160,10 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should find multiline match', () => {
-      const fileContent = 'line1\nline2\nline3\nline4';
+      const lines = ['line1', 'line2', 'line3', 'line4'];
 
       const { matches, errors } = tool['findMatches'](
-        fileContent,
+        lines,
         'line2\nline3',
         false,
       );
@@ -180,10 +176,10 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should handle whitespace normalization', () => {
-      const fileContent = '  line1  \n  line2  ';
+      const lines = ['  line1  ', '  line2  '];
 
       const { matches, errors } = tool['findMatches'](
-        fileContent,
+        lines,
         '  line1\n  line2',
         false,
       );
@@ -193,10 +189,10 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should detect when no match found', () => {
-      const fileContent = 'line1\nline2';
+      const lines = ['line1', 'line2'];
 
       const { matches, errors } = tool['findMatches'](
-        fileContent,
+        lines,
         'nonexistent',
         false,
       );
@@ -207,13 +203,9 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should detect multiple matches when replaceAll is false', () => {
-      const fileContent = 'line1\nline1\nline1';
+      const lines = ['line1', 'line1', 'line1'];
 
-      const { matches, errors } = tool['findMatches'](
-        fileContent,
-        'line1',
-        false,
-      );
+      const { matches, errors } = tool['findMatches'](lines, 'line1', false);
 
       expect(matches).toHaveLength(0);
       expect(errors).toHaveLength(1);
@@ -222,22 +214,18 @@ describe('FilesApplyChangesTool', () => {
     });
 
     it('should find all matches when replaceAll is true', () => {
-      const fileContent = 'line1\nline1\nline1';
+      const lines = ['line1', 'line1', 'line1'];
 
-      const { matches, errors } = tool['findMatches'](
-        fileContent,
-        'line1',
-        true,
-      );
+      const { matches, errors } = tool['findMatches'](lines, 'line1', true);
 
       expect(matches).toHaveLength(3);
       expect(errors).toHaveLength(0);
     });
 
     it('should skip when oldText is empty', () => {
-      const fileContent = 'line1\nline2';
+      const lines = ['line1', 'line2'];
 
-      const { matches, errors } = tool['findMatches'](fileContent, '', false);
+      const { matches, errors } = tool['findMatches'](lines, '', false);
 
       expect(matches).toHaveLength(0);
       expect(errors).toHaveLength(0);

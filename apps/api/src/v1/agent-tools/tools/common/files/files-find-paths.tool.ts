@@ -214,6 +214,19 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
 
     const res = await this.execCommand({ cmd }, config, cfg);
 
+    if (res.exitCode !== 0) {
+      return {
+        output: {
+          error: res.stderr || res.stdout || 'Failed to find paths',
+          files: [],
+          cwd: (args.searchInDirectory ?? '').trim(),
+          returned: 0,
+          truncated: false,
+        },
+        messageMetadata,
+      };
+    }
+
     const stdoutLines = res.stdout.split('\n');
     const cwdIdx = stdoutLines.indexOf(cwdMarker);
     const filesIdx = stdoutLines.indexOf(filesMarker);
@@ -236,19 +249,6 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
 
     const truncated = rawFiles.length > maxResults;
     const files = truncated ? rawFiles.slice(0, maxResults) : rawFiles;
-
-    if (res.exitCode !== 0) {
-      return {
-        output: {
-          error: res.stderr || res.stdout || 'Failed to find paths',
-          files: [],
-          cwd,
-          returned: 0,
-          truncated: false,
-        },
-        messageMetadata,
-      };
-    }
 
     return {
       output: {

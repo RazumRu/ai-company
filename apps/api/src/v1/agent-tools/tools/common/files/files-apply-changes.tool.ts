@@ -193,6 +193,10 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     `;
   }
 
+  private splitLines(text: string): string[] {
+    return text.replace(/\r\n/g, '\n').split('\n');
+  }
+
   private collapseBlankRuns(lines: string[]): string[] {
     const out: string[] = [];
     let prevBlank = false;
@@ -215,10 +219,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     text: string,
     collapseBlankLines: boolean,
   ): string {
-    const normalized = text.replace(/\r\n/g, '\n');
-
-    const lines = normalized
-      .split('\n')
+    const lines = this.splitLines(text)
       .map((line) => line.replace(/[ \t]+$/g, ''))
       .map((line) => (line.trim().length === 0 ? '' : line));
 
@@ -232,25 +233,20 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   private normalizeRawLines(text: string): string[] {
-    return text
-      .replace(/\r\n/g, '\n')
-      .split('\n')
+    return this.splitLines(text)
       .map((l) => l.replace(/[ \t]+$/g, ''))
       .map((l) => (l.trim().length === 0 ? '' : l));
   }
 
   private detectIndentationFromBlock(text: string): string {
-    const line = text
-      .replace(/\r\n/g, '\n')
-      .split('\n')
-      .find((l) => l.trim().length > 0);
+    const line = this.splitLines(text).find((l) => l.trim().length > 0);
     if (!line) return '';
     const match = line.match(/^(\s+)/);
     return match && match[1] ? match[1] : '';
   }
 
   private stripCommonIndent(text: string): string {
-    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const lines = this.splitLines(text);
     const nonEmpty = lines.filter((l) => l.trim().length > 0);
     if (nonEmpty.length === 0) return lines.join('\n');
     const indents = nonEmpty.map((l) => l?.match(/^(\s*)/)?.[1]?.length ?? 0);
@@ -262,9 +258,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   private applyIndentation(text: string, indentation: string): string {
-    const stripped = this.stripCommonIndent(text).replace(/\r\n/g, '\n');
+    const stripped = this.stripCommonIndent(text);
     if (!indentation) return stripped;
-    const lines = stripped.split('\n');
+    const lines = this.splitLines(stripped);
     return lines
       .map((line) => {
         return line.trim() === '' ? line : indentation + line;
@@ -421,10 +417,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     const matches: EditMatch[] = [];
     const errors: string[] = [];
 
-    const oldLinesTrimmed = oldText
-      .replace(/\r\n/g, '\n')
-      .split('\n')
-      .map((l) => l.trim());
+    const oldLinesTrimmed = this.splitLines(oldText).map((l) => l.trim());
 
     for (let lineIndex = 0; lineIndex < originalLines.length; lineIndex++) {
       const candidate = this.tryMatchAtTrimmed(
@@ -474,10 +467,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     const matches: EditMatch[] = [];
     const errors: string[] = [];
 
-    const oldLinesTrimmed = oldText
-      .replace(/\r\n/g, '\n')
-      .split('\n')
-      .map((l) => l.trim());
+    const oldLinesTrimmed = this.splitLines(oldText).map((l) => l.trim());
 
     // Skip fuzzy matching for large oldText to avoid expensive Levenshtein per-line cost
     if (oldLinesTrimmed.length > MAX_FUZZY_OLD_TEXT_LINES) {
@@ -529,8 +519,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     oldText: string,
     replaceAll: boolean,
   ): { matches: EditMatch[]; errors: string[]; matchStage?: MatchStage } {
+    // Split once, share across all stages
+    const originalLines = this.splitLines(fileContent);
+
     // Stage 1: Exact (whitespace-normalized)
-    const stage1 = this.findMatches(fileContent, oldText, replaceAll);
+    const stage1 = this.findMatches(originalLines, oldText, replaceAll);
     if (stage1.matches.length > 0) {
       return { ...stage1, matchStage: 'exact' };
     }
@@ -542,9 +535,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     if (!hasZeroMatches) {
       return stage1; // Ambiguous match error — don't try fuzzier stages
     }
-
-    // Normalize once for stages 2 & 3
-    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
 
     // Stage 2: Trimmed (ignore leading whitespace)
     const stage2 = this.findMatchesTrimmed(originalLines, oldText, replaceAll);
@@ -566,15 +556,13 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   private findSimilarBlocks(
-    fileContent: string,
+    originalLines: string[],
     oldText: string,
     maxResults = 3,
   ): { lineStart: number; lineEnd: number; text: string }[] {
-    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
-    const oldLines = oldText
-      .replace(/\r\n/g, '\n')
-      .split('\n')
-      .filter((l) => l.trim().length > 0);
+    const oldLines = this.splitLines(oldText).filter(
+      (l) => l.trim().length > 0,
+    );
 
     if (oldLines.length === 0) return [];
 
@@ -614,11 +602,10 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   private findMatches(
-    fileContent: string,
+    originalLines: string[],
     oldText: string,
     replaceAll: boolean,
   ): { matches: EditMatch[]; errors: string[] } {
-    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
     const fileLinesRaw = originalLines
       .map((l) => l.replace(/[ \t]+$/g, ''))
       .map((l) => (l.trim().length === 0 ? '' : l));
@@ -672,7 +659,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
           ? `${previewLines.join('\n')}...`
           : normalizedOld;
 
-      const similarBlocks = this.findSimilarBlocks(fileContent, oldText, 2);
+      const similarBlocks = this.findSimilarBlocks(originalLines, oldText, 2);
       let similarContext = '';
       if (similarBlocks.length > 0) {
         similarContext = dedent`
@@ -784,7 +771,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     matches: EditMatch[],
     newText: string,
   ): string {
-    const lines = fileContent.replace(/\r\n/g, '\n').split('\n');
+    const lines = this.splitLines(fileContent);
 
     const sortedMatches = [...matches].sort(
       (a, b) => b.startLine - a.startLine,
@@ -911,7 +898,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         }
       }
 
-      const lines = readRes.content.replace(/\r\n/g, '\n').split('\n');
+      const lines = this.splitLines(readRes.content);
       const insertLine = args.insertAfterLine;
 
       if (insertLine > lines.length) {
@@ -924,7 +911,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         };
       }
 
-      const newLines = args.newText.replace(/\r\n/g, '\n').split('\n');
+      const newLines = this.splitLines(args.newText);
       lines.splice(insertLine, 0, ...newLines);
 
       const modifiedContent = lines.join('\n');
@@ -1037,7 +1024,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       };
     }
 
-    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
+    const originalLines = this.splitLines(fileContent);
     const diff = this.generateDiff(originalLines, matches, args.newText);
 
     const modifiedContent = this.applyEdits(fileContent, matches, args.newText);
@@ -1056,7 +1043,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     // Generate post-edit context with line numbers
-    const modifiedLines = modifiedContent.replace(/\r\n/g, '\n').split('\n');
+    const modifiedLines = this.splitLines(modifiedContent);
     const firstMatch = matches[0];
     const lastMatch = matches[matches.length - 1];
     let postEditContext: string | undefined;
@@ -1180,7 +1167,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       }
 
       // Generate diff for this edit
-      const currentLines = currentContent.replace(/\r\n/g, '\n').split('\n');
+      const currentLines = this.splitLines(currentContent);
       const editDiff = this.generateDiff(currentLines, matches, edit.newText);
       if (editDiff) {
         allDiffParts.push(editDiff);
@@ -1205,16 +1192,14 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     // Generate post-edit context from the final modified content
-    const modifiedLines = currentContent.replace(/\r\n/g, '\n').split('\n');
+    const modifiedLines = this.splitLines(currentContent);
     const lastEdit = edits[edits.length - 1];
     let postEditContext: string | undefined;
     if (lastEdit) {
       // Show context around the last edit's approximate location
-      const lastEditLines = lastEdit.oldText.replace(/\r\n/g, '\n').split('\n');
+      const lastEditLines = this.splitLines(lastEdit.oldText);
       // Find where the last edit landed in the final content
-      const lastEditNewLines = lastEdit.newText
-        .replace(/\r\n/g, '\n')
-        .split('\n');
+      const lastEditNewLines = this.splitLines(lastEdit.newText);
       // Use a simple heuristic: search for the newText in the final content
       const searchSnippet = lastEditNewLines[0]?.trim();
       let approxLine = modifiedLines.length - 1;
