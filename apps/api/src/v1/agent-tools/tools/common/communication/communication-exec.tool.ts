@@ -45,7 +45,7 @@ export class CommunicationExecTool extends BaseTool<
 > {
   public name = 'communication_exec';
   public description =
-    'Send a message to a specific agent. Connected agents are listed in the instructions.';
+    'Send a message to another agent in the system and receive their response. Use this for multi-agent collaboration — delegating specialized tasks, getting reviews, or breaking complex work across multiple agents. The agent parameter must exactly match one of the connected agent names listed in the detailed instructions. Provide clear, context-rich messages with file paths, specific requirements, and expected outputs for best results.';
 
   private normalizeAgentName(name: string): string {
     // Normalize for matching:

@@ -3,7 +3,6 @@ import { basename } from 'node:path';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
-import { isObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
@@ -28,7 +27,7 @@ export const FilesSearchTextToolSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Text or regex pattern to search for in file contents (regex supported by ripgrep)',
+      'Text or regex pattern to search for in file contents. Supports full regex syntax (e.g., "function\\s+createUser", "import.*from").',
     ),
   filePath: z
     .string()
@@ -57,24 +56,10 @@ export type FilesSearchTextToolSchemaType = z.infer<
 type FilesSearchTextToolOutput = {
   error?: string;
   matches?: {
-    type: string;
-    data: {
-      path?: {
-        text: string;
-      };
-      lines?: {
-        text: string;
-      };
-      line_number?: number;
-      absolute_offset?: number;
-      submatches?: {
-        match: {
-          text: string;
-        };
-        start: number;
-        end: number;
-      }[];
-    };
+    filePath: string;
+    lineNumber: number;
+    lineText: string;
+    matchedText: string;
   }[];
 };
 
@@ -82,7 +67,7 @@ type FilesSearchTextToolOutput = {
 export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchemaType> {
   public name = 'files_search_text';
   public description =
-    'Search file contents with ripgrep (regex) and return structured matches.';
+    'Search file contents using a regex pattern and return matching file paths, line numbers, and matched text. Returns up to 15 matches. Best used after codebase_search for exact pattern matching (function names, variable references, import paths). Supports include/exclude glob filters via onlyInFilesMatching and skipFilesMatching. Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Supports full regex syntax including alternation, character classes, and quantifiers.';
 
   protected override generateTitle(
     args: FilesSearchTextToolSchemaType,
@@ -100,37 +85,58 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   ): string {
     return dedent`
       ### Overview
-      Search file contents with ripgrep (regex). Returns file paths and line matches.
+      Search file contents using regex. Returns matching file paths, line numbers, and matched text. Returns up to ${MAX_MATCHES} matches. Use after \`codebase_search\` for exact, literal pattern matching (function names, variable references, import paths).
 
       ### When to Use
-      - After \`codebase_search\`, to find exact usages or strings
-      - Locating config values, error strings, TODOs, or migration markers
-      - Confirming precise matches within known areas
+      - Finding exact usages of a function, variable, class, or import
+      - Locating specific error messages or string literals in code
+      - Searching for patterns across many files (e.g., all TODO comments)
+      - Verifying that a rename or refactor caught all references
 
       ### When NOT to Use
-      - Discovery or "where is X?" questions -> \`codebase_search\` first
-      - Exact file known -> \`files_read\`
-      - Path discovery -> \`files_find_paths\`
+      - Initial codebase discovery → use \`codebase_search\` first (semantic search is better for "where is X?")
+      - Reading file contents → use \`files_read\`
+      - Finding files by name → use \`files_find_paths\`
+
+      ### Regex Syntax
+      - \`\\s+\` — whitespace, \`\\w+\` — word chars, \`\\b\` — word boundary
+      - \`.\` — any char, \`.*\` — greedy match, \`.*?\` — lazy match
+      - \`(a|b)\` — alternation, \`[A-Z]\` — character class
+      - Escape special chars: \`\\.\`, \`\\(\`, \`\\[\`, \`\\{\`
 
       ### Best Practices
-      - Start with a semantic query in \`codebase_search\`, then refine here.
-      - Prefer one regex with alternation instead of multiple calls.
-      - Use onlyInFilesMatching/skipFilesMatching to limit scope.
-      - After a match, read a small range with \`files_read\`.
-      - Escape regex special characters if you need literal matches.
+      - Use \`codebase_search\` first for discovery, then this tool for exact matches
+      - Prefer one regex with alternation over multiple calls: \`(foo|bar|baz)\` instead of 3 separate searches
+      - Use \`onlyInFilesMatching\` to limit scope (e.g., \`["*.ts"]\` for TypeScript only)
+      - Use \`skipFilesMatching\` to exclude test files: \`["*.test.ts", "*.spec.ts"]\`
+      - Common build/cache folders (node_modules, dist, .next, etc.) are excluded by default
 
-      ### Default excludes
-      If skipFilesMatching is omitted, common build/cache folders are excluded. If you set skipFilesMatching, include your own exclusions.
+      ### Output Format
+      Returns up to ${MAX_MATCHES} matches, each with:
+      - \`filePath\` — absolute file path
+      - \`lineText\` — the matched line content
+      - \`lineNumber\` — 1-based line number
+      - \`matchedText\` — the exact matched substring
 
       ### Examples
-      **1) Type/enum definition search:**
+      **1. Find type/interface definitions:**
       \`\`\`json
       {"searchInDirectory":"/repo","textPattern":"(enum|type|interface)\\\\s+UserRole","onlyInFilesMatching":["*.ts"]}
       \`\`\`
 
-      **2) Search a single file:**
+      **2. Find all imports of a module:**
       \`\`\`json
-      {"filePath":"/repo/src/app.ts","textPattern":"health/check"}
+      {"searchInDirectory":"/repo/src","textPattern":"from\\\\s+['\\\"]@packages/common['\\\"]"}
+      \`\`\`
+
+      **3. Search in a single file:**
+      \`\`\`json
+      {"filePath":"/repo/src/auth/auth.service.ts","textPattern":"async\\\\s+validate"}
+      \`\`\`
+
+      **4. Find TODO/FIXME comments excluding tests:**
+      \`\`\`json
+      {"searchInDirectory":"/repo/src","textPattern":"(TODO|FIXME|HACK)","skipFilesMatching":["*.test.ts","*.spec.ts"]}
       \`\`\`
     `;
   }
@@ -152,23 +158,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       cmdParts.push('--', shQuote(args.textPattern), shQuote(args.filePath));
     } else {
       cmdParts.push('--hidden');
-
-      const defaultExcludes = [
-        '.git',
-        'node_modules',
-        '.next',
-        'dist',
-        'build',
-        'coverage',
-        '.turbo',
-        '.vercel',
-        '.cache',
-        'out',
-        '.output',
-        'tmp',
-        'temp',
-        'src/autogenerated',
-      ];
+      cmdParts.push('--glob', shQuote('!.git/**'));
 
       if (args.onlyInFilesMatching && args.onlyInFilesMatching.length > 0) {
         for (const glob of args.onlyInFilesMatching) {
@@ -181,8 +171,8 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
           cmdParts.push('--glob', shQuote(`!${glob}`));
         }
       } else {
-        for (const glob of defaultExcludes) {
-          cmdParts.push('--glob', shQuote(`!${glob}/**`));
+        for (const pattern of this.defaultSkipPatterns) {
+          cmdParts.push('--glob', shQuote(`!${pattern}`));
         }
       }
 
@@ -223,22 +213,31 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     const lines = res.stdout
       .split('\n')
       .filter((line) => line.trim().length > 0);
-    const matches: FilesSearchTextToolOutput['matches'] = [];
-    type Match = NonNullable<FilesSearchTextToolOutput['matches']>[number];
+    const matches: NonNullable<FilesSearchTextToolOutput['matches']> = [];
 
     for (const line of lines) {
       try {
         const parsed = JSON.parse(line) as unknown;
-        const parsedType = isObject(parsed)
-          ? (parsed as { type?: unknown }).type
-          : undefined;
+        if (typeof parsed !== 'object' || parsed === null) continue;
+        const record = parsed as Record<string, unknown>;
+        if (record.type !== 'match') continue;
+        if (matches.length >= MAX_MATCHES) break;
 
-        if (parsedType === 'match') {
-          if (matches.length >= MAX_MATCHES) {
-            break;
-          }
-          matches.push(parsed as Match);
-        }
+        const data = record.data as Record<string, unknown> | undefined;
+        if (!data) continue;
+
+        const pathObj = data.path as { text?: string } | undefined;
+        const linesObj = data.lines as { text?: string } | undefined;
+        const submatches = data.submatches as
+          | { match?: { text?: string } }[]
+          | undefined;
+
+        matches.push({
+          filePath: pathObj?.text ?? '',
+          lineNumber: (data.line_number as number) ?? 0,
+          lineText: linesObj?.text?.replace(/\n$/, '') ?? '',
+          matchedText: submatches?.[0]?.match?.text ?? '',
+        });
       } catch {
         continue;
       }

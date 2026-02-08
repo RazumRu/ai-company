@@ -17,18 +17,22 @@ export const FilesDirectoryTreeToolSchema = z.object({
   directoryPath: z
     .string()
     .min(1)
-    .describe('Absolute path to the directory to scan.'),
+    .describe(
+      'Absolute path to the directory to scan (e.g., "/runtime-workspace/project"). Must be an existing directory — the tool will fail if the path does not exist or points to a file.',
+    ),
   maxDepth: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('Optional maximum depth to traverse.'),
+    .describe(
+      'Maximum directory depth to traverse. Start with 3-5 for large repos and increase if needed. Omit for unlimited depth (not recommended for large projects).',
+    ),
   skipPatterns: z
     .array(z.string().min(1))
     .optional()
     .describe(
-      'Optional glob patterns to exclude (fd syntax). If omitted, some common junk folders are excluded.',
+      'Glob patterns to exclude from the tree (e.g., ["node_modules/**", "dist/**"]). If not specified, common build/cache folders are excluded.',
     ),
 });
 
@@ -86,7 +90,7 @@ function renderTree(node: TreeNode, prefix = ''): string[] {
 export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeToolSchemaType> {
   public name = 'files_directory_tree';
   public description =
-    'Generate a tree overview of a directory (structure; not content search).';
+    'Generate a visual tree representation of a directory structure showing files and subdirectories. Start with a shallow maxDepth (3-5) for large repositories. Common build/cache directories are excluded by default. Does not return file contents — use files_read for that.';
 
   protected override generateTitle(
     args: FilesDirectoryTreeToolSchemaType,
@@ -102,29 +106,39 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
   ): string {
     return dedent`
       ### Overview
-      Tree view of a directory (structure only).
+      Visual tree view of a directory structure, similar to the Unix \`tree\` command. Outputs an indented text representation of files and subdirectories.
 
       ### When to Use
-      Quick overview before searching/reading.
+      - Orienting yourself in a new or unfamiliar repository
+      - Understanding the project layout before making changes
+      - Verifying directory structure after scaffolding or refactoring
+      - Finding where files are organized (e.g., "where are the tests?")
 
       ### When NOT to Use
-      - Finding specific paths -> \`files_find_paths\`
-      - Searching content -> \`files_search_text\`
+      - Reading file contents → use \`files_read\`
+      - Searching for text in files → use \`files_search_text\`
+      - Finding files by name → use \`files_find_paths\`
 
       ### Best Practices
-      - Start shallow (maxDepth 3-5).
-      - Add skipPatterns for build/cache dirs.
-      - Narrow to a subdirectory when possible.
+      - **Start shallow**: use maxDepth 3-5 for initial exploration of large repos
+      - **Narrow down**: once you identify the relevant subdirectory, run again on that path with deeper maxDepth
+      - **Use skipPatterns** to exclude noisy directories specific to the project
+      - Default exclusions: node_modules, dist, build, coverage, .turbo, .next, .cache, out, .output, tmp, temp — override with skipPatterns if needed
 
       ### Examples
-      **1) Repo overview:**
+      **1. Explore project root (shallow):**
       \`\`\`json
-      {"directoryPath":"/repo","maxDepth":4}
+      {"directoryPath": "/runtime-workspace/project", "maxDepth": 3}
       \`\`\`
 
-      **2) Subfolder with exclusions:**
+      **2. Deep dive into specific directory:**
       \`\`\`json
-      {"directoryPath":"/repo/apps/api","maxDepth":6,"skipPatterns":["node_modules/**","dist/**","build/**"]}
+      {"directoryPath": "/runtime-workspace/project/src/modules/auth", "maxDepth": 5}
+      \`\`\`
+
+      **3. Custom exclusions:**
+      \`\`\`json
+      {"directoryPath": "/runtime-workspace/project", "maxDepth": 4, "skipPatterns": ["node_modules/**", "**/*.test.ts"]}
       \`\`\`
     `;
   }
@@ -144,13 +158,7 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
     const skipPatterns =
       args.skipPatterns && args.skipPatterns.length > 0
         ? args.skipPatterns
-        : [
-            'node_modules/**',
-            'dist/**',
-            'build/**',
-            'coverage/**',
-            '.turbo/**',
-          ];
+        : this.defaultSkipPatterns;
 
     const cmdParts: string[] = [
       'fd',

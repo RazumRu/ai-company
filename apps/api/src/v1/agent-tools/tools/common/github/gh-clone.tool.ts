@@ -21,20 +21,24 @@ export const GhCloneToolSchema = GhBaseToolSchema.extend({
     .string()
     .nullable()
     .optional()
-    .describe('Optional branch or tag to checkout.'),
+    .describe(
+      'Branch name or tag to checkout after cloning (e.g., "main", "v2.0.0"). Omit to use the repository default branch.',
+    ),
   depth: z
     .number()
     .int()
     .min(1)
     .nullable()
     .optional()
-    .describe('Shallow clone depth (omit for full clone).'),
+    .describe(
+      'Shallow clone depth — only fetch the last N commits. Use depth=1 for large repos when full history is not needed. Omit for a full clone with complete history.',
+    ),
   workdir: z
     .string()
     .nullable()
     .optional()
     .describe(
-      'Optional working directory path where the repository should be cloned. If not provided, clones to the default location.',
+      'Custom absolute path where the repository should be cloned (e.g., "/runtime-workspace/my-project"). If not provided, clones to the default runtime workspace location.',
     ),
 });
 
@@ -49,7 +53,7 @@ type GhCloneToolOutput = {
 export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   public name = 'gh_clone';
   public description =
-    'Clone a GitHub repository into the running container using authenticated HTTPS.';
+    'Clone a GitHub repository into the runtime container using authenticated HTTPS. Returns the absolute path where the repository was cloned, which should be used for all subsequent file and git operations. Supports optional branch/tag checkout, shallow cloning (depth), and custom clone destinations (workdir). If the repository is already cloned, navigate to the existing path instead of re-cloning.';
 
   constructor(
     private readonly gitRepositoriesDao: GitRepositoriesDao,
@@ -73,7 +77,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Clones GitHub repository using authenticated HTTPS via gh CLI. Returns path for subsequent operations.
+      Clones a GitHub repository using authenticated HTTPS. Returns the clone path for subsequent operations.
 
       ### When to Use
       Setting up new project to work on, getting repo code, starting work on specific branch.

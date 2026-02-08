@@ -59,7 +59,7 @@ pnpm lint
 
 Review and manually fix any remaining linting errors.
 
-### 5. Run Unit Tests
+### 5. Run Unit Tests & Integration Tests
 
 Run all unit tests to ensure nothing is broken:
 
@@ -67,7 +67,14 @@ Run all unit tests to ensure nothing is broken:
 pnpm test:unit
 ```
 
-> **Note (Agent environment)**: Running integration tests is **not required** right now, because integration testing is **not implemented/maintained for the agent environment**. If you explicitly need it locally, you can run `pnpm test:integration`.
+If you modified code that has related integration tests, you **must** also run the specific integration test file:
+
+```bash
+# ✅ Always target a specific file
+pnpm test:integration src/__tests__/integration/agent-tools/files-tools.int.ts
+
+# ❌ NEVER run bare `pnpm test:integration` without a filename
+```
 
 If tests fail:
 - Review the error messages
@@ -214,8 +221,9 @@ pnpm lint:fix
 # 5. Run unit tests
 pnpm test:unit
 
-# (Optional) Run integration tests (not required for agent environment)
-pnpm test:integration
+# 5b. Run related integration tests (mandatory when modifying code with integration tests)
+# ⚠️  ALWAYS target a specific file — NEVER run bare `pnpm test:integration`
+pnpm test:integration src/__tests__/integration/agent-tools/files-tools.int.ts
 
 # 6. Run E2E tests (ensure server is running first!)
 # Terminal 1: Start dependencies
@@ -285,6 +293,7 @@ Before pushing your changes:
 - [ ] Tests build successfully (`pnpm build:tests`)
 - [ ] No linting errors (`pnpm lint:fix`)
 - [ ] All unit tests pass (`pnpm test:unit`)
+- [ ] Related integration tests pass (`pnpm test:integration {filename}`)
 - [ ] All E2E tests pass (`pnpm test:e2e`)
 - [ ] Changes are committed with proper message
 - [ ] Code is documented where necessary

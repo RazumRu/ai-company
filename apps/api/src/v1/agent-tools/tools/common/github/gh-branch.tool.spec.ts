@@ -40,15 +40,18 @@ describe('GhBranchTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Create a new git (GitHub) branch');
+      expect(tool.description).toContain(
+        'Create and checkout a new local git branch',
+      );
     });
   });
 
   describe('schema', () => {
-    it('should validate required semanticType and title fields', () => {
+    it('should validate required semanticType, title, and path fields', () => {
       const validData = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
+        path: '/path/to/repo',
       };
       expect(() => tool.validate(validData)).not.toThrow();
     });
@@ -75,6 +78,7 @@ describe('GhBranchTool', () => {
       const validData = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
+        path: '/path/to/repo',
       };
       const parsed = tool.validate(validData);
       expect(parsed.base).toBeUndefined();
@@ -86,6 +90,7 @@ describe('GhBranchTool', () => {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
         base: 'develop',
+        path: '/path/to/repo',
       };
       const parsed = tool.validate(validData);
       expect(parsed.base).toBe('develop');
@@ -97,12 +102,13 @@ describe('GhBranchTool', () => {
         const validData = {
           semanticType: type,
           title: 'Test branch',
+          path: '/path/to/repo',
         };
         expect(() => tool.validate(validData)).not.toThrow();
       });
     });
 
-    it('should validate optional path field', () => {
+    it('should validate required path field', () => {
       const validData = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
@@ -111,13 +117,12 @@ describe('GhBranchTool', () => {
       expect(() => tool.validate(validData)).not.toThrow();
     });
 
-    it('should work without path field', () => {
-      const validData = {
+    it('should reject missing path field', () => {
+      const invalidData = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
       };
-      const parsed = tool.validate(validData);
-      expect(parsed.path).toBeUndefined();
+      expect(() => tool.validate(invalidData)).toThrow();
     });
   });
 
@@ -132,6 +137,7 @@ describe('GhBranchTool', () => {
       const args: GhBranchToolSchemaType = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
+        path: '/runtime-workspace/repo',
       };
 
       vi.spyOn(tool as any, 'execGhCommand')
@@ -156,13 +162,15 @@ describe('GhBranchTool', () => {
       expect((tool as any).execGhCommand).toHaveBeenCalledTimes(2);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'git checkout main' },
+        { cmd: 'cd "/runtime-workspace/repo" && git checkout main' },
         mockConfig,
         mockCfg,
       );
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         2,
-        { cmd: 'git checkout -b "feat/add-new-feature"' },
+        {
+          cmd: 'cd "/runtime-workspace/repo" && git checkout -b "feat/add-new-feature"',
+        },
         mockConfig,
         mockCfg,
       );
@@ -173,6 +181,7 @@ describe('GhBranchTool', () => {
         semanticType: SemanticCommitType.FIX,
         title: 'Fix bug',
         base: 'develop',
+        path: '/runtime-workspace/repo',
       };
 
       vi.spyOn(tool as any, 'execGhCommand')
@@ -195,7 +204,7 @@ describe('GhBranchTool', () => {
       expect(result.branchName).toBe('fix/fix-bug');
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'git checkout develop' },
+        { cmd: 'cd "/runtime-workspace/repo" && git checkout develop' },
         mockConfig,
         mockCfg,
       );
@@ -254,6 +263,7 @@ describe('GhBranchTool', () => {
         const args: GhBranchToolSchemaType = {
           semanticType: testCase.semanticType,
           title: testCase.title,
+          path: '/runtime-workspace/repo',
         };
 
         vi.spyOn(tool as any, 'execGhCommand')
@@ -282,6 +292,7 @@ describe('GhBranchTool', () => {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
         base: 'nonexistent',
+        path: '/runtime-workspace/repo',
       };
 
       vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
@@ -306,6 +317,7 @@ describe('GhBranchTool', () => {
       const args: GhBranchToolSchemaType = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
+        path: '/runtime-workspace/repo',
       };
 
       vi.spyOn(tool as any, 'execGhCommand')
@@ -336,6 +348,7 @@ describe('GhBranchTool', () => {
       const args: GhBranchToolSchemaType = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
+        path: '/runtime-workspace/repo',
       };
 
       vi.spyOn(tool as any, 'execGhCommand')
@@ -362,6 +375,7 @@ describe('GhBranchTool', () => {
       const args: GhBranchToolSchemaType = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
+        path: '/runtime-workspace/repo',
       };
 
       vi.spyOn(tool as any, 'execGhCommand')
@@ -403,6 +417,7 @@ describe('GhBranchTool', () => {
         const args: GhBranchToolSchemaType = {
           semanticType: type,
           title: 'Test branch',
+          path: '/runtime-workspace/repo',
         };
 
         vi.spyOn(tool as any, 'execGhCommand')
@@ -424,7 +439,7 @@ describe('GhBranchTool', () => {
         expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
           2,
           {
-            cmd: `git checkout -b "${type}/test-branch"`,
+            cmd: `cd "/runtime-workspace/repo" && git checkout -b "${type}/test-branch"`,
           },
           mockConfig,
           mockCfg,
@@ -474,10 +489,11 @@ describe('GhBranchTool', () => {
       );
     });
 
-    it('should work without path parameter', async () => {
+    it('should use path in all git commands', async () => {
       const args: GhBranchToolSchemaType = {
         semanticType: SemanticCommitType.FEAT,
         title: 'Add new feature',
+        path: '/runtime-workspace/my-repo',
       };
 
       vi.spyOn(tool as any, 'execGhCommand')
@@ -499,7 +515,7 @@ describe('GhBranchTool', () => {
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'git checkout main' },
+        { cmd: 'cd "/runtime-workspace/my-repo" && git checkout main' },
         mockConfig,
         mockCfg,
       );

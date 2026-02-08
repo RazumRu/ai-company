@@ -4,10 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
-import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
-import { FilesEditTool } from './files-edit.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
@@ -22,10 +20,8 @@ describe('FilesToolGroup', () => {
   let mockFilesReadTool: FilesReadTool;
   let mockFilesSearchTextTool: FilesSearchTextTool;
   let mockFilesCodebaseSearchTool: FilesCodebaseSearchTool;
-  let mockFilesCreateDirectoryTool: FilesCreateDirectoryTool;
   let mockFilesMoveFileTool: FilesMoveFileTool;
   let mockFilesWriteFileTool: FilesWriteFileTool;
-  let mockFilesEditTool: FilesEditTool;
   let mockFilesApplyChangesTool: FilesApplyChangesTool;
   let mockFilesDeleteTool: FilesDeleteTool;
 
@@ -50,10 +46,6 @@ describe('FilesToolGroup', () => {
       build: vi.fn(),
     } as unknown as FilesCodebaseSearchTool;
 
-    mockFilesCreateDirectoryTool = {
-      build: vi.fn(),
-    } as unknown as FilesCreateDirectoryTool;
-
     mockFilesMoveFileTool = {
       build: vi.fn(),
     } as unknown as FilesMoveFileTool;
@@ -61,10 +53,6 @@ describe('FilesToolGroup', () => {
     mockFilesWriteFileTool = {
       build: vi.fn(),
     } as unknown as FilesWriteFileTool;
-
-    mockFilesEditTool = {
-      build: vi.fn(),
-    } as unknown as FilesEditTool;
 
     mockFilesApplyChangesTool = {
       build: vi.fn(),
@@ -98,20 +86,12 @@ describe('FilesToolGroup', () => {
           useValue: mockFilesCodebaseSearchTool,
         },
         {
-          provide: FilesCreateDirectoryTool,
-          useValue: mockFilesCreateDirectoryTool,
-        },
-        {
           provide: FilesMoveFileTool,
           useValue: mockFilesMoveFileTool,
         },
         {
           provide: FilesWriteFileTool,
           useValue: mockFilesWriteFileTool,
-        },
-        {
-          provide: FilesEditTool,
-          useValue: mockFilesEditTool,
         },
         {
           provide: FilesApplyChangesTool,
@@ -144,9 +124,6 @@ describe('FilesToolGroup', () => {
       const mockFilesCodebaseSearchToolInstance = {
         name: 'codebase_search',
       } as DynamicStructuredTool;
-      const mockFilesCreateDirectoryToolInstance = {
-        name: 'files_create_directory',
-      } as DynamicStructuredTool;
       const mockFilesMoveFileToolInstance = {
         name: 'files_move_file',
       } as DynamicStructuredTool;
@@ -174,9 +151,6 @@ describe('FilesToolGroup', () => {
       mockFilesCodebaseSearchTool.build = vi
         .fn()
         .mockReturnValue(mockFilesCodebaseSearchToolInstance);
-      mockFilesCreateDirectoryTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesCreateDirectoryToolInstance);
       mockFilesMoveFileTool.build = vi
         .fn()
         .mockReturnValue(mockFilesMoveFileToolInstance);
@@ -199,12 +173,12 @@ describe('FilesToolGroup', () => {
       expect(result).toBeDefined();
       expect(result.tools).toBeDefined();
       expect(Array.isArray(result.tools)).toBe(true);
-      expect(result.tools.length).toBe(11);
+      expect(result.tools.length).toBe(9);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       // Check that group instructions are returned
       expect(result.instructions).toBeDefined();
       expect(typeof result.instructions).toBe('string');
-      expect(result.instructions).toContain('file system tools');
+      expect(result.instructions).toContain('File tools workspace');
       expect(mockFilesFindPathsTool.build).toHaveBeenCalledWith(
         config,
         undefined,
@@ -219,10 +193,6 @@ describe('FilesToolGroup', () => {
         undefined,
       );
       expect(mockFilesCodebaseSearchTool.build).toHaveBeenCalledWith(
-        config,
-        undefined,
-      );
-      expect(mockFilesCreateDirectoryTool.build).toHaveBeenCalledWith(
         config,
         undefined,
       );
@@ -286,11 +256,10 @@ describe('FilesToolGroup', () => {
       // Check that group instructions are returned even in read-only mode
       expect(result.instructions).toBeDefined();
       expect(typeof result.instructions).toBe('string');
-      expect(result.instructions).toContain('Read-Only Mode');
+      expect(result.instructions).toContain('Read-only mode');
       expect(result.instructions).toContain('codebase_search');
       expect(mockFilesApplyChangesTool.build).not.toHaveBeenCalled();
       expect(mockFilesDeleteTool.build).not.toHaveBeenCalled();
-      expect(mockFilesCreateDirectoryTool.build).not.toHaveBeenCalled();
       expect(mockFilesMoveFileTool.build).not.toHaveBeenCalled();
       expect(mockFilesWriteFileTool.build).not.toHaveBeenCalled();
     });
@@ -310,9 +279,6 @@ describe('FilesToolGroup', () => {
       } as DynamicStructuredTool;
       const mockFilesCodebaseSearchToolInstance = {
         name: 'codebase_search',
-      } as DynamicStructuredTool;
-      const mockFilesCreateDirectoryToolInstance = {
-        name: 'files_create_directory',
       } as DynamicStructuredTool;
       const mockFilesMoveFileToolInstance = {
         name: 'files_move_file',
@@ -342,9 +308,6 @@ describe('FilesToolGroup', () => {
       mockFilesCodebaseSearchTool.build = vi
         .fn()
         .mockReturnValue(mockFilesCodebaseSearchToolInstance);
-      mockFilesCreateDirectoryTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesCreateDirectoryToolInstance);
       mockFilesMoveFileTool.build = vi
         .fn()
         .mockReturnValue(mockFilesMoveFileToolInstance);
@@ -364,7 +327,7 @@ describe('FilesToolGroup', () => {
 
       const result = toolGroup.buildTools(config, lgConfig);
 
-      expect(result.tools.length).toBe(11);
+      expect(result.tools.length).toBe(9);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       expect(mockFilesFindPathsTool.build).toHaveBeenCalledWith(
         config,
@@ -380,10 +343,6 @@ describe('FilesToolGroup', () => {
         lgConfig,
       );
       expect(mockFilesCodebaseSearchTool.build).toHaveBeenCalledWith(
-        config,
-        lgConfig,
-      );
-      expect(mockFilesCreateDirectoryTool.build).toHaveBeenCalledWith(
         config,
         lgConfig,
       );
@@ -417,10 +376,10 @@ describe('FilesToolGroup', () => {
 
       expect(result).toBeDefined();
       expect(result).toContain('/runtime-workspace');
-      expect(result).toContain('MUST USE codebase_search FIRST');
-      expect(result).toContain('files_edit');
+      expect(result).toContain('FIRST STEP');
       expect(result).toContain('files_apply_changes');
       expect(result).toContain('codebase_search');
+      expect(result).toContain('multi-edit');
     });
 
     it('should return instructions for read-only mode', () => {
@@ -433,9 +392,8 @@ describe('FilesToolGroup', () => {
 
       expect(result).toBeDefined();
       expect(result).toContain('/runtime-workspace');
-      expect(result).toContain('Read-Only Mode');
-      expect(result).not.toContain('files_apply_changes');
-      expect(result).not.toContain('files_edit');
+      expect(result).toContain('Read-only mode');
+      expect(result).not.toContain('files_apply_changes:');
       expect(result).toContain('codebase_search');
     });
   });

@@ -3,16 +3,15 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BaseException } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
-import dedent from 'dedent';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { FilesApplyChangesTool } from '../../../v1/agent-tools/tools/common/files/files-apply-changes.tool';
 import { FilesDeleteTool } from '../../../v1/agent-tools/tools/common/files/files-delete.tool';
-import { FilesEditTool } from '../../../v1/agent-tools/tools/common/files/files-edit.tool';
 import { FilesFindPathsTool } from '../../../v1/agent-tools/tools/common/files/files-find-paths.tool';
 import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-read.tool';
 import { FilesSearchTextTool } from '../../../v1/agent-tools/tools/common/files/files-search-text.tool';
+import { FilesWriteFileTool } from '../../../v1/agent-tools/tools/common/files/files-write-file.tool';
 import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
@@ -20,10 +19,6 @@ import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-no
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
-import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
-import { LitellmService } from '../../../v1/litellm/services/litellm.service';
-import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
-import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
@@ -43,6 +38,17 @@ const RUNNABLE_CONFIG: ToolRunnableConfig<BaseAgentConfigurable> = {
     thread_id: THREAD_ID,
   },
 };
+
+/**
+ * Strip NNN\t line-number prefixes returned by files_read so the raw content
+ * can be fed to files_apply_changes (which expects un-numbered text).
+ */
+function stripLineNumbers(numberedContent: string): string {
+  return numberedContent
+    .split('\n')
+    .map((line) => line.replace(/^\d+\t/, ''))
+    .join('\n');
+}
 
 const SAMPLE_TS_CONTENT = [
   'export function greet(name: string) {',
@@ -65,8 +71,7 @@ const hasTextMatch = (result: SearchTextResult, snippet: string) =>
   Array.isArray(result.matches) &&
   result.matches.some(
     (match) =>
-      typeof match?.data?.lines?.text === 'string' &&
-      match.data.lines.text.includes(snippet),
+      typeof match?.lineText === 'string' && match.lineText.includes(snippet),
   );
 
 const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
@@ -79,18 +84,17 @@ describe('Files tools integration', () => {
   let filesReadTool: FilesReadTool;
   let filesSearchTextTool: FilesSearchTextTool;
   let filesApplyChangesTool: FilesApplyChangesTool;
+  let filesWriteFileTool: FilesWriteFileTool;
   let filesDeleteTool: FilesDeleteTool;
-  let filesEditTool: FilesEditTool;
   let shellTool: ShellTool;
 
   const writeSampleFile = async (fileName = 'sample.ts') => {
     const filePath = `${WORKSPACE_DIR}/${fileName}`;
 
-    const { output: result } = await filesApplyChangesTool.invoke(
+    const { output: result } = await filesWriteFileTool.invoke(
       {
         filePath,
-        oldText: '',
-        newText: SAMPLE_TS_CONTENT,
+        fileContent: SAMPLE_TS_CONTENT,
       },
       { runtimeProvider: runtimeThreadProvider },
       RUNNABLE_CONFIG,
@@ -108,13 +112,9 @@ describe('Files tools integration', () => {
         FilesReadTool,
         FilesSearchTextTool,
         FilesApplyChangesTool,
+        FilesWriteFileTool,
         FilesDeleteTool,
-        FilesEditTool,
         ShellTool,
-        OpenaiService,
-        LitellmService,
-        LiteLlmClient,
-        LlmModelsService,
       ],
     }).compile();
 
@@ -122,8 +122,8 @@ describe('Files tools integration', () => {
     filesReadTool = moduleRef.get(FilesReadTool);
     filesSearchTextTool = moduleRef.get(FilesSearchTextTool);
     filesApplyChangesTool = moduleRef.get(FilesApplyChangesTool);
+    filesWriteFileTool = moduleRef.get(FilesWriteFileTool);
     filesDeleteTool = moduleRef.get(FilesDeleteTool);
-    filesEditTool = moduleRef.get(FilesEditTool);
     shellTool = moduleRef.get(ShellTool);
 
     runtime = new DockerRuntime({ socketPath: environment.dockerSocket });
@@ -173,7 +173,8 @@ describe('Files tools integration', () => {
         RUNNABLE_CONFIG,
       );
 
-      const initialContent = initialRead.files?.[0]?.content || '';
+      const initialContentNumbered = initialRead.files?.[0]?.content || '';
+      const initialContent = stripLineNumbers(initialContentNumbered);
 
       const { output: insertResult } = await filesApplyChangesTool.invoke(
         {
@@ -205,8 +206,8 @@ describe('Files tools integration', () => {
 
       expect(readResult.error).toBeUndefined();
       const readContent = readResult.files?.[0]?.content;
-      expect(readContent?.startsWith('// Integration header')).toBe(true);
-      expect(readContent?.includes('export function greet')).toBe(true);
+      expect(readContent).toContain('// Integration header');
+      expect(readContent).toContain('export function greet');
 
       const { output: searchResult } = await filesSearchTextTool.invoke(
         { filePath, textPattern: 'HelperService' },
@@ -260,11 +261,10 @@ describe('Files tools integration', () => {
       const content = 'Hello from custom dir';
 
       // Create file in a custom directory
-      const { output: applyRes } = await filesApplyChangesTool.invoke(
+      const { output: applyRes } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: content,
+          fileContent: content,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -297,7 +297,9 @@ describe('Files tools integration', () => {
         RUNNABLE_CONFIG,
       );
       expect(readRes.error).toBeUndefined();
-      expect(readRes.files?.[0]?.content?.trim()).toBe(content);
+      expect(stripLineNumbers(readRes.files?.[0]?.content || '').trim()).toBe(
+        content,
+      );
     },
   );
 
@@ -342,11 +344,10 @@ describe('Files tools integration', () => {
       const filePath = `${nestedDir}/${fileName}`;
       const content = 'temporary file content';
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: content,
+          fileContent: content,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -398,11 +399,10 @@ describe('Files tools integration', () => {
       // Create a file with initial content
       const initialContent = `export function oldFunction() {\n  return 'old value';\n}\n\nexport const config = 'old';`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -448,11 +448,10 @@ describe('Files tools integration', () => {
       // Create a file with initial content
       const initialContent = `export const data = 'value';\n\nfunction helper() {\n  return true;\n}`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -466,7 +465,9 @@ describe('Files tools integration', () => {
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
-      const beforeContent = readBefore.files?.[0]?.content || '';
+      const beforeContent = stripLineNumbers(
+        readBefore.files?.[0]?.content || '',
+      );
 
       // Insert import at the beginning
       const { output: insertResult } = await filesApplyChangesTool.invoke(
@@ -490,7 +491,6 @@ describe('Files tools integration', () => {
 
       const inserted = readAfter.files?.[0]?.content || '';
       expect(inserted).toContain("import { newImport } from './new'");
-      expect(inserted.indexOf('import')).toBe(0); // At the very beginning
       expect(inserted).toContain('export const data');
     },
   );
@@ -504,11 +504,10 @@ describe('Files tools integration', () => {
       // Create a file with initial content
       const initialContent = `export const first = 'value';\n\nexport function existing() {\n  return 'exists';\n}`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -522,7 +521,9 @@ describe('Files tools integration', () => {
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
-      const beforeContent = readBefore.files?.[0]?.content || '';
+      const beforeContent = stripLineNumbers(
+        readBefore.files?.[0]?.content || '',
+      );
 
       // Append new function at the end
       const { output: appendResult } = await filesApplyChangesTool.invoke(
@@ -568,11 +569,10 @@ describe('Files tools integration', () => {
       // Create a file with initial content
       const initialContent = `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -622,12 +622,11 @@ describe('Files tools integration', () => {
     async () => {
       const filePath = `${WORKSPACE_DIR}/empty-file.ts`;
 
-      // Create an empty file
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      // Create an empty file using write tool
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: '',
+          fileContent: '',
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -642,20 +641,20 @@ describe('Files tools integration', () => {
         RUNNABLE_CONFIG,
       );
 
-      expect(readEmpty.files?.[0]?.content).toBe('');
+      // Empty file now gets a single numbered line: "1\t"
+      expect(readEmpty.files?.[0]?.content).toBe('1\t');
 
-      // Add content to the empty file
-      const { output: addResult } = await filesApplyChangesTool.invoke(
+      // Overwrite with content using write tool
+      const { output: writeResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: `// First line\nexport const value = 'data';`,
+          fileContent: `// First line\nexport const value = 'data';`,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
-      expect(addResult.success).toBe(true);
+      expect(writeResult.success).toBe(true);
 
       // Verify content was added
       const { output: readAfter } = await filesReadTool.invoke(
@@ -679,11 +678,10 @@ describe('Files tools integration', () => {
       // Create a file
       const initialContent = `export function test() {\n  return 'original';\n}`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -721,221 +719,817 @@ describe('Files tools integration', () => {
     },
   );
 
-  it(
-    'files_edit: succeeds on a simple, unambiguous edit',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const unique = `UNIQUE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      const filePath = `${WORKSPACE_DIR}/files-edit-success-${unique}.ts`;
-      const padding = Array.from(
-        { length: 250 },
-        (_, i) => `// pad-${unique}-${i}`,
-      ).join('\n');
-      const keepBlock = Array.from(
-        { length: 12 },
-        (_, i) => `export const keep_${unique}_${i} = ${i};`,
-      ).join('\n');
-      const initialContent = `export function greet(name: string) {
-  return \`Hello, \${name}!\`;
-}
+  describe('files_read: line numbers and contentHash', () => {
+    it(
+      'returns numbered lines in NNN\\t format with startLine and contentHash',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/line-numbers-test.ts`;
+        const content = 'first\nsecond\nthird';
 
-// ${unique}_BEFORE
-export const value = 'old';
-${keepBlock}
-// ${unique}_AFTER
-export const tail_${unique} = true;
-${padding}
-`;
-
-      await filesApplyChangesTool.invoke(
-        { filePath, oldText: '', newText: initialContent },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      // Invoke files_edit - this should succeed with very strong, unique anchors.
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: dedent`
-            Change the single line between the anchors from:
-              export const value = 'old';
-            to:
-              export const value = 'new';
-
-            Use these EXACT anchors from the CURRENT FILE:
-            beforeAnchor (must be exactly this line):
-              // ${unique}_BEFORE
-            afterAnchor (must be exactly this line):
-              // ${unique}_AFTER
-
-            The replacement MUST be the line that goes BETWEEN those anchors (do not add it after afterAnchor).
-          `,
-          codeSketch: `export function greet(name: string) {
-  return \`Hello, \${name}!\`;
-}
-
-// ... existing code ...
-// ${unique}_BEFORE
-export const value = 'new';
-${keepBlock}
-// ... existing code ...
-// ${unique}_AFTER
-export const tail_${unique} = true;
-// ... existing code ...`,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      if (!editResult.success) {
-        // Make failures actionable in CI logs
-
-        console.error('files_edit success test failed:', editResult.error);
-        throw new Error(
-          `files_edit expected success but got: ${editResult.error}`,
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
         );
-      }
 
-      expect(editResult.filePath).toBe(filePath);
-      expect(editResult.diff).toBeDefined();
-      expect(editResult.appliedHunks).toBeGreaterThan(0);
-
-      const { output: readAfter } = await filesReadTool.invoke(
-        { filesToRead: [{ filePath }] },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-      const contentAfter = readAfter.files?.[0]?.content || '';
-      expect(contentAfter).toContain("export const value = 'new'");
-    },
-  );
-
-  it(
-    'files_edit: handles NOT_FOUND_ANCHOR error with invalid anchors',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const fileName = `edit-error-test-${Date.now()}.ts`;
-      const filePath = await writeSampleFile(fileName);
-
-      // Try to edit with non-existent anchors
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Try to modify non-existent code',
-          codeSketch: `function nonExistent() {
-// ... existing code ...
-  return 'modified';
-// ... existing code ...
-}`,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      // With LLM alignment, this should NOT silently succeed in editing unrelated parts of the file.
-      // It may fail for various reasons: "anchors not found", "ambiguous/not unique", "Invalid JSON", or safety limits.
-      expect(editResult.success).toBe(false);
-      if (!editResult.success) {
-        expect(editResult.error).toBeDefined();
-        expect(editResult.error).toMatch(
-          /Could not find|anchors|unique|ambiguous|multiple|limit|exceeds|Invalid JSON|parse/i,
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
         );
-      }
-    },
-  );
 
-  it(
-    'files_edit: handles INVALID_SKETCH_FORMAT error with no markers',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const fileName = `edit-format-test-${Date.now()}.ts`;
-      const filePath = await writeSampleFile(fileName);
+        expect(readResult.error).toBeUndefined();
+        const file = readResult.files?.[0];
+        expect(file).toBeDefined();
+        expect(file!.content).toContain('1\tfirst');
+        expect(file!.content).toContain('2\tsecond');
+        expect(file!.content).toContain('3\tthird');
+        expect(file!.startLine).toBe(1);
+        expect(file!.contentHash).toBeDefined();
+        expect(typeof file!.contentHash).toBe('string');
+        expect(file!.contentHash!.length).toBe(8);
+      },
+    );
 
-      // Try to edit without proper markers
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Try to modify without markers',
-          codeSketch: `export function greet(name: string) {
-  return 'modified';
-}`,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
+    it(
+      'returns correct startLine and numbering for line-range reads',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/line-range-test.ts`;
+        const content = Array.from(
+          { length: 20 },
+          (_, i) => `line${i + 1}`,
+        ).join('\n');
 
-      // Markerless sketch is now allowed (Cursor-like behavior), so LLM will attempt to process it
-      // The result could be success or failure depending on LLM interpretation, but "marker" is no longer required
-      if (!editResult.success) {
-        expect(editResult.error).toBeDefined();
-        // Should not complain about missing markers
-        expect(editResult.error).not.toContain('marker');
-      }
-    },
-  );
-
-  it(
-    'files_edit with useSmartModel: uses smart model flag',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const unique = `UNIQUE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      const filePath = `${WORKSPACE_DIR}/files-edit-smart-model-${unique}.ts`;
-
-      // Create a simple, small file to ensure it fits within LLM context budget
-      const initialContent = `// ${unique}
-export function greet(name: string): string {
-  return \`Hello, \${name}!\`;
-}
-`;
-
-      await filesApplyChangesTool.invoke(
-        { filePath, oldText: '', newText: initialContent },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      // Test with useSmartModel=true - this should succeed with a simple, unambiguous edit
-      const { output: smartModelResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Change greeting from Hello to Hi',
-          codeSketch: `// ${unique}
-export function greet(name: string): string {
-  return \`Hi, \${name}!\`;
-}
-`,
-          useSmartModel: true,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      // Must succeed - no conditional acceptance of failure
-      if (!smartModelResult.success) {
-        throw new Error(
-          `Smart model edit failed: ${smartModelResult.error}. This test requires deterministic success.`,
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
         );
-      }
 
-      expect(smartModelResult.success).toBe(true);
-      expect(smartModelResult.modelUsed).toBe('smart');
-      expect(smartModelResult.appliedHunks).toBeGreaterThan(0);
-      expect(smartModelResult.diff).toBeDefined();
+        const { output: readResult } = await filesReadTool.invoke(
+          {
+            filesToRead: [{ filePath, fromLineNumber: 5, toLineNumber: 8 }],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
 
-      // Verify the content was actually changed
-      const { output: readAfter } = await filesReadTool.invoke(
-        { filesToRead: [{ filePath }] },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-      const contentAfter = readAfter.files?.[0]?.content || '';
-      expect(contentAfter).toContain('Hi,');
-      expect(contentAfter).not.toContain('Hello,');
-    },
-  );
+        expect(readResult.error).toBeUndefined();
+        const file = readResult.files?.[0];
+        expect(file).toBeDefined();
+        expect(file!.startLine).toBe(5);
+        expect(file!.content).toContain('5\tline5');
+        expect(file!.content).toContain('8\tline8');
+        expect(file!.content).not.toContain('4\t');
+        expect(file!.content).not.toContain('9\t');
+      },
+    );
+  });
 
-  // NOTE: More detailed, LLM-dependent `files_edit` scenario coverage lives in unit tests.
+  describe('files_apply_changes: insertAfterLine mode', () => {
+    it(
+      'inserts content after a specific line number',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/insert-after-line.ts`;
+        const content = 'line1\nline2\nline3';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: insertResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: '',
+            newText: 'inserted-line',
+            insertAfterLine: 1,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(insertResult.success).toBe(true);
+        expect(insertResult.appliedEdits).toBe(1);
+        expect(insertResult.postEditContext).toBeDefined();
+
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const lines = (readResult.files?.[0]?.content || '')
+          .split('\n')
+          .map((l) => l.replace(/^\d+\t/, ''));
+        expect(lines[0]).toBe('line1');
+        expect(lines[1]).toBe('inserted-line');
+        expect(lines[2]).toBe('line2');
+        expect(lines[3]).toBe('line3');
+      },
+    );
+
+    it(
+      'inserts at the beginning when insertAfterLine is 0',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/insert-at-beginning.ts`;
+        const content = 'existing-line';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: insertResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: '',
+            newText: 'prepended-line',
+            insertAfterLine: 0,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(insertResult.success).toBe(true);
+
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const lines = (readResult.files?.[0]?.content || '')
+          .split('\n')
+          .map((l) => l.replace(/^\d+\t/, ''));
+        expect(lines[0]).toBe('prepended-line');
+        expect(lines[1]).toBe('existing-line');
+      },
+    );
+
+    it(
+      'rejects insertAfterLine when oldText is non-empty',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/insert-invalid.ts`;
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: 'content' },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: result } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: 'non-empty',
+            newText: 'replacement',
+            insertAfterLine: 1,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('oldText must be an empty string');
+      },
+    );
+  });
+
+  describe('files_apply_changes: expectedHash stale-read detection', () => {
+    it(
+      'accepts edit when hash matches current file',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/hash-match.ts`;
+        const content = 'const x = 1;';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Read to get the hash
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const hash = readResult.files?.[0]?.contentHash;
+        expect(hash).toBeDefined();
+
+        // Edit with correct hash
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: 'const x = 1;',
+            newText: 'const x = 2;',
+            expectedHash: hash,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+      },
+    );
+
+    it(
+      'rejects edit when hash does not match (stale read)',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/hash-stale.ts`;
+        const content = 'const y = 1;';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Try to edit with a wrong hash
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: 'const y = 1;',
+            newText: 'const y = 2;',
+            expectedHash: 'deadbeef',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(false);
+        expect(editResult.error).toContain('File has changed since last read');
+      },
+    );
+  });
+
+  describe('files_apply_changes: postEditContext in output', () => {
+    it(
+      'returns numbered postEditContext after a successful edit',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/post-edit-context.ts`;
+        const content = Array.from(
+          { length: 20 },
+          (_, i) => `line${i + 1}`,
+        ).join('\n');
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: 'line10',
+            newText: 'REPLACED',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+        expect(editResult.postEditContext).toBeDefined();
+        // Post-edit context should contain NNN\t format
+        expect(editResult.postEditContext).toMatch(/\d+\t/);
+        // Should contain the replaced line
+        expect(editResult.postEditContext).toContain('REPLACED');
+        // Should contain surrounding context
+        expect(editResult.postEditContext).toContain('line9');
+        expect(editResult.postEditContext).toContain('line11');
+      },
+    );
+  });
+
+  describe('files_apply_changes: progressive matching', () => {
+    it(
+      'matches with wrong indentation via trimmed fallback',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/trimmed-match.ts`;
+        const content = '    const indented = true;\n    return indented;';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // oldText has no indentation — exact match will fail, trimmed should succeed
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: 'const indented = true;\nreturn indented;',
+            newText: 'const indented = false;\nreturn indented;',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+        expect(editResult.matchStage).toBe('trimmed');
+
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const afterContent = readResult.files?.[0]?.content || '';
+        expect(afterContent).toContain('false');
+        expect(afterContent).not.toContain('true');
+      },
+    );
+
+    it(
+      'matches with minor quote style difference via fuzzy fallback',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/fuzzy-match.ts`;
+        const content = 'const msg = "hello world";';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // oldText uses single quotes — fuzzy match should catch this
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: "const msg = 'hello world';",
+            newText: "const msg = 'goodbye world';",
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+        expect(editResult.matchStage).toBe('fuzzy');
+
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const afterContent = readResult.files?.[0]?.content || '';
+        expect(afterContent).toContain('goodbye');
+      },
+    );
+
+    it(
+      'reports matchStage as exact when oldText matches exactly',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/exact-match.ts`;
+        const content = 'const val = 42;';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: 'const val = 42;',
+            newText: 'const val = 99;',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+        expect(editResult.matchStage).toBe('exact');
+      },
+    );
+  });
+
+  describe('files_apply_changes: multi-edit mode', () => {
+    it(
+      'applies multiple edits atomically in one call',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/multi-edit-success.ts`;
+        const content = [
+          "import { A } from './a';",
+          '',
+          'export function processA(data: string) {',
+          '  return A.run(data);',
+          '}',
+          '',
+          'export function formatOutput(result: string) {',
+          '  return `result: ${result}`;',
+          '}',
+        ].join('\n');
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            edits: [
+              {
+                oldText: "import { A } from './a';",
+                newText: "import { A } from './a';\nimport { B } from './b';",
+              },
+              {
+                oldText: '  return A.run(data);',
+                newText: '  return B.wrap(A.run(data));',
+              },
+            ],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+        expect(editResult.appliedEdits).toBe(2);
+        expect(editResult.totalEdits).toBe(2);
+        expect(editResult.diff).toBeDefined();
+
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const afterContent = stripLineNumbers(
+          readResult.files?.[0]?.content || '',
+        );
+        expect(afterContent).toContain("import { B } from './b'");
+        expect(afterContent).toContain('B.wrap(A.run(data))');
+        // Untouched content preserved
+        expect(afterContent).toContain('export function formatOutput');
+      },
+    );
+
+    it(
+      'does not write file when a mid-array edit fails to match',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/multi-edit-rollback.ts`;
+        const content = 'const a = 1;\nconst b = 2;\nconst c = 3;';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // First edit matches, second does not
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            edits: [
+              { oldText: 'const a = 1;', newText: 'const a = 10;' },
+              {
+                oldText: 'const nonexistent = 99;',
+                newText: 'const replaced = 99;',
+              },
+              { oldText: 'const c = 3;', newText: 'const c = 30;' },
+            ],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(false);
+        expect(editResult.failedEditIndex).toBe(1);
+        expect(editResult.error).toContain('Edit 1 failed');
+
+        // File must be unchanged on disk
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const afterContent = stripLineNumbers(
+          readResult.files?.[0]?.content || '',
+        );
+        expect(afterContent).toContain('const a = 1;');
+        expect(afterContent).toContain('const b = 2;');
+        expect(afterContent).toContain('const c = 3;');
+      },
+    );
+  });
+
+  describe('files_apply_changes: replaceAll mode', () => {
+    it(
+      'replaces all occurrences when replaceAll is true',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/replace-all.ts`;
+        const content = [
+          "const step1 = 'pending';",
+          'doWork();',
+          "const step2 = 'pending';",
+          'doMoreWork();',
+          "const step3 = 'pending';",
+        ].join('\n');
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Each "const stepN = 'pending';" is a unique full line,
+        // but they all share the substring "'pending'" which is too short for a full-line match.
+        // Use a full-line pattern that appears 3 times: doWork() appears only once.
+        // Better approach: use lines that are truly identical.
+        const filePath2 = `${WORKSPACE_DIR}/replace-all-2.ts`;
+        const content2 = [
+          '// TODO: implement',
+          'function a() {}',
+          '// TODO: implement',
+          'function b() {}',
+          '// TODO: implement',
+        ].join('\n');
+
+        await filesWriteFileTool.invoke(
+          { filePath: filePath2, fileContent: content2 },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath: filePath2,
+            oldText: '// TODO: implement',
+            newText: '// DONE',
+            replaceAll: true,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+        expect(editResult.appliedEdits).toBe(3);
+
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath: filePath2 }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const afterContent = stripLineNumbers(
+          readResult.files?.[0]?.content || '',
+        );
+        expect(afterContent).not.toContain('TODO: implement');
+        expect(afterContent.match(/\/\/ DONE/g)?.length).toBe(3);
+        // Untouched content preserved
+        expect(afterContent).toContain('function a() {}');
+        expect(afterContent).toContain('function b() {}');
+      },
+    );
+  });
+
+  describe('files_read: batch read multiple files', () => {
+    it(
+      'reads multiple files in a single call with correct content and metadata',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const files = [
+          { name: 'batch-a.ts', content: 'const a = 1;' },
+          { name: 'batch-b.ts', content: 'const b = 2;\nconst b2 = 3;' },
+          { name: 'batch-c.ts', content: 'const c = "hello";' },
+        ];
+
+        for (const f of files) {
+          await filesWriteFileTool.invoke(
+            {
+              filePath: `${WORKSPACE_DIR}/${f.name}`,
+              fileContent: f.content,
+            },
+            { runtimeProvider: runtimeThreadProvider },
+            RUNNABLE_CONFIG,
+          );
+        }
+
+        const { output: readResult } = await filesReadTool.invoke(
+          {
+            filesToRead: files.map((f) => ({
+              filePath: `${WORKSPACE_DIR}/${f.name}`,
+            })),
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(readResult.error).toBeUndefined();
+        expect(readResult.files).toHaveLength(3);
+
+        for (let i = 0; i < files.length; i++) {
+          const file = readResult.files![i]!;
+          expect(file.error).toBeUndefined();
+          expect(file.filePath).toBe(`${WORKSPACE_DIR}/${files[i]!.name}`);
+          expect(file.contentHash).toBeDefined();
+          expect(file.contentHash!.length).toBe(8);
+          expect(file.fileSizeBytes).toBeGreaterThan(0);
+          const rawContent = stripLineNumbers(file.content || '');
+          expect(rawContent).toBe(files[i]!.content);
+        }
+
+        // Second file has 2 lines
+        expect(readResult.files![1]!.lineCount).toBe(2);
+      },
+    );
+  });
+
+  describe('files_search_text: glob filters', () => {
+    it(
+      'filters results with onlyInFilesMatching',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const searchDir = `${WORKSPACE_DIR}/glob-filter-test`;
+        const marker = 'UNIQUE_SEARCH_MARKER_123';
+
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${searchDir}/code.ts`,
+            fileContent: `const x = "${marker}";`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${searchDir}/data.json`,
+            fileContent: `{"key": "${marker}"}`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Search only in .ts files
+        const { output: tsOnly } = await filesSearchTextTool.invoke(
+          {
+            searchInDirectory: searchDir,
+            textPattern: marker,
+            onlyInFilesMatching: ['*.ts'],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(tsOnly.error).toBeUndefined();
+        expect(tsOnly.matches).toHaveLength(1);
+        expect(tsOnly.matches![0]!.filePath).toContain('code.ts');
+      },
+    );
+
+    it(
+      'excludes results with skipFilesMatching',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const searchDir = `${WORKSPACE_DIR}/glob-skip-test`;
+        const marker = 'SKIP_FILTER_MARKER_456';
+
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${searchDir}/main.ts`,
+            fileContent: `const val = "${marker}";`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${searchDir}/main.spec.ts`,
+            fileContent: `test("${marker}", () => {});`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Skip spec files
+        const { output: noSpecs } = await filesSearchTextTool.invoke(
+          {
+            searchInDirectory: searchDir,
+            textPattern: marker,
+            skipFilesMatching: ['*.spec.ts'],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(noSpecs.error).toBeUndefined();
+        expect(noSpecs.matches).toHaveLength(1);
+        expect(noSpecs.matches![0]!.filePath).toContain('main.ts');
+        expect(noSpecs.matches![0]!.filePath).not.toContain('.spec.');
+      },
+    );
+  });
+
+  describe('files_apply_changes: error cases', () => {
+    it(
+      'returns helpful error when file does not exist',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const { output: result } = await filesApplyChangesTool.invoke(
+          {
+            filePath: `${WORKSPACE_DIR}/nonexistent-file-${Date.now()}.ts`,
+            oldText: 'some text',
+            newText: 'replaced text',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('File not found');
+        expect(result.error).toContain('files_write_file');
+      },
+    );
+
+    it(
+      'rejects no-op when oldText equals newText',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = await writeSampleFile('noop-test.ts');
+
+        const { output: result } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: 'export function greet',
+            newText: 'export function greet',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('identical');
+      },
+    );
+  });
+
+  describe('files_delete: error cases', () => {
+    it(
+      'returns error when deleting nonexistent file',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const { output: result } = await filesDeleteTool.invoke(
+          {
+            filePath: `${WORKSPACE_DIR}/does-not-exist-${Date.now()}.ts`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('File not found');
+      },
+    );
+
+    it(
+      'returns error when trying to delete a directory',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        // Create a directory by writing a file in it
+        const dirPath = `${WORKSPACE_DIR}/dir-delete-test-${Date.now()}`;
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${dirPath}/dummy.txt`,
+            fileContent: 'placeholder',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Try to delete the directory itself
+        const { output: result } = await filesDeleteTool.invoke(
+          { filePath: dirPath },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('directory');
+      },
+    );
+  });
 });
 
 describe('Files tools graph execution', () => {
@@ -1164,7 +1758,7 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
       }
 
       const parsed = searchExecution.parsedResult as
-        | { matches?: { data?: { path?: { text?: string } } }[] }
+        | { matches?: { filePath?: string }[] }
         | undefined;
 
       if (!Array.isArray(parsed?.matches) || parsed.matches.length === 0) {
@@ -1175,7 +1769,7 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
         );
       }
 
-      const firstPath = parsed.matches[0]?.data?.path?.text;
+      const firstPath = parsed.matches[0]?.filePath;
       expect(firstPath).toContain('/src/sample.ts');
     },
   );

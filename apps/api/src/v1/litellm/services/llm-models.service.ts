@@ -67,20 +67,6 @@ export class LlmModelsService {
     return this.offlineMiniFallback(environment.llmMiniModel);
   }
 
-  async getFilesEditParams(smart: boolean): Promise<{
-    model: string;
-    reasoning?: { effort: 'low' | 'medium' | 'high' };
-  }> {
-    const model = smart
-      ? this.offlineCodingFallback(environment.llmLargeCodeModel)
-      : this.offlineCodingMiniFallback(environment.llmMiniCodeModel);
-
-    return this.buildResponseParams(
-      model,
-      LlmModelsService.DEFAULT_REASONING.medium,
-    );
-  }
-
   async getKnowledgeMetadataParams(): Promise<{
     model: string;
     reasoning?: { effort: 'low' | 'medium' | 'high' };

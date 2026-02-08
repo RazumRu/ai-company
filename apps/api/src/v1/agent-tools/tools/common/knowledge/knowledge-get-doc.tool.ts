@@ -14,7 +14,13 @@ import {
 import { KnowledgeToolGroupConfig } from './knowledge-tools.types';
 
 export const KnowledgeGetDocSchema = z.object({
-  docId: z.number().int().positive().describe('Document public ID to retrieve'),
+  docId: z
+    .number()
+    .int()
+    .positive()
+    .describe(
+      'The document public ID to retrieve (obtained from knowledge_search_docs results). The document politic must allow full content retrieval, otherwise this call will fail.',
+    ),
 });
 
 export type KnowledgeGetDocSchemaType = z.infer<typeof KnowledgeGetDocSchema>;
@@ -44,7 +50,7 @@ export class KnowledgeGetDocTool extends BaseTool<
 > {
   public name = 'knowledge_get_doc';
   public description =
-    'Fetch the full content of a knowledge document when allowed by its politic.';
+    'Retrieve the full content of a single knowledge document by its public ID. Only succeeds when the document policy explicitly allows full content retrieval — otherwise use knowledge_search_chunks instead.';
 
   constructor(private readonly docDao: KnowledgeDocDao) {
     super();
@@ -56,20 +62,42 @@ export class KnowledgeGetDocTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Returns the full content for a single knowledge document.
+      Retrieves the full content of a single knowledge document. Access is controlled by the document's policy (politic) field.
 
       ### When to Use
-      Only after identifying a specific doc ID and when the document politic explicitly allows full content.
-      If you already fetched full content for this document, do NOT fetch its chunks.
+      - The document policy explicitly instructs you to fetch full content
+      - You need the entire document, not just specific sections
+
+      ### When NOT to Use
+      - The document policy does NOT mention full content retrieval → use \`knowledge_search_chunks\` instead
+      - You already fetched the full document → do NOT also fetch its chunks (redundant)
+      - You only need specific sections → use \`knowledge_search_chunks\` + \`knowledge_get_chunks\`
 
       ### Permission Rule (Mandatory)
-      You can request the full document content only if the document politic instructs you to fetch full content.
-      Example: "If this document is relevant to the current task - always fetch the full content instead of fetching only specific chunks."
+      This tool will **fail** unless the document's politic (policy) field contains an explicit instruction to fetch full content. The policy is returned by \`knowledge_search_docs\` in the \`politic\` field.
+
+      Recognized policy phrases that allow full retrieval:
+      - "fetch the full content"
+      - "always fetch the full content"
+      - "return full content"
+      - "full content instead of chunks"
+
+      If the policy does not contain any of these phrases, the tool will return a \`FULL_CONTENT_NOT_ALLOWED\` error.
+
+      ### Workflow
+      1. \`knowledge_search_docs\` → check the \`politic\` field of returned documents
+      2. If politic says "fetch full content" → use **\`knowledge_get_doc\`**
+      3. If politic does NOT say this → use \`knowledge_search_chunks\` + \`knowledge_get_chunks\`
 
       ### Examples
+      **Fetch a document whose politic allows full content:**
       \`\`\`json
       {"docId": 101}
       \`\`\`
+
+      ### Common Errors
+      - \`FULL_CONTENT_NOT_ALLOWED\`: The document policy does not permit full retrieval. Use chunk-based tools instead.
+      - Document not found: Verify the docId came from \`knowledge_search_docs\` results.
     `;
   }
 

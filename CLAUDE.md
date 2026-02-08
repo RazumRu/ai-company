@@ -32,8 +32,8 @@ pnpm lint                             # Lint without fixing (to see remaining is
 ### Testing
 ```bash
 pnpm test:unit                        # Vitest unit tests (*.spec.ts) — mandatory
-pnpm test:integration                 # Vitest integration tests (*.int.ts) — NOT required in agent environment
-pnpm test:integration {filename}      # test only specific file
+pnpm test:integration {filename}      # Run ONLY the related integration test file — mandatory when modifying code that has integration tests
+# ⚠️  NEVER run bare `pnpm test:integration` without a filename — always target the specific file
 
 # E2E (Cypress) — requires server running + deps up:
 cd apps/api
@@ -159,13 +159,14 @@ src/v1/feature-name/
 - **Migrations**: Always `pnpm run migration:generate`. Never hand-write or use `migration:create`.
 - **Generated files**: Never manually edit `cypress/api-definitions/` — regenerate with `pnpm test:e2e:generate-api`.
 - **Imports**: Shared packages are aliased as `@packages/*` (e.g. `import { … } from '@packages/common'`).
+- **Agent tool definitions**: All tools in `agent-tools/` must follow the best practices in `/docs/tool-definitions-best-practices.md` and the [official Anthropic tool use guide](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#best-practices-for-tool-definitions). Descriptions must be detailed (3-4+ sentences), parameters must have clear `.describe()` strings, and `getDetailedInstructions()` must carry all heavy guidance. Read the docs file before creating or modifying any tool.
 
 ---
 
 ## Testing conventions
 
 - **Unit tests** (`*.spec.ts`): placed next to the source file. Use Vitest. Prefer updating an existing spec file over creating a new one.
-- **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). Not required in the agent environment.
+- **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). **Mandatory** when modifying code that already has integration tests — always run with a specific filename: `pnpm test:integration {filename}`. **NEVER** run bare `pnpm test:integration` without a filename.
 - **E2E tests** (`*.cy.ts`): in `apps/api/cypress/e2e/`. Smoke-test endpoints over HTTP. Require a running server + deps.
 - **Must-fail policy**: Tests must never conditionally skip based on missing env vars or services. If a prerequisite is absent, the test must fail with a clear error — no `it.skip` or early returns.
 - **Coverage thresholds** (when enabled): 90% lines/functions/statements, 80% branches.

@@ -19,7 +19,9 @@ export const KnowledgeGetChunksSchema = z.object({
   chunkIds: z
     .array(z.number().int().positive())
     .min(1)
-    .describe('Chunk public IDs to retrieve'),
+    .describe(
+      'Chunk public IDs to retrieve (obtained from knowledge_search_chunks results). Only request the chunks you actually need to keep context size manageable.',
+    ),
 });
 
 export type KnowledgeGetChunksSchemaType = z.infer<
@@ -40,7 +42,8 @@ export class KnowledgeGetChunksTool extends BaseTool<
   KnowledgeToolGroupConfig
 > {
   public name = 'knowledge_get_chunks';
-  public description = 'Fetch full text for selected knowledge chunks.';
+  public description =
+    'Retrieve the full text of specific knowledge chunks by their public IDs. Use this after knowledge_search_chunks when snippets are insufficient and you need the complete text of specific chunks. Returns chunk text with positional offsets (startOffset/endOffset) within the source document. Only request the chunks you actually need to keep context manageable — do not bulk-fetch all chunks from a search result.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,
@@ -56,19 +59,36 @@ export class KnowledgeGetChunksTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Returns the full content for specific chunks you already selected from knowledge_search_chunks.
+      Retrieves the full text content for specific knowledge chunks. Use this to get complete text after \`knowledge_search_chunks\` returned relevant snippets.
 
       ### When to Use
-      After you have selected chunkIds from knowledge_search_chunks and need the full text for those chunks.
-      If the document politic instructs full content retrieval, use knowledge_get_doc instead.
-      If you already fetched full content for a document, do NOT fetch its chunks.
+      - After \`knowledge_search_chunks\` identified relevant chunks and you need the full text (search only returns snippets)
+      - When you want to read specific sections of a document without fetching the entire document
+
+      ### When NOT to Use
+      - The document policy says to fetch full content → use \`knowledge_get_doc\` instead
+      - You already fetched the full document → fetching its chunks is redundant
+      - You haven't searched yet → use \`knowledge_search_chunks\` first to find relevant chunks
+
+      ### Workflow
+      1. \`knowledge_search_docs\` → identify relevant documents
+      2. \`knowledge_search_chunks\` → search within documents, get chunk IDs and snippets
+      3. **\`knowledge_get_chunks\`** → retrieve full text for the most useful chunks
 
       ### Best Practices
-      Request only the chunks you need. Keep chunkIds focused to limit context size.
+      - Only request chunks you actually need — each chunk adds to context size
+      - Review the snippets from \`knowledge_search_chunks\` to decide which chunks warrant full retrieval
+      - Chunks are returned with \`startOffset\` and \`endOffset\` for positional context within the document
 
       ### Examples
+      **1. Fetch a single chunk:**
       \`\`\`json
       {"chunkIds": [501]}
+      \`\`\`
+
+      **2. Fetch multiple related chunks:**
+      \`\`\`json
+      {"chunkIds": [501, 502, 510]}
       \`\`\`
     `;
   }

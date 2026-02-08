@@ -32,7 +32,7 @@ export class ReportStatusTool extends BaseTool<ReportStatusToolSchemaType> {
 
   public name = ReportStatusTool.TOOL_NAME;
   public description =
-    'Report a mid-work status update to the user and continue working.';
+    'Send a mid-work status update to the user while continuing to work. Use this during long multi-step tasks (research, multi-file edits, running checks) to share meaningful progress milestones. The update must be informative only — do not include questions. Must be called as the sole tool in its turn, never in parallel with other tools.';
 
   public getDetailedInstructions(
     _config: Record<PropertyKey, unknown>,

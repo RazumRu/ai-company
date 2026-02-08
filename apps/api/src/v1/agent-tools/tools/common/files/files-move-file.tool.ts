@@ -14,11 +14,18 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 export const FilesMoveFileToolSchema = z.object({
-  sourcePath: z.string().min(1).describe('Absolute path to the source file.'),
+  sourcePath: z
+    .string()
+    .min(1)
+    .describe(
+      'Absolute path to the file to move or rename. The file must exist.',
+    ),
   destinationPath: z
     .string()
     .min(1)
-    .describe('Absolute path to the destination file path.'),
+    .describe(
+      'Absolute path for the new location. Parent directories are created automatically if they do not exist.',
+    ),
 });
 
 export type FilesMoveFileToolSchemaType = z.infer<
@@ -34,7 +41,7 @@ type FilesMoveFileToolOutput = {
 export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType> {
   public name = 'files_move_file';
   public description =
-    'Move/rename a file (source → destination); creates destination parent directories.';
+    'Move or rename a file from sourcePath to destinationPath. Parent directories for the destination are created automatically if they do not exist. This is a move operation, not a copy — the source file will no longer exist after a successful call. Use this for renaming files or reorganizing directory structures. Do not use for editing file content — use files_apply_changes instead.';
 
   protected override generateTitle(
     args: FilesMoveFileToolSchemaType,
@@ -51,25 +58,44 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
   ): string {
     return dedent`
       ### Overview
-      Move or rename a file. Parent dirs are created automatically.
+      Move or rename a single file from \`sourcePath\` to \`destinationPath\`. Parent directories for the destination are created automatically. This is a **move** operation — the source file will no longer exist after success.
 
       ### When to Use
-      - Renames
-      - Moving files into new folders
+      - Renaming a file (same directory, different name)
+      - Moving a file to a different directory
+      - Reorganizing project structure (move files into new folders)
 
       ### When NOT to Use
-      - Copying (this tool moves)
-      - Editing content -> \`files_apply_changes\` or \`files_edit\`
+      - Copying a file (this tool removes the source) → use shell \`cp\` instead
+      - Moving directories → use shell \`mv\` instead
+      - Editing file content → use \`files_apply_changes\`
+      - Creating new files → use \`files_write_file\`
+
+      ### Best Practices
+      - Verify the source path exists before moving (use \`files_find_paths\` or \`files_read\`)
+      - If a file already exists at \`destinationPath\`, it will be **overwritten silently**
+      - After moving, update any import/require statements in other files that reference the old path
+      - Both paths must be absolute
+
+      ### Error Cases
+      - Source file does not exist → operation fails
+      - Source is a directory → use shell \`mv\` instead
+      - Permission denied → check file/directory permissions
 
       ### Examples
-      **1) Rename:**
+      **1. Rename a file:**
       \`\`\`json
       {"sourcePath":"/repo/src/old-name.ts","destinationPath":"/repo/src/new-name.ts"}
       \`\`\`
 
-      **2) Move to new folder:**
+      **2. Move to a new folder (parent created automatically):**
       \`\`\`json
       {"sourcePath":"/repo/tmp/output.json","destinationPath":"/repo/generated/output.json"}
+      \`\`\`
+
+      **3. Reorganize module structure:**
+      \`\`\`json
+      {"sourcePath":"/repo/src/utils.ts","destinationPath":"/repo/src/utils/index.ts"}
       \`\`\`
     `;
   }
@@ -95,7 +121,10 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
     const res = await this.execCommand({ cmd }, config, cfg);
     if (res.exitCode !== 0) {
       return {
-        output: { success: false, error: res.stderr || res.stdout || 'Failed' },
+        output: {
+          success: false,
+          error: res.stderr || res.stdout || 'Failed to move file',
+        },
         messageMetadata,
       };
     }

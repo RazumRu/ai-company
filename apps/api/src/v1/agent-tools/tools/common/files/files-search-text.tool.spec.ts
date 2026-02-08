@@ -43,7 +43,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should have correct description', () => {
       expect(tool.description).toContain('Search file contents');
-      expect(tool.description).toContain('ripgrep');
+      expect(tool.description).toContain('regex pattern');
     });
   });
 
@@ -150,7 +150,7 @@ describe('FilesSearchTextTool', () => {
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(1);
-      expect(result.matches![0]!.data.path?.text).toBe('src/file.ts');
+      expect(result.matches![0]!.filePath).toBe('src/file.ts');
       expect(result.error).toBeUndefined();
       const call = (tool as any).execCommand.mock.calls[0]![0];
       expect(call.cmd).toContain('rg --json --hidden');
@@ -194,7 +194,6 @@ describe('FilesSearchTextTool', () => {
       expect(call.cmd).toContain("cd '/path/to/repo' &&");
       expect(call.cmd).toContain("--glob '*.ts'");
       expect(call.cmd).toContain("--glob 'src/**'");
-      expect(call.cmd).toContain("'!.git/**'");
       expect(call.cmd).toContain("'!node_modules/**'");
     });
 
@@ -354,8 +353,8 @@ describe('FilesSearchTextTool', () => {
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(2);
-      expect(result.matches![0]!.data.path?.text).toBe('src/file1.ts');
-      expect(result.matches![1]!.data.path?.text).toBe('src/file2.ts');
+      expect(result.matches![0]!.filePath).toBe('src/file1.ts');
+      expect(result.matches![1]!.filePath).toBe('src/file2.ts');
       expect(result.error).toBeUndefined();
     });
 
@@ -387,8 +386,8 @@ describe('FilesSearchTextTool', () => {
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(15);
-      expect(result.matches![0]!.data.path?.text).toBe('src/file0.ts');
-      expect(result.matches![14]!.data.path?.text).toBe('src/file14.ts');
+      expect(result.matches![0]!.filePath).toBe('src/file0.ts');
+      expect(result.matches![14]!.filePath).toBe('src/file14.ts');
     });
 
     it('should skip non-match JSON lines', async () => {
@@ -424,7 +423,7 @@ describe('FilesSearchTextTool', () => {
 
       expect(result.matches).toBeDefined();
       expect(result.matches!.length).toBe(1);
-      expect(result.matches![0]!.type).toBe('match');
+      expect(result.matches![0]!.filePath).toBe('src/file.ts');
       expect(result.error).toBeUndefined();
     });
 

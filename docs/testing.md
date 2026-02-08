@@ -66,10 +66,15 @@ Examples:
 
 ### Overview
 
-> **Important (Agent environment)**: Integration tests are **not required** and are currently **not implemented/maintained for the agent environment**.
+> **Important**: Integration tests are **mandatory** when modifying code that already has integration tests. Always run the **specific** integration test file — never the full suite.
 >
-> - The mandatory quality gate is `pnpm run full-check`, which runs **unit tests only**.
-> - Run integration tests only when you are working locally with the full runtime/dependencies available and you specifically need that coverage.
+> ```bash
+> # ✅ Correct — always target a specific file
+> pnpm test:integration src/__tests__/integration/agent-tools/files-tools.int.ts
+>
+> # ❌ NEVER run bare pnpm test:integration without a filename
+> pnpm test:integration
+> ```
 
 Integration tests are deep, comprehensive tests that verify the detailed behavior of business logic by calling services directly. They differ from E2E tests in purpose and scope:
 
@@ -100,21 +105,16 @@ Integration tests are deep, comprehensive tests that verify the detailed behavio
 ### Running Integration Tests
 
 ```bash
-# Run all tests (unit + integration)
-pnpm test
+# ⚠️  ALWAYS run integration tests targeting a specific file — NEVER run bare `pnpm test:integration`
+
+# Run a specific integration test file (mandatory when modifying related code)
+pnpm test:integration src/__tests__/integration/agent-tools/files-tools.int.ts
+
+# Run a specific case within an integration test file
+pnpm test:integration src/__tests__/integration/graphs/graph-lifecycle.int.ts -t "specific test"
 
 # Run only unit tests (excluding integration tests)
 pnpm test:unit
-
-# Run only integration tests (excluding unit tests)
-pnpm test:integration
-
-# Run specific integration test file
-pnpm test:integration src/__tests__/integration/graphs/graph-lifecycle.int.ts
-
-# Run specific case in integration test file
-pnpm test:integration src/__tests__/integration/graphs/graph-lifecycle.int.ts -t "specific test"
-
 ```
 
 ### Writing Integration Tests

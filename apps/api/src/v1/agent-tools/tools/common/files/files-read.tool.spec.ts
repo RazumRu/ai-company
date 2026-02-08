@@ -42,8 +42,8 @@ describe('FilesReadTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Read file contents');
-      expect(tool.description).toContain('line range');
+      expect(tool.description).toContain('Read one or more files');
+      expect(tool.description).toContain('line numbers');
     });
   });
 
@@ -160,6 +160,7 @@ describe('FilesReadTool', () => {
         stdout: [
           '__AI_FILES_READ_BEGIN_test__0',
           '__AI_FILES_READ_EXIT_test__0:0',
+          '__SIZE__:20',
           '__AI_FILES_READ_PAYLOAD_test__0',
           ...fileContent.split('\n'),
           '__AI_FILES_READ_END_test__0',
@@ -174,8 +175,13 @@ describe('FilesReadTool', () => {
       expect(result.error).toBeUndefined();
       expect(result.files?.length).toBe(1);
       expect(result.files?.[0]?.filePath).toBe('/path/to/repo/src/file.ts');
-      expect(result.files?.[0]?.content).toBe(fileContent);
+      // Content now has line numbers in NNN\t format
+      expect(result.files?.[0]?.content).toContain('1\tline 1');
+      expect(result.files?.[0]?.content).toContain('2\tline 2');
+      expect(result.files?.[0]?.content).toContain('3\tline 3');
       expect(result.files?.[0]?.lineCount).toBe(4); // includes trailing empty line after final \n
+      expect(result.files?.[0]?.startLine).toBe(1);
+      expect(result.files?.[0]?.contentHash).toBeDefined();
     });
 
     it('should read multiple files in one call', async () => {
@@ -195,11 +201,13 @@ describe('FilesReadTool', () => {
         stdout: [
           '__AI_FILES_READ_BEGIN_test__0',
           '__AI_FILES_READ_EXIT_test__0:0',
+          '__SIZE__:5',
           '__AI_FILES_READ_PAYLOAD_test__0',
           ...aContent.split('\n'),
           '__AI_FILES_READ_END_test__0',
           '__AI_FILES_READ_BEGIN_test__1',
           '__AI_FILES_READ_EXIT_test__1:0',
+          '__SIZE__:3',
           '__AI_FILES_READ_PAYLOAD_test__1',
           ...bContent.split('\n'),
           '__AI_FILES_READ_END_test__1',
@@ -216,8 +224,10 @@ describe('FilesReadTool', () => {
         '/path/to/repo/src/a.ts',
         '/path/to/repo/src/b.ts',
       ]);
-      expect(result.files?.[0]?.content).toBe(aContent);
-      expect(result.files?.[1]?.content).toBe(bContent);
+      // Content now has line numbers
+      expect(result.files?.[0]?.content).toContain('1\ta1');
+      expect(result.files?.[0]?.content).toContain('2\ta2');
+      expect(result.files?.[1]?.content).toContain('1\tb1');
     });
 
     it('should return per-file error when a file read fails', async () => {
@@ -234,6 +244,7 @@ describe('FilesReadTool', () => {
         stdout: [
           '__AI_FILES_READ_BEGIN_test__0',
           '__AI_FILES_READ_EXIT_test__0:1',
+          '__SIZE__:0',
           '__AI_FILES_READ_PAYLOAD_test__0',
           errMsg,
           '__AI_FILES_READ_END_test__0',
@@ -368,6 +379,7 @@ describe('FilesReadTool', () => {
         stdout: [
           '__AI_FILES_READ_BEGIN_test__0',
           '__AI_FILES_READ_EXIT_test__0:0',
+          '__SIZE__:8',
           '__AI_FILES_READ_PAYLOAD_test__0',
           ...fileContent.split('\n'),
           '__AI_FILES_READ_END_test__0',
@@ -380,7 +392,7 @@ describe('FilesReadTool', () => {
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBeUndefined();
-      expect(result.files?.[0]?.content).toBe(fileContent);
+      expect(result.files?.[0]?.content).toContain('1\tcontent');
     });
 
     it('should handle empty file', async () => {
@@ -394,6 +406,7 @@ describe('FilesReadTool', () => {
         stdout: [
           '__AI_FILES_READ_BEGIN_test__0',
           '__AI_FILES_READ_EXIT_test__0:0',
+          '__SIZE__:0',
           '__AI_FILES_READ_PAYLOAD_test__0',
           '',
           '__AI_FILES_READ_END_test__0',
@@ -406,7 +419,8 @@ describe('FilesReadTool', () => {
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBeUndefined();
-      expect(result.files?.[0]?.content).toBe('');
+      // Empty file gets line number for its single empty line
+      expect(result.files?.[0]?.content).toBe('1\t');
       expect(result.files?.[0]?.lineCount).toBe(1);
     });
 
@@ -421,6 +435,7 @@ describe('FilesReadTool', () => {
         stdout: [
           '__AI_FILES_READ_BEGIN_test__0',
           '__AI_FILES_READ_EXIT_test__0:0',
+          '__SIZE__:1',
           '__AI_FILES_READ_PAYLOAD_test__0',
           '',
           '',
@@ -434,7 +449,8 @@ describe('FilesReadTool', () => {
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.error).toBeUndefined();
-      expect(result.files?.[0]?.content).toBe('\n');
+      // File with single newline gets two numbered lines
+      expect(result.files?.[0]?.content).toBe('1\t\n2\t');
       expect(result.files?.[0]?.lineCount).toBe(2);
     });
   });

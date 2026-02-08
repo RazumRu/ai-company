@@ -1,6 +1,5 @@
-import { Buffer } from 'node:buffer';
-import { randomBytes } from 'node:crypto';
-import { basename, dirname } from 'node:path';
+import { createHash } from 'node:crypto';
+import { basename } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
@@ -8,27 +7,68 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
 } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
+const SingleEditSchema = z.object({
+  oldText: z.string().describe('Exact text to find and replace.'),
+  newText: z.string().describe('Replacement text.'),
+  replaceAll: z
+    .boolean()
+    .optional()
+    .describe('If true, replaces all occurrences of oldText.'),
+});
+
 const FilesApplyChangesToolSchemaBase = z.object({
-  filePath: z.string().min(1).describe('Absolute path to the file to edit'),
+  filePath: z
+    .string()
+    .min(1)
+    .describe(
+      'Absolute path to the file to edit. Must have been read with files_read first to get the current content for accurate oldText matching.',
+    ),
   oldText: z
     .string()
+    .optional()
     .describe(
-      'Text block to search for. Matching uses whitespace-normalized exact block match. Empty string means create/overwrite file.',
+      'The exact text to find and replace, copied verbatim from files_read output (without line number prefixes). Must be non-empty for replacements. Use empty string ("") only with insertAfterLine to insert text at a specific line. Ignored when edits array is provided.',
     ),
   newText: z
     .string()
-    .describe('Text to replace with. Indentation will be preserved.'),
+    .optional()
+    .describe(
+      'The replacement text. Indentation is automatically adjusted to match the matched oldText block indentation. Ignored when edits array is provided.',
+    ),
   replaceAll: z
     .boolean()
     .optional()
     .describe(
-      'If true, replaces all occurrences of oldText. If false or undefined, requires exactly one match.',
+      'If true, replaces all occurrences of oldText. If false or undefined, requires exactly one match. Ignored when edits array is provided.',
+    ),
+  edits: z
+    .array(SingleEditSchema)
+    .min(1)
+    .max(20)
+    .optional()
+    .describe(
+      'Array of {oldText, newText, replaceAll?} pairs to apply atomically in order. When provided, the flat oldText/newText/replaceAll params are ignored. Each edit is applied against the result of the previous edit. If any edit fails, no changes are written.',
+    ),
+  insertAfterLine: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      'Insert newText after this line number (0 = beginning of file). When used, oldText must be empty string.',
+    ),
+  expectedHash: z
+    .string()
+    .optional()
+    .describe(
+      'Content hash from files_read output. If provided and file has changed since read, edit is rejected with an error.',
     ),
 });
 
@@ -46,19 +86,30 @@ type EditMatch = {
   indentation: string;
 };
 
+type MatchStage = 'exact' | 'trimmed' | 'fuzzy';
+
 type FilesApplyChangesToolOutput = {
   error?: string;
   success?: boolean;
   diff?: string;
   appliedEdits?: number;
   totalEdits?: number;
+  matchStage?: MatchStage;
+  matchStages?: MatchStage[];
+  postEditContext?: string;
+  failedEditIndex?: number;
 };
+
+const MAX_FUZZY_EDIT_RATIO = 0.15;
+const MAX_FUZZY_OLD_TEXT_LINES = 50;
+const MIN_FUZZY_LINE_LENGTH = 8;
+const SIMILAR_BLOCK_PREFIX_LENGTH = 20;
 
 @Injectable()
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Apply targeted text edits to a file (pattern-based; oldText/newText).';
+    'Replace exact text blocks in an existing file, or insert text at a specific line. Supports multiple edits in one call via the edits array for atomic multi-region changes. Copy oldText verbatim from files_read output (without line number prefixes). To create new files, use files_write_file instead.';
 
   protected override generateTitle(
     args: FilesApplyChangesToolSchemaType,
@@ -78,58 +129,72 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): string {
     return dedent`
       ### Overview
-      Replace exact text blocks (oldText -> newText). Use for precise edits or when \`files_edit\` fails.
+      Replace exact text blocks (oldText → newText). Primary edit tool — precise and fast.
+      Supports multiple edits in one atomic call via the \`edits\` array.
 
-      ### CRITICAL: How to Use oldText Correctly
-      1. **ALWAYS run files_read first** to get the current file content
-      2. **Copy-paste the EXACT text** from the files_read output - DO NOT type from memory
-      3. Include enough context to make the match unique (3-5 lines)
-      4. Whitespace and indentation MUST match exactly
+      ### How to Use
+      1. Run \`files_read\` first to get current content with line numbers
+      2. Copy the EXACT text from the output into \`oldText\` — do NOT type from memory
+      3. Include enough surrounding context (3-5 lines) to make the match unique
+      4. Do NOT include line number prefixes (\`NNN\\t\`) in oldText — only the code itself
 
-      ### Why This Matters
-      - The tool uses exact text matching
-      - Even one wrong space or character will fail
-      - File content may have changed since you last read it
+      ### Multi-Edit Mode
+      Pass \`edits: [{oldText, newText, replaceAll?}, ...]\` to apply multiple replacements atomically in a single call. Each edit runs against the result of the previous one. If any edit fails, no changes are written.
 
-      ### Correct Workflow
+      **Limitations:** Multi-edit mode only supports text replacements (non-empty \`oldText\`). It does not support \`insertAfterLine\`. Use a separate single-edit call for line insertions.
+
+      **Example — Add import and use it:**
+      \`\`\`json
+      {
+        "filePath": "/runtime-workspace/project/src/app.ts",
+        "edits": [
+          {"oldText": "import { A } from './a';", "newText": "import { A } from './a';\\nimport { B } from './b';"},
+          {"oldText": "const result = processA(data);", "newText": "const result = processA(processB(data));"}
+        ]
+      }
       \`\`\`
-      Step 1: files_read({"filesToRead": [{"filePath": "/runtime-workspace/project/file.ts"}]})
-      Step 2: Copy exact text from output
-      Step 3: files_apply_changes with copied oldText
-      \`\`\`
 
-      ### How Matching Works
-      - OldText must match exactly once unless \`replaceAll: true\`.
-      - Common indentation is normalized; relative indentation is preserved.
+      ### Matching Strategy (Progressive Fallback)
+      Three matching strategies are tried in order:
+      1. **Exact**: whitespace-normalized comparison (trailing spaces stripped, blank-line runs collapsed)
+      2. **Trimmed**: ignores all leading whitespace per line — catches wrong indentation
+      3. **Fuzzy**: per-line Levenshtein distance ≤ 15% — catches minor typos, quote style differences
+      - Must match exactly once unless \`replaceAll: true\` (fuzzy only accepts a single match)
+      - Common indentation is auto-normalized; relative indentation within the block is preserved
+      - Lines shorter than 8 characters require exact trimmed match (avoids false positives on \`}\`, \`return;\`, etc.)
+      - Fuzzy matching is skipped for oldText blocks > 50 lines (performance safeguard)
 
-      ### When to Use
-      - Precise single edits
-      - Renames with \`replaceAll: true\`
-      - Simple find/replace in one file
+      ### Stale-Read Protection
+      Pass \`expectedHash\` (returned by \`files_read\`) to detect if the file changed since your last read. If the hash doesn't match, the edit is rejected — re-read the file before retrying.
 
-      ### When NOT to Use
-      - First attempt on multi-line edits -> use \`files_edit\`
-      - New file -> \`files_write_file\`
+      ### Insertion Mode
+      Use \`insertAfterLine\` with empty \`oldText\` ("") to insert text at a specific position without replacing anything. Line 0 = beginning of file.
 
-      ### Common Errors and Fixes
-      - "Found N matches": add more context or set \`replaceAll: true\`.
-      - "Could not find match": re-read the file and copy exact text.
+      ### Error Recovery
+      - "Found N matches": add more surrounding context lines or set \`replaceAll: true\`
+      - "Could not find match": re-read the file with \`files_read\` and copy exact text from output
+      - Use \`insertAfterLine\` with empty \`oldText\` for pure insertions (avoids matching entirely)
 
       ### Examples
-      **1) Replace all occurrences:**
+      **1. Simple text replacement:**
       \`\`\`json
-      {"filePath":"/runtime-workspace/project/config.ts","oldText":"oldFunctionName","newText":"newFunctionName","replaceAll":true}
+      {"filePath": "/runtime-workspace/project/src/app.ts", "oldText": "const port = 3000;", "newText": "const port = process.env.PORT || 3000;"}
       \`\`\`
 
-      **2) Unique block with context:**
+      **2. Insert at beginning of file:**
       \`\`\`json
-      {"filePath":"/runtime-workspace/project/module.ts","oldText":"  providers: [\\n    AService,\\n    BService,\\n  ],","newText":"  providers: [\\n    AService,\\n    BService,\\n    CService,\\n  ],"}
+      {"filePath": "/runtime-workspace/project/src/app.ts", "oldText": "", "insertAfterLine": 0, "newText": "import { config } from 'dotenv';\\nconfig();"}
+      \`\`\`
+
+      **3. Replace all occurrences:**
+      \`\`\`json
+      {"filePath": "/runtime-workspace/project/src/utils.ts", "oldText": "console.log", "newText": "logger.info", "replaceAll": true}
       \`\`\`
     `;
   }
 
-  private shQuote(s: string): string {
-    return `'${s.replace(/'/g, `'\\''`)}'`;
+  private splitLines(text: string): string[] {
+    return text.replace(/\r\n/g, '\n').split('\n');
   }
 
   private collapseBlankRuns(lines: string[]): string[] {
@@ -154,10 +219,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     text: string,
     collapseBlankLines: boolean,
   ): string {
-    const normalized = text.replace(/\r\n/g, '\n');
-
-    const lines = normalized
-      .split('\n')
+    const lines = this.splitLines(text)
       .map((line) => line.replace(/[ \t]+$/g, ''))
       .map((line) => (line.trim().length === 0 ? '' : line));
 
@@ -171,25 +233,20 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   private normalizeRawLines(text: string): string[] {
-    return text
-      .replace(/\r\n/g, '\n')
-      .split('\n')
+    return this.splitLines(text)
       .map((l) => l.replace(/[ \t]+$/g, ''))
       .map((l) => (l.trim().length === 0 ? '' : l));
   }
 
   private detectIndentationFromBlock(text: string): string {
-    const line = text
-      .replace(/\r\n/g, '\n')
-      .split('\n')
-      .find((l) => l.trim().length > 0);
+    const line = this.splitLines(text).find((l) => l.trim().length > 0);
     if (!line) return '';
     const match = line.match(/^(\s+)/);
     return match && match[1] ? match[1] : '';
   }
 
   private stripCommonIndent(text: string): string {
-    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const lines = this.splitLines(text);
     const nonEmpty = lines.filter((l) => l.trim().length > 0);
     if (nonEmpty.length === 0) return lines.join('\n');
     const indents = nonEmpty.map((l) => l?.match(/^(\s*)/)?.[1]?.length ?? 0);
@@ -201,9 +258,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   private applyIndentation(text: string, indentation: string): string {
-    const stripped = this.stripCommonIndent(text).replace(/\r\n/g, '\n');
+    const stripped = this.stripCommonIndent(text);
     if (!indentation) return stripped;
-    const lines = stripped.split('\n');
+    const lines = this.splitLines(stripped);
     return lines
       .map((line) => {
         return line.trim() === '' ? line : indentation + line;
@@ -241,16 +298,271 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return { endLine, matchedText };
   }
 
-  private findSimilarBlocks(
+  /**
+   * Stage 2: Trimmed matching — ignores all leading whitespace, compares content only.
+   * Catches the most common LLM error: wrong indentation.
+   */
+  private tryMatchAtTrimmed(
+    fileLinesOriginal: string[],
+    startLine: number,
+    oldLinesTrimmed: string[],
+  ): { endLine: number; matchedText: string } | null {
+    if (startLine + oldLinesTrimmed.length > fileLinesOriginal.length) {
+      return null;
+    }
+
+    for (let j = 0; j < oldLinesTrimmed.length; j++) {
+      const fileLine = fileLinesOriginal[startLine + j];
+      if (fileLine === undefined) return null;
+      const fileLineTrimmed = fileLine.trim();
+      const oldLineTrimmed = oldLinesTrimmed[j]!;
+
+      // Both blank → match
+      if (fileLineTrimmed === '' && oldLineTrimmed === '') continue;
+      if (fileLineTrimmed !== oldLineTrimmed) return null;
+    }
+
+    const endLine = startLine + oldLinesTrimmed.length - 1;
+    const matchedText = fileLinesOriginal
+      .slice(startLine, endLine + 1)
+      .join('\n');
+    return { endLine, matchedText };
+  }
+
+  /**
+   * Simple Levenshtein distance for short strings.
+   */
+  private levenshteinDistance(a: string, b: string): number {
+    if (a === b) return 0;
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+
+    // Use two rows instead of full matrix for memory efficiency
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    let curr = new Array<number>(b.length + 1);
+
+    for (let i = 1; i <= a.length; i++) {
+      curr[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        curr[j] = Math.min(
+          (curr[j - 1] ?? 0) + 1,
+          (prev[j] ?? 0) + 1,
+          (prev[j - 1] ?? 0) + cost,
+        );
+      }
+      [prev, curr] = [curr, prev];
+    }
+
+    return prev[b.length] ?? 0;
+  }
+
+  /**
+   * Stage 3: Fuzzy matching — per-line Levenshtein distance with ≤15% threshold.
+   * Catches minor typos, quote style differences, trailing semicolons.
+   */
+  private tryMatchAtFuzzy(
+    fileLinesOriginal: string[],
+    startLine: number,
+    oldLinesTrimmed: string[],
+    maxEditRatio: number,
+  ): { endLine: number; matchedText: string } | null {
+    if (startLine + oldLinesTrimmed.length > fileLinesOriginal.length) {
+      return null;
+    }
+
+    for (let j = 0; j < oldLinesTrimmed.length; j++) {
+      const fileLine = fileLinesOriginal[startLine + j];
+      if (fileLine === undefined) return null;
+      const fileLineTrimmed = fileLine.trim();
+      const oldLineTrimmed = oldLinesTrimmed[j]!;
+
+      // Both blank → match
+      if (fileLineTrimmed === '' && oldLineTrimmed === '') continue;
+
+      const maxLen = Math.max(fileLineTrimmed.length, oldLineTrimmed.length);
+      if (maxLen === 0) continue;
+
+      // Short lines (e.g. "}", "return;") require exact trimmed match to avoid false positives
+      if (maxLen < MIN_FUZZY_LINE_LENGTH) {
+        if (fileLineTrimmed !== oldLineTrimmed) return null;
+        continue;
+      }
+
+      // Skip Levenshtein for very long lines (expensive) — fall back to trimmed comparison
+      if (maxLen > 500) {
+        if (fileLineTrimmed !== oldLineTrimmed) return null;
+        continue;
+      }
+
+      const dist = this.levenshteinDistance(fileLineTrimmed, oldLineTrimmed);
+      if (dist / maxLen > maxEditRatio) return null;
+    }
+
+    const endLine = startLine + oldLinesTrimmed.length - 1;
+    const matchedText = fileLinesOriginal
+      .slice(startLine, endLine + 1)
+      .join('\n');
+    return { endLine, matchedText };
+  }
+
+  /**
+   * Find matches using trimmed comparison (Stage 2).
+   */
+  private findMatchesTrimmed(
+    originalLines: string[],
+    oldText: string,
+    replaceAll: boolean,
+  ): { matches: EditMatch[]; errors: string[] } {
+    const matches: EditMatch[] = [];
+    const errors: string[] = [];
+
+    const oldLinesTrimmed = this.splitLines(oldText).map((l) => l.trim());
+
+    for (let lineIndex = 0; lineIndex < originalLines.length; lineIndex++) {
+      const candidate = this.tryMatchAtTrimmed(
+        originalLines,
+        lineIndex,
+        oldLinesTrimmed,
+      );
+      if (!candidate) continue;
+
+      const indentation = this.detectIndentationFromBlock(
+        candidate.matchedText,
+      );
+      matches.push({
+        editIndex: 0,
+        startLine: lineIndex,
+        endLine: candidate.endLine,
+        matchedText: candidate.matchedText,
+        indentation,
+      });
+
+      // Skip past matched region to avoid overlapping matches
+      lineIndex = candidate.endLine;
+    }
+
+    if (matches.length > 1 && !replaceAll) {
+      const matchLocations = matches
+        .map((m) => `lines ${m.startLine + 1}-${m.endLine + 1}`)
+        .join(', ');
+      errors.push(
+        `Found ${matches.length} trimmed matches at ${matchLocations}. Add more context or set replaceAll to true.`,
+      );
+      return { matches: [], errors };
+    }
+
+    return { matches, errors };
+  }
+
+  /**
+   * Find matches using fuzzy comparison (Stage 3).
+   * Only accepts single match to avoid ambiguity.
+   * Skips fuzzy matching for large oldText (>50 lines) to avoid O(n*m*L^2) cost.
+   */
+  private findMatchesFuzzy(
+    originalLines: string[],
+    oldText: string,
+  ): { matches: EditMatch[]; errors: string[] } {
+    const matches: EditMatch[] = [];
+    const errors: string[] = [];
+
+    const oldLinesTrimmed = this.splitLines(oldText).map((l) => l.trim());
+
+    // Skip fuzzy matching for large oldText to avoid expensive Levenshtein per-line cost
+    if (oldLinesTrimmed.length > MAX_FUZZY_OLD_TEXT_LINES) {
+      return { matches, errors };
+    }
+
+    for (let lineIndex = 0; lineIndex < originalLines.length; lineIndex++) {
+      const candidate = this.tryMatchAtFuzzy(
+        originalLines,
+        lineIndex,
+        oldLinesTrimmed,
+        MAX_FUZZY_EDIT_RATIO,
+      );
+      if (!candidate) continue;
+
+      const indentation = this.detectIndentationFromBlock(
+        candidate.matchedText,
+      );
+      matches.push({
+        editIndex: 0,
+        startLine: lineIndex,
+        endLine: candidate.endLine,
+        matchedText: candidate.matchedText,
+        indentation,
+      });
+
+      // Skip past matched region to avoid overlapping matches
+      lineIndex = candidate.endLine;
+    }
+
+    // Fuzzy matching only accepts exactly 1 match to avoid false positives
+    if (matches.length > 1) {
+      errors.push(
+        'Fuzzy matching found multiple candidates — too ambiguous. Add more context lines to oldText.',
+      );
+      return { matches: [], errors };
+    }
+
+    return { matches, errors };
+  }
+
+  /**
+   * Progressive matching pipeline: exact -> trimmed -> fuzzy.
+   * Returns the first stage that succeeds.
+   * File content is normalized once and shared across all stages.
+   */
+  private findMatchesProgressive(
     fileContent: string,
+    oldText: string,
+    replaceAll: boolean,
+  ): { matches: EditMatch[]; errors: string[]; matchStage?: MatchStage } {
+    // Split once, share across all stages
+    const originalLines = this.splitLines(fileContent);
+
+    // Stage 1: Exact (whitespace-normalized)
+    const stage1 = this.findMatches(originalLines, oldText, replaceAll);
+    if (stage1.matches.length > 0) {
+      return { ...stage1, matchStage: 'exact' };
+    }
+
+    // Only try fallback stages if stage 1 found zero matches (not ambiguous)
+    const hasZeroMatches = stage1.errors.some((e) =>
+      e.includes('Could not find match'),
+    );
+    if (!hasZeroMatches) {
+      return stage1; // Ambiguous match error — don't try fuzzier stages
+    }
+
+    // Stage 2: Trimmed (ignore leading whitespace)
+    const stage2 = this.findMatchesTrimmed(originalLines, oldText, replaceAll);
+    if (stage2.matches.length > 0) {
+      return { ...stage2, matchStage: 'trimmed' };
+    }
+
+    // Stage 3: Fuzzy (Levenshtein ≤15%)
+    // Only for single match (replaceAll not supported for fuzzy)
+    if (!replaceAll) {
+      const stage3 = this.findMatchesFuzzy(originalLines, oldText);
+      if (stage3.matches.length > 0) {
+        return { ...stage3, matchStage: 'fuzzy' };
+      }
+    }
+
+    // All stages failed — return stage 1 errors (most helpful, has similar blocks)
+    return stage1;
+  }
+
+  private findSimilarBlocks(
+    originalLines: string[],
     oldText: string,
     maxResults = 3,
   ): { lineStart: number; lineEnd: number; text: string }[] {
-    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
-    const oldLines = oldText
-      .replace(/\r\n/g, '\n')
-      .split('\n')
-      .filter((l) => l.trim().length > 0);
+    const oldLines = this.splitLines(oldText).filter(
+      (l) => l.trim().length > 0,
+    );
 
     if (oldLines.length === 0) return [];
 
@@ -271,7 +583,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         ?.trim()
         .toLowerCase()
         .substring(0, 50);
-      if (lineNormalized?.includes(firstOldLineNormalized.substring(0, 20))) {
+      if (
+        lineNormalized?.includes(
+          firstOldLineNormalized.substring(0, SIMILAR_BLOCK_PREFIX_LENGTH),
+        )
+      ) {
         const endLine = Math.min(i + oldLines.length + 2, originalLines.length);
         const blockText = originalLines.slice(i, endLine).join('\n');
         candidates.push({
@@ -286,11 +602,10 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   }
 
   private findMatches(
-    fileContent: string,
+    originalLines: string[],
     oldText: string,
     replaceAll: boolean,
   ): { matches: EditMatch[]; errors: string[] } {
-    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
     const fileLinesRaw = originalLines
       .map((l) => l.replace(/[ \t]+$/g, ''))
       .map((l) => (l.trim().length === 0 ? '' : l));
@@ -344,7 +659,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
           ? `${previewLines.join('\n')}...`
           : normalizedOld;
 
-      const similarBlocks = this.findSimilarBlocks(fileContent, oldText, 2);
+      const similarBlocks = this.findSimilarBlocks(originalLines, oldText, 2);
       let similarContext = '';
       if (similarBlocks.length > 0) {
         similarContext = dedent`
@@ -404,8 +719,8 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     const diffParts: string[] = [];
 
     for (const match of matches) {
-      const contextBefore = 2;
-      const contextAfter = 2;
+      const contextBefore = 5;
+      const contextAfter = 5;
 
       const startContext = Math.max(0, match.startLine - contextBefore);
       const endContext = Math.min(
@@ -456,7 +771,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     matches: EditMatch[],
     newText: string,
   ): string {
-    const lines = fileContent.replace(/\r\n/g, '\n').split('\n');
+    const lines = this.splitLines(fileContent);
 
     const sortedMatches = [...matches].sort(
       (a, b) => b.startLine - a.startLine,
@@ -479,6 +794,39 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return lines.join('\n');
   }
 
+  private async readFileContent(
+    filePath: string,
+    config: FilesBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<{ content: string } | { error: string }> {
+    const p = shQuote(filePath);
+    const res = await this.execCommand({ cmd: `cat ${p}` }, config, cfg);
+    if (res.exitCode !== 0) {
+      const stderr = res.stderr || '';
+      if (stderr.includes('No such file or directory')) {
+        return {
+          error: `File not found: ${filePath}. To create a new file, use files_write_file instead.`,
+        };
+      }
+      return { error: stderr || 'Failed to read file' };
+    }
+    return { content: res.stdout };
+  }
+
+  private validateExpectedHash(
+    fileContent: string,
+    expectedHash: string,
+  ): string | null {
+    const actualHash = createHash('sha256')
+      .update(fileContent)
+      .digest('hex')
+      .slice(0, 8);
+    if (actualHash !== expectedHash) {
+      return `File has changed since last read (expected hash: ${expectedHash}, actual: ${actualHash}). Re-read the file with files_read before editing.`;
+    }
+    return null;
+  }
+
   public async invoke(
     args: FilesApplyChangesToolSchemaType,
     config: FilesBaseToolConfig,
@@ -486,6 +834,23 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): Promise<ToolInvokeResult<FilesApplyChangesToolOutput>> {
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
+
+    // Multi-edit mode: apply an array of edits atomically
+    if (args.edits && args.edits.length > 0) {
+      return this.invokeMultiEdit(args, config, cfg, messageMetadata);
+    }
+
+    // Single-edit mode: require oldText and newText
+    if (args.oldText === undefined || args.newText === undefined) {
+      return {
+        output: {
+          success: false,
+          error:
+            'Either provide edits array or both oldText and newText parameters.',
+        },
+        messageMetadata,
+      };
+    }
 
     // Detect no-op calls early (oldText === newText)
     if (args.oldText !== '' && args.oldText === args.newText) {
@@ -499,61 +864,151 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       };
     }
 
-    const isNewFile = args.oldText === '';
-
-    if (isNewFile) {
-      const newContent = args.newText;
-
-      const parentDir = dirname(args.filePath);
-      const contentBase64 = Buffer.from(newContent, 'utf8').toString('base64');
-      const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-
-      const cmd = `mkdir -p ${this.shQuote(parentDir)} && printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
-
-      const writeResult = await this.execCommand(
-        {
-          cmd,
-        },
-        config,
-        cfg,
-      );
-
-      if (writeResult.exitCode !== 0) {
+    // Handle insertAfterLine mode
+    if (args.insertAfterLine !== undefined) {
+      if (args.oldText !== '') {
         return {
           output: {
             success: false,
-            error: writeResult.stderr || 'Failed to create file',
+            error:
+              'When using insertAfterLine, oldText must be an empty string.',
           },
           messageMetadata,
         };
       }
+
+      const readRes = await this.readFileContent(args.filePath, config, cfg);
+      if ('error' in readRes) {
+        return {
+          output: { success: false, error: readRes.error },
+          messageMetadata,
+        };
+      }
+
+      if (args.expectedHash) {
+        const hashError = this.validateExpectedHash(
+          readRes.content,
+          args.expectedHash,
+        );
+        if (hashError) {
+          return {
+            output: { success: false, error: hashError },
+            messageMetadata,
+          };
+        }
+      }
+
+      const lines = this.splitLines(readRes.content);
+      const insertLine = args.insertAfterLine;
+
+      if (insertLine > lines.length) {
+        return {
+          output: {
+            success: false,
+            error: `insertAfterLine ${insertLine} is beyond the file length (${lines.length} lines).`,
+          },
+          messageMetadata,
+        };
+      }
+
+      const newLines = this.splitLines(args.newText);
+      lines.splice(insertLine, 0, ...newLines);
+
+      const modifiedContent = lines.join('\n');
+      const writeRes = await this.writeFileContent(
+        args.filePath,
+        modifiedContent,
+        config,
+        cfg,
+      );
+      if (writeRes.error) {
+        return {
+          output: { success: false, error: writeRes.error },
+          messageMetadata,
+        };
+      }
+
+      // Generate diff for insertion
+      const diffParts: string[] = [];
+      const diffContextStart = Math.max(0, insertLine - 5);
+      diffParts.push(
+        `@@ -${insertLine + 1},0 +${insertLine + 1},${newLines.length} @@`,
+      );
+      for (let i = diffContextStart; i < insertLine && i < lines.length; i++) {
+        diffParts.push(` ${lines[i]}`);
+      }
+      for (const nl of newLines) {
+        diffParts.push(`+${nl}`);
+      }
+      const diffContextEnd = Math.min(
+        lines.length,
+        insertLine + newLines.length + 5,
+      );
+      for (let i = insertLine + newLines.length; i < diffContextEnd; i++) {
+        if (lines[i] !== undefined) {
+          diffParts.push(` ${lines[i]}`);
+        }
+      }
+      const diff = diffParts.join('\n');
+
+      // Generate post-edit context
+      const contextStart = Math.max(0, insertLine - 5);
+      const contextEnd = Math.min(
+        lines.length,
+        insertLine + newLines.length + 5,
+      );
+      const postEditContext = lines
+        .slice(contextStart, contextEnd)
+        .map((line, i) => `${contextStart + i + 1}\t${line}`)
+        .join('\n');
 
       return {
         output: {
           success: true,
           appliedEdits: 1,
           totalEdits: 1,
+          diff,
+          postEditContext,
         },
         messageMetadata,
       };
     }
 
-    const p = this.shQuote(args.filePath);
-    const readResult = await this.execCommand({ cmd: `cat ${p}` }, config, cfg);
-
-    if (readResult.exitCode !== 0) {
+    if (args.oldText === '') {
       return {
         output: {
           success: false,
-          error: readResult.stderr || 'Failed to read file',
+          error:
+            'Empty oldText without insertAfterLine is not supported. To create or overwrite a file, use files_write_file. To insert text at a specific line, provide insertAfterLine.',
         },
         messageMetadata,
       };
     }
 
-    const fileContent = readResult.stdout;
+    const readRes = await this.readFileContent(args.filePath, config, cfg);
+    if ('error' in readRes) {
+      return {
+        output: { success: false, error: readRes.error },
+        messageMetadata,
+      };
+    }
 
-    const { matches, errors } = this.findMatches(
+    const fileContent = readRes.content;
+
+    if (args.expectedHash) {
+      const hashError = this.validateExpectedHash(
+        fileContent,
+        args.expectedHash,
+      );
+      if (hashError) {
+        return {
+          output: { success: false, error: hashError },
+          messageMetadata,
+        };
+      }
+    }
+
+    const { matches, errors, matchStage } = this.findMatchesProgressive(
       fileContent,
       args.oldText,
       args.replaceAll ?? false,
@@ -569,41 +1024,218 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       };
     }
 
-    const originalLines = fileContent.replace(/\r\n/g, '\n').split('\n');
+    const originalLines = this.splitLines(fileContent);
     const diff = this.generateDiff(originalLines, matches, args.newText);
 
     const modifiedContent = this.applyEdits(fileContent, matches, args.newText);
 
-    const contentBase64 = Buffer.from(modifiedContent, 'utf8').toString(
-      'base64',
-    );
-    const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-    const cmd = `printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
-
-    const writeResult = await this.execCommand(
-      {
-        cmd,
-      },
+    const writeRes = await this.writeFileContent(
+      args.filePath,
+      modifiedContent,
       config,
       cfg,
     );
-
-    if (writeResult.exitCode !== 0) {
+    if (writeRes.error) {
       return {
-        output: {
-          success: false,
-          error: writeResult.stderr || 'Failed to write file',
-        },
+        output: { success: false, error: writeRes.error },
         messageMetadata,
       };
     }
+
+    // Generate post-edit context with line numbers
+    const modifiedLines = this.splitLines(modifiedContent);
+    const firstMatch = matches[0];
+    const lastMatch = matches[matches.length - 1];
+    let postEditContext: string | undefined;
+    if (firstMatch && lastMatch) {
+      const contextStart = Math.max(0, firstMatch.startLine - 5);
+      const newTextLineCount = args.newText.split('\n').length;
+      const oldTextLineCount = lastMatch.endLine - firstMatch.startLine + 1;
+      const lineDelta = newTextLineCount - oldTextLineCount;
+      const contextEnd = Math.min(
+        modifiedLines.length,
+        lastMatch.endLine + lineDelta + 6,
+      );
+      postEditContext = modifiedLines
+        .slice(contextStart, contextEnd)
+        .map((line, i) => `${contextStart + i + 1}\t${line}`)
+        .join('\n');
+    }
+
+    const matchWarning =
+      matchStage && matchStage !== 'exact'
+        ? ` (${matchStage} match used — verify diff carefully)`
+        : '';
 
     return {
       output: {
         success: true,
         appliedEdits: matches.length,
         totalEdits: 1,
-        diff,
+        diff: diff + matchWarning,
+        matchStage,
+        postEditContext,
+      },
+      messageMetadata,
+    };
+  }
+
+  private async invokeMultiEdit(
+    args: FilesApplyChangesToolSchemaType,
+    config: FilesBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    messageMetadata: { __title: string | undefined },
+  ): Promise<ToolInvokeResult<FilesApplyChangesToolOutput>> {
+    const edits = args.edits!;
+
+    // Validate no-op edits early
+    for (let i = 0; i < edits.length; i++) {
+      const edit = edits[i]!;
+      if (edit.oldText !== '' && edit.oldText === edit.newText) {
+        return {
+          output: {
+            success: false,
+            error: `Edit ${i}: oldText and newText are identical - no changes would be made.`,
+            failedEditIndex: i,
+          },
+          messageMetadata,
+        };
+      }
+    }
+
+    const readRes = await this.readFileContent(args.filePath, config, cfg);
+    if ('error' in readRes) {
+      return {
+        output: { success: false, error: readRes.error },
+        messageMetadata,
+      };
+    }
+
+    const originalContent = readRes.content;
+
+    if (args.expectedHash) {
+      const hashError = this.validateExpectedHash(
+        originalContent,
+        args.expectedHash,
+      );
+      if (hashError) {
+        return {
+          output: { success: false, error: hashError },
+          messageMetadata,
+        };
+      }
+    }
+
+    // Apply each edit sequentially against evolving content
+    let currentContent = originalContent;
+    const allDiffParts: string[] = [];
+    const matchStages: MatchStage[] = [];
+
+    for (let i = 0; i < edits.length; i++) {
+      const edit = edits[i]!;
+
+      if (edit.oldText === '') {
+        return {
+          output: {
+            success: false,
+            error: `Edit ${i}: empty oldText is not supported in multi-edit mode. Use insertAfterLine for insertions or files_write_file for new files.`,
+            failedEditIndex: i,
+          },
+          messageMetadata,
+        };
+      }
+
+      const { matches, errors, matchStage } = this.findMatchesProgressive(
+        currentContent,
+        edit.oldText,
+        edit.replaceAll ?? false,
+      );
+
+      if (errors.length > 0) {
+        return {
+          output: {
+            success: false,
+            error: `Edit ${i} failed: ${errors.join(' ')}`,
+            failedEditIndex: i,
+          },
+          messageMetadata,
+        };
+      }
+
+      if (matchStage) {
+        matchStages.push(matchStage);
+      }
+
+      // Generate diff for this edit
+      const currentLines = this.splitLines(currentContent);
+      const editDiff = this.generateDiff(currentLines, matches, edit.newText);
+      if (editDiff) {
+        allDiffParts.push(editDiff);
+      }
+
+      // Apply edit to get new content for next iteration
+      currentContent = this.applyEdits(currentContent, matches, edit.newText);
+    }
+
+    // All edits matched successfully — write the final result
+    const writeRes = await this.writeFileContent(
+      args.filePath,
+      currentContent,
+      config,
+      cfg,
+    );
+    if (writeRes.error) {
+      return {
+        output: { success: false, error: writeRes.error },
+        messageMetadata,
+      };
+    }
+
+    // Generate post-edit context from the final modified content
+    const modifiedLines = this.splitLines(currentContent);
+    const lastEdit = edits[edits.length - 1];
+    let postEditContext: string | undefined;
+    if (lastEdit) {
+      // Show context around the last edit's approximate location
+      const lastEditLines = this.splitLines(lastEdit.oldText);
+      // Find where the last edit landed in the final content
+      const lastEditNewLines = this.splitLines(lastEdit.newText);
+      // Use a simple heuristic: search for the newText in the final content
+      const searchSnippet = lastEditNewLines[0]?.trim();
+      let approxLine = modifiedLines.length - 1;
+      if (searchSnippet) {
+        for (let i = modifiedLines.length - 1; i >= 0; i--) {
+          if (modifiedLines[i]?.trim().includes(searchSnippet)) {
+            approxLine = i;
+            break;
+          }
+        }
+      }
+      const contextStart = Math.max(0, approxLine - lastEditLines.length - 5);
+      const contextEnd = Math.min(
+        modifiedLines.length,
+        approxLine + lastEditNewLines.length + 5,
+      );
+      postEditContext = modifiedLines
+        .slice(contextStart, contextEnd)
+        .map((line, i) => `${contextStart + i + 1}\t${line}`)
+        .join('\n');
+    }
+
+    const nonExactStages = matchStages.filter((s) => s !== 'exact');
+    const matchWarning =
+      nonExactStages.length > 0
+        ? ` (non-exact matches used: ${nonExactStages.join(', ')} — verify diff carefully)`
+        : '';
+
+    return {
+      output: {
+        success: true,
+        appliedEdits: edits.length,
+        totalEdits: edits.length,
+        diff: allDiffParts.join('\n') + matchWarning,
+        matchStages,
+        postEditContext,
       },
       messageMetadata,
     };

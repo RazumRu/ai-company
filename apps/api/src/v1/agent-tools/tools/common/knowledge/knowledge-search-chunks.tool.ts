@@ -18,9 +18,24 @@ export const KnowledgeSearchChunksSchema = z.object({
   docIds: z
     .array(z.number().int().positive())
     .min(1)
-    .describe('Document public IDs to search within'),
-  query: z.string().min(1).describe('Natural language query to search for'),
-  topK: z.number().int().min(1).max(20).optional().describe('Max chunks'),
+    .describe(
+      'Document public IDs to search within (obtained from knowledge_search_docs results). Keep this focused — searching fewer documents yields more relevant results.',
+    ),
+  query: z
+    .string()
+    .min(1)
+    .describe(
+      'Natural-language query describing what information you need (e.g., "rate limit configuration", "database migration process"). Semantic search — phrasing matters.',
+    ),
+  topK: z
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .optional()
+    .describe(
+      'Maximum number of chunk snippets to return (default: 5, max: 20). Start with 3-7 for focused queries.',
+    ),
 });
 
 export type KnowledgeSearchChunksSchemaType = z.infer<
@@ -41,7 +56,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
 > {
   public name = 'knowledge_search_chunks';
   public description =
-    'Search knowledge chunks for specific documents and return snippets.';
+    'Perform semantic search within specific knowledge documents and return the most relevant content snippets ranked by similarity to your query. Requires document public IDs obtained from knowledge_search_docs. Returns up to 20 chunk snippets with chunk IDs and relevance scores — use knowledge_get_chunks to retrieve full text for the most relevant chunks. Start with topK 3-7 for focused queries and increase if needed.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,
@@ -56,17 +71,43 @@ export class KnowledgeSearchChunksTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Searches knowledge chunks for specific documents using vector search and returns snippets.
+      Semantic search within specific knowledge documents. Returns the most relevant content snippets ranked by similarity to your query.
 
       ### When to Use
-      After you have identified relevant document IDs and need the best chunk snippets.
+      - After \`knowledge_search_docs\` has identified relevant document IDs
+      - When you need specific information from known documents (not the full content)
+      - When the document policy does NOT allow full content retrieval (\`knowledge_get_doc\` would fail)
+
+      ### When NOT to Use
+      - You don't have document IDs yet → use \`knowledge_search_docs\` first
+      - The document policy says to fetch full content → use \`knowledge_get_doc\` instead
+      - You already have the full document content → no need to search chunks
+
+      ### Workflow
+      1. \`knowledge_search_docs\` → get relevant document public IDs
+      2. **\`knowledge_search_chunks\`** → search within those documents for specific information
+      3. \`knowledge_get_chunks\` → retrieve full text for the most relevant chunks (search returns snippets only)
 
       ### Best Practices
-      Keep docIds focused. Use document public IDs from knowledge_search_docs. Use a concise query and keep topK small (3-7).
+      - Keep \`docIds\` focused — searching fewer documents yields more relevant results
+      - Use natural-language queries (semantic search — phrasing matters)
+      - Start with topK 3-7 for focused queries; increase if needed
+      - Review snippet scores to gauge relevance before fetching full chunks
 
       ### Examples
+      **1. Search one document:**
       \`\`\`json
-      {"docIds": [101], "query": "rate limits", "topK": 5}
+      {"docIds": [101], "query": "rate limit configuration", "topK": 5}
+      \`\`\`
+
+      **2. Search across multiple documents:**
+      \`\`\`json
+      {"docIds": [101, 102, 103], "query": "database migration process", "topK": 7}
+      \`\`\`
+
+      **3. Narrow search:**
+      \`\`\`json
+      {"docIds": [201], "query": "authentication middleware setup", "topK": 3}
       \`\`\`
     `;
   }

@@ -39,32 +39,36 @@ describe('GhPushTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Push commits from a local git');
+      expect(tool.description).toContain(
+        'Push local commits to the remote GitHub repository',
+      );
     });
   });
 
   describe('schema', () => {
-    it('should validate with no fields (all optional)', () => {
-      const validData = {};
-      expect(() => tool.validate(validData)).not.toThrow();
+    it('should reject missing path field', () => {
+      const invalidData = {};
+      expect(() => tool.validate(invalidData)).toThrow();
     });
 
-    it('should validate with path field', () => {
+    it('should validate with path field only', () => {
       const validData = {
         path: '/path/to/repo',
       };
       expect(() => tool.validate(validData)).not.toThrow();
     });
 
-    it('should validate with remote field', () => {
+    it('should validate with path and remote fields', () => {
       const validData = {
+        path: '/path/to/repo',
         remote: 'upstream',
       };
       expect(() => tool.validate(validData)).not.toThrow();
     });
 
-    it('should validate with branch field', () => {
+    it('should validate with path and branch fields', () => {
       const validData = {
+        path: '/path/to/repo',
         branch: 'main',
       };
       expect(() => tool.validate(validData)).not.toThrow();
@@ -88,7 +92,9 @@ describe('GhPushTool', () => {
     };
 
     it('should push successfully with default remote and current branch', async () => {
-      const args: GhPushToolSchemaType = {};
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
 
       vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
         exitCode: 0,
@@ -103,7 +109,7 @@ describe('GhPushTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execGhCommand).toHaveBeenCalledTimes(1);
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'git push "origin"' },
+        { cmd: 'cd "/runtime-workspace/repo" && git push "origin"' },
         mockConfig,
         mockCfg,
       );
@@ -111,6 +117,7 @@ describe('GhPushTool', () => {
 
     it('should push successfully with custom remote', async () => {
       const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
         remote: 'upstream',
       };
 
@@ -126,7 +133,7 @@ describe('GhPushTool', () => {
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'git push "upstream"' },
+        { cmd: 'cd "/runtime-workspace/repo" && git push "upstream"' },
         mockConfig,
         mockCfg,
       );
@@ -134,6 +141,7 @@ describe('GhPushTool', () => {
 
     it('should push successfully with custom branch', async () => {
       const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
         branch: 'feature-branch',
       };
 
@@ -149,7 +157,9 @@ describe('GhPushTool', () => {
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'git push "origin" "feature-branch"' },
+        {
+          cmd: 'cd "/runtime-workspace/repo" && git push "origin" "feature-branch"',
+        },
         mockConfig,
         mockCfg,
       );
@@ -157,6 +167,7 @@ describe('GhPushTool', () => {
 
     it('should push successfully with custom remote and branch', async () => {
       const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
         remote: 'upstream',
         branch: 'main',
       };
@@ -173,7 +184,9 @@ describe('GhPushTool', () => {
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'git push "upstream" "main"' },
+        {
+          cmd: 'cd "/runtime-workspace/repo" && git push "upstream" "main"',
+        },
         mockConfig,
         mockCfg,
       );
@@ -228,7 +241,9 @@ describe('GhPushTool', () => {
     });
 
     it('should handle push failure', async () => {
-      const args: GhPushToolSchemaType = {};
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
 
       vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
         exitCode: 1,
@@ -244,7 +259,9 @@ describe('GhPushTool', () => {
     });
 
     it('should handle push failure with stdout error', async () => {
-      const args: GhPushToolSchemaType = {};
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
 
       vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
         exitCode: 1,
@@ -260,7 +277,9 @@ describe('GhPushTool', () => {
     });
 
     it('should handle push failure with no error message', async () => {
-      const args: GhPushToolSchemaType = {};
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
 
       vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
         exitCode: 1,
@@ -277,6 +296,7 @@ describe('GhPushTool', () => {
 
     it('should handle branch name with special characters', async () => {
       const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
         branch: 'feature/my-branch',
       };
 
@@ -291,7 +311,9 @@ describe('GhPushTool', () => {
 
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'git push "origin" "feature/my-branch"' },
+        {
+          cmd: 'cd "/runtime-workspace/repo" && git push "origin" "feature/my-branch"',
+        },
         mockConfig,
         mockCfg,
       );
@@ -299,6 +321,7 @@ describe('GhPushTool', () => {
 
     it('should handle remote name with special characters', async () => {
       const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
         remote: 'my-remote',
       };
 
@@ -313,30 +336,7 @@ describe('GhPushTool', () => {
 
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'git push "my-remote"' },
-        mockConfig,
-        mockCfg,
-      );
-    });
-
-    it('should work without path parameter', async () => {
-      const args: GhPushToolSchemaType = {
-        remote: 'origin',
-        branch: 'main',
-      };
-
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-        execPath: '/runtime-workspace/test-thread-123',
-      });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'git push "origin" "main"' },
+        { cmd: 'cd "/runtime-workspace/repo" && git push "my-remote"' },
         mockConfig,
         mockCfg,
       );

@@ -64,7 +64,7 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
 
   public name = 'finish';
   public description =
-    'End your work by signaling completion or requesting required missing input. Call this tool ONLY when you are completely done with all tasks - do not call it alongside other tools.';
+    'Signal that all work is complete or request missing information from the user. This is the ONLY way to properly end your turn — you must always call it when done instead of sending a plain assistant message. It must be the sole tool call in its turn; never call it alongside other tools. Set needsMoreInfo to true when you cannot proceed without specific user input, otherwise set it to false for normal completion.';
 
   protected override generateTitle(
     args: FinishToolSchemaType,

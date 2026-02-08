@@ -67,7 +67,7 @@ describe('FilesFindPathsTool', () => {
     expect(output.files).toEqual(['/repo/a.ts', '/repo/b.ts']);
     expect(output.returned).toBe(2);
     expect(output.truncated).toBe(false);
-    expect(output.nextCursor).toBeNull();
+    expect((output as any).nextCursor).toBeUndefined();
     expect((tool as any).execCommand).toHaveBeenCalledWith(
       {
         cmd: expect.stringContaining("cd '/repo' &&"),
@@ -177,6 +177,6 @@ describe('FilesFindPathsTool', () => {
     expect(output.files).toEqual([]);
     expect(output.returned).toBe(0);
     expect(output.truncated).toBe(false);
-    expect(output.nextCursor).toBeNull();
+    expect((output as any).nextCursor).toBeUndefined();
   });
 });

@@ -66,14 +66,13 @@ export type FilesFindPathsToolOutput = {
   cwd: string;
   returned: number;
   truncated: boolean;
-  nextCursor: string | null;
 };
 
 @Injectable()
 export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaType> {
   public name = 'files_find_paths';
   public description =
-    'Find file paths by glob and return absolute paths (no content search).';
+    'Find file paths matching a glob pattern and return their absolute paths without reading file content. Useful for discovering project structure, locating files by extension or name, and listing directory contents. Returns up to maxResults paths (default 200). Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Set includeSubdirectories=false to search only the specified directory without recursion.';
 
   protected override generateTitle(
     args: FilesFindPathsToolSchemaType,
@@ -89,32 +88,59 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Find file paths by glob (path/name only). Returns absolute paths.
+      Find file paths by glob pattern. Returns absolute paths without reading file content. Use this to discover project structure, locate files by extension or name, and list directory contents. Returns up to \`maxResults\` paths (default 200).
 
       ### When to Use
-      - Locating files before read/edit
-      - Quick directory listing
-      - Finding config files by pattern
+      - Locating files by extension: \`"*.ts"\`, \`"*.json"\`, \`"*.yaml"\`
+      - Finding files by name pattern: \`"*controller*"\`, \`"*migration*"\`
+      - Listing a directory's contents (set \`includeSubdirectories=false\`)
+      - Checking if a file exists before reading or editing
 
       ### When NOT to Use
-      - Content search -> \`files_search_text\`
-      - Structure overview -> \`files_directory_tree\`
+      - Searching file contents → use \`files_search_text\` or \`codebase_search\`
+      - Reading file content → use \`files_read\`
+      - Viewing directory tree → use \`files_directory_tree\` (visual tree format)
+
+      ### Glob Pattern Syntax
+      - \`*\` — matches any characters within a filename (not path separators)
+      - \`*.ts\` — all TypeScript files
+      - \`*controller*\` — files with "controller" anywhere in the name
+      - \`*.{ts,tsx}\` — TypeScript and TSX files
+      - \`Dockerfile*\` — Dockerfile and variants
 
       ### Best Practices
-      - Use specific patterns and small maxResults to limit output.
-      - For listing a folder: includeSubdirectories=false + filenamePattern="*".
-      - Use maxDepth to limit traversal.
-      - Add skipPatterns if results include build artifacts.
+      - Use specific patterns and small \`maxResults\` to limit output
+      - For listing a single folder: set \`includeSubdirectories=false\` with \`filenamePattern="*"\`
+      - Common build/cache folders (node_modules, dist, .next, etc.) are excluded by default
+      - Use \`maxDepth\` to limit recursion depth for large repos
+      - Use \`skipPatterns\` to exclude additional directories: \`["test/**", "docs/**"]\`
+
+      ### Output Format
+      Returns an object with:
+      - \`files\` — array of absolute file paths
+      - \`cwd\` — the working directory used for the search
+      - \`returned\` — number of paths returned
+      - \`truncated\` — true if more results exist beyond \`maxResults\`
 
       ### Examples
-      **1) List a single directory (non-recursive):**
+      **1. Find TypeScript files:**
       \`\`\`json
-      {"searchInDirectory":"/repo/src","filenamePattern":"*","includeSubdirectories":false}
+      {"searchInDirectory":"/repo/src","filenamePattern":"*.ts","maxResults":50}
       \`\`\`
 
-      **2) Find all TypeScript files (limited):**
+      **2. List directory contents (non-recursive):**
       \`\`\`json
-      {"searchInDirectory":"/repo","filenamePattern":"**/*.ts","maxResults":100}
+      {"searchInDirectory":"/repo/src/modules","filenamePattern":"*","includeSubdirectories":false}
+      \`\`\`
+
+      **3. Find migration files:**
+      \`\`\`json
+      {"searchInDirectory":"/repo","filenamePattern":"*migration*","maxResults":20}
+      \`\`\`
+
+      **4. Find config files with custom exclusions:**
+      \`\`\`json
+      {"searchInDirectory":"/repo","filenamePattern":"*.config.*","skipPatterns":["node_modules/**","dist/**","test/**"]}
       \`\`\`
     `;
   }
@@ -138,19 +164,7 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
     const skipPatterns =
       args.skipPatterns && args.skipPatterns.length > 0
         ? args.skipPatterns
-        : [
-            'node_modules/**',
-            'dist/**',
-            'build/**',
-            'coverage/**',
-            '.turbo/**',
-            '.next/**',
-            '.cache/**',
-            'out/**',
-            '.output/**',
-            'tmp/**',
-            'temp/**',
-          ];
+        : this.defaultSkipPatterns;
 
     const fdCmdParts: string[] = [
       'fd',
@@ -200,6 +214,19 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
 
     const res = await this.execCommand({ cmd }, config, cfg);
 
+    if (res.exitCode !== 0) {
+      return {
+        output: {
+          error: res.stderr || res.stdout || 'Failed to find paths',
+          files: [],
+          cwd: (args.searchInDirectory ?? '').trim(),
+          returned: 0,
+          truncated: false,
+        },
+        messageMetadata,
+      };
+    }
+
     const stdoutLines = res.stdout.split('\n');
     const cwdIdx = stdoutLines.indexOf(cwdMarker);
     const filesIdx = stdoutLines.indexOf(filesMarker);
@@ -223,27 +250,12 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
     const truncated = rawFiles.length > maxResults;
     const files = truncated ? rawFiles.slice(0, maxResults) : rawFiles;
 
-    if (res.exitCode !== 0) {
-      return {
-        output: {
-          error: res.stderr || res.stdout || 'Failed to find paths',
-          files: [],
-          cwd,
-          returned: 0,
-          truncated: false,
-          nextCursor: null,
-        },
-        messageMetadata,
-      };
-    }
-
     return {
       output: {
         files,
         cwd,
         returned: files.length,
         truncated,
-        nextCursor: null,
       },
       messageMetadata,
     };

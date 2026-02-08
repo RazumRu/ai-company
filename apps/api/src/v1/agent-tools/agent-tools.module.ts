@@ -9,10 +9,8 @@ import { CommunicationExecTool } from './tools/common/communication/communicatio
 import { CommunicationToolGroup } from './tools/common/communication/communication-tool-group';
 import { FilesApplyChangesTool } from './tools/common/files/files-apply-changes.tool';
 import { FilesCodebaseSearchTool } from './tools/common/files/files-codebase-search.tool';
-import { FilesCreateDirectoryTool } from './tools/common/files/files-create-directory.tool';
 import { FilesDeleteTool } from './tools/common/files/files-delete.tool';
 import { FilesDirectoryTreeTool } from './tools/common/files/files-directory-tree.tool';
-import { FilesEditTool } from './tools/common/files/files-edit.tool';
 import { FilesFindPathsTool } from './tools/common/files/files-find-paths.tool';
 import { FilesMoveFileTool } from './tools/common/files/files-move-file.tool';
 import { FilesReadTool } from './tools/common/files/files-read.tool';
@@ -67,10 +65,8 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     FilesReadTool,
     FilesSearchTextTool,
     FilesCodebaseSearchTool,
-    FilesCreateDirectoryTool,
     FilesMoveFileTool,
     FilesWriteFileTool,
-    FilesEditTool,
     FilesApplyChangesTool,
     FilesDeleteTool,
     FilesToolGroup,
@@ -98,10 +94,8 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     FilesReadTool,
     FilesSearchTextTool,
     FilesCodebaseSearchTool,
-    FilesCreateDirectoryTool,
     FilesMoveFileTool,
     FilesWriteFileTool,
-    FilesEditTool,
     FilesApplyChangesTool,
     FilesDeleteTool,
     FilesToolGroup,
