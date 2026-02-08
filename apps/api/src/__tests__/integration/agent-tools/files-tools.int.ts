@@ -1119,6 +1119,417 @@ describe('Files tools integration', () => {
       },
     );
   });
+
+  describe('files_apply_changes: multi-edit mode', () => {
+    it(
+      'applies multiple edits atomically in one call',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/multi-edit-success.ts`;
+        const content = [
+          "import { A } from './a';",
+          '',
+          'export function processA(data: string) {',
+          '  return A.run(data);',
+          '}',
+          '',
+          'export function formatOutput(result: string) {',
+          '  return `result: ${result}`;',
+          '}',
+        ].join('\n');
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            edits: [
+              {
+                oldText: "import { A } from './a';",
+                newText: "import { A } from './a';\nimport { B } from './b';",
+              },
+              {
+                oldText: '  return A.run(data);',
+                newText: '  return B.wrap(A.run(data));',
+              },
+            ],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+        expect(editResult.appliedEdits).toBe(2);
+        expect(editResult.totalEdits).toBe(2);
+        expect(editResult.diff).toBeDefined();
+
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const afterContent = stripLineNumbers(
+          readResult.files?.[0]?.content || '',
+        );
+        expect(afterContent).toContain("import { B } from './b'");
+        expect(afterContent).toContain('B.wrap(A.run(data))');
+        // Untouched content preserved
+        expect(afterContent).toContain('export function formatOutput');
+      },
+    );
+
+    it(
+      'does not write file when a mid-array edit fails to match',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/multi-edit-rollback.ts`;
+        const content = 'const a = 1;\nconst b = 2;\nconst c = 3;';
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // First edit matches, second does not
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            edits: [
+              { oldText: 'const a = 1;', newText: 'const a = 10;' },
+              {
+                oldText: 'const nonexistent = 99;',
+                newText: 'const replaced = 99;',
+              },
+              { oldText: 'const c = 3;', newText: 'const c = 30;' },
+            ],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(false);
+        expect(editResult.failedEditIndex).toBe(1);
+        expect(editResult.error).toContain('Edit 1 failed');
+
+        // File must be unchanged on disk
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const afterContent = stripLineNumbers(
+          readResult.files?.[0]?.content || '',
+        );
+        expect(afterContent).toContain('const a = 1;');
+        expect(afterContent).toContain('const b = 2;');
+        expect(afterContent).toContain('const c = 3;');
+      },
+    );
+  });
+
+  describe('files_apply_changes: replaceAll mode', () => {
+    it(
+      'replaces all occurrences when replaceAll is true',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = `${WORKSPACE_DIR}/replace-all.ts`;
+        const content = [
+          "const step1 = 'pending';",
+          'doWork();',
+          "const step2 = 'pending';",
+          'doMoreWork();',
+          "const step3 = 'pending';",
+        ].join('\n');
+
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Each "const stepN = 'pending';" is a unique full line,
+        // but they all share the substring "'pending'" which is too short for a full-line match.
+        // Use a full-line pattern that appears 3 times: doWork() appears only once.
+        // Better approach: use lines that are truly identical.
+        const filePath2 = `${WORKSPACE_DIR}/replace-all-2.ts`;
+        const content2 = [
+          '// TODO: implement',
+          'function a() {}',
+          '// TODO: implement',
+          'function b() {}',
+          '// TODO: implement',
+        ].join('\n');
+
+        await filesWriteFileTool.invoke(
+          { filePath: filePath2, fileContent: content2 },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const { output: editResult } = await filesApplyChangesTool.invoke(
+          {
+            filePath: filePath2,
+            oldText: '// TODO: implement',
+            newText: '// DONE',
+            replaceAll: true,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(editResult.success).toBe(true);
+        expect(editResult.appliedEdits).toBe(3);
+
+        const { output: readResult } = await filesReadTool.invoke(
+          { filesToRead: [{ filePath: filePath2 }] },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        const afterContent = stripLineNumbers(
+          readResult.files?.[0]?.content || '',
+        );
+        expect(afterContent).not.toContain('TODO: implement');
+        expect(afterContent.match(/\/\/ DONE/g)?.length).toBe(3);
+        // Untouched content preserved
+        expect(afterContent).toContain('function a() {}');
+        expect(afterContent).toContain('function b() {}');
+      },
+    );
+  });
+
+  describe('files_read: batch read multiple files', () => {
+    it(
+      'reads multiple files in a single call with correct content and metadata',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const files = [
+          { name: 'batch-a.ts', content: 'const a = 1;' },
+          { name: 'batch-b.ts', content: 'const b = 2;\nconst b2 = 3;' },
+          { name: 'batch-c.ts', content: 'const c = "hello";' },
+        ];
+
+        for (const f of files) {
+          await filesWriteFileTool.invoke(
+            {
+              filePath: `${WORKSPACE_DIR}/${f.name}`,
+              fileContent: f.content,
+            },
+            { runtimeProvider: runtimeThreadProvider },
+            RUNNABLE_CONFIG,
+          );
+        }
+
+        const { output: readResult } = await filesReadTool.invoke(
+          {
+            filesToRead: files.map((f) => ({
+              filePath: `${WORKSPACE_DIR}/${f.name}`,
+            })),
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(readResult.error).toBeUndefined();
+        expect(readResult.files).toHaveLength(3);
+
+        for (let i = 0; i < files.length; i++) {
+          const file = readResult.files![i]!;
+          expect(file.error).toBeUndefined();
+          expect(file.filePath).toBe(`${WORKSPACE_DIR}/${files[i]!.name}`);
+          expect(file.contentHash).toBeDefined();
+          expect(file.contentHash!.length).toBe(8);
+          expect(file.fileSizeBytes).toBeGreaterThan(0);
+          const rawContent = stripLineNumbers(file.content || '');
+          expect(rawContent).toBe(files[i]!.content);
+        }
+
+        // Second file has 2 lines
+        expect(readResult.files![1]!.lineCount).toBe(2);
+      },
+    );
+  });
+
+  describe('files_search_text: glob filters', () => {
+    it(
+      'filters results with onlyInFilesMatching',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const searchDir = `${WORKSPACE_DIR}/glob-filter-test`;
+        const marker = 'UNIQUE_SEARCH_MARKER_123';
+
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${searchDir}/code.ts`,
+            fileContent: `const x = "${marker}";`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${searchDir}/data.json`,
+            fileContent: `{"key": "${marker}"}`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Search only in .ts files
+        const { output: tsOnly } = await filesSearchTextTool.invoke(
+          {
+            searchInDirectory: searchDir,
+            textPattern: marker,
+            onlyInFilesMatching: ['*.ts'],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(tsOnly.error).toBeUndefined();
+        expect(tsOnly.matches).toHaveLength(1);
+        expect(tsOnly.matches![0]!.filePath).toContain('code.ts');
+      },
+    );
+
+    it(
+      'excludes results with skipFilesMatching',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const searchDir = `${WORKSPACE_DIR}/glob-skip-test`;
+        const marker = 'SKIP_FILTER_MARKER_456';
+
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${searchDir}/main.ts`,
+            fileContent: `const val = "${marker}";`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${searchDir}/main.spec.ts`,
+            fileContent: `test("${marker}", () => {});`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Skip spec files
+        const { output: noSpecs } = await filesSearchTextTool.invoke(
+          {
+            searchInDirectory: searchDir,
+            textPattern: marker,
+            skipFilesMatching: ['*.spec.ts'],
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(noSpecs.error).toBeUndefined();
+        expect(noSpecs.matches).toHaveLength(1);
+        expect(noSpecs.matches![0]!.filePath).toContain('main.ts');
+        expect(noSpecs.matches![0]!.filePath).not.toContain('.spec.');
+      },
+    );
+  });
+
+  describe('files_apply_changes: error cases', () => {
+    it(
+      'returns helpful error when file does not exist',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const { output: result } = await filesApplyChangesTool.invoke(
+          {
+            filePath: `${WORKSPACE_DIR}/nonexistent-file-${Date.now()}.ts`,
+            oldText: 'some text',
+            newText: 'replaced text',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('File not found');
+        expect(result.error).toContain('files_write_file');
+      },
+    );
+
+    it(
+      'rejects no-op when oldText equals newText',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const filePath = await writeSampleFile('noop-test.ts');
+
+        const { output: result } = await filesApplyChangesTool.invoke(
+          {
+            filePath,
+            oldText: 'export function greet',
+            newText: 'export function greet',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('identical');
+      },
+    );
+  });
+
+  describe('files_delete: error cases', () => {
+    it(
+      'returns error when deleting nonexistent file',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        const { output: result } = await filesDeleteTool.invoke(
+          {
+            filePath: `${WORKSPACE_DIR}/does-not-exist-${Date.now()}.ts`,
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('File not found');
+      },
+    );
+
+    it(
+      'returns error when trying to delete a directory',
+      { timeout: INT_TEST_TIMEOUT },
+      async () => {
+        // Create a directory by writing a file in it
+        const dirPath = `${WORKSPACE_DIR}/dir-delete-test-${Date.now()}`;
+        await filesWriteFileTool.invoke(
+          {
+            filePath: `${dirPath}/dummy.txt`,
+            fileContent: 'placeholder',
+          },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        // Try to delete the directory itself
+        const { output: result } = await filesDeleteTool.invoke(
+          { filePath: dirPath },
+          { runtimeProvider: runtimeThreadProvider },
+          RUNNABLE_CONFIG,
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('directory');
+      },
+    );
+  });
 });
 
 describe('Files tools graph execution', () => {
