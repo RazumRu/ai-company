@@ -66,7 +66,6 @@ export type FilesFindPathsToolOutput = {
   cwd: string;
   returned: number;
   truncated: boolean;
-  nextCursor: string | null;
 };
 
 @Injectable()
@@ -103,7 +102,6 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       - Viewing directory tree → use \`files_directory_tree\` (visual tree format)
 
       ### Glob Pattern Syntax
-      Uses \`fd\` glob syntax:
       - \`*\` — matches any characters within a filename (not path separators)
       - \`*.ts\` — all TypeScript files
       - \`*controller*\` — files with "controller" anywhere in the name
@@ -166,19 +164,7 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
     const skipPatterns =
       args.skipPatterns && args.skipPatterns.length > 0
         ? args.skipPatterns
-        : [
-            'node_modules/**',
-            'dist/**',
-            'build/**',
-            'coverage/**',
-            '.turbo/**',
-            '.next/**',
-            '.cache/**',
-            'out/**',
-            '.output/**',
-            'tmp/**',
-            'temp/**',
-          ];
+        : this.defaultSkipPatterns;
 
     const fdCmdParts: string[] = [
       'fd',
@@ -259,7 +245,6 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
           cwd,
           returned: 0,
           truncated: false,
-          nextCursor: null,
         },
         messageMetadata,
       };
@@ -271,7 +256,6 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
         cwd,
         returned: files.length,
         truncated,
-        nextCursor: null,
       },
       messageMetadata,
     };

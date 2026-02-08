@@ -121,7 +121,10 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
     const res = await this.execCommand({ cmd }, config, cfg);
     if (res.exitCode !== 0) {
       return {
-        output: { success: false, error: res.stderr || res.stdout || 'Failed' },
+        output: {
+          success: false,
+          error: res.stderr || res.stdout || 'Failed to move file',
+        },
         messageMetadata,
       };
     }

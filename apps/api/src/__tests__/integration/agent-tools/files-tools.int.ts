@@ -71,8 +71,7 @@ const hasTextMatch = (result: SearchTextResult, snippet: string) =>
   Array.isArray(result.matches) &&
   result.matches.some(
     (match) =>
-      typeof match?.data?.lines?.text === 'string' &&
-      match.data.lines.text.includes(snippet),
+      typeof match?.lineText === 'string' && match.lineText.includes(snippet),
   );
 
 const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
@@ -1348,7 +1347,7 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
       }
 
       const parsed = searchExecution.parsedResult as
-        | { matches?: { data?: { path?: { text?: string } } }[] }
+        | { matches?: { filePath?: string }[] }
         | undefined;
 
       if (!Array.isArray(parsed?.matches) || parsed.matches.length === 0) {
@@ -1359,7 +1358,7 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
         );
       }
 
-      const firstPath = parsed.matches[0]?.data?.path?.text;
+      const firstPath = parsed.matches[0]?.filePath;
       expect(firstPath).toContain('/src/sample.ts');
     },
   );

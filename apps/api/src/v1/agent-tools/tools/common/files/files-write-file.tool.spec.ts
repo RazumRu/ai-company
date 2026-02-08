@@ -37,16 +37,19 @@ describe('FilesWriteFileTool', () => {
     );
 
     expect(output.success).toBe(true);
-    const callArg = execSpy.mock.calls[0]?.[0] as
+    // First call: mkdir -p for parent dir
+    const mkdirCallArg = execSpy.mock.calls[0]?.[0] as
       | { cmd?: string | string[] }
       | undefined;
-    const cmd =
-      typeof callArg?.cmd === 'string'
-        ? callArg.cmd
-        : Array.isArray(callArg?.cmd)
-          ? callArg.cmd.join(' && ')
-          : '';
-    expect(cmd).toContain('base64 -d');
-    expect(cmd).toContain('mv --');
+    const mkdirCmd =
+      typeof mkdirCallArg?.cmd === 'string' ? mkdirCallArg.cmd : '';
+    expect(mkdirCmd).toContain('mkdir -p');
+    // Second call: atomic write via shared writeFileContent
+    const writeCallArg = execSpy.mock.calls[1]?.[0] as
+      | { cmd?: string | string[] }
+      | undefined;
+    const writeCmd =
+      typeof writeCallArg?.cmd === 'string' ? writeCallArg.cmd : '';
+    expect(writeCmd).toContain('base64 -d');
   });
 });

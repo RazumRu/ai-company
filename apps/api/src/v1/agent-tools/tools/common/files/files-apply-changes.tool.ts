@@ -1,5 +1,4 @@
-import { Buffer } from 'node:buffer';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
@@ -825,23 +824,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       return { error: stderr || 'Failed to read file' };
     }
     return { content: res.stdout };
-  }
-
-  private async writeFileContent(
-    filePath: string,
-    content: string,
-    config: FilesBaseToolConfig,
-    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<{ error?: string }> {
-    const contentBase64 = Buffer.from(content, 'utf8').toString('base64');
-    const tempFile = `${filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-    const cmd = `printf %s ${shQuote(contentBase64)} | base64 -d > ${shQuote(tempFile)} && mv ${shQuote(tempFile)} ${shQuote(filePath)}`;
-
-    const res = await this.execCommand({ cmd }, config, cfg);
-    if (res.exitCode !== 0) {
-      return { error: res.stderr || 'Failed to write file' };
-    }
-    return {};
   }
 
   private validateExpectedHash(

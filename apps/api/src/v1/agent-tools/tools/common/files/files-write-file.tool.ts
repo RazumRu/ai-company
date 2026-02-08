@@ -1,5 +1,3 @@
-import { Buffer } from 'node:buffer';
-import { randomBytes } from 'node:crypto';
 import { basename, dirname } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
@@ -104,25 +102,35 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
 
+    // Ensure parent directory exists
     const parentDir = dirname(args.filePath);
-    const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-    const contentBase64 = Buffer.from(args.fileContent, 'utf8').toString(
-      'base64',
+    const mkdirRes = await this.execCommand(
+      { cmd: `mkdir -p ${shQuote(parentDir)}` },
+      config,
+      cfg,
     );
-
-    const cmd = [
-      `mkdir -p ${shQuote(parentDir)}`,
-      `printf %s ${shQuote(contentBase64)} | base64 -d > ${shQuote(tempFile)}`,
-      `mv -- ${shQuote(tempFile)} ${shQuote(args.filePath)}`,
-    ].join(' && ');
-
-    const res = await this.execCommand({ cmd }, config, cfg);
-    if (res.exitCode !== 0) {
+    if (mkdirRes.exitCode !== 0) {
       return {
         output: {
           success: false,
-          error: res.stderr || res.stdout || 'Failed to write file',
+          error:
+            mkdirRes.stderr ||
+            mkdirRes.stdout ||
+            'Failed to create parent directory',
         },
+        messageMetadata,
+      };
+    }
+
+    const writeRes = await this.writeFileContent(
+      args.filePath,
+      args.fileContent,
+      config,
+      cfg,
+    );
+    if (writeRes.error) {
+      return {
+        output: { success: false, error: writeRes.error },
         messageMetadata,
       };
     }

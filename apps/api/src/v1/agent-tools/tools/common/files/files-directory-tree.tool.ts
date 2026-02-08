@@ -32,7 +32,7 @@ export const FilesDirectoryTreeToolSchema = z.object({
     .array(z.string().min(1))
     .optional()
     .describe(
-      'Glob patterns to exclude from the tree (fd syntax, e.g., ["node_modules/**", "dist/**"]). Defaults to excluding node_modules, dist, build, coverage, and .turbo if not specified.',
+      'Glob patterns to exclude from the tree (e.g., ["node_modules/**", "dist/**"]). If not specified, common build/cache folders are excluded.',
     ),
 });
 
@@ -123,7 +123,7 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
       - **Start shallow**: use maxDepth 3-5 for initial exploration of large repos
       - **Narrow down**: once you identify the relevant subdirectory, run again on that path with deeper maxDepth
       - **Use skipPatterns** to exclude noisy directories specific to the project
-      - Default exclusions: node_modules, dist, build, coverage, .turbo — override with skipPatterns if needed
+      - Default exclusions: node_modules, dist, build, coverage, .turbo, .next, .cache, out, .output, tmp, temp — override with skipPatterns if needed
 
       ### Examples
       **1. Explore project root (shallow):**
@@ -158,13 +158,7 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
     const skipPatterns =
       args.skipPatterns && args.skipPatterns.length > 0
         ? args.skipPatterns
-        : [
-            'node_modules/**',
-            'dist/**',
-            'build/**',
-            'coverage/**',
-            '.turbo/**',
-          ];
+        : this.defaultSkipPatterns;
 
     const cmdParts: string[] = [
       'fd',

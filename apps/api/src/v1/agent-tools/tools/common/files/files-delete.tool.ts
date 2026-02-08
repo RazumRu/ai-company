@@ -6,6 +6,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -93,17 +94,17 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
   ): Promise<ToolInvokeResult<FilesDeleteToolOutput>> {
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
-    const fullFilePath = args.filePath;
+    const p = shQuote(args.filePath);
     const cmd = [
-      `if [ ! -e "${fullFilePath}" ]; then`,
+      `if [ ! -e ${p} ]; then`,
       '  echo "File not found" >&2;',
       '  exit 1;',
       'fi;',
-      `if [ -d "${fullFilePath}" ]; then`,
+      `if [ -d ${p} ]; then`,
       '  echo "Path is a directory; only files can be deleted" >&2;',
       '  exit 1;',
       'fi;',
-      `rm -f "${fullFilePath}"`,
+      `rm -f ${p}`,
     ].join(' ');
 
     const res = await this.execCommand(
