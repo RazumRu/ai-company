@@ -12,6 +12,7 @@ import {
   GraphStatus,
   NodeKind,
 } from '../../graphs/graphs.types';
+import { GraphCompiler } from '../../graphs/services/graph-compiler';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphStateManager } from '../../graphs/services/graph-state.manager';
 import { LitellmService } from '../../litellm/services/litellm.service';
@@ -45,6 +46,9 @@ describe('AiSuggestionsService', () => {
   let litellmService: Pick<LitellmService, 'supportsResponsesApi'>;
   let responseMock: ReturnType<typeof vi.fn> & OpenaiService['response'];
   let completeMock: ReturnType<typeof vi.fn> & OpenaiService['complete'];
+  let graphCompiler: {
+    compile: ReturnType<typeof vi.fn>;
+  };
   let service: AiSuggestionsService;
 
   beforeEach(() => {
@@ -55,6 +59,10 @@ describe('AiSuggestionsService', () => {
       get: vi.fn(),
       filterNodesByType: vi.fn(),
       getNode: vi.fn(),
+      destroy: vi.fn(),
+    };
+    graphCompiler = {
+      compile: vi.fn(),
     };
     templateRegistry = { getTemplate: vi.fn() };
     authContext = {
@@ -84,6 +92,7 @@ describe('AiSuggestionsService', () => {
       messagesDao as MessagesDao,
       graphDao as GraphDao,
       graphRegistry as GraphRegistry,
+      graphCompiler as unknown as GraphCompiler,
       templateRegistry as TemplateRegistry,
       authContext as AuthContextService,
       openaiService as OpenaiService,
@@ -317,23 +326,34 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws when graph is not running (no compiled graph)', async () => {
+    it('compiles graph temporarily when not running', async () => {
       const graph = buildGraph();
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
-      (
-        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
-      ).mockReturnValue({
-        kind: NodeKind.SimpleAgent,
-      });
+      (templateRegistry.getTemplate as ReturnType<typeof vi.fn>).mockReturnValue(
+        { kind: NodeKind.SimpleAgent },
+      );
       (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
         undefined,
       );
+      (graphCompiler.compile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildCompiledGraph(),
+      );
 
-      await expect(
-        service.suggest('graph-1', 'agent-1', {
-          userRequest: 'anything',
-        } as SuggestAgentInstructionsDto),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      (
+        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
+      ).mockReturnValue([]);
+
+      const result = await service.suggest('graph-1', 'agent-1', {
+        userRequest: 'Make it concise',
+      } as SuggestAgentInstructionsDto);
+
+      expect(result.instructions).toBe('Updated instructions');
+      expect(graphCompiler.compile).toHaveBeenCalledWith(
+        graph,
+        undefined,
+        { transient: true },
+      );
+      expect(graphRegistry.destroy).toHaveBeenCalledWith('graph-1');
     });
   });
 
@@ -360,20 +380,28 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws when compiled graph is missing', async () => {
+    it('compiles graph temporarily for thread analysis when not running', async () => {
       (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildThread(),
       );
-      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
-        buildGraph(),
-      );
+      const graph = buildGraph();
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
       (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
         undefined,
       );
+      (graphCompiler.compile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildCompiledGraph(),
+      );
+      (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-      await expect(
-        service.analyzeThread('thread-1', {} as never),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await service.analyzeThread('thread-1', {} as never);
+
+      expect(graphCompiler.compile).toHaveBeenCalledWith(
+        graph,
+        undefined,
+        { transient: true },
+      );
+      expect(graphRegistry.destroy).toHaveBeenCalledWith('graph-1');
     });
 
     it('returns prompt content when analysis is generated and uses provided thread id', async () => {

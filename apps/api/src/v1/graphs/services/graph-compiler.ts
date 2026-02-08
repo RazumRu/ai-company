@@ -188,6 +188,7 @@ export class GraphCompiler {
   async compile(
     entity: GraphEntity,
     additionalMetadata?: Partial<GraphMetadataSchemaType>,
+    options?: { transient?: boolean },
   ): Promise<CompiledGraph> {
     const schema = entity.schema;
     const metadata: GraphMetadataSchemaType = {
@@ -219,7 +220,9 @@ export class GraphCompiler {
         status: GraphStatus.Compiling,
       };
 
-      this.graphRegistry.register(graphId, compiledGraph);
+      if (!options?.transient) {
+        this.graphRegistry.register(graphId, compiledGraph);
+      }
 
       try {
         const buildOrder = this.getBuildOrder(schema);
@@ -236,11 +239,17 @@ export class GraphCompiler {
           stateManager.attachGraphNode(node.id, compiledNode);
         }
 
-        this.graphRegistry.setStatus(graphId, GraphStatus.Running);
+        if (!options?.transient) {
+          this.graphRegistry.setStatus(graphId, GraphStatus.Running);
+        } else {
+          compiledGraph.status = GraphStatus.Running;
+        }
 
         return compiledGraph;
       } catch (error) {
-        this.graphRegistry.unregister(graphId);
+        if (!options?.transient) {
+          this.graphRegistry.unregister(graphId);
+        }
         throw error;
       }
     });
