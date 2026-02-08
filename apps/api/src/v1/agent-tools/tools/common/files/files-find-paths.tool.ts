@@ -89,16 +89,60 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
   ): string {
     return dedent`
       ### Overview
-      Find file paths by glob pattern. Returns absolute paths (no content).
+      Find file paths by glob pattern. Returns absolute paths without reading file content. Use this to discover project structure, locate files by extension or name, and list directory contents. Returns up to \`maxResults\` paths (default 200).
+
+      ### When to Use
+      - Locating files by extension: \`"*.ts"\`, \`"*.json"\`, \`"*.yaml"\`
+      - Finding files by name pattern: \`"*controller*"\`, \`"*migration*"\`
+      - Listing a directory's contents (set \`includeSubdirectories=false\`)
+      - Checking if a file exists before reading or editing
+
+      ### When NOT to Use
+      - Searching file contents → use \`files_search_text\` or \`codebase_search\`
+      - Reading file content → use \`files_read\`
+      - Viewing directory tree → use \`files_directory_tree\` (visual tree format)
+
+      ### Glob Pattern Syntax
+      Uses \`fd\` glob syntax:
+      - \`*\` — matches any characters within a filename (not path separators)
+      - \`*.ts\` — all TypeScript files
+      - \`*controller*\` — files with "controller" anywhere in the name
+      - \`*.{ts,tsx}\` — TypeScript and TSX files
+      - \`Dockerfile*\` — Dockerfile and variants
 
       ### Best Practices
       - Use specific patterns and small \`maxResults\` to limit output
-      - For listing a folder: \`includeSubdirectories=false\` + \`filenamePattern="*"\`
-      - Common build/cache folders are excluded by default
+      - For listing a single folder: set \`includeSubdirectories=false\` with \`filenamePattern="*"\`
+      - Common build/cache folders (node_modules, dist, .next, etc.) are excluded by default
+      - Use \`maxDepth\` to limit recursion depth for large repos
+      - Use \`skipPatterns\` to exclude additional directories: \`["test/**", "docs/**"]\`
 
-      ### Example
+      ### Output Format
+      Returns an object with:
+      - \`files\` — array of absolute file paths
+      - \`cwd\` — the working directory used for the search
+      - \`returned\` — number of paths returned
+      - \`truncated\` — true if more results exist beyond \`maxResults\`
+
+      ### Examples
+      **1. Find TypeScript files:**
       \`\`\`json
       {"searchInDirectory":"/repo/src","filenamePattern":"*.ts","maxResults":50}
+      \`\`\`
+
+      **2. List directory contents (non-recursive):**
+      \`\`\`json
+      {"searchInDirectory":"/repo/src/modules","filenamePattern":"*","includeSubdirectories":false}
+      \`\`\`
+
+      **3. Find migration files:**
+      \`\`\`json
+      {"searchInDirectory":"/repo","filenamePattern":"*migration*","maxResults":20}
+      \`\`\`
+
+      **4. Find config files with custom exclusions:**
+      \`\`\`json
+      {"searchInDirectory":"/repo","filenamePattern":"*.config.*","skipPatterns":["node_modules/**","dist/**","test/**"]}
       \`\`\`
     `;
   }

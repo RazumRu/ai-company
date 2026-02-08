@@ -19,7 +19,7 @@ const FilesApplyChangesToolSchemaBase = z.object({
     .string()
     .min(1)
     .describe(
-      'Absolute path to the file to edit.',
+      'Absolute path to the file to edit. Must have been read with files_read first to get the current content for accurate oldText matching.',
     ),
   oldText: z
     .string()

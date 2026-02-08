@@ -58,25 +58,44 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
   ): string {
     return dedent`
       ### Overview
-      Move or rename a file. Parent dirs are created automatically.
+      Move or rename a single file from \`sourcePath\` to \`destinationPath\`. Parent directories for the destination are created automatically. This is a **move** operation — the source file will no longer exist after success.
 
       ### When to Use
-      - Renames
-      - Moving files into new folders
+      - Renaming a file (same directory, different name)
+      - Moving a file to a different directory
+      - Reorganizing project structure (move files into new folders)
 
       ### When NOT to Use
-      - Copying (this tool moves)
-      - Editing content -> \`files_apply_changes\` or \`files_edit\`
+      - Copying a file (this tool removes the source) → use shell \`cp\` instead
+      - Moving directories → use shell \`mv\` instead
+      - Editing file content → use \`files_apply_changes\` or \`files_edit\`
+      - Creating new files → use \`files_write_file\`
+
+      ### Best Practices
+      - Verify the source path exists before moving (use \`files_find_paths\` or \`files_read\`)
+      - If a file already exists at \`destinationPath\`, it will be **overwritten silently**
+      - After moving, update any import/require statements in other files that reference the old path
+      - Both paths must be absolute
+
+      ### Error Cases
+      - Source file does not exist → operation fails
+      - Source is a directory → use shell \`mv\` instead
+      - Permission denied → check file/directory permissions
 
       ### Examples
-      **1) Rename:**
+      **1. Rename a file:**
       \`\`\`json
       {"sourcePath":"/repo/src/old-name.ts","destinationPath":"/repo/src/new-name.ts"}
       \`\`\`
 
-      **2) Move to new folder:**
+      **2. Move to a new folder (parent created automatically):**
       \`\`\`json
       {"sourcePath":"/repo/tmp/output.json","destinationPath":"/repo/generated/output.json"}
+      \`\`\`
+
+      **3. Reorganize module structure:**
+      \`\`\`json
+      {"sourcePath":"/repo/src/utils.ts","destinationPath":"/repo/src/utils/index.ts"}
       \`\`\`
     `;
   }

@@ -61,7 +61,7 @@ type GhCommitToolOutput = {
 export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
   public name = 'gh_commit';
   public description =
-    'Create a local git commit with a semantic commit message in the format "{semanticType}: [AI] {title}". Requires staged changes — use gh_push afterwards to push to remote.';
+    'Create a local git commit with a semantic commit message in the format "{semanticType}: [AI] {title}". The [AI] marker indicates the commit was created by an agent. Changes must be staged first using `git add` via the shell tool — this tool will return an error if no staged changes exist. After committing, use gh_push to push commits to the remote repository. The repository must already be cloned with gh_clone.';
 
   protected override generateTitle(
     args: GhCommitToolSchemaType,

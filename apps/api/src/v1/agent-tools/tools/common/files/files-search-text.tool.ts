@@ -100,17 +100,59 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   ): string {
     return dedent`
       ### Overview
-      Search file contents using regex. Use after \`codebase_search\` for exact pattern matching.
+      Search file contents using regex (ripgrep). Returns matching file paths, line numbers, and matched text. Returns up to ${MAX_MATCHES} matches. Use after \`codebase_search\` for exact, literal pattern matching (function names, variable references, import paths).
+
+      ### When to Use
+      - Finding exact usages of a function, variable, class, or import
+      - Locating specific error messages or string literals in code
+      - Searching for patterns across many files (e.g., all TODO comments)
+      - Verifying that a rename or refactor caught all references
+
+      ### When NOT to Use
+      - Initial codebase discovery → use \`codebase_search\` first (semantic search is better for "where is X?")
+      - Reading file contents → use \`files_read\`
+      - Finding files by name → use \`files_find_paths\`
+
+      ### Regex Syntax
+      Uses ripgrep regex (Rust flavor, similar to PCRE):
+      - \`\\s+\` — whitespace, \`\\w+\` — word chars, \`\\b\` — word boundary
+      - \`.\` — any char, \`.*\` — greedy match, \`.*?\` — lazy match
+      - \`(a|b)\` — alternation, \`[A-Z]\` — character class
+      - Escape special chars: \`\\.\`, \`\\(\`, \`\\[\`, \`\\{\`
 
       ### Best Practices
       - Use \`codebase_search\` first for discovery, then this tool for exact matches
-      - Prefer one regex with alternation over multiple calls
-      - Use \`onlyInFilesMatching\`/\`skipFilesMatching\` to limit scope
-      - Common build/cache folders are excluded by default
+      - Prefer one regex with alternation over multiple calls: \`(foo|bar|baz)\` instead of 3 separate searches
+      - Use \`onlyInFilesMatching\` to limit scope (e.g., \`["*.ts"]\` for TypeScript only)
+      - Use \`skipFilesMatching\` to exclude test files: \`["*.test.ts", "*.spec.ts"]\`
+      - Common build/cache folders (node_modules, dist, .next, etc.) are excluded by default
 
-      ### Example
+      ### Output Format
+      Returns up to ${MAX_MATCHES} matches, each with:
+      - \`path.text\` — absolute file path
+      - \`lines.text\` — the matched line content
+      - \`line_number\` — 1-based line number
+      - \`submatches[].match.text\` — the exact matched substring
+
+      ### Examples
+      **1. Find type/interface definitions:**
       \`\`\`json
       {"searchInDirectory":"/repo","textPattern":"(enum|type|interface)\\\\s+UserRole","onlyInFilesMatching":["*.ts"]}
+      \`\`\`
+
+      **2. Find all imports of a module:**
+      \`\`\`json
+      {"searchInDirectory":"/repo/src","textPattern":"from\\\\s+['\\\"]@packages/common['\\\"]"}
+      \`\`\`
+
+      **3. Search in a single file:**
+      \`\`\`json
+      {"filePath":"/repo/src/auth/auth.service.ts","textPattern":"async\\\\s+validate"}
+      \`\`\`
+
+      **4. Find TODO/FIXME comments excluding tests:**
+      \`\`\`json
+      {"searchInDirectory":"/repo/src","textPattern":"(TODO|FIXME|HACK)","skipFilesMatching":["*.test.ts","*.spec.ts"]}
       \`\`\`
     `;
   }

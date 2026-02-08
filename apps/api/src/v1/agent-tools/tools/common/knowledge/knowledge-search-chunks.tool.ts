@@ -56,7 +56,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
 > {
   public name = 'knowledge_search_chunks';
   public description =
-    'Search within specific knowledge documents and return the most relevant content snippets. Requires document public IDs from knowledge_search_docs. Returns chunk snippets with chunk IDs that can be used with knowledge_get_chunks for full text.';
+    'Perform semantic search within specific knowledge documents and return the most relevant content snippets ranked by similarity to your query. Requires document public IDs obtained from knowledge_search_docs. Returns up to 20 chunk snippets with chunk IDs and relevance scores — use knowledge_get_chunks to retrieve full text for the most relevant chunks. Start with topK 3-7 for focused queries and increase if needed.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,

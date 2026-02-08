@@ -43,7 +43,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
 > {
   public name = 'knowledge_get_chunks';
   public description =
-    'Retrieve the full text of specific knowledge chunks by their public IDs. Use after knowledge_search_chunks when you need complete text beyond the returned snippets.';
+    'Retrieve the full text of specific knowledge chunks by their public IDs. Use this after knowledge_search_chunks when snippets are insufficient and you need the complete text of specific chunks. Returns chunk text with positional offsets (startOffset/endOffset) within the source document. Only request the chunks you actually need to keep context manageable — do not bulk-fetch all chunks from a search result.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,

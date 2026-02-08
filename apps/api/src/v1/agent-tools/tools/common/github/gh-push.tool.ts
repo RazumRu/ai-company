@@ -41,7 +41,7 @@ type GhPushToolOutput = {
 export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   public name = 'gh_push';
   public description =
-    'Push local commits to the remote GitHub repository. Pushes to the specified branch or the current branch if none is specified. Use this after creating commits with gh_commit.';
+    'Push local commits to the remote GitHub repository using authenticated HTTPS. Pushes to the specified branch, or the currently checked-out branch if no branch is specified. Use this after creating commits with gh_commit. Will fail if no commits exist to push, or if the remote branch has diverged (non-fast-forward). For protected branches, create a pull request with gh_create_pull_request instead of pushing directly. The repository must already be cloned with gh_clone.';
 
   protected override generateTitle(
     args: GhPushToolSchemaType,
