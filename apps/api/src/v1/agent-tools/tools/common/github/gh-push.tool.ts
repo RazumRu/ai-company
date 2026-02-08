@@ -13,15 +13,21 @@ import { GhBaseTool, GhBaseToolConfig } from './gh-base.tool';
 export const GhPushToolSchema = z.object({
   path: z
     .string()
-    .describe('Path to the git repository (use path returned by gh_clone)'),
+    .describe(
+      'Absolute path to the git repository root (use the path returned by gh_clone).',
+    ),
   remote: z
     .string()
     .optional()
-    .describe('Remote name to push to (default: origin)'),
+    .describe(
+      'Remote name to push to (default: "origin"). Rarely needs to be changed.',
+    ),
   branch: z
     .string()
     .optional()
-    .describe('Branch name to push (default: current branch)'),
+    .describe(
+      'Branch name to push (e.g., "feat/add-authentication"). If omitted, pushes the currently checked-out branch.',
+    ),
 });
 
 export type GhPushToolSchemaType = z.infer<typeof GhPushToolSchema>;
@@ -35,7 +41,7 @@ type GhPushToolOutput = {
 export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   public name = 'gh_push';
   public description =
-    'Push commits from a local git (GitHub) repository to a remote repository.';
+    'Push local commits to the remote GitHub repository using authenticated HTTPS. Pushes to the specified branch, or the currently checked-out branch if no branch is specified. Use this after creating commits with gh_commit. Will fail if no commits exist to push, or if the remote branch has diverged (non-fast-forward). For protected branches, create a pull request with gh_create_pull_request instead of pushing directly. The repository must already be cloned with gh_clone.';
 
   protected override generateTitle(
     args: GhPushToolSchemaType,

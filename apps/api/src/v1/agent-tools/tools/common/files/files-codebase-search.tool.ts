@@ -26,7 +26,7 @@ const CodebaseSearchSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Query to search for in the codebase. Use a human-readable phrase or question, not a single word.',
+      'A natural-language phrase or question describing what you are looking for (e.g., "where is the authentication middleware defined?"). Do not use single keywords — multi-word semantic queries produce much better results.',
     ),
   top_k: z
     .number()
@@ -34,18 +34,22 @@ const CodebaseSearchSchema = z.object({
     .min(1)
     .max(MAX_TOP_K)
     .optional()
-    .describe('Maximum number of results to return.'),
+    .describe(
+      'Maximum number of code chunk results to return (default: 15, max: 30). Start with 5-10 for focused queries.',
+    ),
   gitRepoDirectory: z
     .string()
     .min(1)
     .describe(
-      'Absolute path to the git repository directory (the root directory containing .git folder).',
+      'Absolute path to the git repository root (the directory containing the .git folder). Use the exact path returned by gh_clone.',
     ),
   language: z
     .string()
     .min(1)
     .optional()
-    .describe('Optional language filter (e.g. ts, py, go).'),
+    .describe(
+      'Filter results to a specific programming language by file extension (e.g., "ts", "py", "go", "rs"). Omit to search all languages.',
+    ),
 });
 
 type CodebaseSearchSchemaType = z.infer<typeof CodebaseSearchSchema>;
@@ -67,7 +71,7 @@ type CodebaseSearchOutput = {
 export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaType> {
   public name = 'codebase_search';
   public description =
-    'Semantic search across a git repo codebase using Qdrant.';
+    'Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, and code snippets ranked by relevance. This should be the first tool for codebase discovery or "where is X?" questions. The repository must be cloned first with gh_clone.';
 
   constructor(private readonly repoIndexService: RepoIndexService) {
     super();
@@ -79,7 +83,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
   ): string {
     return dedent`
       ### Overview
-      Semantic codebase search that indexes a git repository into Qdrant on demand.
+      Semantic codebase search that indexes a git repository on demand.
       Indexing is triggered automatically on the first call. For large repositories
       indexing runs in the background — in that case the tool will indicate that
       indexing is in progress and you should retry shortly.

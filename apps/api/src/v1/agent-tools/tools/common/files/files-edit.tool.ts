@@ -42,18 +42,27 @@ type EditOperation = {
 };
 
 const FilesEditToolSchema = z.object({
-  filePath: z.string().min(1).describe('Path to the file to edit'),
-  editInstructions: z.string().describe('Single sentence, first person'),
+  filePath: z
+    .string()
+    .min(1)
+    .describe(
+      'Absolute path to the file to edit. Must have been read with files_read first.',
+    ),
+  editInstructions: z
+    .string()
+    .describe(
+      'A single-sentence, first-person description of what to change (e.g., "I want to add input validation to the createUser function").',
+    ),
   codeSketch: z
     .string()
     .describe(
-      'Precise edits with minimal unchanged context. Use // ... existing code ... marker to skip spans.',
+      'A sketch of the desired file state showing only changed regions and minimal surrounding context. Use the exact marker "// ... existing code ..." to represent unchanged spans. Include enough unchanged context lines around each edit for unambiguous anchoring.',
     ),
   useSmartModel: z
     .boolean()
     .optional()
     .describe(
-      'Retry mode: use only if previous diff is not as expected or parsing/apply failed',
+      'Set to true to use a more capable LLM for diff interpretation. Only use this on retry when the previous attempt produced an incorrect diff or failed to parse/apply.',
     ),
 });
 
@@ -148,7 +157,7 @@ const ANCHOR_MARKER = '// ... existing code ...';
 export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   public name = 'files_edit';
   public description =
-    'Edit a file with a sketch of the desired result using "// ... existing code ..." markers. Best for complex multi-region edits. Requires files_read first.';
+    'Edit a file using a natural-language instruction and a code sketch that uses "// ... existing code ..." markers to indicate unchanged regions. Best suited for complex multi-region edits where writing exact oldText/newText pairs would be tedious. Always read the file with files_read first. If the edit fails, retry with useSmartModel=true.';
 
   constructor(
     private readonly openaiService: OpenaiService,
@@ -176,22 +185,73 @@ export class FilesEditTool extends FilesBaseTool<FilesEditToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Sketch-based edit tool for complex multi-region changes. Provide the desired final state using "// ... existing code ..." markers to skip unchanged sections.
+      Sketch-based edit tool for complex multi-region changes. Provide the desired final state using \`// ... existing code ...\` markers to skip unchanged sections. The sketch is interpreted to produce precise edits that are applied atomically.
 
       ### When to Use (prefer files_apply_changes for simple edits)
-      - Multiple related changes in one file (e.g., add import + use it)
-      - Structured edits where showing the final state is clearer than oldText/newText
+      - Multiple related changes in one file (e.g., add import + use it in a function)
+      - Structured edits where showing the final state is clearer than oldText/newText pairs
+      - Refactoring that touches many parts of a file simultaneously
+
+      ### When NOT to Use
+      - Simple single-region replacements → use \`files_apply_changes\` (faster, no interpretation step)
+      - Creating new files → use \`files_write_file\`
+      - File is larger than 1 MB → use \`files_apply_changes\` instead
 
       ### Sketch Rules
-      - Show the final state, not a diff
-      - Use "// ... existing code ..." to skip unchanged sections
+      - Show the **final desired state**, not a diff
+      - Use exactly \`// ... existing code ...\` (this exact string) to skip unchanged sections
       - Include 3-8 unique context lines around each change for reliable anchoring
+      - A sketch without any markers is treated as a full file rewrite
+      - Maximum sketch size: 500 KB
 
       ### Retry Strategy
-      1. Run \`files_read\` first (mandatory)
-      2. Call with useSmartModel=false (default)
-      3. If fails, retry with useSmartModel=true
-      4. If still failing, fall back to \`files_apply_changes\`
+      1. Run \`files_read\` first (mandatory — the tool reads the file internally but you need the context)
+      2. Call with \`useSmartModel=false\` (default) — uses a fast model
+      3. If it fails or produces incorrect results, retry with \`useSmartModel=true\` — uses a more capable model
+      4. If still failing, fall back to \`files_apply_changes\` with explicit oldText/newText
+
+      ### Limits
+      - Maximum file size: 1 MB
+      - Maximum sketch size: 500 KB
+      - Maximum hunks per edit: 20
+
+      ### Examples
+      **1. Add import and use it:**
+      \`\`\`
+      editInstructions: "Add lodash import and use it in processData"
+      codeSketch:
+        import { map } from 'lodash';
+        // ... existing code ...
+        function processData(items) {
+          return map(items, transform);
+        }
+        // ... existing code ...
+      \`\`\`
+
+      **2. Modify multiple functions:**
+      \`\`\`
+      editInstructions: "Add error handling to both save and load functions"
+      codeSketch:
+        // ... existing code ...
+        async function save(data) {
+          try {
+            await db.insert(data);
+          } catch (err) {
+            logger.error('Save failed', err);
+            throw err;
+          }
+        }
+        // ... existing code ...
+        async function load(id) {
+          try {
+            return await db.find(id);
+          } catch (err) {
+            logger.error('Load failed', err);
+            throw err;
+          }
+        }
+        // ... existing code ...
+      \`\`\`
     `;
   }
 

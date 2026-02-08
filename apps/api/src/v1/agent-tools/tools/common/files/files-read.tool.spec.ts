@@ -42,7 +42,7 @@ describe('FilesReadTool', () => {
     });
 
     it('should have correct description', () => {
-      expect(tool.description).toContain('Read file contents');
+      expect(tool.description).toContain('Read one or more files');
       expect(tool.description).toContain('line numbers');
     });
   });

@@ -25,7 +25,9 @@ export const KnowledgeSearchDocsSchema = z.object({
   task: z
     .string()
     .min(1)
-    .describe('Current task description for selecting relevant documents'),
+    .describe(
+      'A clear description of your current task, including relevant technology/stack context (e.g., "Implement rate limiting for the REST API. Stack: NestJS + TypeScript + Redis"). More specific task descriptions produce better document matches.',
+    ),
 });
 
 export type KnowledgeSearchDocsSchemaType = z.infer<
@@ -62,7 +64,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
 > {
   public name = 'knowledge_search_docs';
   public description =
-    'Select relevant knowledge documents for the current task and return an optional report.';
+    'Find and select knowledge documents relevant to the current task, returning titles, summaries, policies, and tags. Use this as the first step before accessing knowledge content. Returns up to 10 documents — use the returned public IDs with knowledge_search_chunks or knowledge_get_doc to retrieve actual content.';
 
   constructor(
     private readonly docDao: KnowledgeDocDao,

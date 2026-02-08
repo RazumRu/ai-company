@@ -17,18 +17,22 @@ export const FilesDirectoryTreeToolSchema = z.object({
   directoryPath: z
     .string()
     .min(1)
-    .describe('Absolute path to the directory to scan.'),
+    .describe(
+      'Absolute path to the directory to scan (e.g., "/runtime-workspace/project"). Must be an existing directory — the tool will fail if the path does not exist or points to a file.',
+    ),
   maxDepth: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe('Optional maximum depth to traverse.'),
+    .describe(
+      'Maximum directory depth to traverse. Start with 3-5 for large repos and increase if needed. Omit for unlimited depth (not recommended for large projects).',
+    ),
   skipPatterns: z
     .array(z.string().min(1))
     .optional()
     .describe(
-      'Optional glob patterns to exclude (fd syntax). If omitted, some common junk folders are excluded.',
+      'Glob patterns to exclude from the tree (fd syntax, e.g., ["node_modules/**", "dist/**"]). Defaults to excluding node_modules, dist, build, coverage, and .turbo if not specified.',
     ),
 });
 
@@ -86,7 +90,7 @@ function renderTree(node: TreeNode, prefix = ''): string[] {
 export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeToolSchemaType> {
   public name = 'files_directory_tree';
   public description =
-    'Generate a tree overview of a directory (structure; not content search).';
+    'Generate a visual tree representation of a directory structure showing files and subdirectories. Start with a shallow maxDepth (3-5) for large repositories. Common build/cache directories are excluded by default. Does not return file contents — use files_read for that.';
 
   protected override generateTitle(
     args: FilesDirectoryTreeToolSchemaType,
@@ -102,8 +106,40 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
   ): string {
     return dedent`
       ### Overview
-      Visual tree view of a directory structure. Start shallow (maxDepth 3-5) and narrow to subdirectories when possible.
-      Common build/cache folders are excluded by default.
+      Visual tree view of a directory structure, similar to the Unix \`tree\` command. Outputs an indented text representation of files and subdirectories.
+
+      ### When to Use
+      - Orienting yourself in a new or unfamiliar repository
+      - Understanding the project layout before making changes
+      - Verifying directory structure after scaffolding or refactoring
+      - Finding where files are organized (e.g., "where are the tests?")
+
+      ### When NOT to Use
+      - Reading file contents → use \`files_read\`
+      - Searching for text in files → use \`files_search_text\`
+      - Finding files by name → use \`files_find_paths\`
+
+      ### Best Practices
+      - **Start shallow**: use maxDepth 3-5 for initial exploration of large repos
+      - **Narrow down**: once you identify the relevant subdirectory, run again on that path with deeper maxDepth
+      - **Use skipPatterns** to exclude noisy directories specific to the project
+      - Default exclusions: node_modules, dist, build, coverage, .turbo — override with skipPatterns if needed
+
+      ### Examples
+      **1. Explore project root (shallow):**
+      \`\`\`json
+      {"directoryPath": "/runtime-workspace/project", "maxDepth": 3}
+      \`\`\`
+
+      **2. Deep dive into specific directory:**
+      \`\`\`json
+      {"directoryPath": "/runtime-workspace/project/src/modules/auth", "maxDepth": 5}
+      \`\`\`
+
+      **3. Custom exclusions:**
+      \`\`\`json
+      {"directoryPath": "/runtime-workspace/project", "maxDepth": 4, "skipPatterns": ["node_modules/**", "**/*.test.ts"]}
+      \`\`\`
     `;
   }
 

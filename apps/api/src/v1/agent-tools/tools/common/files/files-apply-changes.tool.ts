@@ -15,15 +15,22 @@ import {
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 const FilesApplyChangesToolSchemaBase = z.object({
-  filePath: z.string().min(1).describe('Absolute path to the file to edit'),
+  filePath: z
+    .string()
+    .min(1)
+    .describe(
+      'Absolute path to the file to edit. Must have been read with files_read first to get the current content for accurate oldText matching.',
+    ),
   oldText: z
     .string()
     .describe(
-      'Text block to search for (copied verbatim from files_read output, without line number prefixes). Empty string means create/overwrite file.',
+      'The exact text block to find and replace, copied verbatim from files_read output without line number prefixes. Use an empty string ("") to create a new file, overwrite an existing file, or insert text when combined with insertAfterLine.',
     ),
   newText: z
     .string()
-    .describe('Text to replace with. Indentation will be preserved.'),
+    .describe(
+      'The replacement text. Indentation of the first line is automatically adjusted to match the matched oldText indentation.',
+    ),
   replaceAll: z
     .boolean()
     .optional()
@@ -79,7 +86,7 @@ const MAX_FUZZY_OLD_TEXT_LINES = 50;
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Replace exact text blocks in a file. Requires oldText copied verbatim from files_read. Use for precise edits or find/replace with replaceAll.';
+    'Replace exact text blocks in a file or insert new text at a specific line. Copy oldText verbatim from files_read output (without line number prefixes) and provide the replacement in newText. Supports progressive matching with whitespace tolerance. Set replaceAll=true to replace every occurrence, or use insertAfterLine with an empty oldText to insert without replacing.';
 
   protected override generateTitle(
     args: FilesApplyChangesToolSchemaType,
@@ -99,7 +106,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   ): string {
     return dedent`
       ### Overview
-      Replace exact text blocks (oldText -> newText). Primary edit tool — precise and fast.
+      Replace exact text blocks (oldText → newText). Primary edit tool — precise and fast.
 
       ### How to Use
       1. Run \`files_read\` first to get current content with line numbers
@@ -107,15 +114,41 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       3. Include enough surrounding context (3-5 lines) to make the match unique
       4. Do NOT include line number prefixes (\`NNN\\t\`) in oldText — only the code itself
 
-      ### Matching
-      - Whitespace-normalized matching with progressive fallback (exact -> trimmed -> fuzzy)
-      - Must match exactly once unless \`replaceAll: true\`
-      - Common indentation is auto-normalized; relative indentation is preserved
+      ### Matching Strategy (Progressive Fallback)
+      Three matching strategies are tried in order:
+      1. **Exact**: whitespace-normalized comparison (trailing spaces stripped, blank-line runs collapsed)
+      2. **Trimmed**: ignores all leading whitespace per line — catches wrong indentation
+      3. **Fuzzy**: per-line Levenshtein distance ≤ 15% — catches minor typos, quote style differences
+      - Must match exactly once unless \`replaceAll: true\` (fuzzy only accepts a single match)
+      - Common indentation is auto-normalized; relative indentation within the block is preserved
+      - Fuzzy matching is skipped for oldText blocks > 50 lines (performance safeguard)
+
+      ### Stale-Read Protection
+      Pass \`expectedHash\` (returned by \`files_read\`) to detect if the file changed since your last read. If the hash doesn't match, the edit is rejected — re-read the file before retrying.
+
+      ### Insertion Mode
+      Use \`insertAfterLine\` with empty \`oldText\` ("") to insert text at a specific position without replacing anything. Line 0 = beginning of file.
 
       ### Error Recovery
-      - "Found N matches": add more context lines or set \`replaceAll: true\`
-      - "Could not find match": re-read the file and copy exact text from output
-      - Use \`insertAfterLine\` with empty \`oldText\` for pure insertions (avoids matching)
+      - "Found N matches": add more surrounding context lines or set \`replaceAll: true\`
+      - "Could not find match": re-read the file with \`files_read\` and copy exact text from output
+      - Use \`insertAfterLine\` with empty \`oldText\` for pure insertions (avoids matching entirely)
+
+      ### Examples
+      **1. Simple text replacement:**
+      \`\`\`json
+      {"filePath": "/runtime-workspace/project/src/app.ts", "oldText": "const port = 3000;", "newText": "const port = process.env.PORT || 3000;"}
+      \`\`\`
+
+      **2. Insert at beginning of file:**
+      \`\`\`json
+      {"filePath": "/runtime-workspace/project/src/app.ts", "oldText": "", "insertAfterLine": 0, "newText": "import { config } from 'dotenv';\\nconfig();"}
+      \`\`\`
+
+      **3. Replace all occurrences:**
+      \`\`\`json
+      {"filePath": "/runtime-workspace/project/src/utils.ts", "oldText": "console.log", "newText": "logger.info", "replaceAll": true}
+      \`\`\`
     `;
   }
 

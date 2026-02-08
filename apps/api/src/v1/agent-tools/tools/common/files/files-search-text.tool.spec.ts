@@ -43,7 +43,7 @@ describe('FilesSearchTextTool', () => {
 
     it('should have correct description', () => {
       expect(tool.description).toContain('Search file contents');
-      expect(tool.description).toContain('ripgrep');
+      expect(tool.description).toContain('regex pattern');
     });
   });
 

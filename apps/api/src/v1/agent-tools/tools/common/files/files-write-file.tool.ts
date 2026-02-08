@@ -18,11 +18,13 @@ export const FilesWriteFileToolSchema = z.object({
   filePath: z
     .string()
     .min(1)
-    .describe('Absolute path to the file you want to write.'),
+    .describe(
+      'Absolute path to the file to create or overwrite. Parent directories are created automatically.',
+    ),
   fileContent: z
     .string()
     .describe(
-      'Full content to write to the file. Note: This will overwrite any existing contents.',
+      'The complete file content to write. This fully replaces any existing file content — there is no append mode.',
     ),
 });
 
@@ -39,7 +41,7 @@ type FilesWriteFileToolOutput = {
 export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaType> {
   public name = 'files_write_file';
   public description =
-    'Create a new file or fully overwrite an existing one. Use only for new files; prefer files_apply_changes for edits.';
+    'Create a new file or completely overwrite an existing file with the provided content. Parent directories are created automatically. Primarily for new files — for editing existing files, prefer files_apply_changes or files_edit as they preserve unmodified content.';
 
   protected override generateTitle(
     args: FilesWriteFileToolSchemaType,
@@ -57,11 +59,35 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
       Create a new file or fully overwrite an existing one. Parent directories are created automatically.
 
       ### When to Use
-      - Creating new files from scratch
-      - Full-file replacement (rare — prefer \`files_apply_changes\` for edits)
+      - Creating brand-new files (new modules, configs, scripts, tests)
+      - Generating boilerplate or scaffolding files
+      - Writing output files (reports, generated code)
+
+      ### When NOT to Use
+      - Editing existing files → use \`files_apply_changes\` (precise text replacement) or \`files_edit\` (sketch-based)
+      - Appending to a file → use \`files_apply_changes\` with \`insertAfterLine\`
+      - Small changes to large files → edit tools are safer and more efficient
 
       ### Safety
-      - If the file might exist, read it first (\`files_read\`) to avoid data loss
+      - If the file might already exist, **always** read it first with \`files_read\` to avoid accidental data loss
+      - This tool fully replaces file content — there is no append or merge mode
+      - Provide the **complete** file content; partial content will result in a truncated file
+
+      ### Best Practices
+      - Use absolute paths
+      - Include proper file headers, imports, and structure for the target language
+      - For large files, consider whether \`files_edit\` with a sketch would be more appropriate
+
+      ### Examples
+      **1. Create a new TypeScript module:**
+      \`\`\`json
+      {"filePath": "/runtime-workspace/project/src/utils/validation.ts", "fileContent": "export function isEmail(value: string): boolean {\\n  return /^[^@]+@[^@]+$/.test(value);\\n}\\n"}
+      \`\`\`
+
+      **2. Create a configuration file:**
+      \`\`\`json
+      {"filePath": "/runtime-workspace/project/.eslintrc.json", "fileContent": "{\\n  \\"extends\\": [\\"eslint:recommended\\"]\\n}\\n"}
+      \`\`\`
     `;
   }
 

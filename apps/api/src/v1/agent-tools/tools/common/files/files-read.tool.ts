@@ -19,7 +19,7 @@ const FilesReadToolReadSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Path to the file you want to read. Can use paths directly from `files_find_paths` output.',
+      'Absolute path to the file to read. Use paths directly from codebase_search or files_find_paths output.',
     ),
   fromLineNumber: z
     .number()
@@ -69,7 +69,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read file contents with line numbers. Batch multiple files in one call. Returns numbered lines (NNN\\tcode).';
+    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges for large files. All file paths must be absolute. Always read a file before editing it.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,
@@ -98,7 +98,7 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       Read file contents with line numbers (\`NNN\\tcode\` format). Supports batching multiple files and line ranges.
 
       ### Path Requirements
-      - ALL paths MUST be absolute (start with /runtime-workspace/)
+      - ALL paths MUST be absolute
       - Use absolute paths from \`codebase_search\` output or \`files_find_paths\` (codebase_search paths are already absolute — no need to call files_find_paths first)
 
       ### Reading Strategy
@@ -110,6 +110,9 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       ### Output Format
       Each line is prefixed with its line number and a tab: \`42\\tconst x = 1;\`
       Line numbers are for reference only. Do NOT include the \`NNN\\t\` prefix when copying text to \`oldText\` in edit tools.
+
+      ### Content Hash
+      Each file response includes a \`contentHash\` — pass it to \`files_apply_changes\` as \`expectedHash\` to detect stale reads (file changed since you read it).
 
       ### Example — batch read:
       \`\`\`json
