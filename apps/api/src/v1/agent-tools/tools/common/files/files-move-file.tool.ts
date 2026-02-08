@@ -41,7 +41,7 @@ type FilesMoveFileToolOutput = {
 export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType> {
   public name = 'files_move_file';
   public description =
-    'Move or rename a file from sourcePath to destinationPath. Parent directories for the destination are created automatically if they do not exist. This is a move operation, not a copy — the source file will no longer exist after a successful call. Use this for renaming files or reorganizing directory structures. Do not use for editing file content — use files_apply_changes or files_edit instead.';
+    'Move or rename a file from sourcePath to destinationPath. Parent directories for the destination are created automatically if they do not exist. This is a move operation, not a copy — the source file will no longer exist after a successful call. Use this for renaming files or reorganizing directory structures. Do not use for editing file content — use files_apply_changes instead.';
 
   protected override generateTitle(
     args: FilesMoveFileToolSchemaType,
@@ -68,7 +68,7 @@ export class FilesMoveFileTool extends FilesBaseTool<FilesMoveFileToolSchemaType
       ### When NOT to Use
       - Copying a file (this tool removes the source) → use shell \`cp\` instead
       - Moving directories → use shell \`mv\` instead
-      - Editing file content → use \`files_apply_changes\` or \`files_edit\`
+      - Editing file content → use \`files_apply_changes\`
       - Creating new files → use \`files_write_file\`
 
       ### Best Practices

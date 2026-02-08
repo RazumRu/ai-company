@@ -3,13 +3,11 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BaseException } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
-import dedent from 'dedent';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { FilesApplyChangesTool } from '../../../v1/agent-tools/tools/common/files/files-apply-changes.tool';
 import { FilesDeleteTool } from '../../../v1/agent-tools/tools/common/files/files-delete.tool';
-import { FilesEditTool } from '../../../v1/agent-tools/tools/common/files/files-edit.tool';
 import { FilesFindPathsTool } from '../../../v1/agent-tools/tools/common/files/files-find-paths.tool';
 import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-read.tool';
 import { FilesSearchTextTool } from '../../../v1/agent-tools/tools/common/files/files-search-text.tool';
@@ -20,10 +18,6 @@ import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-no
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
-import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
-import { LitellmService } from '../../../v1/litellm/services/litellm.service';
-import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
-import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
@@ -91,7 +85,6 @@ describe('Files tools integration', () => {
   let filesSearchTextTool: FilesSearchTextTool;
   let filesApplyChangesTool: FilesApplyChangesTool;
   let filesDeleteTool: FilesDeleteTool;
-  let filesEditTool: FilesEditTool;
   let shellTool: ShellTool;
 
   const writeSampleFile = async (fileName = 'sample.ts') => {
@@ -120,12 +113,7 @@ describe('Files tools integration', () => {
         FilesSearchTextTool,
         FilesApplyChangesTool,
         FilesDeleteTool,
-        FilesEditTool,
         ShellTool,
-        OpenaiService,
-        LitellmService,
-        LiteLlmClient,
-        LlmModelsService,
       ],
     }).compile();
 
@@ -134,7 +122,6 @@ describe('Files tools integration', () => {
     filesSearchTextTool = moduleRef.get(FilesSearchTextTool);
     filesApplyChangesTool = moduleRef.get(FilesApplyChangesTool);
     filesDeleteTool = moduleRef.get(FilesDeleteTool);
-    filesEditTool = moduleRef.get(FilesEditTool);
     shellTool = moduleRef.get(ShellTool);
 
     runtime = new DockerRuntime({ socketPath: environment.dockerSocket });
@@ -738,258 +725,6 @@ describe('Files tools integration', () => {
       expect(afterApply).not.toContain('original');
     },
   );
-
-  // --- files_edit tests with real LLM calls ---
-  // These tests use the real LLM (via LiteLLM proxy) and rely on well-structured
-  // sketches and instructions to produce deterministic results.
-  // The full FilesEditTool pipeline runs end-to-end.
-
-  it(
-    'files_edit: succeeds on a simple, unambiguous edit',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const unique = `UNIQUE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      const filePath = `${WORKSPACE_DIR}/files-edit-success-${unique}.ts`;
-      const keepBlock = Array.from(
-        { length: 12 },
-        (_, i) => `export const keep_${unique}_${i} = ${i};`,
-      ).join('\n');
-      const initialContent = `export function greet(name: string) {
-  return \`Hello, \${name}!\`;
-}
-
-// ${unique}_BEFORE
-export const value = 'old';
-${keepBlock}
-// ${unique}_AFTER
-export const tail_${unique} = true;
-`;
-
-      await filesApplyChangesTool.invoke(
-        { filePath, oldText: '', newText: initialContent },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      // Invoke files_edit with markers and strong, unique anchors
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: dedent`
-            Change the single line between the anchors from:
-              export const value = 'old';
-            to:
-              export const value = 'new';
-
-            Use these EXACT anchors from the CURRENT FILE:
-            beforeAnchor (must be exactly this line):
-              // ${unique}_BEFORE
-            afterAnchor (must be exactly this line):
-              // ${unique}_AFTER
-
-            The replacement MUST be the line that goes BETWEEN those anchors (do not add it after afterAnchor).
-          `,
-          codeSketch: `export function greet(name: string) {
-  return \`Hello, \${name}!\`;
-}
-
-// ... existing code ...
-// ${unique}_BEFORE
-export const value = 'new';
-${keepBlock}
-// ... existing code ...
-// ${unique}_AFTER
-export const tail_${unique} = true;
-// ... existing code ...`,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      if (!editResult.success) {
-        console.error('files_edit success test failed:', editResult.error);
-        throw new Error(
-          `files_edit expected success but got: ${editResult.error}`,
-        );
-      }
-
-      expect(editResult.filePath).toBe(filePath);
-      expect(editResult.diff).toBeDefined();
-      expect(editResult.appliedHunks).toBeGreaterThan(0);
-
-      const { output: readAfter } = await filesReadTool.invoke(
-        { filesToRead: [{ filePath }] },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-      const contentAfter = readAfter.files?.[0]?.content || '';
-      expect(contentAfter).toContain("export const value = 'new'");
-    },
-  );
-
-  it(
-    'files_edit: returns structured error response when file does not exist',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const unique = `NOFILE_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      // Reference a file that was never created — deterministic error, no LLM involved
-      const filePath = `${WORKSPACE_DIR}/nonexistent-${unique}.ts`;
-
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: 'Add a greeting function.',
-          codeSketch: [
-            'export function greet() {',
-            '  return "hello";',
-            '}',
-            '// ... existing code ...',
-          ].join('\n'),
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      expect(editResult.success).toBe(false);
-      expect(editResult.filePath).toBe(filePath);
-
-      // Narrow the discriminated union so TS knows `.error` exists
-      if (!editResult.success) {
-        expect(editResult.error).toBeDefined();
-        expect(typeof editResult.error).toBe('string');
-        expect(editResult.error.length).toBeGreaterThan(0);
-      }
-    },
-  );
-
-  it(
-    'files_edit: handles markerless sketch as full rewrite',
-    { timeout: INT_TEST_TIMEOUT * 2 },
-    async () => {
-      const unique = `MARKERLESS_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      const fileName = `edit-format-test-${unique}.ts`;
-      const filePath = `${WORKSPACE_DIR}/${fileName}`;
-      // Very small file — ensures full content fits in context
-      const initialContent = `// ${unique}\nexport const value = 'hello';\n`;
-
-      await filesApplyChangesTool.invoke(
-        { filePath, oldText: '', newText: initialContent },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      // Markerless sketch (no "// ... existing code ..." markers)
-      // The LLM should treat this as a full file rewrite with empty anchors
-      const newContent = `// ${unique}\nexport const value = 'modified';\n`;
-
-      const { output: editResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: dedent`
-            Full file rewrite. Replace the string 'hello' with 'modified'.
-            This is a markerless sketch — output exactly one hunk with beforeAnchor="" and afterAnchor="" and replacement equal to the entire sketch verbatim.
-          `,
-          codeSketch: newContent,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      if (!editResult.success) {
-        console.error(
-          'files_edit markerless rewrite failed:',
-          editResult.error,
-        );
-        throw new Error(
-          `files_edit markerless rewrite expected success but got: ${editResult.error}`,
-        );
-      }
-
-      expect(editResult.success).toBe(true);
-      expect(editResult.appliedHunks).toBeGreaterThan(0);
-
-      const { output: readAfter } = await filesReadTool.invoke(
-        { filesToRead: [{ filePath }] },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-      const contentAfter = stripLineNumbers(
-        readAfter.files?.[0]?.content || '',
-      );
-      expect(contentAfter).toContain("value = 'modified'");
-    },
-  );
-
-  it(
-    'files_edit with useSmartModel: uses smart model flag',
-    { timeout: INT_TEST_TIMEOUT },
-    async () => {
-      const unique = `SMART_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      const filePath = `${WORKSPACE_DIR}/files-edit-smart-model-${unique}.ts`;
-
-      // Use markers (not markerless) for more deterministic behavior
-      const initialContent = [
-        `// ${unique}_START`,
-        'export function greet(name: string): string {',
-        '  return `Hello, ${name}!`;',
-        '}',
-        `// ${unique}_END`,
-        '',
-      ].join('\n');
-
-      await filesApplyChangesTool.invoke(
-        { filePath, oldText: '', newText: initialContent },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      // Use sketch WITH "// ... existing code ..." markers for proper marker-based mode
-      const { output: smartModelResult } = await filesEditTool.invoke(
-        {
-          filePath,
-          editInstructions: dedent`
-            Change the greeting from Hello to Hi.
-            Use beforeAnchor="// ${unique}_START" and afterAnchor="// ${unique}_END" exactly.
-            The replacement is everything between those anchors with Hello changed to Hi.
-          `,
-          codeSketch: [
-            `// ${unique}_START`,
-            'export function greet(name: string): string {',
-            '  return `Hi, ${name}!`;',
-            '}',
-            `// ${unique}_END`,
-            '// ... existing code ...',
-          ].join('\n'),
-          useSmartModel: true,
-        },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-
-      if (!smartModelResult.success) {
-        throw new Error(
-          `Smart model edit failed: ${smartModelResult.error}. This test requires deterministic success.`,
-        );
-      }
-
-      expect(smartModelResult.success).toBe(true);
-      expect(smartModelResult.modelUsed).toBe('smart');
-      expect(smartModelResult.appliedHunks).toBeGreaterThan(0);
-      expect(smartModelResult.diff).toBeDefined();
-
-      // Verify the content was actually changed
-      const { output: readAfter } = await filesReadTool.invoke(
-        { filesToRead: [{ filePath }] },
-        { runtimeProvider: runtimeThreadProvider },
-        RUNNABLE_CONFIG,
-      );
-      const contentAfter = readAfter.files?.[0]?.content || '';
-      expect(contentAfter).toContain('Hi,');
-      expect(contentAfter).not.toContain('Hello,');
-    },
-  );
-
-  // NOTE: More detailed files_edit scenario coverage lives in unit tests.
 
   describe('files_read: line numbers and contentHash', () => {
     it(

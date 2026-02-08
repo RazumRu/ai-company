@@ -56,7 +56,7 @@ export class FilesDeleteTool extends FilesBaseTool<FilesDeleteToolSchemaType> {
 
       ### When NOT to Use
       - Deleting directories → not supported (use shell \`rm -rf\` with caution)
-      - Editing or modifying file content → use \`files_apply_changes\` or \`files_edit\`
+      - Editing or modifying file content → use \`files_apply_changes\`
       - Removing multiple files at once → call this tool once per file
 
       ### Best Practices

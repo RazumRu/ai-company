@@ -9,10 +9,8 @@ import { BaseToolGroup } from '../../base-tool-group';
 import { FilesApplyChangesTool } from './files-apply-changes.tool';
 import { FilesBaseToolConfig } from './files-base.tool';
 import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
-import { FilesCreateDirectoryTool } from './files-create-directory.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
-import { FilesEditTool } from './files-edit.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
 import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
@@ -35,10 +33,8 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     private readonly filesReadTool: FilesReadTool,
     private readonly filesSearchTextTool: FilesSearchTextTool,
     private readonly filesCodebaseSearchTool: FilesCodebaseSearchTool,
-    private readonly filesCreateDirectoryTool: FilesCreateDirectoryTool,
     private readonly filesMoveFileTool: FilesMoveFileTool,
     private readonly filesWriteFileTool: FilesWriteFileTool,
-    private readonly filesEditTool: FilesEditTool,
     private readonly filesApplyChangesTool: FilesApplyChangesTool,
     private readonly filesDeleteTool: FilesDeleteTool,
   ) {
@@ -55,9 +51,9 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     const editSection = includeEditActions
       ? [
           '',
-          'Edit workflow: files_read (get current content) -> files_apply_changes (preferred) or files_edit (complex multi-region changes)',
+          'Edit workflow: files_read (get current content) -> files_apply_changes (single or multi-edit)',
           '- files_apply_changes: precise oldText/newText replacement. Copy oldText verbatim from files_read output.',
-          '- files_edit: sketch-based edits with "// ... existing code ..." markers. Use for multi-region edits.',
+          '- For multi-region edits, use the edits array: [{oldText, newText}, ...] to apply multiple changes atomically.',
           '- files_write_file: ONLY for creating new files.',
         ]
       : [
@@ -81,7 +77,7 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
       '| Exact text search | files_search_text (regex) |',
       '| Read files | files_read (batch multiple, returns numbered lines) |',
       '| Precise edit | files_apply_changes (exact oldText → newText) |',
-      '| Multi-region edit | files_edit (sketch with // ... existing code ... markers) |',
+      '| Multi-region edit | files_apply_changes (edits array) |',
       '| New file | files_write_file |',
       '| Browse directory | files_find_paths (glob) |',
       '| Overview | files_directory_tree |',
@@ -106,10 +102,8 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
 
     if (includeEditActions) {
       tools.push(
-        this.filesCreateDirectoryTool.build(config, lgConfig),
         this.filesMoveFileTool.build(config, lgConfig),
         this.filesWriteFileTool.build(config, lgConfig),
-        this.filesEditTool.build(config, lgConfig),
         this.filesApplyChangesTool.build(config, lgConfig),
         this.filesDeleteTool.build(config, lgConfig),
       );

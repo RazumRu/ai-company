@@ -41,7 +41,7 @@ type FilesWriteFileToolOutput = {
 export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaType> {
   public name = 'files_write_file';
   public description =
-    'Create a new file or completely overwrite an existing file with the provided content. Parent directories are created automatically. Primarily for new files — for editing existing files, prefer files_apply_changes or files_edit as they preserve unmodified content.';
+    'Create a new file or completely overwrite an existing file with the provided content. Parent directories are created automatically. Primarily for new files — for editing existing files, prefer files_apply_changes as it preserves unmodified content.';
 
   protected override generateTitle(
     args: FilesWriteFileToolSchemaType,
@@ -64,7 +64,7 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
       - Writing output files (reports, generated code)
 
       ### When NOT to Use
-      - Editing existing files → use \`files_apply_changes\` (precise text replacement) or \`files_edit\` (sketch-based)
+      - Editing existing files → use \`files_apply_changes\` (precise text replacement, supports multi-edit)
       - Appending to a file → use \`files_apply_changes\` with \`insertAfterLine\`
       - Small changes to large files → edit tools are safer and more efficient
 
@@ -76,7 +76,7 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
       ### Best Practices
       - Use absolute paths
       - Include proper file headers, imports, and structure for the target language
-      - For large files, consider whether \`files_edit\` with a sketch would be more appropriate
+      - For large files, consider whether \`files_apply_changes\` with targeted edits would be more appropriate
 
       ### Examples
       **1. Create a new TypeScript module:**

@@ -2,7 +2,13 @@
 
 Guidelines for writing effective tool `description` fields and parameter `.describe()` strings in our agent tool system.
 
-Based on [Claude's official tool use best practices](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#best-practices-for-tool-definitions).
+**All current and new tools MUST follow the official Anthropic best practices:**
+[https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#best-practices-for-tool-definitions](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#best-practices-for-tool-definitions)
+
+Key official requirements:
+- **Provide extremely detailed descriptions** — at least 3-4 sentences per tool. Explain what the tool does, when it should be used (and when it shouldn't), what each parameter means and how it affects behavior, and any important caveats or limitations.
+- **Every parameter needs a clear description** — what it means, its format/valid values, and how it affects the tool's behavior.
+- **Good descriptions prevent misuse** — the more context the model has, the better it selects and invokes tools. Short/vague descriptions lead to wrong tool selection and invalid inputs.
 
 ---
 
@@ -198,10 +204,7 @@ When multiple tools have overlapping capabilities, explicitly state which tool t
 
 ```ts
 // In files_apply_changes description:
-'...For sketch-based edits, use files_edit instead.'
-
-// In files_edit description:
-'...For precise single-block replacements, use files_apply_changes instead.'
+'...Supports multiple edits in one call via the edits array for atomic multi-region changes.'
 
 // In codebase_search description:
 '...For exact string/regex matching, follow up with files_search_text.'

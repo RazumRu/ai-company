@@ -756,4 +756,93 @@ describe('FilesApplyChangesTool', () => {
       expect(parsed.success).toBe(true);
     });
   });
+
+  describe('multi-edit schema', () => {
+    it('should accept edits array', () => {
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        edits: [
+          { oldText: 'old1', newText: 'new1' },
+          { oldText: 'old2', newText: 'new2' },
+        ],
+      });
+
+      expect(parsed.success).toBe(true);
+    });
+
+    it('should accept edits array with replaceAll', () => {
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        edits: [{ oldText: 'old1', newText: 'new1', replaceAll: true }],
+      });
+
+      expect(parsed.success).toBe(true);
+    });
+
+    it('should reject empty edits array', () => {
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        edits: [],
+      });
+
+      expect(parsed.success).toBe(false);
+    });
+
+    it('should reject edits array with more than 20 items', () => {
+      const edits = Array.from({ length: 21 }, (_, i) => ({
+        oldText: `old${i}`,
+        newText: `new${i}`,
+      }));
+
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        edits,
+      });
+
+      expect(parsed.success).toBe(false);
+    });
+
+    it('should accept single-element edits array', () => {
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        edits: [{ oldText: 'old', newText: 'new' }],
+      });
+
+      expect(parsed.success).toBe(true);
+    });
+
+    it('should accept edits array alongside flat params (edits takes priority)', () => {
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        oldText: 'ignored',
+        newText: 'ignored',
+        edits: [{ oldText: 'old', newText: 'new' }],
+      });
+
+      expect(parsed.success).toBe(true);
+    });
+
+    it('should accept edits array with expectedHash', () => {
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        edits: [{ oldText: 'old', newText: 'new' }],
+        expectedHash: 'abcd1234',
+      });
+
+      expect(parsed.success).toBe(true);
+    });
+
+    it('should allow omitting oldText/newText when edits is provided', () => {
+      const parsed = FilesApplyChangesToolSchema.safeParse({
+        filePath: '/test/file.ts',
+        edits: [{ oldText: 'old', newText: 'new' }],
+      });
+
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.oldText).toBeUndefined();
+        expect(parsed.data.newText).toBeUndefined();
+      }
+    });
+  });
 });

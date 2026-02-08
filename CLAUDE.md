@@ -159,6 +159,7 @@ src/v1/feature-name/
 - **Migrations**: Always `pnpm run migration:generate`. Never hand-write or use `migration:create`.
 - **Generated files**: Never manually edit `cypress/api-definitions/` — regenerate with `pnpm test:e2e:generate-api`.
 - **Imports**: Shared packages are aliased as `@packages/*` (e.g. `import { … } from '@packages/common'`).
+- **Agent tool definitions**: All tools in `agent-tools/` must follow the best practices in `/docs/tool-definitions-best-practices.md` and the [official Anthropic tool use guide](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#best-practices-for-tool-definitions). Descriptions must be detailed (3-4+ sentences), parameters must have clear `.describe()` strings, and `getDetailedInstructions()` must carry all heavy guidance. Read the docs file before creating or modifying any tool.
 
 ---
 

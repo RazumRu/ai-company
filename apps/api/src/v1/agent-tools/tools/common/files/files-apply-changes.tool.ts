@@ -14,6 +14,15 @@ import {
 } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
+const SingleEditSchema = z.object({
+  oldText: z.string().describe('Exact text to find and replace.'),
+  newText: z.string().describe('Replacement text.'),
+  replaceAll: z
+    .boolean()
+    .optional()
+    .describe('If true, replaces all occurrences of oldText.'),
+});
+
 const FilesApplyChangesToolSchemaBase = z.object({
   filePath: z
     .string()
@@ -23,19 +32,29 @@ const FilesApplyChangesToolSchemaBase = z.object({
     ),
   oldText: z
     .string()
+    .optional()
     .describe(
-      'The exact text block to find and replace, copied verbatim from files_read output without line number prefixes. Use an empty string ("") to create a new file, overwrite an existing file, or insert text when combined with insertAfterLine.',
+      'The exact text block to find and replace, copied verbatim from files_read output without line number prefixes. Use an empty string ("") to create a new file, overwrite an existing file, or insert text when combined with insertAfterLine. Ignored when edits array is provided.',
     ),
   newText: z
     .string()
+    .optional()
     .describe(
-      'The replacement text. Indentation of the first line is automatically adjusted to match the matched oldText indentation.',
+      'The replacement text. Indentation of the first line is automatically adjusted to match the matched oldText indentation. Ignored when edits array is provided.',
     ),
   replaceAll: z
     .boolean()
     .optional()
     .describe(
-      'If true, replaces all occurrences of oldText. If false or undefined, requires exactly one match.',
+      'If true, replaces all occurrences of oldText. If false or undefined, requires exactly one match. Ignored when edits array is provided.',
+    ),
+  edits: z
+    .array(SingleEditSchema)
+    .min(1)
+    .max(20)
+    .optional()
+    .describe(
+      'Array of {oldText, newText, replaceAll?} pairs to apply atomically in order. When provided, the flat oldText/newText/replaceAll params are ignored. Each edit is applied against the result of the previous edit. If any edit fails, no changes are written.',
     ),
   insertAfterLine: z
     .number()
@@ -76,7 +95,9 @@ type FilesApplyChangesToolOutput = {
   appliedEdits?: number;
   totalEdits?: number;
   matchStage?: MatchStage;
+  matchStages?: MatchStage[];
   postEditContext?: string;
+  failedEditIndex?: number;
 };
 
 const MAX_FUZZY_EDIT_RATIO = 0.15;
@@ -86,7 +107,7 @@ const MAX_FUZZY_OLD_TEXT_LINES = 50;
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Replace exact text blocks in a file or insert new text at a specific line. Copy oldText verbatim from files_read output (without line number prefixes) and provide the replacement in newText. Supports progressive matching with whitespace tolerance. Set replaceAll=true to replace every occurrence, or use insertAfterLine with an empty oldText to insert without replacing.';
+    'Replace exact text blocks in a file. Supports multiple edits in one call via the edits array for atomic multi-region changes. Copy oldText verbatim from files_read output (without line number prefixes). Supports progressive matching with whitespace tolerance.';
 
   protected override generateTitle(
     args: FilesApplyChangesToolSchemaType,
@@ -107,12 +128,27 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return dedent`
       ### Overview
       Replace exact text blocks (oldText → newText). Primary edit tool — precise and fast.
+      Supports multiple edits in one atomic call via the \`edits\` array.
 
       ### How to Use
       1. Run \`files_read\` first to get current content with line numbers
       2. Copy the EXACT text from the output into \`oldText\` — do NOT type from memory
       3. Include enough surrounding context (3-5 lines) to make the match unique
       4. Do NOT include line number prefixes (\`NNN\\t\`) in oldText — only the code itself
+
+      ### Multi-Edit Mode
+      Pass \`edits: [{oldText, newText, replaceAll?}, ...]\` to apply multiple replacements atomically in a single call. Each edit runs against the result of the previous one. If any edit fails, no changes are written.
+
+      **Example — Add import and use it:**
+      \`\`\`json
+      {
+        "filePath": "/runtime-workspace/project/src/app.ts",
+        "edits": [
+          {"oldText": "import { A } from './a';", "newText": "import { A } from './a';\\nimport { B } from './b';"},
+          {"oldText": "const result = processA(data);", "newText": "const result = processA(processB(data));"}
+        ]
+      }
+      \`\`\`
 
       ### Matching Strategy (Progressive Fallback)
       Three matching strategies are tried in order:
@@ -768,6 +804,23 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
 
+    // Multi-edit mode: apply an array of edits atomically
+    if (args.edits && args.edits.length > 0) {
+      return this.invokeMultiEdit(args, config, cfg, messageMetadata);
+    }
+
+    // Single-edit mode: require oldText and newText
+    if (args.oldText === undefined || args.newText === undefined) {
+      return {
+        output: {
+          success: false,
+          error:
+            'Either provide edits array or both oldText and newText parameters.',
+        },
+        messageMetadata,
+      };
+    }
+
     // Detect no-op calls early (oldText === newText)
     if (args.oldText !== '' && args.oldText === args.newText) {
       return {
@@ -1016,6 +1069,149 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         diff: diff + matchWarning,
         matchStage,
         postEditContext,
+      },
+      messageMetadata,
+    };
+  }
+
+  private async invokeMultiEdit(
+    args: FilesApplyChangesToolSchemaType,
+    config: FilesBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    messageMetadata: { __title: string | undefined },
+  ): Promise<ToolInvokeResult<FilesApplyChangesToolOutput>> {
+    const edits = args.edits!;
+
+    // Validate no-op edits early
+    for (let i = 0; i < edits.length; i++) {
+      const edit = edits[i]!;
+      if (edit.oldText !== '' && edit.oldText === edit.newText) {
+        return {
+          output: {
+            success: false,
+            error: `Edit ${i}: oldText and newText are identical - no changes would be made.`,
+            failedEditIndex: i,
+          },
+          messageMetadata,
+        };
+      }
+    }
+
+    const p = this.shQuote(args.filePath);
+    const readResult = await this.execCommand({ cmd: `cat ${p}` }, config, cfg);
+
+    if (readResult.exitCode !== 0) {
+      return {
+        output: {
+          success: false,
+          error: readResult.stderr || 'Failed to read file',
+        },
+        messageMetadata,
+      };
+    }
+
+    const originalContent = readResult.stdout;
+
+    // Validate content hash if provided
+    if (args.expectedHash) {
+      const actualHash = createHash('sha256')
+        .update(originalContent)
+        .digest('hex')
+        .slice(0, 8);
+      if (actualHash !== args.expectedHash) {
+        return {
+          output: {
+            success: false,
+            error: `File has changed since last read (expected hash: ${args.expectedHash}, actual: ${actualHash}). Re-read the file with files_read before editing.`,
+          },
+          messageMetadata,
+        };
+      }
+    }
+
+    // Apply each edit sequentially against evolving content
+    let currentContent = originalContent;
+    const allDiffParts: string[] = [];
+    const matchStages: MatchStage[] = [];
+
+    for (let i = 0; i < edits.length; i++) {
+      const edit = edits[i]!;
+
+      if (edit.oldText === '') {
+        return {
+          output: {
+            success: false,
+            error: `Edit ${i}: empty oldText is not supported in multi-edit mode. Use insertAfterLine for insertions or files_write_file for new files.`,
+            failedEditIndex: i,
+          },
+          messageMetadata,
+        };
+      }
+
+      const { matches, errors, matchStage } = this.findMatchesProgressive(
+        currentContent,
+        edit.oldText,
+        edit.replaceAll ?? false,
+      );
+
+      if (errors.length > 0) {
+        return {
+          output: {
+            success: false,
+            error: `Edit ${i} failed: ${errors.join(' ')}`,
+            failedEditIndex: i,
+          },
+          messageMetadata,
+        };
+      }
+
+      if (matchStage) {
+        matchStages.push(matchStage);
+      }
+
+      // Generate diff for this edit
+      const currentLines = currentContent.replace(/\r\n/g, '\n').split('\n');
+      const editDiff = this.generateDiff(currentLines, matches, edit.newText);
+      if (editDiff) {
+        allDiffParts.push(editDiff);
+      }
+
+      // Apply edit to get new content for next iteration
+      currentContent = this.applyEdits(currentContent, matches, edit.newText);
+    }
+
+    // All edits matched successfully — write the final result
+    const contentBase64 = Buffer.from(currentContent, 'utf8').toString(
+      'base64',
+    );
+    const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
+    const cmd = `printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
+
+    const writeResult = await this.execCommand({ cmd }, config, cfg);
+
+    if (writeResult.exitCode !== 0) {
+      return {
+        output: {
+          success: false,
+          error: writeResult.stderr || 'Failed to write file',
+        },
+        messageMetadata,
+      };
+    }
+
+    const nonExactStages = matchStages.filter((s) => s !== 'exact');
+    const matchWarning =
+      nonExactStages.length > 0
+        ? ` (non-exact matches used: ${nonExactStages.join(', ')} — verify diff carefully)`
+        : '';
+
+    return {
+      output: {
+        success: true,
+        appliedEdits: edits.length,
+        totalEdits: edits.length,
+        diff: allDiffParts.join('\n') + matchWarning,
+        matchStages,
       },
       messageMetadata,
     };
