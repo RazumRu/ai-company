@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { createHash, randomBytes } from 'node:crypto';
-import { basename, dirname } from 'node:path';
+import { basename } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
@@ -8,6 +8,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -34,13 +35,13 @@ const FilesApplyChangesToolSchemaBase = z.object({
     .string()
     .optional()
     .describe(
-      'The exact text block to find and replace, copied verbatim from files_read output without line number prefixes. Use an empty string ("") to create a new file, overwrite an existing file, or insert text when combined with insertAfterLine. Ignored when edits array is provided.',
+      'The exact text to find and replace, copied verbatim from files_read output (without line number prefixes). Must be non-empty for replacements. Use empty string ("") only with insertAfterLine to insert text at a specific line. Ignored when edits array is provided.',
     ),
   newText: z
     .string()
     .optional()
     .describe(
-      'The replacement text. Indentation of the first line is automatically adjusted to match the matched oldText indentation. Ignored when edits array is provided.',
+      'The replacement text. Indentation is automatically adjusted to match the matched oldText block indentation. Ignored when edits array is provided.',
     ),
   replaceAll: z
     .boolean()
@@ -102,12 +103,14 @@ type FilesApplyChangesToolOutput = {
 
 const MAX_FUZZY_EDIT_RATIO = 0.15;
 const MAX_FUZZY_OLD_TEXT_LINES = 50;
+const MIN_FUZZY_LINE_LENGTH = 8;
+const SIMILAR_BLOCK_PREFIX_LENGTH = 20;
 
 @Injectable()
 export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSchemaType> {
   public name = 'files_apply_changes';
   public description =
-    'Replace exact text blocks in a file. Supports multiple edits in one call via the edits array for atomic multi-region changes. Copy oldText verbatim from files_read output (without line number prefixes). Supports progressive matching with whitespace tolerance.';
+    'Replace exact text blocks in an existing file, or insert text at a specific line. Supports multiple edits in one call via the edits array for atomic multi-region changes. Copy oldText verbatim from files_read output (without line number prefixes). To create new files, use files_write_file instead.';
 
   protected override generateTitle(
     args: FilesApplyChangesToolSchemaType,
@@ -139,6 +142,8 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       ### Multi-Edit Mode
       Pass \`edits: [{oldText, newText, replaceAll?}, ...]\` to apply multiple replacements atomically in a single call. Each edit runs against the result of the previous one. If any edit fails, no changes are written.
 
+      **Limitations:** Multi-edit mode only supports text replacements (non-empty \`oldText\`). It does not support \`insertAfterLine\`. Use a separate single-edit call for line insertions.
+
       **Example — Add import and use it:**
       \`\`\`json
       {
@@ -157,6 +162,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       3. **Fuzzy**: per-line Levenshtein distance ≤ 15% — catches minor typos, quote style differences
       - Must match exactly once unless \`replaceAll: true\` (fuzzy only accepts a single match)
       - Common indentation is auto-normalized; relative indentation within the block is preserved
+      - Lines shorter than 8 characters require exact trimmed match (avoids false positives on \`}\`, \`return;\`, etc.)
       - Fuzzy matching is skipped for oldText blocks > 50 lines (performance safeguard)
 
       ### Stale-Read Protection
@@ -186,10 +192,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       {"filePath": "/runtime-workspace/project/src/utils.ts", "oldText": "console.log", "newText": "logger.info", "replaceAll": true}
       \`\`\`
     `;
-  }
-
-  private shQuote(s: string): string {
-    return `'${s.replace(/'/g, `'\\''`)}'`;
   }
 
   private collapseBlankRuns(lines: string[]): string[] {
@@ -385,6 +387,12 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
       const maxLen = Math.max(fileLineTrimmed.length, oldLineTrimmed.length);
       if (maxLen === 0) continue;
+
+      // Short lines (e.g. "}", "return;") require exact trimmed match to avoid false positives
+      if (maxLen < MIN_FUZZY_LINE_LENGTH) {
+        if (fileLineTrimmed !== oldLineTrimmed) return null;
+        continue;
+      }
 
       // Skip Levenshtein for very long lines (expensive) — fall back to trimmed comparison
       if (maxLen > 500) {
@@ -588,7 +596,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         ?.trim()
         .toLowerCase()
         .substring(0, 50);
-      if (lineNormalized?.includes(firstOldLineNormalized.substring(0, 20))) {
+      if (
+        lineNormalized?.includes(
+          firstOldLineNormalized.substring(0, SIMILAR_BLOCK_PREFIX_LENGTH),
+        )
+      ) {
         const endLine = Math.min(i + oldLines.length + 2, originalLines.length);
         const blockText = originalLines.slice(i, endLine).join('\n');
         candidates.push({
@@ -796,6 +808,56 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return lines.join('\n');
   }
 
+  private async readFileContent(
+    filePath: string,
+    config: FilesBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<{ content: string } | { error: string }> {
+    const p = shQuote(filePath);
+    const res = await this.execCommand({ cmd: `cat ${p}` }, config, cfg);
+    if (res.exitCode !== 0) {
+      const stderr = res.stderr || '';
+      if (stderr.includes('No such file or directory')) {
+        return {
+          error: `File not found: ${filePath}. To create a new file, use files_write_file instead.`,
+        };
+      }
+      return { error: stderr || 'Failed to read file' };
+    }
+    return { content: res.stdout };
+  }
+
+  private async writeFileContent(
+    filePath: string,
+    content: string,
+    config: FilesBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<{ error?: string }> {
+    const contentBase64 = Buffer.from(content, 'utf8').toString('base64');
+    const tempFile = `${filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
+    const cmd = `printf %s ${shQuote(contentBase64)} | base64 -d > ${shQuote(tempFile)} && mv ${shQuote(tempFile)} ${shQuote(filePath)}`;
+
+    const res = await this.execCommand({ cmd }, config, cfg);
+    if (res.exitCode !== 0) {
+      return { error: res.stderr || 'Failed to write file' };
+    }
+    return {};
+  }
+
+  private validateExpectedHash(
+    fileContent: string,
+    expectedHash: string,
+  ): string | null {
+    const actualHash = createHash('sha256')
+      .update(fileContent)
+      .digest('hex')
+      .slice(0, 8);
+    if (actualHash !== expectedHash) {
+      return `File has changed since last read (expected hash: ${expectedHash}, actual: ${actualHash}). Re-read the file with files_read before editing.`;
+    }
+    return null;
+  }
+
   public async invoke(
     args: FilesApplyChangesToolSchemaType,
     config: FilesBaseToolConfig,
@@ -846,25 +908,28 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         };
       }
 
-      const p = this.shQuote(args.filePath);
-      const readResult = await this.execCommand(
-        { cmd: `cat ${p}` },
-        config,
-        cfg,
-      );
-
-      if (readResult.exitCode !== 0) {
+      const readRes = await this.readFileContent(args.filePath, config, cfg);
+      if ('error' in readRes) {
         return {
-          output: {
-            success: false,
-            error: readResult.stderr || 'Failed to read file',
-          },
+          output: { success: false, error: readRes.error },
           messageMetadata,
         };
       }
 
-      const fileContent = readResult.stdout;
-      const lines = fileContent.replace(/\r\n/g, '\n').split('\n');
+      if (args.expectedHash) {
+        const hashError = this.validateExpectedHash(
+          readRes.content,
+          args.expectedHash,
+        );
+        if (hashError) {
+          return {
+            output: { success: false, error: hashError },
+            messageMetadata,
+          };
+        }
+      }
+
+      const lines = readRes.content.replace(/\r\n/g, '\n').split('\n');
       const insertLine = args.insertAfterLine;
 
       if (insertLine > lines.length) {
@@ -881,22 +946,41 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       lines.splice(insertLine, 0, ...newLines);
 
       const modifiedContent = lines.join('\n');
-      const contentBase64 = Buffer.from(modifiedContent, 'utf8').toString(
-        'base64',
+      const writeRes = await this.writeFileContent(
+        args.filePath,
+        modifiedContent,
+        config,
+        cfg,
       );
-      const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-      const cmd = `printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
-
-      const writeResult = await this.execCommand({ cmd }, config, cfg);
-      if (writeResult.exitCode !== 0) {
+      if (writeRes.error) {
         return {
-          output: {
-            success: false,
-            error: writeResult.stderr || 'Failed to write file',
-          },
+          output: { success: false, error: writeRes.error },
           messageMetadata,
         };
       }
+
+      // Generate diff for insertion
+      const diffParts: string[] = [];
+      const diffContextStart = Math.max(0, insertLine - 5);
+      diffParts.push(
+        `@@ -${insertLine + 1},0 +${insertLine + 1},${newLines.length} @@`,
+      );
+      for (let i = diffContextStart; i < insertLine && i < lines.length; i++) {
+        diffParts.push(` ${lines[i]}`);
+      }
+      for (const nl of newLines) {
+        diffParts.push(`+${nl}`);
+      }
+      const diffContextEnd = Math.min(
+        lines.length,
+        insertLine + newLines.length + 5,
+      );
+      for (let i = insertLine + newLines.length; i < diffContextEnd; i++) {
+        if (lines[i] !== undefined) {
+          diffParts.push(` ${lines[i]}`);
+        }
+      }
+      const diff = diffParts.join('\n');
 
       // Generate post-edit context
       const contextStart = Math.max(0, insertLine - 5);
@@ -914,78 +998,42 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
           success: true,
           appliedEdits: 1,
           totalEdits: 1,
+          diff,
           postEditContext,
         },
         messageMetadata,
       };
     }
 
-    const isNewFile = args.oldText === '';
-
-    if (isNewFile) {
-      const newContent = args.newText;
-
-      const parentDir = dirname(args.filePath);
-      const contentBase64 = Buffer.from(newContent, 'utf8').toString('base64');
-      const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-
-      const cmd = `mkdir -p ${this.shQuote(parentDir)} && printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
-
-      const writeResult = await this.execCommand(
-        {
-          cmd,
-        },
-        config,
-        cfg,
-      );
-
-      if (writeResult.exitCode !== 0) {
-        return {
-          output: {
-            success: false,
-            error: writeResult.stderr || 'Failed to create file',
-          },
-          messageMetadata,
-        };
-      }
-
-      return {
-        output: {
-          success: true,
-          appliedEdits: 1,
-          totalEdits: 1,
-        },
-        messageMetadata,
-      };
-    }
-
-    const p = this.shQuote(args.filePath);
-    const readResult = await this.execCommand({ cmd: `cat ${p}` }, config, cfg);
-
-    if (readResult.exitCode !== 0) {
+    if (args.oldText === '') {
       return {
         output: {
           success: false,
-          error: readResult.stderr || 'Failed to read file',
+          error:
+            'Empty oldText without insertAfterLine is not supported. To create or overwrite a file, use files_write_file. To insert text at a specific line, provide insertAfterLine.',
         },
         messageMetadata,
       };
     }
 
-    const fileContent = readResult.stdout;
+    const readRes = await this.readFileContent(args.filePath, config, cfg);
+    if ('error' in readRes) {
+      return {
+        output: { success: false, error: readRes.error },
+        messageMetadata,
+      };
+    }
 
-    // Validate content hash if provided (stale-read detection)
+    const fileContent = readRes.content;
+
     if (args.expectedHash) {
-      const actualHash = createHash('sha256')
-        .update(fileContent)
-        .digest('hex')
-        .slice(0, 8);
-      if (actualHash !== args.expectedHash) {
+      const hashError = this.validateExpectedHash(
+        fileContent,
+        args.expectedHash,
+      );
+      if (hashError) {
         return {
-          output: {
-            success: false,
-            error: `File has changed since last read (expected hash: ${args.expectedHash}, actual: ${actualHash}). Re-read the file with files_read before editing.`,
-          },
+          output: { success: false, error: hashError },
           messageMetadata,
         };
       }
@@ -1012,26 +1060,15 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     const modifiedContent = this.applyEdits(fileContent, matches, args.newText);
 
-    const contentBase64 = Buffer.from(modifiedContent, 'utf8').toString(
-      'base64',
-    );
-    const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-    const cmd = `printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
-
-    const writeResult = await this.execCommand(
-      {
-        cmd,
-      },
+    const writeRes = await this.writeFileContent(
+      args.filePath,
+      modifiedContent,
       config,
       cfg,
     );
-
-    if (writeResult.exitCode !== 0) {
+    if (writeRes.error) {
       return {
-        output: {
-          success: false,
-          error: writeResult.stderr || 'Failed to write file',
-        },
+        output: { success: false, error: writeRes.error },
         messageMetadata,
       };
     }
@@ -1097,33 +1134,24 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       }
     }
 
-    const p = this.shQuote(args.filePath);
-    const readResult = await this.execCommand({ cmd: `cat ${p}` }, config, cfg);
-
-    if (readResult.exitCode !== 0) {
+    const readRes = await this.readFileContent(args.filePath, config, cfg);
+    if ('error' in readRes) {
       return {
-        output: {
-          success: false,
-          error: readResult.stderr || 'Failed to read file',
-        },
+        output: { success: false, error: readRes.error },
         messageMetadata,
       };
     }
 
-    const originalContent = readResult.stdout;
+    const originalContent = readRes.content;
 
-    // Validate content hash if provided
     if (args.expectedHash) {
-      const actualHash = createHash('sha256')
-        .update(originalContent)
-        .digest('hex')
-        .slice(0, 8);
-      if (actualHash !== args.expectedHash) {
+      const hashError = this.validateExpectedHash(
+        originalContent,
+        args.expectedHash,
+      );
+      if (hashError) {
         return {
-          output: {
-            success: false,
-            error: `File has changed since last read (expected hash: ${args.expectedHash}, actual: ${actualHash}). Re-read the file with files_read before editing.`,
-          },
+          output: { success: false, error: hashError },
           messageMetadata,
         };
       }
@@ -1181,22 +1209,50 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     // All edits matched successfully — write the final result
-    const contentBase64 = Buffer.from(currentContent, 'utf8').toString(
-      'base64',
+    const writeRes = await this.writeFileContent(
+      args.filePath,
+      currentContent,
+      config,
+      cfg,
     );
-    const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
-    const cmd = `printf %s ${this.shQuote(contentBase64)} | base64 -d > ${this.shQuote(tempFile)} && mv ${this.shQuote(tempFile)} ${this.shQuote(args.filePath)}`;
-
-    const writeResult = await this.execCommand({ cmd }, config, cfg);
-
-    if (writeResult.exitCode !== 0) {
+    if (writeRes.error) {
       return {
-        output: {
-          success: false,
-          error: writeResult.stderr || 'Failed to write file',
-        },
+        output: { success: false, error: writeRes.error },
         messageMetadata,
       };
+    }
+
+    // Generate post-edit context from the final modified content
+    const modifiedLines = currentContent.replace(/\r\n/g, '\n').split('\n');
+    const lastEdit = edits[edits.length - 1];
+    let postEditContext: string | undefined;
+    if (lastEdit) {
+      // Show context around the last edit's approximate location
+      const lastEditLines = lastEdit.oldText.replace(/\r\n/g, '\n').split('\n');
+      // Find where the last edit landed in the final content
+      const lastEditNewLines = lastEdit.newText
+        .replace(/\r\n/g, '\n')
+        .split('\n');
+      // Use a simple heuristic: search for the newText in the final content
+      const searchSnippet = lastEditNewLines[0]?.trim();
+      let approxLine = modifiedLines.length - 1;
+      if (searchSnippet) {
+        for (let i = modifiedLines.length - 1; i >= 0; i--) {
+          if (modifiedLines[i]?.trim().includes(searchSnippet)) {
+            approxLine = i;
+            break;
+          }
+        }
+      }
+      const contextStart = Math.max(0, approxLine - lastEditLines.length - 5);
+      const contextEnd = Math.min(
+        modifiedLines.length,
+        approxLine + lastEditNewLines.length + 5,
+      );
+      postEditContext = modifiedLines
+        .slice(contextStart, contextEnd)
+        .map((line, i) => `${contextStart + i + 1}\t${line}`)
+        .join('\n');
     }
 
     const nonExactStages = matchStages.filter((s) => s !== 'exact');
@@ -1212,6 +1268,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         totalEdits: edits.length,
         diff: allDiffParts.join('\n') + matchWarning,
         matchStages,
+        postEditContext,
       },
       messageMetadata,
     };

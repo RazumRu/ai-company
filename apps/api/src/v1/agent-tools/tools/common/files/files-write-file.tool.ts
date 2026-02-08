@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { randomBytes } from 'node:crypto';
 import { basename, dirname } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
@@ -41,7 +42,7 @@ type FilesWriteFileToolOutput = {
 export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaType> {
   public name = 'files_write_file';
   public description =
-    'Create a new file or completely overwrite an existing file with the provided content. Parent directories are created automatically. Primarily for new files — for editing existing files, prefer files_apply_changes as it preserves unmodified content.';
+    'Create a new file or completely overwrite an existing file with the provided content. Parent directories are created automatically. This is the only tool for creating new files. For editing existing files, use files_apply_changes instead — it preserves unmodified content.';
 
   protected override generateTitle(
     args: FilesWriteFileToolSchemaType,
@@ -104,14 +105,14 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
     const messageMetadata = { __title: title };
 
     const parentDir = dirname(args.filePath);
-    const tempFile = `${args.filePath}.tmp.${Date.now()}`;
+    const tempFile = `${args.filePath}.tmp.${Date.now()}.${randomBytes(4).toString('hex')}`;
     const contentBase64 = Buffer.from(args.fileContent, 'utf8').toString(
       'base64',
     );
 
     const cmd = [
       `mkdir -p ${shQuote(parentDir)}`,
-      `echo ${shQuote(contentBase64)} | base64 -d > ${shQuote(tempFile)}`,
+      `printf %s ${shQuote(contentBase64)} | base64 -d > ${shQuote(tempFile)}`,
       `mv -- ${shQuote(tempFile)} ${shQuote(args.filePath)}`,
     ].join(' && ');
 

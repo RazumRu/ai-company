@@ -11,6 +11,7 @@ import { FilesDeleteTool } from '../../../v1/agent-tools/tools/common/files/file
 import { FilesFindPathsTool } from '../../../v1/agent-tools/tools/common/files/files-find-paths.tool';
 import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-read.tool';
 import { FilesSearchTextTool } from '../../../v1/agent-tools/tools/common/files/files-search-text.tool';
+import { FilesWriteFileTool } from '../../../v1/agent-tools/tools/common/files/files-write-file.tool';
 import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
@@ -84,17 +85,17 @@ describe('Files tools integration', () => {
   let filesReadTool: FilesReadTool;
   let filesSearchTextTool: FilesSearchTextTool;
   let filesApplyChangesTool: FilesApplyChangesTool;
+  let filesWriteFileTool: FilesWriteFileTool;
   let filesDeleteTool: FilesDeleteTool;
   let shellTool: ShellTool;
 
   const writeSampleFile = async (fileName = 'sample.ts') => {
     const filePath = `${WORKSPACE_DIR}/${fileName}`;
 
-    const { output: result } = await filesApplyChangesTool.invoke(
+    const { output: result } = await filesWriteFileTool.invoke(
       {
         filePath,
-        oldText: '',
-        newText: SAMPLE_TS_CONTENT,
+        fileContent: SAMPLE_TS_CONTENT,
       },
       { runtimeProvider: runtimeThreadProvider },
       RUNNABLE_CONFIG,
@@ -112,6 +113,7 @@ describe('Files tools integration', () => {
         FilesReadTool,
         FilesSearchTextTool,
         FilesApplyChangesTool,
+        FilesWriteFileTool,
         FilesDeleteTool,
         ShellTool,
       ],
@@ -121,6 +123,7 @@ describe('Files tools integration', () => {
     filesReadTool = moduleRef.get(FilesReadTool);
     filesSearchTextTool = moduleRef.get(FilesSearchTextTool);
     filesApplyChangesTool = moduleRef.get(FilesApplyChangesTool);
+    filesWriteFileTool = moduleRef.get(FilesWriteFileTool);
     filesDeleteTool = moduleRef.get(FilesDeleteTool);
     shellTool = moduleRef.get(ShellTool);
 
@@ -259,11 +262,10 @@ describe('Files tools integration', () => {
       const content = 'Hello from custom dir';
 
       // Create file in a custom directory
-      const { output: applyRes } = await filesApplyChangesTool.invoke(
+      const { output: applyRes } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: content,
+          fileContent: content,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -343,11 +345,10 @@ describe('Files tools integration', () => {
       const filePath = `${nestedDir}/${fileName}`;
       const content = 'temporary file content';
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: content,
+          fileContent: content,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -399,11 +400,10 @@ describe('Files tools integration', () => {
       // Create a file with initial content
       const initialContent = `export function oldFunction() {\n  return 'old value';\n}\n\nexport const config = 'old';`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -449,11 +449,10 @@ describe('Files tools integration', () => {
       // Create a file with initial content
       const initialContent = `export const data = 'value';\n\nfunction helper() {\n  return true;\n}`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -506,11 +505,10 @@ describe('Files tools integration', () => {
       // Create a file with initial content
       const initialContent = `export const first = 'value';\n\nexport function existing() {\n  return 'exists';\n}`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -572,11 +570,10 @@ describe('Files tools integration', () => {
       // Create a file with initial content
       const initialContent = `export const config = {\n  api: 'http://localhost',\n  port: 3000,\n};`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -626,12 +623,11 @@ describe('Files tools integration', () => {
     async () => {
       const filePath = `${WORKSPACE_DIR}/empty-file.ts`;
 
-      // Create an empty file
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      // Create an empty file using write tool
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: '',
+          fileContent: '',
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -649,18 +645,17 @@ describe('Files tools integration', () => {
       // Empty file now gets a single numbered line: "1\t"
       expect(readEmpty.files?.[0]?.content).toBe('1\t');
 
-      // Add content to the empty file
-      const { output: addResult } = await filesApplyChangesTool.invoke(
+      // Overwrite with content using write tool
+      const { output: writeResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: `// First line\nexport const value = 'data';`,
+          fileContent: `// First line\nexport const value = 'data';`,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
       );
 
-      expect(addResult.success).toBe(true);
+      expect(writeResult.success).toBe(true);
 
       // Verify content was added
       const { output: readAfter } = await filesReadTool.invoke(
@@ -684,11 +679,10 @@ describe('Files tools integration', () => {
       // Create a file
       const initialContent = `export function test() {\n  return 'original';\n}`;
 
-      const { output: createResult } = await filesApplyChangesTool.invoke(
+      const { output: createResult } = await filesWriteFileTool.invoke(
         {
           filePath,
-          oldText: '',
-          newText: initialContent,
+          fileContent: initialContent,
         },
         { runtimeProvider: runtimeThreadProvider },
         RUNNABLE_CONFIG,
@@ -734,8 +728,8 @@ describe('Files tools integration', () => {
         const filePath = `${WORKSPACE_DIR}/line-numbers-test.ts`;
         const content = 'first\nsecond\nthird';
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -769,8 +763,8 @@ describe('Files tools integration', () => {
           (_, i) => `line${i + 1}`,
         ).join('\n');
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -803,8 +797,8 @@ describe('Files tools integration', () => {
         const filePath = `${WORKSPACE_DIR}/insert-after-line.ts`;
         const content = 'line1\nline2\nline3';
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -847,8 +841,8 @@ describe('Files tools integration', () => {
         const filePath = `${WORKSPACE_DIR}/insert-at-beginning.ts`;
         const content = 'existing-line';
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -886,8 +880,8 @@ describe('Files tools integration', () => {
       async () => {
         const filePath = `${WORKSPACE_DIR}/insert-invalid.ts`;
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: 'content' },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: 'content' },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -917,8 +911,8 @@ describe('Files tools integration', () => {
         const filePath = `${WORKSPACE_DIR}/hash-match.ts`;
         const content = 'const x = 1;';
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -956,8 +950,8 @@ describe('Files tools integration', () => {
         const filePath = `${WORKSPACE_DIR}/hash-stale.ts`;
         const content = 'const y = 1;';
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -991,8 +985,8 @@ describe('Files tools integration', () => {
           (_, i) => `line${i + 1}`,
         ).join('\n');
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -1028,8 +1022,8 @@ describe('Files tools integration', () => {
         const filePath = `${WORKSPACE_DIR}/trimmed-match.ts`;
         const content = '    const indented = true;\n    return indented;';
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -1067,8 +1061,8 @@ describe('Files tools integration', () => {
         const filePath = `${WORKSPACE_DIR}/fuzzy-match.ts`;
         const content = 'const msg = "hello world";';
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
@@ -1105,8 +1099,8 @@ describe('Files tools integration', () => {
         const filePath = `${WORKSPACE_DIR}/exact-match.ts`;
         const content = 'const val = 42;';
 
-        await filesApplyChangesTool.invoke(
-          { filePath, oldText: '', newText: content },
+        await filesWriteFileTool.invoke(
+          { filePath, fileContent: content },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );

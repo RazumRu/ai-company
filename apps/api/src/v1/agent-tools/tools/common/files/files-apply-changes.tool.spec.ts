@@ -622,6 +622,29 @@ describe('FilesApplyChangesTool', () => {
         expect(matches[i]!.startLine).toBeGreaterThan(matches[i - 1]!.endLine);
       }
     });
+
+    it('should require exact trimmed match for short lines (<8 chars)', () => {
+      // "}" is only 1 char — fuzzy should NOT match ")" even though edit distance is 1
+      const fileContent = '  }\n  return;\n  ]';
+      const originalLines = fileContent.split('\n');
+      const oldText = ')';
+
+      const { matches } = tool['findMatchesFuzzy'](originalLines, oldText);
+
+      // Short line fuzzy guard: ")" vs "}" should not fuzzy-match
+      expect(matches).toHaveLength(0);
+    });
+
+    it('should fuzzy-match lines >= 8 chars with small difference', () => {
+      // 18-char line, 1-char difference = ~5.5% edit ratio — within 15% threshold
+      const fileContent = 'const x = "value";';
+      const originalLines = fileContent.split('\n');
+      const oldText = "const x = 'value';";
+
+      const { matches } = tool['findMatchesFuzzy'](originalLines, oldText);
+
+      expect(matches).toHaveLength(1);
+    });
   });
 
   describe('findMatchesProgressive (full pipeline)', () => {
