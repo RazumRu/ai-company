@@ -52,11 +52,11 @@ export class RepoIndexEntity extends TimestampsEntity {
   @Column({ type: 'varchar', nullable: true })
   chunkingSignatureHash!: string | null;
 
-  @Column({ type: 'int', nullable: true })
-  estimatedTokens!: number | null;
+  @Column({ type: 'int', default: 0 })
+  estimatedTokens!: number;
 
-  @Column({ type: 'int', nullable: true, default: 0 })
-  indexedTokens!: number | null;
+  @Column({ type: 'int', default: 0 })
+  indexedTokens!: number;
 
   @Column({ type: 'text', nullable: true })
   errorMessage!: string | null;

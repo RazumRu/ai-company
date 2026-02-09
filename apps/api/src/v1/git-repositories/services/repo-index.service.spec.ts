@@ -52,6 +52,7 @@ const mockRepoIndexerService = {
   getCurrentBranch: vi.fn().mockResolvedValue('main'),
   getVectorSizeForModel: vi.fn().mockResolvedValue(1536),
   getChunkingSignatureHash: vi.fn().mockReturnValue('sig-hash-123'),
+  deriveRepoId: vi.fn((url: string) => url),
   deriveRepoSlug: vi.fn().mockReturnValue('my_repo'),
   buildCollectionName: vi.fn().mockReturnValue('codebase_my_repo_main_1536'),
   calculateIndexMetadata: vi.fn().mockResolvedValue({
@@ -65,6 +66,9 @@ const mockRepoIndexerService = {
   runFullIndex: vi.fn().mockResolvedValue(undefined),
   runIncrementalIndex: vi.fn().mockResolvedValue(undefined),
   getTotalIndexedTokens: vi.fn().mockResolvedValue(50000),
+  buildRepoFilter: vi.fn().mockImplementation((repoId: string) => ({
+    must: [{ key: 'repo_id', match: { value: repoId } }],
+  })),
 };
 
 const mockRepoIndexQueueService = {
@@ -116,6 +120,9 @@ describe('RepoIndexService', () => {
     mockRepoIndexerService.getChunkingSignatureHash.mockReturnValue(
       'sig-hash-123',
     );
+    mockRepoIndexerService.deriveRepoId.mockImplementation(
+      (url: string) => url,
+    );
     mockRepoIndexerService.deriveRepoSlug.mockReturnValue('my_repo');
     mockRepoIndexerService.buildCollectionName.mockReturnValue(
       'codebase_my_repo_main_1536',
@@ -131,6 +138,11 @@ describe('RepoIndexService', () => {
     mockRepoIndexerService.runFullIndex.mockResolvedValue(undefined);
     mockRepoIndexerService.runIncrementalIndex.mockResolvedValue(undefined);
     mockRepoIndexerService.getTotalIndexedTokens.mockResolvedValue(50000);
+    mockRepoIndexerService.buildRepoFilter.mockImplementation(
+      (repoId: string) => ({
+        must: [{ key: 'repo_id', match: { value: repoId } }],
+      }),
+    );
     mockRepoIndexQueueService.addIndexJob.mockResolvedValue(undefined);
     mockLlmModelsService.getKnowledgeEmbeddingModel.mockReturnValue(
       'text-embedding-3-small',
@@ -304,6 +316,377 @@ describe('RepoIndexService', () => {
           errorMessage: 'embed failed',
         }),
       );
+    });
+  });
+
+  describe('searchCodebase', () => {
+    const baseSearchParams = {
+      collection: 'codebase_my_repo_main_1536',
+      query: 'find authentication logic',
+      repoId: 'https://github.com/owner/repo',
+      topK: 5,
+    };
+
+    const makeScoredPoint = (
+      path: string,
+      text: string,
+      score: number,
+      startLine = 1,
+      endLine = 10,
+    ) => ({
+      id: `point-${path}`,
+      score,
+      payload: {
+        repo_id: 'https://github.com/owner/repo',
+        path,
+        start_line: startLine,
+        end_line: endLine,
+        text,
+      },
+    });
+
+    beforeEach(() => {
+      (mockOpenaiService as Record<string, unknown>).embeddings = vi
+        .fn()
+        .mockResolvedValue({
+          embeddings: [[0.1, 0.2, 0.3]],
+        });
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue([]);
+    });
+
+    it('returns filtered search results (happy path)', async () => {
+      const points = [
+        makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
+        makeScoredPoint('src/auth/guard.ts', 'class AuthGuard {}', 0.88),
+        makeScoredPoint('src/utils/hash.ts', 'function hashPassword() {}', 0.7),
+      ];
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase(baseSearchParams);
+
+      expect(results).toHaveLength(3);
+      expect(results[0]!.path).toBe('src/auth/login.ts');
+      expect(results[0]!.score).toBe(0.95);
+      expect(results[0]!.text).toBe('function login() {}');
+      expect(results[0]!.start_line).toBe(1);
+      expect(results[0]!.end_line).toBe(10);
+
+      // Verify embedding model was fetched
+      expect(
+        mockLlmModelsService.getKnowledgeEmbeddingModel,
+      ).toHaveBeenCalled();
+      // Verify embeddings were requested
+      expect(
+        (mockOpenaiService as Record<string, unknown>).embeddings,
+      ).toHaveBeenCalledWith({
+        model: 'text-embedding-3-small',
+        input: ['find authentication logic'],
+      });
+      // Verify search was called with expansion factor (topK * 4 = 20)
+      expect(
+        (mockQdrantService as Record<string, unknown>).searchPoints,
+      ).toHaveBeenCalledWith(
+        'codebase_my_repo_main_1536',
+        [0.1, 0.2, 0.3],
+        20, // topK(5) * SEARCH_EXPANSION_FACTOR(4)
+        expect.objectContaining({
+          filter: expect.objectContaining({
+            must: [
+              {
+                key: 'repo_id',
+                match: { value: 'https://github.com/owner/repo' },
+              },
+            ],
+          }),
+          with_payload: true,
+        }),
+      );
+    });
+
+    it('returns empty array when Qdrant collection does not exist', async () => {
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockRejectedValue(new Error('Collection not found'));
+
+      const results = await service.searchCodebase(baseSearchParams);
+
+      expect(results).toEqual([]);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Qdrant collection not found during search',
+        expect.objectContaining({
+          collection: 'codebase_my_repo_main_1536',
+          repoId: 'https://github.com/owner/repo',
+        }),
+      );
+    });
+
+    it('returns empty array when Qdrant collection "does not exist"', async () => {
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockRejectedValue(new Error('Collection does not exist'));
+
+      const results = await service.searchCodebase(baseSearchParams);
+
+      expect(results).toEqual([]);
+    });
+
+    it('rethrows non-"not found" errors from Qdrant', async () => {
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockRejectedValue(new Error('Connection timeout'));
+
+      await expect(service.searchCodebase(baseSearchParams)).rejects.toThrow(
+        'Connection timeout',
+      );
+    });
+
+    it('filters by language using direct extension match (e.g. "ts")', async () => {
+      const points = [
+        makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
+        makeScoredPoint('src/auth/guard.py', 'class AuthGuard:', 0.88),
+        makeScoredPoint('src/config.json', '{"key": "val"}', 0.7),
+      ];
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase({
+        ...baseSearchParams,
+        languageFilter: 'ts',
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.path).toBe('src/auth/login.ts');
+    });
+
+    it('filters by language name (e.g. "typescript" matches ts and tsx)', async () => {
+      const points = [
+        makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
+        makeScoredPoint('src/auth/App.tsx', '<Component />', 0.9),
+        makeScoredPoint('src/auth/guard.py', 'class AuthGuard:', 0.88),
+        makeScoredPoint('src/auth/main.js', 'const x = 1;', 0.7),
+      ];
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase({
+        ...baseSearchParams,
+        languageFilter: 'typescript',
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results[0]!.path).toBe('src/auth/login.ts');
+      expect(results[1]!.path).toBe('src/auth/App.tsx');
+    });
+
+    it('filters by directory prefix', async () => {
+      const points = [
+        makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
+        makeScoredPoint('src/auth/guard.ts', 'class AuthGuard {}', 0.88),
+        makeScoredPoint('src/utils/hash.ts', 'function hashPassword() {}', 0.7),
+        makeScoredPoint('lib/helpers.ts', 'export const helper = 1', 0.6),
+      ];
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase({
+        ...baseSearchParams,
+        directoryFilter: 'src/auth',
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results[0]!.path).toBe('src/auth/login.ts');
+      expect(results[1]!.path).toBe('src/auth/guard.ts');
+    });
+
+    it('combines directory and language filters', async () => {
+      const points = [
+        makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
+        makeScoredPoint('src/auth/guard.py', 'class AuthGuard:', 0.88),
+        makeScoredPoint('src/utils/hash.ts', 'function hashPassword() {}', 0.7),
+      ];
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase({
+        ...baseSearchParams,
+        directoryFilter: 'src/auth',
+        languageFilter: 'ts',
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.path).toBe('src/auth/login.ts');
+    });
+
+    it('limits results to topK after filtering', async () => {
+      const points = Array.from({ length: 10 }, (_, i) =>
+        makeScoredPoint(`src/file${i}.ts`, `code ${i}`, 0.9 - i * 0.05),
+      );
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase({
+        ...baseSearchParams,
+        topK: 3,
+      });
+
+      expect(results).toHaveLength(3);
+    });
+
+    it('skips results with missing path or text in payload', async () => {
+      const points = [
+        makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
+        {
+          id: 'point-no-path',
+          score: 0.9,
+          payload: { text: 'some text' },
+        },
+        {
+          id: 'point-no-text',
+          score: 0.85,
+          payload: { path: 'src/file.ts' },
+        },
+        {
+          id: 'point-empty-payload',
+          score: 0.8,
+          payload: {},
+        },
+      ];
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase(baseSearchParams);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.path).toBe('src/auth/login.ts');
+    });
+
+    it('throws when embedding generation returns empty result', async () => {
+      (mockOpenaiService as Record<string, unknown>).embeddings = vi
+        .fn()
+        .mockResolvedValue({ embeddings: [] });
+
+      await expect(service.searchCodebase(baseSearchParams)).rejects.toThrow(
+        'Failed to generate embedding for query',
+      );
+    });
+  });
+
+  describe('recoverStuckJobs', () => {
+    it('re-enqueues incomplete jobs on startup', async () => {
+      // Reset to create a fresh service with incomplete jobs
+      vi.resetAllMocks();
+      mockRepoIndexDao.getAll.mockResolvedValue([
+        {
+          id: 'stuck-1',
+          repoUrl: 'https://github.com/owner/repo1',
+          branch: 'main',
+          status: RepoIndexStatus.InProgress,
+        },
+        {
+          id: 'stuck-2',
+          repoUrl: 'https://github.com/owner/repo2',
+          branch: 'develop',
+          status: RepoIndexStatus.Pending,
+        },
+      ]);
+      mockRepoIndexDao.withIndexLock.mockImplementation(
+        (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
+      );
+
+      const svc = new RepoIndexService(
+        mockRepoIndexDao as unknown as RepoIndexDao,
+        mockGitRepositoriesDao as unknown as GitRepositoriesDao,
+        mockGitRepositoriesService as unknown as GitRepositoriesService,
+        mockRepoIndexerService as unknown as RepoIndexerService,
+        mockRepoIndexQueueService as unknown as RepoIndexQueueService,
+        mockLlmModelsService as unknown as LlmModelsService,
+        mockOpenaiService as unknown as OpenaiService,
+        mockQdrantService as unknown as QdrantService,
+        mockRuntimeProvider as unknown as RuntimeProvider,
+        mockRuntimeInstanceDao as unknown as RuntimeInstanceDao,
+        mockLogger as unknown as DefaultLogger,
+      );
+      await svc.onModuleInit();
+
+      // Verify each stuck job was reset to Pending
+      expect(mockRepoIndexDao.updateById).toHaveBeenCalledWith('stuck-1', {
+        status: RepoIndexStatus.Pending,
+      });
+      expect(mockRepoIndexDao.updateById).toHaveBeenCalledWith('stuck-2', {
+        status: RepoIndexStatus.Pending,
+      });
+
+      // Verify each stuck job was re-enqueued
+      expect(mockRepoIndexQueueService.addIndexJob).toHaveBeenCalledWith({
+        repoIndexId: 'stuck-1',
+        repoUrl: 'https://github.com/owner/repo1',
+        branch: 'main',
+      });
+      expect(mockRepoIndexQueueService.addIndexJob).toHaveBeenCalledWith({
+        repoIndexId: 'stuck-2',
+        repoUrl: 'https://github.com/owner/repo2',
+        branch: 'develop',
+      });
+
+      // Verify warning was logged
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Recovering incomplete repo index jobs on startup',
+        { count: 2 },
+      );
+    });
+
+    it('handles no incomplete jobs gracefully', async () => {
+      // The default beforeEach already sets getAll to return [] and calls onModuleInit.
+      // Verify no jobs were enqueued and no warning was logged.
+      expect(mockRepoIndexQueueService.addIndexJob).not.toHaveBeenCalled();
+      expect(mockLogger.warn).not.toHaveBeenCalledWith(
+        'Recovering incomplete repo index jobs on startup',
+        expect.anything(),
+      );
+    });
+
+    it('handles errors in recovery gracefully', async () => {
+      vi.resetAllMocks();
+      const recoveryError = new Error('DB connection lost');
+      mockRepoIndexDao.getAll.mockRejectedValue(recoveryError);
+      mockRepoIndexDao.withIndexLock.mockImplementation(
+        (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
+      );
+
+      const svc = new RepoIndexService(
+        mockRepoIndexDao as unknown as RepoIndexDao,
+        mockGitRepositoriesDao as unknown as GitRepositoriesDao,
+        mockGitRepositoriesService as unknown as GitRepositoriesService,
+        mockRepoIndexerService as unknown as RepoIndexerService,
+        mockRepoIndexQueueService as unknown as RepoIndexQueueService,
+        mockLlmModelsService as unknown as LlmModelsService,
+        mockOpenaiService as unknown as OpenaiService,
+        mockQdrantService as unknown as QdrantService,
+        mockRuntimeProvider as unknown as RuntimeProvider,
+        mockRuntimeInstanceDao as unknown as RuntimeInstanceDao,
+        mockLogger as unknown as DefaultLogger,
+      );
+
+      // onModuleInit should NOT throw — recoverStuckJobs catches errors
+      await svc.onModuleInit();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        recoveryError,
+        'Failed to recover incomplete repo index jobs',
+      );
+
+      // Verify no jobs were enqueued
+      expect(mockRepoIndexQueueService.addIndexJob).not.toHaveBeenCalled();
     });
   });
 });

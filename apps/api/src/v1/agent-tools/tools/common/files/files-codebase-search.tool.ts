@@ -9,7 +9,10 @@ import { z } from 'zod';
 import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { RepoIndexService } from '../../../../git-repositories/services/repo-index.service';
-import { RepoExecFn } from '../../../../git-repositories/services/repo-indexer.service';
+import {
+  RepoExecFn,
+  RepoIndexerService,
+} from '../../../../git-repositories/services/repo-indexer.service';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import { shQuote } from '../../../../utils/shell.utils';
 import {
@@ -73,7 +76,10 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
   public description =
     'Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, and code snippets ranked by relevance. This should be the first tool for codebase discovery or "where is X?" questions. The repository must be cloned first with gh_clone.';
 
-  constructor(private readonly repoIndexService: RepoIndexService) {
+  constructor(
+    private readonly repoIndexService: RepoIndexService,
+    private readonly repoIndexerService: RepoIndexerService,
+  ) {
     super();
   }
 
@@ -264,20 +270,9 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     );
     const remoteUrl = remoteRes.exitCode === 0 ? remoteRes.stdout.trim() : '';
     const repoId = remoteUrl
-      ? this.normalizeRepoId(remoteUrl)
+      ? this.repoIndexerService.deriveRepoId(remoteUrl)
       : `local:${repoRoot}`;
     return { repoId };
-  }
-
-  private normalizeRepoId(url: string): string {
-    let normalized = url.trim();
-    if (normalized.startsWith('git@') && normalized.includes(':')) {
-      const [host, pathPart] = normalized.replace('git@', '').split(':');
-      normalized = `https://${host}/${pathPart}`;
-    }
-    normalized = normalized.replace(/^ssh:\/\//, 'https://');
-    normalized = normalized.replace(/\.git$/i, '');
-    return normalized.replace(/\/+$/, '');
   }
 
   // ---------------------------------------------------------------------------

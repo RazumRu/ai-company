@@ -6,6 +6,7 @@ import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-no
 import { RepoIndexStatus } from '../../../../git-repositories/git-repositories.types';
 import { RepoIndexService } from '../../../../git-repositories/services/repo-index.service';
 import type { GetOrInitIndexResult } from '../../../../git-repositories/services/repo-index.types';
+import { RepoIndexerService } from '../../../../git-repositories/services/repo-indexer.service';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
 import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
@@ -15,6 +16,7 @@ describe('FilesCodebaseSearchTool', () => {
   let mockRuntime: BaseRuntime;
   let mockConfig: FilesBaseToolConfig;
   let mockRepoIndexService: RepoIndexService;
+  let mockRepoIndexerService: RepoIndexerService;
 
   beforeEach(async () => {
     mockRuntime = {
@@ -39,10 +41,20 @@ describe('FilesCodebaseSearchTool', () => {
       searchCodebase: vi.fn().mockResolvedValue([]),
     } as unknown as RepoIndexService;
 
+    mockRepoIndexerService = {
+      deriveRepoId: vi.fn().mockImplementation((url: string) => {
+        // Mimic real normalization: SSH → HTTPS, strip .git
+        const sshMatch = url.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+        if (sshMatch) return `https://${sshMatch[1]}/${sshMatch[2]}`;
+        return url.replace(/\.git$/, '');
+      }),
+    } as unknown as RepoIndexerService;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FilesCodebaseSearchTool,
         { provide: RepoIndexService, useValue: mockRepoIndexService },
+        { provide: RepoIndexerService, useValue: mockRepoIndexerService },
       ],
     }).compile();
 

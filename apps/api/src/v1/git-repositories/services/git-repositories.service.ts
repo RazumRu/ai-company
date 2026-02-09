@@ -200,14 +200,20 @@ export class GitRepositoriesService {
       }
     }
 
-    // Get all repositories for the user to filter indexes
+    // Fetch only the IDs of user-owned repos for a DB-level IN filter,
+    // rather than loading full entities and filtering in memory.
     const userRepos = await this.gitRepositoriesDao.getAll({
       createdBy: userId,
+      projection: ['id'],
+      rawData: true,
     });
 
-    const userRepoIds = new Set(userRepos.map((repo) => repo.id));
+    const userRepoIds = userRepos.map((repo) => repo.id);
+    if (userRepoIds.length === 0) {
+      return [];
+    }
 
-    // Build search params
+    // Build search params — filter by repositoryIds at the DB level
     const searchParams: Parameters<typeof this.repoIndexDao.getAll>[0] = {
       limit: query.limit,
       offset: query.offset,
@@ -216,6 +222,8 @@ export class GitRepositoriesService {
 
     if (query.repositoryId) {
       searchParams.repositoryId = query.repositoryId;
+    } else {
+      searchParams.repositoryIds = userRepoIds;
     }
 
     if (query.branches && query.branches.length > 0) {
@@ -230,12 +238,7 @@ export class GitRepositoriesService {
 
     const indexes = await this.repoIndexDao.getAll(searchParams);
 
-    // Filter to only include indexes for user's repositories
-    const filteredIndexes = indexes.filter((index) =>
-      userRepoIds.has(index.repositoryId),
-    );
-
-    return filteredIndexes.map((index) => this.prepareRepoIndexResponse(index));
+    return indexes.map((index) => this.prepareRepoIndexResponse(index));
   }
 
   async getRepoIndexByRepositoryId(
@@ -295,6 +298,10 @@ export class GitRepositoriesService {
     }
 
     const branch = data.branch ?? repository.defaultBranch;
+    // Normalize so the Qdrant repo_id is always consistent
+    const normalizedRepoUrl = this.repoIndexerService.deriveRepoId(
+      repository.url,
+    );
 
     // Check if indexing is already in progress
     const existingIndex = await this.repoIndexDao.getOne({
@@ -350,7 +357,7 @@ export class GitRepositoriesService {
       // Create new index entry with calculated metadata
       repoIndex = await this.repoIndexDao.create({
         repositoryId: data.repositoryId,
-        repoUrl: repository.url,
+        repoUrl: normalizedRepoUrl,
         branch,
         status: RepoIndexStatus.Pending,
         qdrantCollection: collection,
@@ -358,7 +365,7 @@ export class GitRepositoriesService {
         embeddingModel,
         vectorSize,
         chunkingSignatureHash,
-        estimatedTokens: null,
+        estimatedTokens: 0,
         indexedTokens: 0,
         errorMessage: null,
       });
@@ -367,7 +374,7 @@ export class GitRepositoriesService {
     // Enqueue the indexing job
     await this.repoIndexQueueService.addIndexJob({
       repoIndexId: repoIndex.id,
-      repoUrl: repository.url,
+      repoUrl: normalizedRepoUrl,
       branch,
     });
 

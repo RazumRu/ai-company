@@ -12,12 +12,19 @@ const mockQdrantService = {
   deleteByFilter: vi.fn().mockResolvedValue(undefined),
   upsertPoints: vi.fn().mockResolvedValue(undefined),
   ensureCollection: vi.fn().mockResolvedValue(undefined),
+  ensurePayloadIndex: vi.fn().mockResolvedValue(undefined),
   scrollAll: vi.fn().mockResolvedValue([]),
   scrollAllWithVectors: vi.fn().mockResolvedValue([]),
   buildSizedCollectionName: vi.fn(
     (base: string, size: number) => `${base}_${size}`,
   ),
   getVectorSizeFromEmbeddings: vi.fn(() => 3),
+  raw: {
+    getCollections: vi
+      .fn()
+      .mockResolvedValue({ collections: [{ name: 'source_collection' }] }),
+    scroll: vi.fn().mockResolvedValue({ points: [], next_page_offset: null }),
+  },
 };
 
 const mockOpenaiService = {
@@ -181,8 +188,10 @@ describe('RepoIndexerService', () => {
   });
 
   describe('copyCollectionPoints', () => {
-    it('returns 0 when source collection is empty', async () => {
-      mockQdrantService.scrollAllWithVectors.mockResolvedValue([]);
+    it('returns 0 when source collection does not exist', async () => {
+      mockQdrantService.raw.getCollections.mockResolvedValueOnce({
+        collections: [],
+      });
 
       const result = await service.copyCollectionPoints(
         'source_collection',
@@ -190,14 +199,25 @@ describe('RepoIndexerService', () => {
       );
 
       expect(result).toBe(0);
-      expect(mockQdrantService.scrollAllWithVectors).toHaveBeenCalledWith(
+      expect(mockQdrantService.raw.scroll).not.toHaveBeenCalled();
+      expect(mockQdrantService.upsertPoints).not.toHaveBeenCalled();
+    });
+
+    it('returns 0 when source collection is empty', async () => {
+      mockQdrantService.raw.getCollections.mockResolvedValueOnce({
+        collections: [{ name: 'source_collection' }],
+      });
+      mockQdrantService.raw.scroll.mockResolvedValueOnce({
+        points: [],
+        next_page_offset: null,
+      });
+
+      const result = await service.copyCollectionPoints(
         'source_collection',
-        expect.objectContaining({
-          limit: 1000,
-          with_payload: true,
-          with_vector: true,
-        }),
+        'target_collection',
       );
+
+      expect(result).toBe(0);
       expect(mockQdrantService.upsertPoints).not.toHaveBeenCalled();
     });
 
@@ -214,7 +234,13 @@ describe('RepoIndexerService', () => {
           payload: { repo_id: 'repo1', path: 'file2.ts', text: 'content2' },
         },
       ];
-      mockQdrantService.scrollAllWithVectors.mockResolvedValueOnce(mockPoints);
+      mockQdrantService.raw.getCollections.mockResolvedValueOnce({
+        collections: [{ name: 'source_collection' }],
+      });
+      mockQdrantService.raw.scroll.mockResolvedValueOnce({
+        points: mockPoints,
+        next_page_offset: null,
+      });
 
       const result = await service.copyCollectionPoints(
         'source_collection',
@@ -258,10 +284,7 @@ describe('RepoIndexerService', () => {
         if (params.cmd.includes('.codebaseindexignore')) {
           return { exitCode: 0, stdout: '', stderr: '' };
         }
-        if (params.cmd.includes('wc -c')) {
-          return { exitCode: 0, stdout: '100\n', stderr: '' };
-        }
-        if (params.cmd.includes('cat')) {
+        if (params.cmd.includes('head -c')) {
           return { exitCode: 0, stdout: 'export const x = 1;\n', stderr: '' };
         }
         return { exitCode: 0, stdout: '', stderr: '' };
@@ -270,6 +293,14 @@ describe('RepoIndexerService', () => {
       mockOpenaiService.embeddings.mockResolvedValue({
         embeddings: [[0.1, 0.2, 0.3]],
         usage: null,
+      });
+
+      // No existing chunks — forces fresh indexing path
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+      // For cleanupOrphanedChunks
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [],
+        next_page_offset: null,
       });
 
       await service.runFullIndex(
@@ -315,6 +346,549 @@ describe('RepoIndexerService', () => {
 
       const branch = await service.getCurrentBranch('/repo', execFn);
       expect(branch).toBe('feature/my-branch');
+    });
+  });
+
+  describe('estimateChangedTokenCount', () => {
+    it('returns estimated tokens for changed files', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        // git diff --name-only fromCommit..toCommit
+        if (params.cmd.includes('diff --name-only')) {
+          return {
+            exitCode: 0,
+            stdout: 'src/index.ts\nsrc/utils.ts\n',
+            stderr: '',
+          };
+        }
+        // git status --porcelain (no working tree changes)
+        if (params.cmd.includes('status --porcelain')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // git ls-tree -l HEAD -- (estimateFileSizes)
+        if (params.cmd.includes('ls-tree -l HEAD --')) {
+          return {
+            exitCode: 0,
+            stdout: [
+              '100644 blob abc123    800\tsrc/index.ts',
+              '100644 blob def456    400\tsrc/utils.ts',
+            ].join('\n'),
+            stderr: '',
+          };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateChangedTokenCount(
+        '/repo',
+        'aaa111',
+        'bbb222',
+        execFn,
+      );
+      // (800 + 400) / 4 = 300
+      expect(result).toBe(300);
+    });
+
+    it('falls back to full estimate when diff fails', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        // git diff --name-only fails (e.g. shallow clone)
+        if (params.cmd.includes('diff --name-only')) {
+          return {
+            exitCode: 128,
+            stdout: '',
+            stderr: 'fatal: Invalid revision range',
+          };
+        }
+        // git ls-tree -r --long HEAD (full estimateTokenCount fallback)
+        if (params.cmd.includes('ls-tree -r --long HEAD')) {
+          return {
+            exitCode: 0,
+            stdout: [
+              '100644 blob abc123    2000\tsrc/index.ts',
+              '100644 blob def456    1000\tsrc/utils.ts',
+              '100644 blob ghi789     600\tREADME.md',
+            ].join('\n'),
+            stderr: '',
+          };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateChangedTokenCount(
+        '/repo',
+        'aaa111',
+        'bbb222',
+        execFn,
+      );
+      // Full repo: (2000 + 1000 + 600) / 4 = 900
+      expect(result).toBe(900);
+    });
+
+    it('includes working tree changes in estimation', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        // git diff --name-only returns one committed change
+        if (params.cmd.includes('diff --name-only')) {
+          return {
+            exitCode: 0,
+            stdout: 'src/committed.ts\n',
+            stderr: '',
+          };
+        }
+        // git status --porcelain returns an unstaged change
+        if (params.cmd.includes('status --porcelain')) {
+          return {
+            exitCode: 0,
+            stdout: ' M src/uncommitted.ts\n',
+            stderr: '',
+          };
+        }
+        // git ls-tree -l HEAD -- (estimateFileSizes for both files)
+        if (params.cmd.includes('ls-tree -l HEAD --')) {
+          return {
+            exitCode: 0,
+            stdout: [
+              '100644 blob abc123    400\tsrc/committed.ts',
+              '100644 blob def456    800\tsrc/uncommitted.ts',
+            ].join('\n'),
+            stderr: '',
+          };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateChangedTokenCount(
+        '/repo',
+        'aaa111',
+        'bbb222',
+        execFn,
+      );
+      // (400 + 800) / 4 = 300
+      expect(result).toBe(300);
+    });
+
+    it('returns 0 when there are no changed files', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('diff --name-only')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (params.cmd.includes('status --porcelain')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateChangedTokenCount(
+        '/repo',
+        'aaa111',
+        'bbb222',
+        execFn,
+      );
+      expect(result).toBe(0);
+    });
+
+    it('deduplicates files that appear in both diff and working tree', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        // The same file appears in both diff and working tree
+        if (params.cmd.includes('diff --name-only')) {
+          return {
+            exitCode: 0,
+            stdout: 'src/shared.ts\n',
+            stderr: '',
+          };
+        }
+        if (params.cmd.includes('status --porcelain')) {
+          return {
+            exitCode: 0,
+            stdout: ' M src/shared.ts\n',
+            stderr: '',
+          };
+        }
+        if (params.cmd.includes('ls-tree -l HEAD --')) {
+          return {
+            exitCode: 0,
+            stdout: '100644 blob abc123    1200\tsrc/shared.ts',
+            stderr: '',
+          };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateChangedTokenCount(
+        '/repo',
+        'aaa111',
+        'bbb222',
+        execFn,
+      );
+      // 1200 / 4 = 300 (file counted only once despite appearing in both)
+      expect(result).toBe(300);
+    });
+  });
+
+  describe('runIncrementalIndex', () => {
+    const baseParams = {
+      repoId: 'https://github.com/owner/repo',
+      repoRoot: '/workspace/repo',
+      currentCommit: 'new123',
+      collection: 'codebase_test_main_3',
+      vectorSize: 3,
+      embeddingModel: 'text-embedding-3-small',
+      lastIndexedCommit: 'old456',
+    };
+
+    it('processes only changed files between commits', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        // git diff --name-only old456..new123
+        if (params.cmd.includes('diff --name-only')) {
+          return {
+            exitCode: 0,
+            stdout: 'src/changed.ts\n',
+            stderr: '',
+          };
+        }
+        // git status --porcelain (no working tree changes)
+        if (params.cmd.includes('status --porcelain')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // .codebaseindexignore
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // file exists check
+        if (params.cmd.includes('test -f')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // head -c (read file content)
+        if (params.cmd.includes('head -c')) {
+          return {
+            exitCode: 0,
+            stdout: 'const updated = true;\n',
+            stderr: '',
+          };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      mockOpenaiService.embeddings.mockResolvedValue({
+        embeddings: [[0.1, 0.2, 0.3]],
+        usage: null,
+      });
+
+      // No existing chunks for this file hash
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+
+      await service.runIncrementalIndex(baseParams, execFn);
+
+      // Should have called diff with the correct commit range
+      expect(execFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: expect.stringContaining('diff --name-only'),
+        }),
+      );
+
+      // Should upsert new points for the changed file
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalled();
+    });
+
+    it('falls back to full index when diff fails (shallow clone case)', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        // git diff --name-only fails (shallow clone missing commit)
+        if (params.cmd.includes('diff --name-only')) {
+          return {
+            exitCode: 128,
+            stdout: '',
+            stderr: 'fatal: Invalid revision range',
+          };
+        }
+        // After fallback to runFullIndex, git ls-files is called
+        if (params.cmd.includes('ls-files')) {
+          return { exitCode: 0, stdout: 'src/index.ts\n', stderr: '' };
+        }
+        // .codebaseindexignore
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // head -c (read file content)
+        if (params.cmd.includes('head -c')) {
+          return {
+            exitCode: 0,
+            stdout: 'const x = 1;\n',
+            stderr: '',
+          };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      mockOpenaiService.embeddings.mockResolvedValue({
+        embeddings: [[0.1, 0.2, 0.3]],
+        usage: null,
+      });
+
+      // No existing chunks
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+      // For cleanupOrphanedChunks in runFullIndex
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [],
+        next_page_offset: null,
+      });
+
+      await service.runIncrementalIndex(baseParams, execFn);
+
+      // Should have logged a warning about fallback
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('falling back to full reindex'),
+        expect.any(Object),
+      );
+
+      // Should call ls-files (full index) instead of relying on diff
+      expect(execFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: expect.stringContaining('ls-files'),
+        }),
+      );
+    });
+
+    it('handles file deletions by removing old chunks', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        // git diff --name-only returns a deleted file
+        if (params.cmd.includes('diff --name-only')) {
+          return {
+            exitCode: 0,
+            stdout: 'src/deleted.ts\n',
+            stderr: '',
+          };
+        }
+        // git status --porcelain
+        if (params.cmd.includes('status --porcelain')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // .codebaseindexignore
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // test -f returns non-zero (file does not exist)
+        if (params.cmd.includes('test -f')) {
+          return { exitCode: 1, stdout: '', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      await service.runIncrementalIndex(baseParams, execFn);
+
+      // Should have deleted old chunks for the removed file
+      expect(mockQdrantService.deleteByFilter).toHaveBeenCalledWith(
+        'codebase_test_main_3',
+        expect.objectContaining({
+          must: expect.arrayContaining([
+            expect.objectContaining({
+              key: 'repo_id',
+              match: { value: 'https://github.com/owner/repo' },
+            }),
+            expect.objectContaining({
+              key: 'path',
+              match: { value: 'src/deleted.ts' },
+            }),
+          ]),
+        }),
+      );
+
+      // Should NOT have upserted any new points (file was deleted, not updated)
+      expect(mockQdrantService.upsertPoints).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('chunkText (via runFullIndex)', () => {
+    /**
+     * chunkText is private, so we test it indirectly through runFullIndex.
+     * The mock tokenizer maps each character to one token, so we can
+     * control chunk boundaries precisely.
+     */
+
+    it('produces no chunks for empty content', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-files')) {
+          return { exitCode: 0, stdout: 'empty.ts\n', stderr: '' };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // Return only whitespace content — prepareFileIndexInput treats empty-after-trim as skip
+        if (params.cmd.includes('head -c')) {
+          return { exitCode: 0, stdout: '   \n  \n', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+
+      await service.runFullIndex(
+        {
+          repoId: 'https://github.com/owner/repo',
+          repoRoot: '/workspace/repo',
+          currentCommit: 'abc123',
+          collection: 'codebase_test_main_3',
+          vectorSize: 3,
+          embeddingModel: 'text-embedding-3-small',
+        },
+        execFn,
+      );
+
+      // No embeddings should have been created for empty/whitespace-only content
+      expect(mockOpenaiService.embeddings).not.toHaveBeenCalled();
+      // upsertPoints should not be called for empty batches
+      expect(mockQdrantService.upsertPoints).not.toHaveBeenCalled();
+    });
+
+    it('creates a single chunk for small files', async () => {
+      // With mock tokenizer: each char = 1 token, default target = 250 tokens
+      // A 20-char string will produce a single chunk
+      const smallContent = 'const x = 42;';
+
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-files')) {
+          return { exitCode: 0, stdout: 'small.ts\n', stderr: '' };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (params.cmd.includes('head -c')) {
+          return { exitCode: 0, stdout: smallContent, stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      mockOpenaiService.embeddings.mockResolvedValue({
+        embeddings: [[0.1, 0.2, 0.3]],
+        usage: null,
+      });
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [],
+        next_page_offset: null,
+      });
+
+      await service.runFullIndex(
+        {
+          repoId: 'https://github.com/owner/repo',
+          repoRoot: '/workspace/repo',
+          currentCommit: 'abc123',
+          collection: 'codebase_test_main_3',
+          vectorSize: 3,
+          embeddingModel: 'text-embedding-3-small',
+        },
+        execFn,
+      );
+
+      // Should embed exactly one chunk
+      expect(mockOpenaiService.embeddings).toHaveBeenCalledTimes(1);
+      expect(mockOpenaiService.embeddings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: [smallContent],
+        }),
+      );
+
+      // Should upsert exactly one point
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalledWith(
+        'codebase_test_main_3',
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              text: smallContent,
+              path: 'small.ts',
+              start_line: 1,
+            }),
+          }),
+        ]),
+      );
+    });
+
+    it('creates multiple chunks with overlap for large files', async () => {
+      // The mock tokenizer maps each char to 1 token.
+      // Default target = 250 tokens, overlap = 30 tokens.
+      // Build a string of 300 chars => 300 tokens => should produce 2 chunks.
+      // Chunk 1: tokens 0..250 (chars 0..250)
+      // Chunk 2: tokens 220..300 (starts at 250 - 30 = 220, ends at 300)
+      const largeContent = 'a'.repeat(300);
+
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-files')) {
+          return { exitCode: 0, stdout: 'large.ts\n', stderr: '' };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (params.cmd.includes('head -c')) {
+          return { exitCode: 0, stdout: largeContent, stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      // Return matching embeddings for 2 chunks
+      mockOpenaiService.embeddings.mockResolvedValue({
+        embeddings: [
+          [0.1, 0.2, 0.3],
+          [0.4, 0.5, 0.6],
+        ],
+        usage: null,
+      });
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [],
+        next_page_offset: null,
+      });
+
+      await service.runFullIndex(
+        {
+          repoId: 'https://github.com/owner/repo',
+          repoRoot: '/workspace/repo',
+          currentCommit: 'abc123',
+          collection: 'codebase_test_main_3',
+          vectorSize: 3,
+          embeddingModel: 'text-embedding-3-small',
+        },
+        execFn,
+      );
+
+      // Should embed two chunks in a single batch
+      expect(mockOpenaiService.embeddings).toHaveBeenCalledTimes(1);
+      expect(mockOpenaiService.embeddings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.arrayContaining([
+            expect.any(String),
+            expect.any(String),
+          ]),
+        }),
+      );
+
+      // Should upsert two points
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalledWith(
+        'codebase_test_main_3',
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              path: 'large.ts',
+              start_line: 1,
+            }),
+          }),
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              path: 'large.ts',
+            }),
+          }),
+        ]),
+      );
+
+      // Verify the two chunks overlap: the second chunk's text starts
+      // inside the first chunk's region (overlap = 30 tokens = 30 chars)
+      const upsertCall = mockQdrantService.upsertPoints.mock.calls[0]!;
+      const points = upsertCall[1] as {
+        payload: { text: string; token_count: number };
+      }[];
+      expect(points).toHaveLength(2);
+      // First chunk should be 250 tokens (chars)
+      expect(points[0]!.payload.token_count).toBe(250);
+      // Second chunk should be 80 tokens (300 - 220)
+      expect(points[1]!.payload.token_count).toBe(80);
+      // The second chunk text should be contained within the trailing part of the full content
+      expect(largeContent).toContain(points[1]!.payload.text);
     });
   });
 });

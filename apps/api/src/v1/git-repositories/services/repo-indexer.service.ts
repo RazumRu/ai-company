@@ -13,8 +13,8 @@ import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { shQuote } from '../../utils/shell.utils';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 
-// Batch size for upserting copied chunks to avoid overwhelming Qdrant
-const CHUNK_COPY_BATCH_SIZE = 1000;
+// Batch size for upserting points (copy, seed, etc.) to avoid overwhelming Qdrant
+const POINT_COPY_BATCH_SIZE = 500;
 
 // Page size for Qdrant scroll requests. scrollAll/scrollAllWithVectors
 // paginate automatically, so this only controls memory per page.
@@ -73,6 +73,7 @@ export interface RepoIndexParams {
 
 @Injectable()
 export class RepoIndexerService {
+  private static readonly IGNORE_CACHE_MAX_SIZE = 50;
   private readonly ignoreCache = new Map<string, ReturnType<typeof ignore>>();
 
   constructor(
@@ -118,7 +119,8 @@ export class RepoIndexerService {
   }
 
   /**
-   * Estimate token count for only the changed files between two commits.
+   * Estimate token count for only the changed files between two commits,
+   * including working tree changes that haven't been committed yet.
    * Used to decide if incremental indexing can run inline vs background.
    */
   async estimateChangedTokenCount(
@@ -127,7 +129,7 @@ export class RepoIndexerService {
     toCommit: string,
     execFn: RepoExecFn,
   ): Promise<number> {
-    // Get list of changed files
+    // Get list of changed files between commits
     const diffRes = await execFn({
       cmd: `git -C ${shQuote(repoRoot)} diff --name-only ${shQuote(fromCommit)}..${shQuote(toCommit)}`,
     });
@@ -136,21 +138,39 @@ export class RepoIndexerService {
       return this.estimateTokenCount(repoRoot, execFn);
     }
 
-    const changedFiles = diffRes.stdout
+    const diffFiles = diffRes.stdout
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
 
-    if (changedFiles.length === 0) {
+    // Also include working tree changes that runIncrementalIndex will process
+    const workingTreeFiles = await this.listWorkingTreeChanges(
+      repoRoot,
+      execFn,
+    );
+    const allChangedFiles = [...new Set([...diffFiles, ...workingTreeFiles])];
+
+    if (allChangedFiles.length === 0) {
       return 0;
     }
 
-    // Get sizes of changed files in batches to avoid hitting shell argument limits
+    return this.estimateFileSizes(repoRoot, allChangedFiles, execFn);
+  }
+
+  /**
+   * Estimate token count from a list of file paths by summing their sizes
+   * from `git ls-tree` and dividing by 4.
+   */
+  private async estimateFileSizes(
+    repoRoot: string,
+    files: string[],
+    execFn: RepoExecFn,
+  ): Promise<number> {
     const BATCH_SIZE = 200;
     let totalBytes = 0;
 
-    for (let i = 0; i < changedFiles.length; i += BATCH_SIZE) {
-      const batch = changedFiles.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE);
       const quotedPaths = batch.map((f) => shQuote(f)).join(' ');
       const sizeRes = await execFn({
         cmd: `git -C ${shQuote(repoRoot)} ls-tree -l HEAD -- ${quotedPaths}`,
@@ -265,6 +285,18 @@ export class RepoIndexerService {
   }
 
   /**
+   * Ensure Qdrant payload indexes exist on key fields for efficient filtering.
+   * Called once per indexing run after the collection is created.
+   */
+  async ensureCodebasePayloadIndexes(collection: string): Promise<void> {
+    await Promise.all([
+      this.qdrantService.ensurePayloadIndex(collection, 'repo_id', 'keyword'),
+      this.qdrantService.ensurePayloadIndex(collection, 'path', 'keyword'),
+      this.qdrantService.ensurePayloadIndex(collection, 'file_hash', 'keyword'),
+    ]);
+  }
+
+  /**
    * Calculates all metadata fields needed for repository indexing.
    * This centralizes the logic that was duplicated across multiple services.
    */
@@ -311,36 +343,49 @@ export class RepoIndexerService {
     sourceCollection: string,
     targetCollection: string,
   ): Promise<number> {
-    const COPY_BATCH_SIZE = 500;
-    // scrollAllWithVectors returns [] if the source collection does not exist
-    const allPoints = await this.qdrantService.scrollAllWithVectors(
-      sourceCollection,
-      {
+    // Check existence via the raw client (collectionExists is private on the service)
+    const collections = await this.qdrantService.raw.getCollections();
+    const exists = collections.collections.some(
+      (c) => c.name === sourceCollection,
+    );
+    if (!exists) return 0;
+
+    // Process pages one at a time instead of loading all points into memory.
+    // Each scroll page is upserted to the target before fetching the next.
+    let totalCopied = 0;
+    let offset: string | number | Record<string, unknown> | undefined;
+
+    while (true) {
+      const page = await this.qdrantService.raw.scroll(sourceCollection, {
         limit: QDRANT_SCROLL_PAGE_SIZE,
         with_payload: true,
         with_vector: true,
-      },
-    );
+        offset,
+      });
 
-    if (allPoints.length === 0) {
-      return 0;
-    }
-
-    for (let i = 0; i < allPoints.length; i += COPY_BATCH_SIZE) {
-      const batch = allPoints.slice(i, i + COPY_BATCH_SIZE);
-      const points = batch
+      const points = page.points
         .filter((p) => p.id && p.vector && p.payload)
         .map((p) => ({
           id: p.id as string,
           vector: p.vector as number[],
           payload: p.payload as Record<string, unknown>,
         }));
-      if (points.length > 0) {
-        await this.qdrantService.upsertPoints(targetCollection, points);
+
+      // Upsert current page in batches
+      for (let i = 0; i < points.length; i += POINT_COPY_BATCH_SIZE) {
+        const batch = points.slice(i, i + POINT_COPY_BATCH_SIZE);
+        if (batch.length > 0) {
+          await this.qdrantService.upsertPoints(targetCollection, batch);
+        }
       }
+
+      totalCopied += points.length;
+
+      if (!page.next_page_offset) break;
+      offset = page.next_page_offset;
     }
 
-    return allPoints.length;
+    return totalCopied;
   }
 
   // ---------------------------------------------------------------------------
@@ -354,15 +399,19 @@ export class RepoIndexerService {
     onProgressUpdate?: (tokenCount: number) => Promise<void>,
   ): Promise<void> {
     const files = await this.listTrackedFiles(params.repoRoot, execFn);
+    const matcher = await this.preloadIgnoreMatcher(params.repoRoot, execFn);
     const filtered: string[] = [];
     for (const path of files) {
-      if (await this.shouldIndexPath(path, params.repoRoot, execFn)) {
+      if (this.shouldIndexPathSync(path, matcher)) {
         filtered.push(path);
       }
     }
 
     // Track paths we've processed so we can clean up orphaned chunks at the end
     const processedPaths = new Set<string>();
+
+    // Ensure payload indexes exist for efficient filtering
+    await this.ensureCodebasePayloadIndexes(params.collection);
 
     this.logger.debug('Codebase index: starting full index', {
       repoId: params.repoId,
@@ -533,12 +582,16 @@ export class RepoIndexerService {
     );
     const allPaths = new Set([...diffPaths, ...statusPaths]);
 
+    // Ensure payload indexes exist for efficient filtering
+    await this.ensureCodebasePayloadIndexes(params.collection);
+
     this.logger.debug('Codebase index: starting incremental index', {
       repoId: params.repoId,
       repoRoot: params.repoRoot,
       totalFiles: allPaths.size,
     });
 
+    const matcher = await this.preloadIgnoreMatcher(params.repoRoot, execFn);
     const batch: ChunkBatchItem[] = [];
     let batchTokenCount = 0;
     const maxTokens = environment.codebaseEmbeddingMaxTokens;
@@ -547,9 +600,7 @@ export class RepoIndexerService {
 
     for (const relativePath of allPaths) {
       // Check if file should be indexed before deleting
-      if (
-        !(await this.shouldIndexPath(relativePath, params.repoRoot, execFn))
-      ) {
+      if (!this.shouldIndexPathSync(relativePath, matcher)) {
         continue;
       }
 
@@ -735,15 +786,37 @@ export class RepoIndexerService {
   // Private: file filtering
   // ---------------------------------------------------------------------------
 
+  /**
+   * Pre-load the ignore matcher for a repo root. Call once at the start of
+   * an indexing run and pass the result to `shouldIndexPath` to avoid
+   * re-reading the ignore file for every single file.
+   */
+  async preloadIgnoreMatcher(
+    repoRoot: string,
+    execFn: RepoExecFn,
+  ): Promise<ReturnType<typeof ignore>> {
+    return this.loadIgnoreMatcher(repoRoot, execFn);
+  }
+
+  shouldIndexPathSync(
+    path: string,
+    matcher: ReturnType<typeof ignore>,
+  ): boolean {
+    if (!path) return false;
+    const normalized = this.normalizePath(path);
+    return !matcher.ignores(normalized);
+  }
+
   private async shouldIndexPath(
     path: string,
     repoRoot: string,
     execFn: RepoExecFn,
+    matcher?: ReturnType<typeof ignore>,
   ): Promise<boolean> {
     if (!path) return false;
     const normalized = this.normalizePath(path);
-    const matcher = await this.loadIgnoreMatcher(repoRoot, execFn);
-    return !matcher.ignores(normalized);
+    const m = matcher ?? (await this.loadIgnoreMatcher(repoRoot, execFn));
+    return !m.ignores(normalized);
   }
 
   private normalizePath(path: string): string {
@@ -776,6 +849,13 @@ export class RepoIndexerService {
         .filter((line) => line.trim() && !line.trimStart().startsWith('#'));
       matcher.add(lines);
     }
+    // Evict oldest entries when the cache exceeds the max size
+    if (this.ignoreCache.size >= RepoIndexerService.IGNORE_CACHE_MAX_SIZE) {
+      const oldest = this.ignoreCache.keys().next().value;
+      if (oldest !== undefined) {
+        this.ignoreCache.delete(oldest);
+      }
+    }
     this.ignoreCache.set(cacheKey, matcher);
     return matcher;
   }
@@ -796,29 +876,13 @@ export class RepoIndexerService {
     execFn: RepoExecFn,
   ): Promise<FileIndexInput | null> {
     const absolutePath = `${repoRoot}/${relativePath}`;
+    const maxBytes = environment.codebaseMaxFileBytes;
 
-    const sizeRes = await execFn({
-      cmd: `wc -c < ${shQuote(absolutePath)}`,
+    // Read up to maxBytes+1 in a single command — if output exceeds maxBytes
+    // the file is too large. This avoids a separate `wc -c` roundtrip.
+    const contentRes = await execFn({
+      cmd: `head -c ${maxBytes + 1} ${shQuote(absolutePath)}`,
     });
-    if (sizeRes.exitCode !== 0) {
-      this.logger.debug('Failed to get file size', {
-        relativePath,
-        stderr: sizeRes.stderr,
-      });
-      return null;
-    }
-
-    const size = Number.parseInt(sizeRes.stdout.trim(), 10);
-    if (!Number.isFinite(size) || size > environment.codebaseMaxFileBytes) {
-      this.logger.debug('File too large to index', {
-        relativePath,
-        size,
-        maxSize: environment.codebaseMaxFileBytes,
-      });
-      return null;
-    }
-
-    const contentRes = await execFn({ cmd: `cat ${shQuote(absolutePath)}` });
     if (contentRes.exitCode !== 0) {
       this.logger.debug('Failed to read file content', {
         relativePath,
@@ -828,6 +892,16 @@ export class RepoIndexerService {
     }
 
     const content = contentRes.stdout;
+
+    // head -c reads bytes, but stdout is a string — use Buffer to check byte size
+    if (Buffer.byteLength(content, 'utf8') > maxBytes) {
+      this.logger.debug('File too large to index', {
+        relativePath,
+        maxSize: maxBytes,
+      });
+      return null;
+    }
+
     if (!content.trim()) {
       this.logger.debug('File is empty, skipping', { relativePath });
       return null;
@@ -870,12 +944,20 @@ export class RepoIndexerService {
       Math.max(0, targetTokens - 1),
     );
 
-    const tokenOffsets = Array.from({ length: tokens.length + 1 }, () => 0);
-    for (let i = 0; i < tokens.length; i += 1) {
-      const tokenValue = tokens[i] ?? 0;
-      const tokenText = String(encoding.decode([tokenValue]));
-      tokenOffsets[i + 1] = (tokenOffsets[i] ?? 0) + tokenText.length;
-    }
+    // Compute character offsets lazily — only at chunk boundaries — by
+    // decoding the token prefix up to each boundary.  This replaces the old
+    // per-token decode loop (N calls) with ~2 calls per chunk.
+    const offsetCache = new Map<number, number>();
+    offsetCache.set(0, 0);
+    offsetCache.set(tokens.length, content.length);
+    const charOffset = (tokenIdx: number): number => {
+      const cached = offsetCache.get(tokenIdx);
+      if (cached !== undefined) return cached;
+      const prefix = tokens.slice(0, tokenIdx);
+      const len = String(encoding.decode(prefix)).length;
+      offsetCache.set(tokenIdx, len);
+      return len;
+    };
 
     const chunks: ChunkDescriptor[] = [];
     let startToken = 0;
@@ -886,8 +968,8 @@ export class RepoIndexerService {
       const endToken = Math.min(startToken + targetTokens, tokens.length);
       if (endToken <= startToken) break;
 
-      const startOffset = tokenOffsets[startToken] ?? 0;
-      const endOffset = tokenOffsets[endToken] ?? startOffset;
+      const startOffset = charOffset(startToken);
+      const endOffset = charOffset(endToken);
       const text = content.slice(startOffset, endOffset);
       const startLine = this.lineForOffset(lineStarts, startOffset);
       const endLine = this.lineForOffset(
@@ -1090,10 +1172,10 @@ export class RepoIndexerService {
   }
 
   // ---------------------------------------------------------------------------
-  // Private: Qdrant filters & point IDs
+  // Qdrant filters & point IDs
   // ---------------------------------------------------------------------------
 
-  private buildRepoFilter(repoId: string) {
+  buildRepoFilter(repoId: string) {
     return {
       must: [{ key: 'repo_id', match: { value: repoId } }],
     };
@@ -1108,11 +1190,16 @@ export class RepoIndexerService {
     };
   }
 
-  private buildFileHashFilter(repoId: string, fileHash: string) {
+  private buildFileHashPathFilter(
+    repoId: string,
+    fileHash: string,
+    path: string,
+  ) {
     return {
       must: [
         { key: 'repo_id', match: { value: repoId } },
         { key: 'file_hash', match: { value: fileHash } },
+        { key: 'path', match: { value: path } },
       ],
     };
   }
@@ -1120,6 +1207,8 @@ export class RepoIndexerService {
   /**
    * Clean up orphaned chunks (files that no longer exist in the repo).
    * This is called after full index to remove chunks for deleted files.
+   * Uses paginated scroll to avoid loading all points into memory at once,
+   * then batches all orphaned paths into a single delete operation.
    */
   private async cleanupOrphanedChunks(
     collection: string,
@@ -1127,43 +1216,54 @@ export class RepoIndexerService {
     validPaths: Set<string>,
   ): Promise<void> {
     try {
-      // Only fetch the 'path' field to minimize memory usage
-      const allPoints = await this.qdrantService.scrollAll(collection, {
-        filter: this.buildRepoFilter(repoId),
-        limit: QDRANT_SCROLL_PAGE_SIZE,
-        with_payload: ['path'],
-      } as Parameters<QdrantService['scrollAll']>[1]);
-
-      // Find paths that exist in Qdrant but not in the current repo
       const orphanedPaths = new Set<string>();
-      for (const point of allPoints) {
-        const payload = point.payload as { path?: string } | undefined;
-        const path = payload?.path;
-        if (path && !validPaths.has(path)) {
-          orphanedPaths.add(path);
+      let offset: string | number | Record<string, unknown> | undefined;
+
+      // Paginate through all points, collecting orphaned paths
+      while (true) {
+        const page = await this.qdrantService.raw.scroll(collection, {
+          filter: this.buildRepoFilter(repoId),
+          limit: QDRANT_SCROLL_PAGE_SIZE,
+          with_payload: { include: ['path'] },
+          with_vector: false,
+          offset,
+        });
+
+        for (const point of page.points) {
+          const payload = point.payload as { path?: string } | undefined;
+          const path = payload?.path;
+          if (path && !validPaths.has(path)) {
+            orphanedPaths.add(path);
+          }
         }
+
+        if (!page.next_page_offset) break;
+        offset = page.next_page_offset;
       }
 
-      // Delete orphaned chunks
-      for (const path of orphanedPaths) {
-        await this.qdrantService.deleteByFilter(
-          collection,
-          this.buildFileFilter(repoId, path),
-        );
-        this.logger.debug('Deleted orphaned chunks for removed file', {
-          collection,
-          repoId,
-          path,
+      if (orphanedPaths.size === 0) return;
+
+      // Batch delete all orphaned paths in a single Qdrant call using
+      // a `should` (OR) filter instead of one call per path.
+      const BATCH_SIZE = 500;
+      const orphanedArray = Array.from(orphanedPaths);
+
+      for (let i = 0; i < orphanedArray.length; i += BATCH_SIZE) {
+        const batch = orphanedArray.slice(i, i + BATCH_SIZE);
+        await this.qdrantService.deleteByFilter(collection, {
+          must: [{ key: 'repo_id', match: { value: repoId } }],
+          should: batch.map((path) => ({
+            key: 'path',
+            match: { value: path },
+          })),
         });
       }
 
-      if (orphanedPaths.size > 0) {
-        this.logger.debug('Cleaned up orphaned chunks', {
-          collection,
-          repoId,
-          orphanedPathCount: orphanedPaths.size,
-        });
-      }
+      this.logger.debug('Cleaned up orphaned chunks', {
+        collection,
+        repoId,
+        orphanedPathCount: orphanedPaths.size,
+      });
     } catch (error) {
       // Log but don't fail if cleanup fails
       this.logger.warn('Failed to clean up orphaned chunks', {
@@ -1175,8 +1275,9 @@ export class RepoIndexerService {
   }
 
   /**
-   * Check if chunks for this file_hash already exist in collection.
-   * If so, copy them to new path with updated metadata instead of re-embedding.
+   * Check if chunks for this file_hash already exist at the same path in the
+   * collection. If found and both path and commit match, no work is needed.
+   * If found but the commit differs, update commit metadata without re-embedding.
    * Returns { exists: boolean, tokenCount: number }
    */
   private async checkAndCopyExistingChunks(
@@ -1188,73 +1289,88 @@ export class RepoIndexerService {
     embeddingModel: string,
   ): Promise<{ exists: boolean; tokenCount: number }> {
     try {
-      // Check if any chunks exist for this file_hash
-      // Use large limit to handle files with many chunks (100k should cover even very large files)
-      const allPoints = await this.qdrantService.scrollAllWithVectors(
-        collection,
-        {
-          filter: this.buildFileHashFilter(repoId, fileHash),
-          limit: QDRANT_SCROLL_PAGE_SIZE,
-          with_payload: true,
-          with_vector: true, // Need vectors to copy them to new points
-        },
-      );
+      const filter = this.buildFileHashPathFilter(repoId, fileHash, newPath);
 
-      if (allPoints.length === 0) {
+      // First check existence WITHOUT vectors — much cheaper than fetching vectors
+      const lightPoints = await this.qdrantService.scrollAll(collection, {
+        filter,
+        limit: QDRANT_SCROLL_PAGE_SIZE,
+        with_payload: true,
+      } as Parameters<QdrantService['scrollAll']>[1]);
+
+      if (lightPoints.length === 0) {
         return { exists: false, tokenCount: 0 };
       }
 
-      // File content exists - copy all chunks with updated path and commit
-      // Use stored token_count if available, otherwise compute (backwards compatibility)
-      const copiedPointsWithTokens = await Promise.all(
-        allPoints.map(async (point) => {
-          const payload = point.payload as QdrantPointPayload;
+      // Calculate total tokens and check if any point needs updating
+      let totalTokens = 0;
+      let needsUpdate = false;
 
-          // Use stored token_count if available, fall back to computing for old data
-          const chunkTokenCount =
-            payload.token_count ??
-            (await this.litellmService.countTokens(
-              embeddingModel,
-              payload.text,
-            ));
+      for (const point of lightPoints) {
+        const payload = point.payload as QdrantPointPayload;
+        const chunkTokenCount =
+          payload.token_count ??
+          (await this.litellmService.countTokens(embeddingModel, payload.text));
+        totalTokens += chunkTokenCount;
 
-          // Generate new point ID based on new path
-          const newId = this.buildPointId(repoId, newPath, payload.chunk_hash);
-          return {
-            point: {
-              id: newId,
-              vector: point.vector as number[],
-              payload: {
-                ...payload,
-                path: newPath,
-                commit: currentCommit,
-                indexed_at: new Date().toISOString(),
-                token_count: chunkTokenCount, // Ensure token_count is set
-              },
-            },
-            tokenCount: chunkTokenCount,
-          };
-        }),
+        if (payload.commit !== currentCommit || !payload.token_count) {
+          needsUpdate = true;
+        }
+      }
+
+      // If nothing needs updating, skip the expensive vector fetch
+      if (!needsUpdate) {
+        return { exists: true, tokenCount: totalTokens };
+      }
+
+      // Only fetch vectors for points that need metadata updates
+      const allPoints = await this.qdrantService.scrollAllWithVectors(
+        collection,
+        {
+          filter,
+          limit: QDRANT_SCROLL_PAGE_SIZE,
+          with_payload: true,
+          with_vector: true,
+        } as Parameters<QdrantService['scrollAllWithVectors']>[1],
       );
 
-      const copiedPoints = copiedPointsWithTokens.map((p) => p.point);
-      const totalTokens = copiedPointsWithTokens.reduce(
-        (sum, p) => sum + p.tokenCount,
-        0,
-      );
+      const pointsToUpdate: {
+        id: string;
+        vector: number[];
+        payload: Record<string, unknown>;
+      }[] = [];
 
-      if (copiedPoints.length > 0) {
-        // Batch upserts to avoid overwhelming Qdrant with large point sets
-        for (let i = 0; i < copiedPoints.length; i += CHUNK_COPY_BATCH_SIZE) {
-          const batch = copiedPoints.slice(i, i + CHUNK_COPY_BATCH_SIZE);
+      for (const point of allPoints) {
+        const payload = point.payload as QdrantPointPayload;
+        if (payload.commit === currentCommit && payload.token_count) {
+          continue;
+        }
+
+        const chunkTokenCount =
+          payload.token_count ??
+          (await this.litellmService.countTokens(embeddingModel, payload.text));
+        const newId = this.buildPointId(repoId, newPath, payload.chunk_hash);
+        pointsToUpdate.push({
+          id: newId,
+          vector: point.vector as number[],
+          payload: {
+            ...payload,
+            commit: currentCommit,
+            indexed_at: new Date().toISOString(),
+            token_count: chunkTokenCount,
+          },
+        });
+      }
+
+      if (pointsToUpdate.length > 0) {
+        for (let i = 0; i < pointsToUpdate.length; i += POINT_COPY_BATCH_SIZE) {
+          const batch = pointsToUpdate.slice(i, i + POINT_COPY_BATCH_SIZE);
           await this.qdrantService.upsertPoints(collection, batch);
         }
       }
 
       return { exists: true, tokenCount: totalTokens };
     } catch (error) {
-      // Only catch and return false for expected errors (collection not found, etc.)
-      // Let unexpected errors propagate to surface infrastructure issues
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       if (
@@ -1268,7 +1384,6 @@ export class RepoIndexerService {
         });
         return { exists: false, tokenCount: 0 };
       }
-      // Propagate unexpected errors
       throw error;
     }
   }
@@ -1331,6 +1446,7 @@ export class RepoIndexerService {
    * Calculate total tokens stored in Qdrant for this repo.
    * Uses token_count stored in payload for efficiency.
    * Falls back to counting tokens for old data without token_count.
+   * Paginates via raw.scroll to avoid loading all points into memory.
    */
   async getTotalIndexedTokens(
     collection: string,
@@ -1338,38 +1454,42 @@ export class RepoIndexerService {
     embeddingModel: string,
   ): Promise<number> {
     try {
-      // Only fetch token_count (and text as fallback for old data)
-      // to minimize memory usage instead of loading full payload.
-      const allPoints = await this.qdrantService.scrollAll(collection, {
-        filter: this.buildRepoFilter(repoId),
-        limit: QDRANT_SCROLL_PAGE_SIZE,
-        with_payload: ['token_count', 'text'],
-      } as Parameters<QdrantService['scrollAll']>[1]);
-
       let totalTokens = 0;
-      const pointsNeedingCount: { text: string }[] = [];
+      const textsNeedingCount: string[] = [];
+      let offset: string | number | Record<string, unknown> | undefined;
 
-      // First pass: sum stored token_count, collect points that need counting
-      for (const point of allPoints) {
-        const payload = point.payload as
-          | Pick<QdrantPointPayload, 'token_count' | 'text'>
-          | undefined;
-        if (payload?.token_count) {
-          totalTokens += payload.token_count;
-        } else if (payload?.text) {
-          // Old data without token_count - needs counting
-          pointsNeedingCount.push({ text: payload.text });
+      while (true) {
+        const page = await this.qdrantService.raw.scroll(collection, {
+          filter: this.buildRepoFilter(repoId),
+          limit: QDRANT_SCROLL_PAGE_SIZE,
+          with_payload: { include: ['token_count', 'text'] },
+          with_vector: false,
+          offset,
+        });
+
+        for (const point of page.points) {
+          const payload = point.payload as
+            | Pick<QdrantPointPayload, 'token_count' | 'text'>
+            | undefined;
+          if (payload?.token_count) {
+            totalTokens += payload.token_count;
+          } else if (payload?.text) {
+            textsNeedingCount.push(payload.text);
+          }
         }
+
+        if (!page.next_page_offset) break;
+        offset = page.next_page_offset;
       }
 
-      // Second pass: count tokens for old data (backwards compatibility)
-      if (pointsNeedingCount.length > 0) {
+      // Count tokens for old data without token_count (backwards compatibility)
+      if (textsNeedingCount.length > 0) {
         const BATCH_SIZE = 100;
-        for (let i = 0; i < pointsNeedingCount.length; i += BATCH_SIZE) {
-          const batch = pointsNeedingCount.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < textsNeedingCount.length; i += BATCH_SIZE) {
+          const batch = textsNeedingCount.slice(i, i + BATCH_SIZE);
           const tokenCounts = await Promise.all(
-            batch.map((p) =>
-              this.litellmService.countTokens(embeddingModel, p.text),
+            batch.map((text) =>
+              this.litellmService.countTokens(embeddingModel, text),
             ),
           );
           totalTokens += tokenCounts.reduce((sum, count) => sum + count, 0);

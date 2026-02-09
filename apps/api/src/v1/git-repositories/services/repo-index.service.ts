@@ -219,20 +219,18 @@ export class RepoIndexService implements OnModuleInit {
           );
         }
 
-        // Get total tokens from Qdrant - this gives accurate count of all indexed content
-        const totalIndexedTokens =
-          await this.repoIndexerService.getTotalIndexedTokens(
-            indexParams.collection,
-            repoUrl,
-            indexParams.embeddingModel,
-          );
+        // Read the DB counter (maintained via atomic increments during indexing)
+        // instead of scanning all Qdrant points — much cheaper for large repos.
+        const updatedEntity = await this.repoIndexDao.getOne({
+          id: entity.id,
+        });
+        const totalIndexedTokens = updatedEntity?.indexedTokens ?? 0;
 
         await this.repoIndexDao.updateById(entity.id, {
           status: RepoIndexStatus.Completed,
           lastIndexedCommit: indexParams.currentCommit,
           errorMessage: null,
-          indexedTokens: totalIndexedTokens,
-          estimatedTokens: totalIndexedTokens, // Update to reflect actual total
+          estimatedTokens: totalIndexedTokens,
         });
 
         return {
@@ -314,7 +312,9 @@ export class RepoIndexService implements OnModuleInit {
         estimatedTokens: number;
       }
   > {
-    let repoUrl = originalRepoUrl;
+    // Normalize the URL so the Qdrant repo_id is always consistent
+    // (strips .git suffix, converts SSH to HTTPS, etc.)
+    let repoUrl = this.repoIndexerService.deriveRepoId(originalRepoUrl);
 
     const existing = await this.repoIndexDao.getOne({
       repositoryId,
@@ -359,26 +359,6 @@ export class RepoIndexService implements OnModuleInit {
       }
     }
 
-    // Cross-branch seeding: when no index exists for this branch, try to
-    // copy points from an existing completed index on another branch so that
-    // only the diff needs to be re-embedded instead of the entire repo.
-    let donorCommit: string | undefined;
-    let donorCollection: string | undefined;
-    if (!existing) {
-      // Pick the most recently updated completed index as donor (deterministic)
-      const donors = await this.repoIndexDao.getAll({
-        repositoryId,
-        status: RepoIndexStatus.Completed,
-        limit: 1,
-        order: { updatedAt: 'DESC' },
-      });
-      const donor = donors[0];
-      if (donor?.lastIndexedCommit && donor.qdrantCollection) {
-        donorCommit = donor.lastIndexedCommit;
-        donorCollection = donor.qdrantCollection;
-      }
-    }
-
     // Decide full vs incremental
     let needsFullReindex =
       !existing ||
@@ -389,20 +369,17 @@ export class RepoIndexService implements OnModuleInit {
         chunkingSignatureHash,
       });
 
-    // If we have a donor, seed the new collection and switch to incremental
-    if (needsFullReindex && donorCommit && donorCollection) {
-      this.logger.debug('Seeding new branch index from donor', {
+    // Cross-branch seeding: when no index exists, copy points from a sibling branch
+    let donorCommit: string | undefined;
+    if (needsFullReindex && !existing) {
+      const seeding = await this.attemptCrossBranchSeeding(
         repositoryId,
-        branch,
-        donorCollection,
-        donorCommit,
-      });
-      await this.repoIndexerService.copyCollectionPoints(
-        donorCollection,
         collection,
       );
-      // Treat the donor's commit as the baseline for incremental diff
-      needsFullReindex = false;
+      if (seeding.seeded) {
+        donorCommit = seeding.donorCommit;
+        needsFullReindex = false;
+      }
     }
 
     const lastIndexedCommit = needsFullReindex
@@ -440,7 +417,7 @@ export class RepoIndexService implements OnModuleInit {
 
     // For incremental reindex, carry previous total so the progress bar stays meaningful
     const previousTotalTokens =
-      !needsFullReindex && existing?.estimatedTokens
+      !needsFullReindex && existing && existing.estimatedTokens > 0
         ? existing.estimatedTokens
         : undefined;
 
@@ -497,12 +474,10 @@ export class RepoIndexService implements OnModuleInit {
       throw new Error('Failed to generate embedding for query');
     }
 
-    // Expand search limit to allow filtering without losing relevant results
+    // Expand search limit to allow post-filtering without losing relevant results.
+    // topK is already validated (1-30) by the caller's Zod schema.
     const SEARCH_EXPANSION_FACTOR = 4;
-    const searchLimit = Math.min(
-      Math.max(topK * SEARCH_EXPANSION_FACTOR, topK),
-      15 * SEARCH_EXPANSION_FACTOR,
-    );
+    const searchLimit = topK * SEARCH_EXPANSION_FACTOR;
 
     // Search Qdrant — return empty if collection was deleted between indexing and search
     let matches: Awaited<ReturnType<QdrantService['searchPoints']>>;
@@ -512,9 +487,7 @@ export class RepoIndexService implements OnModuleInit {
         queryEmbeddingResult.embeddings[0],
         searchLimit,
         {
-          filter: {
-            must: [{ key: 'repo_id', match: { value: repoId } }],
-          },
+          filter: this.repoIndexerService.buildRepoFilter(repoId),
           with_payload: true,
         },
       );
@@ -546,7 +519,9 @@ export class RepoIndexService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   private async processIndexJob(data: RepoIndexJobData): Promise<void> {
-    const { repoIndexId, repoUrl, branch } = data;
+    const { repoIndexId, branch } = data;
+    // Normalize so the Qdrant repo_id is consistent regardless of source
+    const repoUrl = this.repoIndexerService.deriveRepoId(data.repoUrl);
 
     this.logger.debug('Processing repo index job', {
       repoIndexId,
@@ -572,7 +547,7 @@ export class RepoIndexService implements OnModuleInit {
       errorMessage: null,
       // Preserve indexedTokens from pending state (for incremental reindex this
       // already accounts for the untouched portion set by upsertIndexEntity)
-      indexedTokens: entity.indexedTokens ?? 0,
+      indexedTokens: entity.indexedTokens,
       // Preserve estimatedTokens from pending state (will be recalculated in container)
       estimatedTokens: entity.estimatedTokens,
     });
@@ -622,11 +597,11 @@ export class RepoIndexService implements OnModuleInit {
         };
       };
 
-      // Build authenticated clone URL, scoped to the repository owner
+      // Build authenticated clone URL using the repository entity's token
       const gitRepo = await this.gitRepositoriesDao.getOne({
         id: entity.repositoryId,
       });
-      const cloneUrl = await this.buildCloneUrl(repoUrl, gitRepo?.createdBy);
+      const cloneUrl = this.buildCloneUrlFromEntity(repoUrl, gitRepo);
 
       // Clean up any existing repo directory from previous runs
       await execFn({
@@ -635,10 +610,7 @@ export class RepoIndexService implements OnModuleInit {
 
       // Clone repo with depth limit to avoid OOM for very large repos
       // Depth of 100 is sufficient for most indexing needs while saving memory/time
-      const effectiveBranch = branch ?? entity.branch;
-      const branchFlag = effectiveBranch
-        ? `--branch ${shQuote(effectiveBranch)} `
-        : '';
+      const branchFlag = branch ? `--branch ${shQuote(branch)} ` : '';
       const cloneRes = await execFn({
         cmd: `git clone --depth 100 ${branchFlag}${shQuote(cloneUrl)} ${shQuote(REPO_CLONE_DIR)}`,
       });
@@ -650,7 +622,7 @@ export class RepoIndexService implements OnModuleInit {
       const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
         await this.repoIndexerService.calculateIndexMetadata(
           entity.repositoryId,
-          effectiveBranch,
+          branch,
         );
       const currentCommit = await this.repoIndexerService.resolveCurrentCommit(
         REPO_CLONE_DIR,
@@ -664,29 +636,15 @@ export class RepoIndexService implements OnModuleInit {
         chunkingSignatureHash,
       });
 
-      // Cross-branch seeding: if this is a new branch (no lastIndexedCommit)
-      // try to copy points from an existing completed index on another branch
+      // Cross-branch seeding: when no lastIndexedCommit, copy from a sibling branch
       let donorCommit: string | undefined;
       if (needsFullReindex && !entity.lastIndexedCommit) {
-        // Pick the most recently updated completed index as donor (deterministic)
-        const donors = await this.repoIndexDao.getAll({
-          repositoryId: entity.repositoryId,
-          status: RepoIndexStatus.Completed,
-          limit: 1,
-          order: { updatedAt: 'DESC' },
-        });
-        const donor = donors[0];
-        if (donor?.lastIndexedCommit && donor.qdrantCollection) {
-          this.logger.debug('Seeding background branch index from donor', {
-            repoIndexId,
-            donorCollection: donor.qdrantCollection,
-            donorCommit: donor.lastIndexedCommit,
-          });
-          await this.repoIndexerService.copyCollectionPoints(
-            donor.qdrantCollection,
-            collection,
-          );
-          donorCommit = donor.lastIndexedCommit;
+        const seeding = await this.attemptCrossBranchSeeding(
+          entity.repositoryId,
+          collection,
+        );
+        if (seeding.seeded) {
+          donorCommit = seeding.donorCommit;
           needsFullReindex = false;
         }
       }
@@ -711,7 +669,7 @@ export class RepoIndexService implements OnModuleInit {
       // For incremental reindex, keep the previous total as the estimate
       // so the progress bar stays meaningful (previous total ≈ final total).
       const effectiveEstimated =
-        !needsFullReindex && entity.estimatedTokens
+        !needsFullReindex && entity.estimatedTokens > 0
           ? entity.estimatedTokens
           : changedTokens;
 
@@ -764,13 +722,12 @@ export class RepoIndexService implements OnModuleInit {
         );
       }
 
-      // Get total tokens from Qdrant - this gives accurate count of all indexed content
-      const totalIndexedTokens =
-        await this.repoIndexerService.getTotalIndexedTokens(
-          collection,
-          repoUrl,
-          embeddingModel,
-        );
+      // Read the DB counter (maintained via atomic increments during indexing)
+      // instead of scanning all Qdrant points — much cheaper for large repos.
+      const updatedEntity = await this.repoIndexDao.getOne({
+        id: repoIndexId,
+      });
+      const totalIndexedTokens = updatedEntity?.indexedTokens ?? 0;
 
       await this.repoIndexDao.updateById(repoIndexId, {
         status: RepoIndexStatus.Completed,
@@ -780,8 +737,7 @@ export class RepoIndexService implements OnModuleInit {
         chunkingSignatureHash,
         qdrantCollection: collection,
         errorMessage: null,
-        indexedTokens: totalIndexedTokens,
-        estimatedTokens: totalIndexedTokens, // Update to reflect actual total
+        estimatedTokens: totalIndexedTokens,
       });
 
       this.logger.debug('Repo index job completed', {
@@ -911,6 +867,26 @@ export class RepoIndexService implements OnModuleInit {
   }
 
   /**
+   * Parse owner/repo from a git URL. Returns null for non-URL strings
+   * (e.g. `local:…` paths) or URLs with fewer than two path segments.
+   */
+  private static parseOwnerRepo(
+    repoUrl: string,
+  ): { url: URL; owner: string; repo: string } | null {
+    try {
+      const url = new URL(repoUrl);
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      if (pathParts.length < 2) return null;
+      const owner = pathParts[0];
+      const repo = pathParts[1]?.replace(/\.git$/, '');
+      if (!owner || !repo) return null;
+      return { url, owner, repo };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Try to find the real GitRepositoryEntity by parsing owner/repo from a URL.
    * Scopes the lookup to a specific user when `createdBy` is provided to avoid
    * cross-user data leakage.
@@ -920,68 +896,80 @@ export class RepoIndexService implements OnModuleInit {
     repoUrl: string,
     createdBy?: string,
   ): Promise<GitRepositoryEntity | null> {
-    try {
-      const url = new URL(repoUrl);
-      const pathParts = url.pathname.split('/').filter(Boolean);
-      if (pathParts.length >= 2) {
-        const owner = pathParts[0];
-        const repo = pathParts[1]?.replace(/\.git$/, '');
-        if (owner && repo) {
-          const searchParams: {
-            owner: string;
-            repo: string;
-            createdBy?: string;
-          } = { owner, repo };
-          if (createdBy) {
-            searchParams.createdBy = createdBy;
-          }
-          return await this.gitRepositoriesDao.getOne(searchParams);
-        }
-      }
-    } catch {
-      // Not a valid URL (e.g. local:... paths), fall through
+    const parsed = RepoIndexService.parseOwnerRepo(repoUrl);
+    if (!parsed) return null;
+
+    const searchParams: { owner: string; repo: string; createdBy?: string } = {
+      owner: parsed.owner,
+      repo: parsed.repo,
+    };
+    if (createdBy) {
+      searchParams.createdBy = createdBy;
     }
-    return null;
+    return this.gitRepositoriesDao.getOne(searchParams);
   }
 
-  private async buildCloneUrl(
+  /**
+   * Build an authenticated clone URL when the git repository entity is
+   * already available. Avoids an extra DB lookup.
+   */
+  private buildCloneUrlFromEntity(
     repoUrl: string,
-    createdBy?: string,
-  ): Promise<string> {
-    // Try to find credentials for this repo, scoped to the owning user
+    gitRepo: GitRepositoryEntity | null,
+  ): string {
+    if (!gitRepo?.encryptedToken) return repoUrl;
+
+    const parsed = RepoIndexService.parseOwnerRepo(repoUrl);
+    if (!parsed) return repoUrl;
+
     try {
-      const url = new URL(repoUrl);
-      const pathParts = url.pathname.split('/').filter(Boolean);
-      if (pathParts.length >= 2) {
-        const owner = pathParts[0];
-        // Strip .git suffix if present
-        const repo = pathParts[1]?.replace(/\.git$/, '');
-        const searchParams: {
-          owner: string;
-          repo: string;
-          createdBy?: string;
-        } = { owner: owner!, repo: repo! };
-        if (createdBy) {
-          searchParams.createdBy = createdBy;
-        }
-        const gitRepo = await this.gitRepositoriesDao.getOne(searchParams);
-        if (gitRepo?.encryptedToken) {
-          const token = this.gitRepositoriesService.decryptCredential(
-            gitRepo.encryptedToken,
-          );
-          // Inject token into URL: https://token@host/owner/repo
-          url.username = token;
-          return url.toString();
-        }
-      }
+      const token = this.gitRepositoriesService.decryptCredential(
+        gitRepo.encryptedToken,
+      );
+      parsed.url.username = token;
+      return parsed.url.toString();
     } catch (error) {
-      // If URL parsing or credential lookup fails, fall back to unauthenticated
       this.logger.debug('Failed to build authenticated clone URL', {
         repoUrl,
         error: error instanceof Error ? error.message : String(error),
       });
     }
     return repoUrl;
+  }
+
+  /**
+   * Try to seed a new branch index by copying points from an existing
+   * completed index on a sibling branch. Extracted to avoid duplicating
+   * the donor-finding logic between inline and background indexing paths.
+   */
+  private async attemptCrossBranchSeeding(
+    repositoryId: string,
+    targetCollection: string,
+  ): Promise<{ seeded: boolean; donorCommit?: string }> {
+    const donors = await this.repoIndexDao.getAll({
+      repositoryId,
+      status: RepoIndexStatus.Completed,
+      limit: 1,
+      order: { updatedAt: 'DESC' },
+    });
+    const donor = donors[0];
+
+    if (!donor?.lastIndexedCommit || !donor.qdrantCollection) {
+      return { seeded: false };
+    }
+
+    this.logger.debug('Seeding new branch index from donor', {
+      repositoryId,
+      donorCollection: donor.qdrantCollection,
+      donorCommit: donor.lastIndexedCommit,
+    });
+
+    await this.repoIndexerService.copyCollectionPoints(
+      donor.qdrantCollection,
+      targetCollection,
+    );
+
+    return { seeded: true, donorCommit: donor.lastIndexedCommit };
   }
 
   private async upsertIndexEntity(params: {

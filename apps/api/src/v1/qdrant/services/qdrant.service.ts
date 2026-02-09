@@ -258,6 +258,32 @@ export class QdrantService {
     return out;
   }
 
+  /**
+   * Create a payload index on a field for faster filtering.
+   * Idempotent — silently succeeds if the index already exists.
+   */
+  async ensurePayloadIndex(
+    collection: string,
+    field: string,
+    schema: 'keyword' | 'integer' | 'float' | 'bool' | 'text',
+  ): Promise<void> {
+    const exists = await this.collectionExists(collection);
+    if (!exists) return;
+
+    try {
+      await this.client.createPayloadIndex(collection, {
+        field_name: field,
+        field_schema: schema,
+      });
+    } catch (error) {
+      // Qdrant returns an error if the index already exists — ignore it
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes('already exists')) {
+        throw error;
+      }
+    }
+  }
+
   private async collectionExists(name: string): Promise<boolean> {
     const res = await this.client.getCollections();
     return res.collections.some((c) => c.name === name);

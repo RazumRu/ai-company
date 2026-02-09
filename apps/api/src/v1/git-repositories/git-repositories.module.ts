@@ -32,6 +32,11 @@ import { RepoIndexerService } from './services/repo-indexer.service';
     RepoIndexQueueService,
     RepoIndexService,
   ],
-  exports: [GitRepositoriesService, GitRepositoriesDao, RepoIndexService],
+  exports: [
+    GitRepositoriesService,
+    GitRepositoriesDao,
+    RepoIndexService,
+    RepoIndexerService,
+  ],
 })
 export class GitRepositoriesModule {}

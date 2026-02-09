@@ -170,16 +170,20 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   private async handleJobStalled(jobId: string): Promise<void> {
     this.logger.warn('Repo index job stalled, will be retried', { jobId });
 
-    if (this.callbacks) {
-      try {
-        await this.callbacks.onStalled(jobId);
-      } catch (err) {
-        this.logger.error(
-          err instanceof Error ? err : new Error(String(err)),
-          'Failed to handle stalled job',
-          { jobId },
-        );
-      }
+    if (!this.callbacks) return;
+
+    try {
+      // Resolve repoIndexId from job data rather than relying on the
+      // implicit jobId === repoIndexId coupling set in addIndexJob.
+      const job = await this.queue.getJob(jobId);
+      const repoIndexId = job?.data?.repoIndexId ?? jobId;
+      await this.callbacks.onStalled(repoIndexId);
+    } catch (err) {
+      this.logger.error(
+        err instanceof Error ? err : new Error(String(err)),
+        'Failed to handle stalled job',
+        { jobId },
+      );
     }
   }
 

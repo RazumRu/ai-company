@@ -94,12 +94,8 @@ export const RepoIndexSchema = z.object({
     .string()
     .nullable()
     .describe('Chunking configuration hash'),
-  estimatedTokens: z
-    .number()
-    .int()
-    .nullable()
-    .describe('Estimated token count'),
-  indexedTokens: z.number().int().nullable().describe('Actual indexed tokens'),
+  estimatedTokens: z.number().int().describe('Estimated token count'),
+  indexedTokens: z.number().int().describe('Actual indexed tokens'),
   errorMessage: z.string().nullable().describe('Error message if failed'),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),

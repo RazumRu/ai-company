@@ -10,6 +10,7 @@ import { RepoIndexStatus } from '../git-repositories.types';
 export type RepoIndexSearchTerms = Partial<{
   id: string;
   repositoryId: string;
+  repositoryIds: string[];
   status: RepoIndexStatus | RepoIndexStatus[];
   branch: string | string[];
 }>;
@@ -41,6 +42,10 @@ export class RepoIndexDao extends BaseDao<
 
     if (params?.repositoryId) {
       builder.andWhere({ repositoryId: params.repositoryId });
+    }
+
+    if (params?.repositoryIds && params.repositoryIds.length > 0) {
+      builder.andWhere({ repositoryId: In(params.repositoryIds) });
     }
 
     if (params?.branch) {

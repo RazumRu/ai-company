@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  BadRequestException,
   DefaultLogger,
   InternalException,
   NotFoundException,
@@ -13,7 +14,11 @@ import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { GetRepositoriesQueryDto } from '../dto/git-repositories.dto';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
-import { GitRepositoryProvider } from '../git-repositories.types';
+import { RepoIndexEntity } from '../entity/repo-index.entity';
+import {
+  GitRepositoryProvider,
+  RepoIndexStatus,
+} from '../git-repositories.types';
 import { GitRepositoriesService } from './git-repositories.service';
 import { RepoIndexQueueService } from './repo-index-queue.service';
 import { RepoIndexerService } from './repo-indexer.service';
@@ -22,6 +27,8 @@ describe('GitRepositoriesService', () => {
   let service: GitRepositoriesService;
   let dao: GitRepositoriesDao;
   let repoIndexDao: RepoIndexDao;
+  let repoIndexQueueService: RepoIndexQueueService;
+  let repoIndexerService: RepoIndexerService;
   let qdrantService: QdrantService;
 
   const mockUserId = 'user-123';
@@ -81,6 +88,7 @@ describe('GitRepositoriesService', () => {
         {
           provide: RepoIndexerService,
           useValue: {
+            deriveRepoId: vi.fn((url: string) => url),
             calculateIndexMetadata: vi.fn().mockResolvedValue({
               embeddingModel: 'text-embedding-3-small',
               vectorSize: 1536,
@@ -118,6 +126,10 @@ describe('GitRepositoriesService', () => {
     service = module.get<GitRepositoriesService>(GitRepositoriesService);
     dao = module.get<GitRepositoriesDao>(GitRepositoriesDao);
     repoIndexDao = module.get<RepoIndexDao>(RepoIndexDao);
+    repoIndexQueueService = module.get<RepoIndexQueueService>(
+      RepoIndexQueueService,
+    );
+    repoIndexerService = module.get<RepoIndexerService>(RepoIndexerService);
     qdrantService = module.get<QdrantService>(QdrantService);
   });
 
@@ -302,6 +314,99 @@ describe('GitRepositoriesService', () => {
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
       expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
+    });
+  });
+
+  describe('triggerReindex', () => {
+    const createMockRepoIndexEntity = (
+      overrides: Partial<RepoIndexEntity> = {},
+    ): RepoIndexEntity =>
+      ({
+        id: 'index-123',
+        repositoryId: mockRepositoryId,
+        repoUrl: 'https://github.com/octocat/Hello-World.git',
+        branch: 'main',
+        status: RepoIndexStatus.Completed,
+        qdrantCollection: 'codebase_my_repo_1536',
+        lastIndexedCommit: 'abc123',
+        embeddingModel: 'text-embedding-3-small',
+        vectorSize: 1536,
+        chunkingSignatureHash: 'sig-hash-123',
+        estimatedTokens: 1000,
+        indexedTokens: 1000,
+        errorMessage: null,
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        updatedAt: new Date('2024-01-01T00:00:00Z'),
+        ...overrides,
+      }) as RepoIndexEntity;
+
+    it('should successfully queue a reindex job for a new index', async () => {
+      const mockRepository = createMockRepositoryEntity();
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(null);
+      vi.spyOn(repoIndexDao, 'create').mockResolvedValue(
+        createMockRepoIndexEntity({
+          status: RepoIndexStatus.Pending,
+          indexedTokens: 0,
+          estimatedTokens: 0,
+        }),
+      );
+
+      const result = await service.triggerReindex(mockCtx, {
+        repositoryId: mockRepositoryId,
+        branch: 'main',
+      });
+
+      expect(repoIndexerService.deriveRepoId).toHaveBeenCalledWith(
+        mockRepository.url,
+      );
+      expect(repoIndexerService.calculateIndexMetadata).toHaveBeenCalledWith(
+        mockRepositoryId,
+        'main',
+      );
+      expect(repoIndexDao.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          repositoryId: mockRepositoryId,
+          branch: 'main',
+          status: RepoIndexStatus.Pending,
+        }),
+      );
+      expect(repoIndexQueueService.addIndexJob).toHaveBeenCalledWith({
+        repoIndexId: 'index-123',
+        repoUrl: mockRepository.url,
+        branch: 'main',
+      });
+      expect(result.message).toBe('Repository indexing has been queued');
+      expect(result.repoIndex.status).toBe(RepoIndexStatus.Pending);
+    });
+
+    it('should throw BadRequestException when indexing is already in progress', async () => {
+      const mockRepository = createMockRepositoryEntity();
+      const existingIndex = createMockRepoIndexEntity({
+        status: RepoIndexStatus.InProgress,
+      });
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(existingIndex);
+
+      await expect(
+        service.triggerReindex(mockCtx, {
+          repositoryId: mockRepositoryId,
+          branch: 'main',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException when repository does not belong to user', async () => {
+      vi.spyOn(dao, 'getOne').mockResolvedValue(null);
+
+      await expect(
+        service.triggerReindex(mockCtx, {
+          repositoryId: 'non-existent-repo',
+          branch: 'main',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
