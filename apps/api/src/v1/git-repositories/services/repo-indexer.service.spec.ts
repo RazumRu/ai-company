@@ -74,14 +74,20 @@ describe('RepoIndexerService', () => {
 
   describe('estimateTokenCount', () => {
     it('sums file sizes from git ls-tree and divides by 4', async () => {
-      const execFn: RepoExecFn = vi.fn().mockResolvedValue({
-        exitCode: 0,
-        stdout: [
-          '100644 blob abc123    1000\tsrc/index.ts',
-          '100644 blob def456    2000\tsrc/utils.ts',
-          '100644 blob ghi789     500\tREADME.md',
-        ].join('\n'),
-        stderr: '',
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-tree -r --long HEAD')) {
+          return {
+            exitCode: 0,
+            stdout: [
+              '100644 blob abc123    1000\tsrc/index.ts',
+              '100644 blob def456    2000\tsrc/utils.ts',
+              '100644 blob ghi789     500\tREADME.md',
+            ].join('\n'),
+            stderr: '',
+          };
+        }
+        // .gitignore / .codebaseindexignore reads
+        return { exitCode: 0, stdout: '', stderr: '' };
       });
 
       const result = await service.estimateTokenCount('/repo', execFn);
@@ -97,6 +103,30 @@ describe('RepoIndexerService', () => {
 
       const result = await service.estimateTokenCount('/repo', execFn);
       expect(result).toBe(0);
+    });
+
+    it('excludes files matching .codebaseindexignore patterns', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-tree -r --long HEAD')) {
+          return {
+            exitCode: 0,
+            stdout: [
+              '100644 blob abc123    1000\tsrc/index.ts',
+              '100644 blob def456    2000\tnode_modules/lib/index.js',
+              '100644 blob ghi789     500\tdist/bundle.js',
+            ].join('\n'),
+            stderr: '',
+          };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: 'node_modules/\ndist/', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateTokenCount('/repo', execFn);
+      // Only src/index.ts (1000 bytes) should be counted
+      expect(result).toBe(Math.floor(1000 / 4));
     });
   });
 
@@ -352,7 +382,6 @@ describe('RepoIndexerService', () => {
   describe('estimateChangedTokenCount', () => {
     it('returns estimated tokens for changed files', async () => {
       const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
-        // git diff --name-only fromCommit..toCommit
         if (params.cmd.includes('diff --name-only')) {
           return {
             exitCode: 0,
@@ -360,11 +389,9 @@ describe('RepoIndexerService', () => {
             stderr: '',
           };
         }
-        // git status --porcelain (no working tree changes)
         if (params.cmd.includes('status --porcelain')) {
           return { exitCode: 0, stdout: '', stderr: '' };
         }
-        // git ls-tree -l HEAD -- (estimateFileSizes)
         if (params.cmd.includes('ls-tree -l HEAD --')) {
           return {
             exitCode: 0,
@@ -390,7 +417,6 @@ describe('RepoIndexerService', () => {
 
     it('falls back to full estimate when diff fails', async () => {
       const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
-        // git diff --name-only fails (e.g. shallow clone)
         if (params.cmd.includes('diff --name-only')) {
           return {
             exitCode: 128,
@@ -398,7 +424,6 @@ describe('RepoIndexerService', () => {
             stderr: 'fatal: Invalid revision range',
           };
         }
-        // git ls-tree -r --long HEAD (full estimateTokenCount fallback)
         if (params.cmd.includes('ls-tree -r --long HEAD')) {
           return {
             exitCode: 0,
@@ -425,7 +450,6 @@ describe('RepoIndexerService', () => {
 
     it('includes working tree changes in estimation', async () => {
       const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
-        // git diff --name-only returns one committed change
         if (params.cmd.includes('diff --name-only')) {
           return {
             exitCode: 0,
@@ -433,7 +457,6 @@ describe('RepoIndexerService', () => {
             stderr: '',
           };
         }
-        // git status --porcelain returns an unstaged change
         if (params.cmd.includes('status --porcelain')) {
           return {
             exitCode: 0,
@@ -441,7 +464,6 @@ describe('RepoIndexerService', () => {
             stderr: '',
           };
         }
-        // git ls-tree -l HEAD -- (estimateFileSizes for both files)
         if (params.cmd.includes('ls-tree -l HEAD --')) {
           return {
             exitCode: 0,
@@ -487,7 +509,6 @@ describe('RepoIndexerService', () => {
 
     it('deduplicates files that appear in both diff and working tree', async () => {
       const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
-        // The same file appears in both diff and working tree
         if (params.cmd.includes('diff --name-only')) {
           return {
             exitCode: 0,
@@ -520,6 +541,41 @@ describe('RepoIndexerService', () => {
       );
       // 1200 / 4 = 300 (file counted only once despite appearing in both)
       expect(result).toBe(300);
+    });
+
+    it('excludes changed files matching .codebaseindexignore patterns', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('diff --name-only')) {
+          return {
+            exitCode: 0,
+            stdout: 'src/index.ts\ndist/bundle.js\n',
+            stderr: '',
+          };
+        }
+        if (params.cmd.includes('status --porcelain')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: 'dist/', stderr: '' };
+        }
+        if (params.cmd.includes('ls-tree -l HEAD --')) {
+          return {
+            exitCode: 0,
+            stdout: '100644 blob abc123    800\tsrc/index.ts',
+            stderr: '',
+          };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateChangedTokenCount(
+        '/repo',
+        'aaa111',
+        'bbb222',
+        execFn,
+      );
+      // Only src/index.ts (800 bytes) should be counted; dist/bundle.js is ignored
+      expect(result).toBe(Math.floor(800 / 4));
     });
   });
 

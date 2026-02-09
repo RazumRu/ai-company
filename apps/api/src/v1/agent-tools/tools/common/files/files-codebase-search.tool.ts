@@ -23,6 +23,7 @@ import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 const DEFAULT_TOP_K = 15;
 const MAX_TOP_K = 30;
+const DEFAULT_MIN_SCORE = 0.3;
 
 const CodebaseSearchSchema = z.object({
   query: z
@@ -225,6 +226,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       topK: args.top_k ?? DEFAULT_TOP_K,
       directoryFilter,
       languageFilter: args.language,
+      minScore: DEFAULT_MIN_SCORE,
     });
 
     return {

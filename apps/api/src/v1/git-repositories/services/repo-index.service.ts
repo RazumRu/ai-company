@@ -1,9 +1,15 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
+import { z } from 'zod';
 
 import { environment } from '../../../environments';
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
-import { OpenaiService } from '../../openai/openai.service';
+import {
+  CompleteJsonData,
+  OpenaiService,
+  ResponseJsonData,
+} from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeType } from '../../runtime/runtime.types';
@@ -30,14 +36,29 @@ import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
 const REPO_CLONE_DIR = '/workspace/repo';
 const GIT_CLONE_DEPTH = 100;
 
+const EMBEDDING_CACHE_MAX_SIZE = 200;
+const EMBEDDING_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Minimum topK to trigger query expansion — small queries don't benefit
+const QUERY_EXPANSION_MIN_TOP_K = 5;
+
+const CodeSearchQueryExpansionSchema = z.object({
+  queries: z.array(z.string().min(1)).min(1).max(5),
+});
+
+type CachedEmbedding = { embedding: number[]; timestamp: number };
+
 @Injectable()
 export class RepoIndexService implements OnModuleInit {
+  private readonly embeddingCache = new Map<string, CachedEmbedding>();
+
   constructor(
     private readonly repoIndexDao: RepoIndexDao,
     private readonly gitRepositoriesDao: GitRepositoriesDao,
     private readonly gitRepositoriesService: GitRepositoriesService,
     private readonly repoIndexerService: RepoIndexerService,
     private readonly repoIndexQueueService: RepoIndexQueueService,
+    private readonly litellmService: LitellmService,
     private readonly llmModelsService: LlmModelsService,
     private readonly openaiService: OpenaiService,
     private readonly qdrantService: QdrantService,
@@ -54,6 +75,7 @@ export class RepoIndexService implements OnModuleInit {
       onFailed: this.handleFailedJob.bind(this),
     });
     await this.recoverStuckJobs();
+    await this.cleanupOrphanedIndexes();
   }
 
   /**
@@ -146,6 +168,123 @@ export class RepoIndexService implements OnModuleInit {
       this.logger.error(
         err instanceof Error ? err : new Error(String(err)),
         'Failed to recover incomplete repo index jobs',
+      );
+    }
+  }
+
+  /**
+   * On server startup, remove orphaned Qdrant collections, orphaned DB rows,
+   * and stale indexes that haven't been updated within the configured threshold.
+   */
+  private async cleanupOrphanedIndexes(): Promise<void> {
+    try {
+      const maxAgeDays = environment.codebaseIndexMaxAgeDays;
+      const staleThreshold = new Date(
+        Date.now() - maxAgeDays * 24 * 60 * 60 * 1000,
+      );
+
+      // 1. Fetch all codebase_* Qdrant collections and all DB rows
+      const qdrantResult = await this.qdrantService.raw.getCollections();
+      const codebaseCollections = qdrantResult.collections
+        .map((c) => c.name)
+        .filter((name) => name.startsWith('codebase_'));
+
+      const allIndexes = await this.repoIndexDao.getAll({});
+
+      const dbCollectionNames = new Set(
+        allIndexes
+          .map((i) => i.qdrantCollection)
+          .filter((name): name is string => Boolean(name)),
+      );
+      const qdrantCollectionNames = new Set(codebaseCollections);
+
+      // 2. Delete orphaned Qdrant collections (no matching DB row)
+      for (const collection of codebaseCollections) {
+        if (!dbCollectionNames.has(collection)) {
+          try {
+            await this.qdrantService.raw.deleteCollection(collection);
+            this.logger.warn('Deleted orphaned Qdrant collection', {
+              collection,
+            });
+          } catch (err) {
+            this.logger.warn('Failed to delete orphaned Qdrant collection', {
+              collection,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+
+      // 3. Identify indexes to delete (orphaned or stale)
+      const indexesToDelete: { index: RepoIndexEntity; reason: string }[] = [];
+      for (const index of allIndexes) {
+        // Skip in-progress/pending — collection may not be created yet
+        if (
+          index.status === RepoIndexStatus.InProgress ||
+          index.status === RepoIndexStatus.Pending
+        ) {
+          continue;
+        }
+
+        const isOrphaned =
+          index.qdrantCollection &&
+          !qdrantCollectionNames.has(index.qdrantCollection);
+        const isStale = index.updatedAt < staleThreshold;
+
+        if (isOrphaned) {
+          indexesToDelete.push({ index, reason: 'orphaned' });
+        } else if (isStale) {
+          indexesToDelete.push({ index, reason: 'stale' });
+        }
+      }
+
+      // Build set of collections still referenced by surviving (non-deleted) rows
+      const deletedIds = new Set(indexesToDelete.map((e) => e.index.id));
+      const survivingCollections = new Set(
+        allIndexes
+          .filter((i) => !deletedIds.has(i.id) && i.qdrantCollection)
+          .map((i) => i.qdrantCollection),
+      );
+
+      // 4. Execute deletions
+      for (const { index, reason } of indexesToDelete) {
+        // Delete the Qdrant collection only if no surviving row still references it
+        if (
+          index.qdrantCollection &&
+          qdrantCollectionNames.has(index.qdrantCollection) &&
+          !survivingCollections.has(index.qdrantCollection)
+        ) {
+          try {
+            await this.qdrantService.raw.deleteCollection(
+              index.qdrantCollection,
+            );
+          } catch (err) {
+            this.logger.warn(
+              'Failed to delete Qdrant collection for stale index',
+              {
+                collection: index.qdrantCollection,
+                repoIndexId: index.id,
+                error: err instanceof Error ? err.message : String(err),
+              },
+            );
+          }
+        }
+
+        // Cancel any pending BullMQ job
+        await this.repoIndexQueueService.removeJob(index.id);
+
+        // Delete the DB row
+        await this.repoIndexDao.deleteById(index.id);
+        this.logger.warn(`Deleted ${reason} repo index`, {
+          repoIndexId: index.id,
+          qdrantCollection: index.qdrantCollection,
+          updatedAt: index.updatedAt,
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        err instanceof Error ? err : new Error(String(err)),
+        'Failed to cleanup orphaned indexes',
       );
     }
   }
@@ -425,43 +564,76 @@ export class RepoIndexService implements OnModuleInit {
   async searchCodebase(
     params: SearchCodebaseParams,
   ): Promise<SearchCodebaseResult[]> {
-    const { collection, query, repoId, topK, directoryFilter, languageFilter } =
-      params;
+    const {
+      collection,
+      query,
+      repoId,
+      topK,
+      directoryFilter,
+      languageFilter,
+      minScore,
+    } = params;
 
-    // Get embedding for the query
     const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
-    const queryEmbeddingResult = await this.openaiService.embeddings({
-      model: embeddingModel,
-      input: [query],
-    });
 
-    if (
-      queryEmbeddingResult.embeddings.length === 0 ||
-      !queryEmbeddingResult.embeddings[0]
-    ) {
-      throw new Error('Failed to generate embedding for query');
-    }
+    // For focused queries (low topK) use a single embedding; for broader
+    // searches, expand the query into variants for better recall.
+    const useExpansion = topK >= QUERY_EXPANSION_MIN_TOP_K;
+    const queries = useExpansion
+      ? await this.generateCodeSearchVariants(query)
+      : [query];
+
+    // Embed all query variants in a single batch call (leveraging the cache
+    // for any repeated text).
+    const embeddings = await Promise.all(
+      queries.map((q) => this.getOrComputeEmbedding(embeddingModel, q)),
+    );
 
     // Expand search limit to allow post-filtering without losing relevant results.
-    // topK is already validated (1-30) by the caller's Zod schema.
     const SEARCH_EXPANSION_FACTOR = 4;
     const searchLimit = topK * SEARCH_EXPANSION_FACTOR;
+    const repoFilter = this.repoIndexerService.buildRepoFilter(repoId);
 
     // Search Qdrant — return empty if collection was deleted between indexing and search
-    let matches: Awaited<ReturnType<QdrantService['searchPoints']>>;
+    type SearchResultItem = Awaited<
+      ReturnType<QdrantService['searchPoints']>
+    >[number];
+    let allMatches: SearchResultItem[];
     try {
-      matches = await this.qdrantService.searchPoints(
-        collection,
-        queryEmbeddingResult.embeddings[0],
-        searchLimit,
-        {
-          filter: this.repoIndexerService.buildRepoFilter(repoId),
-          with_payload: true,
-        },
-      );
+      if (embeddings.length === 1) {
+        allMatches = await this.qdrantService.searchPoints(
+          collection,
+          embeddings[0]!,
+          searchLimit,
+          { filter: repoFilter, with_payload: true },
+        );
+      } else {
+        const batchResults = await this.qdrantService.searchMany(
+          collection,
+          embeddings.map((vector) => ({
+            vector,
+            limit: searchLimit,
+            filter: repoFilter,
+            with_payload: true,
+            with_vector: false,
+          })),
+        );
+        // Deduplicate by point ID, keeping the highest score
+        const bestByPointId = new Map<string | number, SearchResultItem>();
+        for (const results of batchResults) {
+          for (const match of results) {
+            const existing = bestByPointId.get(match.id);
+            if (!existing || match.score > existing.score) {
+              bestByPointId.set(match.id, match);
+            }
+          }
+        }
+        allMatches = Array.from(bestByPointId.values()).sort(
+          (a, b) => b.score - a.score,
+        );
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('not found') || message.includes('does not exist')) {
+      if (QdrantService.isCollectionNotFoundError(error)) {
         this.logger.warn('Qdrant collection not found during search', {
           collection,
           repoId,
@@ -472,9 +644,10 @@ export class RepoIndexService implements OnModuleInit {
     }
 
     // Parse and filter results
-    const results = matches
+    const results = allMatches
       .map((match) => this.parseSearchResult(match))
       .filter((match): match is SearchCodebaseResult => Boolean(match))
+      .filter((match) => (minScore ? match.score >= minScore : true))
       .filter((match) => this.matchesPathPrefix(match, directoryFilter))
       .filter((match) => this.matchesLanguage(match, languageFilter))
       .slice(0, topK);
@@ -1033,6 +1206,98 @@ export class RepoIndexService implements OnModuleInit {
       lastIndexedCommit: null,
       ...payload,
     });
+  }
+
+  /**
+   * Generate alternative search queries for code search to improve recall.
+   * Uses an LLM to rephrase the original query into code-oriented variants
+   * (function names, class names, file paths, etc.).
+   */
+  private async generateCodeSearchVariants(query: string): Promise<string[]> {
+    try {
+      const prompt = [
+        'Generate 3-5 short search queries or keyword phrases for finding relevant code in a repository.',
+        'Return ONLY JSON with key "queries": string[].',
+        'Rules:',
+        '- Include the original query verbatim.',
+        '- Include variants that use likely function/class/variable names.',
+        '- Include variants that describe the code pattern or file type.',
+        '- Keep each query under 12 words.',
+        '- Deduplicate queries.',
+        '',
+        `QUERY: ${query}`,
+      ].join('\n');
+
+      const modelName = this.llmModelsService.getKnowledgeSearchModel();
+      const supportsResponsesApi =
+        await this.litellmService.supportsResponsesApi(modelName);
+      const data: ResponseJsonData | CompleteJsonData = {
+        model: modelName,
+        message: prompt,
+        json: true as const,
+        jsonSchema: CodeSearchQueryExpansionSchema,
+      };
+      const response = supportsResponsesApi
+        ? await this.openaiService.response<{ queries: string[] }>(data)
+        : await this.openaiService.complete<{ queries: string[] }>(data);
+
+      const validation = CodeSearchQueryExpansionSchema.safeParse(
+        response.content,
+      );
+      if (!validation.success) {
+        return [query];
+      }
+
+      const unique = new Set<string>();
+      unique.add(query);
+      for (const item of validation.data.queries) {
+        const normalized = item.trim();
+        if (normalized) unique.add(normalized);
+      }
+
+      return Array.from(unique).slice(0, 5);
+    } catch (error) {
+      this.logger.warn('Failed to expand code search query, using original', {
+        query,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [query];
+    }
+  }
+
+  private async getOrComputeEmbedding(
+    model: string,
+    text: string,
+  ): Promise<number[]> {
+    const cacheKey = `${model}:${text}`;
+    const cached = this.embeddingCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < EMBEDDING_CACHE_TTL_MS) {
+      return cached.embedding;
+    }
+
+    const result = await this.openaiService.embeddings({
+      model,
+      input: [text],
+    });
+
+    if (result.embeddings.length === 0 || !result.embeddings[0]) {
+      throw new Error('Failed to generate embedding for query');
+    }
+
+    const embedding = result.embeddings[0];
+
+    // Evict oldest entries when cache is full
+    if (this.embeddingCache.size >= EMBEDDING_CACHE_MAX_SIZE) {
+      const firstKey = this.embeddingCache.keys().next().value;
+      if (firstKey !== undefined) {
+        this.embeddingCache.delete(firstKey);
+      }
+    }
+
+    this.embeddingCache.set(cacheKey, { embedding, timestamp: now });
+    return embedding;
   }
 
   private parseSearchResult(

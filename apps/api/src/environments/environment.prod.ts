@@ -93,6 +93,8 @@ export const environment = () =>
     codebaseChunkTargetTokens: +getEnv('CODEBASE_CHUNK_TARGET_TOKENS', '250'),
     codebaseChunkOverlapTokens: +getEnv('CODEBASE_CHUNK_OVERLAP_TOKENS', '30'),
     codebaseMaxFileBytes: +getEnv('CODEBASE_MAX_FILE_BYTES', '1048576'),
+    codebaseGitExecTimeoutMs: +getEnv('CODEBASE_GIT_EXEC_TIMEOUT_MS', '60000'),
+    codebaseIndexMaxAgeDays: +getEnv('CODEBASE_INDEX_MAX_AGE_DAYS', '30'),
 
     // LLM model defaults for tools (do not override per-call)
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),

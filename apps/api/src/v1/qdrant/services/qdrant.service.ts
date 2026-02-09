@@ -280,8 +280,7 @@ export class QdrantService {
       });
     } catch (error) {
       // Qdrant returns an error if the index already exists — ignore it
-      const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes('already exists')) {
+      if (!QdrantService.isAlreadyExistsError(error)) {
         throw error;
       }
     }
@@ -302,6 +301,24 @@ export class QdrantService {
   private async getCollectionVectorSize(name: string): Promise<number | null> {
     const info = await this.client.getCollection(name);
     return this.extractVectorSizeFromInfo(info);
+  }
+
+  /**
+   * Check whether an error indicates a Qdrant collection was not found.
+   * Centralizes the string-matching heuristic so callers don't duplicate it.
+   */
+  static isCollectionNotFoundError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes('not found') || message.includes('does not exist');
+  }
+
+  /**
+   * Check whether an error indicates a Qdrant resource already exists
+   * (e.g. a payload index that was already created).
+   */
+  static isAlreadyExistsError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes('already exists');
   }
 
   private extractVectorSizeFromInfo(info: CollectionInfo): number | null {

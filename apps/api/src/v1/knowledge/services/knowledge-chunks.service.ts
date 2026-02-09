@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
+
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, InternalException } from '@packages/common';
-import { v4 as uuidv4 } from 'uuid';
+import { v5 as uuidv5 } from 'uuid';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
@@ -18,6 +20,9 @@ import { KnowledgeChunkBoundary } from '../knowledge.types';
 const QueryExpansionSchema = z.object({
   queries: z.array(z.string().min(1)).min(1).max(5),
 });
+
+// Stable namespace for deterministic chunk point IDs (UUID v5)
+const KNOWLEDGE_CHUNK_UUID_NS = '9e107d9d-372b-4b2f-8253-225585c5e162';
 
 type SearchBatchItem = Parameters<QdrantService['searchMany']>[1][number];
 type KnowledgeUpsertPoints = Parameters<QdrantService['upsertPoints']>[1];
@@ -168,14 +173,30 @@ export class KnowledgeChunksService {
       this.knowledgeCollection,
       this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
     );
-    await this.qdrantService.deleteByFilter(
-      collection,
-      this.buildDocFilter([docId]),
-    );
-    await this.qdrantService.upsertPoints(
-      collection,
-      this.buildVectorPoints(storedChunks, embeddings),
-    );
+
+    // Upsert first so search never returns zero results mid-update.
+    // Deterministic point IDs (uuid5 from docId+chunkHash) ensure that
+    // matching chunks are overwritten in-place.
+    const points = this.buildVectorPoints(storedChunks, embeddings);
+    await this.qdrantService.upsertPoints(collection, points);
+
+    // Remove stale points that belong to this doc but weren't part of
+    // the new upsert (e.g. doc shrank from 10 chunks to 5).
+    const newPointIds = new Set(points.map((p) => String(p.id)));
+    const existingPoints = await this.qdrantService.scrollAll(collection, {
+      filter: this.buildDocFilter([docId]),
+      with_payload: false,
+    } as Parameters<QdrantService['scrollAll']>[1]);
+
+    const staleIds = existingPoints
+      .map((p) => String(p.id))
+      .filter((id) => !newPointIds.has(id));
+
+    if (staleIds.length > 0) {
+      await this.qdrantService.deleteByFilter(collection, {
+        must: [{ has_id: staleIds }],
+      } as QdrantFilter);
+    }
   }
 
   async deleteDocChunks(docId: string): Promise<void> {
@@ -257,7 +278,7 @@ export class KnowledgeChunksService {
   ): StoredChunkInput[] {
     const createdAt = new Date().toISOString();
     return chunks.map((chunk, index) => ({
-      id: uuidv4(),
+      id: this.buildDeterministicChunkId(docId, chunk.text),
       publicId: this.buildChunkPublicId(docPublicId, index),
       docId,
       chunkIndex: index,
@@ -268,6 +289,15 @@ export class KnowledgeChunksService {
       endOffset: chunk.endOffset,
       createdAt,
     }));
+  }
+
+  /**
+   * Build a deterministic point ID so upserts overwrite the same chunk
+   * rather than creating duplicates. Based on docId + content hash.
+   */
+  private buildDeterministicChunkId(docId: string, text: string): string {
+    const contentHash = createHash('sha1').update(text).digest('hex');
+    return uuidv5(`${docId}|${contentHash}`, KNOWLEDGE_CHUNK_UUID_NS);
   }
 
   private buildChunkPublicId(docPublicId: number, chunkIndex: number): number {

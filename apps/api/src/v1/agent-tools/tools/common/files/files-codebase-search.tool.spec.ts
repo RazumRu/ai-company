@@ -191,6 +191,7 @@ describe('FilesCodebaseSearchTool', () => {
         topK: 5,
         directoryFilter: expect.any(String),
         languageFilter: 'ts',
+        minScore: 0.3,
       });
       expect(mockRepoIndexService.getOrInitIndexForRepo).toHaveBeenCalledWith(
         expect.objectContaining({

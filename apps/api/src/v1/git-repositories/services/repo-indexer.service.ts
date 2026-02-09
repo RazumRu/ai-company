@@ -29,6 +29,10 @@ const INCREMENTAL_BATCH_FILE_COUNT = 50;
 // Number of files to read concurrently from the runtime container
 const FILE_READ_CONCURRENCY = 10;
 
+// Maximum number of Qdrant points to scroll during prefetch before aborting.
+// Guards against pathological repos with an extreme number of indexed chunks.
+const PREFETCH_MAX_POINTS = 500_000;
+
 export type RepoExecFn = (params: {
   cmd: string;
 }) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
@@ -101,6 +105,30 @@ export class RepoIndexerService {
     private readonly logger: DefaultLogger,
   ) {}
 
+  /**
+   * Wrap an `execFn` so every call races against a configurable timeout.
+   * Prevents hung git processes from blocking indexing indefinitely.
+   */
+  static withTimeout(execFn: RepoExecFn, timeoutMs?: number): RepoExecFn {
+    const ms = timeoutMs ?? environment.codebaseGitExecTimeoutMs;
+    if (ms <= 0) return execFn;
+    return (params) =>
+      Promise.race([
+        execFn(params),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Git exec timed out after ${ms}ms: ${params.cmd.slice(0, 120)}`,
+                ),
+              ),
+            ms,
+          ),
+        ),
+      ]);
+  }
+
   // ---------------------------------------------------------------------------
   // Public: discovery helpers
   // ---------------------------------------------------------------------------
@@ -116,6 +144,8 @@ export class RepoIndexerService {
       return 0;
     }
 
+    const matcher = await this.preloadIgnoreMatcher(repoRoot, execFn);
+
     let totalBytes = 0;
     for (const line of res.stdout.split('\n')) {
       const trimmed = line.trim();
@@ -123,6 +153,8 @@ export class RepoIndexerService {
       // Format: <mode> <type> <hash> <size>\t<path>
       const tabIndex = trimmed.indexOf('\t');
       if (tabIndex === -1) continue;
+      const path = trimmed.slice(tabIndex + 1);
+      if (!this.shouldIndexPathSync(path, matcher)) continue;
       const meta = trimmed.slice(0, tabIndex).trim();
       const parts = meta.split(/\s+/);
       const size = Number.parseInt(parts[3] ?? '0', 10);
@@ -170,7 +202,17 @@ export class RepoIndexerService {
       return 0;
     }
 
-    return this.estimateFileSizes(repoRoot, allChangedFiles, execFn);
+    // Filter out ignored files so the estimate matches what actually gets indexed
+    const matcher = await this.preloadIgnoreMatcher(repoRoot, execFn);
+    const filteredFiles = allChangedFiles.filter((f) =>
+      this.shouldIndexPathSync(f, matcher),
+    );
+
+    if (filteredFiles.length === 0) {
+      return 0;
+    }
+
+    return this.estimateFileSizes(repoRoot, filteredFiles, execFn);
   }
 
   /**
@@ -248,7 +290,12 @@ export class RepoIndexerService {
       .embeddings({ model, input: ['ping'] })
       .then((result) =>
         this.qdrantService.getVectorSizeFromEmbeddings(result.embeddings),
-      );
+      )
+      .catch((err) => {
+        // Evict failed promise so subsequent calls can retry
+        this.vectorSizePromiseCache.delete(model);
+        throw err;
+      });
     this.vectorSizePromiseCache.set(model, promise);
     return promise;
   }
@@ -257,6 +304,11 @@ export class RepoIndexerService {
   // Public: naming & signature helpers
   // ---------------------------------------------------------------------------
 
+  /**
+   * Normalize a git remote URL into a canonical identifier used as the
+   * `repo_id` payload field in Qdrant and as `repo_url` in the DB.
+   * Converts SSH URLs to HTTPS and strips trailing `.git`.
+   */
   deriveRepoId(url: string): string {
     let normalized = url.trim();
     if (normalized.startsWith('git@') && normalized.includes(':')) {
@@ -415,10 +467,11 @@ export class RepoIndexerService {
 
   async runFullIndex(
     params: RepoIndexParams,
-    execFn: RepoExecFn,
+    rawExecFn: RepoExecFn,
     updateRuntimeActivity?: () => Promise<void>,
     onProgressUpdate?: (tokenCount: number) => Promise<void>,
   ): Promise<void> {
+    const execFn = RepoIndexerService.withTimeout(rawExecFn);
     const files = await this.listTrackedFiles(params.repoRoot, execFn);
     const matcher = await this.preloadIgnoreMatcher(params.repoRoot, execFn);
     const filtered: string[] = [];
@@ -461,10 +514,11 @@ export class RepoIndexerService {
 
   async runIncrementalIndex(
     params: RepoIndexParams,
-    execFn: RepoExecFn,
+    rawExecFn: RepoExecFn,
     updateRuntimeActivity?: () => Promise<void>,
     onProgressUpdate?: (tokenCount: number) => Promise<void>,
   ): Promise<void> {
+    const execFn = RepoIndexerService.withTimeout(rawExecFn);
     const diffPaths = params.lastIndexedCommit
       ? await this.listChangedFiles(
           params.repoRoot,
@@ -719,6 +773,11 @@ export class RepoIndexerService {
    * Pre-fetch all existing chunk metadata from Qdrant for a collection+repo.
    * Returns a map of path → { fileHash, tokenCount, commit } for O(1) lookups.
    * This replaces per-file Qdrant roundtrips during full indexing.
+   *
+   * Memory: The map is keyed by file path (not by chunk), so a repo with 100k
+   * chunks but 5k unique files produces only ~5k entries (~500 KB). A safety
+   * limit aborts the scroll if the total number of scrolled points exceeds
+   * {@link PREFETCH_MAX_POINTS} to guard against pathological cases.
    */
   private async prefetchExistingChunks(
     collection: string,
@@ -727,6 +786,7 @@ export class RepoIndexerService {
     const map = new Map<string, PrefetchedChunkInfo>();
     try {
       let offset: string | number | Record<string, unknown> | undefined;
+      let scrolledPoints = 0;
 
       while (true) {
         const page = await this.qdrantService.raw.scroll(collection, {
@@ -762,19 +822,36 @@ export class RepoIndexerService {
           }
         }
 
+        scrolledPoints += page.points.length;
+        if (scrolledPoints >= PREFETCH_MAX_POINTS) {
+          this.logger.warn(
+            'Prefetch safety limit reached, returning partial map',
+            {
+              collection,
+              repoId,
+              scrolledPoints,
+              mapSize: map.size,
+            },
+          );
+          break;
+        }
+
         if (!page.next_page_offset) break;
         offset = page.next_page_offset;
       }
+
+      this.logger.debug('Prefetched existing chunk metadata', {
+        collection,
+        repoId,
+        scrolledPoints,
+        uniquePaths: map.size,
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (
-        !message.includes('not found') &&
-        !message.includes('does not exist')
-      ) {
+      if (!QdrantService.isCollectionNotFoundError(error)) {
         this.logger.warn('Failed to prefetch existing chunks', {
           collection,
           repoId,
-          error: message,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
       // Return empty map on failure — will fall back to per-file checks
@@ -875,28 +952,41 @@ export class RepoIndexerService {
     repoRoot: string,
     execFn: RepoExecFn,
   ): Promise<ReturnType<typeof ignore>> {
-    // Read the ignore file content and use it as part of the cache key.
-    // Different repos cloned to the same path (e.g. /workspace/repo in BullMQ
-    // containers) will have different .codebaseindexignore content.
-    const ignoreFilePath = `${repoRoot}/.codebaseindexignore`;
-    const res = await execFn({
-      cmd: `if [ -f ${shQuote(ignoreFilePath)} ]; then cat ${shQuote(ignoreFilePath)}; fi`,
-    });
-    const ignoreContent = res.exitCode === 0 ? res.stdout.trim() : '';
+    // Read both .gitignore and .codebaseindexignore. .gitignore rules are
+    // loaded first (base rules), then .codebaseindexignore can add overrides.
+    const readFile = async (name: string): Promise<string> => {
+      const filePath = `${repoRoot}/${name}`;
+      const res = await execFn({
+        cmd: `if [ -f ${shQuote(filePath)} ]; then cat ${shQuote(filePath)}; fi`,
+      });
+      return res.exitCode === 0 ? res.stdout.trim() : '';
+    };
 
-    // Cache key = repoRoot + hash of file content so stale rules are never served
-    const cacheKey = `${repoRoot}:${this.sha1(ignoreContent)}`;
+    const [gitignoreContent, codebaseIgnoreContent] = await Promise.all([
+      readFile('.gitignore'),
+      readFile('.codebaseindexignore'),
+    ]);
+
+    // Cache key = repoRoot + hash of combined content so stale rules are never served
+    const combinedContent = `${gitignoreContent}\n---\n${codebaseIgnoreContent}`;
+    const cacheKey = `${repoRoot}:${this.sha1(combinedContent)}`;
     const cached = this.ignoreCache.get(cacheKey);
     if (cached) return cached;
 
-    const matcher = ignore();
-    if (ignoreContent) {
-      const lines = ignoreContent
+    const parseLines = (content: string): string[] =>
+      content
         .split('\n')
         .map((line) => line.trimEnd())
         .filter((line) => line.trim() && !line.trimStart().startsWith('#'));
-      matcher.add(lines);
+
+    const matcher = ignore();
+    if (gitignoreContent) {
+      matcher.add(parseLines(gitignoreContent));
     }
+    if (codebaseIgnoreContent) {
+      matcher.add(parseLines(codebaseIgnoreContent));
+    }
+
     // Evict oldest entries when the cache exceeds the max size
     if (this.ignoreCache.size >= RepoIndexerService.IGNORE_CACHE_MAX_SIZE) {
       const oldest = this.ignoreCache.keys().next().value;
@@ -1293,6 +1383,8 @@ export class RepoIndexerService {
 
       // Batch delete all orphaned paths in a single Qdrant call using
       // a `should` (OR) filter instead of one call per path.
+      // Qdrant filter semantics: `must` = AND, `should` = OR.
+      // Combined: repo_id MUST match AND path MUST match at least one `should` entry.
       const orphanedArray = Array.from(orphanedPaths);
 
       for (let i = 0; i < orphanedArray.length; i += POINT_COPY_BATCH_SIZE) {
@@ -1349,9 +1441,12 @@ export class RepoIndexerService {
         return { exists: false, tokenCount: 0 };
       }
 
-      // Calculate total tokens and check if any point needs updating
+      // Calculate total tokens and check if any point needs updating.
+      // Store computed token counts so the update loop below can reuse them
+      // instead of re-tokenizing the same text.
       let totalTokens = 0;
       let needsUpdate = false;
+      const tokenCountByChunkHash = new Map<string, number>();
 
       for (const point of lightPoints) {
         const payload = point.payload as QdrantPointPayload;
@@ -1359,6 +1454,7 @@ export class RepoIndexerService {
           payload.token_count ??
           (await this.litellmService.countTokens(embeddingModel, payload.text));
         totalTokens += chunkTokenCount;
+        tokenCountByChunkHash.set(payload.chunk_hash, chunkTokenCount);
 
         if (payload.commit !== currentCommit || !payload.token_count) {
           needsUpdate = true;
@@ -1394,6 +1490,7 @@ export class RepoIndexerService {
         }
 
         const chunkTokenCount =
+          tokenCountByChunkHash.get(payload.chunk_hash) ??
           payload.token_count ??
           (await this.litellmService.countTokens(embeddingModel, payload.text));
         const newId = this.buildPointId(repoId, newPath, payload.chunk_hash);
@@ -1418,12 +1515,7 @@ export class RepoIndexerService {
 
       return { exists: true, tokenCount: totalTokens };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      if (
-        errorMessage.includes('not found') ||
-        errorMessage.includes('does not exist')
-      ) {
+      if (QdrantService.isCollectionNotFoundError(error)) {
         this.logger.debug('Collection or points not found during chunk copy', {
           repoId,
           fileHash,
@@ -1458,7 +1550,7 @@ export class RepoIndexerService {
       break_strategy: 'token-window',
       line_counting: 'line-start-offsets',
       max_file_bytes: environment.codebaseMaxFileBytes,
-      ignore_rules: { source: '.codebaseindexignore' },
+      ignore_rules: { sources: ['.gitignore', '.codebaseindexignore'] },
       embedding_input: { format: 'raw' },
       point_id_scheme: {
         version: 'uuidv5',

@@ -1,4 +1,5 @@
 import { Module, OnModuleInit } from '@nestjs/common';
+import { DefaultLogger } from '@packages/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { environment } from '../../environments';
@@ -29,12 +30,19 @@ import { KnowledgeReindexService } from './services/knowledge-reindex.service';
   exports: [KnowledgeService, KnowledgeDocDao, KnowledgeChunksService],
 })
 export class KnowledgeModule implements OnModuleInit {
-  constructor(private readonly reindexService: KnowledgeReindexService) {}
+  constructor(
+    private readonly reindexService: KnowledgeReindexService,
+    private readonly logger: DefaultLogger,
+  ) {}
 
   onModuleInit(): void {
     if (!environment.knowledgeReindexOnStartup) {
       return;
     }
-    void this.reindexService.reindexDocsWithEmbeddingModelMismatch();
+    void this.reindexService
+      .reindexDocsWithEmbeddingModelMismatch()
+      .catch((err) =>
+        this.logger.error(err, 'Knowledge reindex failed on startup'),
+      );
   }
 }

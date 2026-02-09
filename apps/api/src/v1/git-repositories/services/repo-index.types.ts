@@ -2,7 +2,13 @@ import type { RepoIndexEntity } from '../entity/repo-index.entity';
 import type { RepoExecFn } from './repo-indexer.service';
 
 export interface GetOrInitIndexParams {
+  /** Database UUID of the git_repository row (NOT the normalized URL). */
   repositoryId: string;
+  /**
+   * Normalized remote URL (e.g. `https://github.com/owner/repo`) produced by
+   * `RepoIndexerService.deriveRepoId()`. Stored in Qdrant as the `repo_id`
+   * payload field and in the `repo_index.repo_url` DB column.
+   */
   repoUrl: string;
   repoRoot: string;
   execFn: RepoExecFn;
@@ -20,10 +26,16 @@ export interface GetOrInitIndexResult {
 export interface SearchCodebaseParams {
   collection: string;
   query: string;
+  /**
+   * Normalized remote URL used as the `repo_id` filter in Qdrant
+   * (produced by `RepoIndexerService.deriveRepoId()`).
+   */
   repoId: string;
   topK: number;
   directoryFilter?: string;
   languageFilter?: string;
+  /** Minimum cosine similarity score (0-1). Results below this threshold are discarded. */
+  minScore?: number;
 }
 
 export interface SearchCodebaseResult {

@@ -1,6 +1,7 @@
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
@@ -20,14 +21,16 @@ vi.mock('../../../environments', () => ({
     codebaseIndexTokenThreshold: 30000,
     codebaseUuidNamespace: '6ba7b811-9dad-11d1-80b4-00c04fd430c8',
     credentialEncryptionKey: 'a'.repeat(64),
+    codebaseIndexMaxAgeDays: 30,
   },
 }));
 
 const mockRepoIndexDao = {
   getOne: vi.fn(),
-  getAll: vi.fn().mockResolvedValue([]), // For recoverStuckJobs
+  getAll: vi.fn().mockResolvedValue([]), // For recoverStuckJobs & cleanupOrphanedIndexes
   create: vi.fn(),
   updateById: vi.fn(),
+  deleteById: vi.fn().mockResolvedValue(undefined),
   incrementIndexedTokens: vi.fn().mockResolvedValue(undefined),
   withIndexLock: vi
     .fn()
@@ -73,14 +76,25 @@ const mockRepoIndexerService = {
 const mockRepoIndexQueueService = {
   setCallbacks: vi.fn(),
   addIndexJob: vi.fn().mockResolvedValue(undefined),
+  removeJob: vi.fn().mockResolvedValue(undefined),
+};
+
+const mockLitellmService = {
+  supportsResponsesApi: vi.fn().mockResolvedValue(false),
 };
 
 const mockLlmModelsService = {
   getKnowledgeEmbeddingModel: vi.fn(() => 'text-embedding-3-small'),
+  getKnowledgeSearchModel: vi.fn(() => 'gpt-5-mini'),
 };
 
 const mockOpenaiService = {};
-const mockQdrantService = {};
+const mockQdrantService = {
+  raw: {
+    getCollections: vi.fn().mockResolvedValue({ collections: [] }),
+    deleteCollection: vi.fn().mockResolvedValue(true),
+  },
+};
 const mockRuntimeProvider = {};
 const mockRuntimeInstanceDao = {
   getOne: vi.fn(),
@@ -107,6 +121,7 @@ describe('RepoIndexService', () => {
     vi.resetAllMocks();
     // Restore default mock implementations after reset
     mockRepoIndexDao.getAll.mockResolvedValue([]);
+    mockRepoIndexDao.deleteById.mockResolvedValue(undefined);
     mockRepoIndexDao.incrementIndexedTokens.mockResolvedValue(undefined);
     mockRepoIndexDao.withIndexLock.mockImplementation(
       (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
@@ -142,6 +157,9 @@ describe('RepoIndexService', () => {
       }),
     );
     mockRepoIndexQueueService.addIndexJob.mockResolvedValue(undefined);
+    mockRepoIndexQueueService.removeJob.mockResolvedValue(undefined);
+    mockQdrantService.raw.getCollections.mockResolvedValue({ collections: [] });
+    mockQdrantService.raw.deleteCollection.mockResolvedValue(true);
     mockLlmModelsService.getKnowledgeEmbeddingModel.mockReturnValue(
       'text-embedding-3-small',
     );
@@ -157,6 +175,7 @@ describe('RepoIndexService', () => {
       mockGitRepositoriesService as unknown as GitRepositoriesService,
       mockRepoIndexerService as unknown as RepoIndexerService,
       mockRepoIndexQueueService as unknown as RepoIndexQueueService,
+      mockLitellmService as unknown as LitellmService,
       mockLlmModelsService as unknown as LlmModelsService,
       mockOpenaiService as unknown as OpenaiService,
       mockQdrantService as unknown as QdrantService,
@@ -539,6 +558,47 @@ describe('RepoIndexService', () => {
       expect(results).toHaveLength(3);
     });
 
+    it('filters out results below minScore threshold', async () => {
+      const points = [
+        makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
+        makeScoredPoint('src/auth/guard.ts', 'class AuthGuard {}', 0.45),
+        makeScoredPoint(
+          'src/utils/hash.ts',
+          'function hashPassword() {}',
+          0.25,
+        ),
+        makeScoredPoint('src/utils/misc.ts', 'const x = 1;', 0.1),
+      ];
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase({
+        ...baseSearchParams,
+        minScore: 0.3,
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results[0]!.path).toBe('src/auth/login.ts');
+      expect(results[0]!.score).toBe(0.95);
+      expect(results[1]!.path).toBe('src/auth/guard.ts');
+      expect(results[1]!.score).toBe(0.45);
+    });
+
+    it('returns all results when minScore is not specified', async () => {
+      const points = [
+        makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
+        makeScoredPoint('src/utils/hash.ts', 'function hashPassword() {}', 0.1),
+      ];
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue(points);
+
+      const results = await service.searchCodebase(baseSearchParams);
+
+      expect(results).toHaveLength(2);
+    });
+
     it('skips results with missing path or text in payload', async () => {
       const points = [
         makeScoredPoint('src/auth/login.ts', 'function login() {}', 0.95),
@@ -729,6 +789,9 @@ describe('RepoIndexService', () => {
       mockRepoIndexDao.withIndexLock.mockImplementation(
         (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
       );
+      mockQdrantService.raw.getCollections.mockResolvedValue({
+        collections: [],
+      });
 
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
@@ -736,6 +799,7 @@ describe('RepoIndexService', () => {
         mockGitRepositoriesService as unknown as GitRepositoriesService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
+        mockLitellmService as unknown as LitellmService,
         mockLlmModelsService as unknown as LlmModelsService,
         mockOpenaiService as unknown as OpenaiService,
         mockQdrantService as unknown as QdrantService,
@@ -789,6 +853,9 @@ describe('RepoIndexService', () => {
       mockRepoIndexDao.withIndexLock.mockImplementation(
         (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
       );
+      mockQdrantService.raw.getCollections.mockResolvedValue({
+        collections: [],
+      });
 
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
@@ -796,6 +863,7 @@ describe('RepoIndexService', () => {
         mockGitRepositoriesService as unknown as GitRepositoriesService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
+        mockLitellmService as unknown as LitellmService,
         mockLlmModelsService as unknown as LlmModelsService,
         mockOpenaiService as unknown as OpenaiService,
         mockQdrantService as unknown as QdrantService,
@@ -814,6 +882,245 @@ describe('RepoIndexService', () => {
 
       // Verify no jobs were enqueued
       expect(mockRepoIndexQueueService.addIndexJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cleanupOrphanedIndexes', () => {
+    // Helper to create a fresh service and trigger onModuleInit with custom mocks
+    const initServiceWithMocks = async (setup: {
+      qdrantCollections: { name: string }[];
+      dbIndexes: Partial<RepoIndexEntity>[];
+    }) => {
+      vi.resetAllMocks();
+      // recoverStuckJobs defaults
+      mockRepoIndexDao.getAll.mockResolvedValue(setup.dbIndexes);
+      mockRepoIndexDao.deleteById.mockResolvedValue(undefined);
+      mockRepoIndexDao.withIndexLock.mockImplementation(
+        (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
+      );
+      mockRepoIndexQueueService.removeJob.mockResolvedValue(undefined);
+      mockQdrantService.raw.getCollections.mockResolvedValue({
+        collections: setup.qdrantCollections,
+      });
+      mockQdrantService.raw.deleteCollection.mockResolvedValue(true);
+
+      const svc = new RepoIndexService(
+        mockRepoIndexDao as unknown as RepoIndexDao,
+        mockGitRepositoriesDao as unknown as GitRepositoriesDao,
+        mockGitRepositoriesService as unknown as GitRepositoriesService,
+        mockRepoIndexerService as unknown as RepoIndexerService,
+        mockRepoIndexQueueService as unknown as RepoIndexQueueService,
+        mockLitellmService as unknown as LitellmService,
+        mockLlmModelsService as unknown as LlmModelsService,
+        mockOpenaiService as unknown as OpenaiService,
+        mockQdrantService as unknown as QdrantService,
+        mockRuntimeProvider as unknown as RuntimeProvider,
+        mockRuntimeInstanceDao as unknown as RuntimeInstanceDao,
+        mockLogger as unknown as DefaultLogger,
+      );
+      await svc.onModuleInit();
+      return svc;
+    };
+
+    it('deletes orphaned Qdrant collections with no matching DB row', async () => {
+      await initServiceWithMocks({
+        qdrantCollections: [
+          { name: 'codebase_orphan_1536' },
+          { name: 'codebase_valid_1536' },
+        ],
+        dbIndexes: [
+          {
+            id: 'idx-1',
+            qdrantCollection: 'codebase_valid_1536',
+            status: RepoIndexStatus.Completed,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+        ],
+      });
+
+      expect(mockQdrantService.raw.deleteCollection).toHaveBeenCalledWith(
+        'codebase_orphan_1536',
+      );
+      expect(mockQdrantService.raw.deleteCollection).not.toHaveBeenCalledWith(
+        'codebase_valid_1536',
+      );
+    });
+
+    it('deletes orphaned DB rows whose Qdrant collection no longer exists', async () => {
+      await initServiceWithMocks({
+        qdrantCollections: [{ name: 'codebase_existing_1536' }],
+        dbIndexes: [
+          {
+            id: 'idx-orphan',
+            qdrantCollection: 'codebase_deleted_1536',
+            status: RepoIndexStatus.Completed,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+          {
+            id: 'idx-valid',
+            qdrantCollection: 'codebase_existing_1536',
+            status: RepoIndexStatus.Completed,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+        ],
+      });
+
+      expect(mockRepoIndexDao.deleteById).toHaveBeenCalledWith('idx-orphan');
+      expect(mockRepoIndexDao.deleteById).not.toHaveBeenCalledWith('idx-valid');
+      expect(mockRepoIndexQueueService.removeJob).toHaveBeenCalledWith(
+        'idx-orphan',
+      );
+    });
+
+    it('skips DB rows with Pending or InProgress status even if collection is missing', async () => {
+      await initServiceWithMocks({
+        qdrantCollections: [],
+        dbIndexes: [
+          {
+            id: 'idx-pending',
+            qdrantCollection: 'codebase_new_1536',
+            status: RepoIndexStatus.Pending,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+          {
+            id: 'idx-progress',
+            qdrantCollection: 'codebase_building_1536',
+            status: RepoIndexStatus.InProgress,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+        ],
+      });
+
+      expect(mockRepoIndexDao.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('skips non-codebase Qdrant collections', async () => {
+      await initServiceWithMocks({
+        qdrantCollections: [
+          { name: 'knowledge_chunks_1536' },
+          { name: 'other_collection' },
+        ],
+        dbIndexes: [],
+      });
+
+      expect(mockQdrantService.raw.deleteCollection).not.toHaveBeenCalled();
+    });
+
+    it('deletes stale indexes older than the configured threshold', async () => {
+      const staleDate = new Date(
+        Date.now() - 31 * 24 * 60 * 60 * 1000, // 31 days ago
+      );
+
+      await initServiceWithMocks({
+        qdrantCollections: [
+          { name: 'codebase_stale_1536' },
+          { name: 'codebase_fresh_1536' },
+        ],
+        dbIndexes: [
+          {
+            id: 'idx-stale',
+            qdrantCollection: 'codebase_stale_1536',
+            status: RepoIndexStatus.Completed,
+            updatedAt: staleDate,
+          } as Partial<RepoIndexEntity>,
+          {
+            id: 'idx-fresh',
+            qdrantCollection: 'codebase_fresh_1536',
+            status: RepoIndexStatus.Completed,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+        ],
+      });
+
+      // Stale index: both DB row and Qdrant collection should be deleted
+      expect(mockRepoIndexDao.deleteById).toHaveBeenCalledWith('idx-stale');
+      expect(mockQdrantService.raw.deleteCollection).toHaveBeenCalledWith(
+        'codebase_stale_1536',
+      );
+      // Fresh index: neither should be deleted
+      expect(mockRepoIndexDao.deleteById).not.toHaveBeenCalledWith('idx-fresh');
+    });
+
+    it('handles errors gracefully without throwing', async () => {
+      vi.resetAllMocks();
+      const qdrantError = new Error('Qdrant connection failed');
+      mockRepoIndexDao.getAll.mockResolvedValue([]);
+      mockRepoIndexDao.withIndexLock.mockImplementation(
+        (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
+      );
+      mockQdrantService.raw.getCollections.mockRejectedValue(qdrantError);
+
+      const svc = new RepoIndexService(
+        mockRepoIndexDao as unknown as RepoIndexDao,
+        mockGitRepositoriesDao as unknown as GitRepositoriesDao,
+        mockGitRepositoriesService as unknown as GitRepositoriesService,
+        mockRepoIndexerService as unknown as RepoIndexerService,
+        mockRepoIndexQueueService as unknown as RepoIndexQueueService,
+        mockLitellmService as unknown as LitellmService,
+        mockLlmModelsService as unknown as LlmModelsService,
+        mockOpenaiService as unknown as OpenaiService,
+        mockQdrantService as unknown as QdrantService,
+        mockRuntimeProvider as unknown as RuntimeProvider,
+        mockRuntimeInstanceDao as unknown as RuntimeInstanceDao,
+        mockLogger as unknown as DefaultLogger,
+      );
+
+      // Should not throw
+      await svc.onModuleInit();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        qdrantError,
+        'Failed to cleanup orphaned indexes',
+      );
+    });
+
+    it('deletes Failed DB rows whose Qdrant collection is missing', async () => {
+      await initServiceWithMocks({
+        qdrantCollections: [],
+        dbIndexes: [
+          {
+            id: 'idx-failed',
+            qdrantCollection: 'codebase_failed_1536',
+            status: RepoIndexStatus.Failed,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+        ],
+      });
+
+      expect(mockRepoIndexDao.deleteById).toHaveBeenCalledWith('idx-failed');
+    });
+
+    it('does not delete Qdrant collection when another fresh row still references it', async () => {
+      const staleDate = new Date(
+        Date.now() - 31 * 24 * 60 * 60 * 1000, // 31 days ago
+      );
+
+      await initServiceWithMocks({
+        qdrantCollections: [{ name: 'codebase_shared_1536' }],
+        dbIndexes: [
+          {
+            id: 'idx-stale',
+            qdrantCollection: 'codebase_shared_1536',
+            status: RepoIndexStatus.Completed,
+            updatedAt: staleDate,
+          } as Partial<RepoIndexEntity>,
+          {
+            id: 'idx-fresh',
+            qdrantCollection: 'codebase_shared_1536',
+            status: RepoIndexStatus.Completed,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+        ],
+      });
+
+      // Stale row should be deleted from DB
+      expect(mockRepoIndexDao.deleteById).toHaveBeenCalledWith('idx-stale');
+      // But the Qdrant collection must NOT be deleted — fresh row still needs it
+      expect(mockQdrantService.raw.deleteCollection).not.toHaveBeenCalledWith(
+        'codebase_shared_1536',
+      );
+      // Fresh row should not be deleted
+      expect(mockRepoIndexDao.deleteById).not.toHaveBeenCalledWith('idx-fresh');
     });
   });
 });
