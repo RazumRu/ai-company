@@ -61,10 +61,17 @@ Review and manually fix any remaining linting errors.
 
 ### 5. Run Unit Tests & Integration Tests
 
-Run all unit tests to ensure nothing is broken:
+**⚠️ CRITICAL**: Always use `pnpm` package.json scripts. Never call test runners directly (`vitest`, `npx vitest`). Never run full test suites (`pnpm test`, bare `pnpm test:integration`).
+
+Run unit tests:
 
 ```bash
+# ✅ Correct
 pnpm test:unit
+
+# ❌ WRONG
+# vitest run
+# pnpm test
 ```
 
 If you modified code that has related integration tests, you **must** also run the specific integration test file:
@@ -73,7 +80,9 @@ If you modified code that has related integration tests, you **must** also run t
 # ✅ Always target a specific file
 pnpm test:integration src/__tests__/integration/agent-tools/files-tools.int.ts
 
-# ❌ NEVER run bare `pnpm test:integration` without a filename
+# ❌ WRONG — NEVER run all integration tests
+# pnpm test:integration
+# pnpm test
 ```
 
 If tests fail:
@@ -218,12 +227,14 @@ pnpm build:tests
 # 4. Fix linting
 pnpm lint:fix
 
-# 5. Run unit tests
+# 5. Run unit tests (always use pnpm scripts — never call vitest directly)
 pnpm test:unit
+# ❌ NEVER: vitest run, pnpm test, npx vitest
 
 # 5b. Run related integration tests (mandatory when modifying code with integration tests)
 # ⚠️  ALWAYS target a specific file — NEVER run bare `pnpm test:integration`
 pnpm test:integration src/__tests__/integration/agent-tools/files-tools.int.ts
+# ❌ NEVER: pnpm test:integration (without filename), pnpm test
 
 # 6. Run E2E tests (ensure server is running first!)
 # Terminal 1: Start dependencies

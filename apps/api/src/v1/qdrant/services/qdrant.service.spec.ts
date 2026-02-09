@@ -147,4 +147,54 @@ describe('QdrantService', () => {
 
     expect(results).toEqual([{ id: 'chunk-1' }, { id: 'chunk-2' }]);
   });
+
+  describe('knownCollections cache', () => {
+    it('skips getCollections on second call after ensureCollection succeeds', async () => {
+      // First call: collection exists
+      await service.ensureCollection('cached-col', 2);
+      expect(mockClient.getCollections).toHaveBeenCalledTimes(1);
+
+      // Reset the call count
+      mockClient.getCollections.mockClear();
+
+      // Second call with same collection — should hit the cache
+      await service.deleteByFilter('cached-col', {
+        must: [{ key: 'x', match: { value: 'y' } }],
+      });
+      expect(mockClient.getCollections).not.toHaveBeenCalled();
+    });
+
+    it('caches collection after createCollection for new collections', async () => {
+      // Return empty collections so ensureCollection creates the collection
+      mockClient.getCollections.mockResolvedValueOnce({ collections: [] });
+
+      await service.ensureCollection('brand-new-col', 5);
+      expect(mockClient.createCollection).toHaveBeenCalled();
+      mockClient.getCollections.mockClear();
+
+      // Subsequent call should skip getCollections
+      await service.deleteByFilter('brand-new-col', {
+        must: [{ key: 'x', match: { value: 'y' } }],
+      });
+      expect(mockClient.getCollections).not.toHaveBeenCalled();
+    });
+
+    it('does not cache non-existent collections', async () => {
+      // Return empty collections — collectionExists returns false
+      mockClient.getCollections.mockResolvedValue({ collections: [] });
+
+      // deleteByFilter checks existence first; should return without calling delete
+      await service.deleteByFilter('does-not-exist', {
+        must: [{ key: 'x', match: { value: 'y' } }],
+      });
+      expect(mockClient.delete).not.toHaveBeenCalled();
+      expect(mockClient.getCollections).toHaveBeenCalledTimes(1);
+
+      // Second call should NOT be cached — must call getCollections again
+      await service.deleteByFilter('does-not-exist', {
+        must: [{ key: 'x', match: { value: 'y' } }],
+      });
+      expect(mockClient.getCollections).toHaveBeenCalledTimes(2);
+    });
+  });
 });

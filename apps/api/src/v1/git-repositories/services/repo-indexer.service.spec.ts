@@ -695,6 +695,290 @@ describe('RepoIndexerService', () => {
     });
   });
 
+  describe('checkAndCopyExistingChunks (content reuse via runFullIndex)', () => {
+    const baseParams = {
+      repoId: 'https://github.com/owner/repo',
+      repoRoot: '/workspace/repo',
+      currentCommit: 'abc123',
+      collection: 'codebase_test_main_3',
+      vectorSize: 3,
+      embeddingModel: 'text-embedding-3-small',
+    };
+
+    const makeExecFn = (fileContent: string): RepoExecFn =>
+      vi.fn().mockImplementation(async (params: { cmd: string }) => {
+        if (params.cmd.includes('ls-files')) {
+          return { exitCode: 0, stdout: 'src/index.ts\n', stderr: '' };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (params.cmd.includes('head -c')) {
+          return { exitCode: 0, stdout: fileContent, stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+    it('skips re-embedding when existing chunks match fileHash+path with current commit', async () => {
+      const fileContent = 'const x = 1;';
+      const execFn = makeExecFn(fileContent);
+
+      // Prefetch returns matching chunk via raw.scroll
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [
+          {
+            payload: {
+              path: 'src/index.ts',
+              file_hash:
+                // sha1 of 'const x = 1;'
+                '749b17640bf18d96c509f518d6f1a4b41d8cdc60',
+              token_count: 12,
+              commit: 'abc123',
+            },
+          },
+        ],
+        next_page_offset: null,
+      });
+
+      const onProgressUpdate = vi.fn();
+      await service.runFullIndex(
+        baseParams,
+        execFn,
+        undefined,
+        onProgressUpdate,
+      );
+
+      // Should NOT have called embeddings — content was reused
+      expect(mockOpenaiService.embeddings).not.toHaveBeenCalled();
+      // Should report progress for the reused tokens
+      expect(onProgressUpdate).toHaveBeenCalledWith(12);
+    });
+
+    it('updates metadata (no re-embedding) when existing chunks match fileHash+path but stale commit', async () => {
+      const fileContent = 'const x = 1;';
+      const execFn = makeExecFn(fileContent);
+
+      // Prefetch returns chunk with OLD commit
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [
+          {
+            payload: {
+              path: 'src/index.ts',
+              file_hash: '749b17640bf18d96c509f518d6f1a4b41d8cdc60',
+              token_count: 12,
+              commit: 'old-commit',
+            },
+          },
+        ],
+        next_page_offset: null,
+      });
+
+      // checkAndCopyExistingChunks will be called for stale commit — set up scrollAll
+      mockQdrantService.scrollAll.mockResolvedValue([
+        {
+          id: 'point-1',
+          payload: {
+            repo_id: baseParams.repoId,
+            path: 'src/index.ts',
+            file_hash: '749b17640bf18d96c509f518d6f1a4b41d8cdc60',
+            text: fileContent,
+            chunk_hash: 'chunk-hash-1',
+            commit: 'old-commit',
+            token_count: 12,
+          },
+        },
+      ]);
+
+      // scrollAllWithVectors returns same point with vector for metadata update
+      mockQdrantService.scrollAllWithVectors.mockResolvedValue([
+        {
+          id: 'point-1',
+          vector: [0.1, 0.2, 0.3],
+          payload: {
+            repo_id: baseParams.repoId,
+            path: 'src/index.ts',
+            file_hash: '749b17640bf18d96c509f518d6f1a4b41d8cdc60',
+            text: fileContent,
+            chunk_hash: 'chunk-hash-1',
+            commit: 'old-commit',
+            token_count: 12,
+          },
+        },
+      ]);
+
+      await service.runFullIndex(baseParams, execFn);
+
+      // Should NOT have called embeddings — reuse path with metadata update
+      expect(mockOpenaiService.embeddings).not.toHaveBeenCalled();
+      // Should have upserted updated metadata (new commit)
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalledWith(
+        baseParams.collection,
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({ commit: 'abc123' }),
+          }),
+        ]),
+      );
+    });
+
+    it('re-embeds when no existing chunks exist for the file', async () => {
+      const fileContent = 'const x = 1;';
+      const execFn = makeExecFn(fileContent);
+
+      // Prefetch returns empty — no existing chunks
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [],
+        next_page_offset: null,
+      });
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+
+      mockOpenaiService.embeddings.mockResolvedValue({
+        embeddings: [[0.1, 0.2, 0.3]],
+        usage: null,
+      });
+
+      await service.runFullIndex(baseParams, execFn);
+
+      // Should have called embeddings — new file
+      expect(mockOpenaiService.embeddings).toHaveBeenCalled();
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalled();
+    });
+  });
+
+  describe('cleanupOrphanedChunks (via runFullIndex)', () => {
+    it('deletes chunks for files no longer in repo', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-files')) {
+          // Only src/keep.ts exists now
+          return { exitCode: 0, stdout: 'src/keep.ts\n', stderr: '' };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (params.cmd.includes('head -c')) {
+          return { exitCode: 0, stdout: 'kept content', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      mockOpenaiService.embeddings.mockResolvedValue({
+        embeddings: [[0.1, 0.2, 0.3]],
+        usage: null,
+      });
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+
+      // Prefetch returns both keep.ts and deleted.ts
+      mockQdrantService.raw.scroll
+        .mockResolvedValueOnce({
+          // prefetchExistingChunks call
+          points: [
+            {
+              payload: {
+                path: 'src/keep.ts',
+                file_hash: 'different-hash',
+                token_count: 10,
+                commit: 'abc123',
+              },
+            },
+            {
+              payload: {
+                path: 'src/deleted.ts',
+                file_hash: 'old-hash',
+                token_count: 20,
+                commit: 'abc123',
+              },
+            },
+          ],
+          next_page_offset: null,
+        })
+        .mockResolvedValueOnce({
+          // cleanupOrphanedChunks call
+          points: [
+            { payload: { path: 'src/keep.ts' } },
+            { payload: { path: 'src/deleted.ts' } },
+          ],
+          next_page_offset: null,
+        });
+
+      await service.runFullIndex(
+        {
+          repoId: 'https://github.com/owner/repo',
+          repoRoot: '/workspace/repo',
+          currentCommit: 'abc123',
+          collection: 'codebase_test_main_3',
+          vectorSize: 3,
+          embeddingModel: 'text-embedding-3-small',
+        },
+        execFn,
+      );
+
+      // Verify orphaned chunks for deleted.ts were cleaned up
+      const deleteCalls = mockQdrantService.deleteByFilter.mock.calls;
+      const orphanDeleteCall = deleteCalls.find(
+        (call: unknown[]) =>
+          call[1] && (call[1] as { should?: unknown[] }).should !== undefined,
+      );
+      expect(orphanDeleteCall).toBeDefined();
+      expect(orphanDeleteCall![1]).toEqual(
+        expect.objectContaining({
+          should: expect.arrayContaining([
+            expect.objectContaining({
+              key: 'path',
+              match: { value: 'src/deleted.ts' },
+            }),
+          ]),
+        }),
+      );
+    });
+
+    it('does not delete anything when all chunks are valid', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-files')) {
+          return { exitCode: 0, stdout: 'src/index.ts\n', stderr: '' };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (params.cmd.includes('head -c')) {
+          return { exitCode: 0, stdout: 'const x = 1;', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      mockOpenaiService.embeddings.mockResolvedValue({
+        embeddings: [[0.1, 0.2, 0.3]],
+        usage: null,
+      });
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+
+      // Prefetch and cleanup both return only src/index.ts
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [{ payload: { path: 'src/index.ts' } }],
+        next_page_offset: null,
+      });
+
+      await service.runFullIndex(
+        {
+          repoId: 'https://github.com/owner/repo',
+          repoRoot: '/workspace/repo',
+          currentCommit: 'abc123',
+          collection: 'codebase_test_main_3',
+          vectorSize: 3,
+          embeddingModel: 'text-embedding-3-small',
+        },
+        execFn,
+      );
+
+      // No orphan delete calls — only per-file deletes
+      const deleteCalls = mockQdrantService.deleteByFilter.mock.calls;
+      const orphanDeleteCall = deleteCalls.find(
+        (call: unknown[]) =>
+          call[1] && (call[1] as { should?: unknown[] }).should !== undefined,
+      );
+      expect(orphanDeleteCall).toBeUndefined();
+    });
+  });
+
   describe('chunkText (via runFullIndex)', () => {
     /**
      * chunkText is private, so we test it indirectly through runFullIndex.

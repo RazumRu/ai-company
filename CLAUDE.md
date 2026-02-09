@@ -32,16 +32,30 @@ pnpm lint                             # Lint without fixing (to see remaining is
 ```
 
 ### Testing
+
+**⚠️ CRITICAL**: Always use the `pnpm run` / `pnpm` package.json scripts to run tests. Never call test runners directly (e.g. `vitest`, `npx vitest`). Never run full test suites — always target specific files.
+
 ```bash
+# ✅ CORRECT — always use package.json scripts
 pnpm test:unit                        # Vitest unit tests (*.spec.ts) — mandatory
-pnpm test:integration {filename}      # Run ONLY the related integration test file — mandatory when modifying code that has integration tests
+pnpm test:integration {filename}      # Run ONLY the related integration test file
+
+# ❌ WRONG — never call test runners directly
+# vitest run
+# npx vitest
+# pnpm vitest run
+
+# ❌ WRONG — NEVER run full test suites
+# pnpm test                           # runs everything — FORBIDDEN
+# pnpm test:integration               # runs ALL integration tests — FORBIDDEN
+
 # ⚠️  NEVER run bare `pnpm test:integration` without a filename — always target the specific file
 
 # E2E (Cypress) — requires server running + deps up:
 cd apps/api
 pnpm test:e2e:generate-api            # Regenerate API types from Swagger (do this before E2E runs)
-pnpm test:e2e:local                   # Full E2E suite
 pnpm test:e2e:local --spec "cypress/e2e/path/to/spec.cy.ts"   # Single spec (preferred for iteration)
+pnpm test:e2e:local                   # Full E2E suite (only for final verification)
 ```
 
 ### Mandatory before finishing any work
@@ -167,7 +181,9 @@ src/v1/feature-name/
 
 ## Testing conventions
 
-- **Unit tests** (`*.spec.ts`): placed next to the source file. Use Vitest. Prefer updating an existing spec file over creating a new one.
+- **Always use package.json scripts**: Run tests via `pnpm test:unit`, `pnpm test:integration {filename}`, etc. **Never** invoke test runners directly (`vitest`, `npx vitest`, `pnpm vitest run`).
+- **Never run full test suites**: `pnpm test` and bare `pnpm test:integration` (without a filename) are **forbidden**. Always target a specific scope.
+- **Unit tests** (`*.spec.ts`): placed next to the source file. Run with `pnpm test:unit`. Prefer updating an existing spec file over creating a new one.
 - **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). **Mandatory** when modifying code that already has integration tests — always run with a specific filename: `pnpm test:integration {filename}`. **NEVER** run bare `pnpm test:integration` without a filename.
 - **E2E tests** (`*.cy.ts`): in `apps/api/cypress/e2e/`. Smoke-test endpoints over HTTP. Require a running server + deps.
 - **Must-fail policy**: Tests must never conditionally skip based on missing env vars or services. If a prerequisite is absent, the test must fail with a clear error — no `it.skip` or early returns.

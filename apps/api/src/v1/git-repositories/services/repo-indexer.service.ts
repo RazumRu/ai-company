@@ -20,6 +20,15 @@ const POINT_COPY_BATCH_SIZE = 500;
 // paginate automatically, so this only controls memory per page.
 const QDRANT_SCROLL_PAGE_SIZE = 1000;
 
+// Number of files to flush per batch during full indexing
+const FULL_INDEX_BATCH_FILE_COUNT = 15;
+
+// Number of files to flush per batch during incremental indexing
+const INCREMENTAL_BATCH_FILE_COUNT = 50;
+
+// Number of files to read concurrently from the runtime container
+const FILE_READ_CONCURRENCY = 10;
+
 export type RepoExecFn = (params: {
   cmd: string;
 }) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
@@ -61,6 +70,12 @@ type QdrantPointPayload = {
   token_count: number;
 };
 
+type PrefetchedChunkInfo = {
+  fileHash: string;
+  tokenCount: number;
+  commit: string;
+};
+
 export interface RepoIndexParams {
   repoId: string;
   repoRoot: string;
@@ -75,6 +90,7 @@ export interface RepoIndexParams {
 export class RepoIndexerService {
   private static readonly IGNORE_CACHE_MAX_SIZE = 50;
   private readonly ignoreCache = new Map<string, ReturnType<typeof ignore>>();
+  private readonly vectorSizePromiseCache = new Map<string, Promise<number>>();
 
   constructor(
     private readonly qdrantService: QdrantService,
@@ -225,11 +241,16 @@ export class RepoIndexerService {
   }
 
   async getVectorSizeForModel(model: string): Promise<number> {
-    const result = await this.openaiService.embeddings({
-      model,
-      input: ['ping'],
-    });
-    return this.qdrantService.getVectorSizeFromEmbeddings(result.embeddings);
+    const cached = this.vectorSizePromiseCache.get(model);
+    if (cached) return cached;
+
+    const promise = this.openaiService
+      .embeddings({ model, input: ['ping'] })
+      .then((result) =>
+        this.qdrantService.getVectorSizeFromEmbeddings(result.embeddings),
+      );
+    this.vectorSizePromiseCache.set(model, promise);
+    return promise;
   }
 
   // ---------------------------------------------------------------------------
@@ -407,9 +428,6 @@ export class RepoIndexerService {
       }
     }
 
-    // Track paths we've processed so we can clean up orphaned chunks at the end
-    const processedPaths = new Set<string>();
-
     // Ensure payload indexes exist for efficient filtering
     await this.ensureCodebasePayloadIndexes(params.collection);
 
@@ -419,121 +437,19 @@ export class RepoIndexerService {
       totalFiles: filtered.length,
     });
 
-    const batch: ChunkBatchItem[] = [];
-    let batchTokenCount = 0;
-    const maxTokens = environment.codebaseEmbeddingMaxTokens;
-    const BATCH_FILE_COUNT = 15; // Flush every N files to save progress
-    let filesInCurrentBatch = 0;
-
-    for (const relativePath of filtered) {
-      processedPaths.add(relativePath);
-
-      const fileInput = await this.prepareFileIndexInput(
-        params.repoRoot,
-        relativePath,
-        execFn,
-      );
-      if (!fileInput) {
-        continue;
-      }
-
-      // Check if chunks for this file_hash already exist (before deleting old path chunks)
-      const { exists: chunksExist, tokenCount: reusedTokens } =
-        await this.checkAndCopyExistingChunks(
-          params.collection,
-          params.repoId,
-          fileInput.fileHash,
-          fileInput.relativePath,
-          params.currentCommit,
-          params.embeddingModel,
-        );
-
-      if (chunksExist) {
-        // Content unchanged - reused existing chunks (they were copied with updated path/commit)
-        // Update progress for reused chunks
-        if (onProgressUpdate && reusedTokens > 0) {
-          try {
-            await onProgressUpdate(reusedTokens);
-          } catch (err) {
-            this.logger.error(
-              err instanceof Error ? err : new Error(String(err)),
-              'Failed to update progress for reused chunks',
-              { tokenCount: reusedTokens },
-            );
-          }
-        }
-
-        continue;
-      }
-
-      // Delete old chunks for this file before re-indexing with new content
-      await this.qdrantService.deleteByFilter(
-        params.collection,
-        this.buildFileFilter(params.repoId, fileInput.relativePath),
-      );
-
-      // New content - chunk and embed
-      const chunks = await this.chunkText(
-        fileInput.content,
-        params.embeddingModel,
-      );
-
-      for (const chunk of chunks) {
-        if (
-          batchTokenCount + chunk.tokenCount > maxTokens &&
-          batch.length > 0
-        ) {
-          await this.flushChunkBatch(
-            params.collection,
-            batch,
-            params.vectorSize,
-            params.embeddingModel,
-            maxTokens,
-            onProgressUpdate,
-          );
-          batchTokenCount = 0;
-          filesInCurrentBatch = 0;
-        }
-        batch.push({
-          repoId: params.repoId,
-          commit: params.currentCommit,
-          filePath: fileInput.relativePath,
-          fileHash: fileInput.fileHash,
-          chunk,
-        });
-        batchTokenCount += chunk.tokenCount;
-      }
-
-      filesInCurrentBatch += 1;
-
-      // Flush every BATCH_FILE_COUNT files to save progress
-      if (filesInCurrentBatch >= BATCH_FILE_COUNT && batch.length > 0) {
-        await this.flushChunkBatch(
-          params.collection,
-          batch,
-          params.vectorSize,
-          params.embeddingModel,
-          maxTokens,
-          onProgressUpdate,
-        );
-        batchTokenCount = 0;
-        filesInCurrentBatch = 0;
-
-        // Update runtime activity to prevent cleanup during indexing
-        if (updateRuntimeActivity) {
-          await updateRuntimeActivity().catch(() => undefined);
-        }
-      }
-    }
-
-    await this.flushChunkBatch(
+    // Pre-fetch existing chunk metadata from Qdrant to avoid per-file roundtrips
+    const prefetchedChunks = await this.prefetchExistingChunks(
       params.collection,
-      batch,
-      params.vectorSize,
-      params.embeddingModel,
-      maxTokens,
-      onProgressUpdate,
+      params.repoId,
     );
+
+    const processedPaths = await this.processFiles(filtered, params, execFn, {
+      batchFileCount: FULL_INDEX_BATCH_FILE_COUNT,
+      updateRuntimeActivity,
+      onProgressUpdate,
+      prefetchedChunks,
+      checkFileExists: false,
+    });
 
     // Clean up orphaned chunks (files that no longer exist in the repo)
     await this.cleanupOrphanedChunks(
@@ -580,7 +496,7 @@ export class RepoIndexerService {
       params.repoRoot,
       execFn,
     );
-    const allPaths = new Set([...diffPaths, ...statusPaths]);
+    const allPaths = [...new Set([...diffPaths, ...statusPaths])];
 
     // Ensure payload indexes exist for efficient filtering
     await this.ensureCodebasePayloadIndexes(params.collection);
@@ -588,18 +504,14 @@ export class RepoIndexerService {
     this.logger.debug('Codebase index: starting incremental index', {
       repoId: params.repoId,
       repoRoot: params.repoRoot,
-      totalFiles: allPaths.size,
+      totalFiles: allPaths.length,
     });
 
     const matcher = await this.preloadIgnoreMatcher(params.repoRoot, execFn);
-    const batch: ChunkBatchItem[] = [];
-    let batchTokenCount = 0;
-    const maxTokens = environment.codebaseEmbeddingMaxTokens;
-    const BATCH_FILE_COUNT = 50; // Flush every N files to save progress
-    let filesInCurrentBatch = 0;
 
+    // Filter by ignore rules and handle deletions first
+    const filesToProcess: string[] = [];
     for (const relativePath of allPaths) {
-      // Check if file should be indexed before deleting
       if (!this.shouldIndexPathSync(relativePath, matcher)) {
         continue;
       }
@@ -613,101 +525,144 @@ export class RepoIndexerService {
         continue;
       }
 
-      const fileInput = await this.prepareFileIndexInput(
-        params.repoRoot,
-        relativePath,
-        execFn,
-      );
-      if (!fileInput) {
-        continue;
-      }
+      filesToProcess.push(relativePath);
+    }
 
-      // Check if chunks for this file_hash already exist in the collection
-      // BEFORE deleting old chunks — otherwise we destroy the chunks we want to reuse
-      const { exists: chunksExist, tokenCount: reusedTokens } =
-        await this.checkAndCopyExistingChunks(
+    await this.processFiles(filesToProcess, params, execFn, {
+      batchFileCount: INCREMENTAL_BATCH_FILE_COUNT,
+      updateRuntimeActivity,
+      onProgressUpdate,
+      prefetchedChunks: null,
+      checkFileExists: false,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: shared file processing loop
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Process a list of files: read, check for reuse, chunk, embed, and upsert.
+   * Shared between runFullIndex and runIncrementalIndex to avoid duplication.
+   * Returns the set of paths that were processed (for orphan cleanup).
+   */
+  private async processFiles(
+    files: string[],
+    params: RepoIndexParams,
+    execFn: RepoExecFn,
+    options: {
+      batchFileCount: number;
+      updateRuntimeActivity?: () => Promise<void>;
+      onProgressUpdate?: (tokenCount: number) => Promise<void>;
+      prefetchedChunks: Map<string, PrefetchedChunkInfo> | null;
+      checkFileExists: boolean;
+    },
+  ): Promise<Set<string>> {
+    const processedPaths = new Set<string>();
+    const batch: ChunkBatchItem[] = [];
+    let batchTokenCount = 0;
+    const maxTokens = environment.codebaseEmbeddingMaxTokens;
+    let filesInCurrentBatch = 0;
+
+    // Read files in parallel batches to overlap I/O
+    for (let i = 0; i < files.length; i += FILE_READ_CONCURRENCY) {
+      const fileSlice = files.slice(i, i + FILE_READ_CONCURRENCY);
+      const fileInputs = await Promise.all(
+        fileSlice.map(async (relativePath) => {
+          const input = await this.prepareFileIndexInput(
+            params.repoRoot,
+            relativePath,
+            execFn,
+          );
+          return { relativePath, input };
+        }),
+      );
+
+      for (const { relativePath, input: fileInput } of fileInputs) {
+        processedPaths.add(relativePath);
+
+        if (!fileInput) {
+          continue;
+        }
+
+        // Check for content reuse: try prefetched map first, fall back to Qdrant
+        const reuseResult = await this.checkFileReuse(
+          params,
+          fileInput,
+          options.prefetchedChunks,
+        );
+
+        if (reuseResult.reused) {
+          if (options.onProgressUpdate && reuseResult.tokenCount > 0) {
+            try {
+              await options.onProgressUpdate(reuseResult.tokenCount);
+            } catch (err) {
+              this.logger.error(
+                err instanceof Error ? err : new Error(String(err)),
+                'Failed to update progress for reused chunks',
+                { tokenCount: reuseResult.tokenCount },
+              );
+            }
+          }
+          continue;
+        }
+
+        // Delete old chunks for this file before re-indexing with new content
+        await this.qdrantService.deleteByFilter(
           params.collection,
-          params.repoId,
-          fileInput.fileHash,
-          fileInput.relativePath,
-          params.currentCommit,
+          this.buildFileFilter(params.repoId, fileInput.relativePath),
+        );
+
+        // New content - chunk and embed
+        const chunks = await this.chunkText(
+          fileInput.content,
           params.embeddingModel,
         );
 
-      if (chunksExist) {
-        // Content unchanged - reused existing chunks (copied with updated path/commit)
-        // Update progress for reused chunks
-        if (onProgressUpdate && reusedTokens > 0) {
-          try {
-            await onProgressUpdate(reusedTokens);
-          } catch (err) {
-            this.logger.error(
-              err instanceof Error ? err : new Error(String(err)),
-              'Failed to update progress for reused chunks',
-              { tokenCount: reusedTokens },
+        for (const chunk of chunks) {
+          if (
+            batchTokenCount + chunk.tokenCount > maxTokens &&
+            batch.length > 0
+          ) {
+            await this.flushChunkBatch(
+              params.collection,
+              batch,
+              params.vectorSize,
+              params.embeddingModel,
+              maxTokens,
+              options.onProgressUpdate,
             );
+            batchTokenCount = 0;
+            filesInCurrentBatch = 0;
           }
+          batch.push({
+            repoId: params.repoId,
+            commit: params.currentCommit,
+            filePath: fileInput.relativePath,
+            fileHash: fileInput.fileHash,
+            chunk,
+          });
+          batchTokenCount += chunk.tokenCount;
         }
 
-        continue;
-      }
+        filesInCurrentBatch += 1;
 
-      // Delete old chunks before re-indexing the file with new content
-      await this.qdrantService.deleteByFilter(
-        params.collection,
-        this.buildFileFilter(params.repoId, relativePath),
-      );
-
-      // New content - chunk and embed
-      const chunks = await this.chunkText(
-        fileInput.content,
-        params.embeddingModel,
-      );
-
-      for (const chunk of chunks) {
-        if (
-          batchTokenCount + chunk.tokenCount > maxTokens &&
-          batch.length > 0
-        ) {
+        // Flush every N files to save progress
+        if (filesInCurrentBatch >= options.batchFileCount && batch.length > 0) {
           await this.flushChunkBatch(
             params.collection,
             batch,
             params.vectorSize,
             params.embeddingModel,
             maxTokens,
-            onProgressUpdate,
+            options.onProgressUpdate,
           );
           batchTokenCount = 0;
           filesInCurrentBatch = 0;
-        }
-        batch.push({
-          repoId: params.repoId,
-          commit: params.currentCommit,
-          filePath: fileInput.relativePath,
-          fileHash: fileInput.fileHash,
-          chunk,
-        });
-        batchTokenCount += chunk.tokenCount;
-      }
 
-      filesInCurrentBatch += 1;
-
-      // Flush every BATCH_FILE_COUNT files to save progress
-      if (filesInCurrentBatch >= BATCH_FILE_COUNT && batch.length > 0) {
-        await this.flushChunkBatch(
-          params.collection,
-          batch,
-          params.vectorSize,
-          params.embeddingModel,
-          maxTokens,
-          onProgressUpdate,
-        );
-        batchTokenCount = 0;
-        filesInCurrentBatch = 0;
-
-        // Update runtime activity to prevent cleanup during indexing
-        if (updateRuntimeActivity) {
-          await updateRuntimeActivity().catch(() => undefined);
+          if (options.updateRuntimeActivity) {
+            await options.updateRuntimeActivity().catch(() => undefined);
+          }
         }
       }
     }
@@ -718,8 +673,113 @@ export class RepoIndexerService {
       params.vectorSize,
       params.embeddingModel,
       maxTokens,
-      onProgressUpdate,
+      options.onProgressUpdate,
     );
+
+    return processedPaths;
+  }
+
+  /**
+   * Check if a file's content can be reused from existing indexed chunks.
+   * Uses the prefetched map for O(1) lookups when available, falls back to
+   * the Qdrant-based checkAndCopyExistingChunks for metadata updates.
+   */
+  private async checkFileReuse(
+    params: RepoIndexParams,
+    fileInput: FileIndexInput,
+    prefetchedChunks: Map<string, PrefetchedChunkInfo> | null,
+  ): Promise<{ reused: boolean; tokenCount: number }> {
+    if (prefetchedChunks) {
+      const existing = prefetchedChunks.get(fileInput.relativePath);
+      if (existing && existing.fileHash === fileInput.fileHash) {
+        // Content matches — check if metadata needs updating
+        if (existing.commit === params.currentCommit) {
+          return { reused: true, tokenCount: existing.tokenCount };
+        }
+        // Same content but stale commit — need Qdrant call to update metadata
+      } else if (!existing) {
+        // Path not in Qdrant at all — new file, skip Qdrant check entirely
+        return { reused: false, tokenCount: 0 };
+      }
+      // Different hash or stale commit — fall through to full Qdrant check
+    }
+
+    const { exists, tokenCount } = await this.checkAndCopyExistingChunks(
+      params.collection,
+      params.repoId,
+      fileInput.fileHash,
+      fileInput.relativePath,
+      params.currentCommit,
+      params.embeddingModel,
+    );
+    return { reused: exists, tokenCount };
+  }
+
+  /**
+   * Pre-fetch all existing chunk metadata from Qdrant for a collection+repo.
+   * Returns a map of path → { fileHash, tokenCount, commit } for O(1) lookups.
+   * This replaces per-file Qdrant roundtrips during full indexing.
+   */
+  private async prefetchExistingChunks(
+    collection: string,
+    repoId: string,
+  ): Promise<Map<string, PrefetchedChunkInfo>> {
+    const map = new Map<string, PrefetchedChunkInfo>();
+    try {
+      let offset: string | number | Record<string, unknown> | undefined;
+
+      while (true) {
+        const page = await this.qdrantService.raw.scroll(collection, {
+          filter: this.buildRepoFilter(repoId),
+          limit: QDRANT_SCROLL_PAGE_SIZE,
+          with_payload: {
+            include: ['path', 'file_hash', 'token_count', 'commit'],
+          },
+          with_vector: false,
+          offset,
+        });
+
+        for (const point of page.points) {
+          const payload = point.payload as Partial<{
+            path: string;
+            file_hash: string;
+            token_count: number;
+            commit: string;
+          }>;
+          if (!payload.path || !payload.file_hash) continue;
+
+          const existing = map.get(payload.path);
+          const tokenCount = payload.token_count ?? 0;
+          if (existing) {
+            // Accumulate token counts across chunks of the same file
+            existing.tokenCount += tokenCount;
+          } else {
+            map.set(payload.path, {
+              fileHash: payload.file_hash,
+              tokenCount,
+              commit: payload.commit ?? '',
+            });
+          }
+        }
+
+        if (!page.next_page_offset) break;
+        offset = page.next_page_offset;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        !message.includes('not found') &&
+        !message.includes('does not exist')
+      ) {
+        this.logger.warn('Failed to prefetch existing chunks', {
+          collection,
+          repoId,
+          error: message,
+        });
+      }
+      // Return empty map on failure — will fall back to per-file checks
+    }
+    return map;
   }
 
   // ---------------------------------------------------------------------------
@@ -788,7 +848,7 @@ export class RepoIndexerService {
 
   /**
    * Pre-load the ignore matcher for a repo root. Call once at the start of
-   * an indexing run and pass the result to `shouldIndexPath` to avoid
+   * an indexing run and pass the result to `shouldIndexPathSync` to avoid
    * re-reading the ignore file for every single file.
    */
   async preloadIgnoreMatcher(
@@ -805,18 +865,6 @@ export class RepoIndexerService {
     if (!path) return false;
     const normalized = this.normalizePath(path);
     return !matcher.ignores(normalized);
-  }
-
-  private async shouldIndexPath(
-    path: string,
-    repoRoot: string,
-    execFn: RepoExecFn,
-    matcher?: ReturnType<typeof ignore>,
-  ): Promise<boolean> {
-    if (!path) return false;
-    const normalized = this.normalizePath(path);
-    const m = matcher ?? (await this.loadIgnoreMatcher(repoRoot, execFn));
-    return !m.ignores(normalized);
   }
 
   private normalizePath(path: string): string {
@@ -1245,11 +1293,10 @@ export class RepoIndexerService {
 
       // Batch delete all orphaned paths in a single Qdrant call using
       // a `should` (OR) filter instead of one call per path.
-      const BATCH_SIZE = 500;
       const orphanedArray = Array.from(orphanedPaths);
 
-      for (let i = 0; i < orphanedArray.length; i += BATCH_SIZE) {
-        const batch = orphanedArray.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < orphanedArray.length; i += POINT_COPY_BATCH_SIZE) {
+        const batch = orphanedArray.slice(i, i + POINT_COPY_BATCH_SIZE);
         await this.qdrantService.deleteByFilter(collection, {
           must: [{ key: 'repo_id', match: { value: repoId } }],
           should: batch.map((path) => ({
@@ -1436,75 +1483,6 @@ export class RepoIndexerService {
       )
       .join(',');
     return `{${body}}`;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Public: total token count from Qdrant
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Calculate total tokens stored in Qdrant for this repo.
-   * Uses token_count stored in payload for efficiency.
-   * Falls back to counting tokens for old data without token_count.
-   * Paginates via raw.scroll to avoid loading all points into memory.
-   */
-  async getTotalIndexedTokens(
-    collection: string,
-    repoId: string,
-    embeddingModel: string,
-  ): Promise<number> {
-    try {
-      let totalTokens = 0;
-      const textsNeedingCount: string[] = [];
-      let offset: string | number | Record<string, unknown> | undefined;
-
-      while (true) {
-        const page = await this.qdrantService.raw.scroll(collection, {
-          filter: this.buildRepoFilter(repoId),
-          limit: QDRANT_SCROLL_PAGE_SIZE,
-          with_payload: { include: ['token_count', 'text'] },
-          with_vector: false,
-          offset,
-        });
-
-        for (const point of page.points) {
-          const payload = point.payload as
-            | Pick<QdrantPointPayload, 'token_count' | 'text'>
-            | undefined;
-          if (payload?.token_count) {
-            totalTokens += payload.token_count;
-          } else if (payload?.text) {
-            textsNeedingCount.push(payload.text);
-          }
-        }
-
-        if (!page.next_page_offset) break;
-        offset = page.next_page_offset;
-      }
-
-      // Count tokens for old data without token_count (backwards compatibility)
-      if (textsNeedingCount.length > 0) {
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < textsNeedingCount.length; i += BATCH_SIZE) {
-          const batch = textsNeedingCount.slice(i, i + BATCH_SIZE);
-          const tokenCounts = await Promise.all(
-            batch.map((text) =>
-              this.litellmService.countTokens(embeddingModel, text),
-            ),
-          );
-          totalTokens += tokenCounts.reduce((sum, count) => sum + count, 0);
-        }
-      }
-
-      return totalTokens;
-    } catch (error) {
-      this.logger.warn('Failed to calculate total indexed tokens', {
-        collection,
-        repoId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return 0;
-    }
   }
 
   // ---------------------------------------------------------------------------

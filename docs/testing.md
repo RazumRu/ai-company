@@ -8,6 +8,14 @@ The project uses two testing frameworks:
 - **Vitest** for unit tests (and optional integration tests)
 - **Cypress** for E2E (end-to-end) tests
 
+### Critical rules
+
+1. **Always use package.json scripts** to run tests. Never call test runners directly (e.g. `vitest`, `npx vitest`, `pnpm vitest run`).
+2. **Never run full test suites**:
+   - `pnpm test` — **FORBIDDEN** (runs everything)
+   - `pnpm test:integration` (without a filename) — **FORBIDDEN** (runs all integration tests)
+   - Always target a specific scope: `pnpm test:unit`, `pnpm test:integration {filename}`, or `pnpm test:e2e:local --spec "path"`.
+
 ## Full project check (mandatory)
 
 Before considering any task "done" (before opening/merging a PR or marking work complete), you must run the full project check locally and ensure it passes:
@@ -28,12 +36,18 @@ If any step fails, fix the issues and re-run the command until it completes succ
 
 ### Running Unit Tests
 
-The project uses Vitest for unit testing:
+The project uses Vitest for unit testing. Always use the package.json script — never call `vitest` directly.
 
-- Run all unit tests:
-  ```bash
-  pnpm test:unit
-  ```
+```bash
+# ✅ Correct
+pnpm test:unit
+
+# ❌ WRONG — never call vitest directly
+# vitest run
+# npx vitest
+# pnpm vitest run
+# pnpm test                    # runs everything — FORBIDDEN
+```
 
 ### Writing Unit Tests
 
@@ -104,17 +118,21 @@ Integration tests are deep, comprehensive tests that verify the detailed behavio
 
 ### Running Integration Tests
 
-```bash
-# ⚠️  ALWAYS run integration tests targeting a specific file — NEVER run bare `pnpm test:integration`
+Always use the package.json script and **always target a specific file**.
 
-# Run a specific integration test file (mandatory when modifying related code)
+```bash
+# ✅ Correct — always target a specific file
 pnpm test:integration src/__tests__/integration/agent-tools/files-tools.int.ts
 
-# Run a specific case within an integration test file
+# ✅ Correct — run a specific case within a file
 pnpm test:integration src/__tests__/integration/graphs/graph-lifecycle.int.ts -t "specific test"
 
-# Run only unit tests (excluding integration tests)
+# ✅ Correct — run only unit tests
 pnpm test:unit
+
+# ❌ WRONG — NEVER run all integration tests
+# pnpm test:integration
+# pnpm test
 ```
 
 ### Writing Integration Tests

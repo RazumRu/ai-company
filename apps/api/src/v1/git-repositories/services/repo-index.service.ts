@@ -28,6 +28,7 @@ import {
 import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
 
 const REPO_CLONE_DIR = '/workspace/repo';
+const GIT_CLONE_DEPTH = 100;
 
 @Injectable()
 export class RepoIndexService implements OnModuleInit {
@@ -359,50 +360,17 @@ export class RepoIndexService implements OnModuleInit {
       }
     }
 
-    // Decide full vs incremental
-    let needsFullReindex =
-      !existing ||
-      existing.status === RepoIndexStatus.Failed ||
-      this.needsFullReindexDueToConfigChange(existing, {
-        embeddingModel,
-        vectorSize,
-        chunkingSignatureHash,
-      });
+    const strategy = await this.resolveIndexStrategy(
+      existing,
+      repositoryId,
+      repoRoot,
+      execFn,
+      collection,
+      currentCommit,
+      { embeddingModel, vectorSize, chunkingSignatureHash },
+    );
 
-    // Cross-branch seeding: when no index exists, copy points from a sibling branch
-    let donorCommit: string | undefined;
-    if (needsFullReindex && !existing) {
-      const seeding = await this.attemptCrossBranchSeeding(
-        repositoryId,
-        collection,
-      );
-      if (seeding.seeded) {
-        donorCommit = seeding.donorCommit;
-        needsFullReindex = false;
-      }
-    }
-
-    const lastIndexedCommit = needsFullReindex
-      ? undefined
-      : (existing?.lastIndexedCommit ?? donorCommit ?? undefined);
-
-    // Estimate size to decide inline vs background
-    // For incremental indexing, only estimate the changed files
-    let estimatedTokens: number;
-    if (needsFullReindex) {
-      estimatedTokens = await this.repoIndexerService.estimateTokenCount(
-        repoRoot,
-        execFn,
-      );
-    } else {
-      // Incremental: estimate only changed files
-      estimatedTokens = await this.repoIndexerService.estimateChangedTokenCount(
-        repoRoot,
-        lastIndexedCommit!,
-        currentCommit,
-        execFn,
-      );
-    }
+    const { needsFullReindex, lastIndexedCommit, estimatedTokens } = strategy;
 
     this.logger.debug(
       'Estimated tokens calculated, deciding indexing strategy',
@@ -609,13 +577,14 @@ export class RepoIndexService implements OnModuleInit {
       });
 
       // Clone repo with depth limit to avoid OOM for very large repos
-      // Depth of 100 is sufficient for most indexing needs while saving memory/time
       const branchFlag = branch ? `--branch ${shQuote(branch)} ` : '';
       const cloneRes = await execFn({
-        cmd: `git clone --depth 100 ${branchFlag}${shQuote(cloneUrl)} ${shQuote(REPO_CLONE_DIR)}`,
+        cmd: `git clone --depth ${GIT_CLONE_DEPTH} ${branchFlag}${shQuote(cloneUrl)} ${shQuote(REPO_CLONE_DIR)}`,
       });
       if (cloneRes.exitCode !== 0) {
-        throw new Error(`git clone failed: ${cloneRes.stderr}`);
+        throw new Error(
+          `git clone failed: ${RepoIndexService.sanitizeUrl(cloneRes.stderr)}`,
+        );
       }
 
       // Resolve current state in the fresh clone
@@ -629,49 +598,24 @@ export class RepoIndexService implements OnModuleInit {
         execFn,
       );
 
-      // Determine if full reindex is needed
-      let needsFullReindex = this.needsFullReindexDueToConfigChange(entity, {
-        embeddingModel,
-        vectorSize,
-        chunkingSignatureHash,
-      });
+      const strategy = await this.resolveIndexStrategy(
+        entity,
+        entity.repositoryId,
+        REPO_CLONE_DIR,
+        execFn,
+        collection,
+        currentCommit,
+        { embeddingModel, vectorSize, chunkingSignatureHash },
+      );
 
-      // Cross-branch seeding: when no lastIndexedCommit, copy from a sibling branch
-      let donorCommit: string | undefined;
-      if (needsFullReindex && !entity.lastIndexedCommit) {
-        const seeding = await this.attemptCrossBranchSeeding(
-          entity.repositoryId,
-          collection,
-        );
-        if (seeding.seeded) {
-          donorCommit = seeding.donorCommit;
-          needsFullReindex = false;
-        }
-      }
-
-      const lastIndexedCommit = needsFullReindex
-        ? undefined
-        : (entity.lastIndexedCommit ?? donorCommit ?? undefined);
-
-      // Calculate estimated tokens before indexing
-      const changedTokens = needsFullReindex
-        ? await this.repoIndexerService.estimateTokenCount(
-            REPO_CLONE_DIR,
-            execFn,
-          )
-        : await this.repoIndexerService.estimateChangedTokenCount(
-            REPO_CLONE_DIR,
-            lastIndexedCommit!,
-            currentCommit,
-            execFn,
-          );
+      const { needsFullReindex, lastIndexedCommit } = strategy;
 
       // For incremental reindex, keep the previous total as the estimate
       // so the progress bar stays meaningful (previous total ≈ final total).
       const effectiveEstimated =
         !needsFullReindex && entity.estimatedTokens > 0
           ? entity.estimatedTokens
-          : changedTokens;
+          : strategy.estimatedTokens;
 
       this.logger.debug('Estimated tokens calculated for indexing', {
         repoIndexId,
@@ -842,6 +786,69 @@ export class RepoIndexService implements OnModuleInit {
   }
 
   /**
+   * Shared logic to determine full vs incremental indexing, attempt cross-branch
+   * seeding, and estimate token counts. Used by both claimIndexSlot (inline) and
+   * processIndexJob (background) to avoid duplicating this decision tree.
+   */
+  private async resolveIndexStrategy(
+    existing: RepoIndexEntity | null,
+    repositoryId: string,
+    repoRoot: string,
+    execFn: RepoExecFn,
+    collection: string,
+    currentCommit: string,
+    config: {
+      embeddingModel: string;
+      vectorSize: number;
+      chunkingSignatureHash: string;
+    },
+  ): Promise<{
+    needsFullReindex: boolean;
+    lastIndexedCommit?: string;
+    estimatedTokens: number;
+  }> {
+    let needsFullReindex =
+      !existing ||
+      existing.status === RepoIndexStatus.Failed ||
+      this.needsFullReindexDueToConfigChange(existing, config);
+
+    // Cross-branch seeding: when no index exists (or no last commit),
+    // copy points from a sibling branch
+    let donorCommit: string | undefined;
+    if (needsFullReindex && !existing?.lastIndexedCommit) {
+      const seeding = await this.attemptCrossBranchSeeding(
+        repositoryId,
+        collection,
+      );
+      if (seeding.seeded) {
+        donorCommit = seeding.donorCommit;
+        needsFullReindex = false;
+      }
+    }
+
+    const lastIndexedCommit = needsFullReindex
+      ? undefined
+      : (existing?.lastIndexedCommit ?? donorCommit ?? undefined);
+
+    let estimatedTokens: number;
+    if (needsFullReindex || !lastIndexedCommit) {
+      estimatedTokens = await this.repoIndexerService.estimateTokenCount(
+        repoRoot,
+        execFn,
+      );
+    } else {
+      estimatedTokens = await this.repoIndexerService.estimateChangedTokenCount(
+        repoRoot,
+        lastIndexedCommit,
+        currentCommit,
+        execFn,
+      );
+    }
+
+    return { needsFullReindex, lastIndexedCommit, estimatedTokens };
+  }
+
+  /**
    * Determines if a full reindex is needed due to config changes.
    * Does NOT check for entity existence or status - caller handles those.
    */
@@ -864,6 +871,14 @@ export class RepoIndexService implements OnModuleInit {
       entity.vectorSize !== currentConfig.vectorSize ||
       entity.chunkingSignatureHash !== currentConfig.chunkingSignatureHash
     );
+  }
+
+  /**
+   * Strip embedded credentials (e.g. `token@` or `user:pass@`) from URLs
+   * so they don't leak into log entries or error messages.
+   */
+  private static sanitizeUrl(text: string): string {
+    return text.replace(/\/\/[^@/]+@/g, '//');
   }
 
   /**

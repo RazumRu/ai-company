@@ -65,7 +65,6 @@ const mockRepoIndexerService = {
   copyCollectionPoints: vi.fn().mockResolvedValue(0),
   runFullIndex: vi.fn().mockResolvedValue(undefined),
   runIncrementalIndex: vi.fn().mockResolvedValue(undefined),
-  getTotalIndexedTokens: vi.fn().mockResolvedValue(50000),
   buildRepoFilter: vi.fn().mockImplementation((repoId: string) => ({
     must: [{ key: 'repo_id', match: { value: repoId } }],
   })),
@@ -137,7 +136,6 @@ describe('RepoIndexService', () => {
     mockRepoIndexerService.copyCollectionPoints.mockResolvedValue(0);
     mockRepoIndexerService.runFullIndex.mockResolvedValue(undefined);
     mockRepoIndexerService.runIncrementalIndex.mockResolvedValue(undefined);
-    mockRepoIndexerService.getTotalIndexedTokens.mockResolvedValue(50000);
     mockRepoIndexerService.buildRepoFilter.mockImplementation(
       (repoId: string) => ({
         must: [{ key: 'repo_id', match: { value: repoId } }],
@@ -578,6 +576,135 @@ describe('RepoIndexService', () => {
       await expect(service.searchCodebase(baseSearchParams)).rejects.toThrow(
         'Failed to generate embedding for query',
       );
+    });
+  });
+
+  describe('processIndexJob (background path)', () => {
+    it('skips when entity is not found', async () => {
+      mockRepoIndexDao.getOne.mockResolvedValue(null);
+
+      // Call the private method directly
+      await (
+        service as unknown as {
+          processIndexJob: (data: {
+            repoIndexId: string;
+            repoUrl: string;
+            branch: string;
+          }) => Promise<void>;
+        }
+      ).processIndexJob({
+        repoIndexId: 'missing-id',
+        repoUrl: 'https://github.com/owner/repo',
+        branch: 'main',
+      });
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Repo index entity not found, skipping job',
+        { repoIndexId: 'missing-id' },
+      );
+      expect(mockRepoIndexerService.runFullIndex).not.toHaveBeenCalled();
+    });
+
+    it('skips when entity is already completed', async () => {
+      mockRepoIndexDao.getOne.mockResolvedValue({
+        id: 'done-id',
+        status: RepoIndexStatus.Completed,
+      } as unknown as RepoIndexEntity);
+
+      await (
+        service as unknown as {
+          processIndexJob: (data: {
+            repoIndexId: string;
+            repoUrl: string;
+            branch: string;
+          }) => Promise<void>;
+        }
+      ).processIndexJob({
+        repoIndexId: 'done-id',
+        repoUrl: 'https://github.com/owner/repo',
+        branch: 'main',
+      });
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Repo index already completed, skipping job',
+        { repoIndexId: 'done-id' },
+      );
+      expect(mockRepoIndexerService.runFullIndex).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cross-branch seeding (via getOrInitIndexForRepo)', () => {
+    const baseParams = {
+      repositoryId: 'repo-uuid',
+      repoUrl: 'https://github.com/owner/repo',
+      repoRoot: '/workspace/repo',
+      branch: 'feature-branch',
+      execFn,
+    };
+
+    it('seeds from donor branch when available', async () => {
+      // No existing index for the target branch
+      mockRepoIndexDao.getOne.mockResolvedValue(null);
+
+      // Donor branch exists with completed index
+      mockRepoIndexDao.getAll.mockResolvedValue([
+        {
+          id: 'donor-index',
+          repositoryId: 'repo-uuid',
+          branch: 'main',
+          status: RepoIndexStatus.Completed,
+          lastIndexedCommit: 'donor-commit-abc',
+          qdrantCollection: 'codebase_my_repo_main_1536',
+        },
+      ]);
+
+      mockRepoIndexerService.copyCollectionPoints.mockResolvedValue(500);
+      // After seeding, estimateChangedTokenCount is used (incremental path)
+      mockRepoIndexerService.estimateChangedTokenCount.mockResolvedValue(500);
+
+      mockRepoIndexDao.create.mockResolvedValue({
+        id: 'new-branch-index',
+        status: RepoIndexStatus.InProgress,
+        estimatedTokens: 500,
+      } as unknown as RepoIndexEntity);
+
+      const result = await service.getOrInitIndexForRepo(baseParams);
+
+      expect(result.status).toBe('ready');
+      // Should have copied points from donor
+      expect(mockRepoIndexerService.copyCollectionPoints).toHaveBeenCalledWith(
+        'codebase_my_repo_main_1536',
+        'codebase_my_repo_main_1536',
+      );
+      // Should have run incremental index (not full) because seeding succeeded
+      expect(mockRepoIndexerService.runIncrementalIndex).toHaveBeenCalled();
+      expect(mockRepoIndexerService.runFullIndex).not.toHaveBeenCalled();
+    });
+
+    it('runs full index when no donor branch exists', async () => {
+      // No existing index for the target branch
+      mockRepoIndexDao.getOne.mockResolvedValue(null);
+
+      // No donor branches (getAll returns empty for completed indexes)
+      mockRepoIndexDao.getAll.mockResolvedValue([]);
+
+      mockRepoIndexerService.estimateTokenCount.mockResolvedValue(1000);
+
+      mockRepoIndexDao.create.mockResolvedValue({
+        id: 'new-index',
+        status: RepoIndexStatus.InProgress,
+      } as unknown as RepoIndexEntity);
+
+      const result = await service.getOrInitIndexForRepo(baseParams);
+
+      expect(result.status).toBe('ready');
+      // Should NOT have attempted to copy points
+      expect(
+        mockRepoIndexerService.copyCollectionPoints,
+      ).not.toHaveBeenCalled();
+      // Should have run full index (no donor to seed from)
+      expect(mockRepoIndexerService.runFullIndex).toHaveBeenCalled();
+      expect(mockRepoIndexerService.runIncrementalIndex).not.toHaveBeenCalled();
     });
   });
 

@@ -32,6 +32,7 @@ type CollectionInfo = Awaited<ReturnType<QdrantClient['getCollection']>>;
 export class QdrantService {
   private readonly client: QdrantClient;
   private readonly vectorSizeCache = new Map<string, number>();
+  private readonly knownCollections = new Set<string>();
 
   constructor() {
     const url = environment.qdrantUrl;
@@ -63,6 +64,7 @@ export class QdrantService {
         vectors: { size: vectorSize, distance },
       });
       this.vectorSizeCache.set(name, vectorSize);
+      this.knownCollections.add(name);
       return;
     }
 
@@ -79,6 +81,7 @@ export class QdrantService {
     }
 
     this.vectorSizeCache.set(name, existingSize);
+    this.knownCollections.add(name);
   }
 
   buildSizedCollectionName(baseName: string, vectorSize: number): string {
@@ -285,8 +288,15 @@ export class QdrantService {
   }
 
   private async collectionExists(name: string): Promise<boolean> {
+    if (this.knownCollections.has(name)) {
+      return true;
+    }
     const res = await this.client.getCollections();
-    return res.collections.some((c) => c.name === name);
+    const exists = res.collections.some((c) => c.name === name);
+    if (exists) {
+      this.knownCollections.add(name);
+    }
+    return exists;
   }
 
   private async getCollectionVectorSize(name: string): Promise<number | null> {
