@@ -6,6 +6,7 @@ import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
+import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
 import { GitRepositoryProvider } from '../../../../git-repositories/git-repositories.types';
@@ -47,13 +48,14 @@ export type GhCloneToolSchemaType = z.infer<typeof GhCloneToolSchema>;
 type GhCloneToolOutput = {
   error?: string;
   path?: string;
+  agentInstructions?: string;
 };
 
 @Injectable()
 export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   public name = 'gh_clone';
   public description =
-    'Clone a GitHub repository into the runtime container using authenticated HTTPS. Returns the absolute path where the repository was cloned, which should be used for all subsequent file and git operations. Supports optional branch/tag checkout, shallow cloning (depth), and custom clone destinations (workdir). If the repository is already cloned, navigate to the existing path instead of re-cloning.';
+    'Clone a GitHub repository into the runtime container using authenticated HTTPS. Returns the absolute path where the repository was cloned, which should be used for all subsequent file and git operations. Additionally searches the repository root for agent instruction files (like AGENTS.md, CLAUDE.md, .cursorrules, .aidigestignore) and returns their content if found, prioritizing the default configured file. Supports optional branch/tag checkout, shallow cloning (depth), and custom clone destinations (workdir). If the repository is already cloned, navigate to the existing path instead of re-cloning.';
 
   constructor(
     private readonly gitRepositoriesDao: GitRepositoriesDao,
@@ -77,7 +79,16 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   ): string {
     return dedent`
       ### Overview
-      Clones a GitHub repository using authenticated HTTPS. Returns the clone path for subsequent operations.
+      Clones a GitHub repository using authenticated HTTPS. Returns the clone path for subsequent operations and searches for agent instruction files in the repository root.
+
+      ### Agent Instructions Discovery
+      After cloning, automatically searches the repository root for agent instruction files in this priority order:
+      1. ${environment.agentsInstructionsFile}
+      2. CLAUDE.md
+      3. .cursorrules
+      4. .aidigestignore
+
+      If found, the content is returned in the \`agentInstructions\` field. These files contain repository-specific guidance, coding conventions, and project context that should be followed when working with the codebase.
 
       ### When to Use
       Setting up new project to work on, getting repo code, starting work on specific branch.
@@ -102,7 +113,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       \`\`\`
 
       ### After Cloning
-      Use returned path for all operations. Run files_find_paths to explore structure. Use shell for git commands.
+      Use returned path for all operations. If agent instructions are returned, review them to understand repository conventions and guidelines. Run files_find_paths to explore structure. Use shell for git commands.
     `;
   }
 
@@ -165,9 +176,17 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       await this.upsertGitRepository(args, userId, config.patToken);
     }
 
+    // Search for agent instruction files in the repository root
+    const agentInstructions = await this.findAgentInstructions(
+      clonePath,
+      config,
+      cfg,
+    );
+
     return {
       output: {
         path: clonePath,
+        ...(agentInstructions && { agentInstructions }),
       },
       messageMetadata,
     };
@@ -210,6 +229,82 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       this.logger.warn(
         `Failed to track repository ${args.owner}/${args.repo}: ${error instanceof Error ? error.message : String(error)}`,
       );
+    }
+  }
+
+  private async findAgentInstructions(
+    clonePath: string,
+    config: GhBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<string | undefined> {
+    try {
+      // Priority order: configured default, CLAUDE.md, .cursorrules, .aidigestignore
+      const instructionFiles = [
+        environment.agentsInstructionsFile,
+        'CLAUDE.md',
+        '.cursorrules',
+        '.aidigestignore',
+      ];
+
+      // Search for instruction files in the repository root
+      const findCmd = instructionFiles
+        .map((file) => `"${file}"`)
+        .join(' -o -name ');
+      const searchResult = await this.execGhCommand(
+        {
+          cmd: `find "${clonePath}" -maxdepth 1 -type f \\( -name ${findCmd} \\)`,
+        },
+        config,
+        cfg,
+      );
+
+      if (searchResult.exitCode !== 0 || !searchResult.stdout.trim()) {
+        return undefined;
+      }
+
+      // Get all found files and prioritize them
+      const foundFiles = searchResult.stdout.trim().split('\n').filter(Boolean);
+      if (foundFiles.length === 0) {
+        return undefined;
+      }
+
+      // Sort by priority (based on instructionFiles order)
+      const sortedFiles = foundFiles.sort((a, b) => {
+        const aIndex = instructionFiles.findIndex((f) =>
+          a.toLowerCase().includes(f.toLowerCase()),
+        );
+        const bIndex = instructionFiles.findIndex((f) =>
+          b.toLowerCase().includes(f.toLowerCase()),
+        );
+        return aIndex - bIndex;
+      });
+
+      // Read the highest priority file
+      const instructionFilePath = sortedFiles[0];
+      if (!instructionFilePath) {
+        return undefined;
+      }
+
+      const catResult = await this.execGhCommand(
+        {
+          cmd: `cat "${instructionFilePath}"`,
+        },
+        config,
+        cfg,
+      );
+
+      if (catResult.exitCode !== 0) {
+        return undefined;
+      }
+
+      const fileName = path.basename(instructionFilePath);
+      return `Found agent instructions file: ${fileName}\n\n${catResult.stdout}`;
+    } catch (error) {
+      // Log error but don't fail the clone operation
+      this.logger.warn(
+        `Failed to find agent instructions: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return undefined;
     }
   }
 }

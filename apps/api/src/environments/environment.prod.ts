@@ -106,4 +106,7 @@ export const environment = () =>
     restoreGraphs: getEnv('RESTORE_GRAPHS', true),
     runtimeCleanupIntervalMs: +getEnv('RUNTIME_CLEANUP_INTERVAL_MS', '300000'),
     runtimeIdleThresholdMs: +getEnv('RUNTIME_IDLE_THRESHOLD_MS', '1800000'),
+
+    // agents
+    agentsInstructionsFile: getEnv('AGENTS_INSTRUCTIONS_FILE', 'AGENTS.md'),
   }) as const satisfies Record<string, string | number | boolean>;

@@ -14,6 +14,8 @@ The `/docs` directory is the single source of truth for architecture, style, and
 
 All commands run from the **repo root** unless noted otherwise.
 
+**⚠️ IMPORTANT**: Before running any commands, always run `pnpm install` first to ensure all dependencies are installed.
+
 ### Daily development
 ```bash
 pnpm install                          # Install dependencies
