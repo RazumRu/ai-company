@@ -11,6 +11,7 @@ import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
 const mockQdrantService = {
   deleteByFilter: vi.fn().mockResolvedValue(undefined),
   upsertPoints: vi.fn().mockResolvedValue(undefined),
+  ensureCollection: vi.fn().mockResolvedValue(undefined),
   scrollAll: vi.fn().mockResolvedValue([]),
   scrollAllWithVectors: vi.fn().mockResolvedValue([]),
   buildSizedCollectionName: vi.fn(
@@ -134,6 +135,108 @@ describe('RepoIndexerService', () => {
     it('works with different vector sizes', () => {
       const name = service.buildCollectionName('my_repo', 768);
       expect(name).toBe('codebase_my_repo_768');
+    });
+
+    it('includes branch slug when provided', () => {
+      const name = service.buildCollectionName('my_repo', 1536, 'main');
+      expect(name).toBe('codebase_my_repo_main_1536');
+    });
+
+    it('includes branch slug with different vector size', () => {
+      const name = service.buildCollectionName('my_repo', 768, 'feature_xyz');
+      expect(name).toBe('codebase_my_repo_feature_xyz_768');
+    });
+  });
+
+  describe('deriveBranchSlug', () => {
+    it('returns simple branch names as-is in lowercase', () => {
+      expect(service.deriveBranchSlug('main')).toBe('main');
+    });
+
+    it('replaces slashes and hyphens with underscores', () => {
+      expect(service.deriveBranchSlug('feature/my-feature')).toBe(
+        'feature_my_feature',
+      );
+    });
+
+    it('lowercases uppercase branch names', () => {
+      expect(service.deriveBranchSlug('MAIN')).toBe('main');
+    });
+
+    it('truncates long branch names and appends hash suffix', () => {
+      const longBranch = 'feature/' + 'a'.repeat(50);
+      const slug = service.deriveBranchSlug(longBranch);
+      // Should be truncated to 20 chars + '_' + 8-char hash = 29 chars
+      expect(slug.length).toBeLessThanOrEqual(29);
+      expect(slug).toMatch(/^[a-z0-9_]+$/);
+      // The first part should be the truncated sanitized name
+      expect(slug.slice(0, 20)).toBe(
+        longBranch
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '')
+          .slice(0, 20),
+      );
+    });
+  });
+
+  describe('copyCollectionPoints', () => {
+    it('returns 0 when source collection is empty', async () => {
+      mockQdrantService.scrollAllWithVectors.mockResolvedValue([]);
+
+      const result = await service.copyCollectionPoints(
+        'source_collection',
+        'target_collection',
+      );
+
+      expect(result).toBe(0);
+      expect(mockQdrantService.scrollAllWithVectors).toHaveBeenCalledWith(
+        'source_collection',
+        expect.objectContaining({
+          limit: 1000,
+          with_payload: true,
+          with_vector: true,
+        }),
+      );
+      expect(mockQdrantService.upsertPoints).not.toHaveBeenCalled();
+    });
+
+    it('copies all points from source to target collection', async () => {
+      const mockPoints = [
+        {
+          id: 'point-1',
+          vector: [0.1, 0.2, 0.3],
+          payload: { repo_id: 'repo1', path: 'file1.ts', text: 'content1' },
+        },
+        {
+          id: 'point-2',
+          vector: [0.4, 0.5, 0.6],
+          payload: { repo_id: 'repo1', path: 'file2.ts', text: 'content2' },
+        },
+      ];
+      mockQdrantService.scrollAllWithVectors.mockResolvedValueOnce(mockPoints);
+
+      const result = await service.copyCollectionPoints(
+        'source_collection',
+        'target_collection',
+      );
+
+      expect(result).toBe(2);
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalledWith(
+        'target_collection',
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'point-1',
+            vector: [0.1, 0.2, 0.3],
+            payload: expect.objectContaining({ repo_id: 'repo1' }),
+          }),
+          expect.objectContaining({
+            id: 'point-2',
+            vector: [0.4, 0.5, 0.6],
+            payload: expect.objectContaining({ repo_id: 'repo1' }),
+          }),
+        ]),
+      );
     });
   });
 

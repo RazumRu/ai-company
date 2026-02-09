@@ -6,6 +6,10 @@ export interface GetOrInitIndexParams {
   repoUrl: string;
   repoRoot: string;
   execFn: RepoExecFn;
+  /** Git branch currently checked out. Used to scope the index per branch and for background clone. */
+  branch: string;
+  /** User ID of the agent owner. Used to scope repository resolution to the correct user. */
+  userId?: string;
 }
 
 export interface GetOrInitIndexResult {

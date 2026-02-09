@@ -7,7 +7,7 @@ import {
 } from '../git-repositories.types';
 
 export const GitRepositoryProviderSchema = z
-  .enum(GitRepositoryProvider)
+  .nativeEnum(GitRepositoryProvider)
   .describe('Git repository host provider');
 
 export const GitRepositorySchema = z.object({
@@ -18,6 +18,9 @@ export const GitRepositorySchema = z.object({
   repo: z.string().describe('Repository name'),
   url: z.url().describe('HTTPS URL of the repository'),
   provider: GitRepositoryProviderSchema,
+  defaultBranch: z
+    .string()
+    .describe('Default branch of the repository (e.g. main, master)'),
   createdBy: z.uuid().describe('User ID who cloned the repository'),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -51,6 +54,11 @@ export const CreateRepositorySchema = z.object({
   repo: z.string().describe('Repository name'),
   url: z.string().url().describe('HTTPS URL of the repository'),
   provider: GitRepositoryProviderSchema.default(GitRepositoryProvider.GITHUB),
+  defaultBranch: z
+    .string()
+    .optional()
+    .default('main')
+    .describe('Default branch of the repository (defaults to main)'),
   token: z
     .string()
     .optional()
@@ -59,6 +67,10 @@ export const CreateRepositorySchema = z.object({
 
 export const UpdateRepositorySchema = z.object({
   url: z.string().url().describe('HTTPS URL of the repository').optional(),
+  defaultBranch: z
+    .string()
+    .optional()
+    .describe('Default branch of the repository'),
   token: z
     .string()
     .optional()
@@ -72,6 +84,7 @@ export const RepoIndexSchema = z.object({
   id: z.uuid().describe('Index ID'),
   repositoryId: z.uuid().describe('Repository ID'),
   repoUrl: z.string().describe('Repository URL'),
+  branch: z.string().describe('Git branch name this index covers'),
   status: RepoIndexStatusSchema.describe('Indexing status'),
   qdrantCollection: z.string().describe('Qdrant collection name'),
   lastIndexedCommit: z.string().nullable().describe('Last indexed commit hash'),
@@ -94,6 +107,16 @@ export const RepoIndexSchema = z.object({
 
 export const GetRepoIndexesQuerySchema = z.object({
   repositoryId: z.uuid().optional().describe('Filter by repository ID'),
+  branch: z.string().optional().describe('Filter by single branch name'),
+  branches: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((v) =>
+      v === undefined ? undefined : Array.isArray(v) ? v : [v],
+    )
+    .describe(
+      'Filter by multiple branch names (comma-separated or repeated query param)',
+    ),
   status: RepoIndexStatusSchema.optional().describe('Filter by status'),
   limit: z.coerce
     .number()
@@ -114,6 +137,12 @@ export const GetRepoIndexesQuerySchema = z.object({
 
 export const TriggerReindexSchema = z.object({
   repositoryId: z.uuid().describe('Repository ID to reindex'),
+  branch: z
+    .string()
+    .optional()
+    .describe(
+      'Branch to reindex. Defaults to the repository default branch (main).',
+    ),
 });
 
 export const TriggerReindexResponseSchema = z.object({

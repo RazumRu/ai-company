@@ -120,6 +120,12 @@ describe('FilesCodebaseSearchTool', () => {
           stdout: 'git@github.com:org/repo.git',
           stderr: '',
           execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
         });
 
       (
@@ -179,6 +185,7 @@ describe('FilesCodebaseSearchTool', () => {
           repositoryId: expect.any(String),
           repoUrl: 'https://github.com/org/repo',
           repoRoot: '/repo',
+          branch: 'main',
         }),
       );
     });
@@ -194,6 +201,12 @@ describe('FilesCodebaseSearchTool', () => {
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
           stderr: '',
           execPath: '',
         });
@@ -234,6 +247,12 @@ describe('FilesCodebaseSearchTool', () => {
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
           stderr: '',
           execPath: '',
         });

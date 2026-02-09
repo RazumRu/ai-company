@@ -16,6 +16,10 @@ import { RepoIndexDao } from '../dao/repo-index.dao';
 // Batch size for upserting copied chunks to avoid overwhelming Qdrant
 const CHUNK_COPY_BATCH_SIZE = 1000;
 
+// Page size for Qdrant scroll requests. scrollAll/scrollAllWithVectors
+// paginate automatically, so this only controls memory per page.
+const QDRANT_SCROLL_PAGE_SIZE = 1000;
+
 export type RepoExecFn = (params: {
   cmd: string;
 }) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
@@ -141,18 +145,24 @@ export class RepoIndexerService {
       return 0;
     }
 
-    // Get sizes of changed files
+    // Get sizes of changed files in batches to avoid hitting shell argument limits
+    const BATCH_SIZE = 200;
     let totalBytes = 0;
-    for (const file of changedFiles) {
+
+    for (let i = 0; i < changedFiles.length; i += BATCH_SIZE) {
+      const batch = changedFiles.slice(i, i + BATCH_SIZE);
+      const quotedPaths = batch.map((f) => shQuote(f)).join(' ');
       const sizeRes = await execFn({
-        cmd: `git -C ${shQuote(repoRoot)} ls-tree -l HEAD -- ${shQuote(file)}`,
+        cmd: `git -C ${shQuote(repoRoot)} ls-tree -l HEAD -- ${quotedPaths}`,
       });
       if (sizeRes.exitCode === 0 && sizeRes.stdout.trim()) {
-        // Format: <mode> <type> <hash> <size>\t<path>
-        const line = sizeRes.stdout.trim();
-        const tabIndex = line.indexOf('\t');
-        if (tabIndex !== -1) {
-          const meta = line.slice(0, tabIndex).trim();
+        for (const line of sizeRes.stdout.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          // Format: <mode> <type> <hash> <size>\t<path>
+          const tabIndex = trimmed.indexOf('\t');
+          if (tabIndex === -1) continue;
+          const meta = trimmed.slice(0, tabIndex).trim();
           const parts = meta.split(/\s+/);
           const size = Number.parseInt(parts[3] ?? '0', 10);
           if (Number.isFinite(size)) {
@@ -227,8 +237,26 @@ export class RepoIndexerService {
     return `${trimmed.slice(0, 60)}_${hash}`;
   }
 
-  buildCollectionName(repoSlug: string, vectorSize: number): string {
-    const baseName = `codebase_${repoSlug}`;
+  deriveBranchSlug(branch: string): string {
+    const sanitized = branch
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    if (sanitized.length <= 30) {
+      return sanitized || 'default';
+    }
+    const hash = this.sha1(branch).slice(0, 8);
+    return `${sanitized.slice(0, 20)}_${hash}`;
+  }
+
+  buildCollectionName(
+    repoSlug: string,
+    vectorSize: number,
+    branchSlug?: string,
+  ): string {
+    const baseName = branchSlug
+      ? `codebase_${repoSlug}_${branchSlug}`
+      : `codebase_${repoSlug}`;
     return this.qdrantService.buildSizedCollectionName(baseName, vectorSize);
   }
 
@@ -240,7 +268,10 @@ export class RepoIndexerService {
    * Calculates all metadata fields needed for repository indexing.
    * This centralizes the logic that was duplicated across multiple services.
    */
-  async calculateIndexMetadata(repositoryId: string): Promise<{
+  async calculateIndexMetadata(
+    repositoryId: string,
+    branch: string,
+  ): Promise<{
     embeddingModel: string;
     vectorSize: number;
     chunkingSignatureHash: string;
@@ -251,7 +282,12 @@ export class RepoIndexerService {
     const vectorSize = await this.getVectorSizeForModel(embeddingModel);
     const chunkingSignatureHash = this.getChunkingSignatureHash();
     const repoSlug = this.deriveRepoSlug(repositoryId);
-    const collection = this.buildCollectionName(repoSlug, vectorSize);
+    const branchSlug = this.deriveBranchSlug(branch);
+    const collection = this.buildCollectionName(
+      repoSlug,
+      vectorSize,
+      branchSlug,
+    );
 
     return {
       embeddingModel,
@@ -260,6 +296,51 @@ export class RepoIndexerService {
       repoSlug,
       collection,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public: cross-branch seeding
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Copy all Qdrant points from one collection to another.
+   * Used to seed a new branch's index from an existing branch.
+   * The target collection is auto-created by `upsertPoints` if it does not exist.
+   */
+  async copyCollectionPoints(
+    sourceCollection: string,
+    targetCollection: string,
+  ): Promise<number> {
+    const COPY_BATCH_SIZE = 500;
+    // scrollAllWithVectors returns [] if the source collection does not exist
+    const allPoints = await this.qdrantService.scrollAllWithVectors(
+      sourceCollection,
+      {
+        limit: QDRANT_SCROLL_PAGE_SIZE,
+        with_payload: true,
+        with_vector: true,
+      },
+    );
+
+    if (allPoints.length === 0) {
+      return 0;
+    }
+
+    for (let i = 0; i < allPoints.length; i += COPY_BATCH_SIZE) {
+      const batch = allPoints.slice(i, i + COPY_BATCH_SIZE);
+      const points = batch
+        .filter((p) => p.id && p.vector && p.payload)
+        .map((p) => ({
+          id: p.id as string,
+          vector: p.vector as number[],
+          payload: p.payload as Record<string, unknown>,
+        }));
+      if (points.length > 0) {
+        await this.qdrantService.upsertPoints(targetCollection, points);
+      }
+    }
+
+    return allPoints.length;
   }
 
   // ---------------------------------------------------------------------------
@@ -429,6 +510,14 @@ export class RepoIndexerService {
       : null;
 
     if (!diffPaths) {
+      this.logger.warn(
+        'Incremental diff failed (likely shallow clone missing commit), falling back to full reindex',
+        {
+          repoId: params.repoId,
+          lastIndexedCommit: params.lastIndexedCommit,
+          currentCommit: params.currentCommit,
+        },
+      );
       await this.runFullIndex(
         params,
         execFn,
@@ -473,12 +562,6 @@ export class RepoIndexerService {
         continue;
       }
 
-      // Delete old chunks before re-indexing the file
-      await this.qdrantService.deleteByFilter(
-        params.collection,
-        this.buildFileFilter(params.repoId, relativePath),
-      );
-
       const fileInput = await this.prepareFileIndexInput(
         params.repoRoot,
         relativePath,
@@ -488,7 +571,8 @@ export class RepoIndexerService {
         continue;
       }
 
-      // Check if chunks for this file_hash already exist
+      // Check if chunks for this file_hash already exist in the collection
+      // BEFORE deleting old chunks — otherwise we destroy the chunks we want to reuse
       const { exists: chunksExist, tokenCount: reusedTokens } =
         await this.checkAndCopyExistingChunks(
           params.collection,
@@ -500,7 +584,7 @@ export class RepoIndexerService {
         );
 
       if (chunksExist) {
-        // Content unchanged - reused existing chunks
+        // Content unchanged - reused existing chunks (copied with updated path/commit)
         // Update progress for reused chunks
         if (onProgressUpdate && reusedTokens > 0) {
           try {
@@ -516,6 +600,12 @@ export class RepoIndexerService {
 
         continue;
       }
+
+      // Delete old chunks before re-indexing the file with new content
+      await this.qdrantService.deleteByFilter(
+        params.collection,
+        this.buildFileFilter(params.repoId, relativePath),
+      );
 
       // New content - chunk and embed
       const chunks = await this.chunkText(
@@ -664,22 +754,29 @@ export class RepoIndexerService {
     repoRoot: string,
     execFn: RepoExecFn,
   ): Promise<ReturnType<typeof ignore>> {
-    const cached = this.ignoreCache.get(repoRoot);
-    if (cached) return cached;
-
-    const matcher = ignore();
+    // Read the ignore file content and use it as part of the cache key.
+    // Different repos cloned to the same path (e.g. /workspace/repo in BullMQ
+    // containers) will have different .codebaseindexignore content.
     const ignoreFilePath = `${repoRoot}/.codebaseindexignore`;
     const res = await execFn({
       cmd: `if [ -f ${shQuote(ignoreFilePath)} ]; then cat ${shQuote(ignoreFilePath)}; fi`,
     });
-    if (res.exitCode === 0 && res.stdout.trim()) {
-      const lines = res.stdout
+    const ignoreContent = res.exitCode === 0 ? res.stdout.trim() : '';
+
+    // Cache key = repoRoot + hash of file content so stale rules are never served
+    const cacheKey = `${repoRoot}:${this.sha1(ignoreContent)}`;
+    const cached = this.ignoreCache.get(cacheKey);
+    if (cached) return cached;
+
+    const matcher = ignore();
+    if (ignoreContent) {
+      const lines = ignoreContent
         .split('\n')
         .map((line) => line.trimEnd())
         .filter((line) => line.trim() && !line.trimStart().startsWith('#'));
       matcher.add(lines);
     }
-    this.ignoreCache.set(repoRoot, matcher);
+    this.ignoreCache.set(cacheKey, matcher);
     return matcher;
   }
 
@@ -798,10 +895,9 @@ export class RepoIndexerService {
         Math.max(endOffset - 1, startOffset),
       );
       const chunkHash = this.sha1(text);
-      const tokenCount = await this.litellmService.countTokens(
-        embeddingModel,
-        text,
-      );
+      // Token count is already known from the token-window slicing — no need
+      // to re-tokenize the text.
+      const tokenCount = endToken - startToken;
 
       chunks.push({
         text,
@@ -1031,11 +1127,11 @@ export class RepoIndexerService {
     validPaths: Set<string>,
   ): Promise<void> {
     try {
-      // Get all unique paths currently stored in Qdrant for this repo
+      // Only fetch the 'path' field to minimize memory usage
       const allPoints = await this.qdrantService.scrollAll(collection, {
         filter: this.buildRepoFilter(repoId),
-        limit: 100000,
-        with_payload: true,
+        limit: QDRANT_SCROLL_PAGE_SIZE,
+        with_payload: ['path'],
       } as Parameters<QdrantService['scrollAll']>[1]);
 
       // Find paths that exist in Qdrant but not in the current repo
@@ -1098,7 +1194,7 @@ export class RepoIndexerService {
         collection,
         {
           filter: this.buildFileHashFilter(repoId, fileHash),
-          limit: 100000,
+          limit: QDRANT_SCROLL_PAGE_SIZE,
           with_payload: true,
           with_vector: true, // Need vectors to copy them to new points
         },
@@ -1242,10 +1338,12 @@ export class RepoIndexerService {
     embeddingModel: string,
   ): Promise<number> {
     try {
+      // Only fetch token_count (and text as fallback for old data)
+      // to minimize memory usage instead of loading full payload.
       const allPoints = await this.qdrantService.scrollAll(collection, {
         filter: this.buildRepoFilter(repoId),
-        limit: 100000,
-        with_payload: true,
+        limit: QDRANT_SCROLL_PAGE_SIZE,
+        with_payload: ['token_count', 'text'],
       } as Parameters<QdrantService['scrollAll']>[1]);
 
       let totalTokens = 0;
@@ -1253,7 +1351,9 @@ export class RepoIndexerService {
 
       // First pass: sum stored token_count, collect points that need counting
       for (const point of allPoints) {
-        const payload = point.payload as QdrantPointPayload | undefined;
+        const payload = point.payload as
+          | Pick<QdrantPointPayload, 'token_count' | 'text'>
+          | undefined;
         if (payload?.token_count) {
           totalTokens += payload.token_count;
         } else if (payload?.text) {

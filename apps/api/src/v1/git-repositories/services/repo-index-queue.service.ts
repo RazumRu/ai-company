@@ -8,6 +8,7 @@ import { environment } from '../../../environments';
 export interface RepoIndexJobData {
   repoIndexId: string;
   repoUrl: string;
+  branch: string;
 }
 
 export interface RepoIndexQueueCallbacks {
@@ -15,6 +16,8 @@ export interface RepoIndexQueueCallbacks {
   onProcess: (data: RepoIndexJobData) => Promise<void>;
   /** Called when a job is detected as stalled (server died mid-processing) */
   onStalled: (repoIndexId: string) => Promise<void>;
+  /** Called when a job fails but will be retried */
+  onRetry: (repoIndexId: string, error: Error) => Promise<void>;
   /** Called when a job fails after all retries */
   onFailed: (repoIndexId: string, error: Error) => Promise<void>;
 }
@@ -44,6 +47,19 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    // Worker is created in setCallbacks() to guarantee callbacks are ready
+    // before any job is processed.
+  }
+
+  /**
+   * Register callbacks for job lifecycle events and start the worker.
+   * Must be called exactly once during module initialization.
+   */
+  setCallbacks(callbacks: RepoIndexQueueCallbacks): void {
+    this.callbacks = callbacks;
+
+    // Create the worker only after callbacks are registered so no job can
+    // be processed before the handlers are in place.
     this.worker = new Worker<RepoIndexJobData>(
       this.queueName,
       this.processJob.bind(this),
@@ -60,14 +76,6 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
 
     this.worker.on('failed', this.handleJobFailed.bind(this));
     this.worker.on('stalled', this.handleJobStalled.bind(this));
-  }
-
-  /**
-   * Register callbacks for job lifecycle events.
-   * Must be called before any jobs are processed.
-   */
-  setCallbacks(callbacks: RepoIndexQueueCallbacks): void {
-    this.callbacks = callbacks;
   }
 
   /**
@@ -124,6 +132,34 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Remove a job from the queue by its ID. Best-effort: if the job is active
+   * or already gone, we silently skip.
+   */
+  async removeJob(repoIndexId: string): Promise<void> {
+    try {
+      const job = await this.queue.getJob(repoIndexId);
+      if (!job) return;
+
+      const state = await job.getState();
+      if (state === 'active') {
+        // Cannot safely remove an active job; it will be cleaned up by its own
+        // error handler or stalled detection once the container is gone.
+        this.logger.debug('Cannot remove active job, skipping', {
+          repoIndexId,
+        });
+        return;
+      }
+      await job.remove();
+      this.logger.debug('Removed queued job', { repoIndexId, state });
+    } catch (err) {
+      this.logger.debug('Could not remove job from queue', {
+        repoIndexId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   private async processJob(job: Job<RepoIndexJobData>): Promise<void> {
     if (!this.callbacks) {
       throw new Error('Queue callbacks not configured');
@@ -159,26 +195,35 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
       attemptsMade: job.attemptsMade,
     });
 
-    // Only notify callback on final failure (all retries exhausted)
-    if (this.callbacks && job.attemptsMade >= (job.opts.attempts ?? 1)) {
-      try {
+    if (!this.callbacks) return;
+
+    const isFinalFailure = job.attemptsMade >= (job.opts.attempts ?? 1);
+
+    try {
+      if (isFinalFailure) {
         await this.callbacks.onFailed(job.data.repoIndexId, err);
-      } catch (callbackErr) {
-        this.logger.error(
-          callbackErr instanceof Error
-            ? callbackErr
-            : new Error(String(callbackErr)),
-          'Failed to handle job failure callback',
-          { jobId: job.id },
-        );
+      } else {
+        // Reset entity to Pending so it doesn't appear stuck as InProgress
+        // while BullMQ waits to retry
+        await this.callbacks.onRetry(job.data.repoIndexId, err);
       }
+    } catch (callbackErr) {
+      this.logger.error(
+        callbackErr instanceof Error
+          ? callbackErr
+          : new Error(String(callbackErr)),
+        'Failed to handle job failure callback',
+        { jobId: job.id },
+      );
     }
   }
 
   async onModuleDestroy(): Promise<void> {
-    // Force close immediately - leaves active jobs in place for stalled detection on restart
-    await this.worker.close(true);
-    await this.queue.close();
-    await this.redis.quit();
+    // Worker may not exist if setCallbacks was never called (e.g. partial startup)
+    if (this.worker) {
+      await this.worker.close();
+    }
+    await this.queue?.close();
+    await this.redis?.quit();
   }
 }

@@ -29,6 +29,11 @@ const mockRepoIndexDao = {
   create: vi.fn(),
   updateById: vi.fn(),
   incrementIndexedTokens: vi.fn().mockResolvedValue(undefined),
+  withIndexLock: vi
+    .fn()
+    .mockImplementation(
+      (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
+    ),
 };
 
 const mockGitRepositoriesDao = {
@@ -56,6 +61,7 @@ const mockRepoIndexerService = {
     repoSlug: 'my_repo',
     collection: 'codebase_my_repo_main_1536',
   }),
+  copyCollectionPoints: vi.fn().mockResolvedValue(0),
   runFullIndex: vi.fn().mockResolvedValue(undefined),
   runIncrementalIndex: vi.fn().mockResolvedValue(undefined),
   getTotalIndexedTokens: vi.fn().mockResolvedValue(50000),
@@ -95,7 +101,46 @@ describe('RepoIndexService', () => {
   let service: RepoIndexService;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    // Restore default mock implementations after reset
+    mockRepoIndexDao.getAll.mockResolvedValue([]);
+    mockRepoIndexDao.incrementIndexedTokens.mockResolvedValue(undefined);
+    mockRepoIndexDao.withIndexLock.mockImplementation(
+      (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
+    );
+    mockRepoIndexerService.estimateTokenCount.mockResolvedValue(100);
+    mockRepoIndexerService.estimateChangedTokenCount.mockResolvedValue(100);
+    mockRepoIndexerService.resolveCurrentCommit.mockResolvedValue('abc123');
+    mockRepoIndexerService.getCurrentBranch.mockResolvedValue('main');
+    mockRepoIndexerService.getVectorSizeForModel.mockResolvedValue(1536);
+    mockRepoIndexerService.getChunkingSignatureHash.mockReturnValue(
+      'sig-hash-123',
+    );
+    mockRepoIndexerService.deriveRepoSlug.mockReturnValue('my_repo');
+    mockRepoIndexerService.buildCollectionName.mockReturnValue(
+      'codebase_my_repo_main_1536',
+    );
+    mockRepoIndexerService.calculateIndexMetadata.mockResolvedValue({
+      embeddingModel: 'text-embedding-3-small',
+      vectorSize: 1536,
+      chunkingSignatureHash: 'sig-hash-123',
+      repoSlug: 'my_repo',
+      collection: 'codebase_my_repo_main_1536',
+    });
+    mockRepoIndexerService.copyCollectionPoints.mockResolvedValue(0);
+    mockRepoIndexerService.runFullIndex.mockResolvedValue(undefined);
+    mockRepoIndexerService.runIncrementalIndex.mockResolvedValue(undefined);
+    mockRepoIndexerService.getTotalIndexedTokens.mockResolvedValue(50000);
+    mockRepoIndexQueueService.addIndexJob.mockResolvedValue(undefined);
+    mockLlmModelsService.getKnowledgeEmbeddingModel.mockReturnValue(
+      'text-embedding-3-small',
+    );
+    mockGitRepositoriesService.encryptCredential.mockImplementation(
+      (text: string) => `encrypted:${text}`,
+    );
+    mockGitRepositoriesService.decryptCredential.mockImplementation(
+      (text: string) => text.replace('encrypted:', ''),
+    );
     service = new RepoIndexService(
       mockRepoIndexDao as unknown as RepoIndexDao,
       mockGitRepositoriesDao as unknown as GitRepositoriesDao,
@@ -168,7 +213,8 @@ describe('RepoIndexService', () => {
     });
 
     it('runs inline indexing when estimated tokens are below threshold', async () => {
-      mockRepoIndexDao.getOne.mockResolvedValue(null);
+      mockRepoIndexDao.getOne.mockResolvedValueOnce(null); // no existing index for branch
+      // Donor query now uses getAll (defaults to []) — no getOne mock needed
       mockRepoIndexerService.estimateTokenCount.mockResolvedValue(1000); // below 30000
       mockRepoIndexDao.create.mockResolvedValue({
         id: 'new-index',
@@ -187,20 +233,26 @@ describe('RepoIndexService', () => {
     });
 
     it('enqueues background job when estimated tokens exceed threshold', async () => {
-      mockRepoIndexDao.getOne.mockResolvedValue(null);
+      mockRepoIndexDao.getOne.mockResolvedValueOnce(null); // no existing index for branch
+      // Donor query now uses getAll (defaults to []) — no getOne mock needed
       mockRepoIndexerService.estimateTokenCount.mockResolvedValue(50000); // above 30000
       mockRepoIndexDao.create.mockResolvedValue({
         id: 'new-index',
-        status: RepoIndexStatus.Pending,
+        status: RepoIndexStatus.InProgress, // claimIndexSlot creates with InProgress
       } as unknown as RepoIndexEntity);
 
       const result = await service.getOrInitIndexForRepo(baseParams);
 
       expect(result.status).toBe('pending');
       expect(mockRepoIndexQueueService.addIndexJob).toHaveBeenCalledWith(
-        expect.objectContaining({ repoIndexId: 'new-index' }),
+        expect.objectContaining({ repoIndexId: 'new-index', branch: 'main' }),
       );
       expect(mockRepoIndexerService.runFullIndex).not.toHaveBeenCalled();
+      // Verify entity was switched from InProgress to Pending for background job
+      expect(mockRepoIndexDao.updateById).toHaveBeenCalledWith(
+        'new-index',
+        expect.objectContaining({ status: RepoIndexStatus.Pending }),
+      );
     });
 
     it('runs incremental index when only commit changed', async () => {
@@ -230,7 +282,8 @@ describe('RepoIndexService', () => {
     });
 
     it('sets entity to failed on inline indexing error', async () => {
-      mockRepoIndexDao.getOne.mockResolvedValue(null);
+      mockRepoIndexDao.getOne.mockResolvedValueOnce(null); // no existing index for branch
+      // Donor query now uses getAll (defaults to []) — no getOne mock needed
       mockRepoIndexerService.estimateTokenCount.mockResolvedValue(1000);
       mockRepoIndexerService.runFullIndex.mockRejectedValue(
         new Error('embed failed'),

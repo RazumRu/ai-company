@@ -86,6 +86,10 @@ export abstract class BaseDao<
     return this.dataSource.getRepository(this.entity);
   }
 
+  protected getQueryRunner() {
+    return this.dataSource.createQueryRunner();
+  }
+
   protected getQueryBuilder(entityManager?: EntityManager, alias?: string) {
     return (
       entityManager

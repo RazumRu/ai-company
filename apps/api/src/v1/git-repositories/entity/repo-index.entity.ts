@@ -4,7 +4,7 @@ import {
   Entity,
   Index,
   JoinColumn,
-  OneToOne,
+  ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
@@ -13,19 +13,23 @@ import { GitRepositoryEntity } from './git-repository.entity';
 
 @Entity('repo_indexes')
 @Index(['status']) // For efficient queries by status (e.g., recovering stuck jobs)
+@Index(['repositoryId', 'branch'], { unique: true })
 export class RepoIndexEntity extends TimestampsEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid', unique: true })
+  @Column({ type: 'uuid' })
   repositoryId!: string;
 
-  @OneToOne(() => GitRepositoryEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => GitRepositoryEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'repositoryId' })
   repository?: GitRepositoryEntity;
 
   @Column({ type: 'varchar' })
   repoUrl!: string;
+
+  @Column({ type: 'varchar' })
+  branch!: string;
 
   @Column({
     type: 'enum',

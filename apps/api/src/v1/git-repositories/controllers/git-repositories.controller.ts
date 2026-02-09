@@ -60,6 +60,19 @@ export class GitRepositoriesController {
     );
   }
 
+  // Static routes MUST be declared before parameterised routes so that
+  // NestJS matches them first (e.g. GET /indexes before GET /:id).
+  @Get('indexes')
+  async getRepoIndexes(
+    @Query() query: GetRepoIndexesQueryDto,
+    @CtxStorage() contextDataStorage: AuthContextStorage,
+  ): Promise<RepoIndexDto[]> {
+    return this.gitRepositoriesService.getRepoIndexes(
+      contextDataStorage,
+      query,
+    );
+  }
+
   @Get(':id')
   async getRepositoryById(
     @Param('id') id: string,
@@ -68,6 +81,19 @@ export class GitRepositoriesController {
     return this.gitRepositoriesService.getRepositoryById(
       contextDataStorage,
       id,
+    );
+  }
+
+  @Get(':id/index')
+  async getRepoIndexByRepositoryId(
+    @Param('id') id: string,
+    @Query('branch') branch: string | undefined,
+    @CtxStorage() contextDataStorage: AuthContextStorage,
+  ): Promise<RepoIndexDto | null> {
+    return this.gitRepositoriesService.getRepoIndexByRepositoryId(
+      contextDataStorage,
+      id,
+      branch,
     );
   }
 
@@ -90,28 +116,6 @@ export class GitRepositoriesController {
     @CtxStorage() contextDataStorage: AuthContextStorage,
   ): Promise<void> {
     return this.gitRepositoriesService.deleteRepository(contextDataStorage, id);
-  }
-
-  @Get('indexes')
-  async getRepoIndexes(
-    @Query() query: GetRepoIndexesQueryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
-  ): Promise<RepoIndexDto[]> {
-    return this.gitRepositoriesService.getRepoIndexes(
-      contextDataStorage,
-      query,
-    );
-  }
-
-  @Get(':id/index')
-  async getRepoIndexByRepositoryId(
-    @Param('id') id: string,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
-  ): Promise<RepoIndexDto | null> {
-    return this.gitRepositoriesService.getRepoIndexByRepositoryId(
-      contextDataStorage,
-      id,
-    );
   }
 
   @Post('reindex')

@@ -3,6 +3,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
   BadRequestException,
+  DefaultLogger,
   InternalException,
   NotFoundException,
 } from '@packages/common';
@@ -42,6 +43,7 @@ export class GitRepositoriesService {
     private readonly repoIndexerService: RepoIndexerService,
     private readonly llmModelsService: LlmModelsService,
     private readonly qdrantService: QdrantService,
+    private readonly logger: DefaultLogger,
   ) {}
 
   async createRepository(
@@ -55,6 +57,7 @@ export class GitRepositoriesService {
       repo: data.repo,
       url: data.url,
       provider: data.provider,
+      defaultBranch: data.defaultBranch ?? 'main',
       createdBy: userId,
       encryptedToken: data.token ? this.encryptCredential(data.token) : null,
     });
@@ -82,8 +85,16 @@ export class GitRepositoriesService {
     if (data.url) {
       updatePayload.url = data.url;
     }
+    if (data.defaultBranch) {
+      updatePayload.defaultBranch = data.defaultBranch;
+    }
     if (data.token) {
       updatePayload.encryptedToken = this.encryptCredential(data.token);
+    }
+
+    // If nothing changed, return existing entity without a DB write
+    if (Object.keys(updatePayload).length === 0) {
+      return this.prepareRepositoryResponse(existing);
     }
 
     const updated = await this.gitRepositoriesDao.updateById(id, updatePayload);
@@ -141,26 +152,33 @@ export class GitRepositoriesService {
       throw new NotFoundException('REPOSITORY_NOT_FOUND');
     }
 
-    // Clean up associated Qdrant collection if it exists
-    const repoIndex = await this.repoIndexDao.getOne({
+    // Clean up all associated Qdrant collections and BullMQ jobs (one per branch)
+    const repoIndexes = await this.repoIndexDao.getAll({
       repositoryId: id,
     });
 
-    if (repoIndex?.qdrantCollection) {
+    const collections = new Set<string>();
+    for (const index of repoIndexes) {
+      if (index.qdrantCollection) {
+        collections.add(index.qdrantCollection);
+      }
+      // Cancel any pending/waiting BullMQ jobs for this index
+      await this.repoIndexQueueService.removeJob(index.id);
+    }
+
+    for (const collection of collections) {
       try {
-        await this.qdrantService.raw.deleteCollection(
-          repoIndex.qdrantCollection,
-        );
+        await this.qdrantService.raw.deleteCollection(collection);
       } catch (error) {
         // Log but don't fail deletion if Qdrant cleanup fails
-        console.warn(
-          `Failed to delete Qdrant collection ${repoIndex.qdrantCollection}:`,
-          error,
-        );
+        this.logger.warn(`Failed to delete Qdrant collection ${collection}`, {
+          collection,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
-    // Delete the repository
+    // Delete the repository (CASCADE will delete repo_indexes rows)
     await this.gitRepositoriesDao.deleteById(id);
   }
 
@@ -200,6 +218,12 @@ export class GitRepositoriesService {
       searchParams.repositoryId = query.repositoryId;
     }
 
+    if (query.branches && query.branches.length > 0) {
+      searchParams.branch = query.branches;
+    } else if (query.branch) {
+      searchParams.branch = query.branch;
+    }
+
     if (query.status) {
       searchParams.status = query.status as RepoIndexStatus;
     }
@@ -217,6 +241,7 @@ export class GitRepositoriesService {
   async getRepoIndexByRepositoryId(
     ctx: AuthContextStorage,
     repositoryId: string,
+    branch?: string,
   ): Promise<RepoIndexDto | null> {
     const userId = ctx.checkSub();
 
@@ -230,9 +255,21 @@ export class GitRepositoriesService {
       throw new NotFoundException('REPOSITORY_NOT_FOUND');
     }
 
-    const index = await this.repoIndexDao.getOne({
-      repositoryId,
-    });
+    let index: RepoIndexEntity | null;
+    if (branch) {
+      index = await this.repoIndexDao.getOne({
+        repositoryId,
+        branch,
+      });
+    } else {
+      // No branch specified — return the most recently updated index
+      const indexes = await this.repoIndexDao.getAll({
+        repositoryId,
+        limit: 1,
+        order: { updatedAt: 'DESC' },
+      });
+      index = indexes[0] ?? null;
+    }
 
     if (!index) {
       return null;
@@ -257,9 +294,12 @@ export class GitRepositoriesService {
       throw new NotFoundException('REPOSITORY_NOT_FOUND');
     }
 
+    const branch = data.branch ?? repository.defaultBranch;
+
     // Check if indexing is already in progress
     const existingIndex = await this.repoIndexDao.getOne({
       repositoryId: data.repositoryId,
+      branch,
     });
 
     if (
@@ -272,7 +312,10 @@ export class GitRepositoriesService {
 
     // Calculate metadata fields upfront so they're available immediately
     const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
-      await this.repoIndexerService.calculateIndexMetadata(data.repositoryId);
+      await this.repoIndexerService.calculateIndexMetadata(
+        data.repositoryId,
+        branch,
+      );
 
     // Reset the index to pending status and enqueue
     let repoIndex: RepoIndexEntity;
@@ -308,6 +351,7 @@ export class GitRepositoriesService {
       repoIndex = await this.repoIndexDao.create({
         repositoryId: data.repositoryId,
         repoUrl: repository.url,
+        branch,
         status: RepoIndexStatus.Pending,
         qdrantCollection: collection,
         lastIndexedCommit: null,
@@ -324,6 +368,7 @@ export class GitRepositoriesService {
     await this.repoIndexQueueService.addIndexJob({
       repoIndexId: repoIndex.id,
       repoUrl: repository.url,
+      branch,
     });
 
     return {
@@ -341,6 +386,7 @@ export class GitRepositoriesService {
       repo: entity.repo,
       url: entity.url,
       provider: entity.provider,
+      defaultBranch: entity.defaultBranch,
       createdBy: entity.createdBy,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
@@ -352,6 +398,7 @@ export class GitRepositoriesService {
       id: entity.id,
       repositoryId: entity.repositoryId,
       repoUrl: entity.repoUrl,
+      branch: entity.branch,
       status: entity.status,
       qdrantCollection: entity.qdrantCollection,
       lastIndexedCommit: entity.lastIndexedCommit,

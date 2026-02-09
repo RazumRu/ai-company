@@ -55,16 +55,18 @@ describe('Codebase search tool (integration)', () => {
     return res.stdout.trim();
   };
 
-  const resolveCollectionName = (repoRoot: string) => {
+  const resolveCollectionName = (repoRoot: string, branch = 'main') => {
     if (collectionName) {
       return collectionName;
     }
     const repoId = `local:${repoRoot}`;
     const repositoryId = uuidv5(repoId, environment.codebaseUuidNamespace);
     const repoSlug = repoIndexerService.deriveRepoSlug(repositoryId);
+    const branchSlug = repoIndexerService.deriveBranchSlug(branch);
     collectionName = repoIndexerService.buildCollectionName(
       repoSlug,
       VECTOR_SIZE,
+      branchSlug,
     );
     return collectionName;
   };

@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { InternalException, NotFoundException } from '@packages/common';
+import {
+  DefaultLogger,
+  InternalException,
+  NotFoundException,
+} from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,6 +37,7 @@ describe('GitRepositoriesService', () => {
       repo: 'Hello-World',
       url: 'https://github.com/octocat/Hello-World.git',
       provider: GitRepositoryProvider.GITHUB,
+      defaultBranch: 'main',
       createdBy: mockUserId,
       createdAt: new Date('2024-01-01T00:00:00Z'),
       updatedAt: new Date('2024-01-01T00:00:00Z'),
@@ -70,6 +75,7 @@ describe('GitRepositoriesService', () => {
           useValue: {
             addIndexJob: vi.fn(),
             setCallbacks: vi.fn(),
+            removeJob: vi.fn(),
           },
         },
         {
@@ -98,6 +104,14 @@ describe('GitRepositoriesService', () => {
             },
           },
         },
+        {
+          provide: DefaultLogger,
+          useValue: {
+            debug: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -114,6 +128,7 @@ describe('GitRepositoriesService', () => {
         repo: 'Hello-World',
         url: 'https://github.com/octocat/Hello-World.git',
         provider: GitRepositoryProvider.GITHUB,
+        defaultBranch: 'main',
       };
 
       vi.spyOn(dao, 'create').mockResolvedValue(createMockRepositoryEntity());
@@ -125,6 +140,7 @@ describe('GitRepositoriesService', () => {
         repo: 'Hello-World',
         url: 'https://github.com/octocat/Hello-World.git',
         provider: GitRepositoryProvider.GITHUB,
+        defaultBranch: 'main',
         createdBy: mockUserId,
         encryptedToken: null,
       });
@@ -233,7 +249,9 @@ describe('GitRepositoriesService', () => {
       };
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
-      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(mockRepoIndex as any);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue([
+        mockRepoIndex as any,
+      ]);
       vi.spyOn(qdrantService.raw, 'deleteCollection').mockResolvedValue(
         undefined as any,
       );
@@ -241,7 +259,7 @@ describe('GitRepositoriesService', () => {
 
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
-      expect(repoIndexDao.getOne).toHaveBeenCalledWith({
+      expect(repoIndexDao.getAll).toHaveBeenCalledWith({
         repositoryId: mockRepositoryId,
       });
       expect(qdrantService.raw.deleteCollection).toHaveBeenCalledWith(
@@ -254,7 +272,7 @@ describe('GitRepositoriesService', () => {
       const mockRepository = createMockRepositoryEntity();
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
-      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(null);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue([]);
       vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
 
       await service.deleteRepository(mockCtx, mockRepositoryId);
@@ -272,7 +290,9 @@ describe('GitRepositoriesService', () => {
       };
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
-      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(mockRepoIndex as any);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue([
+        mockRepoIndex as any,
+      ]);
       vi.spyOn(qdrantService.raw, 'deleteCollection').mockRejectedValue(
         new Error('Qdrant connection failed'),
       );

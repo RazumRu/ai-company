@@ -181,11 +181,18 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       return { exitCode: res.exitCode, stdout: res.stdout, stderr: res.stderr };
     };
 
+    // Resolve the checked-out branch (or fall back to remote default for detached HEAD)
+    const branch = await this.resolveCurrentBranch(repoRoot, execFn);
+
+    const userId = cfg.configurable?.graph_created_by as string | undefined;
+
     const indexResult = await this.repoIndexService.getOrInitIndexForRepo({
       repositoryId,
       repoUrl: repoInfo.repoId,
       repoRoot,
       execFn,
+      branch,
+      userId,
     });
 
     if (indexResult.status !== 'ready' || !indexResult.repoIndex) {
@@ -298,5 +305,42 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
   private normalizePath(path: string): string {
     return path.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+  }
+
+  /**
+   * Resolve the branch currently checked out in the repo.
+   * For detached HEAD, resolves the remote default branch to avoid
+   * creating an orphaned index per commit SHA.
+   */
+  private async resolveCurrentBranch(
+    repoRoot: string,
+    execFn: RepoExecFn,
+  ): Promise<string> {
+    // 1. Try the local branch name (works for normal checkouts)
+    const branchRes = await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} symbolic-ref --short HEAD`,
+    });
+    if (branchRes.exitCode === 0) {
+      const branch = branchRes.stdout.trim();
+      if (branch.length) {
+        return branch;
+      }
+    }
+
+    // 2. Detached HEAD — resolve the remote's default branch so we reuse
+    //    an existing index instead of creating a per-commit-SHA orphan.
+    const remoteHeadRes = await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} symbolic-ref refs/remotes/origin/HEAD`,
+    });
+    if (remoteHeadRes.exitCode === 0) {
+      const ref = remoteHeadRes.stdout.trim();
+      const defaultBranch = ref.replace('refs/remotes/origin/', '');
+      if (defaultBranch.length) {
+        return defaultBranch;
+      }
+    }
+
+    // 3. Last resort — fall back to 'main' to avoid orphaned per-SHA indexes
+    return 'main';
   }
 }

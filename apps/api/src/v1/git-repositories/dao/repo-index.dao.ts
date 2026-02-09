@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 
 import { RepoIndexEntity } from '../entity/repo-index.entity';
 import { RepoIndexStatus } from '../git-repositories.types';
@@ -9,6 +11,7 @@ export type RepoIndexSearchTerms = Partial<{
   id: string;
   repositoryId: string;
   status: RepoIndexStatus | RepoIndexStatus[];
+  branch: string | string[];
 }>;
 
 @Injectable()
@@ -40,6 +43,14 @@ export class RepoIndexDao extends BaseDao<
       builder.andWhere({ repositoryId: params.repositoryId });
     }
 
+    if (params?.branch) {
+      if (Array.isArray(params.branch)) {
+        builder.andWhere({ branch: In(params.branch) });
+      } else {
+        builder.andWhere({ branch: params.branch });
+      }
+    }
+
     if (params?.status) {
       if (Array.isArray(params.status)) {
         builder.andWhere(`${this.alias}.status IN (:...statuses)`, {
@@ -59,9 +70,50 @@ export class RepoIndexDao extends BaseDao<
     await this.getQueryBuilder()
       .update()
       .set({
-        indexedTokens: () => `"indexedTokens" + ${amount}`,
+        indexedTokens: () => `"indexedTokens" + :amount`,
       })
       .where('id = :id', { id })
+      .setParameter('amount', amount)
       .execute();
+  }
+
+  /**
+   * Execute a callback while holding a PostgreSQL advisory lock scoped to
+   * a (repositoryId, branch) pair. The lock is released when the transaction
+   * commits or rolls back, preventing concurrent getOrInitIndexForRepo calls
+   * from racing on the same index.
+   */
+  async withIndexLock<T>(
+    repositoryId: string,
+    branch: string,
+    cb: () => Promise<T>,
+  ): Promise<T> {
+    const lockId = RepoIndexDao.advisoryLockId(repositoryId, branch);
+    const runner = this.getQueryRunner();
+    await runner.connect();
+    await runner.startTransaction();
+    try {
+      await runner.query('SELECT pg_advisory_xact_lock($1)', [lockId]);
+      const result = await cb();
+      await runner.commitTransaction();
+      return result;
+    } catch (err) {
+      await runner.rollbackTransaction();
+      throw err;
+    } finally {
+      await runner.release();
+    }
+  }
+
+  /**
+   * Derive a stable 64-bit integer from (repositoryId, branch) for use as
+   * a PostgreSQL advisory lock key.
+   */
+  private static advisoryLockId(repositoryId: string, branch: string): string {
+    const hash = createHash('sha256')
+      .update(`${repositoryId}:${branch}`)
+      .digest();
+    // Read as signed int64 — pg_advisory_xact_lock accepts bigint
+    return hash.readBigInt64BE(0).toString();
   }
 }

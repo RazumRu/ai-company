@@ -170,10 +170,22 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       ? args.workdir
       : path.join(res.execPath || '', args.repo);
 
-    // Track the cloned repository with GitHub token
+    // Detect the default branch from the freshly cloned repo
+    const detectedDefaultBranch = await this.detectDefaultBranch(
+      clonePath,
+      config,
+      cfg,
+    );
+
+    // Track the cloned repository with GitHub token and detected default branch
     const userId = cfg.configurable?.graph_created_by as string | undefined;
     if (userId) {
-      await this.upsertGitRepository(args, userId, config.patToken);
+      await this.upsertGitRepository(
+        args,
+        userId,
+        config.patToken,
+        detectedDefaultBranch,
+      );
     }
 
     // Search for agent instruction files in the repository root
@@ -196,6 +208,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     args: GhCloneToolSchemaType,
     userId: string,
     patToken: string,
+    detectedDefaultBranch?: string,
   ): Promise<void> {
     try {
       const existing = await this.gitRepositoriesDao.getOne({
@@ -210,16 +223,25 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
         this.gitRepositoriesService.encryptCredential(patToken);
 
       if (existing) {
-        await this.gitRepositoriesDao.updateById(existing.id, {
+        const updatePayload: Record<string, unknown> = {
           url,
           encryptedToken,
-        });
+        };
+        // Update defaultBranch if detected and changed
+        if (
+          detectedDefaultBranch &&
+          detectedDefaultBranch !== existing.defaultBranch
+        ) {
+          updatePayload.defaultBranch = detectedDefaultBranch;
+        }
+        await this.gitRepositoriesDao.updateById(existing.id, updatePayload);
       } else {
         await this.gitRepositoriesDao.create({
           owner: args.owner,
           repo: args.repo,
           url,
           provider: GitRepositoryProvider.GITHUB,
+          defaultBranch: detectedDefaultBranch ?? 'main',
           createdBy: userId,
           encryptedToken,
         });
@@ -229,6 +251,57 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       this.logger.warn(
         `Failed to track repository ${args.owner}/${args.repo}: ${error instanceof Error ? error.message : String(error)}`,
       );
+    }
+  }
+
+  /**
+   * Detect the repository's default branch after cloning.
+   * When no specific branch was requested, the current branch IS the default branch.
+   * When a specific branch was requested, query the remote for the HEAD reference.
+   */
+  private async detectDefaultBranch(
+    clonePath: string,
+    config: GhBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<string | undefined> {
+    try {
+      // Use `git symbolic-ref refs/remotes/origin/HEAD` to get the remote default branch
+      const res = await this.execGhCommand(
+        {
+          cmd: `git -C "${clonePath}" symbolic-ref refs/remotes/origin/HEAD`,
+        },
+        config,
+        cfg,
+      );
+
+      if (res.exitCode === 0) {
+        // Output looks like: refs/remotes/origin/main
+        const ref = res.stdout.trim();
+        const branch = ref.replace('refs/remotes/origin/', '');
+        if (branch.length > 0) {
+          return branch;
+        }
+      }
+
+      // Fallback: read the current branch (accurate when no --branch was specified)
+      const fallbackRes = await this.execGhCommand(
+        {
+          cmd: `git -C "${clonePath}" symbolic-ref --short HEAD`,
+        },
+        config,
+        cfg,
+      );
+
+      if (fallbackRes.exitCode === 0) {
+        const branch = fallbackRes.stdout.trim();
+        if (branch.length > 0) {
+          return branch;
+        }
+      }
+
+      return undefined;
+    } catch {
+      return undefined;
     }
   }
 

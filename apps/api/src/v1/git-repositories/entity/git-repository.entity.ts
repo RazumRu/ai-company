@@ -30,6 +30,9 @@ export class GitRepositoryEntity extends TimestampsEntity {
   @Index()
   createdBy!: string;
 
+  @Column({ type: 'varchar', default: 'main' })
+  defaultBranch!: string;
+
   @Column({ type: 'text', nullable: true })
   encryptedToken!: string | null;
 }

@@ -56,15 +56,18 @@ describe('RepoIndexQueueService', () => {
   });
 
   describe('setCallbacks', () => {
-    it('stores the callbacks', () => {
+    it('stores the callbacks and creates worker', () => {
       const callbacks: RepoIndexQueueCallbacks = {
         onProcess: vi.fn(),
         onStalled: vi.fn(),
+        onRetry: vi.fn(),
         onFailed: vi.fn(),
       };
       service.setCallbacks(callbacks);
       // Callbacks are stored privately; verified via event handling behavior
       expect(callbacks.onProcess).not.toHaveBeenCalled();
+      // Worker is created when setCallbacks is called
+      expect(mockWorker.on).toHaveBeenCalled();
     });
   });
 
@@ -73,6 +76,7 @@ describe('RepoIndexQueueService', () => {
       const data: RepoIndexJobData = {
         repoIndexId: 'test-id-123',
         repoUrl: 'https://github.com/owner/repo',
+        branch: 'main',
       };
 
       await service.addIndexJob(data);
@@ -85,9 +89,25 @@ describe('RepoIndexQueueService', () => {
 
   describe('onModuleDestroy', () => {
     it('closes worker, queue, and redis', async () => {
+      // Worker is created by setCallbacks, must call it first
+      service.setCallbacks({
+        onProcess: vi.fn(),
+        onStalled: vi.fn(),
+        onRetry: vi.fn(),
+        onFailed: vi.fn(),
+      });
+
       await service.onModuleDestroy();
 
-      expect(mockWorker.close).toHaveBeenCalledWith(true);
+      expect(mockWorker.close).toHaveBeenCalled();
+      expect(mockQueue.close).toHaveBeenCalled();
+      expect(mockRedis.quit).toHaveBeenCalled();
+    });
+
+    it('handles missing worker gracefully', async () => {
+      // Worker not created (setCallbacks never called)
+      await service.onModuleDestroy();
+
       expect(mockQueue.close).toHaveBeenCalled();
       expect(mockRedis.quit).toHaveBeenCalled();
     });

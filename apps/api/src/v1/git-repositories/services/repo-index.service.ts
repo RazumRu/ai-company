@@ -49,6 +49,7 @@ export class RepoIndexService implements OnModuleInit {
     this.repoIndexQueueService.setCallbacks({
       onProcess: this.processIndexJob.bind(this),
       onStalled: this.handleStalledJob.bind(this),
+      onRetry: this.handleRetryJob.bind(this),
       onFailed: this.handleFailedJob.bind(this),
     });
     await this.recoverStuckJobs();
@@ -61,6 +62,25 @@ export class RepoIndexService implements OnModuleInit {
   private async handleStalledJob(repoIndexId: string): Promise<void> {
     this.logger.warn('Repo index job stalled, resetting status', {
       repoIndexId,
+    });
+
+    await this.repoIndexDao.updateById(repoIndexId, {
+      status: RepoIndexStatus.Pending,
+    });
+  }
+
+  /**
+   * Called when a job fails but will be retried by BullMQ.
+   * Resets entity to Pending so it doesn't appear stuck as InProgress
+   * while waiting for the retry.
+   */
+  private async handleRetryJob(
+    repoIndexId: string,
+    error: Error,
+  ): Promise<void> {
+    this.logger.warn('Repo index job failed, will be retried', {
+      repoIndexId,
+      error: error.message,
     });
 
     await this.repoIndexDao.updateById(repoIndexId, {
@@ -113,6 +133,7 @@ export class RepoIndexService implements OnModuleInit {
         await this.repoIndexQueueService.addIndexJob({
           repoIndexId: index.id,
           repoUrl: index.repoUrl,
+          branch: index.branch,
         });
 
         this.logger.debug('Re-enqueued incomplete repo index job', {
@@ -135,130 +156,48 @@ export class RepoIndexService implements OnModuleInit {
   async getOrInitIndexForRepo(
     params: GetOrInitIndexParams,
   ): Promise<GetOrInitIndexResult> {
-    let { repositoryId, repoUrl } = params;
-    const { repoRoot, execFn } = params;
+    let { repositoryId } = params;
+    const { repoRoot, execFn, branch, userId } = params;
 
     // Resolve the real git_repositories record so we use its actual ID
     // instead of the caller-computed UUID. This ensures we find the existing
     // repo_indexes row and reuse it for incremental reindexing.
-    const resolvedRepo = await this.resolveGitRepository(repoUrl);
+    const resolvedRepo = await this.resolveGitRepository(
+      params.repoUrl,
+      userId,
+    );
     if (resolvedRepo) {
       repositoryId = resolvedRepo.id;
     }
 
-    const existing = await this.repoIndexDao.getOne({
+    // Acquire an advisory lock on (repositoryId, branch) to prevent two
+    // concurrent agents from both deciding "no existing index → create one".
+    // The lock covers only the check + claim phase; actual indexing runs after
+    // the lock is released.
+    const claim = await this.repoIndexDao.withIndexLock(
       repositoryId,
-    });
-
-    // Use the existing index's repoUrl to keep the Qdrant repo_id filter
-    // consistent between old and new points (e.g. URL with/without .git suffix).
-    if (existing) {
-      repoUrl = existing.repoUrl;
-    }
-
-    // If indexing is actively running, return immediately
-    if (
-      existing &&
-      (existing.status === RepoIndexStatus.InProgress ||
-        existing.status === RepoIndexStatus.Pending)
-    ) {
-      return { status: 'in_progress', repoIndex: existing };
-    }
-
-    // Determine current state
-    const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
-      await this.repoIndexerService.calculateIndexMetadata(repositoryId);
-    const currentCommit = await this.repoIndexerService.resolveCurrentCommit(
-      repoRoot,
-      execFn,
+      branch,
+      () =>
+        this.claimIndexSlot(
+          repositoryId,
+          params.repoUrl,
+          branch,
+          execFn,
+          repoRoot,
+        ),
     );
 
-    // If completed and up-to-date, return ready
-    if (existing && existing.status === RepoIndexStatus.Completed) {
-      if (
-        existing.lastIndexedCommit === currentCommit &&
-        existing.embeddingModel === embeddingModel &&
-        existing.vectorSize === vectorSize &&
-        existing.chunkingSignatureHash === chunkingSignatureHash
-      ) {
-        return { status: 'ready', repoIndex: existing };
-      }
+    if (claim.earlyReturn) {
+      return claim.earlyReturn;
     }
 
-    // Decide full vs incremental
-    const needsFullReindex =
-      !existing ||
-      existing.status === RepoIndexStatus.Failed ||
-      this.needsFullReindexDueToConfigChange(existing, {
-        embeddingModel,
-        vectorSize,
-        chunkingSignatureHash,
-      });
-
-    const lastIndexedCommit = needsFullReindex
-      ? undefined
-      : (existing!.lastIndexedCommit ?? undefined);
-
-    // Estimate size to decide inline vs background
-    // For incremental indexing, only estimate the changed files
-    let estimatedTokens: number;
-    if (needsFullReindex) {
-      estimatedTokens = await this.repoIndexerService.estimateTokenCount(
-        repoRoot,
-        execFn,
-      );
-    } else {
-      // Incremental: estimate only changed files
-      estimatedTokens = await this.repoIndexerService.estimateChangedTokenCount(
-        repoRoot,
-        lastIndexedCommit!,
-        currentCommit,
-        execFn,
-      );
-    }
-
-    const indexParams = {
-      repoId: repoUrl,
-      repoRoot,
-      currentCommit,
-      collection,
-      vectorSize,
-      embeddingModel,
-      lastIndexedCommit,
-    };
-
-    this.logger.debug(
-      'Estimated tokens calculated, deciding indexing strategy',
-      {
-        repoIndexId: existing?.id,
-        estimatedTokens,
-        threshold: environment.codebaseIndexTokenThreshold,
-        willIndexInline:
-          estimatedTokens <= environment.codebaseIndexTokenThreshold,
-      },
-    );
-
-    // For incremental reindex, carry previous total so the progress bar stays meaningful
-    const previousTotalTokens =
-      !needsFullReindex && existing?.estimatedTokens
-        ? existing.estimatedTokens
-        : undefined;
+    // Destructure the claimed slot — we now own the entity with InProgress/Pending status
+    const { entity, repoUrl, needsFullReindex, indexParams, estimatedTokens } =
+      claim;
 
     if (estimatedTokens <= environment.codebaseIndexTokenThreshold) {
       // Inline indexing — small repo, do it now
       this.logger.debug('Using inline indexing strategy');
-      const entity = await this.upsertIndexEntity({
-        existing,
-        repositoryId,
-        repoUrl,
-        status: RepoIndexStatus.InProgress,
-        qdrantCollection: collection,
-        embeddingModel,
-        vectorSize,
-        chunkingSignatureHash,
-        estimatedTokens,
-        previousTotalTokens,
-      });
 
       try {
         // Create a callback to update indexed token progress using atomic increment
@@ -283,14 +222,14 @@ export class RepoIndexService implements OnModuleInit {
         // Get total tokens from Qdrant - this gives accurate count of all indexed content
         const totalIndexedTokens =
           await this.repoIndexerService.getTotalIndexedTokens(
-            collection,
+            indexParams.collection,
             repoUrl,
-            embeddingModel,
+            indexParams.embeddingModel,
           );
 
         await this.repoIndexDao.updateById(entity.id, {
           status: RepoIndexStatus.Completed,
-          lastIndexedCommit: currentCommit,
+          lastIndexedCommit: indexParams.currentCommit,
           errorMessage: null,
           indexedTokens: totalIndexedTokens,
           estimatedTokens: totalIndexedTokens, // Update to reflect actual total
@@ -301,7 +240,7 @@ export class RepoIndexService implements OnModuleInit {
           repoIndex: {
             ...entity,
             status: RepoIndexStatus.Completed,
-            lastIndexedCommit: currentCommit,
+            lastIndexedCommit: indexParams.currentCommit,
             indexedTokens: totalIndexedTokens,
             estimatedTokens: totalIndexedTokens,
           },
@@ -318,22 +257,16 @@ export class RepoIndexService implements OnModuleInit {
 
     // Background indexing — large repo
     this.logger.debug('Using background indexing strategy');
-    const entity = await this.upsertIndexEntity({
-      existing,
-      repositoryId,
-      repoUrl,
+
+    // Switch entity to Pending since we claimed it as InProgress in the lock
+    await this.repoIndexDao.updateById(entity.id, {
       status: RepoIndexStatus.Pending,
-      qdrantCollection: collection,
-      embeddingModel,
-      vectorSize,
-      chunkingSignatureHash,
-      estimatedTokens,
-      previousTotalTokens,
     });
 
     const jobData: RepoIndexJobData = {
       repoIndexId: entity.id,
       repoUrl,
+      branch,
     };
 
     await this.repoIndexQueueService.addIndexJob(jobData);
@@ -344,7 +277,204 @@ export class RepoIndexService implements OnModuleInit {
       estimatedTokens,
     });
 
-    return { status: 'pending', repoIndex: entity };
+    return {
+      status: 'pending',
+      repoIndex: { ...entity, status: RepoIndexStatus.Pending },
+    };
+  }
+
+  /**
+   * Runs inside the advisory lock. Checks existing state, calculates metadata,
+   * and creates/updates the entity to "claim" the indexing slot.
+   * Returns either an early result (already done / in progress) or the claimed
+   * entity + indexing parameters for the caller to execute outside the lock.
+   */
+  private async claimIndexSlot(
+    repositoryId: string,
+    originalRepoUrl: string,
+    branch: string,
+    execFn: RepoExecFn,
+    repoRoot: string,
+  ): Promise<
+    | { earlyReturn: GetOrInitIndexResult }
+    | {
+        earlyReturn?: undefined;
+        entity: RepoIndexEntity;
+        repoUrl: string;
+        needsFullReindex: boolean;
+        indexParams: {
+          repoId: string;
+          repoRoot: string;
+          currentCommit: string;
+          collection: string;
+          vectorSize: number;
+          embeddingModel: string;
+          lastIndexedCommit?: string;
+        };
+        estimatedTokens: number;
+      }
+  > {
+    let repoUrl = originalRepoUrl;
+
+    const existing = await this.repoIndexDao.getOne({
+      repositoryId,
+      branch,
+    });
+
+    // Use the existing index's repoUrl to keep the Qdrant repo_id filter
+    // consistent between old and new points (e.g. URL with/without .git suffix).
+    if (existing) {
+      repoUrl = existing.repoUrl;
+    }
+
+    // If indexing is actively running, return immediately
+    if (
+      existing &&
+      (existing.status === RepoIndexStatus.InProgress ||
+        existing.status === RepoIndexStatus.Pending)
+    ) {
+      return { earlyReturn: { status: 'in_progress', repoIndex: existing } };
+    }
+
+    // Determine current state
+    const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
+      await this.repoIndexerService.calculateIndexMetadata(
+        repositoryId,
+        branch,
+      );
+    const currentCommit = await this.repoIndexerService.resolveCurrentCommit(
+      repoRoot,
+      execFn,
+    );
+
+    // If completed and up-to-date, return ready
+    if (existing && existing.status === RepoIndexStatus.Completed) {
+      if (
+        existing.lastIndexedCommit === currentCommit &&
+        existing.embeddingModel === embeddingModel &&
+        existing.vectorSize === vectorSize &&
+        existing.chunkingSignatureHash === chunkingSignatureHash
+      ) {
+        return { earlyReturn: { status: 'ready', repoIndex: existing } };
+      }
+    }
+
+    // Cross-branch seeding: when no index exists for this branch, try to
+    // copy points from an existing completed index on another branch so that
+    // only the diff needs to be re-embedded instead of the entire repo.
+    let donorCommit: string | undefined;
+    let donorCollection: string | undefined;
+    if (!existing) {
+      // Pick the most recently updated completed index as donor (deterministic)
+      const donors = await this.repoIndexDao.getAll({
+        repositoryId,
+        status: RepoIndexStatus.Completed,
+        limit: 1,
+        order: { updatedAt: 'DESC' },
+      });
+      const donor = donors[0];
+      if (donor?.lastIndexedCommit && donor.qdrantCollection) {
+        donorCommit = donor.lastIndexedCommit;
+        donorCollection = donor.qdrantCollection;
+      }
+    }
+
+    // Decide full vs incremental
+    let needsFullReindex =
+      !existing ||
+      existing.status === RepoIndexStatus.Failed ||
+      this.needsFullReindexDueToConfigChange(existing, {
+        embeddingModel,
+        vectorSize,
+        chunkingSignatureHash,
+      });
+
+    // If we have a donor, seed the new collection and switch to incremental
+    if (needsFullReindex && donorCommit && donorCollection) {
+      this.logger.debug('Seeding new branch index from donor', {
+        repositoryId,
+        branch,
+        donorCollection,
+        donorCommit,
+      });
+      await this.repoIndexerService.copyCollectionPoints(
+        donorCollection,
+        collection,
+      );
+      // Treat the donor's commit as the baseline for incremental diff
+      needsFullReindex = false;
+    }
+
+    const lastIndexedCommit = needsFullReindex
+      ? undefined
+      : (existing?.lastIndexedCommit ?? donorCommit ?? undefined);
+
+    // Estimate size to decide inline vs background
+    // For incremental indexing, only estimate the changed files
+    let estimatedTokens: number;
+    if (needsFullReindex) {
+      estimatedTokens = await this.repoIndexerService.estimateTokenCount(
+        repoRoot,
+        execFn,
+      );
+    } else {
+      // Incremental: estimate only changed files
+      estimatedTokens = await this.repoIndexerService.estimateChangedTokenCount(
+        repoRoot,
+        lastIndexedCommit!,
+        currentCommit,
+        execFn,
+      );
+    }
+
+    this.logger.debug(
+      'Estimated tokens calculated, deciding indexing strategy',
+      {
+        repoIndexId: existing?.id,
+        estimatedTokens,
+        threshold: environment.codebaseIndexTokenThreshold,
+        willIndexInline:
+          estimatedTokens <= environment.codebaseIndexTokenThreshold,
+      },
+    );
+
+    // For incremental reindex, carry previous total so the progress bar stays meaningful
+    const previousTotalTokens =
+      !needsFullReindex && existing?.estimatedTokens
+        ? existing.estimatedTokens
+        : undefined;
+
+    // Claim the slot by upserting the entity with InProgress status.
+    // Any concurrent caller that arrives here will see InProgress and bail out.
+    const entity = await this.upsertIndexEntity({
+      existing,
+      repositoryId,
+      repoUrl,
+      branch,
+      status: RepoIndexStatus.InProgress,
+      qdrantCollection: collection,
+      embeddingModel,
+      vectorSize,
+      chunkingSignatureHash,
+      estimatedTokens,
+      previousTotalTokens,
+    });
+
+    return {
+      entity,
+      repoUrl,
+      needsFullReindex,
+      indexParams: {
+        repoId: repoUrl,
+        repoRoot,
+        currentCommit,
+        collection,
+        vectorSize,
+        embeddingModel,
+        lastIndexedCommit,
+      },
+      estimatedTokens,
+    };
   }
 
   async searchCodebase(
@@ -374,18 +504,31 @@ export class RepoIndexService implements OnModuleInit {
       15 * SEARCH_EXPANSION_FACTOR,
     );
 
-    // Search Qdrant
-    const matches = await this.qdrantService.searchPoints(
-      collection,
-      queryEmbeddingResult.embeddings[0],
-      searchLimit,
-      {
-        filter: {
-          must: [{ key: 'repo_id', match: { value: repoId } }],
+    // Search Qdrant — return empty if collection was deleted between indexing and search
+    let matches: Awaited<ReturnType<QdrantService['searchPoints']>>;
+    try {
+      matches = await this.qdrantService.searchPoints(
+        collection,
+        queryEmbeddingResult.embeddings[0],
+        searchLimit,
+        {
+          filter: {
+            must: [{ key: 'repo_id', match: { value: repoId } }],
+          },
+          with_payload: true,
         },
-        with_payload: true,
-      },
-    );
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('not found') || message.includes('does not exist')) {
+        this.logger.warn('Qdrant collection not found during search', {
+          collection,
+          repoId,
+        });
+        return [];
+      }
+      throw error;
+    }
 
     // Parse and filter results
     const results = matches
@@ -403,7 +546,7 @@ export class RepoIndexService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   private async processIndexJob(data: RepoIndexJobData): Promise<void> {
-    const { repoIndexId, repoUrl } = data;
+    const { repoIndexId, repoUrl, branch } = data;
 
     this.logger.debug('Processing repo index job', {
       repoIndexId,
@@ -479,18 +622,25 @@ export class RepoIndexService implements OnModuleInit {
         };
       };
 
-      // Build authenticated clone URL
-      const cloneUrl = await this.buildCloneUrl(repoUrl);
+      // Build authenticated clone URL, scoped to the repository owner
+      const gitRepo = await this.gitRepositoriesDao.getOne({
+        id: entity.repositoryId,
+      });
+      const cloneUrl = await this.buildCloneUrl(repoUrl, gitRepo?.createdBy);
 
       // Clean up any existing repo directory from previous runs
       await execFn({
         cmd: `rm -rf ${shQuote(REPO_CLONE_DIR)}`,
       });
 
-      // Clone repo (default branch) with depth limit to avoid OOM for very large repos
+      // Clone repo with depth limit to avoid OOM for very large repos
       // Depth of 100 is sufficient for most indexing needs while saving memory/time
+      const effectiveBranch = branch ?? entity.branch;
+      const branchFlag = effectiveBranch
+        ? `--branch ${shQuote(effectiveBranch)} `
+        : '';
       const cloneRes = await execFn({
-        cmd: `git clone --depth 100 ${shQuote(cloneUrl)} ${shQuote(REPO_CLONE_DIR)}`,
+        cmd: `git clone --depth 100 ${branchFlag}${shQuote(cloneUrl)} ${shQuote(REPO_CLONE_DIR)}`,
       });
       if (cloneRes.exitCode !== 0) {
         throw new Error(`git clone failed: ${cloneRes.stderr}`);
@@ -500,6 +650,7 @@ export class RepoIndexService implements OnModuleInit {
       const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
         await this.repoIndexerService.calculateIndexMetadata(
           entity.repositoryId,
+          effectiveBranch,
         );
       const currentCommit = await this.repoIndexerService.resolveCurrentCommit(
         REPO_CLONE_DIR,
@@ -507,11 +658,42 @@ export class RepoIndexService implements OnModuleInit {
       );
 
       // Determine if full reindex is needed
-      const needsFullReindex = this.needsFullReindexDueToConfigChange(entity, {
+      let needsFullReindex = this.needsFullReindexDueToConfigChange(entity, {
         embeddingModel,
         vectorSize,
         chunkingSignatureHash,
       });
+
+      // Cross-branch seeding: if this is a new branch (no lastIndexedCommit)
+      // try to copy points from an existing completed index on another branch
+      let donorCommit: string | undefined;
+      if (needsFullReindex && !entity.lastIndexedCommit) {
+        // Pick the most recently updated completed index as donor (deterministic)
+        const donors = await this.repoIndexDao.getAll({
+          repositoryId: entity.repositoryId,
+          status: RepoIndexStatus.Completed,
+          limit: 1,
+          order: { updatedAt: 'DESC' },
+        });
+        const donor = donors[0];
+        if (donor?.lastIndexedCommit && donor.qdrantCollection) {
+          this.logger.debug('Seeding background branch index from donor', {
+            repoIndexId,
+            donorCollection: donor.qdrantCollection,
+            donorCommit: donor.lastIndexedCommit,
+          });
+          await this.repoIndexerService.copyCollectionPoints(
+            donor.qdrantCollection,
+            collection,
+          );
+          donorCommit = donor.lastIndexedCommit;
+          needsFullReindex = false;
+        }
+      }
+
+      const lastIndexedCommit = needsFullReindex
+        ? undefined
+        : (entity.lastIndexedCommit ?? donorCommit ?? undefined);
 
       // Calculate estimated tokens before indexing
       const changedTokens = needsFullReindex
@@ -521,7 +703,7 @@ export class RepoIndexService implements OnModuleInit {
           )
         : await this.repoIndexerService.estimateChangedTokenCount(
             REPO_CLONE_DIR,
-            entity.lastIndexedCommit!,
+            lastIndexedCommit!,
             currentCommit,
             execFn,
           );
@@ -555,9 +737,7 @@ export class RepoIndexService implements OnModuleInit {
         collection,
         vectorSize,
         embeddingModel,
-        lastIndexedCommit: needsFullReindex
-          ? undefined
-          : (entity.lastIndexedCommit ?? undefined),
+        lastIndexedCommit,
       };
 
       // Create a callback to update runtime activity (keeps container alive during indexing)
@@ -732,10 +912,13 @@ export class RepoIndexService implements OnModuleInit {
 
   /**
    * Try to find the real GitRepositoryEntity by parsing owner/repo from a URL.
+   * Scopes the lookup to a specific user when `createdBy` is provided to avoid
+   * cross-user data leakage.
    * Returns null if the URL can't be parsed or no matching record exists.
    */
   private async resolveGitRepository(
     repoUrl: string,
+    createdBy?: string,
   ): Promise<GitRepositoryEntity | null> {
     try {
       const url = new URL(repoUrl);
@@ -744,7 +927,15 @@ export class RepoIndexService implements OnModuleInit {
         const owner = pathParts[0];
         const repo = pathParts[1]?.replace(/\.git$/, '');
         if (owner && repo) {
-          return await this.gitRepositoriesDao.getOne({ owner, repo });
+          const searchParams: {
+            owner: string;
+            repo: string;
+            createdBy?: string;
+          } = { owner, repo };
+          if (createdBy) {
+            searchParams.createdBy = createdBy;
+          }
+          return await this.gitRepositoriesDao.getOne(searchParams);
         }
       }
     } catch {
@@ -753,8 +944,11 @@ export class RepoIndexService implements OnModuleInit {
     return null;
   }
 
-  private async buildCloneUrl(repoUrl: string): Promise<string> {
-    // Try to find credentials for this repo
+  private async buildCloneUrl(
+    repoUrl: string,
+    createdBy?: string,
+  ): Promise<string> {
+    // Try to find credentials for this repo, scoped to the owning user
     try {
       const url = new URL(repoUrl);
       const pathParts = url.pathname.split('/').filter(Boolean);
@@ -762,7 +956,15 @@ export class RepoIndexService implements OnModuleInit {
         const owner = pathParts[0];
         // Strip .git suffix if present
         const repo = pathParts[1]?.replace(/\.git$/, '');
-        const gitRepo = await this.gitRepositoriesDao.getOne({ owner, repo });
+        const searchParams: {
+          owner: string;
+          repo: string;
+          createdBy?: string;
+        } = { owner: owner!, repo: repo! };
+        if (createdBy) {
+          searchParams.createdBy = createdBy;
+        }
+        const gitRepo = await this.gitRepositoriesDao.getOne(searchParams);
         if (gitRepo?.encryptedToken) {
           const token = this.gitRepositoriesService.decryptCredential(
             gitRepo.encryptedToken,
@@ -786,6 +988,7 @@ export class RepoIndexService implements OnModuleInit {
     existing: RepoIndexEntity | null;
     repositoryId: string;
     repoUrl: string;
+    branch: string;
     status: RepoIndexStatus;
     qdrantCollection: string;
     embeddingModel: string;
@@ -823,6 +1026,7 @@ export class RepoIndexService implements OnModuleInit {
     return this.repoIndexDao.create({
       repositoryId: params.repositoryId,
       repoUrl: params.repoUrl,
+      branch: params.branch,
       lastIndexedCommit: null,
       ...payload,
     });
@@ -875,6 +1079,42 @@ export class RepoIndexService implements OnModuleInit {
     );
   }
 
+  /** Maps common language names to file extensions for flexible filtering. */
+  private static readonly LANGUAGE_TO_EXTENSIONS: Record<string, string[]> = {
+    typescript: ['ts', 'tsx'],
+    javascript: ['js', 'jsx', 'mjs', 'cjs'],
+    python: ['py', 'pyw'],
+    rust: ['rs'],
+    golang: ['go'],
+    go: ['go'],
+    java: ['java'],
+    kotlin: ['kt', 'kts'],
+    swift: ['swift'],
+    ruby: ['rb'],
+    csharp: ['cs'],
+    'c#': ['cs'],
+    'c++': ['cpp', 'cc', 'cxx', 'hpp', 'hxx', 'h'],
+    cpp: ['cpp', 'cc', 'cxx', 'hpp', 'hxx', 'h'],
+    c: ['c', 'h'],
+    php: ['php'],
+    scala: ['scala'],
+    shell: ['sh', 'bash', 'zsh'],
+    bash: ['sh', 'bash'],
+    html: ['html', 'htm'],
+    css: ['css', 'scss', 'sass', 'less'],
+    sql: ['sql'],
+    yaml: ['yaml', 'yml'],
+    json: ['json'],
+    markdown: ['md', 'mdx'],
+    vue: ['vue'],
+    svelte: ['svelte'],
+    dart: ['dart'],
+    elixir: ['ex', 'exs'],
+    haskell: ['hs'],
+    lua: ['lua'],
+    zig: ['zig'],
+  };
+
   private matchesLanguage(
     match: SearchCodebaseResult,
     language?: string,
@@ -889,7 +1129,22 @@ export class RepoIndexService implements OnModuleInit {
     }
 
     const extension = match.path.split('.').pop()?.toLowerCase();
+    if (!extension) {
+      return false;
+    }
 
-    return extension === normalized;
+    // First try direct extension match (e.g. "ts", "py")
+    if (extension === normalized) {
+      return true;
+    }
+
+    // Then try language name → extensions mapping (e.g. "typescript" → ["ts", "tsx"])
+    const mappedExtensions =
+      RepoIndexService.LANGUAGE_TO_EXTENSIONS[normalized];
+    if (mappedExtensions) {
+      return mappedExtensions.includes(extension);
+    }
+
+    return false;
   }
 }
