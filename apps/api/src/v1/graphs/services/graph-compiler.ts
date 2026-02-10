@@ -236,10 +236,14 @@ export class GraphCompiler {
           stateManager.attachGraphNode(node.id, compiledNode);
         }
 
-        this.graphRegistry.setStatus(graphId, GraphStatus.Running);
+        if (!metadata.temporary) {
+          this.graphRegistry.setStatus(graphId, GraphStatus.Running);
+        }
 
         return compiledGraph;
       } catch (error) {
+
+
         this.graphRegistry.unregister(graphId);
         throw error;
       }

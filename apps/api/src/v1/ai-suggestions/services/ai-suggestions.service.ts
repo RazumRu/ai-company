@@ -17,7 +17,9 @@ import {
   GraphEdgeSchemaType,
   NodeKind,
 } from '../../graphs/graphs.types';
+import { GraphCompiler } from '../../graphs/services/graph-compiler';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
+
 import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import {
@@ -80,6 +82,7 @@ export class AiSuggestionsService {
     private readonly threadsDao: ThreadsDao,
     private readonly messagesDao: MessagesDao,
     private readonly graphDao: GraphDao,
+    private readonly graphCompiler: GraphCompiler,
     private readonly graphRegistry: GraphRegistry,
     private readonly templateRegistry: TemplateRegistry,
     private readonly authContext: AuthContextService,
@@ -103,86 +106,88 @@ export class AiSuggestionsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    const graph = await this.graphDao.getOne({
-      id: thread.graphId,
-      createdBy: userId,
-    });
-
-    if (!graph) {
-      throw new NotFoundException('GRAPH_NOT_FOUND');
-    }
-
-    const compiledGraph = this.graphRegistry.get(thread.graphId);
-
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to analyze threads',
-      );
-    }
-
-    const messages = await this.messagesDao.getAll({
-      threadId: thread.id,
-      order: { createdAt: 'ASC' },
-    });
-
-    const sanitizedMessages = this.sanitizeMessages(
-      messages.map((m) => ({ message: m.message, from: m.nodeId })),
-      compiledGraph,
+    const { compiledGraph, isTemporary } = await this.acquireCompiledGraph(
+      thread.graphId,
+      userId,
     );
-    const agents = this.buildAgentContexts(compiledGraph);
 
-    const isContinuation = !!payload.threadId;
+    try {
+      const graph = await this.graphDao.getOne({
+        id: thread.graphId,
+        createdBy: userId,
+      });
 
-    const systemPrompt = isContinuation
-      ? undefined
-      : [
-          'You are an expert AI / agent-ops reviewer.',
-          'Analyze the full thread messages and the current agent configuration.',
-          'Focus on tool calls, tool execution errors, workflow inefficiencies, and optimization opportunities.',
-          'Do NOT focus on the specific agent task or problem in the conversation—instead, focus on how tools were used, what failed, and how the workflow can be optimized.',
-          'Identify tool call patterns, error patterns, tool misuse, missing tool features, redundant operations, and workflow bottlenecks.',
-          'Recommend concrete, generalizable improvements to tool usage patterns, tool implementations, error handling, and workflow design.',
-          'Do not overfit suggestions to this specific case; the agent must stay adaptable to any task, domain, or language.',
-          'Keep the response concise, structured, and immediately actionable.',
-          'Note: Some message content may show "[truncated]" markers—this is intentional for analysis purposes only. Do not flag truncation as an issue; focus on the patterns and errors visible in the available content.',
-          'Structure the answer with sections:',
-          '- Tool call issues: bullet list of tool execution errors, failed calls, missing outputs, or incorrect tool usage patterns.',
-          '- Workflow inefficiencies: bullet list of redundant operations, unnecessary tool calls, slow patterns, or suboptimal execution flow.',
-          '- Optimization suggestions: bullet list of improvements to tool configurations, workflow design, error handling, and execution patterns that enhance reliability and performance.',
-        ].join('\n');
+      if (!graph) {
+        throw new NotFoundException('GRAPH_NOT_FOUND');
+      }
 
-    const message = isContinuation
-      ? (payload.userInput || '').trim()
-      : this.buildThreadPrompt({
-          thread,
-          graph,
-          messages: sanitizedMessages,
-          agents,
-          userInput: payload.userInput,
-        });
+      const messages = await this.messagesDao.getAll({
+        threadId: thread.id,
+        order: { createdAt: 'ASC' },
+      });
 
-    const modelName = this.resolveAiSuggestionsModel(payload.model);
-    const supportsResponsesApi =
-      await this.litellmService.supportsResponsesApi(modelName);
-    const data: ResponseData | CompleteData = {
-      model: modelName,
-      systemMessage: systemPrompt,
-      message,
-      reasoning: { effort: 'medium' as const },
-    };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response(data, {
-          previous_response_id: payload.threadId,
-        })
-      : await this.openaiService.complete(data);
+      const sanitizedMessages = this.sanitizeMessages(
+        messages.map((m) => ({ message: m.message, from: m.nodeId })),
+        compiledGraph,
+      );
+      const agents = this.buildAgentContexts(compiledGraph);
 
-    const analysis = String(response.content || '').trim();
+      const isContinuation = !!payload.threadId;
 
-    return {
-      analysis,
-      conversationId: response.conversationId,
-    };
+      const systemPrompt = isContinuation
+        ? undefined
+        : [
+            'You are an expert AI / agent-ops reviewer.',
+            'Analyze the full thread messages and the current agent configuration.',
+            'Focus on tool calls, tool execution errors, workflow inefficiencies, and optimization opportunities.',
+            'Do NOT focus on the specific agent task or problem in the conversation—instead, focus on how tools were used, what failed, and how the workflow can be optimized.',
+            'Identify tool call patterns, error patterns, tool misuse, missing tool features, redundant operations, and workflow bottlenecks.',
+            'Recommend concrete, generalizable improvements to tool usage patterns, tool implementations, error handling, and workflow design.',
+            'Do not overfit suggestions to this specific case; the agent must stay adaptable to any task, domain, or language.',
+            'Keep the response concise, structured, and immediately actionable.',
+            'Note: Some message content may show "[truncated]" markers—this is intentional for analysis purposes only. Do not flag truncation as an issue; focus on the patterns and errors visible in the available content.',
+            'Structure the answer with sections:',
+            '- Tool call issues: bullet list of tool execution errors, failed calls, missing outputs, or incorrect tool usage patterns.',
+            '- Workflow inefficiencies: bullet list of redundant operations, unnecessary tool calls, slow patterns, or suboptimal execution flow.',
+            '- Optimization suggestions: bullet list of improvements to tool configurations, workflow design, error handling, and execution patterns that enhance reliability and performance.',
+          ].join('\n');
+
+      const message = isContinuation
+        ? (payload.userInput || '').trim()
+        : this.buildThreadPrompt({
+            thread,
+            graph,
+            messages: sanitizedMessages,
+            agents,
+            userInput: payload.userInput,
+          });
+
+      const modelName = this.resolveAiSuggestionsModel(payload.model);
+      const supportsResponsesApi =
+        await this.litellmService.supportsResponsesApi(modelName);
+      const data: ResponseData | CompleteData = {
+        model: modelName,
+        systemMessage: systemPrompt,
+        message,
+        reasoning: { effort: 'medium' as const },
+      };
+      const response = supportsResponsesApi
+        ? await this.openaiService.response(data, {
+            previous_response_id: payload.threadId,
+          })
+        : await this.openaiService.complete(data);
+
+      const analysis = String(response.content || '').trim();
+
+      return {
+        analysis,
+        conversationId: response.conversationId,
+      };
+    } finally {
+      if (isTemporary) {
+        await this.graphRegistry.destroy(thread.graphId);
+      }
+    }
   }
 
   async suggest(
@@ -190,9 +195,10 @@ export class AiSuggestionsService {
     nodeId: string,
     payload: SuggestAgentInstructionsDto,
   ): Promise<SuggestAgentInstructionsResponse> {
+    const userId = this.authContext.checkSub();
     const graph = await this.graphDao.getOne({
       id: graphId,
-      createdBy: this.authContext.checkSub(),
+      createdBy: userId,
     });
 
     if (!graph) {
@@ -212,225 +218,251 @@ export class AiSuggestionsService {
       );
     }
 
-    const compiledGraph = this.graphRegistry.get(graphId);
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to suggest instructions',
+    const { compiledGraph, isTemporary } = await this.acquireCompiledGraph(
+      graphId,
+      userId,
+    );
+
+    try {
+      const currentInstructions = this.getCurrentInstructions(node.config);
+      const effectiveInstructions = this.composeInstructions(currentInstructions);
+      const tools = this.getConnectedTools(
+        graphId,
+        nodeId,
+        compiledGraph?.edges || graph.schema.edges,
+        compiledGraph,
       );
+      const mcpInstructions = this.getConnectedMcpInstructions(
+        graphId,
+        nodeId,
+        compiledGraph?.edges || graph.schema.edges,
+        compiledGraph,
+      );
+
+      const threadId = payload.threadId;
+      const isContinuation = !!threadId;
+
+      const systemMessage = isContinuation
+        ? undefined
+        : this.buildInstructionSystemMessage();
+      const message = isContinuation
+        ? (payload.userRequest || '').trim()
+        : this.buildInstructionRequestPrompt(
+            payload.userRequest,
+            effectiveInstructions,
+            tools,
+            mcpInstructions,
+          );
+
+      const modelName = this.resolveAiSuggestionsModel(payload.model);
+      const supportsResponsesApi =
+        await this.litellmService.supportsResponsesApi(modelName);
+      const data: ResponseData | CompleteData = {
+        model: modelName,
+        systemMessage,
+        message,
+        reasoning: { effort: 'medium' as const },
+      };
+      const response = supportsResponsesApi
+        ? await this.openaiService.response(data, {
+            previous_response_id: threadId,
+          })
+        : await this.openaiService.complete(data);
+
+      const updated = String(response.content || '').trim();
+      const baseInstructions = this.stripInstructionExtras(effectiveInstructions);
+      const sanitizedUpdated = updated.length
+        ? this.stripInstructionExtras(updated)
+        : baseInstructions;
+
+      return {
+        instructions: sanitizedUpdated,
+        threadId: response.conversationId,
+      };
+    } finally {
+      if (isTemporary) {
+        await this.graphRegistry.destroy(graphId);
+      }
     }
-
-    const currentInstructions = this.getCurrentInstructions(node.config);
-    const effectiveInstructions = this.composeInstructions(currentInstructions);
-    const tools = this.getConnectedTools(
-      graphId,
-      nodeId,
-      compiledGraph?.edges || graph.schema.edges,
-      compiledGraph,
-    );
-    const mcpInstructions = this.getConnectedMcpInstructions(
-      graphId,
-      nodeId,
-      compiledGraph?.edges || graph.schema.edges,
-      compiledGraph,
-    );
-
-    const threadId = payload.threadId;
-    const isContinuation = !!threadId;
-
-    const systemMessage = isContinuation
-      ? undefined
-      : this.buildInstructionSystemMessage();
-    const message = isContinuation
-      ? (payload.userRequest || '').trim()
-      : this.buildInstructionRequestPrompt(
-          payload.userRequest,
-          effectiveInstructions,
-          tools,
-          mcpInstructions,
-        );
-
-    const modelName = this.resolveAiSuggestionsModel(payload.model);
-    const supportsResponsesApi =
-      await this.litellmService.supportsResponsesApi(modelName);
-    const data: ResponseData | CompleteData = {
-      model: modelName,
-      systemMessage,
-      message,
-      reasoning: { effort: 'medium' as const },
-    };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response(data, {
-          previous_response_id: threadId,
-        })
-      : await this.openaiService.complete(data);
-
-    const updated = String(response.content || '').trim();
-    const baseInstructions = this.stripInstructionExtras(effectiveInstructions);
-    const sanitizedUpdated = updated.length
-      ? this.stripInstructionExtras(updated)
-      : baseInstructions;
-
-    return {
-      instructions: sanitizedUpdated,
-      threadId: response.conversationId,
-    };
   }
 
   async suggestGraphInstructions(
     graphId: string,
     payload: SuggestGraphInstructionsRequest,
   ): Promise<SuggestGraphInstructionsResponse> {
+    const userId = this.authContext.checkSub();
     const graph = await this.graphDao.getOne({
       id: graphId,
-      createdBy: this.authContext.checkSub(),
+      createdBy: userId,
     });
 
     if (!graph) {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    const compiledGraph = this.graphRegistry.get(graphId);
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to suggest instructions',
-      );
-    }
+    const { compiledGraph, isTemporary } = await this.acquireCompiledGraph(
+      graphId,
+      userId,
+    );
 
-    const agents = this.buildAgentContexts(compiledGraph);
-    if (!agents.length) {
-      return { updates: [] };
-    }
+    try {
+      const agents = this.buildAgentContexts(compiledGraph);
+      if (!agents.length) {
+        return { updates: [] };
+      }
 
-    const userRequest = payload.userRequest.trim();
-    const edges = compiledGraph?.edges || graph.schema.edges;
-    const allToolsMap = new Map<string, ConnectedToolInfo>();
-    const allMcpMap = new Map<
-      string,
-      { name: string; instructions?: string }
-    >();
-    const agentConnections = agents.map((agent) => {
-      const tools = this.getConnectedTools(
-        graphId,
-        agent.nodeId,
-        edges,
-        compiledGraph,
-      );
-      tools.forEach((tool) => {
-        if (!allToolsMap.has(tool.name)) {
-          allToolsMap.set(tool.name, tool);
-        }
+      const userRequest = payload.userRequest.trim();
+      const edges = compiledGraph?.edges || graph.schema.edges;
+      const allToolsMap = new Map<string, ConnectedToolInfo>();
+      const allMcpMap = new Map<
+        string,
+        { name: string; instructions?: string }
+      >();
+      const agentConnections = agents.map((agent) => {
+        const tools = this.getConnectedTools(
+          graphId,
+          agent.nodeId,
+          edges,
+          compiledGraph,
+        );
+        tools.forEach((tool) => {
+          if (!allToolsMap.has(tool.name)) {
+            allToolsMap.set(tool.name, tool);
+          }
+        });
+
+        const mcpDetails = this.getConnectedMcpDetails(
+          graphId,
+          agent.nodeId,
+          edges,
+          compiledGraph,
+        );
+        mcpDetails.forEach((mcp) => {
+          if (!allMcpMap.has(mcp.name)) {
+            allMcpMap.set(mcp.name, mcp);
+          }
+        });
+
+        return {
+          nodeId: agent.nodeId,
+          toolNames: tools.map((tool) => tool.name),
+          mcpNames: mcpDetails.map((mcp) => mcp.name),
+        };
       });
 
-      const mcpDetails = this.getConnectedMcpDetails(
-        graphId,
-        agent.nodeId,
-        edges,
-        compiledGraph,
+      const systemMessage = this.buildGraphInstructionSystemMessage();
+      const message = this.buildGraphInstructionRequestPrompt(
+        userRequest,
+        agents,
+        agentConnections,
+        Array.from(allToolsMap.values()),
+        Array.from(allMcpMap.values()),
       );
-      mcpDetails.forEach((mcp) => {
-        if (!allMcpMap.has(mcp.name)) {
-          allMcpMap.set(mcp.name, mcp);
-        }
+
+      const schema = z.object({
+        updates: z.array(
+          z.object({
+            nodeId: z.string().min(1),
+            instructions: z.string().min(1),
+          }),
+        ),
       });
 
-      return {
-        nodeId: agent.nodeId,
-        toolNames: tools.map((tool) => tool.name),
-        mcpNames: mcpDetails.map((mcp) => mcp.name),
+      const modelName = this.resolveAiSuggestionsModel(payload.model);
+      const supportsResponsesApi =
+        await this.litellmService.supportsResponsesApi(modelName);
+      const data: ResponseJsonData | CompleteJsonData = {
+        model: modelName,
+        systemMessage,
+        message,
+        json: true as const,
+        jsonSchema: schema,
+        reasoning: { effort: 'medium' as const },
       };
-    });
+      const response = supportsResponsesApi
+        ? await this.openaiService.response<{
+            updates?: { nodeId?: string; instructions?: string }[];
+          }>(data)
+        : await this.openaiService.complete<{
+            updates?: { nodeId?: string; instructions?: string }[];
+          }>(data);
 
-    const systemMessage = this.buildGraphInstructionSystemMessage();
-    const message = this.buildGraphInstructionRequestPrompt(
-      userRequest,
-      agents,
-      agentConnections,
-      Array.from(allToolsMap.values()),
-      Array.from(allMcpMap.values()),
-    );
-
-    const schema = z.object({
-      updates: z.array(
-        z.object({
-          nodeId: z.string().min(1),
-          instructions: z.string().min(1),
-        }),
-      ),
-    });
-
-    const modelName = this.resolveAiSuggestionsModel(payload.model);
-    const supportsResponsesApi =
-      await this.litellmService.supportsResponsesApi(modelName);
-    const data: ResponseJsonData | CompleteJsonData = {
-      model: modelName,
-      systemMessage,
-      message,
-      json: true as const,
-      jsonSchema: schema,
-      reasoning: { effort: 'medium' as const },
-    };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response<{
-          updates?: { nodeId?: string; instructions?: string }[];
-        }>(data)
-      : await this.openaiService.complete<{
-          updates?: { nodeId?: string; instructions?: string }[];
-        }>(data);
-
-    const parsed = schema.safeParse(response.content);
-    if (!parsed.success) {
-      throw new BadRequestException(
-        'INVALID_GRAPH_INSTRUCTIONS_SUGGESTION',
-        'LLM returned invalid graph instructions output',
-      );
-    }
-
-    const updates: SuggestGraphInstructionsResponse['updates'] = [];
-    const expectedIds = new Set(agents.map((agent) => agent.nodeId));
-    const suggestionsById = new Map(
-      parsed.data.updates.map((entry) => [entry.nodeId, entry.instructions]),
-    );
-
-    for (const entry of suggestionsById.keys()) {
-      if (!expectedIds.has(entry)) {
+      const parsed = schema.safeParse(response.content);
+      if (!parsed.success) {
         throw new BadRequestException(
           'INVALID_GRAPH_INSTRUCTIONS_SUGGESTION',
-          'LLM response included unexpected agent ids',
-        );
-      }
-    }
-
-    for (const agent of agents) {
-      const currentInstructions = agent.instructions.trim();
-      const suggested = suggestionsById.get(agent.nodeId);
-
-      if (!currentInstructions) {
-        throw new BadRequestException(
-          'INVALID_AGENT_CONFIG',
-          `Agent ${agent.nodeId} instructions are not configured`,
+          'LLM returned invalid graph instructions output',
         );
       }
 
-      if (!suggested) {
-        continue;
+      const updates: SuggestGraphInstructionsResponse['updates'] = [];
+      const expectedIds = new Set(agents.map((agent) => agent.nodeId));
+      const suggestionsById = new Map(
+        parsed.data.updates.map((entry) => [entry.nodeId, entry.instructions]),
+      );
+
+      for (const entry of suggestionsById.keys()) {
+        if (!expectedIds.has(entry)) {
+          throw new BadRequestException(
+            'INVALID_GRAPH_INSTRUCTIONS_SUGGESTION',
+            'LLM response included unexpected agent ids',
+          );
+        }
       }
 
-      const nextInstructions = this.stripInstructionExtras(suggested);
-      const baseInstructions = this.stripInstructionExtras(currentInstructions);
+      for (const agent of agents) {
+        const currentInstructions = agent.instructions.trim();
+        const suggested = suggestionsById.get(agent.nodeId);
 
-      if (this.isInstructionsUpdated(baseInstructions, nextInstructions)) {
-        updates.push({
-          nodeId: agent.nodeId,
-          ...(agent.name ? { name: agent.name } : {}),
-          instructions: nextInstructions,
-        });
+        if (!currentInstructions) {
+          throw new BadRequestException(
+            'INVALID_AGENT_CONFIG',
+            `Agent ${agent.nodeId} instructions are not configured`,
+          );
+        }
+
+        if (!suggested) {
+          continue;
+        }
+
+        const nextInstructions = this.stripInstructionExtras(suggested);
+        const baseInstructions = this.stripInstructionExtras(currentInstructions);
+
+        if (this.isInstructionsUpdated(baseInstructions, nextInstructions)) {
+          updates.push({
+            nodeId: agent.nodeId,
+            ...(agent.name ? { name: agent.name } : {}),
+            instructions: nextInstructions,
+          });
+        }
+      }
+
+      return { updates };
+    } finally {
+      if (isTemporary) {
+        await this.graphRegistry.destroy(graphId);
       }
     }
-
-    return { updates };
   }
+
+  private async acquireCompiledGraph(
+    graphId: string,
+    userId: string,
+  ): Promise<{ compiledGraph: CompiledGraph; isTemporary: boolean }> {
+    const compiledGraph = this.graphRegistry.get(graphId);
+    if (compiledGraph) {
+      return { compiledGraph, isTemporary: false };
+    }
+
+    const graphEntity = await this.graphDao.getOne({ id: graphId, createdBy: userId });
+    if (!graphEntity) {
+      throw new NotFoundException('GRAPH_NOT_FOUND');
+    }
+
+    const tempGraph = await this.graphCompiler.compile(graphEntity, { temporary: true });
+    return { compiledGraph: tempGraph, isTemporary: true };
+  }
+
 
   async suggestKnowledgeContent(
     payload: KnowledgeContentSuggestionRequest,

@@ -70,6 +70,8 @@ export class NotificationsService implements OnModuleDestroy {
     return this.queue.add('process-notification', event);
   }
 
+
+
   subscribe(cb: (event: Notification) => Promise<void>) {
     this.subscribers.push(cb);
   }

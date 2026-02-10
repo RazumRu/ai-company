@@ -342,6 +342,7 @@ export class GraphsService {
         graphId: graph.id,
         name: graph.name,
         version: graph.version,
+        temporary: false, // Ensure it's not temporary when running normally
       });
 
       // Graph is already registered by compiler, no need to register again
@@ -351,6 +352,7 @@ export class GraphsService {
         status: GraphStatus.Running,
         error: null,
       });
+
 
       if (!updated) {
         // If database update fails, cleanup the registry
