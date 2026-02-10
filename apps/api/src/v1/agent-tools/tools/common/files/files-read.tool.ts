@@ -68,7 +68,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges for large files. For large files (>300 lines), ALWAYS use fromLineNumber/toLineNumber to read only the relevant section — never fetch full content of large files. All file paths must be absolute. Always read a file before editing it. This is a read-only tool — to modify files use files_apply_changes, to create new files use files_write_file.';
+    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges. ⚠️ For large files (>300 lines), you MUST use fromLineNumber/toLineNumber to read only the relevant section — NEVER fetch full content of files with more than 300 lines. Use total_lines from codebase_search or lineCount from previous reads to check file size before reading. All file paths must be absolute. Always read a file before editing it. This is a read-only tool — to modify files use files_apply_changes, to create new files use files_write_file.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,
@@ -98,13 +98,19 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
 
       ### Path Requirements
       - ALL paths MUST be absolute
-      - Use absolute paths from \`codebase_search\` output or \`files_find_paths\` (codebase_search paths are already absolute — no need to call files_find_paths first)
+      - Use absolute paths from \`codebase_search\` output (already absolute — no need to call \`files_find_paths\` first)
 
-      ### Reading Strategy
+      ### ⚠️ CRITICAL — Reading Strategy (NEVER skip this)
+      Before reading any file, you MUST know its size. Use \`total_lines\` from \`codebase_search\` results or \`lineCount\` from previous reads.
+
       - **Batch multiple files into ONE call** — reading 5 files in one call is much better than 5 separate calls
-      - **Small files (≤300 lines)**: read the entire file
-      - **Large files (>300 lines)**: ALWAYS use \`fromLineNumber\`/\`toLineNumber\` to read only the section you need. Do NOT fetch the full content of large files — it wastes context window and slows down analysis. Use \`total_lines\` from \`codebase_search\` results or \`lineCount\` from previous reads to gauge file size.
+      - **Small files (≤300 lines)**: read the entire file (no line range needed)
+      - **Large files (>300 lines)**: you MUST use \`fromLineNumber\`/\`toLineNumber\`. NEVER omit line ranges for files over 300 lines. Use \`start_line\`/\`end_line\` from \`codebase_search\` ± 30 lines of padding to target the relevant section.
+      - **If you don't know the file size**: use \`codebase_search\` first to get \`total_lines\`, or read a small range (e.g., lines 1-100) to check the file size via \`lineCount\` in the response.
       - Never re-read a file you already have in context
+
+      **WRONG**: Reading a 1000-line file without line ranges → wastes context, degrades analysis
+      **RIGHT**: Reading lines 150-250 of a 1000-line file based on codebase_search results
 
       ### Output Format
       Each line is prefixed with its line number and a tab: \`42\\tconst x = 1;\`

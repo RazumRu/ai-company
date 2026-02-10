@@ -82,7 +82,7 @@ type CodebaseSearchOutput = {
 export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaType> {
   public name = 'codebase_search';
   public description =
-    'Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, total line counts, and code snippets ranked by relevance. Use total_lines to decide whether to read the full file or only specific line ranges. This should be the first tool for codebase discovery or "where is X?" questions. The repository must be cloned first with gh_clone.';
+    'MANDATORY FIRST STEP for any codebase exploration. Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, total_lines (file size), and code snippets ranked by relevance. ALWAYS use this tool immediately after gh_clone — do NOT start with files_directory_tree or files_find_paths. Check total_lines in results: read small files (≤300 lines) entirely, but for large files (>300 lines) ALWAYS use fromLineNumber/toLineNumber in files_read. The repository must be cloned first with gh_clone.';
 
   constructor(
     private readonly repoIndexService: RepoIndexService,
@@ -96,6 +96,9 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     return dedent`
+      ### ⚠️ MANDATORY FIRST STEP
+      This tool MUST be your very first action after cloning a repository. Do NOT use \`files_directory_tree\` or \`files_find_paths\` before \`codebase_search\`. Those tools produce noisy, unfocused output. \`codebase_search\` returns exactly the code you need with precise file paths and line numbers.
+
       ### Overview
       Semantic codebase search that indexes a git repository on demand.
       Indexing is triggered automatically on the first call. For large repositories
@@ -108,9 +111,13 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       - \`gitRepoDirectory\` must point to the repository root (containing .git folder).
 
       ### When to Use
-      - FIRST STEP for any codebase discovery or "where is X?" question
-      - Large repos where reading many files is slow
-      - Locating relevant code chunks by description
+      - ALWAYS your first action after \`gh_clone\` — no exceptions
+      - Any codebase discovery or "where is X?" question
+      - Understanding architecture, finding implementations, locating definitions
+      - Use multiple queries to explore different aspects (e.g., "authentication middleware", "database models", "API routes")
+
+      ### When NOT to Use
+      - You already have the file paths and line numbers you need from a previous search
 
       ### Requirements
       - Must be inside a git repository
@@ -118,21 +125,23 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
       ### Output Fields
       Each result contains:
-      - \`path\` — absolute file path
+      - \`path\` — absolute file path (use directly with \`files_read\`, no need to verify)
       - \`start_line\` / \`end_line\` — line range of the matched chunk
-      - \`total_lines\` — total number of lines in the file (use this to decide read strategy)
+      - \`total_lines\` — total number of lines in the file (**ALWAYS check this before reading**)
       - \`text\` — code snippet
       - \`score\` — relevance score (0-1)
 
-      ### Reading Strategy Based on total_lines
+      ### ⚠️ CRITICAL — Reading Strategy Based on total_lines
+      You MUST check \`total_lines\` before calling \`files_read\`:
       - **Small files (≤300 lines)**: read the entire file with \`files_read\`
-      - **Large files (>300 lines)**: read ONLY the relevant section using \`fromLineNumber\`/\`toLineNumber\` in \`files_read\`. Use \`start_line\` and \`end_line\` from the search result to target the right range. Add some padding (e.g., ±30 lines) for surrounding context. Do NOT fetch the full content of large files — it wastes context and slows down analysis.
+      - **Large files (>300 lines)**: you MUST use \`fromLineNumber\`/\`toLineNumber\` in \`files_read\`. Set the range to \`start_line - 30\` through \`end_line + 30\` from the search result. NEVER fetch the full content of files with more than 300 lines.
 
       ### Recommended Flow
       1) Clone repo with \`gh_clone\` (if not already cloned).
-      2) Run \`codebase_search\` with a semantic query using the cloned path.
-      3) Check \`total_lines\` in results. For small files, read entirely with \`files_read\`. For large files, use line ranges based on \`start_line\`/\`end_line\`.
-      4) Use \`files_search_text\` for exact usages or strings.
+      2) Run \`codebase_search\` with semantic queries — this is ALWAYS your first exploration step.
+      3) Check \`total_lines\` in results. For small files (≤300), read entirely. For large files (>300), use line ranges from \`start_line\`/\`end_line\`.
+      4) Use additional \`codebase_search\` queries to explore other aspects of the codebase.
+      5) Use \`files_search_text\` for exact pattern matching (function names, variable references).
 
       ### Example
       \`\`\`json

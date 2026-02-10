@@ -72,7 +72,7 @@ export type FilesFindPathsToolOutput = {
 export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaType> {
   public name = 'files_find_paths';
   public description =
-    'Find file paths matching a glob pattern and return their absolute paths without reading file content. Useful for discovering project structure, locating files by extension or name, and listing directory contents. Returns up to maxResults paths (default 200). Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Set includeSubdirectories=false to search only the specified directory without recursion.';
+    'Find file paths matching a glob pattern and return their absolute paths without reading file content. ⚠️ Do NOT use this for code discovery — use codebase_search first, which finds relevant code by meaning and returns paths with line numbers. Only use this tool when you need to list files by name/extension pattern (e.g., "*.config.ts", "*migration*"). Returns up to maxResults paths (default 200). Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Set includeSubdirectories=false to search only the specified directory without recursion.';
 
   protected override generateTitle(
     args: FilesFindPathsToolSchemaType,
@@ -90,6 +90,9 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       ### Overview
       Find file paths by glob pattern. Returns absolute paths without reading file content. Use this to discover project structure, locate files by extension or name, and list directory contents. Returns up to \`maxResults\` paths (default 200).
 
+      ### ⚠️ Important — Use codebase_search First
+      Do NOT use this tool for code discovery or as your first exploration step. Use \`codebase_search\` first — it finds relevant code semantically and returns absolute file paths, line ranges, and code snippets. This tool is only for listing files by name/extension pattern when you need to browse the filesystem.
+
       ### When to Use
       - Locating files by extension: \`"*.ts"\`, \`"*.json"\`, \`"*.yaml"\`
       - Finding files by name pattern: \`"*controller*"\`, \`"*migration*"\`
@@ -97,6 +100,9 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       - Checking if a file exists before reading or editing
 
       ### When NOT to Use
+      - ❌ As your first step to explore a codebase → use \`codebase_search\` instead
+      - ❌ Finding where specific code is implemented → use \`codebase_search\`
+      - ❌ Resolving or verifying paths already returned by \`codebase_search\` (they are already absolute)
       - Searching file contents → use \`files_search_text\` or \`codebase_search\`
       - Reading file content → use \`files_read\`
       - Viewing directory tree → use \`files_directory_tree\` (visual tree format)

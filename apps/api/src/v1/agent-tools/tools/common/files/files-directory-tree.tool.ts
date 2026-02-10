@@ -90,7 +90,7 @@ function renderTree(node: TreeNode, prefix = ''): string[] {
 export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeToolSchemaType> {
   public name = 'files_directory_tree';
   public description =
-    'Generate a visual tree representation of a directory structure showing files and subdirectories. Start with a shallow maxDepth (3-5) for large repositories. Common build/cache directories are excluded by default. Does not return file contents — use files_read for that.';
+    'Generate a visual tree representation of a directory structure showing files and subdirectories. ⚠️ Do NOT use this as your first exploration step — use codebase_search first for code discovery, which is faster and more precise. Only use this tool when you need a structural overview of the directory layout (e.g., understanding folder organization). Start with a shallow maxDepth (3-5) for large repositories. Common build/cache directories are excluded by default. Does not return file contents — use files_read for that.';
 
   protected override generateTitle(
     args: FilesDirectoryTreeToolSchemaType,
@@ -108,13 +108,17 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
       ### Overview
       Visual tree view of a directory structure, similar to the Unix \`tree\` command. Outputs an indented text representation of files and subdirectories.
 
+      ### ⚠️ Important — Use codebase_search First
+      Do NOT use this tool as your first step when exploring a codebase. Use \`codebase_search\` first — it returns the exact files and code you need, with line numbers and file sizes. This tool only shows directory structure without any code content.
+
       ### When to Use
-      - Orienting yourself in a new or unfamiliar repository
-      - Understanding the project layout before making changes
+      - Understanding the project folder layout AFTER you have already used \`codebase_search\`
       - Verifying directory structure after scaffolding or refactoring
-      - Finding where files are organized (e.g., "where are the tests?")
+      - Getting a high-level overview of how folders are organized
 
       ### When NOT to Use
+      - ❌ As your first exploration step after cloning → use \`codebase_search\` instead
+      - ❌ Finding specific code or implementations → use \`codebase_search\`
       - Reading file contents → use \`files_read\`
       - Searching for text in files → use \`files_search_text\`
       - Finding files by name → use \`files_find_paths\`

@@ -376,7 +376,7 @@ describe('FilesToolGroup', () => {
 
       expect(result).toBeDefined();
       expect(result).toContain('/runtime-workspace');
-      expect(result).toContain('FIRST STEP');
+      expect(result).toContain('MANDATORY WORKFLOW');
       expect(result).toContain('files_apply_changes');
       expect(result).toContain('codebase_search');
       expect(result).toContain('multi-edit');
