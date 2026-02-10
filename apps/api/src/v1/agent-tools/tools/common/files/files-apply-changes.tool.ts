@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
@@ -63,12 +62,6 @@ const FilesApplyChangesToolSchemaBase = z.object({
     .optional()
     .describe(
       'Insert newText after this line number (0 = beginning of file). When used, oldText must be empty string.',
-    ),
-  expectedHash: z
-    .string()
-    .optional()
-    .describe(
-      'Content hash from files_read output. If provided and file has changed since read, edit is rejected with an error.',
     ),
 });
 
@@ -164,13 +157,16 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       - Lines shorter than 8 characters require exact trimmed match (avoids false positives on \`}\`, \`return;\`, etc.)
       - Fuzzy matching is skipped for oldText blocks > 50 lines (performance safeguard)
 
-      ### Stale-Read Protection
-      Pass \`expectedHash\` (returned by \`files_read\`) to detect if the file changed since your last read. If the hash doesn't match, the edit is rejected — re-read the file before retrying.
-
       ### Insertion Mode
       Use \`insertAfterLine\` with empty \`oldText\` ("") to insert text at a specific position without replacing anything. Line 0 = beginning of file.
 
+      ### Critical Rules
+      - **NEVER pass the same text for oldText and newText** — the tool rejects identical values. Always verify your newText is DIFFERENT from oldText before calling.
+      - **Prefer multi-edit mode** for multiple changes to the same file — use the \`edits\` array to apply all changes atomically in one call instead of making sequential single-edit calls.
+      - After editing a file, the content changes. If you need to make another edit, either use the \`postEditContext\` from the response to copy accurate \`oldText\`, or call \`files_read\` again.
+
       ### Error Recovery
+      - "oldText and newText are identical": you copied the same text into both fields — re-check what you actually want to change and provide DIFFERENT newText
       - "Found N matches": add more surrounding context lines or set \`replaceAll: true\`
       - "Could not find match": re-read the file with \`files_read\` and copy exact text from output
       - Use \`insertAfterLine\` with empty \`oldText\` for pure insertions (avoids matching entirely)
@@ -834,20 +830,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return { content: res.stdout };
   }
 
-  private validateExpectedHash(
-    fileContent: string,
-    expectedHash: string,
-  ): string | null {
-    const actualHash = createHash('sha256')
-      .update(fileContent)
-      .digest('hex')
-      .slice(0, 8);
-    if (actualHash !== expectedHash) {
-      return `File has changed since last read (expected hash: ${expectedHash}, actual: ${actualHash}). Re-read the file with files_read before editing.`;
-    }
-    return null;
-  }
-
   public async invoke(
     args: FilesApplyChangesToolSchemaType,
     config: FilesBaseToolConfig,
@@ -879,7 +861,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         output: {
           success: false,
           error:
-            'oldText and newText are identical - no changes would be made. This is a no-op.',
+            'oldText and newText are identical — no changes would be made. You must provide DIFFERENT text in newText. Re-read the file with files_read, identify the exact text you want to change, then call files_apply_changes with the correct oldText (current code) and newText (desired code). Do NOT copy the same text into both fields.',
         },
         messageMetadata,
       };
@@ -910,19 +892,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     const fileContent = readRes.content;
-
-    if (args.expectedHash) {
-      const hashError = this.validateExpectedHash(
-        fileContent,
-        args.expectedHash,
-      );
-      if (hashError) {
-        return {
-          output: { success: false, error: hashError },
-          messageMetadata,
-        };
-      }
-    }
 
     const { matches, errors, matchStage } = this.findMatchesProgressive(
       fileContent,
@@ -1020,19 +989,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       };
     }
 
-    if (args.expectedHash) {
-      const hashError = this.validateExpectedHash(
-        readRes.content,
-        args.expectedHash,
-      );
-      if (hashError) {
-        return {
-          output: { success: false, error: hashError },
-          messageMetadata,
-        };
-      }
-    }
-
     const lines = this.splitLines(readRes.content);
     const insertLine = args.insertAfterLine!;
 
@@ -1121,7 +1077,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         return {
           output: {
             success: false,
-            error: `Edit ${i}: oldText and newText are identical - no changes would be made.`,
+            error: `Edit ${i}: oldText and newText are identical — no changes would be made. Provide DIFFERENT text in newText. Remove this no-op edit from the edits array and retry with only the edits that actually change code.`,
             failedEditIndex: i,
           },
           messageMetadata,
@@ -1138,19 +1094,6 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     const originalContent = readRes.content;
-
-    if (args.expectedHash) {
-      const hashError = this.validateExpectedHash(
-        originalContent,
-        args.expectedHash,
-      );
-      if (hashError) {
-        return {
-          output: { success: false, error: hashError },
-          messageMetadata,
-        };
-      }
-    }
 
     // Apply each edit sequentially against evolving content
     let currentContent = originalContent;

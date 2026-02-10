@@ -181,7 +181,6 @@ describe('FilesReadTool', () => {
       expect(result.files?.[0]?.content).toContain('3\tline 3');
       expect(result.files?.[0]?.lineCount).toBe(4); // includes trailing empty line after final \n
       expect(result.files?.[0]?.startLine).toBe(1);
-      expect(result.files?.[0]?.contentHash).toBeDefined();
     });
 
     it('should read multiple files in one call', async () => {

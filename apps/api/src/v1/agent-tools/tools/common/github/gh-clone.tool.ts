@@ -55,7 +55,7 @@ type GhCloneToolOutput = {
 export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   public name = 'gh_clone';
   public description =
-    'Clone a GitHub repository into the runtime container using authenticated HTTPS. Returns the absolute path where the repository was cloned, which should be used for all subsequent file and git operations. Additionally searches the repository root for agent instruction files (like AGENTS.md, CLAUDE.md, .cursorrules, .aidigestignore) and returns their content if found, prioritizing the default configured file. Supports optional branch/tag checkout, shallow cloning (depth), and custom clone destinations (workdir). If the repository is already cloned, navigate to the existing path instead of re-cloning.';
+    'Clone a GitHub repository into the runtime container using authenticated HTTPS. Returns the absolute path where the repository was cloned, which should be used for all subsequent file and git operations. Additionally searches the repository root for agent instruction files (like AGENTS.md, CLAUDE.md, .cursorrules, .aidigestignore) and returns their content if found, prioritizing the default configured file. You MUST carefully read and strictly follow the rules, conventions, and workflow described in the returned agent instructions file — it defines how to work with the codebase (coding style, commit conventions, testing requirements, forbidden patterns, etc.). Supports optional branch/tag checkout, shallow cloning (depth), and custom clone destinations (workdir). If the repository is already cloned, navigate to the existing path instead of re-cloning.';
 
   constructor(
     private readonly gitRepositoriesDao: GitRepositoriesDao,
@@ -88,7 +88,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       3. .cursorrules
       4. .aidigestignore
 
-      If found, the content is returned in the \`agentInstructions\` field. These files contain repository-specific guidance, coding conventions, and project context that should be followed when working with the codebase.
+      If found, the content is returned in the \`agentInstructions\` field. These files contain repository-specific guidance, coding conventions, and project context. **You MUST strictly follow all rules, conventions, and workflows described in the returned instructions file.** Treat the instructions as binding requirements for how you interact with the codebase — including coding style, commit conventions, branch naming, testing requirements, forbidden patterns, required commands, and any other project-specific workflow rules. Do not deviate from them unless the user explicitly overrides a specific rule.
 
       ### When to Use
       Setting up new project to work on, getting repo code, starting work on specific branch.
@@ -113,7 +113,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       \`\`\`
 
       ### After Cloning
-      Use returned path for all operations. If agent instructions are returned, review them to understand repository conventions and guidelines. Run files_find_paths to explore structure. Use shell for git commands.
+      Use returned path for all operations. **If agent instructions are returned, you MUST read them carefully and strictly follow all rules, conventions, and workflows they define for the entire duration of your work on this repository.** These instructions are authoritative — they dictate coding style, commit conventions, testing requirements, forbidden patterns, required commands, and any other project-specific rules. Run files_find_paths to explore structure. Use shell for git commands.
     `;
   }
 

@@ -719,9 +719,9 @@ describe('Files tools integration', () => {
     },
   );
 
-  describe('files_read: line numbers and contentHash', () => {
+  describe('files_read: line numbers', () => {
     it(
-      'returns numbered lines in NNN\\t format with startLine and contentHash',
+      'returns numbered lines in NNN\\t format with startLine',
       { timeout: INT_TEST_TIMEOUT },
       async () => {
         const filePath = `${WORKSPACE_DIR}/line-numbers-test.ts`;
@@ -746,9 +746,6 @@ describe('Files tools integration', () => {
         expect(file!.content).toContain('2\tsecond');
         expect(file!.content).toContain('3\tthird');
         expect(file!.startLine).toBe(1);
-        expect(file!.contentHash).toBeDefined();
-        expect(typeof file!.contentHash).toBe('string');
-        expect(file!.contentHash!.length).toBe(8);
       },
     );
 
@@ -902,9 +899,9 @@ describe('Files tools integration', () => {
     );
   });
 
-  describe('files_apply_changes: expectedHash stale-read detection', () => {
+  describe('files_apply_changes: basic edit after read', () => {
     it(
-      'accepts edit when hash matches current file',
+      'applies edit after reading file',
       { timeout: INT_TEST_TIMEOUT },
       async () => {
         const filePath = `${WORKSPACE_DIR}/hash-match.ts`;
@@ -916,59 +913,17 @@ describe('Files tools integration', () => {
           RUNNABLE_CONFIG,
         );
 
-        // Read to get the hash
-        const { output: readResult } = await filesReadTool.invoke(
-          { filesToRead: [{ filePath }] },
-          { runtimeProvider: runtimeThreadProvider },
-          RUNNABLE_CONFIG,
-        );
-
-        const hash = readResult.files?.[0]?.contentHash;
-        expect(hash).toBeDefined();
-
-        // Edit with correct hash
         const { output: editResult } = await filesApplyChangesTool.invoke(
           {
             filePath,
             oldText: 'const x = 1;',
             newText: 'const x = 2;',
-            expectedHash: hash,
           },
           { runtimeProvider: runtimeThreadProvider },
           RUNNABLE_CONFIG,
         );
 
         expect(editResult.success).toBe(true);
-      },
-    );
-
-    it(
-      'rejects edit when hash does not match (stale read)',
-      { timeout: INT_TEST_TIMEOUT },
-      async () => {
-        const filePath = `${WORKSPACE_DIR}/hash-stale.ts`;
-        const content = 'const y = 1;';
-
-        await filesWriteFileTool.invoke(
-          { filePath, fileContent: content },
-          { runtimeProvider: runtimeThreadProvider },
-          RUNNABLE_CONFIG,
-        );
-
-        // Try to edit with a wrong hash
-        const { output: editResult } = await filesApplyChangesTool.invoke(
-          {
-            filePath,
-            oldText: 'const y = 1;',
-            newText: 'const y = 2;',
-            expectedHash: 'deadbeef',
-          },
-          { runtimeProvider: runtimeThreadProvider },
-          RUNNABLE_CONFIG,
-        );
-
-        expect(editResult.success).toBe(false);
-        expect(editResult.error).toContain('File has changed since last read');
       },
     );
   });
@@ -1344,8 +1299,6 @@ describe('Files tools integration', () => {
           const file = readResult.files![i]!;
           expect(file.error).toBeUndefined();
           expect(file.filePath).toBe(`${WORKSPACE_DIR}/${files[i]!.name}`);
-          expect(file.contentHash).toBeDefined();
-          expect(file.contentHash!.length).toBe(8);
           expect(file.fileSizeBytes).toBeGreaterThan(0);
           const rawContent = stripLineNumbers(file.content || '');
           expect(rawContent).toBe(files[i]!.content);

@@ -53,7 +53,9 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
           '',
           'Edit workflow: files_read (get current content) -> files_apply_changes (single or multi-edit)',
           '- files_apply_changes: precise oldText/newText replacement. Copy oldText verbatim from files_read output.',
-          '- For multi-region edits, use the edits array: [{oldText, newText}, ...] to apply multiple changes atomically.',
+          '- For multi-region edits, use the edits array: [{oldText, newText}, ...] to apply ALL changes atomically in ONE call.',
+          '- NEVER pass the same text for oldText and newText — the edit must change something.',
+          '- After editing a file, use postEditContext from the response or re-read with files_read before making another edit to the same file.',
           '- files_write_file: ONLY for creating new files.',
         ]
       : [

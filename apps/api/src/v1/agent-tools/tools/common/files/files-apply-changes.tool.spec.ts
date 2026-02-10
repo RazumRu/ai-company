@@ -766,17 +766,6 @@ describe('FilesApplyChangesTool', () => {
       expect(parsed.success).toBe(true);
     });
 
-    it('should accept expectedHash parameter', () => {
-      const parsed = FilesApplyChangesToolSchema.safeParse({
-        filePath: '/test/file.ts',
-        oldText: 'old',
-        newText: 'new',
-        expectedHash: 'abcd1234',
-      });
-
-      expect(parsed.success).toBe(true);
-    });
-
     it('should reject negative insertAfterLine', () => {
       const parsed = FilesApplyChangesToolSchema.safeParse({
         filePath: '/test/file.ts',
@@ -860,16 +849,6 @@ describe('FilesApplyChangesTool', () => {
         oldText: 'ignored',
         newText: 'ignored',
         edits: [{ oldText: 'old', newText: 'new' }],
-      });
-
-      expect(parsed.success).toBe(true);
-    });
-
-    it('should accept edits array with expectedHash', () => {
-      const parsed = FilesApplyChangesToolSchema.safeParse({
-        filePath: '/test/file.ts',
-        edits: [{ oldText: 'old', newText: 'new' }],
-        expectedHash: 'abcd1234',
       });
 
       expect(parsed.success).toBe(true);
@@ -982,22 +961,21 @@ describe('FilesApplyChangesTool', () => {
         expect(output.error).toContain('Could not find match');
       });
 
-      it('should reject stale expectedHash', async () => {
+      it('should succeed with simple edit', async () => {
         mockReadFile('line1\nline2\nline3');
+        mockWriteFile();
 
         const { output } = await tool.invoke(
           {
             filePath: '/test/file.ts',
             oldText: 'line2',
             newText: 'modified',
-            expectedHash: 'badhash1',
           },
           mockConfig,
           mockCfg,
         );
 
-        expect(output.success).toBe(false);
-        expect(output.error).toContain('File has changed since last read');
+        expect(output.success).toBe(true);
       });
 
       it('should return error when write fails', async () => {
@@ -1153,8 +1131,9 @@ describe('FilesApplyChangesTool', () => {
         expect(output.error).toContain('beyond the file length');
       });
 
-      it('should reject stale expectedHash on insert', async () => {
+      it('should succeed with simple insert', async () => {
         mockReadFile('line1\nline2');
+        mockWriteFile();
 
         const { output } = await tool.invoke(
           {
@@ -1162,14 +1141,12 @@ describe('FilesApplyChangesTool', () => {
             oldText: '',
             newText: 'inserted',
             insertAfterLine: 1,
-            expectedHash: 'badhash1',
           },
           mockConfig,
           mockCfg,
         );
 
-        expect(output.success).toBe(false);
-        expect(output.error).toContain('File has changed since last read');
+        expect(output.success).toBe(true);
       });
 
       it('should return error when file read fails on insert', async () => {
@@ -1290,21 +1267,20 @@ describe('FilesApplyChangesTool', () => {
         expect(output.appliedEdits).toBe(2);
       });
 
-      it('should reject stale expectedHash in multi-edit mode', async () => {
+      it('should succeed with simple multi-edit', async () => {
         mockReadFile('aaa\nbbb');
+        mockWriteFile();
 
         const { output } = await tool.invoke(
           {
             filePath: '/test/file.ts',
             edits: [{ oldText: 'aaa', newText: 'AAA' }],
-            expectedHash: 'badhash1',
           },
           mockConfig,
           mockCfg,
         );
 
-        expect(output.success).toBe(false);
-        expect(output.error).toContain('File has changed since last read');
+        expect(output.success).toBe(true);
       });
 
       it('should report matchStages for non-exact matches', async () => {

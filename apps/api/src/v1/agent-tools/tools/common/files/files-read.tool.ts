@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
@@ -57,7 +57,6 @@ type FilesReadToolFileOutput = {
   lineCount?: number;
   fileSizeBytes?: number;
   startLine?: number;
-  contentHash?: string;
 };
 
 type FilesReadToolOutput = {
@@ -110,9 +109,6 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       ### Output Format
       Each line is prefixed with its line number and a tab: \`42\\tconst x = 1;\`
       Line numbers are for reference only. Do NOT include the \`NNN\\t\` prefix when copying text to \`oldText\` in edit tools.
-
-      ### Content Hash
-      Each file response includes a \`contentHash\` — pass it to \`files_apply_changes\` as \`expectedHash\` to detect stale reads (file changed since you read it).
 
       ### Example — batch read:
       \`\`\`json
@@ -307,17 +303,12 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       const content = lines
         .map((line, i) => `${i + startLineOffset}\t${line}`)
         .join('\n');
-      const contentHash = createHash('sha256')
-        .update(rawContent)
-        .digest('hex')
-        .slice(0, 8);
       files.push({
         filePath,
         content,
         lineCount,
         fileSizeBytes,
         startLine: startLineOffset,
-        contentHash,
       });
     }
 
