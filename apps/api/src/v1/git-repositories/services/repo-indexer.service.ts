@@ -605,6 +605,16 @@ export class RepoIndexerService {
     onProgressUpdate?: (tokenCount: number) => Promise<void>,
   ): Promise<void> {
     const execFn = RepoIndexerService.withTimeout(rawExecFn);
+
+    // Ensure lastIndexedCommit is reachable (shallow clones may not include it)
+    if (params.lastIndexedCommit) {
+      await this.ensureCommitReachable(
+        params.repoRoot,
+        params.lastIndexedCommit,
+        execFn,
+      );
+    }
+
     const diffPaths = params.lastIndexedCommit
       ? await this.listChangedFiles(
           params.repoRoot,
@@ -616,11 +626,14 @@ export class RepoIndexerService {
 
     if (!diffPaths) {
       this.logger.warn(
-        'Incremental diff failed (likely shallow clone missing commit), falling back to full reindex',
+        'Incremental diff failed, falling back to full reindex',
         {
           repoId: params.repoId,
           lastIndexedCommit: params.lastIndexedCommit,
           currentCommit: params.currentCommit,
+          reason: !params.lastIndexedCommit
+            ? 'no_last_commit'
+            : 'diff_command_failed',
         },
       );
       // Pass the already-wrapped execFn to the internal helper to avoid
@@ -980,6 +993,82 @@ export class RepoIndexerService {
   // ---------------------------------------------------------------------------
   // Private: git helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Ensure a specific commit is reachable in a (possibly shallow) clone.
+   * Checks with `git cat-file -t` first; if missing, progressively deepens
+   * the clone history with `git fetch --deepen=N` until the commit appears
+   * or max attempts are exhausted.
+   *
+   * Returns `true` if the commit is reachable after all attempts.
+   */
+  private async ensureCommitReachable(
+    repoRoot: string,
+    commit: string,
+    execFn: RepoExecFn,
+  ): Promise<boolean> {
+    // Quick check: is the commit already reachable?
+    const checkRes = await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
+    });
+    if (checkRes.exitCode === 0) {
+      return true;
+    }
+
+    // Progressive deepening: try increasingly larger fetch depths
+    const deepenSteps = [200, 500, 2000];
+    for (const depth of deepenSteps) {
+      this.logger.debug('Deepening shallow clone to reach commit', {
+        repoRoot,
+        commit,
+        depth,
+      });
+      await execFn({
+        cmd: `git -C ${shQuote(repoRoot)} fetch --deepen=${depth}`,
+      });
+
+      const recheck = await execFn({
+        cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
+      });
+      if (recheck.exitCode === 0) {
+        this.logger.debug('Commit now reachable after deepening', {
+          repoRoot,
+          commit,
+          depth,
+        });
+        return true;
+      }
+    }
+
+    // Last resort: try to unshallow entirely
+    this.logger.debug('Unshallowing clone to reach commit', {
+      repoRoot,
+      commit,
+    });
+    await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} fetch --unshallow`,
+    });
+
+    const finalCheck = await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
+    });
+    if (finalCheck.exitCode === 0) {
+      this.logger.debug('Commit reachable after unshallow', {
+        repoRoot,
+        commit,
+      });
+      return true;
+    }
+
+    this.logger.warn(
+      'Failed to make commit reachable after all deepening attempts',
+      {
+        repoRoot,
+        commit,
+      },
+    );
+    return false;
+  }
 
   private async listTrackedFiles(
     repoRoot: string,

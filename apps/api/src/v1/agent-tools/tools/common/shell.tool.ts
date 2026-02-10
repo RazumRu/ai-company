@@ -5,6 +5,14 @@ import { z } from 'zod';
 
 import { environment } from '../../../../environments';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { RequestTokenUsage } from '../../../litellm/litellm.types';
+import { LitellmService } from '../../../litellm/services/litellm.service';
+import { LlmModelsService } from '../../../litellm/services/llm-models.service';
+import {
+  CompleteData,
+  OpenaiService,
+  ResponseData,
+} from '../../../openai/openai.service';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { execRuntimeWithContext } from '../../agent-tools.utils';
 import {
@@ -57,6 +65,17 @@ export const ShellToolSchema = z.object({
     .describe(
       'Environment variables to set for this command. These are merged with any pre-configured env vars and persist for the session.',
     ),
+  outputFocus: z
+    .string()
+    .optional()
+    .describe(
+      'Describe what specific information you need from the command output. ' +
+        'When set, a small model reads the raw stdout/stderr, extracts only the parts you asked for, and returns them in `focusResult`. ' +
+        'stdout and stderr will be empty — all relevant content is in `focusResult`. ' +
+        'This drastically reduces token usage for commands that produce large output (e.g., build logs, test results, long listings). ' +
+        'Examples: "only the failing test names and their error messages", "the installed package versions", "just the error lines and 2 lines of context around each". ' +
+        'Omit to receive the full (possibly truncated) raw output.',
+    ),
 });
 
 export type ShellToolSchemaType = z.infer<typeof ShellToolSchema>;
@@ -65,6 +84,12 @@ export interface ShellToolOutput {
   exitCode: number;
   stdout: string;
   stderr: string;
+  /**
+   * When present, contains an AI-extracted summary of the raw output
+   * based on the `outputFocus` instruction. The caller should use this
+   * field instead of parsing the full stdout/stderr.
+   */
+  focusResult?: string;
 }
 
 @Injectable()
@@ -72,6 +97,14 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public name = 'shell';
   public description =
     'Execute a shell command inside the runtime container and return its exit code, stdout, and stderr. Commands within the same thread share a persistent session, so environment variables and working directory changes (cd) persist across calls. Output is automatically truncated to fit within the configured token budget. Use this for git operations, build/test/install commands, and system inspection — but prefer specialized file tools (files_read, files_search_text, etc.) for reading, searching, and editing files.';
+
+  constructor(
+    private readonly openaiService: OpenaiService,
+    private readonly litellmService: LitellmService,
+    private readonly llmModelsService: LlmModelsService,
+  ) {
+    super();
+  }
 
   protected override generateTitle(
     args: ShellToolSchemaType,
@@ -135,12 +168,119 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       rg "TODO" --max-count=10 /workspace/src
       \`\`\`
 
+      **3. Use \`outputFocus\` for large outputs:**
+      When a command may produce large output but you only need specific information, set \`outputFocus\` to describe exactly what you need.
+      A small model will read the raw output, extract the relevant parts, and return them in the \`focusResult\` field.
+      When \`outputFocus\` is set, \`stdout\` and \`stderr\` will be empty — all relevant content is in \`focusResult\`.
+      If the extraction fails, you will receive the raw (truncated) output as a fallback.
+
+      **When to use \`outputFocus\`:**
+      - Build/install logs where you only care about errors or warnings
+      - Test output where you only need failing test names and messages
+      - Long file listings where you need files matching a pattern
+      - Any command with potentially large output where only a subset matters
+
+      **Examples:**
+      \`\`\`json
+      {"command": "npm test", "purpose": "Run tests", "outputFocus": "only the failing test names and their error messages"}
+      {"command": "npm install", "purpose": "Install deps", "outputFocus": "only warnings, errors, and the final added/removed summary"}
+      {"command": "find /workspace -name '*.ts'", "purpose": "List TS files", "outputFocus": "only files containing 'controller' in the path"}
+      {"command": "cat package.json", "purpose": "Check deps", "outputFocus": "only the dependencies and devDependencies sections"}
+      \`\`\`
+
       Always check exitCode (0=success, non-zero=failure) before assuming success.
 
       ${runtimeInfo || ''}
 
       ${config.resourcesInformation ? `### Additional information\n\n${config.resourcesInformation}` : ''}
     `;
+  }
+
+  /**
+   * Calls the extraction LLM and assembles the focused tool result.
+   * On extraction failure falls back to raw (truncated) output.
+   */
+  private async buildFocusedResult(
+    outputFocus: string,
+    stdout: string,
+    stderr: string,
+    exitCode: number,
+    title: string,
+  ): Promise<ToolInvokeResult<ShellToolOutput>> {
+    try {
+      const { focusResult, usage } = await this.extractFocusedOutput(
+        outputFocus,
+        stdout,
+        stderr,
+        exitCode,
+      );
+
+      return {
+        output: {
+          exitCode,
+          stdout: '',
+          stderr: '',
+          focusResult,
+        },
+        messageMetadata: { __title: title },
+        toolRequestUsage: usage,
+      };
+    } catch {
+      // Extraction failed — fall back to raw output
+      return {
+        output: { exitCode, stdout, stderr },
+        messageMetadata: { __title: title },
+      };
+    }
+  }
+
+  /**
+   * Uses a small LLM to extract only the relevant parts of the shell output
+   * based on the `outputFocus` instruction. Returns the extracted text and
+   * token usage for cost tracking.
+   */
+  private async extractFocusedOutput(
+    outputFocus: string,
+    stdout: string,
+    stderr: string,
+    exitCode: number,
+  ): Promise<{ focusResult: string; usage?: RequestTokenUsage }> {
+    const modelName = this.llmModelsService.getKnowledgeSearchModel();
+    const supportsResponsesApi =
+      await this.litellmService.supportsResponsesApi(modelName);
+
+    const systemMessage = dedent`
+      You are a shell output extractor. Given raw stdout/stderr from a command,
+      extract ONLY the parts the user asked for. Be concise — return only the
+      relevant lines/data, no commentary or explanation. If nothing matches,
+      respond with "No matching output found."
+    `;
+
+    const parts: string[] = [];
+    if (stdout) parts.push(`STDOUT:\n${stdout}`);
+    if (stderr) parts.push(`STDERR:\n${stderr}`);
+    parts.push(`EXIT CODE: ${exitCode}`);
+
+    const message = dedent`
+      Extract from the following shell output: "${outputFocus}"
+
+      ${parts.join('\n\n')}
+    `;
+
+    const data: ResponseData | CompleteData = {
+      model: modelName,
+      message,
+      systemMessage,
+    };
+
+    const response = supportsResponsesApi
+      ? await this.openaiService.response(data)
+      : await this.openaiService.complete(data);
+
+    return {
+      focusResult: response.content ?? 'No matching output found.',
+      usage: response.usage,
+    };
   }
 
   private buildRuntimeInfo(runtime: RuntimeThreadProvider) {
@@ -169,11 +309,22 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       : {};
 
     // Extract non-runtime fields from data before passing to runtime.exec
-    const { purpose: _purpose, command, timeoutMs, tailTimeoutMs } = data;
+    const {
+      purpose: _purpose,
+      command,
+      timeoutMs,
+      tailTimeoutMs,
+      outputFocus,
+    } = data;
 
     // Trim output to last N characters based on token budget.
     // Approximate 1 token ≈ 4 characters for a safe character limit.
-    const maxOutputChars = (environment.toolMaxOutputTokens || 5000) * 4;
+    // When outputFocus is set the caller only needs a subset of the output,
+    // so we cut to 25 % of the normal budget to save tokens.
+    const fullBudgetChars = (environment.toolMaxOutputTokens || 5000) * 4;
+    const maxOutputChars = outputFocus
+      ? Math.max(Math.round(fullBudgetChars * 0.25), 4000)
+      : fullBudgetChars;
     const trimOutput = (output: string): string => {
       if (output.length > maxOutputChars) {
         return output.slice(-maxOutputChars);
@@ -221,6 +372,16 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         stderr = `${stderr}\n\nTIP: You may be in the wrong directory. After cloning a repo with gh_clone, you must cd into it first (e.g., cd /runtime-workspace/repo-name) before running npm/pnpm commands.`;
       }
 
+      if (outputFocus) {
+        return this.buildFocusedResult(
+          outputFocus,
+          trimOutput(res.stdout),
+          trimOutput(stderr),
+          res.exitCode,
+          title,
+        );
+      }
+
       return {
         output: {
           exitCode: res.exitCode,
@@ -235,6 +396,16 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       // Handle runtime errors by returning them in the expected RuntimeExecResult format
       const errorMessage =
         error instanceof Error ? error.message : String(error);
+
+      if (outputFocus) {
+        return this.buildFocusedResult(
+          outputFocus,
+          '',
+          trimOutput(errorMessage),
+          1,
+          title,
+        );
+      }
 
       return {
         output: {

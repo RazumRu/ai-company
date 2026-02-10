@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { environment } from '../../../../environments';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { LitellmService } from '../../../litellm/services/litellm.service';
+import { LlmModelsService } from '../../../litellm/services/llm-models.service';
+import { OpenaiService } from '../../../openai/openai.service';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { ShellTool, ShellToolOptions } from './shell.tool';
@@ -18,6 +21,9 @@ describe('ShellTool', () => {
   let tool: ShellTool;
   let mockRuntime: BaseRuntime;
   let mockRuntimeThreadProvider: RuntimeThreadProvider;
+  let mockOpenaiService: OpenaiService;
+  let mockLitellmService: LitellmService;
+  let mockLlmModelsService: LlmModelsService;
   const defaultCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
     configurable: {
       thread_id: 'thread-123',
@@ -35,8 +41,35 @@ describe('ShellTool', () => {
       getRuntimeInfo: vi.fn().mockReturnValue(''),
     } as unknown as RuntimeThreadProvider;
 
+    mockOpenaiService = {
+      response: vi.fn().mockResolvedValue({
+        content: 'extracted output',
+        conversationId: 'conv-1',
+        usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+      }),
+      complete: vi.fn().mockResolvedValue({
+        content: 'extracted output',
+        conversationId: 'conv-1',
+        usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+      }),
+    } as unknown as OpenaiService;
+
+    mockLitellmService = {
+      supportsResponsesApi: vi.fn().mockResolvedValue(true),
+      countTokens: vi.fn().mockResolvedValue(100),
+    } as unknown as LitellmService;
+
+    mockLlmModelsService = {
+      getKnowledgeSearchModel: vi.fn().mockReturnValue('gpt-5-mini'),
+    } as unknown as LlmModelsService;
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ShellTool],
+      providers: [
+        ShellTool,
+        { provide: OpenaiService, useValue: mockOpenaiService },
+        { provide: LitellmService, useValue: mockLitellmService },
+        { provide: LlmModelsService, useValue: mockLlmModelsService },
+      ],
     }).compile();
 
     tool = module.get<ShellTool>(ShellTool);
@@ -782,6 +815,255 @@ describe('ShellTool', () => {
       expect(result.stderr).toHaveLength(20000);
       expect(result.stderr).toBe(longErrorMessage.slice(-20000));
       expect(result.exitCode).toBe(1);
+    });
+  });
+
+  describe('outputFocus', () => {
+    it('should accept outputFocus as an optional schema field', () => {
+      const validData = {
+        purpose: 'Run tests',
+        command: 'npm test',
+        outputFocus: 'only failing test names and error messages',
+      };
+      expect(() => tool.validate(validData)).not.toThrow();
+    });
+
+    it('should validate without outputFocus', () => {
+      const validData = {
+        purpose: 'Run tests',
+        command: 'npm test',
+      };
+      expect(() => tool.validate(validData)).not.toThrow();
+    });
+
+    it('should call LLM and return focusResult when outputFocus is set', async () => {
+      const mockExecResult = {
+        stdout: 'PASS test1\nFAIL test2\nError: expected true',
+        stderr: '',
+        exitCode: 1,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+      vi.mocked(mockOpenaiService.response).mockResolvedValueOnce({
+        content: 'FAIL test2: Error: expected true',
+        conversationId: 'conv-1',
+        usage: { inputTokens: 50, outputTokens: 10, totalTokens: 60 },
+      });
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { output, toolRequestUsage } = await builtTool.invoke(
+        {
+          purpose: 'Run tests',
+          command: 'npm test',
+          outputFocus: 'only failing test names and error messages',
+        },
+        defaultCfg,
+      );
+
+      expect(output.focusResult).toBe('FAIL test2: Error: expected true');
+      expect(output.stdout).toBe('');
+      expect(output.stderr).toBe('');
+      expect(output.exitCode).toBe(1);
+      expect(toolRequestUsage).toEqual({
+        inputTokens: 50,
+        outputTokens: 10,
+        totalTokens: 60,
+      });
+      expect(mockOpenaiService.response).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5-mini',
+          message: expect.stringContaining('only failing test names'),
+        }),
+      );
+    });
+
+    it('should not call LLM when outputFocus is omitted', async () => {
+      const mockExecResult = {
+        stdout: 'hello',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { output } = await builtTool.invoke(
+        {
+          purpose: 'Echo test',
+          command: 'echo hello',
+        },
+        defaultCfg,
+      );
+
+      expect(output).not.toHaveProperty('focusResult');
+      expect(output.stdout).toBe('hello');
+      expect(mockOpenaiService.response).not.toHaveBeenCalled();
+      expect(mockOpenaiService.complete).not.toHaveBeenCalled();
+    });
+
+    it('should call LLM for focused extraction on runtime error', async () => {
+      mockRuntime.exec = vi
+        .fn()
+        .mockRejectedValue(new Error('Runtime crashed'));
+      vi.mocked(mockOpenaiService.response).mockResolvedValueOnce({
+        content: 'Runtime crashed',
+        conversationId: 'conv-2',
+        usage: { inputTokens: 30, outputTokens: 5, totalTokens: 35 },
+      });
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { output, toolRequestUsage } = await builtTool.invoke(
+        {
+          purpose: 'Run build',
+          command: 'npm run build',
+          outputFocus: 'only the first error',
+        },
+        defaultCfg,
+      );
+
+      expect(output.exitCode).toBe(1);
+      expect(output.focusResult).toBe('Runtime crashed');
+      expect(output.stdout).toBe('');
+      expect(output.stderr).toBe('');
+      expect(toolRequestUsage).toBeDefined();
+    });
+
+    it('should fall back to raw output when LLM extraction fails', async () => {
+      const mockExecResult = {
+        stdout: 'raw output data',
+        stderr: 'some warning',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+      vi.mocked(mockOpenaiService.response).mockRejectedValueOnce(
+        new Error('LLM unavailable'),
+      );
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { output, toolRequestUsage } = await builtTool.invoke(
+        {
+          purpose: 'Run command',
+          command: 'some-command',
+          outputFocus: 'errors only',
+        },
+        defaultCfg,
+      );
+
+      // Falls back to raw output
+      expect(output).not.toHaveProperty('focusResult');
+      expect(output.stdout).toBe('raw output data');
+      expect(output.stderr).toBe('some warning');
+      expect(output.exitCode).toBe(0);
+      expect(toolRequestUsage).toBeUndefined();
+    });
+
+    it('should use complete() when responses API is not supported', async () => {
+      const mockExecResult = {
+        stdout: 'output data',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+      vi.mocked(mockLitellmService.supportsResponsesApi).mockResolvedValueOnce(
+        false,
+      );
+      vi.mocked(mockOpenaiService.complete).mockResolvedValueOnce({
+        content: 'focused content',
+        conversationId: 'conv-3',
+        usage: { inputTokens: 40, outputTokens: 8, totalTokens: 48 },
+      });
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { output } = await builtTool.invoke(
+        {
+          purpose: 'Check output',
+          command: 'cat log.txt',
+          outputFocus: 'error lines',
+        },
+        defaultCfg,
+      );
+
+      expect(output.focusResult).toBe('focused content');
+      expect(mockOpenaiService.complete).toHaveBeenCalled();
+      expect(mockOpenaiService.response).not.toHaveBeenCalled();
+    });
+
+    it('should truncate raw output before sending to LLM when outputFocus is set', async () => {
+      // Default budget: 5000 tokens * 4 = 20000 chars
+      // With outputFocus: 25% = 5000 chars
+      const longOutput = 'x'.repeat(10000);
+      const mockExecResult = {
+        stdout: longOutput,
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      await builtTool.invoke(
+        {
+          purpose: 'List files',
+          command: 'find /workspace',
+          outputFocus: 'only .ts files',
+        },
+        defaultCfg,
+      );
+
+      // The LLM should receive the truncated output (5000 chars from tail)
+      const calls = vi.mocked(mockOpenaiService.response).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const llmMessage = (calls[0]![0] as { message: string }).message;
+      expect(llmMessage).toContain(longOutput.slice(-5000));
+      expect(llmMessage).not.toContain(longOutput);
+    });
+
+    it('should not aggressively truncate when outputFocus is omitted', async () => {
+      const longOutput = 'x'.repeat(10000);
+      const mockExecResult = {
+        stdout: longOutput,
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { output } = await builtTool.invoke(
+        {
+          purpose: 'List files',
+          command: 'find /workspace',
+        },
+        defaultCfg,
+      );
+
+      // 10000 < 20000 full budget, so no truncation
+      expect(output.stdout).toHaveLength(10000);
+      expect(output.stdout).toBe(longOutput);
     });
   });
 

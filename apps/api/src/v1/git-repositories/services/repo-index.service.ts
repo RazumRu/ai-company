@@ -409,13 +409,20 @@ export class RepoIndexService implements OnModuleInit {
         const updatedEntity = await this.repoIndexDao.getOne({
           id: entity.id,
         });
-        const totalIndexedTokens = updatedEntity?.indexedTokens ?? 0;
+        const dbIndexedTokens = updatedEntity?.indexedTokens ?? 0;
+
+        // For incremental reindex with few or no changes, the DB counter may be
+        // much lower than the actual total. Use the estimated total as a floor.
+        const totalIndexedTokens = needsFullReindex
+          ? dbIndexedTokens
+          : Math.max(dbIndexedTokens, estimatedTokens);
 
         await this.repoIndexDao.updateById(entity.id, {
           status: RepoIndexStatus.Completed,
           lastIndexedCommit: indexParams.currentCommit,
           errorMessage: null,
           estimatedTokens: totalIndexedTokens,
+          indexedTokens: totalIndexedTokens,
         });
 
         return {
@@ -828,6 +835,16 @@ export class RepoIndexService implements OnModuleInit {
         );
       }
 
+      // If this is a reindex (entity has a lastIndexedCommit), deepen the
+      // shallow clone so the commit is reachable for `git diff` later.
+      if (entity.lastIndexedCommit) {
+        await this.deepenCloneForCommit(
+          REPO_CLONE_DIR,
+          entity.lastIndexedCommit,
+          execFn,
+        );
+      }
+
       // Resolve current state in the fresh clone
       const { embeddingModel, vectorSize, chunkingSignatureHash, collection } =
         await this.repoIndexerService.calculateIndexMetadata(
@@ -912,7 +929,15 @@ export class RepoIndexService implements OnModuleInit {
       const updatedEntity = await this.repoIndexDao.getOne({
         id: repoIndexId,
       });
-      const totalIndexedTokens = updatedEntity?.indexedTokens ?? 0;
+      const dbIndexedTokens = updatedEntity?.indexedTokens ?? 0;
+
+      // For incremental reindex with few or no changes, the DB counter may be
+      // much lower than the actual total (since only changed files were processed).
+      // Use the effective estimate (previous total) as a floor to avoid resetting
+      // the token count to 0 after a no-op reindex.
+      const totalIndexedTokens = needsFullReindex
+        ? dbIndexedTokens
+        : Math.max(dbIndexedTokens, effectiveEstimated);
 
       await this.repoIndexDao.updateById(repoIndexId, {
         status: RepoIndexStatus.Completed,
@@ -923,6 +948,7 @@ export class RepoIndexService implements OnModuleInit {
         qdrantCollection: collection,
         errorMessage: null,
         estimatedTokens: totalIndexedTokens,
+        indexedTokens: totalIndexedTokens,
       });
 
       this.logger.debug('Repo index job completed', {
@@ -1027,6 +1053,72 @@ export class RepoIndexService implements OnModuleInit {
   }
 
   /**
+   * Deepen a shallow clone so a specific commit becomes reachable.
+   * Uses progressive `git fetch --deepen=N` with increasing depths,
+   * falling back to `--unshallow` as last resort.
+   * Logs but does not throw on failure — the caller's incremental diff
+   * will fall back to full reindex automatically.
+   */
+  private async deepenCloneForCommit(
+    repoRoot: string,
+    commit: string,
+    execFn: RepoExecFn,
+  ): Promise<void> {
+    // Quick check: is the commit already reachable?
+    const checkRes = await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
+    });
+    if (checkRes.exitCode === 0) {
+      return;
+    }
+
+    this.logger.debug(
+      'lastIndexedCommit not reachable in shallow clone, deepening',
+      {
+        repoRoot,
+        commit,
+      },
+    );
+
+    const deepenSteps = [200, 500, 2000];
+    for (const depth of deepenSteps) {
+      await execFn({
+        cmd: `git -C ${shQuote(repoRoot)} fetch --deepen=${depth}`,
+      });
+
+      const recheck = await execFn({
+        cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
+      });
+      if (recheck.exitCode === 0) {
+        this.logger.debug('Commit reachable after deepening', {
+          commit,
+          depth,
+        });
+        return;
+      }
+    }
+
+    // Last resort: unshallow
+    await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} fetch --unshallow`,
+    });
+
+    const finalCheck = await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
+    });
+    if (finalCheck.exitCode === 0) {
+      this.logger.debug('Commit reachable after unshallow', { commit });
+    } else {
+      this.logger.warn(
+        'Failed to make lastIndexedCommit reachable after deepening',
+        {
+          commit,
+        },
+      );
+    }
+  }
+
+  /**
    * Shared logic to determine full vs incremental indexing, attempt cross-branch
    * seeding, and estimate token counts. Used by both claimIndexSlot (inline) and
    * processIndexJob (background) to avoid duplicating this decision tree.
@@ -1052,6 +1144,22 @@ export class RepoIndexService implements OnModuleInit {
       !existing ||
       existing.status === RepoIndexStatus.Failed ||
       this.needsFullReindexDueToConfigChange(existing, config);
+
+    this.logger.debug('Index strategy resolved', {
+      repositoryId,
+      needsFullReindex,
+      reason: !existing
+        ? 'no_existing_index'
+        : existing.status === RepoIndexStatus.Failed
+          ? 'previous_failed'
+          : this.needsFullReindexDueToConfigChange(existing, config)
+            ? 'config_changed'
+            : 'incremental',
+      lastIndexedCommit: existing?.lastIndexedCommit,
+      currentCommit,
+      existingEmbeddingModel: existing?.embeddingModel,
+      currentEmbeddingModel: config.embeddingModel,
+    });
 
     // Cross-branch seeding: when no index exists (or no last commit),
     // copy points from a sibling branch
