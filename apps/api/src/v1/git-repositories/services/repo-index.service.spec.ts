@@ -68,6 +68,7 @@ const mockRepoIndexerService = {
   copyCollectionPoints: vi.fn().mockResolvedValue(0),
   runFullIndex: vi.fn().mockResolvedValue(undefined),
   runIncrementalIndex: vi.fn().mockResolvedValue(undefined),
+  countIndexedTokens: vi.fn().mockResolvedValue(5000),
   buildRepoFilter: vi.fn().mockImplementation((repoId: string) => ({
     must: [{ key: 'repo_id', match: { value: repoId } }],
   })),

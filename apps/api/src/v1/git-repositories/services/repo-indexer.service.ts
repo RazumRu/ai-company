@@ -435,6 +435,53 @@ export class RepoIndexerService {
   }
 
   /**
+   * Count the total number of indexed tokens for a repo in a Qdrant collection
+   * by scrolling all points and summing their `token_count` payload field.
+   * Only fetches the `token_count` field (no vectors, no text) to minimise memory.
+   * Returns 0 if the collection does not exist or contains no matching points.
+   *
+   * Note: On the full-index path this results in a second Qdrant scroll (the
+   * first being `prefetchExistingChunks`). The two cannot be merged because
+   * prefetch reads the *pre-index* state while this reads the *post-index*
+   * state. The scroll is lightweight (no vectors, single field) so the
+   * trade-off favours correctness over saving one round-trip.
+   */
+  async countIndexedTokens(
+    collection: string,
+    repoId: string,
+  ): Promise<number> {
+    try {
+      let total = 0;
+      let offset: string | number | Record<string, unknown> | undefined;
+
+      while (true) {
+        const page = await this.qdrantService.raw.scroll(collection, {
+          filter: this.buildRepoFilter(repoId),
+          limit: QDRANT_SCROLL_PAGE_SIZE,
+          with_payload: { include: ['token_count'] },
+          with_vector: false,
+          offset,
+        });
+
+        for (const point of page.points) {
+          const payload = point.payload as Partial<{ token_count: number }>;
+          total += payload.token_count ?? 0;
+        }
+
+        if (!page.next_page_offset) break;
+        offset = page.next_page_offset;
+      }
+
+      return total;
+    } catch (error) {
+      if (QdrantService.isCollectionNotFoundError(error)) {
+        return 0;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Calculates all metadata fields needed for repository indexing.
    * This centralizes the logic that was duplicated across multiple services.
    */
@@ -606,13 +653,24 @@ export class RepoIndexerService {
   ): Promise<void> {
     const execFn = RepoIndexerService.withTimeout(rawExecFn);
 
-    // Ensure lastIndexedCommit is reachable (shallow clones may not include it)
+    // Ensure lastIndexedCommit is reachable (shallow clones may not include it).
+    // If deepening fails the diff below will also fail, triggering full-reindex
+    // fallback, so we only log a warning here.
     if (params.lastIndexedCommit) {
-      await this.ensureCommitReachable(
+      const reachable = await this.ensureCommitReachable(
         params.repoRoot,
         params.lastIndexedCommit,
         execFn,
       );
+      if (!reachable) {
+        this.logger.warn(
+          'lastIndexedCommit unreachable, incremental diff will likely fail',
+          {
+            repoId: params.repoId,
+            commit: params.lastIndexedCommit,
+          },
+        );
+      }
     }
 
     const diffPaths = params.lastIndexedCommit
@@ -991,7 +1049,7 @@ export class RepoIndexerService {
   }
 
   // ---------------------------------------------------------------------------
-  // Private: git helpers
+  // Public: git helpers
   // ---------------------------------------------------------------------------
 
   /**
@@ -1002,7 +1060,7 @@ export class RepoIndexerService {
    *
    * Returns `true` if the commit is reachable after all attempts.
    */
-  private async ensureCommitReachable(
+  async ensureCommitReachable(
     repoRoot: string,
     commit: string,
     execFn: RepoExecFn,
@@ -1015,7 +1073,9 @@ export class RepoIndexerService {
       return true;
     }
 
-    // Progressive deepening: try increasingly larger fetch depths
+    // Progressive deepening: --deepen=N adds N commits to the current shallow
+    // boundary (additive, not absolute). Starting from GIT_CLONE_DEPTH (100),
+    // the cumulative depths become ~300, ~800, ~2800.
     const deepenSteps = [200, 500, 2000];
     for (const depth of deepenSteps) {
       this.logger.debug('Deepening shallow clone to reach commit', {
@@ -1069,6 +1129,10 @@ export class RepoIndexerService {
     );
     return false;
   }
+
+  // ---------------------------------------------------------------------------
+  // Private: git helpers
+  // ---------------------------------------------------------------------------
 
   private async listTrackedFiles(
     repoRoot: string,

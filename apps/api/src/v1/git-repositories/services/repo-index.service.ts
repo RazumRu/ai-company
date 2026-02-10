@@ -404,18 +404,13 @@ export class RepoIndexService implements OnModuleInit {
           );
         }
 
-        // Read the DB counter (maintained via atomic increments during indexing)
-        // instead of scanning all Qdrant points — much cheaper for large repos.
-        const updatedEntity = await this.repoIndexDao.getOne({
-          id: entity.id,
-        });
-        const dbIndexedTokens = updatedEntity?.indexedTokens ?? 0;
-
-        // For incremental reindex with few or no changes, the DB counter may be
-        // much lower than the actual total. Use the estimated total as a floor.
-        const totalIndexedTokens = needsFullReindex
-          ? dbIndexedTokens
-          : Math.max(dbIndexedTokens, estimatedTokens);
+        // After indexing, count the actual total tokens in Qdrant to get an
+        // accurate number that reflects the real state of the collection.
+        const totalIndexedTokens =
+          await this.repoIndexerService.countIndexedTokens(
+            indexParams.collection,
+            indexParams.repoId,
+          );
 
         await this.repoIndexDao.updateById(entity.id, {
           status: RepoIndexStatus.Completed,
@@ -836,13 +831,22 @@ export class RepoIndexService implements OnModuleInit {
       }
 
       // If this is a reindex (entity has a lastIndexedCommit), deepen the
-      // shallow clone so the commit is reachable for `git diff` later.
+      // shallow clone so the commit is reachable for estimateChangedTokenCount.
+      // runIncrementalIndex also calls ensureCommitReachable internally, but
+      // that second call is a no-op (single git cat-file check) since the
+      // commit is already reachable after this first pass.
       if (entity.lastIndexedCommit) {
-        await this.deepenCloneForCommit(
+        const reachable = await this.repoIndexerService.ensureCommitReachable(
           REPO_CLONE_DIR,
           entity.lastIndexedCommit,
-          execFn,
+          RepoIndexerService.withTimeout(execFn),
         );
+        if (!reachable) {
+          this.logger.warn(
+            'lastIndexedCommit unreachable after deepening, incremental estimate may be inaccurate',
+            { repoIndexId, commit: entity.lastIndexedCommit },
+          );
+        }
       }
 
       // Resolve current state in the fresh clone
@@ -924,20 +928,10 @@ export class RepoIndexService implements OnModuleInit {
         );
       }
 
-      // Read the DB counter (maintained via atomic increments during indexing)
-      // instead of scanning all Qdrant points — much cheaper for large repos.
-      const updatedEntity = await this.repoIndexDao.getOne({
-        id: repoIndexId,
-      });
-      const dbIndexedTokens = updatedEntity?.indexedTokens ?? 0;
-
-      // For incremental reindex with few or no changes, the DB counter may be
-      // much lower than the actual total (since only changed files were processed).
-      // Use the effective estimate (previous total) as a floor to avoid resetting
-      // the token count to 0 after a no-op reindex.
-      const totalIndexedTokens = needsFullReindex
-        ? dbIndexedTokens
-        : Math.max(dbIndexedTokens, effectiveEstimated);
+      // After indexing, count the actual total tokens in Qdrant to get an
+      // accurate number that reflects the real state of the collection.
+      const totalIndexedTokens =
+        await this.repoIndexerService.countIndexedTokens(collection, repoUrl);
 
       await this.repoIndexDao.updateById(repoIndexId, {
         status: RepoIndexStatus.Completed,
@@ -1049,72 +1043,6 @@ export class RepoIndexService implements OnModuleInit {
         threadId,
         error: error instanceof Error ? error.message : String(error),
       });
-    }
-  }
-
-  /**
-   * Deepen a shallow clone so a specific commit becomes reachable.
-   * Uses progressive `git fetch --deepen=N` with increasing depths,
-   * falling back to `--unshallow` as last resort.
-   * Logs but does not throw on failure — the caller's incremental diff
-   * will fall back to full reindex automatically.
-   */
-  private async deepenCloneForCommit(
-    repoRoot: string,
-    commit: string,
-    execFn: RepoExecFn,
-  ): Promise<void> {
-    // Quick check: is the commit already reachable?
-    const checkRes = await execFn({
-      cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
-    });
-    if (checkRes.exitCode === 0) {
-      return;
-    }
-
-    this.logger.debug(
-      'lastIndexedCommit not reachable in shallow clone, deepening',
-      {
-        repoRoot,
-        commit,
-      },
-    );
-
-    const deepenSteps = [200, 500, 2000];
-    for (const depth of deepenSteps) {
-      await execFn({
-        cmd: `git -C ${shQuote(repoRoot)} fetch --deepen=${depth}`,
-      });
-
-      const recheck = await execFn({
-        cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
-      });
-      if (recheck.exitCode === 0) {
-        this.logger.debug('Commit reachable after deepening', {
-          commit,
-          depth,
-        });
-        return;
-      }
-    }
-
-    // Last resort: unshallow
-    await execFn({
-      cmd: `git -C ${shQuote(repoRoot)} fetch --unshallow`,
-    });
-
-    const finalCheck = await execFn({
-      cmd: `git -C ${shQuote(repoRoot)} cat-file -t ${shQuote(commit)}`,
-    });
-    if (finalCheck.exitCode === 0) {
-      this.logger.debug('Commit reachable after unshallow', { commit });
-    } else {
-      this.logger.warn(
-        'Failed to make lastIndexedCommit reachable after deepening',
-        {
-          commit,
-        },
-      );
     }
   }
 
