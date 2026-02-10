@@ -1,5 +1,7 @@
+import { ToolRunnableConfig } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import {
   FilesApplyChangesTool,
   FilesApplyChangesToolSchema,
@@ -707,6 +709,36 @@ describe('FilesApplyChangesTool', () => {
       expect(result.matchStage).toBeUndefined();
     });
 
+    it('should match when oldText has trailing newline', () => {
+      const fileContent =
+        "import { A } from './a';\nimport { B } from './b';\nimport { C } from './c';";
+      // Trailing \n produces a phantom empty line — should still match
+      const oldText = "import { B } from './b';\n";
+
+      const result = tool['findMatchesProgressive'](
+        fileContent,
+        oldText,
+        false,
+      );
+
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]?.matchedText).toBe("import { B } from './b';");
+    });
+
+    it('should match when oldText has leading and trailing newlines', () => {
+      const fileContent = 'line1\nline2\nline3';
+      const oldText = '\nline2\n';
+
+      const result = tool['findMatchesProgressive'](
+        fileContent,
+        oldText,
+        false,
+      );
+
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]?.matchedText).toBe('line2');
+    });
+
     it('should return stage 1 errors when all stages fail', () => {
       const fileContent = 'hello world';
 
@@ -854,6 +886,443 @@ describe('FilesApplyChangesTool', () => {
         expect(parsed.data.oldText).toBeUndefined();
         expect(parsed.data.newText).toBeUndefined();
       }
+    });
+  });
+
+  describe('invoke', () => {
+    const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
+      configurable: { thread_id: 'test-thread' },
+    };
+
+    function mockReadFile(content: string) {
+      vi.spyOn(tool as any, 'readFileContent').mockResolvedValue({ content });
+    }
+
+    function mockWriteFile() {
+      vi.spyOn(tool as any, 'writeFileContent').mockResolvedValue({});
+    }
+
+    function mockWriteFileError(error: string) {
+      vi.spyOn(tool as any, 'writeFileContent').mockResolvedValue({ error });
+    }
+
+    describe('single-edit mode', () => {
+      it('should replace text successfully', async () => {
+        mockReadFile('line1\nline2\nline3');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          { filePath: '/test/file.ts', oldText: 'line2', newText: 'modified' },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.appliedEdits).toBe(1);
+        expect(output.diff).toContain('-line2');
+        expect(output.diff).toContain('+modified');
+        expect(output.matchStage).toBe('exact');
+      });
+
+      it('should return error when oldText and newText are identical', async () => {
+        const { output } = await tool.invoke(
+          { filePath: '/test/file.ts', oldText: 'same', newText: 'same' },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('identical');
+      });
+
+      it('should return error when both oldText and newText are missing', async () => {
+        const { output } = await tool.invoke(
+          { filePath: '/test/file.ts' },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('edits array');
+      });
+
+      it('should return error when file not found', async () => {
+        vi.spyOn(tool as any, 'readFileContent').mockResolvedValue({
+          error: 'File not found: /test/file.ts',
+        });
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: 'line2',
+            newText: 'modified',
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('File not found');
+      });
+
+      it('should return error when no match found', async () => {
+        mockReadFile('line1\nline2\nline3');
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: 'nonexistent',
+            newText: 'modified',
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('Could not find match');
+      });
+
+      it('should reject stale expectedHash', async () => {
+        mockReadFile('line1\nline2\nline3');
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: 'line2',
+            newText: 'modified',
+            expectedHash: 'badhash1',
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('File has changed since last read');
+      });
+
+      it('should return error when write fails', async () => {
+        mockReadFile('line1\nline2\nline3');
+        mockWriteFileError('Permission denied');
+
+        const { output } = await tool.invoke(
+          { filePath: '/test/file.ts', oldText: 'line2', newText: 'modified' },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toBe('Permission denied');
+      });
+
+      it('should return error for empty oldText without insertAfterLine', async () => {
+        const { output } = await tool.invoke(
+          { filePath: '/test/file.ts', oldText: '', newText: 'new' },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('Empty oldText');
+      });
+
+      it('should use replaceAll to replace multiple occurrences', async () => {
+        mockReadFile('foo\nbar\nfoo');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: 'foo',
+            newText: 'baz',
+            replaceAll: true,
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.appliedEdits).toBe(2);
+      });
+
+      it('should include postEditContext in successful result', async () => {
+        mockReadFile('line1\nline2\nline3');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          { filePath: '/test/file.ts', oldText: 'line2', newText: 'modified' },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.postEditContext).toBeDefined();
+        expect(output.postEditContext).toContain('modified');
+      });
+
+      it('should warn when non-exact match stage is used', async () => {
+        mockReadFile('    indented\n    code');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: 'indented\ncode',
+            newText: 'new stuff',
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.matchStage).toBe('trimmed');
+        expect(output.diff).toContain('trimmed match used');
+      });
+    });
+
+    describe('insertAfterLine mode', () => {
+      it('should insert text after specified line', async () => {
+        mockReadFile('line1\nline2\nline3');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: '',
+            newText: 'inserted',
+            insertAfterLine: 1,
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.appliedEdits).toBe(1);
+        expect(output.diff).toContain('+inserted');
+      });
+
+      it('should insert at beginning of file with insertAfterLine 0', async () => {
+        mockReadFile('line1\nline2');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: '',
+            newText: 'header',
+            insertAfterLine: 0,
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.diff).toContain('+header');
+      });
+
+      it('should reject non-empty oldText with insertAfterLine', async () => {
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: 'something',
+            newText: 'inserted',
+            insertAfterLine: 1,
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('oldText must be an empty string');
+      });
+
+      it('should reject insertAfterLine beyond file length', async () => {
+        mockReadFile('line1\nline2');
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: '',
+            newText: 'inserted',
+            insertAfterLine: 100,
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('beyond the file length');
+      });
+
+      it('should reject stale expectedHash on insert', async () => {
+        mockReadFile('line1\nline2');
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: '',
+            newText: 'inserted',
+            insertAfterLine: 1,
+            expectedHash: 'badhash1',
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('File has changed since last read');
+      });
+
+      it('should return error when file read fails on insert', async () => {
+        vi.spyOn(tool as any, 'readFileContent').mockResolvedValue({
+          error: 'File not found',
+        });
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            oldText: '',
+            newText: 'inserted',
+            insertAfterLine: 1,
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('File not found');
+      });
+    });
+
+    describe('multi-edit mode', () => {
+      it('should apply multiple edits atomically', async () => {
+        mockReadFile('aaa\nbbb\nccc');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            edits: [
+              { oldText: 'aaa', newText: 'AAA' },
+              { oldText: 'ccc', newText: 'CCC' },
+            ],
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.appliedEdits).toBe(2);
+        expect(output.totalEdits).toBe(2);
+      });
+
+      it('should reject no-op edit in multi-edit mode', async () => {
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            edits: [
+              { oldText: 'same', newText: 'same' },
+              { oldText: 'bbb', newText: 'BBB' },
+            ],
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('identical');
+        expect(output.failedEditIndex).toBe(0);
+      });
+
+      it('should reject empty oldText in multi-edit mode', async () => {
+        mockReadFile('aaa\nbbb');
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            edits: [{ oldText: '', newText: 'new' }],
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('empty oldText is not supported');
+        expect(output.failedEditIndex).toBe(0);
+      });
+
+      it('should fail atomically when second edit has no match', async () => {
+        mockReadFile('aaa\nbbb\nccc');
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            edits: [
+              { oldText: 'aaa', newText: 'AAA' },
+              { oldText: 'nonexistent', newText: 'XXX' },
+            ],
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('Edit 1 failed');
+        expect(output.failedEditIndex).toBe(1);
+      });
+
+      it('should apply sequential edits against evolving content', async () => {
+        mockReadFile('foo\nbar');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            edits: [
+              { oldText: 'foo', newText: 'baz' },
+              { oldText: 'baz', newText: 'qux' },
+            ],
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.appliedEdits).toBe(2);
+      });
+
+      it('should reject stale expectedHash in multi-edit mode', async () => {
+        mockReadFile('aaa\nbbb');
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            edits: [{ oldText: 'aaa', newText: 'AAA' }],
+            expectedHash: 'badhash1',
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('File has changed since last read');
+      });
+
+      it('should report matchStages for non-exact matches', async () => {
+        mockReadFile('    indented');
+        mockWriteFile();
+
+        const { output } = await tool.invoke(
+          {
+            filePath: '/test/file.ts',
+            edits: [{ oldText: 'indented', newText: 'replaced' }],
+          },
+          mockConfig,
+          mockCfg,
+        );
+
+        expect(output.success).toBe(true);
+        expect(output.matchStages).toContain('trimmed');
+      });
     });
   });
 });

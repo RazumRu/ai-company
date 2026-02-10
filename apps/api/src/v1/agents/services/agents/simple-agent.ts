@@ -253,7 +253,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       // ---- summarize ----
       const summarizeNode = new SummarizeNode(
         this.litellmService,
-        this.buildLLM(this.llmModelsService.getSummarizeModel()),
+        (currentContext?: number) =>
+          this.buildLLM(
+            this.llmModelsService.getSummarizeModel(currentContext),
+          ),
         {
           maxTokens: config.summarizeMaxTokens || 272000,
           keepTokens: config.summarizeKeepTokens || 30000,

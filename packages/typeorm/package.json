@@ -11,20 +11,20 @@
     "run-all-seeds": "src/bin/run-all-seeds.mjs"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.12",
-    "@nestjs/core": "^11.1.12",
+    "@nestjs/common": "^11.1.13",
+    "@nestjs/core": "^11.1.13",
     "@nestjs/typeorm": "^11.0.0",
     "@packages/common": "workspace:*",
     "lodash": "^4.17.23",
-    "pg": "^8.17.2",
+    "pg": "^8.18.0",
     "reflect-metadata": "^0.2.2",
     "ts-node": "^10.9.2",
     "typeorm": "^0.3.28"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.23",
-    "@types/node": "^25.0.10",
-    "eslint": "^9.39.2",
+    "@types/node": "^25.2.2",
+    "eslint": "^10.0.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },

@@ -2,10 +2,17 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { environment } from '../../../../environments';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { ShellTool, ShellToolOptions } from './shell.tool';
+
+vi.mock('../../../../environments', () => ({
+  environment: {
+    toolMaxOutputTokens: 5000,
+  },
+}));
 
 describe('ShellTool', () => {
   let tool: ShellTool;
@@ -123,33 +130,6 @@ describe('ShellTool', () => {
         purpose: 'Testing tail timeout',
         command: 'echo "hello"',
         tailTimeoutMs: 0,
-      };
-      expect(() => tool.validate(invalidData)).toThrow();
-    });
-
-    it('should validate positive maxOutputLength', () => {
-      const validData = {
-        purpose: 'Testing max output length',
-        command: 'echo "hello"',
-        maxOutputLength: 5000,
-      };
-      expect(() => tool.validate(validData)).not.toThrow();
-    });
-
-    it('should reject negative maxOutputLength', () => {
-      const invalidData = {
-        purpose: 'Testing max output length',
-        command: 'echo "hello"',
-        maxOutputLength: -1000,
-      };
-      expect(() => tool.validate(invalidData)).toThrow();
-    });
-
-    it('should reject zero maxOutputLength', () => {
-      const invalidData = {
-        purpose: 'Testing max output length',
-        command: 'echo "hello"',
-        maxOutputLength: 0,
       };
       expect(() => tool.validate(invalidData)).toThrow();
     });
@@ -634,9 +614,11 @@ describe('ShellTool', () => {
     });
   });
 
-  describe('maxOutputLength', () => {
-    it('should trim stdout when it exceeds maxOutputLength', async () => {
-      const longOutput = 'a'.repeat(15000);
+  describe('output truncation (env-based token limit)', () => {
+    // Default: toolMaxOutputTokens=5000, so maxChars = 5000 * 4 = 20000
+
+    it('should trim stdout when it exceeds the env-based character limit', async () => {
+      const longOutput = 'a'.repeat(25000);
       const mockExecResult = {
         stdout: longOutput,
         stderr: '',
@@ -653,18 +635,17 @@ describe('ShellTool', () => {
         {
           purpose: 'Testing output trimming',
           command: 'echo "long output"',
-          maxOutputLength: 5000,
         },
         defaultCfg,
       );
 
-      expect(result.stdout).toHaveLength(5000);
-      expect(result.stdout).toBe(longOutput.slice(-5000));
+      expect(result.stdout).toHaveLength(20000);
+      expect(result.stdout).toBe(longOutput.slice(-20000));
       expect(result.exitCode).toBe(0);
     });
 
-    it('should trim stderr when it exceeds maxOutputLength', async () => {
-      const longError = 'b'.repeat(15000);
+    it('should trim stderr when it exceeds the env-based character limit', async () => {
+      const longError = 'b'.repeat(25000);
       const mockExecResult = {
         stdout: '',
         stderr: longError,
@@ -681,19 +662,18 @@ describe('ShellTool', () => {
         {
           purpose: 'Testing error trimming',
           command: 'invalid-command',
-          maxOutputLength: 3000,
         },
         defaultCfg,
       );
 
-      expect(result.stderr).toHaveLength(3000);
-      expect(result.stderr).toBe(longError.slice(-3000));
+      expect(result.stderr).toHaveLength(20000);
+      expect(result.stderr).toBe(longError.slice(-20000));
       expect(result.exitCode).toBe(1);
     });
 
-    it('should trim both stdout and stderr when they exceed maxOutputLength', async () => {
-      const longStdout = 'x'.repeat(12000);
-      const longStderr = 'y'.repeat(12000);
+    it('should trim both stdout and stderr when they exceed the limit', async () => {
+      const longStdout = 'x'.repeat(25000);
+      const longStderr = 'y'.repeat(25000);
       const mockExecResult = {
         stdout: longStdout,
         stderr: longStderr,
@@ -710,18 +690,17 @@ describe('ShellTool', () => {
         {
           purpose: 'Testing both outputs trimming',
           command: 'some-command',
-          maxOutputLength: 8000,
         },
         defaultCfg,
       );
 
-      expect(result.stdout).toHaveLength(8000);
-      expect(result.stdout).toBe(longStdout.slice(-8000));
-      expect(result.stderr).toHaveLength(8000);
-      expect(result.stderr).toBe(longStderr.slice(-8000));
+      expect(result.stdout).toHaveLength(20000);
+      expect(result.stdout).toBe(longStdout.slice(-20000));
+      expect(result.stderr).toHaveLength(20000);
+      expect(result.stderr).toBe(longStderr.slice(-20000));
     });
 
-    it('should not trim output when it is within maxOutputLength', async () => {
+    it('should not trim output when it is within the limit', async () => {
       const shortOutput = 'short output';
       const mockExecResult = {
         stdout: shortOutput,
@@ -739,7 +718,6 @@ describe('ShellTool', () => {
         {
           purpose: 'Testing no trimming needed',
           command: 'echo "short"',
-          maxOutputLength: 1000,
         },
         defaultCfg,
       );
@@ -748,34 +726,43 @@ describe('ShellTool', () => {
       expect(result.stdout).toHaveLength(shortOutput.length);
     });
 
-    it('should use default maxOutputLength of 10000 when not specified', async () => {
-      const longOutput = 'z'.repeat(15000);
-      const mockExecResult = {
-        stdout: longOutput,
-        stderr: '',
-        exitCode: 0,
-      };
-      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+    it('should respect custom toolMaxOutputTokens from environment', async () => {
+      const envMock = environment as { toolMaxOutputTokens: number };
+      const original = envMock.toolMaxOutputTokens;
+      envMock.toolMaxOutputTokens = 1000;
 
-      const config: ShellToolOptions = {
-        runtimeProvider: mockRuntimeThreadProvider,
-      };
-      const builtTool = tool.build(config);
+      try {
+        const longOutput = 'z'.repeat(10000);
+        const mockExecResult = {
+          stdout: longOutput,
+          stderr: '',
+          exitCode: 0,
+        };
+        mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
 
-      const { output: result } = await builtTool.invoke(
-        {
-          purpose: 'Testing default max output length',
-          command: 'echo "long"',
-        },
-        defaultCfg,
-      );
+        const config: ShellToolOptions = {
+          runtimeProvider: mockRuntimeThreadProvider,
+        };
+        const builtTool = tool.build(config);
 
-      expect(result.stdout).toHaveLength(10000);
-      expect(result.stdout).toBe(longOutput.slice(-10000));
+        const { output: result } = await builtTool.invoke(
+          {
+            purpose: 'Testing custom token limit',
+            command: 'echo "long"',
+          },
+          defaultCfg,
+        );
+
+        // 1000 tokens * 4 chars/token = 4000 chars
+        expect(result.stdout).toHaveLength(4000);
+        expect(result.stdout).toBe(longOutput.slice(-4000));
+      } finally {
+        envMock.toolMaxOutputTokens = original;
+      }
     });
 
     it('should trim error messages when runtime execution fails', async () => {
-      const longErrorMessage = 'Error: '.repeat(2000); // Very long error message
+      const longErrorMessage = 'Error: '.repeat(5000);
       mockRuntime.exec = vi.fn().mockRejectedValue(new Error(longErrorMessage));
 
       const config: ShellToolOptions = {
@@ -787,13 +774,13 @@ describe('ShellTool', () => {
         {
           purpose: 'Testing error message trimming',
           command: 'invalid-command',
-          maxOutputLength: 500,
         },
         defaultCfg,
       );
 
-      expect(result.stderr).toHaveLength(500);
-      expect(result.stderr).toBe(longErrorMessage.slice(-500));
+      // Default: 5000 tokens * 4 = 20000 chars
+      expect(result.stderr).toHaveLength(20000);
+      expect(result.stderr).toBe(longErrorMessage.slice(-20000));
       expect(result.exitCode).toBe(1);
     });
   });

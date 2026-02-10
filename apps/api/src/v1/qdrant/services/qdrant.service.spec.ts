@@ -18,7 +18,16 @@ vi.mock('../../../environments', () => ({
   },
 }));
 
+import { DefaultLogger } from '@packages/common';
+
 import { QdrantService } from './qdrant.service';
+
+const mockLogger = {
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+} as unknown as DefaultLogger;
 
 type MockQdrantClient = {
   getCollections: ReturnType<typeof vi.fn>;
@@ -37,6 +46,8 @@ describe('QdrantService', () => {
   let service: QdrantService;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+
     mockClient = {
       getCollections: vi.fn().mockResolvedValue({
         collections: [
@@ -57,7 +68,7 @@ describe('QdrantService', () => {
       scroll: vi.fn(),
     };
 
-    service = new QdrantService();
+    service = new QdrantService(mockLogger);
   });
 
   it('upserts points', async () => {
@@ -302,6 +313,113 @@ describe('QdrantService', () => {
       expect(
         QdrantService.isAlreadyExistsError(new Error('Connection timeout')),
       ).toBe(false);
+    });
+  });
+
+  describe('isTransientError', () => {
+    it.each([
+      'fetch failed',
+      'TypeError: fetch failed',
+      'connect ECONNREFUSED 127.0.0.1:6333',
+      'read ECONNRESET',
+      'connect ETIMEDOUT 10.0.0.1:6333',
+      'socket hang up',
+      'network error',
+      'write EPIPE',
+      'getaddrinfo ENOTFOUND qdrant.example.com',
+    ])('detects transient error: "%s"', (msg) => {
+      expect(QdrantService.isTransientError(new Error(msg))).toBe(true);
+    });
+
+    it.each([
+      'Collection not found',
+      'Connection timeout',
+      'Unauthorized',
+      'Bad request',
+      'field index repo_id already exists',
+    ])('rejects non-transient error: "%s"', (msg) => {
+      expect(QdrantService.isTransientError(new Error(msg))).toBe(false);
+    });
+
+    it('handles non-Error values', () => {
+      expect(QdrantService.isTransientError('fetch failed')).toBe(true);
+      expect(QdrantService.isTransientError('Something else')).toBe(false);
+    });
+  });
+
+  describe('withRetry (via upsertPoints)', () => {
+    it('succeeds on first attempt without retrying', async () => {
+      await service.upsertPoints('test-collection', [
+        { id: 'p1', vector: [0.1, 0.2], payload: {} },
+      ]);
+
+      expect(mockClient.upsert).toHaveBeenCalledTimes(1);
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('retries on transient error and succeeds', async () => {
+      mockClient.upsert
+        .mockRejectedValueOnce(new Error('fetch failed'))
+        .mockResolvedValueOnce(undefined);
+
+      await service.upsertPoints('test-collection', [
+        { id: 'p1', vector: [0.1, 0.2], payload: {} },
+      ]);
+
+      expect(mockClient.upsert).toHaveBeenCalledTimes(2);
+      expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Qdrant upsert failed, retrying'),
+        expect.objectContaining({ attempt: 1, maxRetries: 2 }),
+      );
+    });
+
+    it('throws immediately on non-transient error without retrying', async () => {
+      mockClient.upsert.mockRejectedValueOnce(
+        new Error('Collection not found'),
+      );
+
+      await expect(
+        service.upsertPoints('test-collection', [
+          { id: 'p1', vector: [0.1, 0.2], payload: {} },
+        ]),
+      ).rejects.toThrow('Collection not found');
+
+      expect(mockClient.upsert).toHaveBeenCalledTimes(1);
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('throws after exhausting all retries on transient errors', async () => {
+      const transientErr = new Error('fetch failed');
+      mockClient.upsert.mockRejectedValue(transientErr);
+
+      await expect(
+        service.upsertPoints('test-collection', [
+          { id: 'p1', vector: [0.1, 0.2], payload: {} },
+        ]),
+      ).rejects.toThrow('fetch failed');
+
+      // 1 initial + 2 retries = 3 total attempts
+      expect(mockClient.upsert).toHaveBeenCalledTimes(3);
+      expect(mockLogger.warn).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('withRetry (via deleteByFilter)', () => {
+    it('retries delete on transient error and succeeds', async () => {
+      mockClient.delete
+        .mockRejectedValueOnce(new Error('socket hang up'))
+        .mockResolvedValueOnce(undefined);
+
+      await service.deleteByFilter('test-collection', {
+        must: [{ key: 'docId', match: { value: 'doc-1' } }],
+      });
+
+      expect(mockClient.delete).toHaveBeenCalledTimes(2);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Qdrant delete failed, retrying'),
+        expect.objectContaining({ attempt: 1 }),
+      );
     });
   });
 

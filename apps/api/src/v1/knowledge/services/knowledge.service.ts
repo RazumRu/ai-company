@@ -108,9 +108,8 @@ export class KnowledgeService {
     );
 
     let chunkPlan: KnowledgeChunkBoundary[] | null = null;
-    let embeddingModel: string | null = null;
     if (dto.content) {
-      embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
+      const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
       const [summary, plan] = await Promise.all([
         this.generateSummary(dto.content),
         this.knowledgeChunksService.generateChunkPlan(dto.content),

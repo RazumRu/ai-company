@@ -526,7 +526,9 @@ export class DockerRuntime extends BaseRuntime {
         },
       });
     } catch (error) {
-      throw new Error(`Failed to create network ${networkName}: ${error}`);
+      throw new Error(`Failed to create network ${networkName}: ${error}`, {
+        cause: error,
+      });
     }
   }
 

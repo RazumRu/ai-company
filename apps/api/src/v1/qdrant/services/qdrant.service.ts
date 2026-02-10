@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { InternalException } from '@packages/common';
+import { DefaultLogger, InternalException } from '@packages/common';
 import { QdrantClient } from '@qdrant/js-client-rest';
 
 import { environment } from '../../../environments';
+
+/** Maximum retries for transient Qdrant network failures (fetch errors). */
+const QDRANT_MAX_RETRIES = 2;
+/** Base delay between retries in ms (doubled each attempt). */
+const QDRANT_RETRY_BASE_DELAY_MS = 1000;
 
 type Distance = 'Cosine' | 'Dot' | 'Euclid' | 'Manhattan';
 
@@ -34,7 +39,7 @@ export class QdrantService {
   private readonly vectorSizeCache = new Map<string, number>();
   private readonly knownCollections = new Set<string>();
 
-  constructor() {
+  constructor(private readonly logger: DefaultLogger) {
     const url = environment.qdrantUrl;
     if (!url) throw new InternalException('QDRANT_URL_MISSING');
 
@@ -42,6 +47,59 @@ export class QdrantService {
       url,
       apiKey: environment.qdrantApiKey,
     });
+  }
+
+  /**
+   * Retry a Qdrant operation on transient network failures (`fetch failed`,
+   * `ECONNREFUSED`, `ECONNRESET`, etc.). Non-transient errors are rethrown
+   * immediately.
+   */
+  private async withRetry<T>(
+    operation: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= QDRANT_MAX_RETRIES; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastError = err;
+        if (
+          !QdrantService.isTransientError(err) ||
+          attempt >= QDRANT_MAX_RETRIES
+        ) {
+          throw err;
+        }
+        const delayMs = QDRANT_RETRY_BASE_DELAY_MS * 2 ** attempt;
+        this.logger.warn(`Qdrant ${operation} failed, retrying`, {
+          attempt: attempt + 1,
+          maxRetries: QDRANT_MAX_RETRIES,
+          delayMs,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    throw lastError;
+  }
+
+  /**
+   * Check if an error is a transient network failure that may succeed on retry.
+   */
+  static isTransientError(error: unknown): boolean {
+    const message = (
+      error instanceof Error ? error.message : String(error)
+    ).toLowerCase();
+    return (
+      message.includes('fetch failed') ||
+      message.includes('econnrefused') ||
+      message.includes('econnreset') ||
+      message.includes('etimedout') ||
+      message.includes('socket hang up') ||
+      message.includes('network') ||
+      message.includes('epipe') ||
+      message.includes('enotfound')
+    );
   }
 
   get raw() {
@@ -116,11 +174,13 @@ export class QdrantService {
       opts?.distance ?? 'Cosine',
     );
 
-    await this.client.upsert(collection, {
-      wait: opts?.wait ?? true,
-      ordering: opts?.ordering,
-      points,
-    });
+    await this.withRetry('upsert', () =>
+      this.client.upsert(collection, {
+        wait: opts?.wait ?? true,
+        ordering: opts?.ordering,
+        points,
+      }),
+    );
   }
 
   private extractVectorSize(point: unknown): number {
@@ -143,10 +203,12 @@ export class QdrantService {
       return;
     }
 
-    await this.client.delete(collection, {
-      wait: opts?.wait ?? true,
-      filter,
-    });
+    await this.withRetry('delete', () =>
+      this.client.delete(collection, {
+        wait: opts?.wait ?? true,
+        filter,
+      }),
+    );
   }
 
   async searchPoints(

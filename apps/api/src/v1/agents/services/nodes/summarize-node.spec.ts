@@ -19,6 +19,7 @@ vi.mock('@langchain/openai');
 describe('SummarizeNode', () => {
   let node: SummarizeNode;
   let mockLlm: ChatOpenAI;
+  let mockLlmResolver: (currentContext?: number) => ChatOpenAI;
   const extractTokenUsageFromResponseMock = vi.fn().mockResolvedValue(null);
   const countTokensMock = vi.fn().mockResolvedValue(0);
   const mockLitellmService = {
@@ -35,8 +36,9 @@ describe('SummarizeNode', () => {
     mockLlm = {
       invoke: mockInvoke,
     } as unknown as ChatOpenAI;
+    mockLlmResolver = () => mockLlm;
 
-    node = new SummarizeNode(mockLitellmService, mockLlm, {
+    node = new SummarizeNode(mockLitellmService, mockLlmResolver, {
       maxTokens: 1000,
       keepTokens: 500,
       tokenCountModel: 'gpt-5.1',
@@ -71,11 +73,15 @@ describe('SummarizeNode', () => {
 
   describe('invoke', () => {
     it('should return messages unchanged if maxTokens <= 0', async () => {
-      const nodeWithZeroMax = new SummarizeNode(mockLitellmService, mockLlm, {
-        maxTokens: 0,
-        keepTokens: 500,
-        tokenCountModel: 'gpt-5.1',
-      });
+      const nodeWithZeroMax = new SummarizeNode(
+        mockLitellmService,
+        mockLlmResolver,
+        {
+          maxTokens: 0,
+          keepTokens: 500,
+          tokenCountModel: 'gpt-5.1',
+        },
+      );
       const messages = [new HumanMessage('Test')];
       const state = createMockState({ messages });
 
@@ -246,7 +252,7 @@ describe('SummarizeNode', () => {
     it('should trigger summarization based on currentContext (from LLM usage)', async () => {
       const nodeWithTightBudget = new SummarizeNode(
         mockLitellmService,
-        mockLlm,
+        mockLlmResolver,
         {
           maxTokens: 1000,
           keepTokens: 0,
@@ -276,11 +282,15 @@ describe('SummarizeNode', () => {
     });
 
     it('should still fold at least one block when currentContext exceeds maxTokens but local keepTokens trimming keeps everything', async () => {
-      const nodeWithLargeKeep = new SummarizeNode(mockLitellmService, mockLlm, {
-        maxTokens: 1000,
-        keepTokens: 10_000,
-        tokenCountModel: 'gpt-5.1',
-      });
+      const nodeWithLargeKeep = new SummarizeNode(
+        mockLitellmService,
+        mockLlmResolver,
+        {
+          maxTokens: 1000,
+          keepTokens: 10_000,
+          tokenCountModel: 'gpt-5.1',
+        },
+      );
 
       const state = createMockState({
         summary: '',
@@ -303,11 +313,15 @@ describe('SummarizeNode', () => {
     });
 
     it('should handle keepTokens = 0 by keeping only last message', async () => {
-      const nodeWithZeroKeep = new SummarizeNode(mockLitellmService, mockLlm, {
-        maxTokens: 1000,
-        keepTokens: 0,
-        tokenCountModel: 'gpt-5.1',
-      });
+      const nodeWithZeroKeep = new SummarizeNode(
+        mockLitellmService,
+        mockLlmResolver,
+        {
+          maxTokens: 1000,
+          keepTokens: 0,
+          tokenCountModel: 'gpt-5.1',
+        },
+      );
 
       const messages = [
         new HumanMessage('Message 1'),
@@ -342,7 +356,7 @@ describe('SummarizeNode', () => {
       const customSystemNote = 'Custom summarization instruction';
       const nodeWithCustomNote = new SummarizeNode(
         mockLitellmService,
-        mockLlm,
+        mockLlmResolver,
         {
           maxTokens: 1000,
           keepTokens: 500,
@@ -395,11 +409,15 @@ describe('SummarizeNode', () => {
       });
 
       // Force tail to be only the last human message so older includes the two "Old human" messages.
-      const nodeWithSmallKeep = new SummarizeNode(mockLitellmService, mockLlm, {
-        maxTokens: 1000,
-        keepTokens: 1,
-        tokenCountModel: 'gpt-5.1',
-      });
+      const nodeWithSmallKeep = new SummarizeNode(
+        mockLitellmService,
+        mockLlmResolver,
+        {
+          maxTokens: 1000,
+          keepTokens: 1,
+          tokenCountModel: 'gpt-5.1',
+        },
+      );
       countTokensMock.mockResolvedValue(1);
       mockInvoke.mockResolvedValue(new AIMessage('Updated summary'));
 
@@ -439,11 +457,15 @@ describe('SummarizeNode', () => {
       });
 
       // Force compaction to happen and make the tail small so "Old human 1" folds.
-      const nodeWithSmallKeep = new SummarizeNode(mockLitellmService, mockLlm, {
-        maxTokens: 1000,
-        keepTokens: 1,
-        tokenCountModel: 'gpt-5.1',
-      });
+      const nodeWithSmallKeep = new SummarizeNode(
+        mockLitellmService,
+        mockLlmResolver,
+        {
+          maxTokens: 1000,
+          keepTokens: 1,
+          tokenCountModel: 'gpt-5.1',
+        },
+      );
       countTokensMock.mockResolvedValue(1);
       mockInvoke.mockResolvedValue(new AIMessage('Updated summary'));
 
@@ -607,11 +629,15 @@ describe('SummarizeNode', () => {
     });
 
     it('should keep a full tool-roundtrip block when keepTokens = 0 and tool result is the last message', async () => {
-      const nodeWithZeroKeep = new SummarizeNode(mockLitellmService, mockLlm, {
-        maxTokens: 1000,
-        keepTokens: 0,
-        tokenCountModel: 'gpt-5.1',
-      });
+      const nodeWithZeroKeep = new SummarizeNode(
+        mockLitellmService,
+        mockLlmResolver,
+        {
+          maxTokens: 1000,
+          keepTokens: 0,
+          tokenCountModel: 'gpt-5.1',
+        },
+      );
 
       const aiMsgWithToolCall = new AIMessage({
         content: '',
@@ -726,6 +752,29 @@ describe('SummarizeNode', () => {
       // Should not summarize - pending tool call in additional_kwargs
       expect(result).toEqual({});
       expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it('should pass currentContext to llmResolver when folding', async () => {
+      const resolverSpy = vi.fn().mockReturnValue(mockLlm);
+      const nodeWithSpy = new SummarizeNode(mockLitellmService, resolverSpy, {
+        maxTokens: 1000,
+        keepTokens: 0,
+        tokenCountModel: 'gpt-5.1',
+      });
+
+      const state = createMockState({
+        messages: [
+          new HumanMessage('Message 1'),
+          new HumanMessage('Message 2'),
+        ],
+        currentContext: 45000,
+      });
+
+      mockInvoke.mockResolvedValue(new AIMessage('Summary'));
+
+      await nodeWithSpy.invoke(state, createMockConfig());
+
+      expect(resolverSpy).toHaveBeenCalledWith(45000);
     });
 
     it('should return token usage deltas for accumulation (not reset existing stats)', async () => {

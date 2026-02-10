@@ -232,10 +232,25 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return finalLines.join('\n').trim();
   }
 
-  private normalizeRawLines(text: string): string[] {
-    return this.splitLines(text)
+  private stripSurroundingEmptyLines(text: string): string {
+    const lines = this.splitLines(text);
+    while (lines.length > 0 && lines[lines.length - 1]?.trim() === '') {
+      lines.pop();
+    }
+    while (lines.length > 0 && lines[0]?.trim() === '') {
+      lines.shift();
+    }
+    return lines.join('\n');
+  }
+
+  private normalizeLineEndings(lines: string[]): string[] {
+    return lines
       .map((l) => l.replace(/[ \t]+$/g, ''))
       .map((l) => (l.trim().length === 0 ? '' : l));
+  }
+
+  private normalizeRawLines(text: string): string[] {
+    return this.normalizeLineEndings(this.splitLines(text));
   }
 
   private detectIndentationFromBlock(text: string): string {
@@ -519,11 +534,15 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     oldText: string,
     replaceAll: boolean,
   ): { matches: EditMatch[]; errors: string[]; matchStage?: MatchStage } {
+    // Strip leading/trailing empty lines from oldText — LLMs frequently include
+    // a trailing \n which produces a phantom blank line that breaks all match stages
+    const trimmedOldText = this.stripSurroundingEmptyLines(oldText);
+
     // Split once, share across all stages
     const originalLines = this.splitLines(fileContent);
 
     // Stage 1: Exact (whitespace-normalized)
-    const stage1 = this.findMatches(originalLines, oldText, replaceAll);
+    const stage1 = this.findMatches(originalLines, trimmedOldText, replaceAll);
     if (stage1.matches.length > 0) {
       return { ...stage1, matchStage: 'exact' };
     }
@@ -537,7 +556,11 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     // Stage 2: Trimmed (ignore leading whitespace)
-    const stage2 = this.findMatchesTrimmed(originalLines, oldText, replaceAll);
+    const stage2 = this.findMatchesTrimmed(
+      originalLines,
+      trimmedOldText,
+      replaceAll,
+    );
     if (stage2.matches.length > 0) {
       return { ...stage2, matchStage: 'trimmed' };
     }
@@ -545,7 +568,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     // Stage 3: Fuzzy (Levenshtein ≤15%)
     // Only for single match (replaceAll not supported for fuzzy)
     if (!replaceAll) {
-      const stage3 = this.findMatchesFuzzy(originalLines, oldText);
+      const stage3 = this.findMatchesFuzzy(originalLines, trimmedOldText);
       if (stage3.matches.length > 0) {
         return { ...stage3, matchStage: 'fuzzy' };
       }
@@ -606,9 +629,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     oldText: string,
     replaceAll: boolean,
   ): { matches: EditMatch[]; errors: string[] } {
-    const fileLinesRaw = originalLines
-      .map((l) => l.replace(/[ \t]+$/g, ''))
-      .map((l) => (l.trim().length === 0 ? '' : l));
+    const fileLinesRaw = this.normalizeLineEndings(originalLines);
 
     const matches: EditMatch[] = [];
     const errors: string[] = [];
@@ -866,112 +887,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     // Handle insertAfterLine mode
     if (args.insertAfterLine !== undefined) {
-      if (args.oldText !== '') {
-        return {
-          output: {
-            success: false,
-            error:
-              'When using insertAfterLine, oldText must be an empty string.',
-          },
-          messageMetadata,
-        };
-      }
-
-      const readRes = await this.readFileContent(args.filePath, config, cfg);
-      if ('error' in readRes) {
-        return {
-          output: { success: false, error: readRes.error },
-          messageMetadata,
-        };
-      }
-
-      if (args.expectedHash) {
-        const hashError = this.validateExpectedHash(
-          readRes.content,
-          args.expectedHash,
-        );
-        if (hashError) {
-          return {
-            output: { success: false, error: hashError },
-            messageMetadata,
-          };
-        }
-      }
-
-      const lines = this.splitLines(readRes.content);
-      const insertLine = args.insertAfterLine;
-
-      if (insertLine > lines.length) {
-        return {
-          output: {
-            success: false,
-            error: `insertAfterLine ${insertLine} is beyond the file length (${lines.length} lines).`,
-          },
-          messageMetadata,
-        };
-      }
-
-      const newLines = this.splitLines(args.newText);
-      lines.splice(insertLine, 0, ...newLines);
-
-      const modifiedContent = lines.join('\n');
-      const writeRes = await this.writeFileContent(
-        args.filePath,
-        modifiedContent,
-        config,
-        cfg,
-      );
-      if (writeRes.error) {
-        return {
-          output: { success: false, error: writeRes.error },
-          messageMetadata,
-        };
-      }
-
-      // Generate diff for insertion
-      const diffParts: string[] = [];
-      const diffContextStart = Math.max(0, insertLine - 5);
-      diffParts.push(
-        `@@ -${insertLine + 1},0 +${insertLine + 1},${newLines.length} @@`,
-      );
-      for (let i = diffContextStart; i < insertLine && i < lines.length; i++) {
-        diffParts.push(` ${lines[i]}`);
-      }
-      for (const nl of newLines) {
-        diffParts.push(`+${nl}`);
-      }
-      const diffContextEnd = Math.min(
-        lines.length,
-        insertLine + newLines.length + 5,
-      );
-      for (let i = insertLine + newLines.length; i < diffContextEnd; i++) {
-        if (lines[i] !== undefined) {
-          diffParts.push(` ${lines[i]}`);
-        }
-      }
-      const diff = diffParts.join('\n');
-
-      // Generate post-edit context
-      const contextStart = Math.max(0, insertLine - 5);
-      const contextEnd = Math.min(
-        lines.length,
-        insertLine + newLines.length + 5,
-      );
-      const postEditContext = lines
-        .slice(contextStart, contextEnd)
-        .map((line, i) => `${contextStart + i + 1}\t${line}`)
-        .join('\n');
-
-      return {
-        output: {
-          success: true,
-          appliedEdits: 1,
-          totalEdits: 1,
-          diff,
-          postEditContext,
-        },
-        messageMetadata,
-      };
+      return this.invokeInsertAfterLine(args, config, cfg, messageMetadata);
     }
 
     if (args.oldText === '') {
@@ -1074,6 +990,116 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         totalEdits: 1,
         diff: diff + matchWarning,
         matchStage,
+        postEditContext,
+      },
+      messageMetadata,
+    };
+  }
+
+  private async invokeInsertAfterLine(
+    args: FilesApplyChangesToolSchemaType,
+    config: FilesBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    messageMetadata: { __title: string | undefined },
+  ): Promise<ToolInvokeResult<FilesApplyChangesToolOutput>> {
+    if (args.oldText !== '') {
+      return {
+        output: {
+          success: false,
+          error: 'When using insertAfterLine, oldText must be an empty string.',
+        },
+        messageMetadata,
+      };
+    }
+
+    const readRes = await this.readFileContent(args.filePath, config, cfg);
+    if ('error' in readRes) {
+      return {
+        output: { success: false, error: readRes.error },
+        messageMetadata,
+      };
+    }
+
+    if (args.expectedHash) {
+      const hashError = this.validateExpectedHash(
+        readRes.content,
+        args.expectedHash,
+      );
+      if (hashError) {
+        return {
+          output: { success: false, error: hashError },
+          messageMetadata,
+        };
+      }
+    }
+
+    const lines = this.splitLines(readRes.content);
+    const insertLine = args.insertAfterLine!;
+
+    if (insertLine > lines.length) {
+      return {
+        output: {
+          success: false,
+          error: `insertAfterLine ${insertLine} is beyond the file length (${lines.length} lines).`,
+        },
+        messageMetadata,
+      };
+    }
+
+    const newLines = this.splitLines(args.newText!);
+    lines.splice(insertLine, 0, ...newLines);
+
+    const modifiedContent = lines.join('\n');
+    const writeRes = await this.writeFileContent(
+      args.filePath,
+      modifiedContent,
+      config,
+      cfg,
+    );
+    if (writeRes.error) {
+      return {
+        output: { success: false, error: writeRes.error },
+        messageMetadata,
+      };
+    }
+
+    // Generate diff for insertion
+    const diffParts: string[] = [];
+    const diffContextStart = Math.max(0, insertLine - 5);
+    diffParts.push(
+      `@@ -${insertLine + 1},0 +${insertLine + 1},${newLines.length} @@`,
+    );
+    for (let i = diffContextStart; i < insertLine && i < lines.length; i++) {
+      diffParts.push(` ${lines[i]}`);
+    }
+    for (const nl of newLines) {
+      diffParts.push(`+${nl}`);
+    }
+    const diffContextEnd = Math.min(
+      lines.length,
+      insertLine + newLines.length + 5,
+    );
+    for (let i = insertLine + newLines.length; i < diffContextEnd; i++) {
+      if (lines[i] !== undefined) {
+        diffParts.push(` ${lines[i]}`);
+      }
+    }
+    const diff = diffParts.join('\n');
+
+    // Generate post-edit context
+    const contextStart = Math.max(0, insertLine - 5);
+    const contextEnd = Math.min(lines.length, insertLine + newLines.length + 5);
+    const postEditContext = lines
+      .slice(contextStart, contextEnd)
+      .map((line, i) => `${contextStart + i + 1}\t${line}`)
+      .join('\n');
+
+    return {
+      output: {
+        success: true,
+        appliedEdits: 1,
+        totalEdits: 1,
+        diff,
         postEditContext,
       },
       messageMetadata,

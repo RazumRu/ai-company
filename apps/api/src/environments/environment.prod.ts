@@ -42,6 +42,10 @@ export const environment = () =>
     llmLargeCodeModel: getEnv('LLM_LARGE_CODE_MODEL', 'gpt-5.3-codex'),
     llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'gpt-5.1-codex-mini'),
     llmMiniModel: getEnv('LLM_MINI_MODEL', 'gpt-5-mini'),
+    llmSummarizeOnlineThreshold: +getEnv(
+      'LLM_SUMMARIZE_ONLINE_THRESHOLD',
+      '30000',
+    ),
     llmUseOfflineModel: getEnv('LLM_USE_OFFLINE_MODEL', false),
     llmOfflineCodingModel: getEnv('LLM_OFFLINE_CODING_MODEL', 'glm-4.7-flash'),
     llmOfflineCodingMiniModel: getEnv(
@@ -108,6 +112,9 @@ export const environment = () =>
     restoreGraphs: getEnv('RESTORE_GRAPHS', true),
     runtimeCleanupIntervalMs: +getEnv('RUNTIME_CLEANUP_INTERVAL_MS', '300000'),
     runtimeIdleThresholdMs: +getEnv('RUNTIME_IDLE_THRESHOLD_MS', '1800000'),
+
+    // tool output limits
+    toolMaxOutputTokens: +getEnv('TOOL_MAX_OUTPUT_TOKENS', '5000'),
 
     // agents
     agentsInstructionsFile: getEnv('AGENTS_INSTRUCTIONS_FILE', 'AGENTS.md'),

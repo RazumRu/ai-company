@@ -31,7 +31,7 @@ export const FinishToolSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Description of what was accomplished OR a specific question if more info is needed.',
+      'Your COMPLETE final output to the user. For research/design tasks, include ALL findings, analysis, recommendations, and implementation details — not just a summary. For simple tasks, a brief description of what was accomplished. If needsMoreInfo is true, include your specific question.',
     ),
   needsMoreInfo: z
     .boolean()
@@ -87,30 +87,28 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       ### When NOT to Use
       Don't call mid-work, alongside other tools, or before completing ALL work. Never output your internal reasoning or a plain-text final response without calling finish.
 
-      ### CRITICAL: Output Delivery for Research/Design/Analysis Tasks
-      **Your complete detailed output MUST be provided via the tool call mechanism, NOT in the message parameter:**
+      ### CRITICAL: All Output Goes in the message Field
+      The \`message\` field is the ONLY thing the user sees from the finish tool. You MUST put your COMPLETE output there — not just a summary.
 
-      - **message parameter**: Brief 1-3 sentence summary only (e.g., "Research complete. Analyzed auth module and designed 3 improvements.")
-      - **Detailed output**: Provide in the tool call's additional instructions/metadata (your LLM framework will handle this automatically when you structure your response correctly)
-
-      **WRONG - Do NOT do this:**
+      **WRONG — Do NOT do this:**
       1. Write your full detailed research/design as a normal assistant message
-      2. Then call finish with only a summary in the message parameter
+      2. Then call finish with only a brief summary in the message field
+      ⚠️ Normal assistant messages before finish are NOT reliably shown to the user. Only the finish message is guaranteed to be displayed.
 
-      **CORRECT - Do this:**
-      1. Use report_status for brief progress updates while working
-      2. When complete, call finish with:
-         - message: Brief summary (1-3 sentences)
-         - Your framework will capture your full reasoning/output in the tool call metadata
+      **CORRECT — Do this:**
+      1. Use \`report_status\` for brief progress updates while working
+      2. When complete, call finish and put your ENTIRE output in the \`message\` field
 
-      For research/design tasks, structure your complete detailed output with:
-      - High-level checklist (3-7 bullets)
-      - Detailed findings/analysis section
-      - Technical specifications
-      - Implementation steps
+      **For research/design/analysis tasks, the \`message\` field must contain:**
+      - High-level summary (2-3 sentences)
+      - Detailed findings/analysis
+      - Technical specifications or design decisions
+      - Implementation steps or recommendations
       - Acceptance criteria
       - Key files identified
       - Assumptions and follow-ups
+
+      **For simple tasks**, a brief description of what was accomplished is sufficient.
 
       ### Best Practices
       Prefer completion over asking (use defaults/assumptions). If asking, be specific about what's needed with examples. Set \`needsMoreInfo: true\` only when information is strictly required and cannot be reasonably assumed.
@@ -124,11 +122,10 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       {"purpose": "Report completion", "message": "Successfully implemented user auth endpoint with login, JWT validation, and tests.", "needsMoreInfo": false}
       \`\`\`
 
-      **Research/design completion (brief summary in message):**
+      **Research/design completion (full output in message):**
       \`\`\`json
-      {"purpose": "Report research completion", "message": "Research complete. Analyzed authentication flow and designed 3 improvements with implementation steps.", "needsMoreInfo": false}
+      {"purpose": "Report research completion", "message": "## Summary\\nAnalyzed authentication flow and identified 3 improvements.\\n\\n## Findings\\n1. Token refresh logic has a race condition in concurrent requests...\\n2. Session expiry check is missing from the middleware...\\n3. Password hashing uses outdated bcrypt rounds...\\n\\n## Recommendations\\n- Fix race condition by adding a token refresh mutex\\n- Add session validation middleware to all protected routes\\n- Upgrade bcrypt rounds from 10 to 12\\n\\n## Key Files\\n- src/auth/token.service.ts (lines 45-67)\\n- src/middleware/session.ts\\n- src/auth/password.utils.ts", "needsMoreInfo": false}
       \`\`\`
-      Note: Your detailed research output will be captured automatically in the tool call metadata, not in the message field.
 
       **Simple response:**
       \`\`\`json
@@ -140,12 +137,12 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       {"purpose": "Request required info", "message": "Need the production API key to proceed. Please provide it.", "needsMoreInfo": true}
       \`\`\`
 
-      **WRONG - calling alongside other tools:**
+      **WRONG — calling alongside other tools:**
       \`\`\`
       [files_read(...), files_write(...), finish(...)]  ❌
       \`\`\`
 
-      **CORRECT - call tools, then finish separately:**
+      **CORRECT — call tools, then finish separately:**
       \`\`\`
       Turn 1: [files_read(...), files_write(...)]
       Turn 2: [finish(...)]  ✓

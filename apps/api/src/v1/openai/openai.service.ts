@@ -3,10 +3,7 @@ import { compact, isObject } from 'lodash';
 import OpenAI from 'openai';
 import { zodResponseFormat, zodTextFormat } from 'openai/helpers/zod';
 import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
-import {
-  ResponseCreateParamsNonStreaming,
-  ResponseTextConfig,
-} from 'openai/resources/responses/responses';
+import { ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses';
 import { ZodObject } from 'zod';
 
 import { environment } from '../../environments';
@@ -142,8 +139,6 @@ export class OpenaiService {
     data: ResponseData | ResponseJsonData,
     params?: ResponsesParams,
   ): Promise<GenerateResult<T | string>> {
-    let text: ResponseTextConfig | undefined;
-
     const generatedSchema =
       'jsonSchema' in data && zodTextFormat(data.jsonSchema, 'schema');
 
@@ -164,7 +159,6 @@ export class OpenaiService {
           : undefined,
         { role: 'user', content: data.message },
       ]),
-      ...(text ? { text } : {}),
     });
 
     const outputText =

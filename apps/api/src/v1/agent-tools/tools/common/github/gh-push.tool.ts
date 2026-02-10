@@ -108,10 +108,10 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     const remote = args.remote || 'origin';
 
     // Build git push command
-    // If branch is specified, push to remote/branch, otherwise push current branch
+    // Always use -u to set upstream tracking, which is required for newly created branches
     const pushCmd = args.branch
-      ? `git push ${JSON.stringify(remote)} ${JSON.stringify(args.branch)}`
-      : `git push ${JSON.stringify(remote)}`;
+      ? `git push -u ${JSON.stringify(remote)} ${JSON.stringify(args.branch)}`
+      : `git push -u ${JSON.stringify(remote)} HEAD`;
 
     const pushRes = await this.execGhCommand(
       {

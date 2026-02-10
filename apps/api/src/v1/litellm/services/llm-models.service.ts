@@ -55,7 +55,23 @@ export class LlmModelsService {
     return { model, reasoning };
   }
 
-  getSummarizeModel(): string {
+  /**
+   * Returns the model to use for summarization based on the current context size.
+   * When offline mode is active and the context exceeds the online threshold,
+   * forces the online model to ensure quality summarization of large conversations.
+   *
+   * @param currentContext - Current token count of the conversation. When above
+   *   the threshold (LLM_SUMMARIZE_ONLINE_THRESHOLD, default 30000), the online
+   *   model is used regardless of the offline mode setting.
+   */
+  getSummarizeModel(currentContext?: number): string {
+    if (
+      environment.llmUseOfflineModel &&
+      currentContext !== undefined &&
+      currentContext > environment.llmSummarizeOnlineThreshold
+    ) {
+      return environment.llmMiniModel;
+    }
     return this.offlineMiniFallback(environment.llmMiniModel);
   }
 

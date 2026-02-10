@@ -40,7 +40,7 @@ export class SummarizeNode extends BaseNode<
 > {
   constructor(
     private readonly litellmService: LitellmService,
-    private llm: ChatOpenAI,
+    private llmResolver: (currentContext?: number) => ChatOpenAI,
     private opts: SummarizeOpts,
     private readonly logger?: DefaultLogger,
   ) {
@@ -133,7 +133,11 @@ export class SummarizeNode extends BaseNode<
 
     // Step 6: Update summary using delta-folding
     // Pass previous summary as TEXT, not as message
-    const summaryData = await this.fold(state.summary, messagesForSummarize);
+    const summaryData = await this.fold(
+      state.summary,
+      messagesForSummarize,
+      state.currentContext,
+    );
 
     // Step 7: Write back state atomically
     const summaryMarker = this.buildHiddenSummaryMarker(summaryData.summary);
@@ -427,10 +431,12 @@ export class SummarizeNode extends BaseNode<
   private async fold(
     previousSummaryText: string | undefined,
     newMessages: BaseMessage[],
+    currentContext?: number,
   ): Promise<{
     summary: string;
     usage: RequestTokenUsage | null;
   }> {
+    const llm = this.llmResolver(currentContext);
     const sys = new SystemMessage(
       this.opts.systemNote ||
         'You update a running summary of a conversation. Keep key facts, goals, decisions, constraints, names, deadlines, and follow-ups. Be concise; use compact sentences; omit chit-chat.',
@@ -448,8 +454,8 @@ export class SummarizeNode extends BaseNode<
     const human = new HumanMessage(
       `Previous summary:\n${previousSummaryText ?? '(none)'}\n\nFold in the following messages:\n${lines}\n\nReturn only the updated summary.`,
     );
-    const res = (await this.llm.invoke([sys, human])) as AIMessage;
-    const model = String(this.llm.model);
+    const res = (await llm.invoke([sys, human])) as AIMessage;
+    const model = String(llm.model);
     const usageMetadata = res.usage_metadata || res.response_metadata?.usage;
 
     const usage = await this.litellmService.extractTokenUsageFromResponse(

@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { Tiktoken, TiktokenModel } from 'js-tiktoken/lite';
 
-import { environment } from '../../../environments';
 import { LiteLlmModelDto } from '../dto/models.dto';
 import {
   LiteLLMModelInfo,

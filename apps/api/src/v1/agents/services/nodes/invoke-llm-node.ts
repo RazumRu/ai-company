@@ -240,7 +240,10 @@ export class InvokeLlmNode extends BaseNode<
 
       if (retryDelayMs > maxRetryMs) {
         const retrySeconds = Math.ceil(retryDelayMs / 1000);
-        throw new Error(`Rate limit retry delay ${retrySeconds}s exceeds 60s.`);
+        throw new Error(
+          `Rate limit retry delay ${retrySeconds}s exceeds 60s.`,
+          { cause: error },
+        );
       }
 
       this.logger?.warn(

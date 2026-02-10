@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
+import { environment } from '../../../../environments';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { execRuntimeWithContext } from '../../agent-tools.utils';
@@ -56,13 +57,6 @@ export const ShellToolSchema = z.object({
     .describe(
       'Environment variables to set for this command. These are merged with any pre-configured env vars and persist for the session.',
     ),
-  maxOutputLength: z
-    .int()
-    .positive()
-    .optional()
-    .describe(
-      'Maximum characters to return. If output exceeds this, only the last N characters are kept (default: 10000)',
-    ),
 });
 
 export type ShellToolSchemaType = z.infer<typeof ShellToolSchema>;
@@ -77,7 +71,7 @@ export interface ShellToolOutput {
 export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
   public name = 'shell';
   public description =
-    'Execute a shell command inside the runtime container and return its exit code, stdout, and stderr. Commands within the same thread share a persistent session, so environment variables and working directory changes (cd) persist across calls. Output is truncated to the last maxOutputLength characters (default 10000). Use this for git operations, build/test/install commands, and system inspection — but prefer specialized file tools (files_read, files_search_text, etc.) for reading, searching, and editing files.';
+    'Execute a shell command inside the runtime container and return its exit code, stdout, and stderr. Commands within the same thread share a persistent session, so environment variables and working directory changes (cd) persist across calls. Output is automatically truncated to fit within the configured token budget. Use this for git operations, build/test/install commands, and system inspection — but prefer specialized file tools (files_read, files_search_text, etc.) for reading, searching, and editing files.';
 
   protected override generateTitle(
     args: ShellToolSchemaType,
@@ -175,19 +169,14 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       : {};
 
     // Extract non-runtime fields from data before passing to runtime.exec
-    const {
-      purpose: _purpose,
-      maxOutputLength,
-      command,
-      timeoutMs,
-      tailTimeoutMs,
-    } = data;
+    const { purpose: _purpose, command, timeoutMs, tailTimeoutMs } = data;
 
-    // Trim output to last N characters if it exceeds maxOutputLength
+    // Trim output to last N characters based on token budget.
+    // Approximate 1 token ≈ 4 characters for a safe character limit.
+    const maxOutputChars = (environment.toolMaxOutputTokens || 5000) * 4;
     const trimOutput = (output: string): string => {
-      const max = maxOutputLength || 10000;
-      if (output.length > max) {
-        return output.slice(-max);
+      if (output.length > maxOutputChars) {
+        return output.slice(-maxOutputChars);
       }
       return output;
     };

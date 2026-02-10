@@ -109,7 +109,7 @@ describe('GhPushTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execGhCommand).toHaveBeenCalledTimes(1);
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'cd "/runtime-workspace/repo" && git push "origin"' },
+        { cmd: 'cd "/runtime-workspace/repo" && git push -u "origin" HEAD' },
         mockConfig,
         mockCfg,
       );
@@ -133,7 +133,7 @@ describe('GhPushTool', () => {
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'cd "/runtime-workspace/repo" && git push "upstream"' },
+        { cmd: 'cd "/runtime-workspace/repo" && git push -u "upstream" HEAD' },
         mockConfig,
         mockCfg,
       );
@@ -158,7 +158,7 @@ describe('GhPushTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/runtime-workspace/repo" && git push "origin" "feature-branch"',
+          cmd: 'cd "/runtime-workspace/repo" && git push -u "origin" "feature-branch"',
         },
         mockConfig,
         mockCfg,
@@ -185,7 +185,7 @@ describe('GhPushTool', () => {
       expect(result.error).toBeUndefined();
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/runtime-workspace/repo" && git push "upstream" "main"',
+          cmd: 'cd "/runtime-workspace/repo" && git push -u "upstream" "main"',
         },
         mockConfig,
         mockCfg,
@@ -208,7 +208,7 @@ describe('GhPushTool', () => {
 
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'cd "/path/to/repo" && git push "origin"' },
+        { cmd: 'cd "/path/to/repo" && git push -u "origin" HEAD' },
         mockConfig,
         mockCfg,
       );
@@ -233,7 +233,7 @@ describe('GhPushTool', () => {
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/path/to/repo" && git push "upstream" "feature-branch"',
+          cmd: 'cd "/path/to/repo" && git push -u "upstream" "feature-branch"',
         },
         mockConfig,
         mockCfg,
@@ -312,7 +312,7 @@ describe('GhPushTool', () => {
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
         {
-          cmd: 'cd "/runtime-workspace/repo" && git push "origin" "feature/my-branch"',
+          cmd: 'cd "/runtime-workspace/repo" && git push -u "origin" "feature/my-branch"',
         },
         mockConfig,
         mockCfg,
@@ -336,7 +336,7 @@ describe('GhPushTool', () => {
 
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'cd "/runtime-workspace/repo" && git push "my-remote"' },
+        { cmd: 'cd "/runtime-workspace/repo" && git push -u "my-remote" HEAD' },
         mockConfig,
         mockCfg,
       );
