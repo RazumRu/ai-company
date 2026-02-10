@@ -122,7 +122,7 @@ export class RepoIndexDao extends BaseDao<
     const hash = createHash('sha256')
       .update(`${repositoryId}:${branch}`)
       .digest();
-    // Read as signed int64 — pg_advisory_xact_lock accepts bigint
+    // Read as signed int64 — pg_advisory_lock accepts bigint
     return hash.readBigInt64BE(0).toString();
   }
 }

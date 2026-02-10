@@ -364,7 +364,7 @@ export class RepoIndexerService {
 
     // SCP-style: git@host:owner/repo.git
     if (normalized.startsWith('git@') && normalized.includes(':')) {
-      const [host, pathPart] = normalized.replace('git@', '').split(':');
+      const [host, pathPart] = normalized.replace('git@', '').split(':', 2);
       normalized = `https://${host}/${pathPart}`;
     }
 
@@ -1026,8 +1026,8 @@ export class RepoIndexerService {
       if (!trimmed) continue;
       const payload = trimmed.slice(3).trim();
       if (!payload) continue;
-      if (payload.includes('->')) {
-        const [from, to] = payload.split('->').map((p) => p.trim());
+      if (payload.includes(' -> ')) {
+        const [from, to] = payload.split(' -> ', 2).map((p) => p.trim());
         if (from) paths.add(from);
         if (to) paths.add(to);
       } else {
@@ -1131,25 +1131,36 @@ export class RepoIndexerService {
     const result = new Map<string, boolean>();
     if (paths.length === 0) return result;
 
-    // Process in batches to avoid shell argument length limits
+    // Split into shell-safe batches and run them concurrently
     const BATCH = 200;
+    const batches: string[][] = [];
     for (let i = 0; i < paths.length; i += BATCH) {
-      const batch = paths.slice(i, i + BATCH);
-      // Print each path that exists as a file — one per line
-      const checks = batch
-        .map(
-          (p) => `[ -f ${shQuote(`${repoRoot}/${p}`)} ] && echo ${shQuote(p)}`,
-        )
-        .join('; ');
-      const res = await execFn({ cmd: checks });
-      const existingPaths = new Set(
-        res.stdout
-          .split('\n')
-          .map((l) => l.trim())
-          .filter(Boolean),
+      batches.push(paths.slice(i, i + BATCH));
+    }
+
+    const CONCURRENCY = FILE_READ_CONCURRENCY;
+    for (let i = 0; i < batches.length; i += CONCURRENCY) {
+      const slice = batches.slice(i, i + CONCURRENCY);
+      const responses = await Promise.all(
+        slice.map((batch) => {
+          const checks = batch
+            .map(
+              (p) =>
+                `[ -f ${shQuote(`${repoRoot}/${p}`)} ] && echo ${shQuote(p)}`,
+            )
+            .join('; ');
+          return execFn({ cmd: checks });
+        }),
       );
-      for (const p of batch) {
-        result.set(p, existingPaths.has(p));
+      for (let j = 0; j < slice.length; j++) {
+        const existingPaths = new Set(
+          responses[j]!.stdout.split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean),
+        );
+        for (const p of slice[j]!) {
+          result.set(p, existingPaths.has(p));
+        }
       }
     }
 
@@ -1230,18 +1241,41 @@ export class RepoIndexerService {
       Math.max(0, targetTokens - 1),
     );
 
-    // Compute character offsets lazily — only at chunk boundaries — by
-    // decoding the token prefix up to each boundary.  This replaces the old
-    // per-token decode loop (N calls) with ~2 calls per chunk.
+    // Compute character offsets incrementally at chunk boundaries.
+    // Instead of decoding tokens[0..N] from scratch each time (O(N) per call),
+    // we track the last computed position and decode only the delta slice.
     const offsetCache = new Map<number, number>();
     offsetCache.set(0, 0);
     offsetCache.set(tokens.length, content.length);
+    let lastTokenIdx = 0;
+    let lastCharOffset = 0;
     const charOffset = (tokenIdx: number): number => {
       const cached = offsetCache.get(tokenIdx);
       if (cached !== undefined) return cached;
-      const prefix = tokens.slice(0, tokenIdx);
-      const len = String(encoding.decode(prefix)).length;
+
+      // Decode only the token slice between the nearest known position and target
+      let baseIdx: number;
+      let baseOffset: number;
+      if (tokenIdx > lastTokenIdx) {
+        baseIdx = lastTokenIdx;
+        baseOffset = lastCharOffset;
+      } else {
+        // Rare: overlap caused a backward jump — find nearest cached predecessor
+        baseIdx = 0;
+        baseOffset = 0;
+        for (const [idx, off] of offsetCache) {
+          if (idx <= tokenIdx && idx > baseIdx) {
+            baseIdx = idx;
+            baseOffset = off;
+          }
+        }
+      }
+
+      const delta = tokens.slice(baseIdx, tokenIdx);
+      const len = baseOffset + String(encoding.decode(delta)).length;
       offsetCache.set(tokenIdx, len);
+      lastTokenIdx = tokenIdx;
+      lastCharOffset = len;
       return len;
     };
 
@@ -1346,7 +1380,6 @@ export class RepoIndexerService {
           totalTokens: tokenCounts.reduce((sum, c) => sum + c, 0),
         },
       );
-      batch.length = 0;
       throw err;
     }
 

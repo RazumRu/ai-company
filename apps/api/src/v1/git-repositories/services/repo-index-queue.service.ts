@@ -231,11 +231,31 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    // Worker may not exist if setCallbacks was never called (e.g. partial startup)
+    // Close each resource in its own try/catch to ensure all resources are
+    // cleaned up even if one fails. Worker may not exist if setCallbacks
+    // was never called (e.g. partial startup).
     if (this.worker) {
-      await this.worker.close();
+      try {
+        await this.worker.close();
+      } catch (err) {
+        this.logger.warn('Failed to close BullMQ worker', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-    await this.queue?.close();
-    await this.redis?.quit();
+    try {
+      await this.queue?.close();
+    } catch (err) {
+      this.logger.warn('Failed to close BullMQ queue', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    try {
+      await this.redis?.quit();
+    } catch (err) {
+      this.logger.warn('Failed to close Redis connection', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }

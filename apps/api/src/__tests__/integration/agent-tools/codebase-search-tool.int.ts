@@ -1,6 +1,7 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { DataSource } from 'typeorm';
 import { v5 as uuidv5 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -8,6 +9,7 @@ import { environment } from '../../../environments';
 import { FilesCodebaseSearchTool } from '../../../v1/agent-tools/tools/common/files/files-codebase-search.tool';
 import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
 import { RepoIndexDao } from '../../../v1/git-repositories/dao/repo-index.dao';
+import { GitRepositoryProvider } from '../../../v1/git-repositories/git-repositories.types';
 import { RepoIndexerService } from '../../../v1/git-repositories/services/repo-indexer.service';
 import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
 import { OpenaiService } from '../../../v1/openai/openai.service';
@@ -27,6 +29,9 @@ const RUNNABLE_CONFIG: ToolRunnableConfig<BaseAgentConfigurable> = {
 };
 const INT_TEST_TIMEOUT = 120_000;
 const VECTOR_SIZE = 3;
+const REPO_ROOT = '/runtime-workspace';
+const REPO_ID = `local:${REPO_ROOT}`;
+const REPOSITORY_ID = uuidv5(REPO_ID, environment.codebaseUuidNamespace);
 
 const buildEmbedding = (text: string): number[] => {
   const normalized = text.toLowerCase();
@@ -95,6 +100,30 @@ describe('Codebase search tool (integration)', () => {
     repoIndexerService = app.get(RepoIndexerService);
     repoIndexDao = app.get(RepoIndexDao);
 
+    // Ensure a git_repositories row exists so repo_indexes FK is satisfied.
+    // Hard-delete any stale rows (including soft-deleted) first, then upsert.
+    const dataSource = app.get(DataSource);
+    await dataSource.query(
+      `DELETE FROM "repo_indexes" WHERE "repositoryId" = $1`,
+      [REPOSITORY_ID],
+    );
+    await dataSource.query(`DELETE FROM "git_repositories" WHERE "id" = $1`, [
+      REPOSITORY_ID,
+    ]);
+    await dataSource.query(
+      `INSERT INTO "git_repositories" ("id", "owner", "repo", "url", "provider", "createdBy", "defaultBranch")
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        REPOSITORY_ID,
+        'local',
+        'runtime-workspace',
+        REPO_ID,
+        GitRepositoryProvider.GITHUB,
+        randomUUID(),
+        'main',
+      ],
+    );
+
     runtime = new DockerRuntime({ socketPath: environment.dockerSocket });
     await runtime.start({
       image: environment.dockerRuntimeImage,
@@ -125,6 +154,20 @@ describe('Codebase search tool (integration)', () => {
   }, INT_TEST_TIMEOUT);
 
   afterAll(async () => {
+    // Hard-delete repo_indexes first, then git_repositories (FK order)
+    try {
+      const dataSource = app.get(DataSource);
+      await dataSource.query(
+        `DELETE FROM "repo_indexes" WHERE "repositoryId" = $1`,
+        [REPOSITORY_ID],
+      );
+      await dataSource.query(`DELETE FROM "git_repositories" WHERE "id" = $1`, [
+        REPOSITORY_ID,
+      ]);
+    } catch {
+      // Ignore cleanup errors
+    }
+
     if (collectionName) {
       const collections = await qdrantService.raw.getCollections();
       const exists = collections.collections.some(
@@ -708,10 +751,10 @@ EOF`,
         secondSearch.output.results?.some((m) => m.text.includes(token)),
       ).toBe(true);
 
-      // Verify new repo_index was created
+      // Verify repo_index was restored (soft-deleted row is reused)
       const newRepoIndexEntity = await repoIndexDao.getOne({ repositoryId });
       expect(newRepoIndexEntity).not.toBeNull();
-      expect(newRepoIndexEntity!.id).not.toBe(repoIndexEntity!.id);
+      expect(newRepoIndexEntity!.deletedAt).toBeNull();
 
       // Verify chunks still exist and search still works
       const pointsAfterReindex = await qdrantService.scrollAll(collection, {

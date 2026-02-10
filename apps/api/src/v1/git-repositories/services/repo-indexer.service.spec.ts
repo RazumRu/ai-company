@@ -1261,4 +1261,111 @@ describe('RepoIndexerService', () => {
       expect(largeContent).toContain(points[1]!.payload.text);
     });
   });
+
+  describe('withTimeout', () => {
+    it('returns the result when exec completes before timeout', async () => {
+      const execFn: RepoExecFn = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: 'ok',
+        stderr: '',
+      });
+
+      const wrapped = RepoIndexerService.withTimeout(execFn, 5000);
+      const result = await wrapped({ cmd: 'echo ok' });
+
+      expect(result).toEqual({ exitCode: 0, stdout: 'ok', stderr: '' });
+    });
+
+    it('rejects when exec exceeds the timeout', async () => {
+      const execFn: RepoExecFn = vi
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(
+                () => resolve({ exitCode: 0, stdout: 'late', stderr: '' }),
+                10_000,
+              ),
+            ),
+        );
+
+      const wrapped = RepoIndexerService.withTimeout(execFn, 50);
+
+      await expect(wrapped({ cmd: 'sleep 10' })).rejects.toThrow(
+        /Git exec timed out after 50ms/,
+      );
+    });
+
+    it('returns the original execFn when timeout is <= 0', () => {
+      const execFn: RepoExecFn = vi.fn();
+      const wrapped = RepoIndexerService.withTimeout(execFn, 0);
+      expect(wrapped).toBe(execFn);
+    });
+
+    it('propagates errors from the original execFn', async () => {
+      const execFn: RepoExecFn = vi
+        .fn()
+        .mockRejectedValue(new Error('exec failed'));
+
+      const wrapped = RepoIndexerService.withTimeout(execFn, 5000);
+
+      await expect(wrapped({ cmd: 'bad cmd' })).rejects.toThrow('exec failed');
+    });
+  });
+
+  describe('listWorkingTreeChanges rename parsing', () => {
+    it('parses renames using " -> " separator', async () => {
+      const execFn: RepoExecFn = vi
+        .fn()
+        .mockImplementation(async (params: { cmd: string }) => {
+          if (params.cmd.includes('status --porcelain')) {
+            return {
+              exitCode: 0,
+              stdout: 'R  old-name.ts -> new-name.ts\n',
+              stderr: '',
+            };
+          }
+          if (params.cmd.includes('diff --name-only')) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          if (params.cmd.includes('.codebaseindexignore')) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          if (params.cmd.includes('[ -f')) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          return { exitCode: 0, stdout: '', stderr: '' };
+        });
+
+      // Use runIncrementalIndex which calls listWorkingTreeChanges
+      await service.runIncrementalIndex(
+        {
+          repoId: 'https://github.com/owner/repo',
+          repoRoot: '/workspace/repo',
+          currentCommit: 'abc123',
+          collection: 'codebase_test_main_3',
+          vectorSize: 3,
+          embeddingModel: 'text-embedding-3-small',
+          lastIndexedCommit: 'prev123',
+        },
+        execFn,
+      );
+
+      // Both old and new paths should have been processed
+      // The deleteByFilter call should include old-name.ts in should filter
+      expect(mockQdrantService.deleteByFilter).toHaveBeenCalledWith(
+        'codebase_test_main_3',
+        expect.objectContaining({
+          should: expect.arrayContaining([
+            expect.objectContaining({
+              key: 'path',
+              match: expect.objectContaining({
+                value: expect.stringContaining('name.ts'),
+              }),
+            }),
+          ]),
+        }),
+      );
+    });
+  });
 });

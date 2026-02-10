@@ -28,7 +28,7 @@ describe('FilesCodebaseSearchTool', () => {
     mockConfig = {
       runtimeProvider: {
         provide: vi.fn().mockResolvedValue(mockRuntime),
-      } as any,
+      } as unknown as FilesBaseToolConfig['runtimeProvider'],
     };
 
     mockRepoIndexService = {
@@ -360,6 +360,195 @@ describe('FilesCodebaseSearchTool', () => {
       // relative('/repo', '/src/utils') = '../src/utils' (outside repo)
       // Falls through to the final return branch: posix normalize of '/src/utils' with leading slash stripped
       expect(result).not.toMatch(/^\//);
+    });
+  });
+
+  describe('invoke edge cases', () => {
+    const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
+      configurable: {
+        thread_id: 'test-thread-123',
+      },
+    };
+
+    it('should return error for whitespace-only query', async () => {
+      vi.spyOn(
+        tool as unknown as { execCommand: (...args: unknown[]) => unknown },
+        'execCommand',
+      )
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
+        });
+
+      const { output } = await tool.invoke(
+        { query: '   ', gitRepoDirectory: 'apps/api' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(output.error).toBe('query must not be blank');
+    });
+  });
+
+  describe('resolveCurrentBranch', () => {
+    const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
+      configurable: {
+        thread_id: 'test-thread-123',
+      },
+    };
+
+    it('should fall back to master when main does not exist', async () => {
+      vi.spyOn(
+        tool as unknown as { execCommand: (...args: unknown[]) => unknown },
+        'execCommand',
+      )
+        // resolveRepoRoot
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        // resolveRepoInfo (remote URL)
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        // symbolic-ref --short HEAD (detached HEAD)
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'fatal: ref HEAD is not a symbolic ref',
+          execPath: '',
+        })
+        // symbolic-ref refs/remotes/origin/HEAD (no remote HEAD)
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'fatal',
+          execPath: '',
+        })
+        // git branch --list main master
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '  master\n',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'ready',
+        repoIndex: {
+          id: 'index-1',
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_master_1536',
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue([]);
+
+      await tool.invoke(
+        { query: 'find something', gitRepoDirectory: '/repo' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(mockRepoIndexService.getOrInitIndexForRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ branch: 'master' }),
+      );
+    });
+
+    it('should default to main when neither main nor master exists', async () => {
+      vi.spyOn(
+        tool as unknown as { execCommand: (...args: unknown[]) => unknown },
+        'execCommand',
+      )
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        // symbolic-ref --short HEAD (detached HEAD)
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: '',
+          execPath: '',
+        })
+        // symbolic-ref refs/remotes/origin/HEAD
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: '',
+          execPath: '',
+        })
+        // git branch --list main master (neither exists)
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'ready',
+        repoIndex: {
+          id: 'index-1',
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_main_1536',
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue([]);
+
+      await tool.invoke(
+        { query: 'find something', gitRepoDirectory: '/repo' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(mockRepoIndexService.getOrInitIndexForRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ branch: 'main' }),
+      );
     });
   });
 });

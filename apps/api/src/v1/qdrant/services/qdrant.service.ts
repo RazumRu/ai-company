@@ -313,19 +313,39 @@ export class QdrantService {
   /**
    * Check whether an error indicates a Qdrant collection was not found.
    * Centralizes the string-matching heuristic so callers don't duplicate it.
+   * Uses patterns specific to Qdrant to avoid false positives from unrelated
+   * "not found" errors (e.g. "User not found", "File not found").
    */
   static isCollectionNotFoundError(error: unknown): boolean {
-    const message = error instanceof Error ? error.message : String(error);
-    return message.includes('not found') || message.includes('does not exist');
+    const message = (
+      error instanceof Error ? error.message : String(error)
+    ).toLowerCase();
+    return (
+      /collection\b.*\bnot found/i.test(message) ||
+      /collection\b.*\b(?:does ?not|doesn't) exist/i.test(message) ||
+      /not found.*\bcollection/i.test(message) ||
+      // Qdrant REST API error format: "Collection <name> {not found|doesn't exist}"
+      /collection\s+["`']?\w+["`']?\s+(?:not found|doesn't exist|does not exist)/i.test(
+        message,
+      ) ||
+      // Qdrant REST client returns bare "Not Found" for HTTP 404 on collection endpoints
+      message === 'not found'
+    );
   }
 
   /**
    * Check whether an error indicates a Qdrant resource already exists
-   * (e.g. a payload index that was already created).
+   * (e.g. a payload index or collection that was already created).
+   * Uses patterns specific to Qdrant to avoid false positives.
    */
   static isAlreadyExistsError(error: unknown): boolean {
-    const message = error instanceof Error ? error.message : String(error);
-    return message.includes('already exists');
+    const message = (
+      error instanceof Error ? error.message : String(error)
+    ).toLowerCase();
+    return (
+      /(?:collection|index|field index)\b.*\balready exists/i.test(message) ||
+      /already exists.*\b(?:collection|index)/i.test(message)
+    );
   }
 
   private extractVectorSizeFromInfo(info: CollectionInfo): number | null {

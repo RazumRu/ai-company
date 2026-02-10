@@ -144,13 +144,13 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     config: FilesBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<CodebaseSearchOutput>> {
-    const title = this.generateTitle?.(args, config);
+    const title = this.generateTitle(args, config);
     const messageMetadata = { __title: title };
 
     const normalizedQuery = args.query.trim();
     if (!normalizedQuery) {
       return {
-        output: { error: 'query is required' },
+        output: { error: 'query must not be blank' },
         messageMetadata,
       };
     }
@@ -341,7 +341,19 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       }
     }
 
-    // 3. Last resort — fall back to 'main' to avoid orphaned per-SHA indexes
+    // 3. Last resort — try common default branch names before giving up
+    const defaultBranchRes = await execFn({
+      cmd: `git -C ${shQuote(repoRoot)} branch --list main master`,
+    });
+    if (defaultBranchRes.exitCode === 0) {
+      const branches = defaultBranchRes.stdout
+        .split('\n')
+        .map((b) => b.replace(/^\*?\s+/, '').trim())
+        .filter(Boolean);
+      if (branches.includes('main')) return 'main';
+      if (branches.includes('master')) return 'master';
+    }
+
     return 'main';
   }
 }

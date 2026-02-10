@@ -24,6 +24,7 @@ type MockQdrantClient = {
   getCollections: ReturnType<typeof vi.fn>;
   getCollection: ReturnType<typeof vi.fn>;
   createCollection: ReturnType<typeof vi.fn>;
+  createPayloadIndex: ReturnType<typeof vi.fn>;
   upsert: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
   search: ReturnType<typeof vi.fn>;
@@ -47,6 +48,7 @@ describe('QdrantService', () => {
         config: { params: { vectors: { size: 2 } } },
       }),
       createCollection: vi.fn(),
+      createPayloadIndex: vi.fn(),
       upsert: vi.fn(),
       delete: vi.fn(),
       search: vi.fn(),
@@ -199,6 +201,149 @@ describe('QdrantService', () => {
         must: [{ key: 'x', match: { value: 'y' } }],
       });
       expect(mockClient.getCollection).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('isCollectionNotFoundError', () => {
+    it('matches Qdrant "Collection not found" errors', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError(
+          new Error('Collection my_col not found'),
+        ),
+      ).toBe(true);
+    });
+
+    it('matches Qdrant "Collection does not exist" errors', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError(
+          new Error('Collection my_col does not exist'),
+        ),
+      ).toBe(true);
+    });
+
+    it('matches "doesn\'t exist" errors', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError(
+          new Error("Collection my_col doesn't exist"),
+        ),
+      ).toBe(true);
+    });
+
+    it('does not match unrelated "not found" errors', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError(new Error('User not found')),
+      ).toBe(false);
+    });
+
+    it('does not match unrelated "does not exist" errors', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError(
+          new Error('File does not exist'),
+        ),
+      ).toBe(false);
+    });
+
+    it('does not match unrelated "doesn\'t exist" errors', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError(
+          new Error("Schema doesn't exist"),
+        ),
+      ).toBe(false);
+    });
+
+    it('does not match generic errors', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError(
+          new Error('Connection timeout'),
+        ),
+      ).toBe(false);
+    });
+
+    it('matches bare "Not Found" from Qdrant REST 404', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError(new Error('Not Found')),
+      ).toBe(true);
+    });
+
+    it('handles non-Error values', () => {
+      expect(
+        QdrantService.isCollectionNotFoundError('Collection my_col not found'),
+      ).toBe(true);
+      expect(QdrantService.isCollectionNotFoundError('Something else')).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('isAlreadyExistsError', () => {
+    it('matches "field index already exists" errors', () => {
+      expect(
+        QdrantService.isAlreadyExistsError(
+          new Error('field index repo_id already exists'),
+        ),
+      ).toBe(true);
+    });
+
+    it('matches "Collection already exists" errors', () => {
+      expect(
+        QdrantService.isAlreadyExistsError(
+          new Error('Collection my_col already exists'),
+        ),
+      ).toBe(true);
+    });
+
+    it('does not match unrelated "already exists" errors', () => {
+      expect(
+        QdrantService.isAlreadyExistsError(new Error('User already exists')),
+      ).toBe(false);
+    });
+
+    it('does not match generic errors', () => {
+      expect(
+        QdrantService.isAlreadyExistsError(new Error('Connection timeout')),
+      ).toBe(false);
+    });
+  });
+
+  describe('ensurePayloadIndex', () => {
+    it('creates a payload index on an existing collection', async () => {
+      await service.ensurePayloadIndex('test-collection', 'repo_id', 'keyword');
+
+      expect(mockClient.createPayloadIndex).toHaveBeenCalledWith(
+        'test-collection',
+        { field_name: 'repo_id', field_schema: 'keyword' },
+      );
+    });
+
+    it('silently succeeds when the index already exists', async () => {
+      mockClient.createPayloadIndex.mockRejectedValueOnce(
+        new Error('field index repo_id already exists'),
+      );
+
+      await expect(
+        service.ensurePayloadIndex('test-collection', 'repo_id', 'keyword'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rethrows non-"already exists" errors', async () => {
+      mockClient.createPayloadIndex.mockRejectedValueOnce(
+        new Error('Connection timeout'),
+      );
+
+      await expect(
+        service.ensurePayloadIndex('test-collection', 'repo_id', 'keyword'),
+      ).rejects.toThrow('Connection timeout');
+    });
+
+    it('skips when collection does not exist', async () => {
+      mockClient.getCollection.mockRejectedValue(
+        new Error('Collection test-missing not found'),
+      );
+
+      await service.ensurePayloadIndex('test-missing', 'repo_id', 'keyword');
+
+      // createPayloadIndex exists on mockClient only if set up — ensure it was NOT called
+      expect(mockClient.createPayloadIndex).not.toHaveBeenCalled();
     });
   });
 });

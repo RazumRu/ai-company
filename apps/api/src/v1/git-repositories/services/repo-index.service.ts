@@ -1272,6 +1272,25 @@ export class RepoIndexService implements OnModuleInit {
       return updated ?? ({ ...params.existing, ...payload } as RepoIndexEntity);
     }
 
+    // Check for a soft-deleted row with the same (repositoryId, branch).
+    // The unique constraint still covers soft-deleted rows, so we must
+    // restore + update instead of creating a new row.
+    const softDeleted = await this.repoIndexDao.getOne({
+      repositoryId: params.repositoryId,
+      branch: params.branch,
+      withDeleted: true,
+    } as Parameters<typeof this.repoIndexDao.getOne>[0]);
+
+    if (softDeleted) {
+      await this.repoIndexDao.restoreById(softDeleted.id);
+      const updated = await this.repoIndexDao.updateById(softDeleted.id, {
+        repoUrl: params.repoUrl,
+        lastIndexedCommit: null,
+        ...payload,
+      });
+      return updated ?? ({ ...softDeleted, ...payload } as RepoIndexEntity);
+    }
+
     return this.repoIndexDao.create({
       repositoryId: params.repositoryId,
       repoUrl: params.repoUrl,
@@ -1406,6 +1425,19 @@ export class RepoIndexService implements OnModuleInit {
         input: uncachedTexts,
       });
 
+      // Evict enough entries upfront to make room for all new embeddings
+      const overflow =
+        this.embeddingCache.size +
+        uncachedTexts.length -
+        EMBEDDING_CACHE_MAX_SIZE;
+      if (overflow > 0) {
+        const keys = this.embeddingCache.keys();
+        for (let e = 0; e < overflow; e++) {
+          const key = keys.next().value;
+          if (key !== undefined) this.embeddingCache.delete(key);
+        }
+      }
+
       for (let j = 0; j < uncachedTexts.length; j++) {
         const embedding = apiResult.embeddings[j];
         if (!embedding) continue;
@@ -1413,17 +1445,10 @@ export class RepoIndexService implements OnModuleInit {
         const idx = uncachedIndices[j]!;
         results[idx] = embedding;
 
-        // Cache the new embedding
         const cacheKey = RepoIndexService.embeddingCacheKey(
           model,
           uncachedTexts[j]!,
         );
-        if (this.embeddingCache.size >= EMBEDDING_CACHE_MAX_SIZE) {
-          const firstKey = this.embeddingCache.keys().next().value;
-          if (firstKey !== undefined) {
-            this.embeddingCache.delete(firstKey);
-          }
-        }
         this.embeddingCache.set(cacheKey, { embedding, timestamp: now });
       }
     }
