@@ -19,7 +19,7 @@ type SearchBatchItem = SearchBatchArgs['searches'][number];
 type RetrieveArgs = Parameters<QdrantClient['retrieve']>[1];
 type RetrieveResultItem = Awaited<ReturnType<QdrantClient['retrieve']>>[number];
 
-type ScrollArgs = Parameters<QdrantClient['scroll']>[1];
+type ScrollArgs = NonNullable<Parameters<QdrantClient['scroll']>[1]>;
 type ScrollResult = Awaited<ReturnType<QdrantClient['scroll']>>;
 type ScrollOffset = ScrollResult['next_page_offset'];
 
@@ -202,6 +202,7 @@ export class QdrantService {
   async scrollAll(
     collection: string,
     args: Omit<ScrollArgs, 'offset' | 'with_vector'> & {
+      filter?: SearchFilter;
       limit?: number;
       with_vector?: false;
     },
@@ -290,12 +291,18 @@ export class QdrantService {
     if (this.knownCollections.has(name)) {
       return true;
     }
-    const res = await this.client.getCollections();
-    const exists = res.collections.some((c) => c.name === name);
-    if (exists) {
+    // Use getCollection(name) instead of listing ALL collections — O(1) vs O(n).
+    // A "not found" error means the collection doesn't exist.
+    try {
+      await this.client.getCollection(name);
       this.knownCollections.add(name);
+      return true;
+    } catch (error) {
+      if (QdrantService.isCollectionNotFoundError(error)) {
+        return false;
+      }
+      throw error;
     }
-    return exists;
   }
 
   private async getCollectionVectorSize(name: string): Promise<number | null> {

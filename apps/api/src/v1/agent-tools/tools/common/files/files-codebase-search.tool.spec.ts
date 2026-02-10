@@ -295,4 +295,71 @@ describe('FilesCodebaseSearchTool', () => {
       expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
     });
   });
+
+  describe('normalizeDirectoryFilter', () => {
+    // Access the private method via type assertion
+    const normalize = (directory: string | undefined, repoRoot: string) =>
+      (
+        tool as unknown as {
+          normalizeDirectoryFilter: (
+            dir: string | undefined,
+            root: string,
+          ) => string | undefined;
+        }
+      ).normalizeDirectoryFilter(directory, repoRoot);
+
+    it('returns undefined for undefined input', () => {
+      expect(normalize(undefined, '/repo')).toBeUndefined();
+    });
+
+    it('returns undefined for empty string', () => {
+      expect(normalize('', '/repo')).toBeUndefined();
+    });
+
+    it('returns undefined for whitespace-only string', () => {
+      expect(normalize('   ', '/repo')).toBeUndefined();
+    });
+
+    it('normalizes a relative path to be relative to repo root', () => {
+      const result = normalize('src/utils', '/repo');
+      expect(result).toBe('src/utils');
+    });
+
+    it('normalizes an absolute path inside the repo to be relative', () => {
+      const result = normalize('/repo/src/utils', '/repo');
+      expect(result).toBe('src/utils');
+    });
+
+    it('returns empty string for the repo root itself', () => {
+      expect(normalize('/repo', '/repo')).toBe('');
+    });
+
+    it('returns empty string for "." path', () => {
+      expect(normalize('.', '/repo')).toBe('');
+    });
+
+    it('normalizes paths with trailing slashes', () => {
+      const result = normalize('src/utils/', '/repo');
+      // Should produce a clean path without trailing slash
+      expect(result).toBe('src/utils');
+    });
+
+    it('normalizes paths with backslashes (Windows-style)', () => {
+      const result = normalize('src\\utils\\helpers', '/repo');
+      expect(result).toBe('src/utils/helpers');
+    });
+
+    it('normalizes paths with redundant separators', () => {
+      const result = normalize('src//utils///helpers', '/repo');
+      expect(result).toBe('src/utils/helpers');
+    });
+
+    it('strips leading slashes from normalized relative paths', () => {
+      const result = normalize('/src/utils', '/repo');
+      // /src/utils is absolute but resolve('/repo', '/src/utils') = '/src/utils'
+      // relative('/repo', '/src/utils') = '../src/utils' (outside repo)
+      // Falls through to the final return branch: posix normalize of '/src/utils' with leading slash stripped
+      expect(result).not.toMatch(/^\//);
+    });
+  });
 });

@@ -20,7 +20,7 @@ export interface GetOrInitIndexParams {
 
 export interface GetOrInitIndexResult {
   status: 'ready' | 'in_progress' | 'pending';
-  repoIndex: RepoIndexEntity | null;
+  repoIndex: RepoIndexEntity;
 }
 
 export interface SearchCodebaseParams {

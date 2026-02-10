@@ -24,6 +24,7 @@ const mockQdrantService = {
       .fn()
       .mockResolvedValue({ collections: [{ name: 'source_collection' }] }),
     scroll: vi.fn().mockResolvedValue({ points: [], next_page_offset: null }),
+    retrieve: vi.fn().mockResolvedValue([]),
   },
 };
 
@@ -145,6 +146,36 @@ describe('RepoIndexerService', () => {
 
     it('leaves clean HTTPS URLs unchanged', () => {
       expect(service.deriveRepoId('https://github.com/owner/repo')).toBe(
+        'https://github.com/owner/repo',
+      );
+    });
+
+    it('handles ssh:// protocol URLs', () => {
+      expect(service.deriveRepoId('ssh://git@github.com/owner/repo.git')).toBe(
+        'https://github.com/owner/repo',
+      );
+    });
+
+    it('handles ssh:// URLs with port numbers', () => {
+      expect(
+        service.deriveRepoId('ssh://git@github.com:2222/owner/repo.git'),
+      ).toBe('https://github.com/owner/repo');
+    });
+
+    it('strips embedded credentials from HTTPS URLs', () => {
+      expect(
+        service.deriveRepoId('https://user:token@github.com/owner/repo.git'),
+      ).toBe('https://github.com/owner/repo');
+    });
+
+    it('handles trailing slashes', () => {
+      expect(service.deriveRepoId('https://github.com/owner/repo/')).toBe(
+        'https://github.com/owner/repo',
+      );
+    });
+
+    it('handles case-insensitive .git suffix', () => {
+      expect(service.deriveRepoId('https://github.com/owner/repo.GIT')).toBe(
         'https://github.com/owner/repo',
       );
     });
@@ -301,7 +332,7 @@ describe('RepoIndexerService', () => {
       const hash1 = service.getChunkingSignatureHash();
       const hash2 = service.getChunkingSignatureHash();
       expect(hash1).toBe(hash2);
-      expect(hash1).toMatch(/^[a-f0-9]{40}$/);
+      expect(hash1).toMatch(/^[a-f0-9]{64}$/);
     });
   });
 
@@ -604,13 +635,16 @@ describe('RepoIndexerService', () => {
         if (params.cmd.includes('status --porcelain')) {
           return { exitCode: 0, stdout: '', stderr: '' };
         }
-        // .codebaseindexignore
-        if (params.cmd.includes('.codebaseindexignore')) {
+        // .gitignore / .codebaseindexignore reads
+        if (
+          params.cmd.includes('.codebaseindexignore') ||
+          params.cmd.includes('.gitignore')
+        ) {
           return { exitCode: 0, stdout: '', stderr: '' };
         }
-        // file exists check
-        if (params.cmd.includes('test -f')) {
-          return { exitCode: 0, stdout: '', stderr: '' };
+        // batchFileExists: file exists → printed to stdout
+        if (params.cmd.includes('&& echo')) {
+          return { exitCode: 0, stdout: 'src/changed.ts\n', stderr: '' };
         }
         // head -c (read file content)
         if (params.cmd.includes('head -c')) {
@@ -720,16 +754,16 @@ describe('RepoIndexerService', () => {
         if (params.cmd.includes('.codebaseindexignore')) {
           return { exitCode: 0, stdout: '', stderr: '' };
         }
-        // test -f returns non-zero (file does not exist)
-        if (params.cmd.includes('test -f')) {
-          return { exitCode: 1, stdout: '', stderr: '' };
+        // batchFileExists: file does not exist → not printed to stdout
+        if (params.cmd.includes('[ -f')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
         }
         return { exitCode: 0, stdout: '', stderr: '' };
       });
 
       await service.runIncrementalIndex(baseParams, execFn);
 
-      // Should have deleted old chunks for the removed file
+      // Should have batch-deleted old chunks for the removed file
       expect(mockQdrantService.deleteByFilter).toHaveBeenCalledWith(
         'codebase_test_main_3',
         expect.objectContaining({
@@ -738,6 +772,8 @@ describe('RepoIndexerService', () => {
               key: 'repo_id',
               match: { value: 'https://github.com/owner/repo' },
             }),
+          ]),
+          should: expect.arrayContaining([
             expect.objectContaining({
               key: 'path',
               match: { value: 'src/deleted.ts' },
@@ -786,8 +822,8 @@ describe('RepoIndexerService', () => {
             payload: {
               path: 'src/index.ts',
               file_hash:
-                // sha1 of 'const x = 1;'
-                '749b17640bf18d96c509f518d6f1a4b41d8cdc60',
+                // sha256 of 'const x = 1;'
+                '3f41cbb303012f33212c92326b27f6cc604fd414e20315cb10f2be7f1f6bb83c',
               token_count: 12,
               commit: 'abc123',
             },
@@ -820,7 +856,8 @@ describe('RepoIndexerService', () => {
           {
             payload: {
               path: 'src/index.ts',
-              file_hash: '749b17640bf18d96c509f518d6f1a4b41d8cdc60',
+              file_hash:
+                '3f41cbb303012f33212c92326b27f6cc604fd414e20315cb10f2be7f1f6bb83c',
               token_count: 12,
               commit: 'old-commit',
             },
@@ -836,7 +873,8 @@ describe('RepoIndexerService', () => {
           payload: {
             repo_id: baseParams.repoId,
             path: 'src/index.ts',
-            file_hash: '749b17640bf18d96c509f518d6f1a4b41d8cdc60',
+            file_hash:
+              '3f41cbb303012f33212c92326b27f6cc604fd414e20315cb10f2be7f1f6bb83c',
             text: fileContent,
             chunk_hash: 'chunk-hash-1',
             commit: 'old-commit',
@@ -845,15 +883,16 @@ describe('RepoIndexerService', () => {
         },
       ]);
 
-      // scrollAllWithVectors returns same point with vector for metadata update
-      mockQdrantService.scrollAllWithVectors.mockResolvedValue([
+      // raw.retrieve returns same point with vector for metadata update
+      mockQdrantService.raw.retrieve.mockResolvedValue([
         {
           id: 'point-1',
           vector: [0.1, 0.2, 0.3],
           payload: {
             repo_id: baseParams.repoId,
             path: 'src/index.ts',
-            file_hash: '749b17640bf18d96c509f518d6f1a4b41d8cdc60',
+            file_hash:
+              '3f41cbb303012f33212c92326b27f6cc604fd414e20315cb10f2be7f1f6bb83c',
             text: fileContent,
             chunk_hash: 'chunk-hash-1',
             commit: 'old-commit',
@@ -923,38 +962,29 @@ describe('RepoIndexerService', () => {
       });
       mockQdrantService.scrollAll.mockResolvedValue([]);
 
-      // Prefetch returns both keep.ts and deleted.ts
-      mockQdrantService.raw.scroll
-        .mockResolvedValueOnce({
-          // prefetchExistingChunks call
-          points: [
-            {
-              payload: {
-                path: 'src/keep.ts',
-                file_hash: 'different-hash',
-                token_count: 10,
-                commit: 'abc123',
-              },
+      // Prefetch returns both keep.ts and deleted.ts — cleanupOrphanedChunks
+      // reuses the prefetch map so no second scroll call is needed.
+      mockQdrantService.raw.scroll.mockResolvedValueOnce({
+        points: [
+          {
+            payload: {
+              path: 'src/keep.ts',
+              file_hash: 'different-hash',
+              token_count: 10,
+              commit: 'abc123',
             },
-            {
-              payload: {
-                path: 'src/deleted.ts',
-                file_hash: 'old-hash',
-                token_count: 20,
-                commit: 'abc123',
-              },
+          },
+          {
+            payload: {
+              path: 'src/deleted.ts',
+              file_hash: 'old-hash',
+              token_count: 20,
+              commit: 'abc123',
             },
-          ],
-          next_page_offset: null,
-        })
-        .mockResolvedValueOnce({
-          // cleanupOrphanedChunks call
-          points: [
-            { payload: { path: 'src/keep.ts' } },
-            { payload: { path: 'src/deleted.ts' } },
-          ],
-          next_page_offset: null,
-        });
+          },
+        ],
+        next_page_offset: null,
+      });
 
       await service.runFullIndex(
         {

@@ -84,9 +84,13 @@ export class RepoIndexDao extends BaseDao<
 
   /**
    * Execute a callback while holding a PostgreSQL advisory lock scoped to
-   * a (repositoryId, branch) pair. The lock is released when the transaction
-   * commits or rolls back, preventing concurrent getOrInitIndexForRepo calls
-   * from racing on the same index.
+   * a (repositoryId, branch) pair, preventing concurrent getOrInitIndexForRepo
+   * calls from racing on the same index.
+   *
+   * Uses a session-level advisory lock (`pg_advisory_lock`) instead of a
+   * transaction-scoped one to avoid holding a transaction open while the
+   * callback performs potentially slow operations (git commands, Qdrant calls).
+   * The lock is explicitly released in the `finally` block.
    */
   async withIndexLock<T>(
     repositoryId: string,
@@ -96,16 +100,16 @@ export class RepoIndexDao extends BaseDao<
     const lockId = RepoIndexDao.advisoryLockId(repositoryId, branch);
     const runner = this.getQueryRunner();
     await runner.connect();
-    await runner.startTransaction();
     try {
-      await runner.query('SELECT pg_advisory_xact_lock($1)', [lockId]);
+      await runner.query('SELECT pg_advisory_lock($1)', [lockId]);
       const result = await cb();
-      await runner.commitTransaction();
       return result;
-    } catch (err) {
-      await runner.rollbackTransaction();
-      throw err;
     } finally {
+      try {
+        await runner.query('SELECT pg_advisory_unlock($1)', [lockId]);
+      } catch {
+        // Best-effort unlock — connection release will clean up the lock anyway
+      }
       await runner.release();
     }
   }

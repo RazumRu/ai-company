@@ -1,4 +1,10 @@
-import { isAbsolute, join as joinPath, relative, resolve } from 'node:path';
+import {
+  isAbsolute,
+  join as joinPath,
+  posix as posixPath,
+  relative,
+  resolve,
+} from 'node:path';
 
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
@@ -202,7 +208,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       userId,
     });
 
-    if (indexResult.status !== 'ready' || !indexResult.repoIndex) {
+    if (indexResult.status !== 'ready') {
       return {
         output: {
           results: [],
@@ -295,13 +301,11 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       return '';
     }
     if (!relativeToRepo.startsWith('..') && !isAbsolute(relativeToRepo)) {
-      return this.normalizePath(relativeToRepo);
+      return posixPath
+        .normalize(relativeToRepo.replace(/\\/g, '/'))
+        .replace(/^\/+/, '');
     }
-    return this.normalizePath(trimmed);
-  }
-
-  private normalizePath(path: string): string {
-    return path.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+    return posixPath.normalize(trimmed.replace(/\\/g, '/')).replace(/^\/+/, '');
   }
 
   /**

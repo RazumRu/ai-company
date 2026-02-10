@@ -919,6 +919,8 @@ describe('RepoIndexService', () => {
         mockLogger as unknown as DefaultLogger,
       );
       await svc.onModuleInit();
+      // Flush fire-and-forget cleanupOrphanedIndexes microtask
+      await new Promise((resolve) => setTimeout(resolve, 0));
       return svc;
     };
 
@@ -1067,6 +1069,8 @@ describe('RepoIndexService', () => {
 
       // Should not throw
       await svc.onModuleInit();
+      // Flush fire-and-forget cleanupOrphanedIndexes microtask
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         qdrantError,
@@ -1088,6 +1092,23 @@ describe('RepoIndexService', () => {
       });
 
       expect(mockRepoIndexDao.deleteById).toHaveBeenCalledWith('idx-failed');
+    });
+
+    it('does not delete DB rows for Completed status indexes with existing Qdrant collection', async () => {
+      await initServiceWithMocks({
+        qdrantCollections: [{ name: 'codebase_valid_1536' }],
+        dbIndexes: [
+          {
+            id: 'idx-valid',
+            qdrantCollection: 'codebase_valid_1536',
+            status: RepoIndexStatus.Completed,
+            updatedAt: new Date(),
+          } as Partial<RepoIndexEntity>,
+        ],
+      });
+
+      expect(mockRepoIndexDao.deleteById).not.toHaveBeenCalled();
+      expect(mockQdrantService.raw.deleteCollection).not.toHaveBeenCalled();
     });
 
     it('does not delete Qdrant collection when another fresh row still references it', async () => {
@@ -1121,6 +1142,327 @@ describe('RepoIndexService', () => {
       );
       // Fresh row should not be deleted
       expect(mockRepoIndexDao.deleteById).not.toHaveBeenCalledWith('idx-fresh');
+    });
+  });
+
+  describe('query expansion (via searchCodebase)', () => {
+    const baseSearchParams = {
+      collection: 'codebase_my_repo_main_1536',
+      query: 'find authentication logic',
+      repoId: 'https://github.com/owner/repo',
+      topK: 15, // >= QUERY_EXPANSION_MIN_TOP_K (10) to trigger expansion
+    };
+
+    const mockOpenaiResponse = {
+      content: {
+        queries: [
+          'find authentication logic',
+          'login auth middleware',
+          'authGuard token verification',
+        ],
+      },
+    };
+
+    beforeEach(() => {
+      (mockOpenaiService as Record<string, unknown>).embeddings = vi
+        .fn()
+        .mockResolvedValue({
+          embeddings: [[0.1, 0.2, 0.3]],
+        });
+      (mockOpenaiService as Record<string, unknown>).response = vi
+        .fn()
+        .mockResolvedValue(mockOpenaiResponse);
+      (mockOpenaiService as Record<string, unknown>).complete = vi
+        .fn()
+        .mockResolvedValue(mockOpenaiResponse);
+      (mockQdrantService as Record<string, unknown>).searchPoints = vi
+        .fn()
+        .mockResolvedValue([]);
+      (mockQdrantService as Record<string, unknown>).searchMany = vi
+        .fn()
+        .mockResolvedValue([[]]);
+    });
+
+    it('does not trigger query expansion when topK is below threshold', async () => {
+      const results = await service.searchCodebase({
+        ...baseSearchParams,
+        topK: 5, // below QUERY_EXPANSION_MIN_TOP_K (10)
+      });
+
+      expect(results).toEqual([]);
+      // Should use single searchPoints, not searchMany (no expansion)
+      expect(
+        (mockQdrantService as Record<string, unknown>).searchPoints,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        (mockQdrantService as Record<string, unknown>).searchMany,
+      ).not.toHaveBeenCalled();
+      // LLM should not be called for expansion
+      expect(
+        (mockOpenaiService as Record<string, unknown>).response,
+      ).not.toHaveBeenCalled();
+      expect(
+        (mockOpenaiService as Record<string, unknown>).complete,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('triggers query expansion when topK meets threshold', async () => {
+      // The LLM returns 3 queries, 1 is original (filtered), 2 are unique.
+      // Return embeddings matching the number of inputs per call.
+      (mockOpenaiService as Record<string, unknown>).embeddings = vi
+        .fn()
+        .mockImplementation((params: { input: string[] }) => ({
+          embeddings: params.input.map((_, i) => [0.1 + i * 0.1, 0.2, 0.3]),
+        }));
+      (mockQdrantService as Record<string, unknown>).searchMany = vi
+        .fn()
+        .mockResolvedValue([[], [], []]);
+
+      await service.searchCodebase(baseSearchParams);
+
+      // LLM should be called for expansion (either response or complete)
+      const responseCalls = (
+        (mockOpenaiService as Record<string, unknown>).response as ReturnType<
+          typeof vi.fn
+        >
+      ).mock.calls.length;
+      const completeCalls = (
+        (mockOpenaiService as Record<string, unknown>).complete as ReturnType<
+          typeof vi.fn
+        >
+      ).mock.calls.length;
+      expect(responseCalls + completeCalls).toBeGreaterThan(0);
+    });
+
+    it('uses searchMany with multiple embeddings when expansion produces variants', async () => {
+      // Return 2 additional unique variants (original is filtered out)
+      (mockOpenaiService as Record<string, unknown>).complete = vi
+        .fn()
+        .mockResolvedValue({
+          content: {
+            queries: [
+              'find authentication logic', // same as original — should be filtered
+              'login auth middleware',
+              'authGuard token verification',
+            ],
+          },
+        });
+      // Return embeddings matching the number of inputs per call
+      (mockOpenaiService as Record<string, unknown>).embeddings = vi
+        .fn()
+        .mockImplementation((params: { input: string[] }) => ({
+          embeddings: params.input.map((_, i) => [0.1 + i * 0.1, 0.2, 0.3]),
+        }));
+
+      (mockQdrantService as Record<string, unknown>).searchMany = vi
+        .fn()
+        .mockResolvedValue([[], [], []]);
+
+      await service.searchCodebase(baseSearchParams);
+
+      // searchMany should be used (multiple query vectors)
+      expect(
+        (mockQdrantService as Record<string, unknown>).searchMany,
+      ).toHaveBeenCalled();
+    });
+
+    it('falls back to single embedding when expansion fails', async () => {
+      (mockOpenaiService as Record<string, unknown>).complete = vi
+        .fn()
+        .mockRejectedValue(new Error('LLM timeout'));
+
+      await service.searchCodebase(baseSearchParams);
+
+      // Should fall back to single-vector search
+      expect(
+        (mockQdrantService as Record<string, unknown>).searchPoints,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    it('deduplicates expansion variants case-insensitively', async () => {
+      (mockOpenaiService as Record<string, unknown>).complete = vi
+        .fn()
+        .mockResolvedValue({
+          content: {
+            queries: [
+              'Find Authentication Logic', // case-insensitive match with original
+              'LOGIN AUTH MIDDLEWARE', // unique
+            ],
+          },
+        });
+
+      // Return embeddings matching the number of inputs per call
+      (mockOpenaiService as Record<string, unknown>).embeddings = vi
+        .fn()
+        .mockImplementation((params: { input: string[] }) => ({
+          embeddings: params.input.map((_, i) => [0.1 + i * 0.1, 0.2, 0.3]),
+        }));
+
+      (mockQdrantService as Record<string, unknown>).searchMany = vi
+        .fn()
+        .mockResolvedValue([[], []]);
+
+      await service.searchCodebase(baseSearchParams);
+
+      // Verify that the batch embedding call only includes the unique variant
+      const embeddingsCalls = (
+        (mockOpenaiService as Record<string, unknown>).embeddings as ReturnType<
+          typeof vi.fn
+        >
+      ).mock.calls;
+
+      // First call is for primary embedding (original query)
+      // Second call (if any) is for unique additional variants
+      const allInputs = embeddingsCalls.flatMap(
+        (call: unknown[]) => (call[0] as { input: string[] }).input,
+      );
+      // The original query should appear exactly once
+      const originalOccurrences = allInputs.filter(
+        (input: string) =>
+          input.toLowerCase().trim() ===
+          'find authentication logic'.toLowerCase(),
+      );
+      expect(originalOccurrences).toHaveLength(1);
+    });
+
+    it('uses reduced expansion factor when multiple variants are active', async () => {
+      (mockOpenaiService as Record<string, unknown>).complete = vi
+        .fn()
+        .mockResolvedValue({
+          content: {
+            queries: ['unique variant 1', 'unique variant 2'],
+          },
+        });
+      // Return embeddings matching the number of inputs per call
+      (mockOpenaiService as Record<string, unknown>).embeddings = vi
+        .fn()
+        .mockImplementation((params: { input: string[] }) => ({
+          embeddings: params.input.map((_, i) => [0.1 + i * 0.1, 0.2, 0.3]),
+        }));
+
+      (mockQdrantService as Record<string, unknown>).searchMany = vi
+        .fn()
+        .mockResolvedValue([[], [], []]);
+
+      await service.searchCodebase(baseSearchParams);
+
+      // With variants, searchMany should be called with limit = topK * 2
+      // (SEARCH_EXPANSION_FACTOR_WITH_VARIANTS = 2) instead of topK * 4
+      expect(
+        (mockQdrantService as Record<string, unknown>).searchMany,
+      ).toHaveBeenCalledWith(
+        baseSearchParams.collection,
+        expect.arrayContaining([
+          expect.objectContaining({
+            limit: baseSearchParams.topK * 2, // SEARCH_EXPANSION_FACTOR_WITH_VARIANTS
+          }),
+        ]),
+      );
+    });
+  });
+
+  describe('BullMQ callback handlers', () => {
+    // Access private methods via type assertion
+    const callPrivateMethod = (
+      methodName: 'handleStalledJob' | 'handleRetryJob' | 'handleFailedJob',
+      ...args: unknown[]
+    ) =>
+      (
+        service as unknown as Record<string, (...a: unknown[]) => Promise<void>>
+      )[methodName]!(...args);
+
+    it('handleStalledJob resets entity status to Pending', async () => {
+      await callPrivateMethod('handleStalledJob', 'stalled-id');
+
+      expect(mockRepoIndexDao.updateById).toHaveBeenCalledWith('stalled-id', {
+        status: RepoIndexStatus.Pending,
+      });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Repo index job stalled, resetting status',
+        { repoIndexId: 'stalled-id' },
+      );
+    });
+
+    it('handleRetryJob resets entity status to Pending and logs the error', async () => {
+      const retryError = new Error('Temporary failure');
+      await callPrivateMethod('handleRetryJob', 'retry-id', retryError);
+
+      expect(mockRepoIndexDao.updateById).toHaveBeenCalledWith('retry-id', {
+        status: RepoIndexStatus.Pending,
+      });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Repo index job failed, will be retried',
+        {
+          repoIndexId: 'retry-id',
+          error: 'Temporary failure',
+        },
+      );
+    });
+
+    it('handleFailedJob sets entity status to Failed with error message', async () => {
+      const finalError = new Error('Permanent failure');
+      await callPrivateMethod('handleFailedJob', 'failed-id', finalError);
+
+      expect(mockRepoIndexDao.updateById).toHaveBeenCalledWith('failed-id', {
+        status: RepoIndexStatus.Failed,
+        errorMessage: 'Permanent failure',
+      });
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        finalError,
+        'Repo index job failed permanently',
+        { repoIndexId: 'failed-id' },
+      );
+    });
+  });
+
+  describe('embeddingCacheKey', () => {
+    it('produces different keys for different texts', () => {
+      // Access the static method
+      const key1 = (
+        RepoIndexService as unknown as {
+          embeddingCacheKey: (model: string, text: string) => string;
+        }
+      ).embeddingCacheKey('model-a', 'text one');
+      const key2 = (
+        RepoIndexService as unknown as {
+          embeddingCacheKey: (model: string, text: string) => string;
+        }
+      ).embeddingCacheKey('model-a', 'text two');
+
+      expect(key1).not.toBe(key2);
+      // Both should start with model prefix
+      expect(key1).toMatch(/^model-a:/);
+      expect(key2).toMatch(/^model-a:/);
+    });
+
+    it('produces different keys for different models', () => {
+      const key1 = (
+        RepoIndexService as unknown as {
+          embeddingCacheKey: (model: string, text: string) => string;
+        }
+      ).embeddingCacheKey('model-a', 'same text');
+      const key2 = (
+        RepoIndexService as unknown as {
+          embeddingCacheKey: (model: string, text: string) => string;
+        }
+      ).embeddingCacheKey('model-b', 'same text');
+
+      expect(key1).not.toBe(key2);
+    });
+
+    it('produces consistent keys for the same input', () => {
+      const key1 = (
+        RepoIndexService as unknown as {
+          embeddingCacheKey: (model: string, text: string) => string;
+        }
+      ).embeddingCacheKey('model-a', 'test text');
+      const key2 = (
+        RepoIndexService as unknown as {
+          embeddingCacheKey: (model: string, text: string) => string;
+        }
+      ).embeddingCacheKey('model-a', 'test text');
+
+      expect(key1).toBe(key2);
     });
   });
 });

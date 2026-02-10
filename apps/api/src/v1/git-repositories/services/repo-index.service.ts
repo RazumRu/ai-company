@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import { z } from 'zod';
@@ -31,26 +33,56 @@ import {
   RepoIndexJobData,
   RepoIndexQueueService,
 } from './repo-index-queue.service';
-import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
+import {
+  CODEBASE_COLLECTION_PREFIX,
+  RepoExecFn,
+  RepoIndexerService,
+} from './repo-indexer.service';
 
 const REPO_CLONE_DIR = '/workspace/repo';
-const GIT_CLONE_DEPTH = 100;
+
+/** UUID used for system-level runtime operations (no real graph). */
+const SYSTEM_GRAPH_ID = '00000000-0000-0000-0000-000000000001';
+const SYSTEM_RUNTIME_NODE_ID = 'repo-indexer';
+
+/** Timeout for git commands inside the ephemeral container. */
+const CONTAINER_EXEC_TIMEOUT_MS = 120_000;
+/** Tail timeout for ephemeral container exec. */
+const CONTAINER_TAIL_TIMEOUT_MS = 30_000;
 
 const EMBEDDING_CACHE_MAX_SIZE = 200;
 const EMBEDDING_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Minimum topK to trigger query expansion — small queries don't benefit
-const QUERY_EXPANSION_MIN_TOP_K = 5;
+const QUERY_EXPANSION_CACHE_MAX_SIZE = 100;
+const QUERY_EXPANSION_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+// Minimum topK to trigger query expansion — focused searches (small topK)
+// don't benefit enough from LLM-based expansion to justify the latency.
+const QUERY_EXPANSION_MIN_TOP_K = 10;
+
+/** Multiplier applied to topK when querying Qdrant to allow post-filtering.
+ *  When query expansion is active, the per-variant limit is reduced since
+ *  multiple variants already provide broader coverage. */
+const SEARCH_EXPANSION_FACTOR = 4;
+const SEARCH_EXPANSION_FACTOR_WITH_VARIANTS = 2;
+
+/** Shallow clone depth to avoid OOM for very large repositories. */
+const GIT_CLONE_DEPTH = 100;
 
 const CodeSearchQueryExpansionSchema = z.object({
   queries: z.array(z.string().min(1)).min(1).max(5),
 });
 
 type CachedEmbedding = { embedding: number[]; timestamp: number };
+type CachedQueryExpansion = { queries: string[]; timestamp: number };
 
 @Injectable()
 export class RepoIndexService implements OnModuleInit {
   private readonly embeddingCache = new Map<string, CachedEmbedding>();
+  private readonly queryExpansionCache = new Map<
+    string,
+    CachedQueryExpansion
+  >();
 
   constructor(
     private readonly repoIndexDao: RepoIndexDao,
@@ -75,7 +107,9 @@ export class RepoIndexService implements OnModuleInit {
       onFailed: this.handleFailedJob.bind(this),
     });
     await this.recoverStuckJobs();
-    await this.cleanupOrphanedIndexes();
+    // Run cleanup asynchronously to avoid blocking module initialization.
+    // Errors are caught internally — fire-and-forget is safe here.
+    void this.cleanupOrphanedIndexes();
   }
 
   /**
@@ -187,7 +221,7 @@ export class RepoIndexService implements OnModuleInit {
       const qdrantResult = await this.qdrantService.raw.getCollections();
       const codebaseCollections = qdrantResult.collections
         .map((c) => c.name)
-        .filter((name) => name.startsWith('codebase_'));
+        .filter((name) => name.startsWith(CODEBASE_COLLECTION_PREFIX));
 
       const allIndexes = await this.repoIndexDao.getAll({});
 
@@ -247,17 +281,21 @@ export class RepoIndexService implements OnModuleInit {
       );
 
       // 4. Execute deletions
+      const deletedCollections = new Set<string>();
       for (const { index, reason } of indexesToDelete) {
         // Delete the Qdrant collection only if no surviving row still references it
+        // and we haven't already deleted it in a previous iteration
         if (
           index.qdrantCollection &&
           qdrantCollectionNames.has(index.qdrantCollection) &&
-          !survivingCollections.has(index.qdrantCollection)
+          !survivingCollections.has(index.qdrantCollection) &&
+          !deletedCollections.has(index.qdrantCollection)
         ) {
           try {
             await this.qdrantService.raw.deleteCollection(
               index.qdrantCollection,
             );
+            deletedCollections.add(index.qdrantCollection);
           } catch (err) {
             this.logger.warn(
               'Failed to delete Qdrant collection for stale index',
@@ -279,6 +317,13 @@ export class RepoIndexService implements OnModuleInit {
           repoIndexId: index.id,
           qdrantCollection: index.qdrantCollection,
           updatedAt: index.updatedAt,
+        });
+      }
+
+      if (indexesToDelete.length > 0 || deletedCollections.size > 0) {
+        this.logger.warn('Orphaned index cleanup summary', {
+          deletedDbRows: indexesToDelete.length,
+          deletedQdrantCollections: deletedCollections.size,
         });
       }
     } catch (err) {
@@ -579,19 +624,43 @@ export class RepoIndexService implements OnModuleInit {
     // For focused queries (low topK) use a single embedding; for broader
     // searches, expand the query into variants for better recall.
     const useExpansion = topK >= QUERY_EXPANSION_MIN_TOP_K;
-    const queries = useExpansion
-      ? await this.generateCodeSearchVariants(query)
-      : [query];
 
-    // Embed all query variants in a single batch call (leveraging the cache
-    // for any repeated text).
-    const embeddings = await Promise.all(
-      queries.map((q) => this.getOrComputeEmbedding(embeddingModel, q)),
-    );
+    let embeddings: number[][];
+    if (useExpansion) {
+      // Run query expansion and primary embedding in parallel to reduce latency.
+      // The primary embedding is always needed; expansion variants are additive.
+      const [primaryEmbedding, variants] = await Promise.all([
+        this.getOrComputeEmbedding(embeddingModel, query),
+        this.generateCodeSearchVariants(query),
+      ]);
+
+      // Embed the expansion variants (excluding the original, which is already embedded).
+      // Use case-insensitive comparison to avoid duplicating near-identical queries.
+      const queryLower = query.toLowerCase().trim();
+      const additionalVariants = variants.filter(
+        (v) => v.toLowerCase().trim() !== queryLower,
+      );
+      if (additionalVariants.length > 0) {
+        const additionalEmbeddings = await this.batchGetOrComputeEmbeddings(
+          embeddingModel,
+          additionalVariants,
+        );
+        embeddings = [primaryEmbedding, ...additionalEmbeddings];
+      } else {
+        embeddings = [primaryEmbedding];
+      }
+    } else {
+      embeddings = [await this.getOrComputeEmbedding(embeddingModel, query)];
+    }
 
     // Expand search limit to allow post-filtering without losing relevant results.
-    const SEARCH_EXPANSION_FACTOR = 4;
-    const searchLimit = topK * SEARCH_EXPANSION_FACTOR;
+    // When multiple query variants are used, each variant already broadens coverage
+    // so a smaller per-variant factor avoids scanning excessive points.
+    const factor =
+      embeddings.length > 1
+        ? SEARCH_EXPANSION_FACTOR_WITH_VARIANTS
+        : SEARCH_EXPANSION_FACTOR;
+    const searchLimit = topK * factor;
     const repoFilter = this.repoIndexerService.buildRepoFilter(repoId);
 
     // Search Qdrant — return empty if collection was deleted between indexing and search
@@ -647,7 +716,7 @@ export class RepoIndexService implements OnModuleInit {
     const results = allMatches
       .map((match) => this.parseSearchResult(match))
       .filter((match): match is SearchCodebaseResult => Boolean(match))
-      .filter((match) => (minScore ? match.score >= minScore : true))
+      .filter((match) => (minScore != null ? match.score >= minScore : true))
       .filter((match) => this.matchesPathPrefix(match, directoryFilter))
       .filter((match) => this.matchesLanguage(match, languageFilter))
       .slice(0, topK);
@@ -693,9 +762,8 @@ export class RepoIndexService implements OnModuleInit {
       estimatedTokens: entity.estimatedTokens,
     });
 
-    // Use UUID namespace for system graph ID (consistent UUID for system operations)
-    const graphId = '00000000-0000-0000-0000-000000000001';
-    const runtimeNodeId = 'repo-indexer';
+    const graphId = SYSTEM_GRAPH_ID;
+    const runtimeNodeId = SYSTEM_RUNTIME_NODE_ID;
     const threadId = repoIndexId;
 
     let runtimeInstance: Awaited<
@@ -728,8 +796,8 @@ export class RepoIndexService implements OnModuleInit {
         const res = await runtime.exec({
           cmd: params.cmd,
           sessionId: threadId,
-          timeoutMs: 120_000,
-          tailTimeoutMs: 30_000,
+          timeoutMs: CONTAINER_EXEC_TIMEOUT_MS,
+          tailTimeoutMs: CONTAINER_TAIL_TIMEOUT_MS,
         });
         return {
           exitCode: res.exitCode,
@@ -872,7 +940,7 @@ export class RepoIndexService implements OnModuleInit {
             threadId,
             type: RuntimeType.Docker,
           })
-          .catch((err) => {
+          .catch((err: unknown) => {
             this.logger.warn(
               'Failed to cleanup runtime instance after indexing',
               {
@@ -1195,8 +1263,13 @@ export class RepoIndexService implements OnModuleInit {
     };
 
     if (params.existing) {
-      await this.repoIndexDao.updateById(params.existing.id, payload);
-      return { ...params.existing, ...payload } as RepoIndexEntity;
+      const updated = await this.repoIndexDao.updateById(
+        params.existing.id,
+        payload,
+      );
+      // updateById returns the refreshed entity from the DB — fall back to
+      // spread only if the DAO returned null (should not happen).
+      return updated ?? ({ ...params.existing, ...payload } as RepoIndexEntity);
     }
 
     return this.repoIndexDao.create({
@@ -1214,6 +1287,16 @@ export class RepoIndexService implements OnModuleInit {
    * (function names, class names, file paths, etc.).
    */
   private async generateCodeSearchVariants(query: string): Promise<string[]> {
+    const cacheKey = query.trim().toLowerCase();
+    const cached = this.queryExpansionCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < QUERY_EXPANSION_CACHE_TTL_MS) {
+      // Touch entry for LRU: delete + re-insert moves it to the end
+      this.queryExpansionCache.delete(cacheKey);
+      this.queryExpansionCache.set(cacheKey, cached);
+      return cached.queries;
+    }
+
     try {
       const prompt = [
         'Generate 3-5 short search queries or keyword phrases for finding relevant code in a repository.',
@@ -1255,7 +1338,21 @@ export class RepoIndexService implements OnModuleInit {
         if (normalized) unique.add(normalized);
       }
 
-      return Array.from(unique).slice(0, 5);
+      const result = Array.from(unique).slice(0, 5);
+
+      // Cache the expansion result
+      if (this.queryExpansionCache.size >= QUERY_EXPANSION_CACHE_MAX_SIZE) {
+        const oldest = this.queryExpansionCache.keys().next().value;
+        if (oldest !== undefined) {
+          this.queryExpansionCache.delete(oldest);
+        }
+      }
+      this.queryExpansionCache.set(cacheKey, {
+        queries: result,
+        timestamp: Date.now(),
+      });
+
+      return result;
     } catch (error) {
       this.logger.warn('Failed to expand code search query, using original', {
         query,
@@ -1265,15 +1362,92 @@ export class RepoIndexService implements OnModuleInit {
     }
   }
 
+  /**
+   * Embed multiple texts in a single batch API call for uncached queries.
+   * Returns embeddings in the same order as the input texts.
+   * Cached entries are served from the cache; only uncached texts hit the API.
+   */
+  private async batchGetOrComputeEmbeddings(
+    model: string,
+    texts: string[],
+  ): Promise<number[][]> {
+    if (texts.length === 0) return [];
+    if (texts.length === 1) {
+      return [await this.getOrComputeEmbedding(model, texts[0]!)];
+    }
+
+    const now = Date.now();
+    const results: (number[] | null)[] = new Array<number[] | null>(
+      texts.length,
+    ).fill(null);
+    const uncachedIndices: number[] = [];
+    const uncachedTexts: string[] = [];
+
+    // Collect cached results and identify uncached texts
+    for (let i = 0; i < texts.length; i++) {
+      const text = texts[i]!;
+      const cacheKey = RepoIndexService.embeddingCacheKey(model, text);
+      const cached = this.embeddingCache.get(cacheKey);
+      if (cached && now - cached.timestamp < EMBEDDING_CACHE_TTL_MS) {
+        // LRU touch
+        this.embeddingCache.delete(cacheKey);
+        this.embeddingCache.set(cacheKey, cached);
+        results[i] = cached.embedding;
+      } else {
+        uncachedIndices.push(i);
+        uncachedTexts.push(text);
+      }
+    }
+
+    // Batch-embed all uncached texts in a single API call
+    if (uncachedTexts.length > 0) {
+      const apiResult = await this.openaiService.embeddings({
+        model,
+        input: uncachedTexts,
+      });
+
+      for (let j = 0; j < uncachedTexts.length; j++) {
+        const embedding = apiResult.embeddings[j];
+        if (!embedding) continue;
+
+        const idx = uncachedIndices[j]!;
+        results[idx] = embedding;
+
+        // Cache the new embedding
+        const cacheKey = RepoIndexService.embeddingCacheKey(
+          model,
+          uncachedTexts[j]!,
+        );
+        if (this.embeddingCache.size >= EMBEDDING_CACHE_MAX_SIZE) {
+          const firstKey = this.embeddingCache.keys().next().value;
+          if (firstKey !== undefined) {
+            this.embeddingCache.delete(firstKey);
+          }
+        }
+        this.embeddingCache.set(cacheKey, { embedding, timestamp: now });
+      }
+    }
+
+    // Verify all slots are filled
+    const final = results.filter((r): r is number[] => r !== null);
+    if (final.length !== texts.length) {
+      throw new Error('Failed to generate embeddings for all query variants');
+    }
+    return final;
+  }
+
   private async getOrComputeEmbedding(
     model: string,
     text: string,
   ): Promise<number[]> {
-    const cacheKey = `${model}:${text}`;
+    const cacheKey = RepoIndexService.embeddingCacheKey(model, text);
     const cached = this.embeddingCache.get(cacheKey);
     const now = Date.now();
 
     if (cached && now - cached.timestamp < EMBEDDING_CACHE_TTL_MS) {
+      // Touch entry for LRU: delete + re-insert moves it to the end
+      this.embeddingCache.delete(cacheKey);
+      this.embeddingCache.set(cacheKey, cached);
       return cached.embedding;
     }
 
@@ -1345,6 +1519,12 @@ export class RepoIndexService implements OnModuleInit {
     return (
       match.path === withoutSlash || match.path.startsWith(`${withoutSlash}/`)
     );
+  }
+
+  /** Build a short, fixed-length cache key for embedding lookups.
+   *  Uses SHA-256 instead of the raw text to keep Map memory bounded. */
+  private static embeddingCacheKey(model: string, text: string): string {
+    return `${model}:${createHash('sha256').update(text).digest('hex')}`;
   }
 
   /** Maps common language names to file extensions for flexible filtering. */

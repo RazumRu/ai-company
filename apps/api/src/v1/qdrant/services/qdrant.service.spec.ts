@@ -149,52 +149,56 @@ describe('QdrantService', () => {
   });
 
   describe('knownCollections cache', () => {
-    it('skips getCollections on second call after ensureCollection succeeds', async () => {
-      // First call: collection exists
+    it('skips getCollection on second call after ensureCollection succeeds', async () => {
+      // First call: collection exists (getCollection succeeds, returns size 2)
       await service.ensureCollection('cached-col', 2);
-      expect(mockClient.getCollections).toHaveBeenCalledTimes(1);
+      expect(mockClient.getCollection).toHaveBeenCalledTimes(2); // once for collectionExists, once for getCollectionVectorSize
 
       // Reset the call count
-      mockClient.getCollections.mockClear();
+      mockClient.getCollection.mockClear();
 
-      // Second call with same collection — should hit the cache
+      // Second call with same collection — should hit the knownCollections cache
       await service.deleteByFilter('cached-col', {
         must: [{ key: 'x', match: { value: 'y' } }],
       });
-      expect(mockClient.getCollections).not.toHaveBeenCalled();
+      expect(mockClient.getCollection).not.toHaveBeenCalled();
     });
 
     it('caches collection after createCollection for new collections', async () => {
-      // Return empty collections so ensureCollection creates the collection
-      mockClient.getCollections.mockResolvedValueOnce({ collections: [] });
+      // getCollection throws "not found" so ensureCollection creates the collection
+      mockClient.getCollection.mockRejectedValueOnce(
+        new Error('Collection not found'),
+      );
 
       await service.ensureCollection('brand-new-col', 5);
       expect(mockClient.createCollection).toHaveBeenCalled();
-      mockClient.getCollections.mockClear();
+      mockClient.getCollection.mockClear();
 
-      // Subsequent call should skip getCollections
+      // Subsequent call should skip getCollection — collection is cached
       await service.deleteByFilter('brand-new-col', {
         must: [{ key: 'x', match: { value: 'y' } }],
       });
-      expect(mockClient.getCollections).not.toHaveBeenCalled();
+      expect(mockClient.getCollection).not.toHaveBeenCalled();
     });
 
     it('does not cache non-existent collections', async () => {
-      // Return empty collections — collectionExists returns false
-      mockClient.getCollections.mockResolvedValue({ collections: [] });
+      // getCollection throws "not found" — collectionExists returns false
+      mockClient.getCollection.mockRejectedValue(
+        new Error('Collection not found'),
+      );
 
       // deleteByFilter checks existence first; should return without calling delete
       await service.deleteByFilter('does-not-exist', {
         must: [{ key: 'x', match: { value: 'y' } }],
       });
       expect(mockClient.delete).not.toHaveBeenCalled();
-      expect(mockClient.getCollections).toHaveBeenCalledTimes(1);
+      expect(mockClient.getCollection).toHaveBeenCalledTimes(1);
 
-      // Second call should NOT be cached — must call getCollections again
+      // Second call should NOT be cached — must call getCollection again
       await service.deleteByFilter('does-not-exist', {
         must: [{ key: 'x', match: { value: 'y' } }],
       });
-      expect(mockClient.getCollections).toHaveBeenCalledTimes(2);
+      expect(mockClient.getCollection).toHaveBeenCalledTimes(2);
     });
   });
 });

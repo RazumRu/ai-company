@@ -22,6 +22,14 @@ export interface RepoIndexQueueCallbacks {
   onFailed: (repoIndexId: string, error: Error) => Promise<void>;
 }
 
+/**
+ * BullMQ-based job queue for background repository indexing.
+ *
+ * Creates its own IORedis connection rather than sharing with CacheService.
+ * BullMQ requires `maxRetriesPerRequest: null` for blocking BRPOPLPUSH commands,
+ * and the Worker needs a dedicated connection to avoid head-of-line blocking.
+ * This matches the pattern used by GraphRevisionQueueService.
+ */
 @Injectable()
 export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   private queue!: Queue<RepoIndexJobData>;
