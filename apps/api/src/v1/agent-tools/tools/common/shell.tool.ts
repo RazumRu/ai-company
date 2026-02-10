@@ -177,15 +177,26 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       **When to use \`outputFocus\`:**
       - Build/install logs where you only care about errors or warnings
       - Test output where you only need failing test names and messages
+      - Status checks where you need a pass/fail summary, not the full output
       - Long file listings where you need files matching a pattern
       - Any command with potentially large output where only a subset matters
 
-      **Examples:**
+      **Examples — extracting specific content:**
       \`\`\`json
       {"command": "npm test", "purpose": "Run tests", "outputFocus": "only the failing test names and their error messages"}
       {"command": "npm install", "purpose": "Install deps", "outputFocus": "only warnings, errors, and the final added/removed summary"}
       {"command": "find /workspace -name '*.ts'", "purpose": "List TS files", "outputFocus": "only files containing 'controller' in the path"}
       {"command": "cat package.json", "purpose": "Check deps", "outputFocus": "only the dependencies and devDependencies sections"}
+      \`\`\`
+
+      **Examples — status-only checks (pass/fail, no content needed):**
+      Use \`outputFocus\` when you need to know whether something passed or failed but don't need the full output.
+      \`\`\`json
+      {"command": "npm test", "purpose": "Verify tests pass after refactor", "outputFocus": "pass/fail status: total tests, passed count, failed count. If any failed list only their names"}
+      {"command": "npm run build", "purpose": "Check build succeeds", "outputFocus": "pass/fail status only. If failed, list only the error messages"}
+      {"command": "npm run lint", "purpose": "Check lint status", "outputFocus": "pass/fail status: number of errors and warnings. If any errors, list only the file paths and rule names"}
+      {"command": "tsc --noEmit", "purpose": "Type-check project", "outputFocus": "pass/fail status: number of type errors. If any, list only the first 5 file:line and error message"}
+      {"command": "docker compose ps", "purpose": "Check services health", "outputFocus": "for each service: name and status (running/stopped/unhealthy). Omit ports and other details"}
       \`\`\`
 
       Always check exitCode (0=success, non-zero=failure) before assuming success.

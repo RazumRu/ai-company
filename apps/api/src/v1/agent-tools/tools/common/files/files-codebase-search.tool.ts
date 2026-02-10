@@ -68,6 +68,7 @@ type CodebaseSearchResult = {
   path: string;
   start_line: number;
   end_line: number;
+  total_lines?: number;
   text: string;
   score: number;
 };
@@ -81,7 +82,7 @@ type CodebaseSearchOutput = {
 export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaType> {
   public name = 'codebase_search';
   public description =
-    'Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, and code snippets ranked by relevance. This should be the first tool for codebase discovery or "where is X?" questions. The repository must be cloned first with gh_clone.';
+    'Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, total line counts, and code snippets ranked by relevance. Use total_lines to decide whether to read the full file or only specific line ranges. This should be the first tool for codebase discovery or "where is X?" questions. The repository must be cloned first with gh_clone.';
 
   constructor(
     private readonly repoIndexService: RepoIndexService,
@@ -115,10 +116,22 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       - Must be inside a git repository
       - Query must be a human-readable phrase or question (not a single word)
 
+      ### Output Fields
+      Each result contains:
+      - \`path\` — absolute file path
+      - \`start_line\` / \`end_line\` — line range of the matched chunk
+      - \`total_lines\` — total number of lines in the file (use this to decide read strategy)
+      - \`text\` — code snippet
+      - \`score\` — relevance score (0-1)
+
+      ### Reading Strategy Based on total_lines
+      - **Small files (≤300 lines)**: read the entire file with \`files_read\`
+      - **Large files (>300 lines)**: read ONLY the relevant section using \`fromLineNumber\`/\`toLineNumber\` in \`files_read\`. Use \`start_line\` and \`end_line\` from the search result to target the right range. Add some padding (e.g., ±30 lines) for surrounding context. Do NOT fetch the full content of large files — it wastes context and slows down analysis.
+
       ### Recommended Flow
       1) Clone repo with \`gh_clone\` (if not already cloned).
       2) Run \`codebase_search\` with a semantic query using the cloned path.
-      3) Read top results with \`files_read\` using the \`path\` field directly — do NOT call files_find_paths first.
+      3) Check \`total_lines\` in results. For small files, read entirely with \`files_read\`. For large files, use line ranges based on \`start_line\`/\`end_line\`.
       4) Use \`files_search_text\` for exact usages or strings.
 
       ### Example

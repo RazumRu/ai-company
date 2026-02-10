@@ -68,7 +68,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges for large files. All file paths must be absolute. Always read a file before editing it. This is a read-only tool — to modify files use files_apply_changes, to create new files use files_write_file.';
+    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges for large files. For large files (>300 lines), ALWAYS use fromLineNumber/toLineNumber to read only the relevant section — never fetch full content of large files. All file paths must be absolute. Always read a file before editing it. This is a read-only tool — to modify files use files_apply_changes, to create new files use files_write_file.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,
@@ -102,20 +102,22 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
 
       ### Reading Strategy
       - **Batch multiple files into ONE call** — reading 5 files in one call is much better than 5 separate calls
-      - Default to reading **entire files** unless very large (>300 lines)
-      - Use line ranges only for large files: \`fromLineNumber\`/\`toLineNumber\`
+      - **Small files (≤300 lines)**: read the entire file
+      - **Large files (>300 lines)**: ALWAYS use \`fromLineNumber\`/\`toLineNumber\` to read only the section you need. Do NOT fetch the full content of large files — it wastes context window and slows down analysis. Use \`total_lines\` from \`codebase_search\` results or \`lineCount\` from previous reads to gauge file size.
       - Never re-read a file you already have in context
 
       ### Output Format
       Each line is prefixed with its line number and a tab: \`42\\tconst x = 1;\`
       Line numbers are for reference only. Do NOT include the \`NNN\\t\` prefix when copying text to \`oldText\` in edit tools.
 
-      ### Example — batch read:
+      The response includes \`lineCount\` (total lines returned) and \`fileSizeBytes\` for each file.
+
+      ### Example — batch read with line ranges for large files:
       \`\`\`json
       {"filesToRead":[
         {"filePath":"/runtime-workspace/project/src/service.ts"},
         {"filePath":"/runtime-workspace/project/src/dao.ts"},
-        {"filePath":"/runtime-workspace/project/src/large.ts","fromLineNumber":1,"toLineNumber":300}
+        {"filePath":"/runtime-workspace/project/src/large.ts","fromLineNumber":100,"toLineNumber":250}
       ]}
       \`\`\`
     `;

@@ -57,6 +57,7 @@ type ChunkBatchItem = {
   commit: string;
   filePath: string;
   fileHash: string;
+  totalLines: number;
   chunk: ChunkDescriptor;
 };
 
@@ -71,6 +72,7 @@ type QdrantPointPayload = {
   path: string;
   start_line: number;
   end_line: number;
+  total_lines: number;
   text: string;
   chunk_hash: string;
   file_hash: string;
@@ -848,6 +850,7 @@ export class RepoIndexerService {
           fileInput.content,
           params.embeddingModel,
         );
+        const totalLines = fileInput.content.split('\n').length;
 
         for (const chunk of chunks) {
           if (
@@ -870,6 +873,7 @@ export class RepoIndexerService {
             commit: params.currentCommit,
             filePath: fileInput.relativePath,
             fileHash: fileInput.fileHash,
+            totalLines,
             chunk,
           });
           batchTokenCount += chunk.tokenCount;
@@ -1564,6 +1568,7 @@ export class RepoIndexerService {
         path: item.filePath,
         start_line: chunk.startLine,
         end_line: chunk.endLine,
+        total_lines: item.totalLines,
         text: chunk.text,
         chunk_hash: chunk.chunkHash,
         file_hash: item.fileHash,

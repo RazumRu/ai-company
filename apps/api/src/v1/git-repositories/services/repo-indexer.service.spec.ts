@@ -1253,10 +1253,10 @@ describe('RepoIndexerService', () => {
         payload: { text: string; token_count: number };
       }[];
       expect(points).toHaveLength(2);
-      // First chunk should be 250 tokens (chars)
-      expect(points[0]!.payload.token_count).toBe(250);
-      // Second chunk should be 80 tokens (300 - 220)
-      expect(points[1]!.payload.token_count).toBe(80);
+      // First chunk should be 200 tokens (codebaseChunkTargetTokens default)
+      expect(points[0]!.payload.token_count).toBe(200);
+      // Second chunk should be 130 tokens (300 - (200 - 30 overlap))
+      expect(points[1]!.payload.token_count).toBe(130);
       // The second chunk text should be contained within the trailing part of the full content
       expect(largeContent).toContain(points[1]!.payload.text);
     });

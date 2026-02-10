@@ -1543,6 +1543,7 @@ export class RepoIndexService implements OnModuleInit {
       path: string;
       start_line: number;
       end_line: number;
+      total_lines: number;
       text: string;
     }>;
 
@@ -1552,11 +1553,16 @@ export class RepoIndexService implements OnModuleInit {
 
     const startLine = Number(payload.start_line ?? 1);
     const endLine = Number(payload.end_line ?? startLine);
+    const totalLines =
+      payload.total_lines != null ? Number(payload.total_lines) : undefined;
 
     return {
       path: String(payload.path),
       start_line: Number.isFinite(startLine) ? startLine : 1,
       end_line: Number.isFinite(endLine) ? endLine : startLine,
+      ...(totalLines != null && Number.isFinite(totalLines)
+        ? { total_lines: totalLines }
+        : {}),
       text: String(payload.text),
       score: match.score ?? 0,
     };

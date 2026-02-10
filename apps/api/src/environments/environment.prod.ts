@@ -94,7 +94,7 @@ export const environment = () =>
       'CODEBASE_EMBEDDING_CONCURRENCY',
       '2',
     ),
-    codebaseChunkTargetTokens: +getEnv('CODEBASE_CHUNK_TARGET_TOKENS', '250'),
+    codebaseChunkTargetTokens: +getEnv('CODEBASE_CHUNK_TARGET_TOKENS', '200'),
     codebaseChunkOverlapTokens: +getEnv('CODEBASE_CHUNK_OVERLAP_TOKENS', '30'),
     codebaseMaxFileBytes: +getEnv('CODEBASE_MAX_FILE_BYTES', '1048576'),
     codebaseGitExecTimeoutMs: +getEnv('CODEBASE_GIT_EXEC_TIMEOUT_MS', '60000'),

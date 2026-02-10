@@ -42,6 +42,7 @@ export interface SearchCodebaseResult {
   path: string;
   start_line: number;
   end_line: number;
+  total_lines?: number;
   text: string;
   score: number;
 }
