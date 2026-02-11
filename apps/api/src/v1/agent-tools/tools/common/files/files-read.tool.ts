@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
+import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { shQuote } from '../../../../utils/shell.utils';
 import {
@@ -13,6 +14,9 @@ import {
   ToolInvokeResult,
 } from '../../base-tool';
 import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
+
+const TRUNCATE_HEAD_LINES = 50;
+const TRUNCATE_TAIL_LINES = 50;
 
 const FilesReadToolReadSchema = z.object({
   filePath: z
@@ -57,6 +61,7 @@ type FilesReadToolFileOutput = {
   lineCount?: number;
   fileSizeBytes?: number;
   startLine?: number;
+  warning?: string;
 };
 
 type FilesReadToolOutput = {
@@ -308,8 +313,37 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       const startLineOffset = read.fromLineNumber ?? 1;
       const lines = rawContent.split('\n');
       const lineCount = lines.length;
+
+      const noLineRange = read.fromLineNumber === undefined;
+      const maxLines = environment.filesReadMaxLines;
+
+      if (noLineRange && lineCount > maxLines) {
+        const headLines = lines.slice(0, TRUNCATE_HEAD_LINES);
+        const tailLines = lines.slice(-TRUNCATE_TAIL_LINES);
+
+        const headContent = headLines
+          .map((line, idx) => `${idx + 1}\t${line}`)
+          .join('\n');
+        const tailStartLine = lineCount - TRUNCATE_TAIL_LINES + 1;
+        const tailContent = tailLines
+          .map((line, idx) => `${idx + tailStartLine}\t${line}`)
+          .join('\n');
+
+        const truncatedWarning = `\n\n... [TRUNCATED: File has ${lineCount} total lines but the maximum is ${maxLines} without line ranges. Showing first ${TRUNCATE_HEAD_LINES} and last ${TRUNCATE_TAIL_LINES} lines. Use fromLineNumber/toLineNumber to read specific sections.] ...\n\n`;
+
+        files.push({
+          filePath,
+          content: headContent + truncatedWarning + tailContent,
+          lineCount,
+          fileSizeBytes,
+          startLine: 1,
+          warning: `File has ${lineCount} lines (limit: ${maxLines}). Content was truncated. Use fromLineNumber/toLineNumber to read specific sections.`,
+        });
+        continue;
+      }
+
       const content = lines
-        .map((line, i) => `${i + startLineOffset}\t${line}`)
+        .map((line, idx) => `${idx + startLineOffset}\t${line}`)
         .join('\n');
       files.push({
         filePath,

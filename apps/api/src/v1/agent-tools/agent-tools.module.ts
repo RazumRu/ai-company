@@ -12,7 +12,6 @@ import { FilesCodebaseSearchTool } from './tools/common/files/files-codebase-sea
 import { FilesDeleteTool } from './tools/common/files/files-delete.tool';
 import { FilesDirectoryTreeTool } from './tools/common/files/files-directory-tree.tool';
 import { FilesFindPathsTool } from './tools/common/files/files-find-paths.tool';
-import { FilesMoveFileTool } from './tools/common/files/files-move-file.tool';
 import { FilesReadTool } from './tools/common/files/files-read.tool';
 import { FilesSearchTextTool } from './tools/common/files/files-search-text.tool';
 import { FilesToolGroup } from './tools/common/files/files-tool-group';
@@ -65,7 +64,6 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     FilesReadTool,
     FilesSearchTextTool,
     FilesCodebaseSearchTool,
-    FilesMoveFileTool,
     FilesWriteFileTool,
     FilesApplyChangesTool,
     FilesDeleteTool,
@@ -94,7 +92,6 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     FilesReadTool,
     FilesSearchTextTool,
     FilesCodebaseSearchTool,
-    FilesMoveFileTool,
     FilesWriteFileTool,
     FilesApplyChangesTool,
     FilesDeleteTool,

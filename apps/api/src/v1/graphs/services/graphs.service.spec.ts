@@ -10,6 +10,7 @@ import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
@@ -47,6 +48,7 @@ describe('GraphsService', () => {
   let notificationsService: NotificationsService;
   let graphRevisionService: GraphRevisionService;
   let threadsDao: ThreadsDao;
+  let messagesDao: MessagesDao;
 
   const mockUserId = 'user-123';
   const mockCtx = new AuthContextStorage({ sub: mockUserId });
@@ -182,6 +184,14 @@ describe('GraphsService', () => {
           useValue: {
             getAll: vi.fn(),
             updateById: vi.fn(),
+            deleteById: vi.fn(),
+            delete: vi.fn(),
+          },
+        },
+        {
+          provide: MessagesDao,
+          useValue: {
+            delete: vi.fn(),
           },
         },
         {
@@ -245,8 +255,12 @@ describe('GraphsService', () => {
     graphRevisionService =
       module.get<GraphRevisionService>(GraphRevisionService);
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
+    messagesDao = module.get<MessagesDao>(MessagesDao);
     vi.mocked(threadsDao.getAll).mockResolvedValue([]);
     vi.mocked(threadsDao.updateById).mockResolvedValue(null as any);
+    vi.mocked(threadsDao.deleteById).mockResolvedValue(undefined);
+    vi.mocked(threadsDao.delete).mockResolvedValue(undefined as any);
+    vi.mocked(messagesDao.delete).mockResolvedValue(undefined as any);
     vi.mocked(graphRegistry.getStatus).mockReturnValue(undefined);
     vi.mocked(notificationsService.emit).mockResolvedValue(void 0 as any);
     vi.mocked(graphRevisionService.queueRevision).mockResolvedValue({
@@ -1067,6 +1081,25 @@ describe('GraphsService', () => {
       });
       expect(graphDao.deleteById).toHaveBeenCalledWith(mockGraphId);
       expect(graphRegistry.destroy).not.toHaveBeenCalled();
+    });
+
+    it('should cascade soft-delete threads and messages in batch', async () => {
+      const graph = createMockGraphEntity({ status: GraphStatus.Created });
+      const thread1 = { id: 'thread-1', graphId: mockGraphId } as any;
+      const thread2 = { id: 'thread-2', graphId: mockGraphId } as any;
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(threadsDao.getAll).mockResolvedValue([thread1, thread2]);
+      vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
+
+      await service.delete(mockCtx, mockGraphId);
+
+      expect(threadsDao.getAll).toHaveBeenCalledWith({ graphId: mockGraphId });
+      expect(messagesDao.delete).toHaveBeenCalledWith({
+        threadIds: ['thread-1', 'thread-2'],
+      });
+      expect(threadsDao.delete).toHaveBeenCalledWith({ graphId: mockGraphId });
+      expect(graphDao.deleteById).toHaveBeenCalledWith(mockGraphId);
     });
 
     it('should destroy running graph before deletion', async () => {

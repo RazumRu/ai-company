@@ -7,7 +7,6 @@ import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
-import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
 import { FilesSearchTextTool } from './files-search-text.tool';
 import { FilesToolGroup, FilesToolGroupConfig } from './files-tool-group';
@@ -20,7 +19,6 @@ describe('FilesToolGroup', () => {
   let mockFilesReadTool: FilesReadTool;
   let mockFilesSearchTextTool: FilesSearchTextTool;
   let mockFilesCodebaseSearchTool: FilesCodebaseSearchTool;
-  let mockFilesMoveFileTool: FilesMoveFileTool;
   let mockFilesWriteFileTool: FilesWriteFileTool;
   let mockFilesApplyChangesTool: FilesApplyChangesTool;
   let mockFilesDeleteTool: FilesDeleteTool;
@@ -45,10 +43,6 @@ describe('FilesToolGroup', () => {
     mockFilesCodebaseSearchTool = {
       build: vi.fn(),
     } as unknown as FilesCodebaseSearchTool;
-
-    mockFilesMoveFileTool = {
-      build: vi.fn(),
-    } as unknown as FilesMoveFileTool;
 
     mockFilesWriteFileTool = {
       build: vi.fn(),
@@ -86,10 +80,6 @@ describe('FilesToolGroup', () => {
           useValue: mockFilesCodebaseSearchTool,
         },
         {
-          provide: FilesMoveFileTool,
-          useValue: mockFilesMoveFileTool,
-        },
-        {
           provide: FilesWriteFileTool,
           useValue: mockFilesWriteFileTool,
         },
@@ -124,9 +114,6 @@ describe('FilesToolGroup', () => {
       const mockFilesCodebaseSearchToolInstance = {
         name: 'codebase_search',
       } as DynamicStructuredTool;
-      const mockFilesMoveFileToolInstance = {
-        name: 'files_move_file',
-      } as DynamicStructuredTool;
       const mockFilesWriteFileToolInstance = {
         name: 'files_write_file',
       } as DynamicStructuredTool;
@@ -151,9 +138,6 @@ describe('FilesToolGroup', () => {
       mockFilesCodebaseSearchTool.build = vi
         .fn()
         .mockReturnValue(mockFilesCodebaseSearchToolInstance);
-      mockFilesMoveFileTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesMoveFileToolInstance);
       mockFilesWriteFileTool.build = vi
         .fn()
         .mockReturnValue(mockFilesWriteFileToolInstance);
@@ -173,7 +157,7 @@ describe('FilesToolGroup', () => {
       expect(result).toBeDefined();
       expect(result.tools).toBeDefined();
       expect(Array.isArray(result.tools)).toBe(true);
-      expect(result.tools.length).toBe(9);
+      expect(result.tools.length).toBe(8);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       // Check that group instructions are returned
       expect(result.instructions).toBeDefined();
@@ -193,10 +177,6 @@ describe('FilesToolGroup', () => {
         undefined,
       );
       expect(mockFilesCodebaseSearchTool.build).toHaveBeenCalledWith(
-        config,
-        undefined,
-      );
-      expect(mockFilesMoveFileTool.build).toHaveBeenCalledWith(
         config,
         undefined,
       );
@@ -260,7 +240,6 @@ describe('FilesToolGroup', () => {
       expect(result.instructions).toContain('codebase_search');
       expect(mockFilesApplyChangesTool.build).not.toHaveBeenCalled();
       expect(mockFilesDeleteTool.build).not.toHaveBeenCalled();
-      expect(mockFilesMoveFileTool.build).not.toHaveBeenCalled();
       expect(mockFilesWriteFileTool.build).not.toHaveBeenCalled();
     });
 
@@ -279,9 +258,6 @@ describe('FilesToolGroup', () => {
       } as DynamicStructuredTool;
       const mockFilesCodebaseSearchToolInstance = {
         name: 'codebase_search',
-      } as DynamicStructuredTool;
-      const mockFilesMoveFileToolInstance = {
-        name: 'files_move_file',
       } as DynamicStructuredTool;
       const mockFilesWriteFileToolInstance = {
         name: 'files_write_file',
@@ -308,9 +284,6 @@ describe('FilesToolGroup', () => {
       mockFilesCodebaseSearchTool.build = vi
         .fn()
         .mockReturnValue(mockFilesCodebaseSearchToolInstance);
-      mockFilesMoveFileTool.build = vi
-        .fn()
-        .mockReturnValue(mockFilesMoveFileToolInstance);
       mockFilesWriteFileTool.build = vi
         .fn()
         .mockReturnValue(mockFilesWriteFileToolInstance);
@@ -327,7 +300,7 @@ describe('FilesToolGroup', () => {
 
       const result = toolGroup.buildTools(config, lgConfig);
 
-      expect(result.tools.length).toBe(9);
+      expect(result.tools.length).toBe(8);
       expect(result.tools[0]).toBe(mockFilesFindPathsToolInstance);
       expect(mockFilesFindPathsTool.build).toHaveBeenCalledWith(
         config,
@@ -343,10 +316,6 @@ describe('FilesToolGroup', () => {
         lgConfig,
       );
       expect(mockFilesCodebaseSearchTool.build).toHaveBeenCalledWith(
-        config,
-        lgConfig,
-      );
-      expect(mockFilesMoveFileTool.build).toHaveBeenCalledWith(
         config,
         lgConfig,
       );

@@ -2,6 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { FilesBaseToolConfig } from './files-base.tool';
@@ -451,6 +452,139 @@ describe('FilesReadTool', () => {
       // File with single newline gets two numbered lines
       expect(result.files?.[0]?.content).toBe('1\t\n2\t');
       expect(result.files?.[0]?.lineCount).toBe(2);
+    });
+
+    it('should truncate files exceeding filesReadMaxLines when no line range specified', async () => {
+      const maxLines = 100;
+      vi.spyOn(environment as any, 'filesReadMaxLines', 'get').mockReturnValue(
+        maxLines,
+      );
+
+      const totalLines = 200;
+      const fileLines = Array.from(
+        { length: totalLines },
+        (_, i) => `line content ${i + 1}`,
+      );
+
+      const args: FilesReadToolSchemaType = {
+        filesToRead: [{ filePath: '/path/to/repo/src/large.ts' }],
+      };
+
+      vi.spyOn(tool as any, 'createMarker').mockReturnValue('test');
+      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: [
+          '__AI_FILES_READ_BEGIN_test__0',
+          '__AI_FILES_READ_EXIT_test__0:0',
+          '__SIZE__:5000',
+          '__AI_FILES_READ_PAYLOAD_test__0',
+          ...fileLines,
+          '__AI_FILES_READ_END_test__0',
+          '',
+        ].join('\n'),
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.error).toBeUndefined();
+      expect(result.files?.length).toBe(1);
+
+      const file = result.files?.[0];
+      expect(file).toBeDefined();
+
+      // lineCount should reflect the actual total
+      expect(file!.lineCount).toBe(totalLines);
+
+      // Should have warning
+      expect(file!.warning).toContain('truncated');
+
+      // Should contain truncation marker in content
+      expect(file!.content).toContain('[TRUNCATED:');
+
+      // First line should be present
+      expect(file!.content).toContain('1\tline content 1');
+      // Last line should be present
+      expect(file!.content).toContain(
+        `${totalLines}\tline content ${totalLines}`,
+      );
+
+      // A middle line should NOT be present (it was truncated)
+      expect(file!.content).not.toContain('80\tline content 80');
+    });
+
+    it('should not truncate files within filesReadMaxLines limit', async () => {
+      const fileLines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);
+
+      const args: FilesReadToolSchemaType = {
+        filesToRead: [{ filePath: '/path/to/repo/src/small.ts' }],
+      };
+
+      vi.spyOn(tool as any, 'createMarker').mockReturnValue('test');
+      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: [
+          '__AI_FILES_READ_BEGIN_test__0',
+          '__AI_FILES_READ_EXIT_test__0:0',
+          '__SIZE__:500',
+          '__AI_FILES_READ_PAYLOAD_test__0',
+          ...fileLines,
+          '__AI_FILES_READ_END_test__0',
+          '',
+        ].join('\n'),
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.error).toBeUndefined();
+      expect(result.files?.[0]?.warning).toBeUndefined();
+      expect(result.files?.[0]?.content).not.toContain('[TRUNCATED:');
+      expect(result.files?.[0]?.lineCount).toBe(50);
+    });
+
+    it('should not truncate when line ranges are specified even for large files', async () => {
+      const maxLines = 100;
+      vi.spyOn(environment as any, 'filesReadMaxLines', 'get').mockReturnValue(
+        maxLines,
+      );
+
+      const fileLines = Array.from({ length: 50 }, (_, i) => `line ${i + 10}`);
+
+      const args: FilesReadToolSchemaType = {
+        filesToRead: [
+          {
+            filePath: '/path/to/repo/src/large.ts',
+            fromLineNumber: 10,
+            toLineNumber: 59,
+          },
+        ],
+      };
+
+      vi.spyOn(tool as any, 'createMarker').mockReturnValue('test');
+      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: [
+          '__AI_FILES_READ_BEGIN_test__0',
+          '__AI_FILES_READ_EXIT_test__0:0',
+          '__SIZE__:5000',
+          '__AI_FILES_READ_PAYLOAD_test__0',
+          ...fileLines,
+          '__AI_FILES_READ_END_test__0',
+          '',
+        ].join('\n'),
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.error).toBeUndefined();
+      expect(result.files?.[0]?.warning).toBeUndefined();
+      expect(result.files?.[0]?.content).not.toContain('[TRUNCATED:');
+      expect(result.files?.[0]?.startLine).toBe(10);
     });
   });
 });

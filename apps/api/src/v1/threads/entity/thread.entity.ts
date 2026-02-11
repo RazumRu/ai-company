@@ -1,7 +1,17 @@
 import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
+import type { GraphEntity } from '../../graphs/entity/graph.entity';
 import { ThreadStatus } from '../threads.types';
+import type { MessageEntity } from './message.entity';
 
 @Entity('threads')
 export class ThreadEntity extends TimestampsEntity {
@@ -11,6 +21,13 @@ export class ThreadEntity extends TimestampsEntity {
   @Column({ type: 'uuid' })
   @Index()
   graphId!: string;
+
+  @ManyToOne('GraphEntity', 'threads', { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'graphId' })
+  graph?: GraphEntity;
+
+  @OneToMany('MessageEntity', 'thread')
+  messages?: MessageEntity[];
 
   @Column({ type: 'uuid' })
   @Index()

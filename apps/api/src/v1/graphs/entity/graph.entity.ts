@@ -1,12 +1,22 @@
 import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
+import type { ThreadEntity } from '../../threads/entity/thread.entity';
 import { type GraphSchemaType, GraphStatus } from '../graphs.types';
 
 @Entity('graphs')
 export class GraphEntity extends TimestampsEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @OneToMany('ThreadEntity', 'graph')
+  threads?: ThreadEntity[];
 
   @Column({ type: 'varchar', length: 255 })
   name!: string;

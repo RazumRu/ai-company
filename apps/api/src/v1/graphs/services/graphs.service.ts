@@ -11,6 +11,7 @@ import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
@@ -43,6 +44,7 @@ export class GraphsService {
     private readonly typeorm: TypeormService,
     private readonly notificationsService: NotificationsService,
     private readonly threadsDao: ThreadsDao,
+    private readonly messagesDao: MessagesDao,
   ) {}
 
   private prepareResponse(entity: GraphEntity): GraphDto {
@@ -291,6 +293,14 @@ export class GraphsService {
     // Stop and destroy the graph if it's running
     if (graph.status === GraphStatus.Running) {
       await this.destroy(ctx, id);
+    }
+
+    // Cascade soft-delete: messages → threads → graph
+    const threads = await this.threadsDao.getAll({ graphId: id });
+    const threadIds = threads.map((t) => t.id);
+    if (threadIds.length > 0) {
+      await this.messagesDao.delete({ threadIds });
+      await this.threadsDao.delete({ graphId: id });
     }
 
     await this.graphDao.deleteById(id);

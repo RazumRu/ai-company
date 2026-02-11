@@ -12,7 +12,6 @@ import { FilesCodebaseSearchTool } from './files-codebase-search.tool';
 import { FilesDeleteTool } from './files-delete.tool';
 import { FilesDirectoryTreeTool } from './files-directory-tree.tool';
 import { FilesFindPathsTool } from './files-find-paths.tool';
-import { FilesMoveFileTool } from './files-move-file.tool';
 import { FilesReadTool } from './files-read.tool';
 import { FilesSearchTextTool } from './files-search-text.tool';
 import { FilesWriteFileTool } from './files-write-file.tool';
@@ -33,7 +32,6 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
     private readonly filesReadTool: FilesReadTool,
     private readonly filesSearchTextTool: FilesSearchTextTool,
     private readonly filesCodebaseSearchTool: FilesCodebaseSearchTool,
-    private readonly filesMoveFileTool: FilesMoveFileTool,
     private readonly filesWriteFileTool: FilesWriteFileTool,
     private readonly filesApplyChangesTool: FilesApplyChangesTool,
     private readonly filesDeleteTool: FilesDeleteTool,
@@ -124,7 +122,6 @@ export class FilesToolGroup extends BaseToolGroup<FilesToolGroupConfig> {
 
     if (includeEditActions) {
       tools.push(
-        this.filesMoveFileTool.build(config, lgConfig),
         this.filesWriteFileTool.build(config, lgConfig),
         this.filesApplyChangesTool.build(config, lgConfig),
         this.filesDeleteTool.build(config, lgConfig),

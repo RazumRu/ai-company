@@ -115,6 +115,7 @@ export const environment = () =>
 
     // tool output limits
     toolMaxOutputTokens: +getEnv('TOOL_MAX_OUTPUT_TOKENS', '5000'),
+    filesReadMaxLines: +getEnv('FILES_READ_MAX_LINES', '2000'),
 
     // agents
     agentsInstructionsFile: getEnv('AGENTS_INSTRUCTIONS_FILE', 'AGENTS.md'),

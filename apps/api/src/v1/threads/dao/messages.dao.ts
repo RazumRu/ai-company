@@ -9,6 +9,7 @@ export type SearchTerms = Partial<{
   ids: string[];
   createdBy: string;
   threadId: string;
+  threadIds: string[];
   externalThreadId: string;
   nodeId: string;
 }>;
@@ -52,6 +53,12 @@ export class MessagesDao extends BaseDao<MessageEntity, SearchTerms> {
     if (params?.threadId) {
       builder.andWhere({
         threadId: params.threadId,
+      });
+    }
+
+    if (params?.threadIds && params.threadIds.length > 0) {
+      builder.andWhere({
+        threadId: In(params.threadIds),
       });
     }
 

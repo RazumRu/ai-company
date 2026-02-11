@@ -1,9 +1,17 @@
 import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 import type { MessageDto } from '../../graphs/dto/graphs.dto';
 import { MessageRole } from '../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
+import type { ThreadEntity } from './thread.entity';
 
 @Entity('messages')
 export class MessageEntity extends TimestampsEntity {
@@ -13,6 +21,10 @@ export class MessageEntity extends TimestampsEntity {
   @Column({ type: 'uuid' })
   @Index()
   threadId!: string;
+
+  @ManyToOne('ThreadEntity', 'messages', { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'threadId' })
+  thread?: ThreadEntity;
 
   @Column({ type: 'varchar' })
   @Index()
