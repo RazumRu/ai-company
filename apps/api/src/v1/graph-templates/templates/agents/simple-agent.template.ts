@@ -5,10 +5,8 @@ import { z } from 'zod';
 
 import type { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
-import {
-  SimpleAgent,
-  SimpleAgentSchema,
-} from '../../../agents/services/agents/simple-agent';
+import { NewMessageMode, ReasoningEffort } from '../../../agents/agents.types';
+import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
@@ -18,7 +16,65 @@ import {
   ToolNodeOutput,
 } from '../base-node.template';
 
-export const SimpleAgentTemplateSchema = SimpleAgentSchema;
+export const SimpleAgentTemplateSchema = z.object({
+  name: z.string().min(1).describe('Unique name for this agent'),
+  description: z
+    .string()
+    .min(1)
+    .describe('Description of what this agent does')
+    .meta({ 'x-ui:textarea': true }),
+  summarizeMaxTokens: z
+    .number()
+    .catch(200000)
+    .optional()
+    .describe(
+      'Total token budget for summary + recent context. If current history exceeds this, older messages are folded into the rolling summary.',
+    ),
+  summarizeKeepTokens: z
+    .number()
+    .default(30000)
+    .optional()
+    .describe(
+      'Token budget reserved for the most recent messages kept verbatim when summarizing (the "tail").',
+    ),
+  instructions: z
+    .string()
+    .describe(
+      'System prompt injected at the start of each turn: role, goals, constraints, style.',
+    )
+    .meta({ 'x-ui:textarea': true })
+    .meta({ 'x-ui:ai-suggestions': true }),
+  invokeModelName: z
+    .string()
+    .describe('Chat model used for the main reasoning/tool-call step.')
+    .meta({ 'x-ui:show-on-node': true })
+    .meta({ 'x-ui:label': 'Model' })
+    .meta({ 'x-ui:litellm-models-list-select': true }),
+  invokeModelReasoningEffort: z
+    .enum(ReasoningEffort)
+    .default(ReasoningEffort.None)
+    .optional()
+    .describe('Reasoning effort')
+    .meta({ 'x-ui:show-on-node': true })
+    .meta({ 'x-ui:label': 'Reasoning' }),
+  maxIterations: z
+    .number()
+    .int()
+    .min(1)
+    .max(2500)
+    .default(2500)
+    .optional()
+    .describe(
+      'Maximum number of iterations the agent can execute during a single run.',
+    ),
+  newMessageMode: z
+    .enum(NewMessageMode)
+    .default(NewMessageMode.InjectAfterToolCall)
+    .optional()
+    .describe(
+      'Controls how to handle new messages when the agent thread is already running. Inject after tool call adds the new input immediately after the next tool execution completes; wait for completion queues the message until the current run finishes.',
+    ),
+});
 
 export type SimpleAgentTemplateSchemaType = z.infer<
   typeof SimpleAgentTemplateSchema

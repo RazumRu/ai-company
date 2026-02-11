@@ -10,6 +10,7 @@ import { GraphCheckpointsWritesDao } from './dao/graph-checkpoints-writes.dao';
 import { GraphCheckpointEntity } from './entity/graph-chekpoints.entity';
 import { GraphCheckpointWritesEntity } from './entity/graph-chekpoints-writes.entity';
 import { SimpleAgent } from './services/agents/simple-agent';
+import { SubAgent } from './services/agents/sub-agent';
 import { CheckpointStateService } from './services/checkpoint-state.service';
 import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
 
@@ -24,12 +25,14 @@ import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
   controllers: [],
   providers: [
     SimpleAgent,
+    SubAgent,
     PgCheckpointSaver,
     CheckpointStateService,
     GraphCheckpointsDao,
     GraphCheckpointsWritesDao,
   ],
   exports: [
+    SubAgent,
     PgCheckpointSaver,
     CheckpointStateService,
     GraphCheckpointsDao,

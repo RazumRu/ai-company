@@ -7,7 +7,6 @@ import {
   OpenAIChatModelId,
 } from '@langchain/openai';
 import { EventEmitter } from 'events';
-import { z } from 'zod';
 
 import { environment } from '../../../../environments';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
@@ -107,21 +106,17 @@ export abstract class BaseAgent<
     this.eventEmitter.emit('event', event);
   }
 
-  public abstract get schema(): z.ZodType<TSchema>;
-
   public buildLLM(
     model: OpenAIChatModelId,
     params?: ChatOpenAIFields,
   ): ChatOpenAI {
-    const llm = new ChatOpenAI({
+    return new ChatOpenAI({
       model,
       apiKey: environment.litellmMasterKey,
       configuration: { baseURL: environment.llmBaseUrl },
       tags: ['ai-company'],
       ...params,
     });
-
-    return llm;
   }
 
   public getGraphNodeMetadata(
@@ -133,7 +128,7 @@ export abstract class BaseAgent<
   public abstract run(
     threadId: string,
     messages: BaseMessage[],
-    config?: z.infer<TSchema>,
+    config?: TSchema,
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput>;
 
@@ -143,10 +138,10 @@ export abstract class BaseAgent<
    * Update the agent's configuration without destroying the instance.
    * This allows tools that hold references to the agent to continue working with the updated config.
    */
-  public abstract setConfig(config: z.infer<TSchema>): void;
+  public abstract setConfig(config: TSchema): void;
 
   /**
    * Get the current agent configuration (including enhanced instructions)
    */
-  public abstract getConfig(): z.infer<TSchema>;
+  public abstract getConfig(): TSchema;
 }

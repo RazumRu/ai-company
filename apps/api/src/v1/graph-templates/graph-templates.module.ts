@@ -9,6 +9,7 @@ import { AgentsModule } from '../agents/agents.module';
 import { GraphResourcesModule } from '../graph-resources/graph-resources.module';
 import { GraphsModule } from '../graphs/graphs.module';
 import { RuntimeModule } from '../runtime/runtime.module';
+import { SubagentsModule } from '../subagents/subagents.module';
 import { TemplatesController } from './controllers/templates.controller';
 import { REGISTER_TEMPLATE_KEY } from './decorators/register-template.decorator';
 import { TemplateRegistry } from './services/template-registry';
@@ -25,6 +26,7 @@ import { FilesToolTemplate } from './templates/tools/files-tool.template';
 import { GhToolTemplate } from './templates/tools/gh-tool.template';
 import { KnowledgeToolsTemplate } from './templates/tools/knowledge-tools.template';
 import { ShellToolTemplate } from './templates/tools/shell-tool.template';
+import { SubagentsToolTemplate } from './templates/tools/subagents-tool.template';
 import { WebSearchToolTemplate } from './templates/tools/web-search-tool.template';
 import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.template';
 
@@ -36,6 +38,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     AgentsModule,
     AgentTriggersModule,
     GraphResourcesModule,
+    SubagentsModule,
     forwardRef(() => GraphsModule),
     DiscoveryModule,
   ],
@@ -53,6 +56,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     ManualTriggerTemplate,
     GhToolTemplate,
     FilesToolTemplate,
+    SubagentsToolTemplate,
     // --- mcp ---
     FilesystemMcpTemplate,
     JiraMcpTemplate,

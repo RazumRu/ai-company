@@ -1,10 +1,12 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 
+import { AgentsModule } from '../agents/agents.module';
 import { GitRepositoriesModule } from '../git-repositories/git-repositories.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
 import { QdrantModule } from '../qdrant/qdrant.module';
+import { SubagentsModule } from '../subagents/subagents.module';
 import { CommunicationExecTool } from './tools/common/communication/communication-exec.tool';
 import { CommunicationToolGroup } from './tools/common/communication/communication-tool-group';
 import { FilesApplyChangesTool } from './tools/common/files/files-apply-changes.tool';
@@ -28,6 +30,9 @@ import { KnowledgeSearchChunksTool } from './tools/common/knowledge/knowledge-se
 import { KnowledgeSearchDocsTool } from './tools/common/knowledge/knowledge-search-docs.tool';
 import { KnowledgeToolGroup } from './tools/common/knowledge/knowledge-tool-group';
 import { ShellTool } from './tools/common/shell.tool';
+import { SubagentsListTool } from './tools/common/subagents/subagents-list.tool';
+import { SubagentsRunTaskTool } from './tools/common/subagents/subagents-run-task.tool';
+import { SubagentsToolGroup } from './tools/common/subagents/subagents-tool-group';
 import { WebSearchTool } from './tools/common/web-search.tool';
 import { FinishTool } from './tools/core/finish.tool';
 import { ReportStatusTool } from './tools/core/report-status.tool';
@@ -39,6 +44,8 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     OpenaiModule,
     KnowledgeModule,
     QdrantModule,
+    SubagentsModule,
+    forwardRef(() => AgentsModule),
   ],
   controllers: [],
   providers: [
@@ -68,6 +75,9 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     FilesApplyChangesTool,
     FilesDeleteTool,
     FilesToolGroup,
+    SubagentsListTool,
+    SubagentsRunTaskTool,
+    SubagentsToolGroup,
   ],
   exports: [
     ShellTool,
@@ -96,6 +106,9 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     FilesApplyChangesTool,
     FilesDeleteTool,
     FilesToolGroup,
+    SubagentsListTool,
+    SubagentsRunTaskTool,
+    SubagentsToolGroup,
   ],
 })
 export class AgentToolsModule {}

@@ -19,7 +19,7 @@ import {
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import { v4 } from 'uuid';
-import { z, ZodSchema } from 'zod';
+import { ZodSchema } from 'zod';
 
 import { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { zodToAjvSchema } from '../../../agent-tools/agent-tools.utils';
@@ -51,67 +51,17 @@ import { ToolUsageGuardNode } from '../nodes/tool-usage-guard-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { AgentOutput, AgentRunEvent, BaseAgent } from './base-agent';
 
-export const SimpleAgentSchema = z.object({
-  name: z.string().min(1).describe('Unique name for this agent'),
-  description: z
-    .string()
-    .min(1)
-    .describe('Description of what this agent does')
-    .meta({ 'x-ui:textarea': true }),
-  summarizeMaxTokens: z
-    .number()
-    .catch(272000)
-    .optional()
-    .describe(
-      'Total token budget for summary + recent context. If current history exceeds this, older messages are folded into the rolling summary.',
-    ),
-  summarizeKeepTokens: z
-    .number()
-    .default(30000)
-    .optional()
-    .describe(
-      'Token budget reserved for the most recent messages kept verbatim when summarizing (the "tail").',
-    ),
-  instructions: z
-    .string()
-    .describe(
-      'System prompt injected at the start of each turn: role, goals, constraints, style.',
-    )
-    .meta({ 'x-ui:textarea': true })
-    .meta({ 'x-ui:ai-suggestions': true }),
-  invokeModelName: z
-    .string()
-    .describe('Chat model used for the main reasoning/tool-call step.')
-    .meta({ 'x-ui:show-on-node': true })
-    .meta({ 'x-ui:label': 'Model' })
-    .meta({ 'x-ui:litellm-models-list-select': true }),
-  invokeModelReasoningEffort: z
-    .enum(ReasoningEffort)
-    .default(ReasoningEffort.None)
-    .optional()
-    .describe('Reasoning effort')
-    .meta({ 'x-ui:show-on-node': true })
-    .meta({ 'x-ui:label': 'Reasoning' }),
-  maxIterations: z
-    .number()
-    .int()
-    .min(1)
-    .max(2500)
-    .default(2500)
-    .optional()
-    .describe(
-      'Maximum number of iterations the agent can execute during a single run.',
-    ),
-  newMessageMode: z
-    .enum(NewMessageMode)
-    .default(NewMessageMode.InjectAfterToolCall)
-    .optional()
-    .describe(
-      'Controls how to handle new messages when the agent thread is already running. Inject after tool call adds the new input immediately after the next tool execution completes; wait for completion queues the message until the current run finishes.',
-    ),
-});
-
-export type SimpleAgentSchemaType = z.infer<typeof SimpleAgentSchema>;
+export type SimpleAgentSchemaType = {
+  name: string;
+  description: string;
+  instructions: string;
+  invokeModelName: string;
+  invokeModelReasoningEffort?: ReasoningEffort;
+  summarizeMaxTokens?: number;
+  summarizeKeepTokens?: number;
+  maxIterations?: number;
+  newMessageMode?: NewMessageMode;
+};
 
 type ActiveRunEntry = {
   abortController: AbortController;
@@ -149,10 +99,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     return undefined;
   }
 
-  public get schema() {
-    return SimpleAgentSchema;
-  }
-
   protected buildState() {
     return Annotation.Root({
       messages: Annotation<BaseMessage[], BaseAgentStateMessagesUpdateValue>({
@@ -183,7 +129,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         reducer: (left, right) => right ?? left,
         default: () => false,
       }),
-      // Token usage counters (accumulated) - persisted via checkpoints
       inputTokens: Annotation<number, number>({
         reducer: (left, right) => left + (right ?? 0),
         default: () => 0,
@@ -208,7 +153,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         reducer: (left, right) => left + (right ?? 0),
         default: () => 0,
       }),
-      // Current context size (snapshot) - persisted via checkpoints
       currentContext: Annotation<number, number>({
         reducer: (left, right) => right ?? left,
         default: () => 0,
@@ -319,7 +263,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
       // ---- build ----
       const g = new StateGraph({
-        stateSchema: this.buildState(),
+        state: this.buildState(),
       })
         .addNode('summarize', summarizeNode.invoke.bind(summarizeNode))
         .addNode('invoke_llm', invokeLlmNode.invoke.bind(invokeLlmNode))
@@ -817,7 +761,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     _config?: SimpleAgentSchemaType,
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
-    const config = _config ? this.schema.parse(_config) : this.currentConfig;
+    const config = _config || this.currentConfig;
 
     if (!config) {
       throw new Error('Agent configuration is required for execution');
@@ -871,7 +815,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     runnableConfig?: RunnableConfig<BaseAgentConfigurable>,
   ): Promise<AgentOutput> {
     const runId = runnableConfig?.configurable?.run_id || v4();
-    const config = _config ? this.schema.parse(_config) : this.currentConfig;
+    const config = _config || this.currentConfig;
 
     if (!config) {
       throw new Error('Agent configuration is required for execution');
@@ -1291,9 +1235,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       } catch {
         // noop
       }
-
-      // DO NOT delete from activeRuns here - let the stream's finally block handle cleanup
-      // This ensures the stopped flag is checked and proper events are emitted
     }
   }
 
@@ -1302,12 +1243,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
    * The graph will be rebuilt on the next run() call with the new config.
    */
   public setConfig(config: SimpleAgentSchemaType): void {
-    // Validate the config against the schema
-    const parsedConfig = this.schema.parse(config);
-
     // Clear the graph so it will be rebuilt with new config
     this.graph = undefined;
-    this.currentConfig = parsedConfig;
+    this.currentConfig = config;
     this.graphThreadStateUnsubscribe?.();
     this.graphThreadStateUnsubscribe = undefined;
     this.graphThreadState = undefined;

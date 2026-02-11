@@ -100,4 +100,8 @@ export class LlmModelsService {
   getKnowledgeSearchModel(): string {
     return this.offlineMiniFallback(environment.llmMiniModel);
   }
+
+  getSubagentFastModel(): string {
+    return this.offlineCodingMiniFallback(environment.llmMiniCodeModel);
+  }
 }
