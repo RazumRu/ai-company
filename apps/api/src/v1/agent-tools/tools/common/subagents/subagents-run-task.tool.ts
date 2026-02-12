@@ -95,7 +95,7 @@ export class SubagentsRunTaskTool extends BaseTool<
   protected override generateTitle(
     args: SubagentsRunTaskToolSchemaType,
   ): string {
-    return `Subagent (${args.agentId}): ${args.purpose}`;
+    return `Calling subagent: ${args.purpose}`;
   }
 
   public getDetailedInstructions(

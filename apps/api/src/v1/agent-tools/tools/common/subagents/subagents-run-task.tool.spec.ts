@@ -372,7 +372,7 @@ describe('SubagentsRunTaskTool', () => {
       );
 
       expect(result.messageMetadata?.__title).toBe(
-        'Subagent (system:explorer): Map auth deps',
+        'Calling subagent: Map auth deps',
       );
     });
   });

@@ -51,10 +51,20 @@ export class ToolExecutorNode extends BaseNode<
 
     const toolsMap = keyBy(this.tools, 'name');
 
+    // Normalise tool-call IDs: some providers (e.g. Gemini via LiteLLM) may
+    // return tool_calls with undefined ids.  ToolMessages require a matching
+    // tool_call_id, and filterMessagesForLlm uses strict ID matching to pair
+    // AI ↔ ToolMessage.  By backpatching generated IDs onto the AIMessage we
+    // guarantee the pair always matches.
+    for (const tc of calls) {
+      if (!tc.id) {
+        tc.id = `generated_id_${Math.random().toString(36).slice(2)}`;
+      }
+    }
+
     const results = await Promise.all(
       calls.map(async (tc) => {
-        const callId =
-          tc.id ?? `missing_id_${Math.random().toString(36).slice(2)}`;
+        const callId = tc.id!;
         const tool = toolsMap[tc.name];
         const makeMsg = (
           content: string,

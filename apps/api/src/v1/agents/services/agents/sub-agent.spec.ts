@@ -1,9 +1,20 @@
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
-import { ToolRunnableConfig } from '@langchain/core/tools';
+import {
+  AIMessage,
+  BaseMessage,
+  HumanMessage,
+  ToolMessage,
+} from '@langchain/core/messages';
+import {
+  DynamicStructuredTool,
+  ToolRunnableConfig,
+} from '@langchain/core/tools';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
+import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
 import { LitellmService } from '../../../litellm/services/litellm.service';
+import { filterMessagesForLlm } from '../../agents.utils';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import {
   SubAgent,
@@ -279,6 +290,292 @@ describe('SubAgent', () => {
 
       expect(result.error).toBe('Aborted');
       expect(result.statistics.totalIterations).toBe(0);
+    });
+  });
+
+  describe('tool call ID normalisation (infinite loop fix)', () => {
+    /**
+     * Helper: create a simple DynamicStructuredTool whose invoke() returns a
+     * ToolInvokeResult. The tool records all invocations so tests can assert
+     * how many times it was called and what state the messages were in.
+     */
+    function createMockTool(
+      name: string,
+      fn: (args: Record<string, unknown>) => ToolInvokeResult<unknown>,
+    ): DynamicStructuredTool {
+      const invocations: Record<string, unknown>[] = [];
+      const mockTool = {
+        name,
+        description: `Mock ${name} tool`,
+        schema: z.object({ query: z.string().optional() }),
+        invoke: vi.fn(async (args: unknown) => {
+          const parsed = args as Record<string, unknown>;
+          invocations.push(parsed);
+          return fn(parsed);
+        }),
+        __invocations: invocations,
+      } as unknown as DynamicStructuredTool;
+      return mockTool;
+    }
+
+    it('should complete without looping when LLM returns tool calls with undefined ids', async () => {
+      // This is the core regression test for the infinite-loop bug.
+      //
+      // Scenario: The LLM (e.g. Gemini via LiteLLM) returns a tool_call with
+      // id=undefined.  Before the fix, ToolExecutorNode would create a
+      // ToolMessage with a generated missing_id_xxx, but the AIMessage still
+      // had id=undefined.  filterMessagesForLlm would then drop the ToolMessage
+      // as "dangling" because its tool_call_id didn't match any safe AI tool
+      // call id.  The LLM would only see the original human message and repeat
+      // the same tool call, looping until maxIterations.
+      //
+      // With the fix, ToolExecutorNode backpatches generated IDs onto the
+      // AIMessage, so the pair always matches and the LLM sees tool results.
+
+      const mockSearchTool = createMockTool('search', () => ({
+        output: 'Found 3 files matching the query.',
+      }));
+
+      subAgent.addTool(mockSearchTool);
+      subAgent.setConfig({ ...defaultAgentConfig, maxIterations: 10 });
+
+      // 1st LLM call: returns a tool call with NO id (simulates Gemini bug)
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              // id is intentionally ABSENT — this is the bug scenario
+              name: 'search',
+              args: { query: 'typescript files' },
+              type: 'tool_call',
+            },
+          ],
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      // 2nd LLM call: returns a final text response (no tool calls)
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'I found 3 TypeScript files.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Find TypeScript files')],
+        defaultCfg,
+      );
+
+      // Must complete successfully — no max iterations error
+      expect(result.error).toBeUndefined();
+      expect(result.result).toBe('I found 3 TypeScript files.');
+
+      // Exactly 2 LLM iterations: tool call + final answer
+      expect(result.statistics.totalIterations).toBe(2);
+      expect(result.statistics.toolCallsMade).toBe(1);
+
+      // The tool was actually invoked
+      expect(mockSearchTool.invoke).toHaveBeenCalledTimes(1);
+
+      // The LLM was called exactly 2 times
+      expect(mockLlmInvokeRef).toHaveBeenCalledTimes(2);
+
+      // On the second LLM call, it should have received messages including
+      // the ToolMessage (proving tool results were not filtered out)
+      const secondCallMessages = mockLlmInvokeRef.mock
+        .calls[1]![0] as BaseMessage[];
+      const toolMessages = secondCallMessages.filter(
+        (m) => m instanceof ToolMessage,
+      );
+      expect(toolMessages.length).toBe(1);
+      expect(toolMessages[0]?.content).toContain('Found 3 files');
+    });
+
+    it('should pass tool results through filterMessagesForLlm when IDs are normalised', async () => {
+      // Verify that filterMessagesForLlm correctly handles the normalised
+      // state: AIMessage with generated_id + ToolMessage with same generated_id.
+
+      const mockTool = createMockTool('read_file', () => ({
+        output: 'file content here',
+      }));
+
+      subAgent.addTool(mockTool);
+      subAgent.setConfig({ ...defaultAgentConfig, maxIterations: 10 });
+
+      // 1st call: tool call with undefined id
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              name: 'read_file',
+              args: { query: '/hello.js' },
+              type: 'tool_call',
+            },
+          ],
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      // Capture the messages sent to the LLM on the 2nd call
+      let capturedMessages: BaseMessage[] = [];
+      mockLlmInvokeRef.mockImplementationOnce((msgs: BaseMessage[]) => {
+        capturedMessages = msgs;
+        return Promise.resolve(
+          new AIMessage({
+            content: 'File content is: hello world',
+            response_metadata: { usage: {} },
+          }),
+        );
+      });
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Read /hello.js')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.statistics.totalIterations).toBe(2);
+
+      // Verify the messages the LLM saw on the second call pass through
+      // filterMessagesForLlm without losing anything
+      const filtered = filterMessagesForLlm(capturedMessages);
+
+      // The system prompt message from InvokeLlmNode is prepended, so we
+      // look for relative counts: all messages should survive filtering
+      expect(filtered.length).toBe(capturedMessages.length);
+
+      // Specifically, there should be exactly 1 ToolMessage present
+      const toolMsgs = filtered.filter((m) => m instanceof ToolMessage);
+      expect(toolMsgs.length).toBe(1);
+      expect(toolMsgs[0]?.content).toContain('file content here');
+
+      // And 1 AIMessage with tool_calls (the normalised one)
+      const aiWithToolCalls = filtered.filter(
+        (m) => m instanceof AIMessage && (m.tool_calls?.length ?? 0) > 0,
+      );
+      expect(aiWithToolCalls.length).toBe(1);
+
+      // The AI tool call should now have a generated ID
+      const tcId = (aiWithToolCalls[0] as AIMessage)?.tool_calls?.[0]?.id;
+      expect(tcId).toBeDefined();
+      expect(typeof tcId).toBe('string');
+      expect(tcId!.startsWith('generated_id_')).toBe(true);
+
+      // And the ToolMessage should reference the same ID
+      const toolCallId = (toolMsgs[0] as ToolMessage).tool_call_id;
+      expect(toolCallId).toBe(tcId);
+    });
+
+    it('should not loop when multiple tool calls have undefined ids', async () => {
+      const mockTool1 = createMockTool('search', () => ({
+        output: 'search results',
+      }));
+      const mockTool2 = createMockTool('read_file', () => ({
+        output: 'file content',
+      }));
+
+      subAgent.addTool(mockTool1);
+      subAgent.addTool(mockTool2);
+      subAgent.setConfig({ ...defaultAgentConfig, maxIterations: 10 });
+
+      // 1st call: two parallel tool calls, both with undefined ids
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            { name: 'search', args: { query: 'ts files' }, type: 'tool_call' },
+            { name: 'read_file', args: { query: '/a.ts' }, type: 'tool_call' },
+          ],
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      // 2nd call: final answer
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'Done with both tools.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Search and read')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toBe('Done with both tools.');
+      expect(result.statistics.totalIterations).toBe(2);
+      expect(result.statistics.toolCallsMade).toBe(2);
+
+      // Both tools were called
+      expect(mockTool1.invoke).toHaveBeenCalledTimes(1);
+      expect(mockTool2.invoke).toHaveBeenCalledTimes(1);
+
+      // Second LLM call should include both ToolMessages
+      const secondCallMessages = mockLlmInvokeRef.mock
+        .calls[1]![0] as BaseMessage[];
+      const toolMessages = secondCallMessages.filter(
+        (m) => m instanceof ToolMessage,
+      );
+      expect(toolMessages.length).toBe(2);
+    });
+
+    it('should work correctly when LLM returns tool calls with proper ids (no regression)', async () => {
+      // Verify that the fix doesn't break the normal case where IDs are present.
+
+      const mockTool = createMockTool('search', () => ({
+        output: 'results found',
+      }));
+
+      subAgent.addTool(mockTool);
+      subAgent.setConfig({ ...defaultAgentConfig, maxIterations: 10 });
+
+      // 1st call: tool call WITH a proper id
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_abc123',
+              name: 'search',
+              args: { query: 'test' },
+              type: 'tool_call',
+            },
+          ],
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      // 2nd call: final answer
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'Search completed successfully.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Search for test')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toBe('Search completed successfully.');
+      expect(result.statistics.totalIterations).toBe(2);
+      expect(result.statistics.toolCallsMade).toBe(1);
+
+      // The ToolMessage should reference the original id (not a generated one)
+      const secondCallMessages = mockLlmInvokeRef.mock
+        .calls[1]![0] as BaseMessage[];
+      const toolMessages = secondCallMessages.filter(
+        (m) => m instanceof ToolMessage,
+      );
+      expect(toolMessages.length).toBe(1);
+      expect((toolMessages[0] as ToolMessage).tool_call_id).toBe('call_abc123');
     });
   });
 });

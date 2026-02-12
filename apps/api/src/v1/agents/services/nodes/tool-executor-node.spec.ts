@@ -236,6 +236,39 @@ describe('ToolExecutorNode', () => {
       expect(result.messages?.items).toHaveLength(0);
     });
 
+    it('should normalise undefined tool call ids so ToolMessages match AIMessage', async () => {
+      // Reproduces the subagent infinite-loop bug: some providers (e.g. Gemini
+      // via LiteLLM) return tool_calls with undefined ids.  ToolExecutorNode
+      // must backpatch generated ids onto the AIMessage so filterMessagesForLlm
+      // can pair them with the resulting ToolMessages.
+      const toolCall = {
+        // id is intentionally absent / undefined
+        name: 'test-tool-1',
+        args: { input: 'test' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Using tool',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: 'result' });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      // After invoke, the AIMessage's tool_calls should have a generated id
+      const patchedId = aiMessage.tool_calls?.[0]?.id;
+      expect(patchedId).toBeDefined();
+      expect(typeof patchedId).toBe('string');
+      expect(patchedId!.startsWith('generated_id_')).toBe(true);
+
+      // And the ToolMessage must use the same id
+      const toolMsg = result.messages?.items?.[0] as ToolMessage;
+      expect(toolMsg).toBeInstanceOf(ToolMessage);
+      expect(toolMsg.tool_call_id).toBe(patchedId);
+    });
+
     it('should handle non-AI messages gracefully', async () => {
       const humanMessage = new HumanMessage('Hello');
       mockState.messages = [humanMessage];

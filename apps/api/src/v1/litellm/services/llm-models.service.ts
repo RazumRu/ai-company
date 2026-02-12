@@ -102,6 +102,6 @@ export class LlmModelsService {
   }
 
   getSubagentFastModel(): string {
-    return this.offlineCodingMiniFallback(environment.llmMiniCodeModel);
+    return this.offlineCodingFallback(environment.llmMiniCodeModel);
   }
 }

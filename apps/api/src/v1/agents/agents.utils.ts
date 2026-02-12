@@ -206,12 +206,39 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
   const safeAiToolCallIds = new Set<string>();
   const keepAiMessage = new WeakSet<AIMessage>();
 
-  for (const m of visible) {
+  // Defence-in-depth: keep ToolMessage IDs that follow an AI message whose
+  // tool_calls have no extractable IDs (e.g. undefined/empty ids from some
+  // providers).  Without this, the ToolMessages would be dropped as "dangling"
+  // and the LLM would never see tool results, causing an infinite loop.
+  const positionalSafeToolResultIds = new Set<string>();
+
+  for (let i = 0; i < visible.length; i++) {
+    const m = visible[i];
     if (!(m instanceof AIMessage)) continue;
 
     const callIds = getToolCallIdsFromAiMessage(m);
+
     if (callIds.length === 0) {
       keepAiMessage.add(m);
+
+      // If the AI message has tool_calls entries but none had extractable IDs,
+      // accept the ToolMessages that immediately follow it positionally.
+      const hasToolCallsEntries =
+        (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) ||
+        (Array.isArray(
+          (m.additional_kwargs as { tool_calls?: unknown })?.tool_calls,
+        ) &&
+          ((m.additional_kwargs as { tool_calls?: unknown[] }).tool_calls!
+            .length ?? 0) > 0);
+
+      if (hasToolCallsEntries) {
+        for (let j = i + 1; j < visible.length; j++) {
+          const next = visible[j];
+          if (!(next instanceof ToolMessage)) break;
+          positionalSafeToolResultIds.add(next.tool_call_id);
+        }
+      }
+
       continue;
     }
 
@@ -229,7 +256,10 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
       return keepAiMessage.has(m);
     }
     if (m instanceof ToolMessage) {
-      return safeAiToolCallIds.has(m.tool_call_id);
+      return (
+        safeAiToolCallIds.has(m.tool_call_id) ||
+        positionalSafeToolResultIds.has(m.tool_call_id)
+      );
     }
     return true;
   });

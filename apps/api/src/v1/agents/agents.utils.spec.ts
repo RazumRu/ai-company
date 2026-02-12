@@ -188,6 +188,66 @@ describe('agents.utils', () => {
       const cleaned = filterMessagesForLlm(msgs);
       expect(cleaned).toHaveLength(2);
     });
+
+    it('should keep AI + ToolMessage pair when tool call id is undefined (generated missing_id)', () => {
+      // This reproduces the subagent infinite loop: the LLM returns tool_calls with
+      // undefined ids, ToolExecutorNode assigns missing_id_xxx, but filterMessagesForLlm
+      // must still keep both the AI message and the tool result.
+      const generatedId = 'missing_id_abc123';
+      const aiMsg = new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            name: 'files_read',
+            args: { filesToRead: [{ filePath: '/hello.js' }] },
+            type: 'tool_call',
+          } as any,
+        ],
+      });
+      const toolMsg = new ToolMessage({
+        tool_call_id: generatedId,
+        name: 'files_read',
+        content: 'file content here',
+      });
+
+      const cleaned = filterMessagesForLlm([
+        new HumanMessage('Read /hello.js'),
+        aiMsg,
+        toolMsg,
+      ]);
+
+      // Both AI message and tool result must survive so the LLM sees the full roundtrip
+      expect(cleaned).toHaveLength(3);
+      expect(cleaned[1]).toBeInstanceOf(AIMessage);
+      expect(cleaned[2]).toBeInstanceOf(ToolMessage);
+    });
+
+    it('should keep Gemini-style tool call IDs with special characters', () => {
+      const geminiId =
+        'call_cf0b58b0639048e7ae7176f19fd6__thought__EjQKMgG+Pvb7DF';
+      const msgs = [
+        new HumanMessage('Read file'),
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: geminiId,
+              name: 'files_read',
+              args: {},
+              type: 'tool_call',
+            },
+          ],
+        }),
+        new ToolMessage({
+          tool_call_id: geminiId,
+          name: 'files_read',
+          content: 'ok',
+        }),
+      ];
+
+      const cleaned = filterMessagesForLlm(msgs);
+      expect(cleaned).toHaveLength(3);
+    });
   });
 
   describe('prepareMessagesForLlm', () => {

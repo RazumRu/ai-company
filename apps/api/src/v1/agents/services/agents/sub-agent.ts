@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
+
 import { AIMessage, BaseMessage } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { END, START, StateGraph } from '@langchain/langgraph';
+import { MemorySaver } from '@langchain/langgraph-checkpoint';
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 
@@ -37,8 +40,14 @@ export type SubAgentSchemaType = {
 /**
  * Lightweight LangGraph-based subagent that runs a task autonomously.
  *
- * Unlike SimpleAgent, this is ephemeral (no checkpointer, no persistence),
- * has no finish tool / tool usage guard / summarization / message injection,
+ * Uses an in-memory checkpointer with a unique thread ID per invocation so
+ * that LangGraph properly accumulates state across the invoke_llm → tools
+ * loop.  An in-memory saver is used instead of the database-backed one
+ * because subagent state is fully ephemeral — it never needs to survive a
+ * process restart, and writing to PostgreSQL on every graph step would add
+ * unnecessary I/O overhead.
+ *
+ * Has no finish tool / tool usage guard / summarization / message injection,
  * and completes when the LLM responds without tool calls.
  *
  * Reuses InvokeLlmNode and ToolExecutorNode for consistent LLM invocation
@@ -98,9 +107,11 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
 
     const config = this.getConfig();
     const toolsArray = Array.from(this.tools.values());
-    const threadId =
-      (runnableConfig?.configurable?.thread_id as string) ??
-      'subagent-ephemeral';
+    // Each subagent invocation gets a fresh in-memory checkpointer and thread
+    // ID.  The MemorySaver is scoped to this single run and will be GC'd when
+    // the method returns — no stale checkpoint data accumulates.
+    const checkpointer = new MemorySaver();
+    const threadId = `subagent-${randomUUID()}`;
 
     const initialMessages = updateMessagesListWithMetadata(
       messages,
@@ -168,7 +179,9 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         )
         .addEdge('tools', 'invoke_llm');
 
-      const compiled = g.compile();
+      const compiled = g.compile({
+        checkpointer,
+      });
 
       const initialState: BaseAgentStateChange = {
         messages: { mode: 'append', items: initialMessages },
@@ -212,14 +225,30 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
               toolCallsMade += lastMsg?.tool_calls?.length ?? 0;
             }
 
-            // Emit new messages for streaming to parent
+            // Emit cloned copies of new messages for streaming to parent.
+            // Cloning is required because the parent's ToolExecutorNode marks
+            // streamed messages with __hideForLlm.  Without cloning, that
+            // mutation propagates back into the subagent's own state, causing
+            // filterMessagesForLlm to drop all AI/Tool messages and creating
+            // an infinite tool-call loop.
             const newMessages = finalState.messages.slice(prevMessages.length);
             if (newMessages.length > 0) {
+              const clonedMessages = newMessages.map((msg) =>
+                Object.assign(
+                  Object.create(
+                    Object.getPrototypeOf(msg) as object,
+                  ) as BaseMessage,
+                  msg,
+                  {
+                    additional_kwargs: { ...(msg.additional_kwargs ?? {}) },
+                  },
+                ),
+              );
               this.emit({
                 type: 'message',
                 data: {
                   threadId,
-                  messages: newMessages,
+                  messages: clonedMessages,
                   config: (runnableConfig ??
                     {}) as RunnableConfig<BaseAgentConfigurable>,
                 },
