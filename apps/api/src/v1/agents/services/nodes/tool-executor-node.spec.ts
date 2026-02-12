@@ -836,4 +836,301 @@ describe('ToolExecutorNode', () => {
       expect(toolMessage.additional_kwargs?.__hideForLlm).toBe(true);
     });
   });
+
+  describe('streaming tool support', () => {
+    let mockState: BaseAgentState;
+    let mockConfig: Record<string, unknown>;
+
+    beforeEach(() => {
+      mockState = {
+        messages: [],
+        summary: '',
+        toolUsageGuardActivated: false,
+        toolsMetadata: {},
+        toolUsageGuardActivatedCount: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+        totalPrice: 0,
+        currentContext: 0,
+      };
+
+      mockConfig = {
+        configurable: {
+          thread_id: 'test-thread',
+          caller_agent: {
+            emit: vi.fn(),
+          },
+        },
+      };
+    });
+
+    function createStreamingTool(
+      name: string,
+      chunks: AIMessage[][],
+      finalResult: {
+        output: unknown;
+        messageMetadata?: unknown;
+        toolRequestUsage?: unknown;
+      },
+    ) {
+      async function* streamingInvoke() {
+        for (const chunk of chunks) {
+          yield chunk;
+        }
+        return finalResult;
+      }
+
+      return {
+        name,
+        description: `Streaming ${name}`,
+        invoke: vi.fn().mockResolvedValue(finalResult),
+        __streamingInvoke: vi.fn().mockImplementation(streamingInvoke),
+      } as unknown as DynamicStructuredTool;
+    }
+
+    it('should consume streaming tool and collect yielded messages as additionalMessages', async () => {
+      const streamedMsg1 = new AIMessage({ content: 'Step 1 done' });
+      const streamedMsg2 = new AIMessage({ content: 'Step 2 done' });
+
+      const streamingTool = createStreamingTool(
+        'streaming-tool',
+        [[streamedMsg1], [streamedMsg2]],
+        { output: 'Final result' },
+      );
+
+      const streamingNode = new ToolExecutorNode(
+        [streamingTool],
+        mockLitellmService,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'streaming-tool',
+        args: { input: 'test' },
+      };
+
+      const aiMessage = new AIMessage({
+        content: 'Using streaming tool',
+        tool_calls: [toolCall],
+      });
+
+      mockState.messages = [aiMessage];
+
+      const result = await streamingNode.invoke(mockState, mockConfig);
+
+      // Should have 3 messages: tool result + 2 streamed messages
+      expect(result.messages?.items).toHaveLength(3);
+
+      // First is the tool message
+      expect(result.messages?.items?.[0]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items?.[0]?.content).toBe('Final result');
+
+      // Then the streamed messages as additionalMessages
+      expect(result.messages?.items?.[1]).toBeInstanceOf(AIMessage);
+      expect(result.messages?.items?.[1]?.content).toBe('Step 1 done');
+
+      expect(result.messages?.items?.[2]).toBeInstanceOf(AIMessage);
+      expect(result.messages?.items?.[2]?.content).toBe('Step 2 done');
+    });
+
+    it('should mark streamed messages with __streamedRealtime, __hideForLlm, and __toolCallId', async () => {
+      const streamedMsg = new AIMessage({ content: 'Progress update' });
+
+      const streamingTool = createStreamingTool(
+        'streaming-tool',
+        [[streamedMsg]],
+        { output: 'Done' },
+      );
+
+      const streamingNode = new ToolExecutorNode(
+        [streamingTool],
+        mockLitellmService,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'streaming-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({ content: 'Go', tool_calls: [toolCall] }),
+      ];
+
+      const result = await streamingNode.invoke(mockState, mockConfig);
+
+      const additionalMsg = result.messages?.items?.[1];
+      // Already emitted in real-time — skip in emitNewMessages
+      expect(additionalMsg?.additional_kwargs?.__streamedRealtime).toBe(true);
+      // Hidden from LLM context — subagent internal messages
+      expect(additionalMsg?.additional_kwargs?.__hideForLlm).toBe(true);
+      // Linked to the parent tool call for UI grouping
+      expect(additionalMsg?.additional_kwargs?.__toolCallId).toBe('call-1');
+    });
+
+    it('should emit streamed messages in real-time via caller_agent', async () => {
+      const streamedMsg = new AIMessage({ content: 'Live update' });
+      const mockEmit = vi.fn();
+
+      const configWithAgent: Record<string, unknown> = {
+        configurable: {
+          thread_id: 'test-thread',
+          caller_agent: { emit: mockEmit },
+        },
+      };
+
+      const streamingTool = createStreamingTool(
+        'streaming-tool',
+        [[streamedMsg]],
+        { output: 'Done' },
+      );
+
+      const streamingNode = new ToolExecutorNode(
+        [streamingTool],
+        mockLitellmService,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'streaming-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({ content: 'Go', tool_calls: [toolCall] }),
+      ];
+
+      await streamingNode.invoke(mockState, configWithAgent);
+
+      expect(mockEmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'message',
+          data: expect.objectContaining({
+            threadId: 'test-thread',
+          }),
+        }),
+      );
+    });
+
+    it('should not call standard invoke when __streamingInvoke is present', async () => {
+      const streamingTool = createStreamingTool('streaming-tool', [], {
+        output: 'Result',
+      });
+
+      const streamingNode = new ToolExecutorNode(
+        [streamingTool],
+        mockLitellmService,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'streaming-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({ content: 'Go', tool_calls: [toolCall] }),
+      ];
+
+      await streamingNode.invoke(mockState, mockConfig);
+
+      // Standard invoke should NOT be called
+      expect(streamingTool.invoke).not.toHaveBeenCalled();
+    });
+
+    it('should handle streaming tool errors gracefully', async () => {
+      async function* failingStream() {
+        yield [new AIMessage({ content: 'Before error' })];
+        throw new Error('Stream failed');
+      }
+
+      const failingTool = {
+        name: 'failing-stream',
+        description: 'Fails during streaming',
+        invoke: vi.fn(),
+        __streamingInvoke: vi.fn().mockImplementation(failingStream),
+      } as unknown as DynamicStructuredTool;
+
+      const streamingNode = new ToolExecutorNode(
+        [failingTool],
+        mockLitellmService,
+        undefined,
+        {
+          error: vi.fn(),
+          warn: vi.fn(),
+          debug: vi.fn(),
+          log: vi.fn(),
+        } as unknown as import('@packages/common').DefaultLogger,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'failing-stream',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({ content: 'Go', tool_calls: [toolCall] }),
+      ];
+
+      const result = await streamingNode.invoke(mockState, mockConfig);
+
+      // Should have the error message + the message streamed before the error
+      expect(result.messages?.items).toHaveLength(2);
+      expect(result.messages?.items?.[0]?.content).toContain(
+        "Error executing tool 'failing-stream'",
+      );
+      expect(result.messages?.items?.[0]?.content).toContain('Stream failed');
+
+      // The already-streamed message is preserved for state consistency
+      expect(result.messages?.items?.[1]).toBeInstanceOf(AIMessage);
+      expect(result.messages?.items?.[1]?.content).toBe('Before error');
+    });
+
+    it('should merge streamed messages with tool additionalMessages', async () => {
+      const streamedMsg = new AIMessage({ content: 'Streamed' });
+      const toolAdditionalMsg = new AIMessage({ content: 'Tool additional' });
+
+      async function* streamWithAdditional() {
+        yield [streamedMsg];
+        return {
+          output: 'Result',
+          additionalMessages: [toolAdditionalMsg],
+        };
+      }
+
+      const mergeTool = {
+        name: 'merge-tool',
+        description: 'Tool with both stream and additionalMessages',
+        invoke: vi.fn(),
+        __streamingInvoke: vi.fn().mockImplementation(streamWithAdditional),
+      } as unknown as DynamicStructuredTool;
+
+      const streamingNode = new ToolExecutorNode(
+        [mergeTool],
+        mockLitellmService,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'merge-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({ content: 'Go', tool_calls: [toolCall] }),
+      ];
+
+      const result = await streamingNode.invoke(mockState, mockConfig);
+
+      // Should have 3 messages: tool result + streamed + tool additional
+      expect(result.messages?.items).toHaveLength(3);
+      expect(result.messages?.items?.[0]).toBeInstanceOf(ToolMessage);
+      expect(result.messages?.items?.[1]?.content).toBe('Streamed');
+      expect(result.messages?.items?.[2]?.content).toBe('Tool additional');
+    });
+  });
 });

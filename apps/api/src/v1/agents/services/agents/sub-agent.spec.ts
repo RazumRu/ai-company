@@ -1,12 +1,15 @@
-import { AIMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SubagentLoopConfig } from '../../../agent-tools/tools/common/subagents/subagent-loop-runner.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentConfigurable } from '../nodes/base-node';
-import { SubAgent } from './sub-agent';
+import {
+  SubAgent,
+  SUBAGENT_DEFAULT_MAX_ITERATIONS,
+  SubAgentSchemaType,
+} from './sub-agent';
 
 const { mockLlmInvokeRef } = vi.hoisted(() => ({
   mockLlmInvokeRef: vi.fn(),
@@ -46,14 +49,10 @@ describe('SubAgent', () => {
     configurable: { thread_id: 'thread-123' },
   };
 
-  const makeConfig = (
-    overrides?: Partial<SubagentLoopConfig>,
-  ): SubagentLoopConfig => ({
-    tools: [],
-    systemPrompt: 'You are a test subagent.',
-    model: 'test-model',
-    ...overrides,
-  });
+  const defaultAgentConfig: SubAgentSchemaType = {
+    instructions: 'You are a test subagent.',
+    invokeModelName: 'test-model',
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,6 +75,7 @@ describe('SubAgent', () => {
     } as unknown as DefaultLogger;
 
     subAgent = new SubAgent(mockLitellmService, mockLogger);
+    subAgent.setConfig(defaultAgentConfig);
   });
 
   describe('simple completion', () => {
@@ -87,9 +87,8 @@ describe('SubAgent', () => {
         }),
       );
 
-      const result = await subAgent.run(
-        'Find TS files',
-        makeConfig(),
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Find TS files')],
         defaultCfg,
       );
 
@@ -107,9 +106,8 @@ describe('SubAgent', () => {
         }),
       );
 
-      const result = await subAgent.run(
-        'Do something',
-        makeConfig(),
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Do something')],
         defaultCfg,
       );
 
@@ -122,10 +120,13 @@ describe('SubAgent', () => {
       const abortController = new AbortController();
       abortController.abort();
 
-      const result = await subAgent.run('Find files', makeConfig(), {
-        ...defaultCfg,
-        signal: abortController.signal,
-      });
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Find files')],
+        {
+          ...defaultCfg,
+          signal: abortController.signal,
+        },
+      );
 
       expect(result.error).toBe('Aborted');
       expect(result.statistics.totalIterations).toBe(0);
@@ -146,7 +147,10 @@ describe('SubAgent', () => {
         }),
       );
 
-      const result = await subAgent.run('Find files', makeConfig(), defaultCfg);
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Find files')],
+        defaultCfg,
+      );
 
       expect(result.statistics.usage).toBeNull();
     });
@@ -167,11 +171,88 @@ describe('SubAgent', () => {
         }),
       );
 
-      const result = await subAgent.run('Find files', makeConfig(), defaultCfg);
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Find files')],
+        defaultCfg,
+      );
 
       expect(result.statistics.usage).toBeTruthy();
       expect(result.statistics.usage!.inputTokens).toBeGreaterThan(0);
       expect(result.statistics.usage!.totalTokens).toBeGreaterThan(0);
+    });
+  });
+
+  describe('maxIterations', () => {
+    it('should use default maxIterations when not configured', async () => {
+      // Make LLM always return tool calls so it loops until limit
+      const toolCallMsg = new AIMessage({
+        content: '',
+        tool_calls: [{ id: 'call-1', name: 'nonexistent', args: {} }],
+        response_metadata: { usage: {} },
+      });
+      mockLlmInvokeRef.mockResolvedValue(toolCallMsg);
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Loop forever')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBe('Max iterations reached');
+      expect(result.result).toContain(String(SUBAGENT_DEFAULT_MAX_ITERATIONS));
+    });
+
+    it('should respect custom maxIterations config', async () => {
+      subAgent.setConfig({
+        ...defaultAgentConfig,
+        maxIterations: 5,
+      });
+
+      const toolCallMsg = new AIMessage({
+        content: '',
+        tool_calls: [{ id: 'call-1', name: 'nonexistent', args: {} }],
+        response_metadata: { usage: {} },
+      });
+      mockLlmInvokeRef.mockResolvedValue(toolCallMsg);
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Loop forever')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBe('Max iterations reached');
+      expect(result.result).toContain('5');
+      // With maxIterations=5 the total LLM invocations should be less than 5
+      expect(result.statistics.totalIterations).toBeLessThanOrEqual(5);
+    });
+
+    it('should include partial statistics in max iterations result', async () => {
+      subAgent.setConfig({
+        ...defaultAgentConfig,
+        maxIterations: 5,
+      });
+
+      vi.mocked(
+        mockLitellmService.extractTokenUsageFromResponse,
+      ).mockResolvedValue({
+        inputTokens: 100,
+        outputTokens: 30,
+        totalTokens: 130,
+      });
+
+      const toolCallMsg = new AIMessage({
+        content: '',
+        tool_calls: [{ id: 'call-1', name: 'nonexistent', args: {} }],
+        response_metadata: { usage: {} },
+      });
+      mockLlmInvokeRef.mockResolvedValue(toolCallMsg);
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Loop forever')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBe('Max iterations reached');
+      expect(result.statistics.totalIterations).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -182,7 +263,7 @@ describe('SubAgent', () => {
       );
 
       await expect(
-        subAgent.run('Find files', makeConfig(), defaultCfg),
+        subAgent.runSubagent([new HumanMessage('Find files')], defaultCfg),
       ).rejects.toThrow('LLM connection failed');
     });
 
@@ -191,7 +272,10 @@ describe('SubAgent', () => {
       abortError.name = 'AbortError';
       mockLlmInvokeRef.mockRejectedValueOnce(abortError);
 
-      const result = await subAgent.run('Find files', makeConfig(), defaultCfg);
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Find files')],
+        defaultCfg,
+      );
 
       expect(result.error).toBe('Aborted');
       expect(result.statistics.totalIterations).toBe(0);

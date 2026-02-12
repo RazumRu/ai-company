@@ -83,6 +83,12 @@ export const ExecuteTriggerSchema = z.object({
     .describe(
       'If true, do not wait for execution to finish (fire-and-forget).',
     ),
+  metadata: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      'Optional metadata to attach to the thread created by this execution.',
+    ),
 });
 
 export const ExecuteTriggerResponseSchema = z.object({

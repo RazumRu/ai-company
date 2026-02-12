@@ -16,6 +16,7 @@ import { ThreadsDao } from '../dao/threads.dao';
 import {
   GetMessagesQueryDto,
   GetThreadsQueryDto,
+  SetThreadMetadataDto,
   ThreadDto,
   ThreadMessageDto,
   ThreadUsageStatisticsDto,
@@ -179,6 +180,50 @@ export class ThreadsService {
     }
 
     return this.stopThread(thread.id);
+  }
+
+  async setMetadata(
+    threadId: string,
+    dto: SetThreadMetadataDto,
+  ): Promise<ThreadDto> {
+    const userId = this.authContext.checkSub();
+
+    const thread = await this.threadDao.getOne({
+      id: threadId,
+      createdBy: userId,
+    });
+
+    if (!thread) {
+      throw new NotFoundException('THREAD_NOT_FOUND');
+    }
+
+    const updated = await this.threadDao.updateById(threadId, {
+      metadata: dto.metadata,
+    });
+
+    return (await this.prepareThreadsResponse([updated!]))[0]!;
+  }
+
+  async setMetadataByExternalId(
+    externalThreadId: string,
+    dto: SetThreadMetadataDto,
+  ): Promise<ThreadDto> {
+    const userId = this.authContext.checkSub();
+
+    const thread = await this.threadDao.getOne({
+      externalThreadId,
+      createdBy: userId,
+    });
+
+    if (!thread) {
+      throw new NotFoundException('THREAD_NOT_FOUND');
+    }
+
+    const updated = await this.threadDao.updateById(thread.id, {
+      metadata: dto.metadata,
+    });
+
+    return (await this.prepareThreadsResponse([updated!]))[0]!;
   }
 
   public async prepareThreadsResponse(

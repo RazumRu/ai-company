@@ -9,9 +9,7 @@ describe('SubagentsListTool', () => {
   let tool: SubagentsListTool;
   let subagentsService: SubagentsService;
 
-  const makeConfig = (): SubagentsToolGroupConfig => ({
-    resolvedAgents: [],
-  });
+  const makeConfig = (): SubagentsToolGroupConfig => ({});
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -31,7 +29,9 @@ describe('SubagentsListTool', () => {
       configurable: { thread_id: 'thread-1' },
     });
 
-    expect(result.output.agents).toHaveLength(subagentsService.getAll().length);
+    expect(result.output.agents).toHaveLength(
+      subagentsService.getAllSystem().length,
+    );
     expect(result.output.agents[0]).toHaveProperty('id');
     expect(result.output.agents[0]).toHaveProperty('description');
   });
@@ -42,8 +42,8 @@ describe('SubagentsListTool', () => {
     });
 
     const ids = result.output.agents.map((a) => a.id);
-    expect(ids).toContain('explorer');
-    expect(ids).toContain('simple');
+    expect(ids).toContain('system:explorer');
+    expect(ids).toContain('system:simple');
   });
 
   it('should not include system prompts in the output', async () => {

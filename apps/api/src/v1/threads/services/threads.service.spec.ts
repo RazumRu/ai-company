@@ -554,6 +554,97 @@ describe('ThreadsService', () => {
     });
   });
 
+  describe('setMetadata', () => {
+    it('should update thread metadata and return updated thread', async () => {
+      const mockThread = createMockThreadEntity();
+      const updatedThread = createMockThreadEntity({
+        metadata: { key: 'value', count: 42 },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+
+      const result = await service.setMetadata(mockThreadId, {
+        metadata: { key: 'value', count: 42 },
+      });
+
+      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        id: mockThreadId,
+        createdBy: mockUserId,
+      });
+      expect(threadsDao.updateById).toHaveBeenCalledWith(mockThreadId, {
+        metadata: { key: 'value', count: 42 },
+      });
+      expect(result.metadata).toEqual({ key: 'value', count: 42 });
+    });
+
+    it('should throw error if thread not found', async () => {
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(
+        service.setMetadata(mockThreadId, { metadata: { key: 'value' } }),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+
+      expect(threadsDao.updateById).not.toHaveBeenCalled();
+    });
+
+    it('should allow setting empty metadata', async () => {
+      const mockThread = createMockThreadEntity();
+      const updatedThread = createMockThreadEntity({ metadata: {} });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+
+      const result = await service.setMetadata(mockThreadId, { metadata: {} });
+
+      expect(threadsDao.updateById).toHaveBeenCalledWith(mockThreadId, {
+        metadata: {},
+      });
+      expect(result.metadata).toEqual({});
+    });
+  });
+
+  describe('setMetadataByExternalId', () => {
+    it('should update thread metadata by external ID and return updated thread', async () => {
+      const externalThreadId = 'external-thread-123';
+      const mockThread = createMockThreadEntity({ externalThreadId });
+      const updatedThread = createMockThreadEntity({
+        externalThreadId,
+        metadata: { env: 'production', version: 2 },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+
+      const result = await service.setMetadataByExternalId(externalThreadId, {
+        metadata: { env: 'production', version: 2 },
+      });
+
+      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        externalThreadId,
+        createdBy: mockUserId,
+      });
+      expect(threadsDao.updateById).toHaveBeenCalledWith(mockThreadId, {
+        metadata: { env: 'production', version: 2 },
+      });
+      expect(result.metadata).toEqual({ env: 'production', version: 2 });
+    });
+
+    it('should throw error if thread not found by external ID', async () => {
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(
+        service.setMetadataByExternalId('non-existent-external-id', {
+          metadata: { key: 'value' },
+        }),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+
+      expect(threadsDao.updateById).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getThreadUsageStatistics', () => {
     it('should return usage statistics from checkpoint for completed thread', async () => {
       const mockThread = createMockThreadEntity({

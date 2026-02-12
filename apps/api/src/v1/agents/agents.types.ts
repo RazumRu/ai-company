@@ -47,6 +47,18 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
 
   // Full request token usage (entire LLM request, not just this message)
   __requestUsage?: RequestTokenUsage;
+
+  /**
+   * Marks a message that was already emitted in real-time via tool streaming.
+   * SimpleAgent.emitNewMessages() skips these to prevent double-emission.
+   */
+  __streamedRealtime?: boolean;
+
+  /**
+   * Links a streamed message to the parent tool call that produced it.
+   * Used by the UI to group subagent intermediate messages under the tool call.
+   */
+  __toolCallId?: string;
 };
 
 export type BaseAgentStateMessagesUpdateValue = {

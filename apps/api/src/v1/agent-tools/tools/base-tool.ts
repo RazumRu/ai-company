@@ -22,9 +22,29 @@ export type ExtendedLangGraphRunnableConfig = LangGraphRunnableConfig & {
   description?: string;
 };
 
+/**
+ * A streaming tool invocation yields BaseMessage[] chunks for real-time delivery,
+ * and returns ToolInvokeResult when complete.
+ */
+export type ToolInvokeStream<TResult> = AsyncGenerator<
+  BaseMessage[],
+  ToolInvokeResult<TResult>,
+  undefined
+>;
+
 export type BuiltAgentTool = DynamicStructuredTool & {
   __instructions?: string;
   __titleFromArgs?: (args: unknown) => string | undefined;
+  /**
+   * Optional streaming invoke handler. When present, ToolExecutorNode calls this
+   * directly (bypassing LangChain's DynamicStructuredTool.invoke) to consume
+   * streamed messages in real-time.
+   */
+  __streamingInvoke?: (
+    args: unknown,
+    config: ToolRunnableConfig<BaseAgentConfigurable>,
+    toolMetadata?: unknown,
+  ) => ToolInvokeStream<unknown>;
 };
 
 export type ToolInvokeResult<TResult> = {
@@ -107,6 +127,21 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     toolMetadata?: unknown,
   ): Promise<ToolInvokeResult<TResult>> | ToolInvokeResult<TResult>;
 
+  /**
+   * Optional streaming invoke handler. Override this to yield intermediate
+   * BaseMessage[] chunks for real-time delivery while the tool is executing.
+   * The generator must return a ToolInvokeResult when done.
+   *
+   * ToolExecutorNode will call this (via __streamingInvoke on the built tool)
+   * instead of invoke() when present.
+   */
+  public streamingInvoke?(
+    args: TSchema,
+    config: TConfig,
+    runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
+    toolMetadata?: unknown,
+  ): ToolInvokeStream<TResult>;
+
   public build(
     config: TConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
@@ -132,9 +167,26 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
         }
       : undefined;
 
+    const streamingInvoke = this.streamingInvoke
+      ? (
+          args: unknown,
+          runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
+          toolMetadata?: unknown,
+        ) => {
+          const parsed = this.validate(args);
+          return this.streamingInvoke!(
+            parsed,
+            config,
+            runnableConfig,
+            toolMetadata,
+          );
+        }
+      : undefined;
+
     return Object.assign(builtTool, {
       __instructions: instructions,
       __titleFromArgs: titleFromArgs,
+      ...(streamingInvoke ? { __streamingInvoke: streamingInvoke } : {}),
     }) as BuiltAgentTool;
   }
 

@@ -73,6 +73,11 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
       value: 'files-tool',
       multiple: true,
     },
+    {
+      type: 'template',
+      value: 'subagents-tool',
+      multiple: true,
+    },
     // MCP nodes can run inside this runtime as well.
     {
       type: 'kind',

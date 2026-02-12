@@ -1,17 +1,21 @@
+import { AIMessage, BaseMessage } from '@langchain/core/messages';
 import { ToolRunnableConfig } from '@langchain/core/tools';
-import { Test, TestingModule } from '@nestjs/testing';
+import { ModuleRef } from '@nestjs/core';
+import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { SubAgent } from '../../../../agents/services/agents/sub-agent';
+import type { AgentEventType } from '../../../../agents/services/agents/base-agent';
+import { SubagentRunResult } from '../../../../agents/services/agents/sub-agent';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { SubagentsService } from '../../../../subagents/subagents.service';
-import { ResolvedSubagent } from '../../../../subagents/subagents.types';
-import { BuiltAgentTool } from '../../base-tool';
-import { SubagentLoopResult } from './subagent-loop-runner.types';
+import { BuiltAgentTool, ToolInvokeResult } from '../../base-tool';
 import { SubagentsToolGroupConfig } from './subagents.types';
-import { SubagentsRunTaskTool } from './subagents-run-task.tool';
+import {
+  SubagentsRunTaskTool,
+  SubagentsRunTaskToolOutput,
+} from './subagents-run-task.tool';
 
 vi.mock('../../../../../environments', () => ({
   environment: {
@@ -21,8 +25,15 @@ vi.mock('../../../../../environments', () => ({
 
 describe('SubagentsRunTaskTool', () => {
   let tool: SubagentsRunTaskTool;
-  let mockSubAgent: SubAgent;
+  let mockSubAgent: {
+    runSubagent: ReturnType<typeof vi.fn>;
+    subscribe: ReturnType<typeof vi.fn>;
+    setConfig: ReturnType<typeof vi.fn>;
+    addTool: ReturnType<typeof vi.fn>;
+  };
+  let mockModuleRef: ModuleRef;
   let mockLlmModelsService: LlmModelsService;
+  let mockLogger: DefaultLogger;
 
   const defaultCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
     configurable: { thread_id: 'thread-123' },
@@ -35,7 +46,8 @@ describe('SubagentsRunTaskTool', () => {
       thread_id: 'thread-123',
       caller_agent: {
         getConfig: () => ({ invokeModelName: modelName }),
-      } as BaseAgentConfigurable['caller_agent'],
+        emit: vi.fn(),
+      } as unknown as BaseAgentConfigurable['caller_agent'],
     },
   });
 
@@ -48,8 +60,7 @@ describe('SubagentsRunTaskTool', () => {
     } as unknown as BuiltAgentTool;
   };
 
-  const makeResolvedAgents = (): ResolvedSubagent[] => {
-    const subagentsService = new SubagentsService();
+  const makeToolSets = (): Map<string, BuiltAgentTool[]> => {
     const toolSets = new Map<string, BuiltAgentTool[]>();
     toolSets.set('shell', [makeMockSubTool('shell')]);
     toolSets.set('shell:read-only', [makeMockSubTool('shell')]);
@@ -62,21 +73,17 @@ describe('SubagentsRunTaskTool', () => {
       makeMockSubTool('files_read'),
       makeMockSubTool('files_write'),
     ]);
-
-    return subagentsService.getAll().map((definition) => ({
-      definition,
-      tools: definition.toolIds.flatMap((id) => toolSets.get(id) ?? []),
-    }));
+    return toolSets;
   };
 
   const makeConfig = (
     overrides?: Partial<SubagentsToolGroupConfig>,
   ): SubagentsToolGroupConfig => ({
-    resolvedAgents: makeResolvedAgents(),
+    toolSets: makeToolSets(),
     ...overrides,
   });
 
-  const defaultLoopResult: SubagentLoopResult = {
+  const defaultLoopResult: SubagentRunResult = {
     result: 'Task completed successfully.',
     statistics: {
       totalIterations: 2,
@@ -85,31 +92,45 @@ describe('SubagentsRunTaskTool', () => {
     },
   };
 
-  beforeEach(async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
     mockSubAgent = {
-      run: vi.fn().mockResolvedValue(defaultLoopResult),
-    } as unknown as SubAgent;
+      runSubagent: vi.fn().mockResolvedValue(defaultLoopResult),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+      setConfig: vi.fn(),
+      addTool: vi.fn(),
+    };
+
+    mockModuleRef = {
+      resolve: vi.fn().mockResolvedValue(mockSubAgent),
+    } as unknown as ModuleRef;
 
     mockLlmModelsService = {
       getSubagentFastModel: vi.fn().mockReturnValue('gpt-5.1-codex-mini'),
     } as unknown as LlmModelsService;
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SubagentsRunTaskTool,
-        SubagentsService,
-        { provide: SubAgent, useValue: mockSubAgent },
-        { provide: LlmModelsService, useValue: mockLlmModelsService },
-      ],
-    }).compile();
+    mockLogger = {
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      log: vi.fn(),
+    } as unknown as DefaultLogger;
 
-    tool = module.get<SubagentsRunTaskTool>(SubagentsRunTaskTool);
+    const subagentsService = new SubagentsService();
+
+    tool = new SubagentsRunTaskTool(
+      mockModuleRef,
+      mockLlmModelsService,
+      subagentsService,
+      mockLogger,
+    );
   });
 
   describe('schema validation', () => {
     it('should validate required fields', () => {
       const valid = {
-        agentId: 'explorer',
+        agentId: 'system:explorer',
         task: 'Find files',
         purpose: 'Explore',
       };
@@ -124,7 +145,7 @@ describe('SubagentsRunTaskTool', () => {
 
     it('should default intelligence to fast', () => {
       const parsed = tool.validate({
-        agentId: 'explorer',
+        agentId: 'system:explorer',
         task: 'Find files',
         purpose: 'Explore',
       }) as { intelligence: string };
@@ -147,13 +168,13 @@ describe('SubagentsRunTaskTool', () => {
 
       expect(result.output.error).toBe('Invalid agentId');
       expect(result.output.result).toContain('Unknown agent ID "nonexistent"');
-      expect(mockSubAgent.run).not.toHaveBeenCalled();
+      expect(mockSubAgent.runSubagent).not.toHaveBeenCalled();
     });
 
-    it('should resolve explorer agent tools', async () => {
+    it('should resolve explorer agent tools via addTool', async () => {
       await tool.invoke(
         {
-          agentId: 'explorer',
+          agentId: 'system:explorer',
           task: 'Find files',
           intelligence: 'fast',
           purpose: 'Explore',
@@ -162,17 +183,15 @@ describe('SubagentsRunTaskTool', () => {
         defaultCfg,
       );
 
-      const runCall = vi.mocked(mockSubAgent.run).mock.calls[0];
-      const loopConfig = runCall?.[1];
       // Explorer has toolIds: ['shell:read-only', 'files:read-only']
       // shell:read-only = 1 tool, files:read-only = 2 tools
-      expect(loopConfig?.tools).toHaveLength(3);
+      expect(mockSubAgent.addTool).toHaveBeenCalledTimes(3);
     });
 
-    it('should resolve simple agent tools', async () => {
+    it('should resolve simple agent tools via addTool', async () => {
       await tool.invoke(
         {
-          agentId: 'simple',
+          agentId: 'system:simple',
           task: 'Edit file',
           intelligence: 'fast',
           purpose: 'Edit',
@@ -181,11 +200,9 @@ describe('SubagentsRunTaskTool', () => {
         defaultCfg,
       );
 
-      const runCall = vi.mocked(mockSubAgent.run).mock.calls[0];
-      const loopConfig = runCall?.[1];
       // Simple has toolIds: ['shell', 'files:full']
       // shell = 1 tool, files:full = 3 tools
-      expect(loopConfig?.tools).toHaveLength(4);
+      expect(mockSubAgent.addTool).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -193,7 +210,7 @@ describe('SubagentsRunTaskTool', () => {
     it('should use fast model by default', async () => {
       await tool.invoke(
         {
-          agentId: 'explorer',
+          agentId: 'system:explorer',
           task: 'Find files',
           intelligence: 'fast',
           purpose: 'Explore',
@@ -203,14 +220,15 @@ describe('SubagentsRunTaskTool', () => {
       );
 
       expect(mockLlmModelsService.getSubagentFastModel).toHaveBeenCalled();
-      const runCall = vi.mocked(mockSubAgent.run).mock.calls[0];
-      expect(runCall?.[1]?.model).toBe('gpt-5.1-codex-mini');
+      expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ invokeModelName: 'gpt-5.1-codex-mini' }),
+      );
     });
 
     it('should use parent agent model when smart is requested', async () => {
       await tool.invoke(
         {
-          agentId: 'explorer',
+          agentId: 'system:explorer',
           task: 'Analyze code',
           intelligence: 'smart',
           purpose: 'Deep analysis',
@@ -219,14 +237,17 @@ describe('SubagentsRunTaskTool', () => {
         makeCfgWithParentModel('anthropic/claude-sonnet-4-20250514'),
       );
 
-      const runCall = vi.mocked(mockSubAgent.run).mock.calls[0];
-      expect(runCall?.[1]?.model).toBe('anthropic/claude-sonnet-4-20250514');
+      expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          invokeModelName: 'anthropic/claude-sonnet-4-20250514',
+        }),
+      );
     });
 
     it('should fall back to default large model when parent agent is unavailable', async () => {
       await tool.invoke(
         {
-          agentId: 'explorer',
+          agentId: 'system:explorer',
           task: 'Analyze code',
           intelligence: 'smart',
           purpose: 'Deep analysis',
@@ -235,14 +256,15 @@ describe('SubagentsRunTaskTool', () => {
         defaultCfg,
       );
 
-      const runCall = vi.mocked(mockSubAgent.run).mock.calls[0];
-      expect(runCall?.[1]?.model).toBe('openai/gpt-5.2-fallback');
+      expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ invokeModelName: 'openai/gpt-5.2-fallback' }),
+      );
     });
 
     it('should use smartModelOverride when configured', async () => {
       await tool.invoke(
         {
-          agentId: 'explorer',
+          agentId: 'system:explorer',
           task: 'Analyze code',
           intelligence: 'smart',
           purpose: 'Deep analysis',
@@ -251,8 +273,9 @@ describe('SubagentsRunTaskTool', () => {
         makeCfgWithParentModel('anthropic/claude-sonnet-4-20250514'),
       );
 
-      const runCall = vi.mocked(mockSubAgent.run).mock.calls[0];
-      expect(runCall?.[1]?.model).toBe('openai/o3-pro');
+      expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ invokeModelName: 'openai/o3-pro' }),
+      );
     });
   });
 
@@ -260,7 +283,7 @@ describe('SubagentsRunTaskTool', () => {
     it('should include agent definition system prompt', async () => {
       await tool.invoke(
         {
-          agentId: 'explorer',
+          agentId: 'system:explorer',
           task: 'Find files',
           intelligence: 'fast',
           purpose: 'Explore',
@@ -269,14 +292,14 @@ describe('SubagentsRunTaskTool', () => {
         defaultCfg,
       );
 
-      const runCall = vi.mocked(mockSubAgent.run).mock.calls[0];
-      expect(runCall?.[1]?.systemPrompt).toContain('explorer subagent');
+      const configCall = mockSubAgent.setConfig.mock.calls[0]?.[0];
+      expect(configCall?.instructions).toContain('explorer subagent');
     });
 
     it('should append resource information to system prompt', async () => {
       await tool.invoke(
         {
-          agentId: 'explorer',
+          agentId: 'system:explorer',
           task: 'Find files',
           intelligence: 'fast',
           purpose: 'Explore',
@@ -285,10 +308,8 @@ describe('SubagentsRunTaskTool', () => {
         defaultCfg,
       );
 
-      const runCall = vi.mocked(mockSubAgent.run).mock.calls[0];
-      expect(runCall?.[1]?.systemPrompt).toContain(
-        '- github-resource: my-repo',
-      );
+      const configCall = mockSubAgent.setConfig.mock.calls[0]?.[0];
+      expect(configCall?.instructions).toContain('- github-resource: my-repo');
     });
   });
 
@@ -296,7 +317,7 @@ describe('SubagentsRunTaskTool', () => {
     it('should wrap loop result into ToolInvokeResult', async () => {
       const result = await tool.invoke(
         {
-          agentId: 'simple',
+          agentId: 'system:simple',
           task: 'Do work',
           intelligence: 'fast',
           purpose: 'Test',
@@ -306,8 +327,8 @@ describe('SubagentsRunTaskTool', () => {
       );
 
       expect(result.output.result).toBe('Task completed successfully.');
-      expect(result.output.statistics.totalIterations).toBe(2);
-      expect(result.output.statistics.toolCallsMade).toBe(1);
+      expect(result.output.statistics?.totalIterations).toBe(2);
+      expect(result.output.statistics?.toolCallsMade).toBe(1);
       expect(result.toolRequestUsage).toEqual({
         inputTokens: 200,
         outputTokens: 50,
@@ -316,7 +337,7 @@ describe('SubagentsRunTaskTool', () => {
     });
 
     it('should propagate error from loop result', async () => {
-      vi.mocked(mockSubAgent.run).mockResolvedValueOnce({
+      mockSubAgent.runSubagent.mockResolvedValueOnce({
         result: 'Subagent was aborted.',
         statistics: { totalIterations: 1, toolCallsMade: 0, usage: null },
         error: 'Aborted',
@@ -324,7 +345,7 @@ describe('SubagentsRunTaskTool', () => {
 
       const result = await tool.invoke(
         {
-          agentId: 'simple',
+          agentId: 'system:simple',
           task: 'Do work',
           intelligence: 'fast',
           purpose: 'Test',
@@ -341,7 +362,7 @@ describe('SubagentsRunTaskTool', () => {
     it('should generate title with agentId and purpose', async () => {
       const result = await tool.invoke(
         {
-          agentId: 'explorer',
+          agentId: 'system:explorer',
           task: 'Find auth deps',
           intelligence: 'fast',
           purpose: 'Map auth deps',
@@ -351,7 +372,7 @@ describe('SubagentsRunTaskTool', () => {
       );
 
       expect(result.messageMetadata?.__title).toBe(
-        'Subagent (explorer): Map auth deps',
+        'Subagent (system:explorer): Map auth deps',
       );
     });
   });
@@ -368,6 +389,144 @@ describe('SubagentsRunTaskTool', () => {
       const builtTool = tool.build(makeConfig());
       expect(builtTool.__instructions).toBeDefined();
       expect(builtTool.__instructions).toContain('subagent');
+    });
+
+    it('should attach __streamingInvoke to built tool', () => {
+      const builtTool = tool.build(makeConfig());
+      expect(builtTool.__streamingInvoke).toBeDefined();
+      expect(typeof builtTool.__streamingInvoke).toBe('function');
+    });
+  });
+
+  describe('streamingInvoke', () => {
+    /** Helper to consume an async generator and collect results */
+    async function consumeStream(
+      gen: AsyncGenerator<
+        BaseMessage[],
+        ToolInvokeResult<SubagentsRunTaskToolOutput>,
+        undefined
+      >,
+    ): Promise<{
+      chunks: BaseMessage[][];
+      result: ToolInvokeResult<SubagentsRunTaskToolOutput>;
+    }> {
+      const chunks: BaseMessage[][] = [];
+      let iterResult = await gen.next();
+      while (!iterResult.done) {
+        chunks.push(iterResult.value);
+        iterResult = await gen.next();
+      }
+      return { chunks, result: iterResult.value };
+    }
+
+    it('should return error immediately for unknown agentId', async () => {
+      const gen = tool.streamingInvoke!(
+        {
+          agentId: 'nonexistent',
+          task: 'Do something',
+          intelligence: 'fast',
+          purpose: 'Test',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      const { chunks, result } = await consumeStream(gen);
+
+      expect(chunks).toHaveLength(0);
+      expect(result.output.error).toBe('Invalid agentId');
+      expect(mockSubAgent.runSubagent).not.toHaveBeenCalled();
+    });
+
+    it('should yield messages from subagent events', async () => {
+      const streamedMsg = new AIMessage({ content: 'Progress update' });
+
+      // Mock subscribe: capture callback so we can fire it at the right time
+      let subscribedCallback:
+        | ((event: AgentEventType) => Promise<void>)
+        | null = null;
+      mockSubAgent.subscribe.mockImplementation(
+        (callback: (event: AgentEventType) => Promise<void>) => {
+          subscribedCallback = callback;
+          return () => {};
+        },
+      );
+
+      // Make runSubagent deliver a message via the callback before resolving
+      mockSubAgent.runSubagent.mockImplementation(async () => {
+        // Fire event before returning so the generator can yield it
+        await subscribedCallback?.({
+          type: 'message',
+          data: {
+            threadId: 'thread-123',
+            messages: [streamedMsg],
+            config: defaultCfg,
+          },
+        } as AgentEventType);
+        return defaultLoopResult;
+      });
+
+      const gen = tool.streamingInvoke!(
+        {
+          agentId: 'system:explorer',
+          task: 'Find files',
+          intelligence: 'fast',
+          purpose: 'Explore',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      const { chunks, result } = await consumeStream(gen);
+
+      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      expect(chunks.flat().some((m) => m.content === 'Progress update')).toBe(
+        true,
+      );
+      expect(result.output.result).toBe('Task completed successfully.');
+    });
+
+    it('should return final result with statistics', async () => {
+      const gen = tool.streamingInvoke!(
+        {
+          agentId: 'system:simple',
+          task: 'Do work',
+          intelligence: 'fast',
+          purpose: 'Test',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      const { result } = await consumeStream(gen);
+
+      expect(result.output.result).toBe('Task completed successfully.');
+      expect(result.output.statistics?.totalIterations).toBe(2);
+      expect(result.toolRequestUsage).toEqual({
+        inputTokens: 200,
+        outputTokens: 50,
+        totalTokens: 250,
+      });
+    });
+
+    it('should unsubscribe from subagent events on completion', async () => {
+      const unsubscribeFn = vi.fn();
+      mockSubAgent.subscribe.mockReturnValue(unsubscribeFn);
+
+      const gen = tool.streamingInvoke!(
+        {
+          agentId: 'system:explorer',
+          task: 'Find files',
+          intelligence: 'fast',
+          purpose: 'Explore',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      await consumeStream(gen);
+
+      expect(unsubscribeFn).toHaveBeenCalled();
     });
   });
 });

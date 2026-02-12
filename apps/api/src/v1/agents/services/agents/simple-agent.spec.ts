@@ -128,81 +128,8 @@ describe('SimpleAgent', () => {
     agent = await module.resolve<SimpleAgent>(SimpleAgent);
   });
 
-  describe('schema', () => {
-    it('should have correct schema properties', () => {
-      const schema = agent.schema;
-      expect(schema).toBeDefined();
-
-      // Test valid configuration
-      const validConfig = {
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-        instructions: 'Test instructions',
-        name: 'Test Agent',
-        description: 'Test agent description',
-        invokeModelName: 'gpt-5-mini',
-        invokeModelReasoningEffort: ReasoningEffort.None,
-      };
-
-      expect(() => schema.parse(validConfig)).not.toThrow();
-    });
-
-    it('should validate required fields', () => {
-      const schema = agent.schema;
-
-      const invalidConfig = {
-        // missing required fields
-      };
-
-      expect(() => schema.parse(invalidConfig)).toThrow();
-    });
-
-    it('should validate field types', () => {
-      const schema = agent.schema;
-
-      const invalidConfig = {
-        summarizeMaxTokens: 'invalid', // should be number
-        summarizeKeepTokens: 500,
-        instructions: 'Test instructions',
-        name: 'Test Agent',
-        invokeModelName: 'gpt-5-mini',
-      };
-
-      expect(() => schema.parse(invalidConfig)).toThrow();
-    });
-
-    it('should default newMessageMode to inject_after_tool_call', () => {
-      const schema = agent.schema;
-      const config = {
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-        instructions: 'Test instructions',
-        name: 'Test Agent',
-        description: 'Test agent description',
-        invokeModelName: 'gpt-5-mini',
-        invokeModelReasoningEffort: ReasoningEffort.None,
-      };
-
-      const parsed = schema.parse(config);
-      expect(parsed.newMessageMode).toBe('inject_after_tool_call');
-    });
-
-    it('should accept newMessageMode values', () => {
-      const schema = agent.schema;
-      const config = {
-        summarizeMaxTokens: 1000,
-        summarizeKeepTokens: 500,
-        instructions: 'Test instructions',
-        name: 'Test Agent',
-        description: 'Test agent description',
-        invokeModelName: 'gpt-5-mini',
-        invokeModelReasoningEffort: ReasoningEffort.None,
-        newMessageMode: 'wait_for_completion',
-      };
-
-      expect(() => schema.parse(config)).not.toThrow();
-    });
-  });
+  // Schema validation tests moved to simple-agent.template.spec.ts
+  // (SimpleAgentSchema now lives in the template, not the agent).
 
   // (no tests here) message emission de-dupe is handled by correct state seeding in run()
 
@@ -780,18 +707,7 @@ describe('SimpleAgent', () => {
       // Graph should be cleared for rebuild
       expect(agent['graph']).toBeUndefined();
       // New config should be stored
-      expect(agent['currentConfig']).toEqual({
-        ...newConfig,
-        newMessageMode: NewMessageMode.InjectAfterToolCall,
-      });
-    });
-
-    it('should validate config before setting', () => {
-      const invalidConfig = {
-        summarizeMaxTokens: 'invalid', // should be number
-      };
-
-      expect(() => agent.setConfig(invalidConfig as any)).toThrow();
+      expect(agent['currentConfig']).toEqual(newConfig);
     });
 
     it('should clear graph even when no graph exists', () => {
@@ -815,10 +731,7 @@ describe('SimpleAgent', () => {
       // Graph should remain undefined
       expect(agent['graph']).toBeUndefined();
       // Config should be stored
-      expect(agent['currentConfig']).toEqual({
-        ...config,
-        newMessageMode: NewMessageMode.InjectAfterToolCall,
-      });
+      expect(agent['currentConfig']).toEqual(config);
     });
   });
 

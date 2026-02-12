@@ -156,6 +156,13 @@ export const GetMessagesQuerySchema = z.object({
     .describe('Number of messages to skip'),
 });
 
+// Set thread metadata
+export const SetThreadMetadataSchema = z.object({
+  metadata: z
+    .record(z.string(), z.unknown())
+    .describe('Thread metadata to set (replaces existing metadata)'),
+});
+
 // Type exports
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 export type ThreadTokenUsage = z.infer<typeof ThreadTokenUsageSchema>;
@@ -172,4 +179,7 @@ export class GetThreadsQueryDto extends createZodDto(GetThreadsQuerySchema) {}
 export class GetMessagesQueryDto extends createZodDto(GetMessagesQuerySchema) {}
 export class ThreadUsageStatisticsDto extends createZodDto(
   ThreadUsageStatisticsSchema,
+) {}
+export class SetThreadMetadataDto extends createZodDto(
+  SetThreadMetadataSchema,
 ) {}

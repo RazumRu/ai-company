@@ -1,10 +1,20 @@
-import { Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
 
 import {
   GetMessagesQueryDto,
   GetThreadsQueryDto,
+  SetThreadMetadataDto,
   ThreadDto,
   ThreadMessageDto,
   ThreadUsageStatisticsDto,
@@ -48,6 +58,22 @@ export class ThreadsController {
     @Param('threadId') threadId: string,
   ): Promise<ThreadUsageStatisticsDto> {
     return this.threadsService.getThreadUsageStatistics(threadId);
+  }
+
+  @Put(':threadId/metadata')
+  async setThreadMetadata(
+    @Param('threadId') threadId: string,
+    @Body() dto: SetThreadMetadataDto,
+  ): Promise<ThreadDto> {
+    return this.threadsService.setMetadata(threadId, dto);
+  }
+
+  @Put('external/:externalThreadId/metadata')
+  async setThreadMetadataByExternalId(
+    @Param('externalThreadId') externalThreadId: string,
+    @Body() dto: SetThreadMetadataDto,
+  ): Promise<ThreadDto> {
+    return this.threadsService.setMetadataByExternalId(externalThreadId, dto);
   }
 
   @Delete(':threadId')

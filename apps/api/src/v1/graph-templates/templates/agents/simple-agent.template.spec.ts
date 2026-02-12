@@ -61,7 +61,6 @@ describe('SimpleAgentTemplate', () => {
       updateToolsSnapshot: vi.fn(),
       getTools: vi.fn(() => addedTools),
       getConfig: vi.fn(),
-      schema: {} as SimpleAgent['schema'],
       buildLLM: vi.fn(),
       stop: vi.fn(),
     } as unknown as SimpleAgent;

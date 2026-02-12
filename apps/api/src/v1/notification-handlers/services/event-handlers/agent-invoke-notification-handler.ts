@@ -31,7 +31,8 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
   }
 
   async handle(event: IAgentInvokeNotification): Promise<never[]> {
-    const { threadId, graphId, parentThreadId, source, runId } = event;
+    const { threadId, graphId, parentThreadId, source, runId, threadMetadata } =
+      event;
 
     // Get graph to extract createdBy
     const graph = await this.graphDao.getOne({ id: graphId });
@@ -57,6 +58,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         source,
         status: ThreadStatus.Running,
         ...(runId ? { lastRunId: runId } : {}),
+        ...(threadMetadata ? { metadata: threadMetadata } : {}),
       });
 
       // Emit ThreadCreate notification

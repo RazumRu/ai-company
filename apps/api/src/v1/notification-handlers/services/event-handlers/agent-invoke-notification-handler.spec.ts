@@ -418,6 +418,50 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(result).toEqual([]);
     });
 
+    it('should create thread with metadata when provided', async () => {
+      const mockGraph = createMockGraphEntity();
+      const threadMetadata = { env: 'production', version: 2 };
+      const notification = createMockNotification({ threadMetadata });
+      const createdThread = createMockThreadEntity({
+        metadata: threadMetadata,
+      });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+      vi.spyOn(threadsDao, 'create').mockResolvedValue(createdThread);
+
+      await handler.handle(notification);
+
+      expect(threadsDao.create).toHaveBeenCalledWith({
+        graphId: mockGraphId,
+        createdBy: mockUserId,
+        externalThreadId: 'parent-thread-123',
+        source: undefined,
+        status: ThreadStatus.Running,
+        metadata: threadMetadata,
+      });
+    });
+
+    it('should not include metadata in thread creation when not provided', async () => {
+      const mockGraph = createMockGraphEntity();
+      const notification = createMockNotification();
+      const createdThread = createMockThreadEntity();
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+      vi.spyOn(threadsDao, 'create').mockResolvedValue(createdThread);
+
+      await handler.handle(notification);
+
+      expect(threadsDao.create).toHaveBeenCalledWith({
+        graphId: mockGraphId,
+        createdBy: mockUserId,
+        externalThreadId: 'parent-thread-123',
+        source: undefined,
+        status: ThreadStatus.Running,
+      });
+    });
+
     it('should handle multiple agents in same execution with same parent thread', async () => {
       const mockGraph = createMockGraphEntity();
       const mockParentThread = createMockThreadEntity({

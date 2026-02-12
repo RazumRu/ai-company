@@ -1,17 +1,25 @@
+import { BaseMessage, HumanMessage } from '@langchain/core/messages';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
 import { environment } from '../../../../../environments';
-import { SubAgent } from '../../../../agents/services/agents/sub-agent';
+import {
+  SubAgent,
+  SubagentRunResult,
+} from '../../../../agents/services/agents/sub-agent';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { SubagentsService } from '../../../../subagents/subagents.service';
 import {
   BaseTool,
+  BuiltAgentTool,
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
+  ToolInvokeStream,
 } from '../../base-tool';
 import { SubagentsToolGroupConfig } from './subagents.types';
 
@@ -21,8 +29,8 @@ export const SubagentsRunTaskToolSchema = z.object({
     .min(1)
     .describe(
       'The ID of the subagent to run. Get available IDs from subagents_list. ' +
-        'Example values: "explorer" (read-only codebase investigation), ' +
-        '"simple" (general-purpose with full shell and file access).',
+        'Example values: "system:explorer" (read-only codebase investigation), ' +
+        '"system:simple" (general-purpose with full shell and file access).',
     ),
   task: z
     .string()
@@ -54,6 +62,7 @@ export type SubagentsRunTaskToolSchemaType = z.infer<
 
 export interface SubagentsRunTaskToolOutput {
   result: string;
+  statistics?: SubagentRunResult['statistics'];
   error?: string;
 }
 
@@ -71,9 +80,10 @@ export class SubagentsRunTaskTool extends BaseTool<
     'Returns the result along with token usage statistics.';
 
   constructor(
-    private readonly subAgent: SubAgent,
+    private readonly moduleRef: ModuleRef,
     private readonly llmModelsService: LlmModelsService,
     private readonly subagentsService: SubagentsService,
+    private readonly logger: DefaultLogger,
   ) {
     super();
   }
@@ -85,7 +95,7 @@ export class SubagentsRunTaskTool extends BaseTool<
   protected override generateTitle(
     args: SubagentsRunTaskToolSchemaType,
   ): string {
-    return `Calling subagent - ${args.purpose}`;
+    return `Subagent (${args.agentId}): ${args.purpose}`;
   }
 
   public getDetailedInstructions(
@@ -98,10 +108,10 @@ export class SubagentsRunTaskTool extends BaseTool<
       The subagent runs autonomously in the same runtime environment and returns a result.
 
       ### When to Use
-      - Exploring unfamiliar parts of the codebase (use "explorer")
-      - Performing focused research tasks (use "explorer")
-      - Making small, well-defined code changes (use "simple")
-      - Running commands and analyzing their output (use "simple")
+      - Exploring unfamiliar parts of the codebase (use "system:explorer")
+      - Performing focused research tasks (use "system:explorer")
+      - Making small, well-defined code changes (use "system:simple")
+      - Running commands and analyzing their output (use "system:simple")
       - Any task that can be fully described in a single instruction
 
       ### When NOT to Use
@@ -116,16 +126,16 @@ export class SubagentsRunTaskTool extends BaseTool<
       ### Writing Good Task Descriptions
       **Good — specific and self-contained:**
       \`\`\`json
-      {"agentId": "explorer", "task": "Find all files in /runtime-workspace/my-repo/src that import from '@auth' and list their paths with the specific import statements.", "intelligence": "fast", "purpose": "Map auth dependencies"}
+      {"agentId": "system:explorer", "task": "Find all files in /runtime-workspace/my-repo/src that import from '@auth' and list their paths with the specific import statements.", "intelligence": "fast", "purpose": "Map auth dependencies"}
       \`\`\`
 
       \`\`\`json
-      {"agentId": "simple", "task": "In /runtime-workspace/my-repo/src/utils/validators.ts, add a new export function 'isValidEmail(email: string): boolean' that validates email format using a regex. Follow the same style as existing validator functions in the file.", "intelligence": "smart", "purpose": "Add email validator"}
+      {"agentId": "system:simple", "task": "In /runtime-workspace/my-repo/src/utils/validators.ts, add a new export function 'isValidEmail(email: string): boolean' that validates email format using a regex. Follow the same style as existing validator functions in the file.", "intelligence": "smart", "purpose": "Add email validator"}
       \`\`\`
 
       **Bad — vague or missing context:**
       \`\`\`json
-      {"agentId": "simple", "task": "Fix the bug", "intelligence": "fast", "purpose": "Fix bug"}
+      {"agentId": "system:simple", "task": "Fix the bug", "intelligence": "fast", "purpose": "Fix bug"}
       \`\`\`
     `;
   }
@@ -137,9 +147,9 @@ export class SubagentsRunTaskTool extends BaseTool<
   ): Promise<ToolInvokeResult<SubagentsRunTaskToolOutput>> {
     const title = this.generateTitle(args);
 
-    const resolved = await this.subagentsService.getById(args.agentId);
+    const definition = this.subagentsService.getById(args.agentId);
 
-    if (!resolved) {
+    if (!definition) {
       return {
         output: {
           result: `Unknown agent ID "${args.agentId}"`,
@@ -149,27 +159,161 @@ export class SubagentsRunTaskTool extends BaseTool<
       };
     }
 
+    const { subAgent } = await this.prepareSubagent(
+      definition,
+      args,
+      config,
+      runnableConfig,
+    );
+
+    const loopResult = await subAgent.runSubagent(
+      [new HumanMessage(args.task)],
+      runnableConfig,
+    );
+
+    return this.buildResult(loopResult, title);
+  }
+
+  /**
+   * Streaming invoke: yields intermediate BaseMessage[] chunks in real-time
+   * as the subagent produces them. ToolExecutorNode emits each chunk via
+   * caller_agent.emit() and collects them as additionalMessages for state.
+   */
+  public async *streamingInvoke(
+    args: SubagentsRunTaskToolSchemaType,
+    config: SubagentsToolGroupConfig,
+    runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): ToolInvokeStream<SubagentsRunTaskToolOutput> {
+    const title = this.generateTitle(args);
+
+    const definition = this.subagentsService.getById(args.agentId);
+
+    if (!definition) {
+      return {
+        output: {
+          result: `Unknown agent ID "${args.agentId}"`,
+          error: 'Invalid agentId',
+        },
+        messageMetadata: { __title: title },
+      };
+    }
+
+    const { subAgent } = await this.prepareSubagent(
+      definition,
+      args,
+      config,
+      runnableConfig,
+    );
+
+    // Queue-based message forwarding from subagent events
+    const messageQueue: BaseMessage[][] = [];
+    let resolveWaiting: (() => void) | null = null;
+    let runDone = false;
+
+    const unsubscribe = subAgent.subscribe((event) => {
+      if (event.type === 'message' && event.data.messages.length > 0) {
+        messageQueue.push(event.data.messages);
+        if (resolveWaiting) {
+          resolveWaiting();
+          resolveWaiting = null;
+        }
+      }
+      return Promise.resolve();
+    });
+
+    try {
+      const runPromise = subAgent
+        .runSubagent([new HumanMessage(args.task)], runnableConfig)
+        .then((result) => {
+          runDone = true;
+          if (resolveWaiting) {
+            resolveWaiting();
+            resolveWaiting = null;
+          }
+          return result;
+        });
+
+      // Yield messages as they arrive until the run completes
+      while (!runDone) {
+        if (messageQueue.length > 0) {
+          yield messageQueue.shift()!;
+        } else {
+          await new Promise<void>((r) => {
+            resolveWaiting = r;
+          });
+        }
+      }
+
+      // Drain remaining messages
+      while (messageQueue.length > 0) {
+        yield messageQueue.shift()!;
+      }
+
+      const loopResult = await runPromise;
+
+      return this.buildResult(loopResult, title);
+    } finally {
+      unsubscribe();
+    }
+  }
+
+  private async prepareSubagent(
+    definition: { systemPrompt: string; toolIds: string[] },
+    args: SubagentsRunTaskToolSchemaType,
+    config: SubagentsToolGroupConfig,
+    runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<{ subAgent: SubAgent }> {
+    // Resolve tools from toolSets using definition's toolIds
+    const tools: BuiltAgentTool[] = [];
+    if (!config.toolSets) {
+      this.logger.warn(
+        'SubagentsRunTaskTool: toolSets not configured — subagent will run without tools',
+      );
+    } else {
+      for (const toolId of definition.toolIds) {
+        const toolSet = config.toolSets.get(toolId);
+        if (toolSet) {
+          tools.push(...toolSet);
+        } else {
+          this.logger.warn(
+            `SubagentsRunTaskTool: toolSet "${toolId}" not found in toolSets map — skipping`,
+          );
+        }
+      }
+    }
+
     const model = this.selectModel(args.intelligence, config, runnableConfig);
     const systemPrompt = this.buildSystemPrompt(
-      resolved.systemPrompt,
+      definition.systemPrompt,
       config.resourcesInformation,
     );
-    //
-    // const loopResult = await this.subAgent.run(
-    //   args.task,
-    //   { tools: resolved.tools, systemPrompt, model },
-    //   runnableConfig,
-    // );
-    //
-    // return {
-    //   output: {
-    //     result: loopResult.result,
-    //     statistics: loopResult.statistics,
-    //     ...(loopResult.error ? { error: loopResult.error } : {}),
-    //   },
-    //   messageMetadata: { __title: title },
-    //   toolRequestUsage: loopResult.statistics.usage ?? undefined,
-    // };
+
+    // Create fresh SubAgent instance per invocation.
+    // strict: false — SubAgent is registered in AgentsModule, not AgentToolsModule.
+    const subAgent = await this.moduleRef.resolve(SubAgent, undefined, {
+      strict: false,
+    });
+    subAgent.setConfig({ instructions: systemPrompt, invokeModelName: model });
+    for (const tool of tools) {
+      subAgent.addTool(tool);
+    }
+
+    return { subAgent };
+  }
+
+  private buildResult(
+    loopResult: SubagentRunResult,
+    title: string,
+  ): ToolInvokeResult<SubagentsRunTaskToolOutput> {
+    return {
+      output: {
+        result: loopResult.result,
+        statistics: loopResult.statistics,
+        ...(loopResult.error ? { error: loopResult.error } : {}),
+      },
+      messageMetadata: { __title: title },
+      toolRequestUsage: loopResult.statistics.usage ?? undefined,
+    };
   }
 
   private selectModel(

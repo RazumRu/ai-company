@@ -8,7 +8,10 @@ import { DefaultLogger } from '@packages/common';
 import { isPlainObject, keyBy } from 'lodash';
 import { stringify as stringifyYaml } from 'yaml';
 
-import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
+import {
+  BuiltAgentTool,
+  ToolInvokeResult,
+} from '../../../agent-tools/tools/base-tool';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
@@ -83,25 +86,87 @@ export class ToolExecutorNode extends BaseNode<
           };
         }
 
+        const streamedMessages: BaseMessage[] = [];
+
         try {
           const toolMetadata = state.toolsMetadata?.[tc.name];
-          const rawResult = (await tool.invoke<
-            unknown,
-            ToolRunnableConfig<BaseAgentConfigurable>
-          >(tc.args, {
+          const builtTool = tool as unknown as BuiltAgentTool;
+          const runnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
             configurable: {
               ...(cfg.configurable ?? {}),
               ...(toolMetadata !== undefined ? { toolMetadata } : {}),
             },
             signal: cfg.signal,
-          })) as unknown;
+          };
+
+          let toolInvokeResult: ToolInvokeResult<unknown>;
+
+          if (builtTool.__streamingInvoke) {
+            // Streaming path: call __streamingInvoke directly (bypasses LangChain wrapper)
+            const gen = builtTool.__streamingInvoke(
+              tc.args,
+              runnableConfig,
+              toolMetadata,
+            );
+
+            const callerAgent = cfg.configurable?.caller_agent;
+            const threadId = String(cfg.configurable?.thread_id ?? '');
+
+            let iterResult = await gen.next();
+            while (!iterResult.done) {
+              const messages = iterResult.value;
+              if (messages.length > 0) {
+                // Mark messages as:
+                // - __streamedRealtime: already emitted in real-time (skip in emitNewMessages)
+                // - __hideForLlm: don't include in LLM context (subagent internal messages)
+                // - __toolCallId: link to the parent tool call for UI grouping
+                for (const msg of messages) {
+                  msg.additional_kwargs = {
+                    ...(msg.additional_kwargs ?? {}),
+                    __streamedRealtime: true,
+                    __hideForLlm: true,
+                    __toolCallId: callId,
+                  };
+                }
+                streamedMessages.push(...messages);
+
+                // Emit in real-time for WebSocket delivery
+                if (callerAgent) {
+                  callerAgent.emit({
+                    type: 'message',
+                    data: {
+                      threadId,
+                      messages: updateMessagesListWithMetadata(messages, cfg),
+                      config: cfg,
+                    },
+                  });
+                }
+              }
+              iterResult = await gen.next();
+            }
+            toolInvokeResult = iterResult.value;
+          } else {
+            // Standard path (unchanged)
+            const rawResult = (await tool.invoke<
+              unknown,
+              ToolRunnableConfig<BaseAgentConfigurable>
+            >(tc.args, runnableConfig)) as unknown;
+            toolInvokeResult = rawResult as ToolInvokeResult<unknown>;
+          }
+
           const {
             output,
             messageMetadata,
             stateChange,
             toolRequestUsage,
-            additionalMessages,
-          } = rawResult as ToolInvokeResult<unknown>;
+            additionalMessages: toolAdditionalMessages,
+          } = toolInvokeResult;
+
+          // Merge streamed messages with any additional messages from the final result
+          const additionalMessages = [
+            ...streamedMessages,
+            ...(toolAdditionalMessages ?? []),
+          ];
 
           const content = this.formatToolOutputForLlm(output);
 
@@ -114,6 +179,8 @@ export class ToolExecutorNode extends BaseNode<
               toolMessage: makeMsg(`${trimmed}${suffix}`, messageMetadata),
               stateChange,
               toolRequestUsage,
+              additionalMessages:
+                additionalMessages.length > 0 ? additionalMessages : undefined,
             };
           }
 
@@ -122,7 +189,8 @@ export class ToolExecutorNode extends BaseNode<
             toolMessage: makeMsg(content, messageMetadata),
             stateChange,
             toolRequestUsage,
-            additionalMessages,
+            additionalMessages:
+              additionalMessages.length > 0 ? additionalMessages : undefined,
           };
         } catch (e) {
           const err = e as Error;
@@ -140,7 +208,9 @@ export class ToolExecutorNode extends BaseNode<
               `Error executing tool '${tc.name}': ${err?.message || String(err)}`,
             ),
             stateChange: undefined as unknown,
-            additionalMessages: undefined,
+            // Preserve messages already emitted in real-time before the error
+            additionalMessages:
+              streamedMessages.length > 0 ? streamedMessages : undefined,
           };
         }
       }),

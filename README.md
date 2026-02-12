@@ -1,160 +1,272 @@
-# Ai company
+# AI Company
 
-Ai company is an open-source platform for designing and operating AI agent workflows. Compose triggers, agents, tools, and runtimes into reusable graphs, run them with real-time visibility, and collaborate through threads and notifications.
+Open-source platform for building, running, and managing AI agent workflows. Design agents as visual graphs, connect them to tools, and execute them in isolated environments — all through a REST API with real-time updates.
 
-This is only the backend part. You can check [web repo](https://github.com/RazumRu/ai-company-web)
-
-## Technical Details
-- Graph execution is powered by LangGraph and a pluggable node templating system that links triggers → agents → tools/resources → runtimes.
-- Graphs expose REST endpoints and WebSocket notifications so clients can compile, run, and observe executions programmatically.
-- The monorepo is orchestrated with Turbo and pnpm, centering on a NestJS API in `apps/api`.
-- Quality is enforced with Vitest unit tests, Cypress E2E tests, and shared utilities under `packages/`.
-
-## Overview
-Build, run, and manage AI agent graphs. A graph is a set of nodes (triggers, agents, tools, resources, runtimes) connected by edges. Graphs are validated, compiled, and executed with LangGraph. You can invoke triggers to start agent runs, track progress via notifications, and destroy graphs safely.
+> **This repository contains the backend API.** The web UI lives at [ai-company-web](https://github.com/RazumRu/ai-company-web).
 
 ## Features
-- **Graph schema with Zod validation and a template-based node system** — Build graphs using different node types (agents, tools, resources, runtimes, triggers)
-- **SimpleAgent powered by LangGraph StateGraph** — Summarization, tool execution, title generation, usage guards, and configurable max iterations
-- **Pluggable node templates** — Agents (simple-agent), tools (web-search, shell, agent-communication), resources (GitHub), runtimes (Docker), and triggers (manual)
-- **Real-time WebSocket notifications** — Subscribe to graph-specific or user-specific events via Socket.IO; broadcast agent state updates, thread changes, and graph lifecycle events
-- **Graph versioning with revisions** — Track schema changes as revisions with JSON patch diffs; apply/rollback revisions with automatic semver versioning and queue-based processing
-- **Threads with statuses** — Each graph execution runs in a thread with statuses (running, done, need_more_info, stopped); threads are persisted per graph with message history
-- **Runtime execution via Docker** — Isolated containers for tool execution with built-in Docker support; configurable resource limits
-- **REST API** — Create/update/run/destroy graphs, execute triggers, manage threads, and handle revisions
-- **Swagger/OpenAPI** — Full API documentation with E2E tests (Cypress) and unit tests (Vitest)
-- **Metrics, logging, and auth-ready HTTP server** — Prometheus metrics, structured logging, and configurable authentication
 
-## Monorepo structure
-- apps/
-  - api — Graph orchestration API (compile/run graphs, triggers, notifications)
-- packages/
-  - common — bootstrapper, logger, exceptions, shared utils
-  - http-server — Fastify server, Swagger, global pipes/filters, auth hooks
-  - metrics — Prometheus metrics module/extension
-  - typeorm — migrations/seeds helpers and `BaseDao`
-  - cypress — Cypress utilities and OpenAPI generator
+- **Visual graph-based workflows** — Compose triggers, agents, tools, and runtimes into directed graphs with a pluggable node template system
+- **LLM-powered agents** — Built on [LangGraph](https://github.com/langchain-ai/langgraph) with summarization, tool calling, checkpointing, and configurable iteration limits
+- **Built-in tools** — Web search (Tavily), shell execution, file operations, GitHub integration, codebase search, knowledge base, and agent-to-agent communication
+- **Sandboxed execution** — Tools run inside Docker containers with configurable resource limits
+- **Multi-model support** — Route to OpenAI, Google Gemini, or local models via Ollama through a [LiteLLM](https://github.com/BerriAI/litellm) proxy
+- **Knowledge base** — Embed documents into [Qdrant](https://qdrant.tech/) for semantic search and retrieval-augmented generation
+- **Real-time notifications** — Track agent progress via Socket.IO WebSocket events
+- **Graph versioning** — Revisions with JSON patch diffs, automatic semver, and rollback support
+- **Sub-agents** — Orchestrate child agents from within a parent agent's workflow
+- **MCP support** — Connect external tools via the [Model Context Protocol](https://modelcontextprotocol.io/)
 
-Key API modules (apps/api/src/v1): `graphs`, `graph-templates`, `agents`, `agent-tools`, `agent-triggers`, `graph-resources`, `runtime`, `notifications`, `threads`.
+## How It Works
 
-## How it works
-1) Define a graph schema: list nodes (with a `template` and `config`) and edges between them. Templates encode allowed inputs/outputs and required connections.
-2) Compile: `GraphCompiler` validates the schema, wires node instances from the `TemplateRegistry`, starts triggers/runtimes, and emits notifications.
-3) Run: `GraphsService` registers a compiled graph in a registry; triggers can then invoke agents with messages (threads/checkpoints maintained in Postgres).
-4) Destroy: gracefully stops triggers and agents, and tears down runtimes/containers.
+1. **Define** a graph — pick node templates (trigger, agent, tools, runtime) and connect them with edges
+2. **Compile** — the platform validates your schema, wires up node instances, and starts runtimes
+3. **Run** — fire a trigger to kick off an agent; threads and checkpoints are persisted automatically
+4. **Observe** — stream real-time events over WebSockets as agents think, call tools, and produce results
 
+## Quick Start
 
-## Getting Started
+### Prerequisites
 
-We are using `Node 24.x`!
+- **Node.js 24+**
+- **pnpm** (`corepack enable && corepack prepare pnpm@latest --activate`)
+- **Docker** or **Podman** (for Postgres, Redis, Qdrant, Keycloak, LiteLLM)
 
-## Install Dependencies
-Run `pnpm install` - this will install all dependencies in the root and in all packages.
+### Setup
 
-To run the necessary dependencies, run the `pnpm run deps:up` command - it will start the containers with the database and so on.
-You need to run it only once - when you start your work.
-
-In order to run the application in development mode (with automatic reloading when any changes are applied):
-- `cd apps/api && pnpm run start:dev`
-
-To compile and run in production:
-- From repo root: `pnpm run build`
-- Then start the desired app, e.g.: `node ./apps/api/dist/main.js`
-
-Each application contains env variables that can be configured for each environment separately in files `environment.ts`.
-Also, you can replace some variables by created `.env` file
-
-## Tests
-
-See `.guidelines/testing.md` for full details on unit and E2E testing.
-
-Important: before marking any task as done, always run the full project check and ensure it passes:
 ```bash
-pnpm run full-check
-```
-This builds, lints, builds test targets, and runs unit tests.
+# Clone and install
+git clone https://github.com/RazumRu/ai-company.git
+cd ai-company
+pnpm install
 
-## Development workflow
-- Use conventional commits via `pnpm commit`
-- Keep code style consistent with `.guidelines/code-guidelines.md`
-- Before marking work as done, run `pnpm run full-check` (build, lint, unit tests)
+# Configure API keys (see "API Keys" section below)
+cp .env.example .env   # then fill in your keys
+
+# Start infrastructure (Postgres, Redis, Qdrant, Keycloak, LiteLLM)
+pnpm deps:up
+
+# Start the API server (port 5000, hot-reload)
+cd apps/api && pnpm start:dev
+```
+
+The API is now running at `http://localhost:5000`. Swagger docs are available at `/swagger-api`.
+
+### Minimal Example
+
+Create and run a graph with a trigger, an agent, and a web search tool:
+
+```bash
+# 1. Create a graph
+curl -X POST http://localhost:5000/api/v1/graphs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-first-graph",
+    "schema": {
+      "nodes": [
+        { "id": "trigger-1", "template": "manual-trigger", "config": {} },
+        { "id": "agent-1", "template": "simple-agent", "config": {
+            "instructions": "You are a helpful assistant.",
+            "invokeModelName": "gpt-5-mini"
+        }},
+        { "id": "search-1", "template": "web-search-tool", "config": {
+            "apiKey": "<your-tavily-key>"
+        }}
+      ],
+      "edges": [
+        { "from": "trigger-1", "to": "agent-1" },
+        { "from": "agent-1", "to": "search-1" }
+      ]
+    }
+  }'
+
+# 2. Run the graph
+curl -X POST http://localhost:5000/api/v1/graphs/<graph-id>/run
+
+# 3. Execute the trigger with a message
+curl -X POST http://localhost:5000/api/v1/graphs/<graph-id>/triggers/trigger-1/execute \
+  -H "Content-Type: application/json" \
+  -d '{ "messages": [{ "content": "What happened in tech today?" }] }'
+```
+
+### Local LLM (Offline)
+
+To run without cloud API keys, install and use Ollama models:
+
+```bash
+pnpm local-llm:install   # Download models
+pnpm local-llm:start     # Start Ollama server
+```
+
+Then set `LLM_USE_OFFLINE_MODEL=true` in your `.env` file.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | NestJS + Fastify |
+| Agent Runtime | LangGraph + LangChain |
+| Database | PostgreSQL (+ pgvector) |
+| Vector Store | Qdrant |
+| Cache & Queue | Redis + BullMQ |
+| LLM Proxy | LiteLLM (OpenAI, Gemini, Ollama) |
+| Auth | Keycloak |
+| Containerization | Docker / Podman |
+| Monorepo | pnpm + Turborepo |
+
+## Project Structure
+
+```
+apps/api/          Main NestJS API application
+packages/
+  common/          Logger, exceptions, shared utilities
+  http-server/     Fastify setup, Swagger, auth middleware
+  metrics/         Prometheus integration
+  typeorm/         Database helpers, BaseDao, migrations
+  cypress/         E2E test utilities
+```
+
+## API Keys
+
+Create a `.env` file in the repo root with your provider keys:
+
+```env
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
+GITHUB_PAT_TOKEN=ghp_...
+TAVILY_API_KEY=tvly-...
+```
+
+| Key | Required | Used for |
+|---|---|---|
+| `OPENAI_API_KEY` | Yes (unless using Ollama) | LLM calls and embeddings via LiteLLM |
+| `GEMINI_API_KEY` | No | Gemini models via LiteLLM |
+| `GITHUB_PAT_TOKEN` | No | GitHub tool (repo access, PRs, commits) |
+| `TAVILY_API_KEY` | No | Web search tool |
+
+These keys are read by docker-compose and passed to the LiteLLM container at startup. In the future, API keys will be configurable through the web UI.
+
+## LLM Configuration
+
+All LLM calls go through a [LiteLLM](https://github.com/BerriAI/litellm) proxy that runs as part of the docker-compose stack (port 4000). LiteLLM routes requests to the right provider based on the model name configured in `litellm.yaml`. You can also connect any OpenAI-compatible provider (Azure, Anthropic, Groq, etc.) — see the [LiteLLM docs](https://docs.litellm.ai/) for the full list.
+
+### Using OpenAI or Gemini
+
+Make sure your `.env` file contains the relevant API keys (see above), then start the infrastructure:
+
+```bash
+pnpm deps:up
+```
+
+Pre-configured cloud models (in `litellm.yaml`):
+
+| Model name | Provider | Notes |
+|---|---|---|
+| `gpt-5-mini` | OpenAI | Default mini model |
+| `gpt-5.2` | OpenAI | Default large model |
+| `gpt-5.3-codex` | OpenAI | Code generation |
+| `text-embedding-3-small` | OpenAI | Embeddings |
+| `gemini-3-flash-preview` | Google | Requires `GEMINI_API_KEY` |
+
+You can add more models by editing `litellm.yaml` in the repo root. See the [LiteLLM docs](https://docs.litellm.ai/) for supported providers.
+
+### Using Local Models (Ollama)
+
+Run fully offline with no API keys required. Install the [Ollama](https://ollama.com/download) client first, then:
+
+```bash
+# 1. Download the pre-configured models
+pnpm local-llm:install
+
+# 2. Start Ollama server
+pnpm local-llm:start
+
+# 3. Tell the API to use offline models
+# Add to .env in the repo root:
+echo "LLM_USE_OFFLINE_MODEL=true" >> .env
+
+# 4. Start infrastructure and API
+pnpm deps:up
+cd apps/api && pnpm start:dev
+```
+
+You can also pull any other model from the [Ollama library](https://ollama.com/library) with `ollama pull <model>` and add it to `litellm.yaml`.
+
+Pre-configured local models:
+
+| Model name | Role | Size |
+|---|---|---|
+| `glm-4.7-flash` | Coding (default offline) | ~9 GB |
+| `qwen3-coder:30b` | Coding (large) | ~18 GB |
+| `qwen3-coder-next` | Coding (next-gen) | varies |
+| `qwen2.5-coder:7b` | Coding (mini) | ~4.5 GB |
+| `phi3.5:3.8b-mini-instruct-q4_K_M` | General (mini) | ~2.2 GB |
+| `qwen3-embedding:4b` | Embeddings | ~2.5 GB |
+
+### LLM Environment Variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `LLM_BASE_URL` | LiteLLM proxy URL | `http://localhost:4000` |
+| `LITELLM_MASTER_KEY` | LiteLLM admin key | `master` (dev) |
+| `LLM_LARGE_MODEL` | Default large model | `openai/gpt-5.2` |
+| `LLM_MINI_MODEL` | Default mini model | `gpt-5-mini` |
+| `LLM_LARGE_CODE_MODEL` | Code generation model | `gpt-5.3-codex` |
+| `LLM_EMBEDDING_MODEL` | Embedding model | `openai/text-embedding-3-small` |
+| `LLM_USE_OFFLINE_MODEL` | Switch to Ollama models | `false` |
+| `LLM_OFFLINE_CODING_MODEL` | Offline coding model | `glm-4.7-flash` |
+| `LLM_OFFLINE_EMBEDDING_MODEL` | Offline embedding model | `qwen3-embedding:4b` |
+| `LLM_REQUEST_TIMEOUT_MS` | LLM request timeout | `600000` (10 min) |
+
+## Configuration
+
+The API is configured through environment variables. Create a `.env` file in the repo root (or edit `apps/api/src/environments/environment.dev.ts` for dev defaults):
+
+| Variable | Description | Default |
+|---|---|---|
+| `HTTP_PORT` | API server port | `5000` |
+| `OPENAI_API_KEY` | OpenAI API key | — |
+| `GEMINI_API_KEY` | Google Gemini API key | — |
+| `TAVILY_API_KEY` | Tavily web search key | — |
+| `LLM_USE_OFFLINE_MODEL` | Use local Ollama models | `false` |
+| `AUTH_DEV_MODE` | Skip Keycloak auth in dev | `true` |
+| `CREDENTIAL_ENCRYPTION_KEY` | 64-char hex for AES-256-GCM | dev default provided |
+
+See `apps/api/src/environments/environment.prod.ts` for the full list.
+
+## Development
+
+```bash
+pnpm build              # Build everything
+pnpm lint:fix           # Auto-fix lint + formatting
+pnpm test:unit          # Run unit tests
+pnpm run full-check     # Build + lint + test (run before submitting PRs)
+```
+
+Database migrations are auto-generated from entity changes:
+
+```bash
+cd apps/api
+pnpm run migration:generate    # Generate migration from entity diff
+pnpm run migration:revert      # Revert last migration
+```
+
+Use conventional commits:
+
+```bash
+pnpm commit
+```
 
 ## Contributing
-Contributions are welcome! If you plan a significant change, please open an issue first to discuss what you would like to change.
-- Follow the guidelines in `.guidelines/code-guidelines.md`
-- Add tests where appropriate
-- Keep docs up to date
 
-## Commitizen
-For generate commits you can use `pnpm commit` command. 
+Contributions are welcome! If you're planning a significant change, please open an issue first to discuss your approach.
 
-## Documentation
-- Code style and patterns: `.guidelines/code-guidelines.md`
-- Testing and E2E: `.guidelines/testing.md`
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/my-feature`)
+3. Make your changes and add tests
+4. Run `pnpm run full-check` to verify everything passes
+5. Submit a pull request
 
-## Docker
+## License
 
-You can use docker and docker-compose for applications (podman).
-
-For example, you can run this command from the root dir `podman build -f ./apps/$appname/Dockerfile -t $appname:latest .`
-and then `podman run $appname:latest`
-
-Example: `podman build -f ./apps/api/Dockerfile -t api:latest .`
-`podman run api:latest`
-
-## DB
-We use `TypeOrm`. Automatic synchronization is disabled in order to avoid production errors.
-Instead, you should generate migrations each time, which will run automatically when the server starts.
-
-`pnpm run migration:create {name}` - creates migration in `src/db/migrations` dir
-`pnpm run migration:generate {name}` - generate migration based on current entities, {name} should be replaced with some comment, like: add-date-field-to-transactions-table
-`pnpm run migration:run` - run all pending migrations
-`pnpm run migration:revert` - revert last migration
-
-### Database Seeding
-
-We also support database seeding to populate tables with initial data:
-
-`pnpm run seed:create {name}` - creates a timestamped seed file in `src/db/seeds` dir
-`pnpm run seed:run-all` - runs all seed files in order of their timestamps
-
-Locally for each service we can create different db. Postgres create it automatically, you just need update `DATABASES` env in `docker-compose`
-
-## Graph API quick tour
-
-- Create a graph
-  - POST `/graphs` with `name`, `version`, `temporary`, and `schema` (nodes + edges)
-- Run/Destroy a graph
-  - POST `/graphs/:id/run`
-  - POST `/graphs/:id/destroy`
-- Execute a trigger on a running graph
-  - POST `/graphs/:graphId/triggers/:triggerId/execute` with messages and options
-
-Minimal example schema:
-```json
-{
-  "nodes": [
-    { "id": "trigger-1", "template": "manual-trigger", "config": {} },
-    { "id": "agent-1", "template": "simple-agent", "config": { "instructions": "You are helpful.", "invokeModelName": "gpt-5-mini" } },
-    { "id": "web-search-1", "template": "web-search-tool", "config": { "apiKey": "<tavily-key>" } }
-  ],
-  "edges": [
-    { "from": "trigger-1", "to": "agent-1" },
-    { "from": "agent-1", "to": "web-search-1" }
-  ]
-}
-```
-
-Swagger is available at `/swagger` (OpenAPI JSON at `/swagger-api-json`). Authentication is enabled; configure your provider via `@packages/http-server` and set a Bearer token.
-
-### What’s inside nodes
-- `manual-trigger` — starts a thread and invokes an agent with your messages
-- `simple-agent` — LangGraph-based agent with summarization and tool execution; supports checkpoints/threads
-- `web-search-tool` — Tavily-powered web search tool
-- `shell-tool` — run shell commands inside a runtime
-- `docker-runtime` — isolated container to execute tools/commands (Docker available by default)
-
-### State, threads, and checkpoints
-- Threads are identified as `<graphId>:<uuid>` and persisted; checkpoints are per-node namespaces
-- Postgres-backed saver via `@langchain/langgraph-checkpoint`
-- Graph/agent lifecycle events are published via notifications
+MIT License with [Commons Clause](https://commonsclause.com/). You can use, modify, and redistribute the software freely, but you may not sell it as a commercial product or service. See [LICENSE](LICENSE) for details.

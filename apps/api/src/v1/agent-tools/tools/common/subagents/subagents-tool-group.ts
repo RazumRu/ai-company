@@ -41,8 +41,8 @@ export class SubagentsToolGroup extends BaseToolGroup<SubagentsToolGroupConfig> 
       3. Call \`subagents_run_task\` with the chosen agent ID and a detailed task description.
 
       ### Choosing the Right Subagent
-      - For read-only exploration, research, and codebase investigation: use "explorer"
-      - For tasks requiring file modifications, running builds/tests, or general work: use "simple"
+      - For read-only exploration, research, and codebase investigation: use "system:explorer"
+      - For tasks requiring file modifications, running builds/tests, or general work: use "system:simple"
 
       ### Best Practices
       - Prefer "explorer" for investigation tasks — it is safer and has read-only constraints.

@@ -9,8 +9,6 @@ import {
 import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import {
-  Annotation,
-  BaseChannel,
   CompiledStateGraph,
   END,
   START,
@@ -32,7 +30,6 @@ import { LlmModelsService } from '../../../litellm/services/llm-models.service';
 import {
   BaseAgentState,
   BaseAgentStateChange,
-  BaseAgentStateMessagesUpdateValue,
   NewMessageMode,
   ReasoningEffort,
 } from '../../agents.types';
@@ -97,70 +94,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       }
     }
     return undefined;
-  }
-
-  protected buildState() {
-    return Annotation.Root({
-      messages: Annotation<BaseMessage[], BaseAgentStateMessagesUpdateValue>({
-        reducer: (left, right) =>
-          !right
-            ? left
-            : right.mode === 'append'
-              ? [...left, ...right.items]
-              : right.items,
-        default: () => [],
-      }),
-      summary: Annotation<string, string>({
-        reducer: (left, right) => (right !== undefined ? right : left),
-        default: () => '',
-      }),
-      toolsMetadata: Annotation<
-        Record<string, Record<string, unknown>>,
-        Record<string, Record<string, unknown>>
-      >({
-        reducer: (left, right) => (right ? { ...left, ...right } : left),
-        default: () => ({}),
-      }),
-      toolUsageGuardActivatedCount: Annotation<number, number>({
-        reducer: (left, right) => right ?? left,
-        default: () => 0,
-      }),
-      toolUsageGuardActivated: Annotation<boolean, boolean>({
-        reducer: (left, right) => right ?? left,
-        default: () => false,
-      }),
-      inputTokens: Annotation<number, number>({
-        reducer: (left, right) => left + (right ?? 0),
-        default: () => 0,
-      }),
-      cachedInputTokens: Annotation<number, number>({
-        reducer: (left, right) => left + (right ?? 0),
-        default: () => 0,
-      }),
-      outputTokens: Annotation<number, number>({
-        reducer: (left, right) => left + (right ?? 0),
-        default: () => 0,
-      }),
-      reasoningTokens: Annotation<number, number>({
-        reducer: (left, right) => left + (right ?? 0),
-        default: () => 0,
-      }),
-      totalTokens: Annotation<number, number>({
-        reducer: (left, right) => left + (right ?? 0),
-        default: () => 0,
-      }),
-      totalPrice: Annotation<number, number>({
-        reducer: (left, right) => left + (right ?? 0),
-        default: () => 0,
-      }),
-      currentContext: Annotation<number, number>({
-        reducer: (left, right) => right ?? left,
-        default: () => 0,
-      }),
-    } satisfies Record<
-      keyof BaseAgentState,
-      BaseChannel | (() => BaseChannel)
-    >);
   }
 
   public async initTools(_config: SimpleAgentSchemaType) {
@@ -353,38 +286,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     return this.graph;
   }
 
-  private applyChange(
-    prev: BaseAgentState,
-    change: BaseAgentStateChange,
-  ): BaseAgentState {
-    const nextMessages = change.messages
-      ? change.messages.mode === 'append'
-        ? [...prev.messages, ...change.messages.items]
-        : change.messages.items
-      : prev.messages;
-
-    return {
-      messages: nextMessages,
-      summary: change.summary ?? prev.summary,
-      toolsMetadata: change.toolsMetadata
-        ? { ...prev.toolsMetadata, ...change.toolsMetadata }
-        : prev.toolsMetadata,
-      toolUsageGuardActivated:
-        change.toolUsageGuardActivated ?? prev.toolUsageGuardActivated,
-      toolUsageGuardActivatedCount:
-        change.toolUsageGuardActivatedCount ??
-        prev.toolUsageGuardActivatedCount,
-      inputTokens: prev.inputTokens + (change.inputTokens ?? 0),
-      cachedInputTokens:
-        prev.cachedInputTokens + (change.cachedInputTokens ?? 0),
-      outputTokens: prev.outputTokens + (change.outputTokens ?? 0),
-      reasoningTokens: prev.reasoningTokens + (change.reasoningTokens ?? 0),
-      totalTokens: prev.totalTokens + (change.totalTokens ?? 0),
-      totalPrice: prev.totalPrice + (change.totalPrice ?? 0),
-      currentContext: change.currentContext ?? prev.currentContext,
-    };
-  }
-
   private async emitNewMessages(
     messages: BaseMessage[],
     rc: RunnableConfig<BaseAgentConfigurable> | undefined,
@@ -395,6 +296,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     const fresh = messages.filter((m) => {
       const kw = m.additional_kwargs as unknown as Record<string, unknown>;
+      // Skip messages already emitted in real-time by streaming tools
+      if (kw.__streamedRealtime) return false;
       return kw.__runId === runId || kw.run_id === runId;
     });
 

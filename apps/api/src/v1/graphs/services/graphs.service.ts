@@ -557,6 +557,7 @@ export class GraphsService {
       configurable: {
         thread_id: dto.threadSubId,
         async: dto.async,
+        thread_metadata: dto.metadata,
       },
     });
 

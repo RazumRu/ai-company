@@ -321,6 +321,10 @@ export class GraphStateManager {
 
     this.emitNodeUpdate(state, threadId, runId);
 
+    const threadMetadata = cfg?.thread_metadata as
+      | Record<string, unknown>
+      | undefined;
+
     await this.notificationsService.emit({
       type: NotificationEvent.AgentInvoke,
       graphId: cfg?.graph_id || this.graphId,
@@ -331,6 +335,7 @@ export class GraphStateManager {
       parentThreadId: cfg?.parent_thread_id ?? threadId,
       ...(runId ? { runId } : {}),
       source: cfg?.source,
+      ...(threadMetadata ? { threadMetadata } : {}),
       data: {
         messages: serializeBaseMessages(data.messages),
       },

@@ -121,6 +121,7 @@ export interface IAgentInvokeNotification extends INotification<IAgentInvokeData
   threadId: string;
   parentThreadId: string;
   source?: string;
+  threadMetadata?: Record<string, unknown>;
 }
 
 export interface IAgentStateUpdateData {
