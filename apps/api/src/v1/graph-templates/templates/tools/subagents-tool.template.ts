@@ -6,11 +6,6 @@ import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { FilesToolGroup } from '../../../agent-tools/tools/common/files/files-tool-group';
 import { ShellTool } from '../../../agent-tools/tools/common/shell.tool';
 import { SubagentsToolGroup } from '../../../agent-tools/tools/common/subagents/subagents-tool-group';
-import {
-  IBaseResourceOutput,
-  IShellResourceOutput,
-  ResourceKind,
-} from '../../../graph-resources/graph-resources.types';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
@@ -50,11 +45,6 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
   ] as const;
 
   readonly outputs = [
-    {
-      type: 'template',
-      value: 'github-resource',
-      multiple: true,
-    },
     {
       type: 'kind',
       value: NodeKind.Runtime,
@@ -116,26 +106,12 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
           );
         }
 
-        // Collect resource data
-        const resourceNodeIds = this.graphRegistry.filterNodesByType(
-          graphId,
-          outputNodeIds,
-          NodeKind.Resource,
-        );
-
-        const { env, information: resourcesInformation } =
-          this.collectShellResourceData(resourceNodeIds, graphId);
-
-        runtimeNode.instance.addEnvVariables(env);
-
         // Build tool sets for each SubagentToolId
         const toolSets = new Map<string, BuiltAgentTool[]>();
 
         // Shell tool (full access)
         const shellBuilt = this.shellTool.build({
           runtimeProvider: runtimeNode.instance,
-          resourcesInformation,
-          env,
         });
         toolSets.set(SubagentToolId.Shell, [shellBuilt]);
 
@@ -159,7 +135,6 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
         // Build the subagents tool group
         const { tools, instructions } = this.subagentsToolGroup.buildTools({
           toolSets,
-          resourcesInformation,
           smartModelOverride: config.smartModel,
         });
 
@@ -171,46 +146,6 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
       destroy: async (instance: { tools: BuiltAgentTool[] }) => {
         instance.tools.length = 0;
       },
-    };
-  }
-
-  private collectShellResourceData(
-    resourceNodeIds: string[],
-    graphId: string,
-  ): { env: Record<string, string>; information: string } {
-    const envVars: Record<string, string> = {};
-    const informationParts: string[] = [];
-
-    for (const nodeId of resourceNodeIds) {
-      const node = this.graphRegistry.getNode<IShellResourceOutput>(
-        graphId,
-        nodeId,
-      );
-
-      if (node && node.type === NodeKind.Resource) {
-        const inst = node.instance;
-        if ((inst as IBaseResourceOutput)?.kind !== ResourceKind.Shell) {
-          continue;
-        }
-
-        const resourceOutput = inst as IShellResourceOutput;
-
-        const resourceEnv = resourceOutput.data.env;
-        if (resourceEnv) {
-          Object.assign(envVars, resourceEnv);
-        }
-
-        if (resourceOutput.information) {
-          informationParts.push(
-            `- ${node.template}: ${resourceOutput.information}`,
-          );
-        }
-      }
-    }
-
-    return {
-      env: envVars,
-      information: informationParts.join('\n'),
     };
   }
 }

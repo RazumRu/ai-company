@@ -89,9 +89,8 @@ describe('SocketGateway', () => {
         eventsHandler.subscribeEvents.mock.calls[0]![0];
       eventHandlerCallback(mockEnrichedNotification);
 
-      // Verify that the gateway broadcasts only to graph room
-      expect(mockServer.to).toHaveBeenCalledWith(`graph:${mockGraphId}`);
-      expect(mockServer.to).not.toHaveBeenCalledWith(`user:${mockUserId}`);
+      // Verify that the gateway broadcasts only to graph room (as single-item array)
+      expect(mockServer.to).toHaveBeenCalledWith([`graph:${mockGraphId}`]);
     });
 
     it('should broadcast AgentStateUpdate notifications only to graph room', () => {
@@ -123,9 +122,8 @@ describe('SocketGateway', () => {
         eventsHandler.subscribeEvents.mock.calls[0]![0];
       eventHandlerCallback(mockAgentStateUpdateNotification);
 
-      // Verify that the gateway broadcasts only to graph room
-      expect(mockServer.to).toHaveBeenCalledWith(`graph:${mockGraphId}`);
-      expect(mockServer.to).not.toHaveBeenCalledWith(`user:${mockUserId}`);
+      // Verify that the gateway broadcasts only to graph room (as single-item array)
+      expect(mockServer.to).toHaveBeenCalledWith([`graph:${mockGraphId}`]);
 
       // Verify the event type is passed correctly
       expect(mockServer.emit).toHaveBeenCalledWith(
@@ -158,11 +156,44 @@ describe('SocketGateway', () => {
         eventsHandler.subscribeEvents.mock.calls[0]![0];
       eventHandlerCallback(mockThreadUpdateNotification);
 
-      expect(mockServer.to).toHaveBeenCalledWith(`graph:${mockGraphId}`);
-      expect(mockServer.to).not.toHaveBeenCalledWith(`user:${mockUserId}`);
+      expect(mockServer.to).toHaveBeenCalledWith([`graph:${mockGraphId}`]);
       expect(mockServer.emit).toHaveBeenCalledWith(
         'thread.update',
         mockThreadUpdateNotification,
+      );
+    });
+
+    it('should deduplicate when broadcasting to both graph and user rooms', () => {
+      const mockServer = {
+        emit: vi.fn(),
+        to: vi.fn().mockReturnThis(),
+      };
+      (gateway as unknown as { ws: unknown }).ws = mockServer;
+
+      gateway.afterInit();
+
+      const mockDualScopeNotification: IEnrichedNotification<unknown> = {
+        type: 'graph.revision.create' as any,
+        graphId: mockGraphId,
+        ownerId: mockUserId,
+        data: { revisionId: 'rev-1' },
+        scope: [NotificationScope.Graph, NotificationScope.User],
+      };
+
+      const eventHandlerCallback =
+        eventsHandler.subscribeEvents.mock.calls[0]![0];
+      eventHandlerCallback(mockDualScopeNotification);
+
+      // Verify a single .to() call with both rooms (Socket.IO deduplicates)
+      expect(mockServer.to).toHaveBeenCalledTimes(1);
+      expect(mockServer.to).toHaveBeenCalledWith([
+        `graph:${mockGraphId}`,
+        `user:${mockUserId}`,
+      ]);
+      expect(mockServer.emit).toHaveBeenCalledTimes(1);
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'graph.revision.create',
+        mockDualScopeNotification,
       );
     });
   });
@@ -275,6 +306,17 @@ describe('SocketGateway', () => {
       expect(mockServer.to).toHaveBeenCalledWith(room);
       expect(mockServer.emit).toHaveBeenCalledWith(event, payload);
     });
+
+    it('should broadcast to multiple rooms at once', () => {
+      const event = 'test_event';
+      const payload = { data: 'test' };
+      const rooms = ['room-1', 'room-2'];
+
+      gateway.broadcastToRooms(rooms, event, payload);
+
+      expect(mockServer.to).toHaveBeenCalledWith(rooms);
+      expect(mockServer.emit).toHaveBeenCalledWith(event, payload);
+    });
   });
 
   describe('thread subscription', () => {
@@ -353,9 +395,8 @@ describe('SocketGateway', () => {
         eventsHandler.subscribeEvents.mock.calls[0]![0];
       eventHandlerCallback(threadStateUpdate);
 
-      // Verify that the gateway broadcasts only to the graph room
-      expect(mockServer.to).toHaveBeenCalledWith(`graph:${mockGraphId}`);
-      expect(mockServer.to).not.toHaveBeenCalledWith(`user:${mockUserId}`);
+      // Verify that the gateway broadcasts only to the graph room (as single-item array)
+      expect(mockServer.to).toHaveBeenCalledWith([`graph:${mockGraphId}`]);
       expect(mockServer.emit).toHaveBeenCalledWith(
         'agent.state.update',
         threadStateUpdate,

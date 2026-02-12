@@ -67,19 +67,23 @@ export class SocketGateway
       (event: IEnrichedNotification<unknown>) => {
         const { graphId, ownerId, type, scope } = event;
 
-        const graphRoom = this.getGraphRoomName(graphId);
-        const userRoom = this.getUserRoomName(ownerId);
-
-        // Send notifications based on scope array
+        // Collect target rooms based on scope, then broadcast once.
+        // Using a single .to(rooms) call ensures Socket.IO deduplicates
+        // sockets that belong to multiple target rooms.
+        const rooms: string[] = [];
         for (const scopeItem of scope) {
           switch (scopeItem) {
             case NotificationScope.Graph:
-              this.broadcastToRoom(graphRoom, type, event);
+              rooms.push(this.getGraphRoomName(graphId));
               break;
             case NotificationScope.User:
-              this.broadcastToRoom(userRoom, type, event);
+              rooms.push(this.getUserRoomName(ownerId));
               break;
           }
+        }
+
+        if (rooms.length > 0) {
+          this.broadcastToRooms(rooms, type, event);
         }
       },
     );
@@ -140,6 +144,10 @@ export class SocketGateway
 
   public broadcastToRoom<T>(room: string, event: string, payload: T) {
     this.ws.to(room).emit(event, payload);
+  }
+
+  public broadcastToRooms<T>(rooms: string[], event: string, payload: T) {
+    this.ws.to(rooms).emit(event, payload);
   }
 
   @SubscribeMessage('subscribe_graph')
