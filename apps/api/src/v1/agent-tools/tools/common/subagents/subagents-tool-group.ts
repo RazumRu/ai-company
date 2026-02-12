@@ -31,25 +31,47 @@ export class SubagentsToolGroup extends BaseToolGroup<SubagentsToolGroupConfig> 
 
   public getDetailedInstructions(): string {
     return dedent`
-      ### Subagents Overview
-      Subagents are lightweight autonomous agents you can spawn to perform self-contained tasks.
-      Each subagent type has different capabilities (tools) and specializations.
+      ### Subagents — Your Primary Delegation Tool
+      Subagents are lightweight autonomous agents that run in their own context window.
+      **You should actively delegate tasks to subagents** to keep your own context clean and reduce token usage.
+      Each subagent runs independently, processes potentially large outputs internally, and returns only a concise summary to you.
 
-      ### Workflow
-      1. Call \`subagents_list\` to see all available subagent types and their capabilities.
-      2. Choose the best subagent for your task based on the descriptions.
-      3. Call \`subagents_run_task\` with the chosen agent ID and a detailed task description.
+      ### CRITICAL: Default to Delegation
+      **Prefer delegating over doing it yourself** for any task that would require more than 1-2 tool calls.
+      Subagents protect your main context window from verbose outputs (file contents, search results, command output).
+      Only handle things directly when they are truly trivial (reading a single known file, one quick command).
+
+      ### When You MUST Delegate
+      Always use subagents for these scenarios — do NOT attempt them yourself:
+      - **Codebase exploration**: Understanding project structure, finding implementations, tracing code paths → "system:explorer"
+      - **Multi-file investigation**: Reading and cross-referencing 3+ files → "system:explorer"
+      - **Answering "how does X work?"**: Any question requiring reading multiple files to understand a feature → "system:explorer"
+      - **Dependency/import tracing**: Finding all usages or consumers of a function/module → "system:explorer"
+      - **Self-contained code changes**: Implementing a well-defined change across files → "system:simple"
+      - **Running and analyzing commands**: Build, test, lint output that could be verbose → "system:simple"
+
+      ### When NOT to Delegate
+      - Reading a single, known file path (use your own tools directly)
+      - Running a single quick command with predictable short output
+      - Tasks requiring back-and-forth conversation (subagents cannot ask follow-up questions)
+
+      ### Parallel Delegation
+      When you have multiple independent research tasks, **spawn multiple subagents simultaneously** instead of doing them sequentially.
+      Example: investigating auth module AND database schema AND API routes → spawn 3 explorers in parallel.
 
       ### Choosing the Right Subagent
-      - For read-only exploration, research, and codebase investigation: use "system:explorer"
-      - For tasks requiring file modifications, running builds/tests, or general work: use "system:simple"
+      - **"system:explorer"** — READ-ONLY. Use for all investigation, research, and understanding tasks. Safer and cheaper.
+      - **"system:simple"** — FULL ACCESS. Use only when the task requires file modifications, running builds/tests, or executing commands with side effects.
 
-      ### Best Practices
-      - Prefer "explorer" for investigation tasks — it is safer and has read-only constraints.
-      - Use "fast" intelligence (default) for simple exploration. Use "smart" only for complex reasoning.
-      - Write self-contained task descriptions — subagents cannot ask follow-up questions.
-      - Include all necessary file paths, context, and expected output format in the task.
-      - Do not delegate tasks you can do faster with a single tool call.
+      ### Intelligence Levels
+      - **"fast"** (default): Smaller, cheaper model. Use for exploration, searches, straightforward tasks.
+      - **"smart"**: Same large model as you. Use only for tasks requiring complex reasoning or nuanced code changes.
+
+      ### Workflow
+      1. Call \`subagents_list\` to see available subagent types (you only need to do this once per session).
+      2. Choose the best subagent for your task.
+      3. Call \`subagents_run_task\` with a detailed, self-contained task description.
+      4. Use the subagent's result to continue your work without having consumed excessive context.
     `;
   }
 }

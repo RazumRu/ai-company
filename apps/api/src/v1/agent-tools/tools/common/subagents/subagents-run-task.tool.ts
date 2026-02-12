@@ -14,6 +14,7 @@ import {
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { SubagentsService } from '../../../../subagents/subagents.service';
+import { SubagentDefinition } from '../../../../subagents/subagents.types';
 import {
   BaseTool,
   BuiltAgentTool,
@@ -75,9 +76,10 @@ export class SubagentsRunTaskTool extends BaseTool<
   public name = 'subagents_run_task';
   public description =
     'Spawn a subagent to perform a self-contained task autonomously. ' +
-    'The subagent has its own context window and runs in the same runtime environment. ' +
-    'Choose the right agent type via agentId (use subagents_list to see options). ' +
-    'Returns the result along with token usage statistics.';
+    'The subagent runs in its own context window, absorbing verbose output (file reads, search results, ' +
+    'command output) and returning only a concise result. Use this proactively for exploration, ' +
+    'research, multi-file investigation, and self-contained code changes. ' +
+    'Prefer delegation over doing it yourself for any task requiring 2+ tool calls.';
 
   constructor(
     private readonly moduleRef: ModuleRef,
@@ -104,29 +106,45 @@ export class SubagentsRunTaskTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Spawns a lightweight subagent with its own context window to perform a self-contained task.
-      The subagent runs autonomously in the same runtime environment and returns a result.
+      Spawns a lightweight subagent with its own isolated context window. The subagent runs autonomously,
+      processes all intermediate data (file reads, search results, command outputs) internally, and returns
+      only a concise result to you. This keeps your main context clean and efficient.
 
-      ### When to Use
-      - Exploring unfamiliar parts of the codebase (use "system:explorer")
-      - Performing focused research tasks (use "system:explorer")
-      - Making small, well-defined code changes (use "system:simple")
-      - Running commands and analyzing their output (use "system:simple")
-      - Any task that can be fully described in a single instruction
+      ### Key Benefit: Context Window Protection
+      Every file you read and every command output you process consumes your context window.
+      Subagents absorb this cost in their own window and return only the distilled result.
+      **Always prefer delegation when a task would require reading multiple files or producing verbose output.**
+
+      ### When to Use (Default: Delegate)
+      - **Understanding code**: "How does feature X work?", "What does this module do?" → explorer
+      - **Finding implementations**: "Where is Y defined/used?", "What calls Z?" → explorer
+      - **Reading multiple files**: Any task requiring 3+ file reads → explorer
+      - **Analyzing structure**: "What's the project layout?", "List all API endpoints" → explorer
+      - **Cross-referencing**: Comparing implementations, tracing data flow across files → explorer
+      - **Code changes**: Well-defined modifications across 1+ files → simple
+      - **Running commands**: Build, test, lint, or any command with potentially verbose output → simple
+      - **Parallel research**: Multiple independent questions → spawn multiple explorers simultaneously
 
       ### When NOT to Use
-      - Tasks requiring back-and-forth clarification — subagents cannot ask questions
-      - Tasks you can do faster with a single tool call (e.g., reading one file)
-      - Long-running tasks that need many iterations — use direct tools instead
+      - Reading a single file you already know the path to
+      - Running a single command with predictably short output
+      - Tasks that require interactive clarification (subagents cannot ask questions)
 
       ### Intelligence Levels
-      - **"fast"** (default): Smaller, cheaper coding model. Best for exploration, searches, simple tasks.
-      - **"smart"**: Same large model as you. Best for complex reasoning, nuanced changes, architectural analysis.
+      - **"fast"** (default): Smaller, cheaper model. Use for exploration, searches, straightforward file reads.
+      - **"smart"**: Same large model as you. Use for complex reasoning, multi-step code changes, architectural analysis.
 
-      ### Writing Good Task Descriptions
-      **Good — specific and self-contained:**
+      ### Writing Effective Task Descriptions
+      Subagents cannot ask follow-up questions. Your task description must be completely self-contained.
+      Include: what to find/do, where to look, what format to return results in, and any constraints.
+
+      **Good — specific, self-contained, with clear output expectations:**
       \`\`\`json
-      {"agentId": "system:explorer", "task": "Find all files in /runtime-workspace/my-repo/src that import from '@auth' and list their paths with the specific import statements.", "intelligence": "fast", "purpose": "Map auth dependencies"}
+      {"agentId": "system:explorer", "task": "In /runtime-workspace/my-repo, find all files that import from '@auth' module. For each file, list: (1) the file path, (2) the specific named imports, (3) how they are used (function calls, class instantiation, etc). Start with codebase_search for '@auth' imports.", "intelligence": "fast", "purpose": "Map auth dependencies"}
+      \`\`\`
+
+      \`\`\`json
+      {"agentId": "system:explorer", "task": "Investigate how the user authentication flow works in /runtime-workspace/my-repo. Trace from the login API endpoint through middleware, service, and database layers. Return a summary of: (1) all files involved, (2) the request lifecycle, (3) where tokens are generated and validated.", "intelligence": "fast", "purpose": "Understand auth flow"}
       \`\`\`
 
       \`\`\`json
@@ -258,7 +276,7 @@ export class SubagentsRunTaskTool extends BaseTool<
   }
 
   private async prepareSubagent(
-    definition: { systemPrompt: string; toolIds: string[] },
+    definition: SubagentDefinition,
     args: SubagentsRunTaskToolSchemaType,
     config: SubagentsToolGroupConfig,
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,

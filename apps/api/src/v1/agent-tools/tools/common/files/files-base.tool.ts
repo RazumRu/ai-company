@@ -60,7 +60,7 @@ export abstract class FilesBaseTool<
         {
           cmd: cmdWrapped,
           timeoutMs: params.timeoutMs ?? 30_000,
-          tailTimeoutMs: params.tailTimeoutMs ?? 10_000,
+          tailTimeoutMs: params.tailTimeoutMs ?? 30_000,
         },
         cfg,
       );

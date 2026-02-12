@@ -26,8 +26,8 @@ export class SubagentsListTool extends BaseTool<
   public name = 'subagents_list';
   public description =
     'List all available subagent types with their IDs and descriptions. ' +
-    'Call this first to see which specialized subagents are available, then use ' +
-    'subagents_run_task with the chosen agent ID. Returns an array of agent definitions.';
+    'Call this once to discover available subagents, then use subagents_run_task to delegate tasks. ' +
+    'You should proactively delegate exploration and research tasks to subagents to protect your context window.';
 
   constructor(private readonly subagentsService: SubagentsService) {
     super();

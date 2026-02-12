@@ -14,6 +14,12 @@ import { BaseRuntime } from './base-runtime';
 
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 
+/** Minimal logger interface accepted by DockerRuntime. */
+export interface DockerRuntimeLogger {
+  warn(msg: string, ...args: unknown[]): void;
+  error(msg: string | Error, message?: string, ...args: unknown[]): void;
+}
+
 type ShellSession = {
   id: string;
   exec: Docker.Exec;
@@ -51,22 +57,30 @@ export class DockerRuntime extends BaseRuntime {
   private container: Docker.Container | null = null;
   private containerWorkdir: string | null = null;
   private sessions = new Map<string, ShellSession>();
+  private logger?: DockerRuntimeLogger;
 
   constructor(
     dockerOptions?: Docker.DockerOptions,
-    params?: { image?: string },
+    params?: { image?: string; logger?: DockerRuntimeLogger },
   ) {
     super();
     this.docker = new Docker(dockerOptions);
     this.image = params?.image;
+    this.logger = params?.logger;
   }
 
   static async getByName(
     name: string,
     dockerOptions?: Docker.DockerOptions,
   ): Promise<Docker.Container | null> {
+    return DockerRuntime.findContainerByName(new Docker(dockerOptions), name);
+  }
+
+  private static async findContainerByName(
+    docker: Docker,
+    name: string,
+  ): Promise<Docker.Container | null> {
     try {
-      const docker = new Docker(dockerOptions);
       const list = await docker.listContainers({
         all: true,
         filters: { name: [name] },
@@ -124,6 +138,10 @@ export class DockerRuntime extends BaseRuntime {
     pending: SessionCommand[],
     reason: Error,
   ) {
+    this.logger?.warn(
+      `[DockerRuntime] Restarting session "${sessionId}" due to: ${reason.message}` +
+        (pending.length ? ` (${pending.length} pending commands)` : ''),
+    );
     this.dropSession(sessionId, reason);
     try {
       const s = await this.ensureSession(sessionId, workdir, env);
@@ -131,8 +149,20 @@ export class DockerRuntime extends BaseRuntime {
         this.enqueueSessionCommand(s, c);
       }
       void this.processSessionQueue(s);
-    } catch {
-      //
+    } catch (restartError) {
+      // Session restart failed — reject all pending commands so callers
+      // are not left hanging indefinitely.
+      const err =
+        restartError instanceof Error
+          ? restartError
+          : new Error(String(restartError));
+      this.logger?.error(
+        `[DockerRuntime] Failed to restart session "${sessionId}": ${err.message}` +
+          ` — rejecting ${pending.length} pending command(s)`,
+      );
+      for (const c of pending) {
+        c.reject(err);
+      }
     }
   }
 
@@ -223,10 +253,19 @@ export class DockerRuntime extends BaseRuntime {
       env,
     };
 
-    stdoutStream.on('data', () => undefined);
-    stderrStream.on('data', () => undefined);
+    // Put streams into flowing mode so Docker's demuxed data is consumed
+    // even when no command is in-flight (prevents backpressure stalling).
+    stdoutStream.resume();
+    stderrStream.resume();
 
     const cleanup = () => {
+      // When a command is in-flight (busy === true), the command-level
+      // closeListener already handles cleanup and session restart.
+      // Running session-level cleanup here would race: it deletes the session
+      // from the Map and destroys streams before finishWithRestart can
+      // complete, causing orphaned pending commands.
+      if (session.busy) return;
+
       this.sessions.delete(sessionId);
       try {
         stream.removeAllListeners();
@@ -310,17 +349,17 @@ export class DockerRuntime extends BaseRuntime {
         }
       };
 
-      const finishWithRestart = async (
-        res: RuntimeExecResult,
-        reason: Error,
-      ) => {
+      const finishWithRestart = (res: RuntimeExecResult, reason: Error) => {
         if (finished) return;
         finished = true;
         cleanupListeners();
         const pending = session.queue.splice(0);
         session.busy = false;
-        await this.restartSession(sid, next.workdir, sEnv, pending, reason);
+        // Resolve the caller immediately — don't block on session restart.
+        // The restart runs in the background so the caller gets its
+        // timeout/abort/error result without waiting for a new shell.
         next.resolve(res);
+        void this.restartSession(sid, next.workdir, sEnv, pending, reason);
       };
 
       const maybeResolve = () => {
@@ -345,7 +384,7 @@ export class DockerRuntime extends BaseRuntime {
         // This prevents timeouts during legitimate silent periods (e.g., Python heredoc stdin reading)
         if (hasReceivedOutput && next.tailTimeoutMs && next.tailTimeoutMs > 0) {
           tailTimer = setTimeout(() => {
-            void finishWithRestart(
+            finishWithRestart(
               {
                 exitCode: 124,
                 stdout: stdoutBuffer,
@@ -403,7 +442,7 @@ export class DockerRuntime extends BaseRuntime {
 
       const onError = (err: Error) => {
         if (finished) return;
-        void finishWithRestart(
+        finishWithRestart(
           {
             exitCode: 124,
             stdout: stdoutBuffer,
@@ -425,7 +464,7 @@ export class DockerRuntime extends BaseRuntime {
 
       if (next.timeoutMs && next.timeoutMs > 0) {
         timeoutTimer = setTimeout(() => {
-          void finishWithRestart(
+          finishWithRestart(
             {
               exitCode: 124,
               stdout: stdoutBuffer,
@@ -442,7 +481,7 @@ export class DockerRuntime extends BaseRuntime {
       resetTailTimer();
 
       const abortNow = () => {
-        void finishWithRestart(
+        finishWithRestart(
           {
             exitCode: 124,
             stdout: stdoutBuffer,
@@ -487,24 +526,7 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   private async getByName(name: string): Promise<Docker.Container | null> {
-    try {
-      const list = await this.docker.listContainers({
-        all: true,
-        filters: { name: [name] },
-      });
-
-      const exact = list.filter((c) =>
-        c.Names?.some((n) => n.replace(/^\//, '') === name),
-      );
-
-      if (!exact[0]) {
-        return null;
-      }
-
-      return this.docker.getContainer(exact[0].Id);
-    } catch {
-      return null;
-    }
+    return DockerRuntime.findContainerByName(this.docker, name);
   }
 
   private async ensureNetwork(networkName: string): Promise<void> {
@@ -652,6 +674,9 @@ export class DockerRuntime extends BaseRuntime {
     const hostConfig: Docker.HostConfig = {
       NetworkMode: networkName,
       AutoRemove: true,
+      // Privileged mode is required because runtime containers may need to run
+      // Docker-in-Docker (e.g., building images, spawning nested containers)
+      // and access host devices.
       Privileged: true,
     };
 
@@ -699,6 +724,17 @@ export class DockerRuntime extends BaseRuntime {
     try {
       if (!this.container) {
         return;
+      }
+
+      // Reject all pending/in-flight session commands before tearing down the
+      // container.  Without this, callers whose promises are still waiting in
+      // a session queue would hang indefinitely.
+      const stopError = new Error('Runtime stopped');
+      for (const session of this.sessions.values()) {
+        for (const cmd of session.queue) {
+          cmd.reject(stopError);
+        }
+        session.queue.length = 0;
       }
 
       await DockerRuntime.stopByInstance(this.container);

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { DefaultLogger } from '@packages/common';
 import isEqual from 'lodash/isEqual';
 import {
   adjectives,
@@ -26,7 +27,10 @@ export type ProvideRuntimeResult<T extends BaseRuntime> = {
 export class RuntimeProvider {
   private readonly runtimeInstances = new Map<string, BaseRuntime>();
 
-  constructor(private readonly runtimeInstanceDao: RuntimeInstanceDao) {}
+  constructor(
+    private readonly runtimeInstanceDao: RuntimeInstanceDao,
+    private readonly logger: DefaultLogger,
+  ) {}
 
   protected resolveRuntimeConfigByType(
     type: RuntimeType,
@@ -42,7 +46,7 @@ export class RuntimeProvider {
 
     switch (type) {
       case RuntimeType.Docker:
-        return new DockerRuntime(config);
+        return new DockerRuntime(config, { logger: this.logger });
     }
   }
 

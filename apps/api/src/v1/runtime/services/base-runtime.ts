@@ -75,7 +75,7 @@ export abstract class BaseRuntime {
     return (
       (parentWorkdir || this.workdir) +
       (workdir ? '/' + (isArray(workdir) ? workdir.join('/') : workdir) : '')
-    ).replace(/\/{2,}/, '/');
+    ).replace(/\/{2,}/g, '/');
   }
 
   /**
