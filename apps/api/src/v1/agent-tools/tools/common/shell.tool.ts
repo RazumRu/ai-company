@@ -13,6 +13,7 @@ import {
   OpenaiService,
   ResponseData,
 } from '../../../openai/openai.service';
+import { BASE_RUNTIME_WORKDIR } from '../../../runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { execRuntimeWithContext } from '../../agent-tools.utils';
 import {
@@ -38,7 +39,7 @@ export const ShellToolSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'The shell command to execute. Supports pipes, chaining (&&, ||), and subshells. Use absolute paths under /runtime-workspace for reliability.',
+      `The shell command to execute. Supports pipes, chaining (&&, ||), and subshells. Use absolute paths under ${BASE_RUNTIME_WORKDIR} for reliability.`,
     ),
   timeoutMs: z
     .number()
@@ -121,18 +122,18 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
 
     return dedent`
       ### Overview
-      Executes shell commands in runtime environment. Commands within same thread share persistent session (env/cwd persist). Default cwd: \`/runtime-workspace\`. Use absolute paths under \`/runtime-workspace\` for cross-tool compatibility.
+      Executes shell commands in runtime environment. Commands within same thread share persistent session (env/cwd persist). Default cwd: \`${BASE_RUNTIME_WORKDIR}\`. Use absolute paths under \`${BASE_RUNTIME_WORKDIR}\` for cross-tool compatibility.
 
       ### CRITICAL: Working Directory After Clone
-      - Default starting directory: /runtime-workspace
-      - After gh_clone returns {"path": "/runtime-workspace/my-repo"}:
-        - Either: \`cd /runtime-workspace/my-repo\` first
+      - Default starting directory: ${BASE_RUNTIME_WORKDIR}
+      - After gh_clone returns {"path": "${BASE_RUNTIME_WORKDIR}/my-repo"}:
+        - Either: \`cd ${BASE_RUNTIME_WORKDIR}/my-repo\` first
         - Or: use full absolute paths in all commands
 
       ### Common Mistake
-      ❌ \`npm install\` right after clone (still in /runtime-workspace - will fail!)
-      ✅ \`cd /runtime-workspace/my-repo && npm install\`
-      ✅ Or: run \`cd /runtime-workspace/my-repo\` first, then \`npm install\` in next command
+      ❌ \`npm install\` right after clone (still in ${BASE_RUNTIME_WORKDIR} - will fail!)
+      ✅ \`cd ${BASE_RUNTIME_WORKDIR}/my-repo && npm install\`
+      ✅ Or: run \`cd ${BASE_RUNTIME_WORKDIR}/my-repo\` first, then \`npm install\` in next command
 
       ### Session Persistence
       - \`cd\` changes persist between shell calls within the same thread
@@ -142,13 +143,13 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       **Example:**
       \`\`\`bash
       # First command: change directory
-      cd /runtime-workspace/myproject
+      cd ${BASE_RUNTIME_WORKDIR}/myproject
 
-      # Second command: you're ALREADY in /runtime-workspace/myproject
+      # Second command: you're ALREADY in ${BASE_RUNTIME_WORKDIR}/myproject
       npm install  # NO need for "cd && npm install"
 
       # Third command: still in the same directory
-      npm test  # Still in /runtime-workspace/myproject
+      npm test  # Still in ${BASE_RUNTIME_WORKDIR}/myproject
       \`\`\`
 
       ### When to Use
@@ -380,7 +381,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
           stderr.includes('ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND') ||
           stderr.includes("can't cd to"))
       ) {
-        stderr = `${stderr}\n\nTIP: You may be in the wrong directory. After cloning a repo with gh_clone, you must cd into it first (e.g., cd /runtime-workspace/repo-name) before running npm/pnpm commands.`;
+        stderr = `${stderr}\n\nTIP: You may be in the wrong directory. After cloning a repo with gh_clone, you must cd into it first (e.g., cd ${BASE_RUNTIME_WORKDIR}/repo-name) before running npm/pnpm commands.`;
       }
 
       if (outputFocus) {

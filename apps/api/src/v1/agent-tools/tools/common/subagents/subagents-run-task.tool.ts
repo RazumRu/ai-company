@@ -13,8 +13,14 @@ import {
 } from '../../../../agents/services/agents/sub-agent';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
+import { RuntimeThreadProvider } from '../../../../runtime/services/runtime-thread-provider';
 import { SubagentsService } from '../../../../subagents/subagents.service';
-import { SubagentDefinition } from '../../../../subagents/subagents.types';
+import {
+  SubagentDefinition,
+  SubagentPromptContext,
+} from '../../../../subagents/subagents.types';
+import { execRuntimeWithContext } from '../../../agent-tools.utils';
 import {
   BaseTool,
   BuiltAgentTool,
@@ -31,7 +37,8 @@ export const SubagentsRunTaskToolSchema = z.object({
     .describe(
       'The ID of the subagent to run. Get available IDs from subagents_list. ' +
         'Example values: "system:explorer" (read-only codebase investigation), ' +
-        '"system:simple" (general-purpose with full shell and file access).',
+        '"system:simple" (general-purpose with full shell and file access), ' +
+        '"system:smart" (high-capability with same model as parent agent).',
     ),
   task: z
     .string()
@@ -40,14 +47,6 @@ export const SubagentsRunTaskToolSchema = z.object({
       'A clear, self-contained description of the task to delegate. Include all context needed: ' +
         'file paths, specific questions, constraints, expected output format. The subagent cannot ' +
         'ask follow-up questions — it must be able to complete the task from this description alone.',
-    ),
-  intelligence: z
-    .enum(['smart', 'fast'])
-    .default('fast')
-    .describe(
-      'Intelligence level for the subagent. "smart" uses the same large model as the parent agent ' +
-        '(higher quality, more expensive). "fast" uses a smaller coding model ' +
-        '(cheaper, faster, good for simple exploration and small tasks). Default: "fast".',
     ),
   purpose: z
     .string()
@@ -121,8 +120,10 @@ export class SubagentsRunTaskTool extends BaseTool<
       - **Reading multiple files**: Any task requiring 3+ file reads → explorer
       - **Analyzing structure**: "What's the project layout?", "List all API endpoints" → explorer
       - **Cross-referencing**: Comparing implementations, tracing data flow across files → explorer
-      - **Code changes**: Well-defined modifications across 1+ files → simple
-      - **Running commands**: Build, test, lint, or any command with potentially verbose output → simple
+      - **Quick fixes**: Rename a variable, add an import, small single-file edit → simple
+      - **Running a command**: Run lint, run a test, check build output → simple
+      - **Code changes**: Well-defined modifications across 1+ files → smart
+      - **Complex reasoning**: Architectural analysis, nuanced multi-step changes → smart
       - **Parallel research**: Multiple independent questions → spawn multiple explorers simultaneously
 
       ### When NOT to Use
@@ -130,9 +131,10 @@ export class SubagentsRunTaskTool extends BaseTool<
       - Running a single command with predictably short output
       - Tasks that require interactive clarification (subagents cannot ask questions)
 
-      ### Intelligence Levels
-      - **"fast"** (default): Smaller, cheaper model. Use for exploration, searches, straightforward file reads.
-      - **"smart"**: Same large model as you. Use for complex reasoning, multi-step code changes, architectural analysis.
+      ### Choosing the Right Subagent
+      - **"system:explorer"**: Read-only, fast model. Default for investigation, research, understanding code.
+      - **"system:simple"**: Full access, small fast model, tiny 70k context. For quick, well-defined tasks: simple file edits, running a command, renaming, adding an import. NOT for complex reasoning.
+      - **"system:smart"**: Full access, same large model as you. For complex reasoning, architectural analysis, nuanced code changes, multi-file modifications.
 
       ### Writing Effective Task Descriptions
       Subagents cannot ask follow-up questions. Your task description must be completely self-contained.
@@ -140,20 +142,20 @@ export class SubagentsRunTaskTool extends BaseTool<
 
       **Good — specific, self-contained, with clear output expectations:**
       \`\`\`json
-      {"agentId": "system:explorer", "task": "In /runtime-workspace/my-repo, find all files that import from '@auth' module. For each file, list: (1) the file path, (2) the specific named imports, (3) how they are used (function calls, class instantiation, etc). Start with codebase_search for '@auth' imports.", "intelligence": "fast", "purpose": "Map auth dependencies"}
+      {"agentId": "system:explorer", "task": "In ${BASE_RUNTIME_WORKDIR}/my-repo, find all files that import from '@auth' module. For each file, list: (1) the file path, (2) the specific named imports, (3) how they are used (function calls, class instantiation, etc). Start with codebase_search for '@auth' imports.", "purpose": "Map auth dependencies"}
       \`\`\`
 
       \`\`\`json
-      {"agentId": "system:explorer", "task": "Investigate how the user authentication flow works in /runtime-workspace/my-repo. Trace from the login API endpoint through middleware, service, and database layers. Return a summary of: (1) all files involved, (2) the request lifecycle, (3) where tokens are generated and validated.", "intelligence": "fast", "purpose": "Understand auth flow"}
+      {"agentId": "system:explorer", "task": "Investigate how the user authentication flow works in ${BASE_RUNTIME_WORKDIR}/my-repo. Trace from the login API endpoint through middleware, service, and database layers. Return a summary of: (1) all files involved, (2) the request lifecycle, (3) where tokens are generated and validated.", "purpose": "Understand auth flow"}
       \`\`\`
 
       \`\`\`json
-      {"agentId": "system:simple", "task": "In /runtime-workspace/my-repo/src/utils/validators.ts, add a new export function 'isValidEmail(email: string): boolean' that validates email format using a regex. Follow the same style as existing validator functions in the file.", "intelligence": "smart", "purpose": "Add email validator"}
+      {"agentId": "system:smart", "task": "In ${BASE_RUNTIME_WORKDIR}/my-repo/src/utils/validators.ts, add a new export function 'isValidEmail(email: string): boolean' that validates email format using a regex. Follow the same style as existing validator functions in the file.", "purpose": "Add email validator"}
       \`\`\`
 
       **Bad — vague or missing context:**
       \`\`\`json
-      {"agentId": "system:simple", "task": "Fix the bug", "intelligence": "fast", "purpose": "Fix bug"}
+      {"agentId": "system:simple", "task": "Fix the bug", "purpose": "Fix bug"}
       \`\`\`
     `;
   }
@@ -179,7 +181,6 @@ export class SubagentsRunTaskTool extends BaseTool<
 
     const { subAgent } = await this.prepareSubagent(
       definition,
-      args,
       config,
       runnableConfig,
     );
@@ -218,7 +219,6 @@ export class SubagentsRunTaskTool extends BaseTool<
 
     const { subAgent } = await this.prepareSubagent(
       definition,
-      args,
       config,
       runnableConfig,
     );
@@ -277,7 +277,6 @@ export class SubagentsRunTaskTool extends BaseTool<
 
   private async prepareSubagent(
     definition: SubagentDefinition,
-    args: SubagentsRunTaskToolSchemaType,
     config: SubagentsToolGroupConfig,
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<{ subAgent: SubAgent }> {
@@ -300,18 +299,36 @@ export class SubagentsRunTaskTool extends BaseTool<
       }
     }
 
-    const model = this.selectModel(args.intelligence, config, runnableConfig);
-    const systemPrompt = this.buildSystemPrompt(
-      definition.systemPrompt,
-      config.resourcesInformation,
-    );
+    const parentModel = this.getParentAgentModel(runnableConfig);
+    const model = definition.model({
+      parentModel,
+      llmModelsService: this.llmModelsService,
+    });
+
+    // Build prompt context with workspace information
+    const gitRepoPath = config.runtimeProvider
+      ? await this.discoverGitRepoPath(config.runtimeProvider, runnableConfig)
+      : undefined;
+
+    const promptContext: SubagentPromptContext = {
+      gitRepoPath,
+      resourcesInformation: config.resourcesInformation,
+    };
+    const systemPrompt = definition.systemPrompt(promptContext);
 
     // Create fresh SubAgent instance per invocation.
     // strict: false — SubAgent is registered in AgentsModule, not AgentToolsModule.
     const subAgent = await this.moduleRef.resolve(SubAgent, undefined, {
       strict: false,
     });
-    subAgent.setConfig({ instructions: systemPrompt, invokeModelName: model });
+    subAgent.setConfig({
+      instructions: systemPrompt,
+      invokeModelName: model,
+      maxIterations: definition.maxIterations,
+      ...(definition.maxContextTokens !== undefined
+        ? { maxContextTokens: definition.maxContextTokens }
+        : {}),
+    });
     for (const tool of tools) {
       subAgent.addTool(tool);
     }
@@ -334,19 +351,6 @@ export class SubagentsRunTaskTool extends BaseTool<
     };
   }
 
-  private selectModel(
-    intelligence: 'smart' | 'fast',
-    config: SubagentsToolGroupConfig,
-    runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): string {
-    if (intelligence === 'smart') {
-      return (
-        config.smartModelOverride || this.getParentAgentModel(runnableConfig)
-      );
-    }
-    return this.llmModelsService.getSubagentFastModel();
-  }
-
   private getParentAgentModel(
     runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
   ): string {
@@ -364,11 +368,30 @@ export class SubagentsRunTaskTool extends BaseTool<
     return environment.llmLargeModel;
   }
 
-  private buildSystemPrompt(
-    basePrompt: string,
-    resourcesInformation?: string,
-  ): string {
-    if (!resourcesInformation) return basePrompt;
-    return `${basePrompt}\n\nAdditional workspace information:\n${resourcesInformation}`;
+  /**
+   * Auto-detect the git repository under the runtime workspace.
+   * Returns the repo root path or undefined if none is found.
+   */
+  private async discoverGitRepoPath(
+    runtimeProvider: RuntimeThreadProvider,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<string | undefined> {
+    try {
+      const runtime = await runtimeProvider.provide(cfg);
+      const res = await execRuntimeWithContext(
+        runtime,
+        {
+          cmd: `find ${BASE_RUNTIME_WORKDIR} -maxdepth 2 -name .git -type d 2>/dev/null | head -1`,
+        },
+        cfg,
+      );
+      if (res.exitCode !== 0) return undefined;
+      const gitDir = res.stdout.trim();
+      if (!gitDir) return undefined;
+      const repoRoot = gitDir.replace(/\/\.git$/, '');
+      return repoRoot.length ? repoRoot : undefined;
+    } catch {
+      return undefined;
+    }
   }
 }

@@ -245,7 +245,7 @@ export class ToolExecutorNode extends BaseNode<
 
       interleavedMessages.push(toolMsg);
 
-      // Append any additional messages (e.g., from report_status) immediately after the tool result
+      // Append any additional messages immediately after the tool result
       if (result.additionalMessages && result.additionalMessages.length > 0) {
         interleavedMessages.push(...result.additionalMessages);
       }

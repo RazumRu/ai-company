@@ -260,7 +260,7 @@ describe('GraphStateManager', () => {
       expect(threadUpdate).toBeUndefined();
     });
 
-    it('should track node status as Running when at least one thread is active', async () => {
+    it('should keep agent node status as Idle regardless of active threads', async () => {
       const agent: any = {
         subscribe: vi.fn(),
         getGraphNodeMetadata: vi.fn(),
@@ -291,33 +291,14 @@ describe('GraphStateManager', () => {
           config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
         },
       });
-      expect(manager.getNodeStatus('agent-1')).toBe(GraphNodeStatus.Running);
-
-      // Start thread 2
-      await agentHandler({
-        type: 'invoke',
-        data: {
-          threadId: 'thread-2',
-          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
-        },
-      });
-      expect(manager.getNodeStatus('agent-1')).toBe(GraphNodeStatus.Running);
+      // Agent node stays Idle — status tracking is only for runtime/trigger/mcp
+      expect(manager.getNodeStatus('agent-1')).toBe(GraphNodeStatus.Idle);
 
       // End thread 1
       await agentHandler({
         type: 'run',
         data: {
           threadId: 'thread-1',
-          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
-        },
-      });
-      expect(manager.getNodeStatus('agent-1')).toBe(GraphNodeStatus.Running);
-
-      // End thread 2
-      await agentHandler({
-        type: 'run',
-        data: {
-          threadId: 'thread-2',
           config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
         },
       });
@@ -463,7 +444,7 @@ describe('GraphStateManager', () => {
       });
     });
 
-    it('should not emit duplicate GraphNodeUpdate notifications', async () => {
+    it('should not emit GraphNodeUpdate for agent invoke events (agent stays Idle)', async () => {
       const agent: any = {
         subscribe: vi.fn(),
         getGraphNodeMetadata: vi.fn(),
@@ -488,14 +469,7 @@ describe('GraphStateManager', () => {
 
       vi.mocked(notifications.emit).mockClear();
 
-      // Trigger transition to same status
-      await agentHandler({
-        type: 'invoke',
-        data: {
-          threadId: 't1',
-          config: { configurable: { graph_id: 'graph-1', node_id: 'agent-1' } },
-        },
-      });
+      // Agent invoke should not change node status
       await agentHandler({
         type: 'invoke',
         data: {
@@ -510,8 +484,8 @@ describe('GraphStateManager', () => {
           (call: any) => call[0].type === NotificationEvent.GraphNodeUpdate,
         );
 
-      // status: Running was already emitted once
-      expect(updates.length).toBe(1);
+      // No GraphNodeUpdate emitted — agent node stays Idle, no status change
+      expect(updates.length).toBe(0);
     });
 
     it('should update additional metadata when agent emits nodeAdditionalMetadataUpdate', async () => {

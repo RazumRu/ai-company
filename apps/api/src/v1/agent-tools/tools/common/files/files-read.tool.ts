@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
@@ -126,9 +127,9 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       ### Example — batch read with line ranges for large files:
       \`\`\`json
       {"filesToRead":[
-        {"filePath":"/runtime-workspace/project/src/service.ts"},
-        {"filePath":"/runtime-workspace/project/src/dao.ts"},
-        {"filePath":"/runtime-workspace/project/src/large.ts","fromLineNumber":100,"toLineNumber":250}
+        {"filePath":"${BASE_RUNTIME_WORKDIR}/project/src/service.ts"},
+        {"filePath":"${BASE_RUNTIME_WORKDIR}/project/src/dao.ts"},
+        {"filePath":"${BASE_RUNTIME_WORKDIR}/project/src/large.ts","fromLineNumber":100,"toLineNumber":250}
       ]}
       \`\`\`
     `;
@@ -158,10 +159,10 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
             error: dedent`
               Invalid path: "${read.filePath}" is a relative path.
 
-              All paths must be absolute and start with /runtime-workspace/.
+              All paths must be absolute and start with ${BASE_RUNTIME_WORKDIR}/.
 
               TIP: Use paths exactly as returned by codebase_search or files_find_paths.
-              Example: /runtime-workspace/my-project/${read.filePath}
+              Example: ${BASE_RUNTIME_WORKDIR}/my-project/${read.filePath}
             `,
           },
           messageMetadata,

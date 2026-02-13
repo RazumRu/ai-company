@@ -13,17 +13,7 @@ import { SubagentToolId } from '../../../subagents/subagents.types';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { ToolNodeBaseTemplate } from '../base-node.template';
 
-export const SubagentsToolTemplateSchema = z
-  .object({
-    smartModel: z
-      .string()
-      .optional()
-      .describe(
-        'Override model for "smart" intelligence mode. If not set, the parent agent\'s model is used.',
-      )
-      .meta({ 'x-ui:litellm-models-list-select': true }),
-  })
-  .strip();
+export const SubagentsToolTemplateSchema = z.object({}).strip();
 
 @Injectable()
 @RegisterTemplate()
@@ -77,7 +67,6 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
       ) => {
         const graphId = params.metadata.graphId;
         const outputNodeIds = params.outputNodeIds;
-        const config = params.config;
 
         // Resolve runtime node
         const runtimeNodeIds = this.graphRegistry.filterNodesByType(
@@ -135,7 +124,7 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
         // Build the subagents tool group
         const { tools, instructions } = this.subagentsToolGroup.buildTools({
           toolSets,
-          smartModelOverride: config.smartModel,
+          runtimeProvider: runtimeNode.instance,
         });
 
         instance.tools.length = 0;

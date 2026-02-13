@@ -104,4 +104,13 @@ export class LlmModelsService {
   getSubagentFastModel(): string {
     return this.offlineCodingFallback(environment.llmMiniCodeModel);
   }
+
+  /**
+   * Returns the model used by the explorer subagent.
+   * Always uses the online mini model — explorer subagents need hosted-quality
+   * responses even when the main agent is in offline mode.
+   */
+  getSubagentExplorerModel(): string {
+    return environment.llmSubagentExplorerModel;
+  }
 }

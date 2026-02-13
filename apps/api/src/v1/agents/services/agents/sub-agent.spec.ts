@@ -16,11 +16,7 @@ import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { filterMessagesForLlm } from '../../agents.utils';
 import { BaseAgentConfigurable } from '../nodes/base-node';
-import {
-  SubAgent,
-  SUBAGENT_DEFAULT_MAX_ITERATIONS,
-  SubAgentSchemaType,
-} from './sub-agent';
+import { SubAgent, SubAgentSchemaType } from './sub-agent';
 
 const { mockLlmInvokeRef } = vi.hoisted(() => ({
   mockLlmInvokeRef: vi.fn(),
@@ -63,6 +59,7 @@ describe('SubAgent', () => {
   const defaultAgentConfig: SubAgentSchemaType = {
     instructions: 'You are a test subagent.',
     invokeModelName: 'test-model',
+    maxIterations: 25,
   };
 
   beforeEach(() => {
@@ -194,7 +191,7 @@ describe('SubAgent', () => {
   });
 
   describe('maxIterations', () => {
-    it('should use default maxIterations when not configured', async () => {
+    it('should use maxIterations from config', async () => {
       // Make LLM always return tool calls so it loops until limit
       const toolCallMsg = new AIMessage({
         content: '',
@@ -209,7 +206,7 @@ describe('SubAgent', () => {
       );
 
       expect(result.error).toBe('Max iterations reached');
-      expect(result.result).toContain(String(SUBAGENT_DEFAULT_MAX_ITERATIONS));
+      expect(result.result).toContain(String(defaultAgentConfig.maxIterations));
     });
 
     it('should respect custom maxIterations config', async () => {
@@ -264,6 +261,75 @@ describe('SubAgent', () => {
 
       expect(result.error).toBe('Max iterations reached');
       expect(result.statistics.totalIterations).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('maxContextTokens', () => {
+    it('should stop when currentContext exceeds maxContextTokens', async () => {
+      subAgent.setConfig({
+        ...defaultAgentConfig,
+        maxContextTokens: 500,
+      });
+
+      // Return currentContext in the token usage to trigger the limit
+      vi.mocked(
+        mockLitellmService.extractTokenUsageFromResponse,
+      ).mockResolvedValue({
+        inputTokens: 600,
+        outputTokens: 30,
+        totalTokens: 630,
+        currentContext: 600,
+      });
+
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'Partial result before limit.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Research the codebase')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBe('Context limit reached (600/500)');
+      expect(result.result).toBe('Partial result before limit.');
+      expect(result.statistics.totalIterations).toBe(1);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('SubAgent hit context limit'),
+      );
+    });
+
+    it('should not stop when currentContext is below maxContextTokens', async () => {
+      subAgent.setConfig({
+        ...defaultAgentConfig,
+        maxContextTokens: 1000,
+      });
+
+      vi.mocked(
+        mockLitellmService.extractTokenUsageFromResponse,
+      ).mockResolvedValue({
+        inputTokens: 200,
+        outputTokens: 30,
+        totalTokens: 230,
+        currentContext: 200,
+      });
+
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'Full result completed.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Quick task')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toBe('Full result completed.');
     });
   });
 

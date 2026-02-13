@@ -669,10 +669,9 @@ describe('ToolExecutorNode', () => {
 
       mockState.messages = [aiMessage];
 
-      // Tool 1 returns a result WITH additional messages (e.g., from report_status)
+      // Tool 1 returns a result WITH additional messages
       const additionalMsg1 = new AIMessage({
         content: 'Tool 1 status report',
-        additional_kwargs: { __isReportingMessage: true },
       });
 
       mockTool1.invoke = vi.fn().mockResolvedValue({
@@ -697,9 +696,6 @@ describe('ToolExecutorNode', () => {
       // Second message should be the additional message from tool 1
       expect(result.messages?.items?.[1]).toBeInstanceOf(AIMessage);
       expect(result.messages?.items?.[1]?.content).toBe('Tool 1 status report');
-      expect(
-        result.messages?.items?.[1]?.additional_kwargs?.__isReportingMessage,
-      ).toBe(true);
 
       // Third message should be tool 2 result
       expect(result.messages?.items?.[2]).toBeInstanceOf(ToolMessage);
@@ -722,12 +718,10 @@ describe('ToolExecutorNode', () => {
 
       const additionalMsg1 = new AIMessage({
         content: 'First status update',
-        additional_kwargs: { __isReportingMessage: true },
       });
 
       const additionalMsg2 = new AIMessage({
         content: 'Second status update',
-        additional_kwargs: { __isReportingMessage: true },
       });
 
       mockTool1.invoke = vi.fn().mockResolvedValue({
@@ -767,11 +761,10 @@ describe('ToolExecutorNode', () => {
 
       mockState.messages = [aiMessage];
 
-      // Tool returns result with messageMetadata.__hideForLlm (like report_status tool)
+      // Tool returns result with messageMetadata.__hideForLlm
       const additionalMsg = new AIMessage({
         content: 'Status update for user',
         additional_kwargs: {
-          __isReportingMessage: true,
           __hideForLlm: true,
         },
       });
@@ -795,78 +788,11 @@ describe('ToolExecutorNode', () => {
         true,
       );
 
-      // Additional AI message should have __isReportingMessage and __hideForLlm
+      // Additional AI message should have __hideForLlm
       expect(result.messages?.items?.[1]).toBeInstanceOf(AIMessage);
-      expect(
-        result.messages?.items?.[1]?.additional_kwargs?.__isReportingMessage,
-      ).toBe(true);
       expect(result.messages?.items?.[1]?.additional_kwargs?.__hideForLlm).toBe(
         true,
       );
-    });
-
-    it('should properly handle report_status tool pattern to prevent duplicate reporting', async () => {
-      // This test verifies the fix for the duplicate report_status messages issue
-      const toolCall = {
-        id: 'call-1',
-        name: 'report_status',
-        args: {
-          message:
-            "I'm starting on your request to search for knowledge-related files.",
-        },
-      };
-
-      const aiMessage = new AIMessage({
-        content: 'Reporting progress',
-        tool_calls: [toolCall],
-      });
-
-      mockState.messages = [aiMessage];
-
-      // Simulate report_status tool behavior
-      const reportMessage = new AIMessage({
-        content:
-          "I'm starting on your request to search for knowledge-related files.",
-        additional_kwargs: {
-          __isReportingMessage: true,
-          __hideForLlm: true,
-        },
-      });
-
-      mockTool1.name = 'report_status';
-      mockTool1.invoke = vi.fn().mockResolvedValue({
-        output: { reported: true },
-        messageMetadata: {
-          __hideForLlm: true, // Tool message should be hidden
-        },
-        additionalMessages: [reportMessage],
-      });
-
-      const result = await node.invoke(mockState, mockConfig);
-
-      // Should have 2 messages: hidden tool message + visible AI message
-      expect(result.messages?.items).toHaveLength(2);
-
-      // First message: tool message with {reported: true}, marked as hidden
-      const toolMessage = result.messages?.items?.[0] as ToolMessage;
-      expect(toolMessage).toBeInstanceOf(ToolMessage);
-      expect(toolMessage.name).toBe('report_status');
-      expect(toolMessage.additional_kwargs?.__hideForLlm).toBe(true);
-
-      // Second message: AI message with actual report content
-      const aiReportMessage = result.messages?.items?.[1] as AIMessage;
-      expect(aiReportMessage).toBeInstanceOf(AIMessage);
-      expect(aiReportMessage.content).toBe(
-        "I'm starting on your request to search for knowledge-related files.",
-      );
-      expect(aiReportMessage.additional_kwargs?.__isReportingMessage).toBe(
-        true,
-      );
-      expect(aiReportMessage.additional_kwargs?.__hideForLlm).toBe(true);
-
-      // The key assertion: tool message should be hidden from both UI and LLM
-      // Only the AI message with __isReportingMessage should be displayed to users
-      expect(toolMessage.additional_kwargs?.__hideForLlm).toBe(true);
     });
   });
 

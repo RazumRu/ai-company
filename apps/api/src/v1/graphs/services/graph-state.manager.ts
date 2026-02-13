@@ -317,10 +317,6 @@ export class GraphStateManager {
       state.threadToRunMap.set(threadId, runId);
     }
 
-    state.baseStatus = GraphNodeStatus.Running;
-
-    this.emitNodeUpdate(state, threadId, runId);
-
     const threadMetadata = cfg?.thread_metadata as
       | Record<string, unknown>
       | undefined;
@@ -407,10 +403,6 @@ export class GraphStateManager {
       });
     }
 
-    if (state.activeExecutions.size === 0) {
-      state.baseStatus = GraphNodeStatus.Idle;
-    }
-
     this.emitNodeUpdate(state, threadId, runId);
   }
 
@@ -440,7 +432,6 @@ export class GraphStateManager {
     }
 
     state.activeExecutions.clear();
-    state.baseStatus = GraphNodeStatus.Stopped;
 
     if (data.error) {
       state.error = this.toErrorMessage(data.error);

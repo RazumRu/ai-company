@@ -34,7 +34,6 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
   __hideForSummary?: boolean;
   __requiresFinishTool?: boolean;
   __isAgentInstructionMessage?: boolean;
-  __isReportingMessage?: boolean;
 
   // Inter-agent communication metadata
   __interAgentCommunication?: boolean;

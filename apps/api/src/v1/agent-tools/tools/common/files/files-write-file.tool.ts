@@ -6,6 +6,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
@@ -80,12 +81,12 @@ export class FilesWriteFileTool extends FilesBaseTool<FilesWriteFileToolSchemaTy
       ### Examples
       **1. Create a new TypeScript module:**
       \`\`\`json
-      {"filePath": "/runtime-workspace/project/src/utils/validation.ts", "fileContent": "export function isEmail(value: string): boolean {\\n  return /^[^@]+@[^@]+$/.test(value);\\n}\\n"}
+      {"filePath": "${BASE_RUNTIME_WORKDIR}/project/src/utils/validation.ts", "fileContent": "export function isEmail(value: string): boolean {\\n  return /^[^@]+@[^@]+$/.test(value);\\n}\\n"}
       \`\`\`
 
       **2. Create a configuration file:**
       \`\`\`json
-      {"filePath": "/runtime-workspace/project/.eslintrc.json", "fileContent": "{\\n  \\"extends\\": [\\"eslint:recommended\\"]\\n}\\n"}
+      {"filePath": "${BASE_RUNTIME_WORKDIR}/project/.eslintrc.json", "fileContent": "{\\n  \\"extends\\": [\\"eslint:recommended\\"]\\n}\\n"}
       \`\`\`
     `;
   }

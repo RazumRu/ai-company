@@ -89,8 +89,8 @@ describe('FilesCodebaseSearchTool', () => {
       ).toThrow();
     });
 
-    it('should reject missing gitRepoDirectory field', () => {
-      expect(() => tool.validate({ query: 'find auth' })).toThrow();
+    it('should accept missing gitRepoDirectory field (optional — auto-discovered)', () => {
+      expect(() => tool.validate({ query: 'find auth' })).not.toThrow();
     });
   });
 
@@ -360,6 +360,101 @@ describe('FilesCodebaseSearchTool', () => {
       // relative('/repo', '/src/utils') = '../src/utils' (outside repo)
       // Falls through to the final return branch: posix normalize of '/src/utils' with leading slash stripped
       expect(result).not.toMatch(/^\//);
+    });
+  });
+
+  describe('auto-discovery', () => {
+    const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
+      configurable: {
+        thread_id: 'test-thread-123',
+      },
+    };
+
+    it('should auto-discover git repo when gitRepoDirectory is omitted', async () => {
+      vi.spyOn(
+        tool as unknown as { execCommand: (...args: unknown[]) => unknown },
+        'execCommand',
+      )
+        // autoDiscoverRepo: find .git dirs
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/runtime-workspace/my-repo/.git\n',
+          stderr: '',
+          execPath: '',
+        })
+        // resolveRepoRoot: git rev-parse
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/runtime-workspace/my-repo',
+          stderr: '',
+          execPath: '',
+        })
+        // resolveRepoInfo: git remote get-url
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        // resolveCurrentBranch: symbolic-ref
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'ready',
+        repoIndex: {
+          id: 'index-1',
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_main_1536',
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue([]);
+
+      const { output } = await tool.invoke(
+        { query: 'find auth' },
+        mockConfig,
+        mockCfg,
+      );
+
+      // Should not produce an error — successfully auto-discovered the repo
+      expect(output.error).toBeUndefined();
+    });
+
+    it('should return error when no git repo found and gitRepoDirectory omitted', async () => {
+      vi.spyOn(
+        tool as unknown as { execCommand: (...args: unknown[]) => unknown },
+        'execCommand',
+      )
+        // autoDiscoverRepo: find .git dirs — none found
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '',
+        });
+
+      const { output } = await tool.invoke(
+        { query: 'find auth' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(output.error).toContain(
+        'requires a cloned git repository but none was found',
+      );
     });
   });
 

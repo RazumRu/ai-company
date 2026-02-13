@@ -96,7 +96,7 @@ export class FinishTool extends BaseTool<FinishToolSchemaType> {
       ⚠️ Normal assistant messages before finish are NOT reliably shown to the user. Only the finish message is guaranteed to be displayed.
 
       **CORRECT — Do this:**
-      1. Use \`report_status\` for brief progress updates while working
+      1. For brief progress updates while working, include a \`content\` field in your assistant message alongside tool calls (e.g. \`{"role":"assistant","content":"Cloning the repo now...","tool_calls":[...]}\`)
       2. When complete, call finish and put your ENTIRE output in the \`message\` field
 
       **For research/design/analysis tasks, the \`message\` field must contain:**

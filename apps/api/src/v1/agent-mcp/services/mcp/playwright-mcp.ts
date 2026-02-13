@@ -2,6 +2,7 @@ import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
 
+import { BASE_RUNTIME_WORKDIR } from '../../../runtime/services/base-runtime';
 import { IMcpServerConfig } from '../../agent-mcp.types';
 import { BaseMcp } from '../base-mcp';
 
@@ -17,7 +18,7 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
     const runtimeProvider = this.getRuntimeInstance();
     const sharedWorkdir =
       runtimeProvider?.getParams().runtimeStartParams.workdir ||
-      '/runtime-workspace';
+      BASE_RUNTIME_WORKDIR;
 
     return {
       name: 'playwright',
@@ -49,11 +50,11 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
 
       **IMPORTANT: Shared Runtime Volume**
       Playwright runs inside a Docker container, but a shared runtime volume is mounted:
-      - **Shared Path:** \`/runtime-workspace\` is mounted into the Playwright container
-      - **Shared Downloads:** \`/data\` maps to \`/runtime-workspace/playwright\`
-      - **Retrievable Files:** Save downloads, screenshots, and artifacts under \`/data\` (preferred) or \`/runtime-workspace\`
-      - **Agent Access:** Use the Filesystem MCP to read files from \`/runtime-workspace\`
-      - **Outside Paths:** Files written outside \`/runtime-workspace\` stay in the Playwright container
+      - **Shared Path:** \`${BASE_RUNTIME_WORKDIR}\` is mounted into the Playwright container
+      - **Shared Downloads:** \`/data\` maps to \`${BASE_RUNTIME_WORKDIR}/playwright\`
+      - **Retrievable Files:** Save downloads, screenshots, and artifacts under \`/data\` (preferred) or \`${BASE_RUNTIME_WORKDIR}\`
+      - **Agent Access:** Use the Filesystem MCP to read files from \`${BASE_RUNTIME_WORKDIR}\`
+      - **Outside Paths:** Files written outside \`${BASE_RUNTIME_WORKDIR}\` stay in the Playwright container
 
       **When to Use:**
       - Web scraping and data extraction
@@ -67,7 +68,7 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
       - Static file operations (use filesystem tools)
       - API testing (use HTTP tools)
       - Local file system access (use filesystem MCP)
-      - Tasks that require saving files outside \`/runtime-workspace\`
+      - Tasks that require saving files outside \`${BASE_RUNTIME_WORKDIR}\`
 
       **Best Practices:**
 
@@ -114,8 +115,8 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
       \`\`\`
 
       **Retrieving Files**
-      1. Save artifacts to \`/data/... \` (preferred) or \`/runtime-workspace/... \`.
-      2. Use Filesystem MCP to list/read the file, e.g. \`read_text_file\` or \`read_media_file\`.
+      1. Save artifacts to \`/data/... \` (preferred) or \`${BASE_RUNTIME_WORKDIR}/... \`.
+      2. Use Filesystem MCP to list/read the file from \`${BASE_RUNTIME_WORKDIR}\`, e.g. \`read_text_file\` or \`read_media_file\`.
       3. If a tool supports \`downloadsDir\`, set it to \`/data\` so files are always accessible.
 
       **Security Considerations:**

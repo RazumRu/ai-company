@@ -6,6 +6,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
@@ -18,7 +19,7 @@ export const FilesDirectoryTreeToolSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Absolute path to the directory to scan (e.g., "/runtime-workspace/project"). Must be an existing directory — the tool will fail if the path does not exist or points to a file.',
+      'Absolute path to the directory to scan (e.g., "${BASE_RUNTIME_WORKDIR}/project"). Must be an existing directory — the tool will fail if the path does not exist or points to a file.',
     ),
   maxDepth: z
     .number()
@@ -132,17 +133,17 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
       ### Examples
       **1. Explore project root (shallow):**
       \`\`\`json
-      {"directoryPath": "/runtime-workspace/project", "maxDepth": 3}
+      {"directoryPath": "${BASE_RUNTIME_WORKDIR}/project", "maxDepth": 3}
       \`\`\`
 
       **2. Deep dive into specific directory:**
       \`\`\`json
-      {"directoryPath": "/runtime-workspace/project/src/modules/auth", "maxDepth": 5}
+      {"directoryPath": "${BASE_RUNTIME_WORKDIR}/project/src/modules/auth", "maxDepth": 5}
       \`\`\`
 
       **3. Custom exclusions:**
       \`\`\`json
-      {"directoryPath": "/runtime-workspace/project", "maxDepth": 4, "skipPatterns": ["node_modules/**", "**/*.test.ts"]}
+      {"directoryPath": "${BASE_RUNTIME_WORKDIR}/project", "maxDepth": 4, "skipPatterns": ["node_modules/**", "**/*.test.ts"]}
       \`\`\`
     `;
   }

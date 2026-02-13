@@ -3,6 +3,7 @@ import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
 import { basename } from 'path';
 
+import { BASE_RUNTIME_WORKDIR } from '../../../runtime/services/base-runtime';
 import { IMcpServerConfig } from '../../agent-mcp.types';
 import { BaseMcp, McpToolMetadata } from '../base-mcp';
 
@@ -17,7 +18,7 @@ export class FilesystemMcp extends BaseMcp<FilesystemMcpConfig> {
   }
 
   protected toolsMapping(): Map<string, McpToolMetadata> {
-    const defaultDirectory = '/runtime-workspace';
+    const defaultDirectory = BASE_RUNTIME_WORKDIR;
     const readOnly = this.config?.readOnly ?? false;
 
     const mapping = new Map<string, McpToolMetadata>([
@@ -701,10 +702,10 @@ export class FilesystemMcp extends BaseMcp<FilesystemMcpConfig> {
 
     **1.1) Shell tool working directory gotcha**
     If you created files using the Shell tool with relative paths, they were likely created under a per-thread working directory:
-    \`/runtime-workspace/<threadId>\`
-    If you can’t find a file, either:
-    - list \`/runtime-workspace\` to locate your thread directory, or
-    - use absolute paths when creating files (recommended) under \`/runtime-workspace\`.
+    \`${BASE_RUNTIME_WORKDIR}/<threadId>\`
+    If you can't find a file, either:
+    - list \`${BASE_RUNTIME_WORKDIR}\` to locate your thread directory, or
+    - use absolute paths when creating files (recommended) under \`${BASE_RUNTIME_WORKDIR}\`.
 
     **2) Prefer batch reads**
     Use \`read_multiple_files\` for small configs you almost always need together (package.json, tsconfig, eslint).

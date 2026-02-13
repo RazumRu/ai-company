@@ -108,6 +108,7 @@ describe('SubagentsRunTaskTool', () => {
 
     mockLlmModelsService = {
       getSubagentFastModel: vi.fn().mockReturnValue('gpt-5.1-codex-mini'),
+      getSubagentExplorerModel: vi.fn().mockReturnValue('gpt-5-mini'),
     } as unknown as LlmModelsService;
 
     mockLogger = {
@@ -142,15 +143,6 @@ describe('SubagentsRunTaskTool', () => {
         tool.validate({ task: 'Find files', purpose: 'Explore' }),
       ).toThrow();
     });
-
-    it('should default intelligence to fast', () => {
-      const parsed = tool.validate({
-        agentId: 'system:explorer',
-        task: 'Find files',
-        purpose: 'Explore',
-      }) as { intelligence: string };
-      expect(parsed.intelligence).toBe('fast');
-    });
   });
 
   describe('agent resolution', () => {
@@ -159,7 +151,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'nonexistent',
           task: 'Do something',
-          intelligence: 'fast',
           purpose: 'Test',
         },
         makeConfig(),
@@ -176,7 +167,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:explorer',
           task: 'Find files',
-          intelligence: 'fast',
           purpose: 'Explore',
         },
         makeConfig(),
@@ -193,7 +183,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:simple',
           task: 'Edit file',
-          intelligence: 'fast',
           purpose: 'Edit',
         },
         makeConfig(),
@@ -207,30 +196,49 @@ describe('SubagentsRunTaskTool', () => {
   });
 
   describe('model selection', () => {
-    it('should use fast model by default', async () => {
+    it('should use explorer model for system:explorer', async () => {
       await tool.invoke(
         {
           agentId: 'system:explorer',
           task: 'Find files',
-          intelligence: 'fast',
           purpose: 'Explore',
         },
         makeConfig(),
         defaultCfg,
       );
 
+      expect(mockLlmModelsService.getSubagentExplorerModel).toHaveBeenCalled();
+      expect(mockLlmModelsService.getSubagentFastModel).not.toHaveBeenCalled();
+      expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ invokeModelName: 'gpt-5-mini' }),
+      );
+    });
+
+    it('should use fast model for system:simple', async () => {
+      await tool.invoke(
+        {
+          agentId: 'system:simple',
+          task: 'Edit file',
+          purpose: 'Edit',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
       expect(mockLlmModelsService.getSubagentFastModel).toHaveBeenCalled();
+      expect(
+        mockLlmModelsService.getSubagentExplorerModel,
+      ).not.toHaveBeenCalled();
       expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
         expect.objectContaining({ invokeModelName: 'gpt-5.1-codex-mini' }),
       );
     });
 
-    it('should use parent agent model when smart is requested', async () => {
+    it('should use parent agent model for system:smart', async () => {
       await tool.invoke(
         {
-          agentId: 'system:explorer',
+          agentId: 'system:smart',
           task: 'Analyze code',
-          intelligence: 'smart',
           purpose: 'Deep analysis',
         },
         makeConfig(),
@@ -244,12 +252,11 @@ describe('SubagentsRunTaskTool', () => {
       );
     });
 
-    it('should fall back to default large model when parent agent is unavailable', async () => {
+    it('should fall back to default large model for system:smart when parent is unavailable', async () => {
       await tool.invoke(
         {
-          agentId: 'system:explorer',
+          agentId: 'system:smart',
           task: 'Analyze code',
-          intelligence: 'smart',
           purpose: 'Deep analysis',
         },
         makeConfig(),
@@ -257,25 +264,59 @@ describe('SubagentsRunTaskTool', () => {
       );
 
       expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ invokeModelName: 'openai/gpt-5.2-fallback' }),
+        expect.objectContaining({
+          invokeModelName: 'openai/gpt-5.2-fallback',
+        }),
       );
     });
+  });
 
-    it('should use smartModelOverride when configured', async () => {
+  describe('context token limits', () => {
+    it('should set maxContextTokens for explorer subagent', async () => {
       await tool.invoke(
         {
           agentId: 'system:explorer',
-          task: 'Analyze code',
-          intelligence: 'smart',
-          purpose: 'Deep analysis',
+          task: 'Find files',
+          purpose: 'Explore',
         },
-        makeConfig({ smartModelOverride: 'openai/o3-pro' }),
-        makeCfgWithParentModel('anthropic/claude-sonnet-4-20250514'),
+        makeConfig(),
+        defaultCfg,
       );
 
       expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ invokeModelName: 'openai/o3-pro' }),
+        expect.objectContaining({ maxContextTokens: 200_000 }),
       );
+    });
+
+    it('should set maxContextTokens for simple subagent', async () => {
+      await tool.invoke(
+        {
+          agentId: 'system:simple',
+          task: 'Edit file',
+          purpose: 'Edit',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      expect(mockSubAgent.setConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ maxContextTokens: 70_000 }),
+      );
+    });
+
+    it('should not set maxContextTokens for smart subagent', async () => {
+      await tool.invoke(
+        {
+          agentId: 'system:smart',
+          task: 'Analyze code',
+          purpose: 'Deep analysis',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      const configCall = mockSubAgent.setConfig.mock.calls[0]?.[0];
+      expect(configCall).not.toHaveProperty('maxContextTokens');
     });
   });
 
@@ -285,7 +326,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:explorer',
           task: 'Find files',
-          intelligence: 'fast',
           purpose: 'Explore',
         },
         makeConfig(),
@@ -301,7 +341,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:explorer',
           task: 'Find files',
-          intelligence: 'fast',
           purpose: 'Explore',
         },
         makeConfig({ resourcesInformation: '- github-resource: my-repo' }),
@@ -319,7 +358,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:simple',
           task: 'Do work',
-          intelligence: 'fast',
           purpose: 'Test',
         },
         makeConfig(),
@@ -347,7 +385,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:simple',
           task: 'Do work',
-          intelligence: 'fast',
           purpose: 'Test',
         },
         makeConfig(),
@@ -359,12 +396,11 @@ describe('SubagentsRunTaskTool', () => {
   });
 
   describe('title generation', () => {
-    it('should generate title with agentId and purpose', async () => {
+    it('should generate title with purpose', async () => {
       const result = await tool.invoke(
         {
           agentId: 'system:explorer',
           task: 'Find auth deps',
-          intelligence: 'fast',
           purpose: 'Map auth deps',
         },
         makeConfig(),
@@ -424,7 +460,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'nonexistent',
           task: 'Do something',
-          intelligence: 'fast',
           purpose: 'Test',
         },
         makeConfig(),
@@ -470,7 +505,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:explorer',
           task: 'Find files',
-          intelligence: 'fast',
           purpose: 'Explore',
         },
         makeConfig(),
@@ -491,7 +525,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:simple',
           task: 'Do work',
-          intelligence: 'fast',
           purpose: 'Test',
         },
         makeConfig(),
@@ -517,7 +550,6 @@ describe('SubagentsRunTaskTool', () => {
         {
           agentId: 'system:explorer',
           task: 'Find files',
-          intelligence: 'fast',
           purpose: 'Explore',
         },
         makeConfig(),

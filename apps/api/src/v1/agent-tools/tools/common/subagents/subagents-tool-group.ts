@@ -47,8 +47,9 @@ export class SubagentsToolGroup extends BaseToolGroup<SubagentsToolGroupConfig> 
       - **Multi-file investigation**: Reading and cross-referencing 3+ files → "system:explorer"
       - **Answering "how does X work?"**: Any question requiring reading multiple files to understand a feature → "system:explorer"
       - **Dependency/import tracing**: Finding all usages or consumers of a function/module → "system:explorer"
-      - **Self-contained code changes**: Implementing a well-defined change across files → "system:simple"
-      - **Running and analyzing commands**: Build, test, lint output that could be verbose → "system:simple"
+      - **Quick fixes**: Rename a variable, add an import, small single-file edit → "system:simple"
+      - **Running a command**: Run lint, run a test, check build output → "system:simple"
+      - **Self-contained code changes**: Implementing a well-defined change across files → "system:smart"
 
       ### When NOT to Delegate
       - Reading a single, known file path (use your own tools directly)
@@ -60,12 +61,9 @@ export class SubagentsToolGroup extends BaseToolGroup<SubagentsToolGroupConfig> 
       Example: investigating auth module AND database schema AND API routes → spawn 3 explorers in parallel.
 
       ### Choosing the Right Subagent
-      - **"system:explorer"** — READ-ONLY. Use for all investigation, research, and understanding tasks. Safer and cheaper.
-      - **"system:simple"** — FULL ACCESS. Use only when the task requires file modifications, running builds/tests, or executing commands with side effects.
-
-      ### Intelligence Levels
-      - **"fast"** (default): Smaller, cheaper model. Use for exploration, searches, straightforward tasks.
-      - **"smart"**: Same large model as you. Use only for tasks requiring complex reasoning or nuanced code changes.
+      - **"system:explorer"** — READ-ONLY, fast model. Default for all investigation, research, and understanding tasks. Safer and cheaper.
+      - **"system:simple"** — FULL ACCESS, small fast model, tiny 70k context. For quick, well-defined tasks: simple file edits, running a command, renaming, adding an import.
+      - **"system:smart"** — FULL ACCESS, same large model as you. For complex reasoning, architectural analysis, nuanced code changes, multi-file modifications.
 
       ### Workflow
       1. Call \`subagents_list\` to see available subagent types (you only need to do this once per session).

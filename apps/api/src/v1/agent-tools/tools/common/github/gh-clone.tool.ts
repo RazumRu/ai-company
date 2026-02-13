@@ -11,6 +11,7 @@ import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-no
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
 import { GitRepositoryProvider } from '../../../../git-repositories/git-repositories.types';
 import { GitRepositoriesService } from '../../../../git-repositories/services/git-repositories.service';
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -39,7 +40,7 @@ export const GhCloneToolSchema = GhBaseToolSchema.extend({
     .nullable()
     .optional()
     .describe(
-      'Custom absolute path where the repository should be cloned (e.g., "/runtime-workspace/my-project"). If not provided, clones to the default runtime workspace location.',
+      `Custom absolute path where the repository should be cloned (e.g., "${BASE_RUNTIME_WORKDIR}/my-project"). If not provided, clones to the default runtime workspace location.`,
     ),
 });
 

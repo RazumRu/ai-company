@@ -50,8 +50,11 @@ const CodebaseSearchSchema = z.object({
   gitRepoDirectory: z
     .string()
     .min(1)
+    .optional()
     .describe(
-      'Absolute path to the git repository root (the directory containing the .git folder). Use the exact path returned by gh_clone.',
+      `Absolute path to the git repository root (the directory containing the .git folder). ` +
+        `Use the exact path returned by gh_clone. If omitted, the tool will auto-detect ` +
+        `the repository under ${BASE_RUNTIME_WORKDIR}.`,
     ),
   language: z
     .string()
@@ -107,8 +110,8 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
       ### Prerequisites
       - Repository MUST be cloned first. Use \`gh_clone\` if not already done.
-      - Use the exact path returned by gh_clone for gitRepoDirectory.
-      - \`gitRepoDirectory\` must point to the repository root (containing .git folder).
+      - \`gitRepoDirectory\` is optional — if omitted, the tool auto-detects the first git repo under ${BASE_RUNTIME_WORKDIR}.
+      - When provided, use the exact path returned by gh_clone. It must point to the repository root (containing .git folder).
 
       ### When to Use
       - ALWAYS your first action after \`gh_clone\` — no exceptions
@@ -143,9 +146,13 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       4) Use additional \`codebase_search\` queries to explore other aspects of the codebase.
       5) Use \`files_search_text\` for exact pattern matching (function names, variable references).
 
-      ### Example
+      ### Examples
       \`\`\`json
-      {"query":"where is auth middleware created?","top_k":5,"gitRepoDirectory":"/runtime-workspace/project","language":"ts"}
+      {"query":"where is auth middleware created?","top_k":5,"gitRepoDirectory":"${BASE_RUNTIME_WORKDIR}/project","language":"ts"}
+      \`\`\`
+      When there is only one repo in the workspace, gitRepoDirectory can be omitted:
+      \`\`\`json
+      {"query":"where is auth middleware created?","top_k":5}
       \`\`\`
     `;
   }
@@ -177,24 +184,41 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       };
     }
 
-    const repoRoot = await this.resolveRepoRoot(
-      config,
-      cfg,
-      args.gitRepoDirectory,
-    );
+    // Auto-discover git repo when gitRepoDirectory is not provided.
+    const gitRepoDirectory =
+      args.gitRepoDirectory ?? (await this.autoDiscoverRepo(config, cfg));
+
+    if (!gitRepoDirectory) {
+      return {
+        output: {
+          error: dedent`
+            codebase_search requires a cloned git repository but none was found under ${BASE_RUNTIME_WORKDIR}.
+
+            REQUIRED ACTION: Clone the repository first using gh_clone, then retry with the returned path.
+
+            Example workflow:
+            1. gh_clone({"owner": "owner", "repo": "repo-name"}) -> returns {"path": "${BASE_RUNTIME_WORKDIR}/repo-name"}
+            2. codebase_search({"query": "your query", "gitRepoDirectory": "${BASE_RUNTIME_WORKDIR}/repo-name"})
+          `,
+        },
+        messageMetadata,
+      };
+    }
+
+    const repoRoot = await this.resolveRepoRoot(config, cfg, gitRepoDirectory);
     if (!repoRoot) {
       return {
         output: {
           error: dedent`
             codebase_search requires a cloned git repository.
 
-            No git repository found at: ${args.gitRepoDirectory}
+            No git repository found at: ${gitRepoDirectory}
 
             REQUIRED ACTION: Clone the repository first using gh_clone, then retry with the returned path.
 
             Example workflow:
-            1. gh_clone({"owner": "owner", "repo": "repo-name"}) -> returns {"path": "/runtime-workspace/repo-name"}
-            2. codebase_search({"query": "your query", "gitRepoDirectory": "/runtime-workspace/repo-name"})
+            1. gh_clone({"owner": "owner", "repo": "repo-name"}) -> returns {"path": "${BASE_RUNTIME_WORKDIR}/repo-name"}
+            2. codebase_search({"query": "your query", "gitRepoDirectory": "${BASE_RUNTIME_WORKDIR}/repo-name"})
           `,
         },
         messageMetadata,
@@ -243,7 +267,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
     const collection = indexResult.repoIndex.qdrantCollection;
     const directoryFilter = this.normalizeDirectoryFilter(
-      args.gitRepoDirectory,
+      gitRepoDirectory,
       repoRoot,
     );
 
@@ -266,6 +290,31 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
   // ---------------------------------------------------------------------------
   // Private: repo discovery
   // ---------------------------------------------------------------------------
+
+  /**
+   * Auto-detect the git repository under /runtime-workspace when the caller
+   * does not provide gitRepoDirectory. Lists top-level directories and returns
+   * the first one that contains a .git folder.
+   */
+  private async autoDiscoverRepo(
+    config: FilesBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<string | null> {
+    // List immediate children of the workspace that are git repos.
+    const res = await this.execCommand(
+      {
+        cmd: `find ${shQuote(BASE_RUNTIME_WORKDIR)} -maxdepth 2 -name .git -type d 2>/dev/null | head -1`,
+      },
+      config,
+      cfg,
+    );
+    if (res.exitCode !== 0) return null;
+    const gitDir = res.stdout.trim();
+    if (!gitDir) return null;
+    // .git dir found — return the parent (repo root)
+    const repoRoot = gitDir.replace(/\/\.git$/, '');
+    return repoRoot.length ? repoRoot : null;
+  }
 
   private async resolveRepoRoot(
     config: FilesBaseToolConfig,

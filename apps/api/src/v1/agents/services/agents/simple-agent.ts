@@ -22,7 +22,6 @@ import { ZodSchema } from 'zod';
 import { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { zodToAjvSchema } from '../../../agent-tools/agent-tools.utils';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
-import { ReportStatusTool } from '../../../agent-tools/tools/core/report-status.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
@@ -99,7 +98,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   public async initTools(_config: SimpleAgentSchemaType) {
     // ----- finish tool -----
     this.addTool(new FinishTool().build({}));
-    this.addTool(new ReportStatusTool().build({}));
 
     // ----- mcp -----
     for (const mcpService of this.mcpServices) {

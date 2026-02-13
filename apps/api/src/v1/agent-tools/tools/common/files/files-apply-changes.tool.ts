@@ -6,6 +6,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
@@ -139,7 +140,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       **Example — Add import and use it:**
       \`\`\`json
       {
-        "filePath": "/runtime-workspace/project/src/app.ts",
+        "filePath": "${BASE_RUNTIME_WORKDIR}/project/src/app.ts",
         "edits": [
           {"oldText": "import { A } from './a';", "newText": "import { A } from './a';\\nimport { B } from './b';"},
           {"oldText": "const result = processA(data);", "newText": "const result = processA(processB(data));"}
@@ -174,17 +175,17 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       ### Examples
       **1. Simple text replacement:**
       \`\`\`json
-      {"filePath": "/runtime-workspace/project/src/app.ts", "oldText": "const port = 3000;", "newText": "const port = process.env.PORT || 3000;"}
+      {"filePath": "${BASE_RUNTIME_WORKDIR}/project/src/app.ts", "oldText": "const port = 3000;", "newText": "const port = process.env.PORT || 3000;"}
       \`\`\`
 
       **2. Insert at beginning of file:**
       \`\`\`json
-      {"filePath": "/runtime-workspace/project/src/app.ts", "oldText": "", "insertAfterLine": 0, "newText": "import { config } from 'dotenv';\\nconfig();"}
+      {"filePath": "${BASE_RUNTIME_WORKDIR}/project/src/app.ts", "oldText": "", "insertAfterLine": 0, "newText": "import { config } from 'dotenv';\\nconfig();"}
       \`\`\`
 
       **3. Replace all occurrences:**
       \`\`\`json
-      {"filePath": "/runtime-workspace/project/src/utils.ts", "oldText": "console.log", "newText": "logger.info", "replaceAll": true}
+      {"filePath": "${BASE_RUNTIME_WORKDIR}/project/src/utils.ts", "oldText": "console.log", "newText": "logger.info", "replaceAll": true}
       \`\`\`
     `;
   }

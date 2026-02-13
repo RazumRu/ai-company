@@ -214,7 +214,6 @@ export class MessageTransformerService {
     mapBool('hideForLlm', '__hideForLlm');
     mapBool('hideForSummary', '__hideForSummary');
     mapBool('isAgentInstructionMessage', '__isAgentInstructionMessage');
-    mapBool('isReportingMessage', '__isReportingMessage');
 
     if (normalized['__tokenUsage'] === undefined && normalized['tokenUsage']) {
       normalized['__tokenUsage'] = normalized['tokenUsage'];

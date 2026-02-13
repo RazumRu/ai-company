@@ -28,13 +28,18 @@ export interface SubagentRunResult {
   error?: string;
 }
 
-export const SUBAGENT_DEFAULT_MAX_ITERATIONS = 25;
-
 export type SubAgentSchemaType = {
   instructions: string;
   invokeModelName: string;
-  /** Maximum LLM iterations before the subagent is force-stopped. Default: 25. */
-  maxIterations?: number;
+  /** Maximum LLM iterations before the subagent is force-stopped. */
+  maxIterations: number;
+  /**
+   * Maximum context window size (in tokens) before the subagent is force-stopped.
+   * Uses `currentContext` (input tokens from the last LLM call) — the same metric
+   * that SimpleAgent uses for summarization thresholds.  When the conversation
+   * context exceeds this value the subagent stops with a partial result.
+   */
+  maxContextTokens?: number;
 };
 
 /**
@@ -187,9 +192,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         messages: { mode: 'append', items: initialMessages },
       };
 
-      const maxIterations =
-        config.maxIterations ?? SUBAGENT_DEFAULT_MAX_ITERATIONS;
-
       const stream = await compiled.stream(
         initialState as unknown as Record<string, unknown>,
         {
@@ -198,7 +200,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
             ...(runnableConfig?.configurable ?? {}),
             thread_id: threadId,
           },
-          recursionLimit: maxIterations,
+          recursionLimit: config.maxIterations,
           streamMode: ['updates'],
           signal: abortSignal,
         },
@@ -254,6 +256,24 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
                 },
               });
             }
+
+            // Check context window size after each node completes.
+            // Uses currentContext (input tokens from the last LLM call) — the
+            // same metric SimpleAgent uses for its summarization threshold.
+            if (
+              config.maxContextTokens &&
+              finalState.currentContext >= config.maxContextTokens
+            ) {
+              this.logger.warn(
+                `SubAgent hit context limit: ${finalState.currentContext} >= ${config.maxContextTokens}`,
+              );
+              return this.contextLimitResult(
+                finalState,
+                totalIterations,
+                toolCallsMade,
+                config.maxContextTokens,
+              );
+            }
           }
         }
       }
@@ -285,10 +305,10 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       }
       if (this.isRecursionLimitError(err)) {
         this.logger.warn(
-          `SubAgent hit max iterations (${config.maxIterations ?? SUBAGENT_DEFAULT_MAX_ITERATIONS})`,
+          `SubAgent hit max iterations (${config.maxIterations})`,
         );
         return {
-          result: `Subagent reached the maximum iteration limit (${config.maxIterations ?? SUBAGENT_DEFAULT_MAX_ITERATIONS}) without completing. Partial progress may have been made.`,
+          result: `Subagent reached the maximum iteration limit (${config.maxIterations}) without completing. Partial progress may have been made.`,
           statistics: {
             totalIterations,
             toolCallsMade,
@@ -317,6 +337,34 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       result: 'Subagent was aborted.',
       statistics: { totalIterations: 0, toolCallsMade: 0, usage: null },
       error: 'Aborted',
+    };
+  }
+
+  private contextLimitResult(
+    state: BaseAgentState,
+    totalIterations: number,
+    toolCallsMade: number,
+    maxContextTokens: number,
+  ): SubagentRunResult {
+    const lastAiMessage = [...state.messages]
+      .reverse()
+      .find((m) => m instanceof AIMessage) as AIMessage | undefined;
+
+    const partial =
+      typeof lastAiMessage?.content === 'string' && lastAiMessage.content
+        ? lastAiMessage.content
+        : '';
+
+    return {
+      result:
+        partial ||
+        `Subagent stopped: context reached ${state.currentContext} tokens (limit: ${maxContextTokens}).`,
+      statistics: {
+        totalIterations,
+        toolCallsMade,
+        usage: this.extractUsageFromState(state),
+      },
+      error: `Context limit reached (${state.currentContext}/${maxContextTokens})`,
     };
   }
 }

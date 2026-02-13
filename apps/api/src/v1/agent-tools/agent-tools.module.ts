@@ -35,7 +35,6 @@ import { SubagentsRunTaskTool } from './tools/common/subagents/subagents-run-tas
 import { SubagentsToolGroup } from './tools/common/subagents/subagents-tool-group';
 import { WebSearchTool } from './tools/common/web-search.tool';
 import { FinishTool } from './tools/core/finish.tool';
-import { ReportStatusTool } from './tools/core/report-status.tool';
 
 @Module({
   imports: [
@@ -52,7 +51,6 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     ShellTool,
     WebSearchTool,
     FinishTool,
-    ReportStatusTool,
     CommunicationExecTool,
     CommunicationToolGroup,
     GhCloneTool,
@@ -83,7 +81,6 @@ import { ReportStatusTool } from './tools/core/report-status.tool';
     ShellTool,
     WebSearchTool,
     FinishTool,
-    ReportStatusTool,
     CommunicationExecTool,
     CommunicationToolGroup,
     GhCloneTool,

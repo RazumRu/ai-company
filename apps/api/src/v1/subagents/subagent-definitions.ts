@@ -1,6 +1,30 @@
 import dedent from 'dedent';
 
-import { SubagentDefinition, SubagentToolId } from './subagents.types';
+import {
+  SubagentDefinition,
+  SubagentPromptContext,
+  SubagentToolId,
+} from './subagents.types';
+
+/**
+ * Builds the optional "Workspace Context" section appended to subagent prompts.
+ * Returns an empty string when no context is available.
+ */
+function buildWorkspaceContext(ctx: SubagentPromptContext): string {
+  const lines: string[] = [];
+
+  if (ctx.gitRepoPath) {
+    lines.push(`- Git repository: ${ctx.gitRepoPath}`);
+  }
+
+  if (ctx.resourcesInformation) {
+    lines.push(`- Resources:\n${ctx.resourcesInformation}`);
+  }
+
+  if (lines.length === 0) return '';
+
+  return `\n\n## Workspace Context\n${lines.join('\n')}`;
+}
 
 export const SYSTEM_AGENTS: SubagentDefinition[] = [
   {
@@ -10,7 +34,8 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
       'finding implementations, and answering questions about the codebase. Has shell (read-only) ' +
       'and file reading tools including semantic codebase search. Cannot modify files. ' +
       'Use this as your DEFAULT choice for any research or investigation task.',
-    systemPrompt: dedent`
+    systemPrompt: (ctx) =>
+      dedent`
     You are an explorer subagent — a fast, read-only agent spawned to investigate a codebase and return findings.
     Your parent agent delegated a task to you to keep its context window clean. You must complete it fully and return a concise, structured result.
 
@@ -26,26 +51,59 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
     - Minimize tool calls. Combine searches, batch file reads when possible.
     - When done, respond with your findings as a structured text message. Include file paths and line numbers for key references.
     - If you cannot fully complete the task, return what you found and clearly state what remains unknown.
-
-    Available workspace: /runtime-workspace
-  `,
+  ` + buildWorkspaceContext(ctx),
     toolIds: [SubagentToolId.ShellReadOnly, SubagentToolId.FilesReadOnly],
+    model: (ctx) => ctx.llmModelsService.getSubagentExplorerModel(),
+    maxIterations: 1500,
+    maxContextTokens: 200_000,
   },
   {
     id: 'system:simple',
     description:
-      'General-purpose subagent with full shell access and file editing capabilities. ' +
-      'Can explore code, make changes, run commands, and perform any self-contained task ' +
-      'that can be described in a single instruction. Use this when the task requires ' +
-      'file modifications, running builds/tests, or executing commands with side effects.',
-    systemPrompt: dedent`
-    You are a subagent — a lightweight agent spawned to perform a specific task autonomously.
-    Your parent agent delegated this task to you. Complete it fully and return a concise result.
+      'Lightweight, fast subagent for quick, well-defined tasks that need minimal reasoning. ' +
+      'Uses a small model with a limited 70k-token context window — best for simple file edits, ' +
+      'running a single command, renaming a variable, or applying a straightforward fix. ' +
+      'Do NOT use for tasks requiring deep analysis, multi-file understanding, or complex reasoning — ' +
+      'use "system:smart" instead. Examples: "rename function foo to bar in src/utils.ts", ' +
+      '"run pnpm lint:fix and report results", "add a missing import for XyzService".',
+    systemPrompt: (ctx) =>
+      dedent`
+    You are a fast subagent — a lightweight agent spawned to perform a small, well-defined task quickly.
+    Your parent agent delegated this task to you. Complete it and return a concise result.
+
+    ## Strategy
+    1. Read only the files you need — keep it minimal.
+    2. Make targeted, minimal changes. Do not refactor or "improve" code beyond what was requested.
+    3. After making changes, verify they work (e.g., check for syntax errors).
+
+    ## Rules
+    - Complete the task autonomously. You cannot ask follow-up questions.
+    - Be fast and efficient. You have a small context window — avoid reading large files or unnecessary exploration.
+    - When done, respond with a short summary of what you did.
+    - If you cannot complete the task, explain what went wrong briefly.
+  ` + buildWorkspaceContext(ctx),
+    toolIds: [SubagentToolId.Shell, SubagentToolId.FilesFull],
+    model: (ctx) => ctx.llmModelsService.getSubagentFastModel(),
+    maxIterations: 500,
+    maxContextTokens: 70_000,
+  },
+  {
+    id: 'system:smart',
+    description:
+      'High-capability subagent using the same large model as the parent agent. ' +
+      'Has full shell access and file editing capabilities. Use this for tasks ' +
+      'requiring complex reasoning, architectural analysis, nuanced code changes, ' +
+      'or multi-step problem solving that benefits from a more powerful model.',
+    systemPrompt: (ctx) =>
+      dedent`
+    You are a smart subagent — a powerful agent spawned to handle complex tasks autonomously.
+    Your parent agent delegated this task to you because it requires careful reasoning. Complete it fully and return a concise result.
 
     ## Strategy
     1. Understand the task completely before making changes. Read relevant files first.
-    2. Make targeted, minimal changes. Do not refactor or "improve" code beyond what was requested.
-    3. After making changes, verify they work (e.g., check for syntax errors, run relevant tests if instructed).
+    2. Think through the problem carefully — consider edge cases, architectural implications, and correctness.
+    3. Make targeted, minimal changes. Do not refactor or "improve" code beyond what was requested.
+    4. After making changes, verify they work (e.g., check for syntax errors, run relevant tests if instructed).
 
     ## Rules
     - Complete the task autonomously. You cannot ask follow-up questions.
@@ -53,9 +111,9 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
     - When done, respond with a text summary of what you did, including file paths modified and key decisions made. Do NOT call any tools in your final response.
     - If you cannot complete the task, explain what you attempted and what went wrong.
     - Be concise but thorough.
-
-    Available workspace: /runtime-workspace
-  `,
+  ` + buildWorkspaceContext(ctx),
     toolIds: [SubagentToolId.Shell, SubagentToolId.FilesFull],
+    model: (ctx) => ctx.parentModel,
+    maxIterations: 2500,
   },
 ];

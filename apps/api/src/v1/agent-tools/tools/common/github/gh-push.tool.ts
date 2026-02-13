@@ -4,6 +4,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -72,12 +73,12 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       ### Examples
       **1. Push feature branch:**
       \`\`\`json
-      {"path": "/runtime-workspace/repo", "branch": "feat/add-authentication"}
+      {"path": "${BASE_RUNTIME_WORKDIR}/repo", "branch": "feat/add-authentication"}
       \`\`\`
 
       **2. Push current branch:**
       \`\`\`json
-      {"path": "/runtime-workspace/repo"}
+      {"path": "${BASE_RUNTIME_WORKDIR}/repo"}
       \`\`\`
 
       ### Common Errors
