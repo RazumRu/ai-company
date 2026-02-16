@@ -84,9 +84,11 @@ export class RuntimeThreadProvider {
         runtimeStartParams: {
           ...this.params.runtimeStartParams,
           initScript,
+          // Ensure init script timeout has a sane lower bound.
+          // (0 means "no init script" / no timeout override)
           initScriptTimeoutMs: Math.max(
             this.params.runtimeStartParams.initScriptTimeoutMs ?? 0,
-            this.params.runtimeStartParams.initScriptTimeoutMs ?? 0,
+            0,
           ),
           env: {
             ...(this.params.runtimeStartParams.env || {}),
@@ -112,6 +114,8 @@ export class RuntimeThreadProvider {
 
     for (const jobs of this.initJobsByNodeId.values()) {
       for (const job of jobs.values()) {
+        // Fail-fast: init jobs are required to provision a usable runtime.
+        // If any init job fails, bubble the error to stop the run early.
         await job(runtime, cfg);
       }
     }

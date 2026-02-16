@@ -3,6 +3,7 @@ import { DefaultLogger } from '@packages/common';
 import { randomUUID } from 'crypto';
 
 import { GraphEntity } from '../entity/graph.entity';
+import { GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 
@@ -32,8 +33,11 @@ export class GraphAiPreviewService {
     fn: (ctx: GraphAiContext) => Promise<T>,
   ): Promise<T> {
     const existing = this.graphRegistry.get(graph.id);
+    const existingStatus = this.graphRegistry.getStatus(graph.id);
 
-    if (existing) {
+    // Only reuse an existing graph when it is fully constructed and Running.
+    // Avoid using graphs that are still Compiling or in any other non-running state.
+    if (existing && existingStatus === GraphStatus.Running) {
       return fn({ registryGraphId: graph.id });
     }
 
@@ -44,6 +48,7 @@ export class GraphAiPreviewService {
         graph,
         {
           graphId: previewGraphId,
+          temporary: true,
         },
         { mode: 'AiPreview' },
       );
