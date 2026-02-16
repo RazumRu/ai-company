@@ -100,11 +100,31 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
   }
 
   /**
-   * Validates arguments against the Zod schema
-   * @throws Error if validation fails
+   * Validates arguments against the Zod schema.
+   *
+   * Before parsing, `null` values in top-level fields are converted to
+   * `undefined` so that Zod `.optional()` fields accept them.  LLMs
+   * frequently emit explicit `null` for omitted parameters instead of
+   * leaving them out of the JSON object.
    */
   public validate(args: unknown): TSchema {
-    return this.schema.parse(args) as TSchema;
+    const sanitized = this.stripNullFields(args);
+    return this.schema.parse(sanitized) as TSchema;
+  }
+
+  /**
+   * Replaces top-level `null` values with `undefined` so Zod `.optional()`
+   * fields don't reject them.
+   */
+  private stripNullFields(args: unknown): unknown {
+    if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+      return args;
+    }
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args)) {
+      result[key] = value === null ? undefined : value;
+    }
+    return result;
   }
 
   protected buildToolConfiguration(config?: ExtendedLangGraphRunnableConfig) {

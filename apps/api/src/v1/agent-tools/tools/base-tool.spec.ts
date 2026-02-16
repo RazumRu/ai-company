@@ -64,6 +64,23 @@ describe('BaseTool', () => {
       );
     });
 
+    it('should treat null optional fields as undefined (LLM null tolerance)', () => {
+      // LLMs often emit explicit null for omitted optional parameters
+      const dataWithNull = {
+        requiredField: 'test value',
+        optionalField: null,
+      };
+      const result = tool.validate(dataWithNull);
+      expect(result).toEqual({ requiredField: 'test value' });
+    });
+
+    it('should reject null on required fields', () => {
+      const dataWithNullRequired = {
+        requiredField: null,
+      };
+      expect(() => tool.validate(dataWithNullRequired)).toThrow();
+    });
+
     it('should reject wrong types', () => {
       const dataWithWrongType = {
         requiredField: 123, // Should be string

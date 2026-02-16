@@ -551,6 +551,27 @@ describe('FilesSearchTextTool', () => {
       expect(result.error).toBeUndefined();
     });
 
+    it('should return regex parse error with helpful hint', async () => {
+      const args: FilesSearchTextToolSchemaType = {
+        searchInDirectory: '/path/to/repo',
+        textPattern: 'run(',
+      };
+
+      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
+        exitCode: 2,
+        stdout: '',
+        stderr: 'regex parse error: unclosed group',
+        execPath: '',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.error).toContain('regex parse error');
+      expect(result.error).toContain('HINT');
+      expect(result.error).toContain('Escape special characters');
+      expect(result.matches).toBeUndefined();
+    });
+
     it('should handle search in current directory', async () => {
       const args: FilesSearchTextToolSchemaType = {
         textPattern: 'function',

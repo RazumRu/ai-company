@@ -172,6 +172,14 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       - "Could not find match": re-read the file with \`files_read\` and copy exact text from output
       - Use \`insertAfterLine\` with empty \`oldText\` for pure insertions (avoids matching entirely)
 
+      ### CRITICAL: Never Retry the Same Failing Edit
+      If an edit fails with "Could not find match":
+      1. **STOP.** Do NOT retry with the same or similar oldText — the text you have is wrong.
+      2. Run \`files_read\` on the file to see the ACTUAL current content.
+      3. Copy the exact text from the fresh \`files_read\` output — character by character, including whitespace.
+      4. If you already read the file once and the edit still fails, the file was likely modified by a previous edit. Run \`files_read\` AGAIN.
+      5. **After 2 failed attempts on the same region**: use \`files_write_file\` to rewrite the entire file instead. This is faster than guessing at oldText.
+
       ### Examples
       **1. Simple text replacement:**
       \`\`\`json
@@ -713,6 +721,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
           - Different quote styles (" vs ')
           - Missing or extra newlines
           - File was modified since last read
+
+          WARNING: Do NOT retry with the same oldText — it will fail again.
+          If this is your 2nd+ failure on this file, use files_write_file to rewrite the entire file instead.
         `,
       );
     } else if (foundMatches.length > 1 && !replaceAll) {

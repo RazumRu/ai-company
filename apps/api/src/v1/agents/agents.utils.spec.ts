@@ -388,6 +388,21 @@ describe('agents.utils', () => {
       expect(result).toBe('plain text');
     });
 
+    it('should flatten OpenAI Responses API output_text content blocks', () => {
+      const result = extractTextFromResponseContent([
+        { type: 'output_text', text: 'Findings from analysis' },
+      ]);
+      expect(result).toBe('Findings from analysis');
+    });
+
+    it('should flatten mixed text and output_text content blocks', () => {
+      const result = extractTextFromResponseContent([
+        { type: 'text', text: 'Part one' },
+        { type: 'output_text', text: 'Part two' },
+      ]);
+      expect(result).toBe('Part one\nPart two');
+    });
+
     it('should return undefined when parsing fails', () => {
       expect(extractTextFromResponseContent({})).toBeUndefined();
     });

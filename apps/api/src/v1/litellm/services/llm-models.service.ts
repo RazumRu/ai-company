@@ -111,6 +111,6 @@ export class LlmModelsService {
    * responses even when the main agent is in offline mode.
    */
   getSubagentExplorerModel(): string {
-    return environment.llmSubagentExplorerModel;
+    return environment.llmMiniCodeModel;
   }
 }

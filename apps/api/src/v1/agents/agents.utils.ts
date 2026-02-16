@@ -59,7 +59,9 @@ export function extractTextFromResponseContent(
     blocks
       .filter(
         (block): block is ContentBlock.Text =>
-          block?.type === 'text' && typeof block.text === 'string',
+          // LangChain uses type "text"; OpenAI Responses API uses "output_text"
+          (block?.type === 'text' || block?.type === 'output_text') &&
+          typeof block.text === 'string',
       )
       .map((block) => block.text.trim())
       .filter((text) => text.length > 0)

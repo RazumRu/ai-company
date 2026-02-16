@@ -332,6 +332,30 @@ export class ThreadsService {
     let totalRequests = 0;
     let userMessageCount = 0;
 
+    // Accumulate message-based total to capture in-progress subagent costs.
+    // Checkpoint-based totalUsage only includes subagent costs after the subagent completes
+    // (ToolExecutorNode folds subagent usage into parent state on return).
+    // Message-based total includes real-time costs from streamed subagent internal messages.
+    const messageTotalUsage = {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      totalPriceDecimal: new Decimal(0),
+    };
+
+    /** Add a single LLM request's usage to the message-based total accumulator. */
+    const accumulateUsage = (usage: RequestTokenUsage): void => {
+      messageTotalUsage.inputTokens += usage.inputTokens;
+      messageTotalUsage.cachedInputTokens += usage.cachedInputTokens || 0;
+      messageTotalUsage.outputTokens += usage.outputTokens;
+      messageTotalUsage.reasoningTokens += usage.reasoningTokens || 0;
+      messageTotalUsage.totalTokens += usage.totalTokens;
+      messageTotalUsage.totalPriceDecimal =
+        messageTotalUsage.totalPriceDecimal.plus(usage.totalPrice || 0);
+    };
+
     // Map: toolCallId -> parentToolName (for linking subagent internal messages)
     const toolCallIdToToolName = new Map<string, string>();
 
@@ -387,10 +411,12 @@ export class ThreadsService {
           ? toolCallIdToToolName.get(parentToolCallId)
           : undefined;
 
-        // Extract __requestUsage from additionalKwargs for actual token counts
-        const embeddedUsage = additionalKwargs?.__requestUsage as
-          | RequestTokenUsage
-          | undefined;
+        // Read token usage from the dedicated column (preferred) or fall back
+        // to additionalKwargs.__requestUsage for messages persisted before the
+        // column was populated for subagent internals.
+        const embeddedUsage =
+          messageEntity.requestTokenUsage ??
+          (additionalKwargs?.__requestUsage as RequestTokenUsage | undefined);
 
         if (parentToolName) {
           const embeddedTokens = embeddedUsage?.totalTokens || 0;
@@ -437,6 +463,9 @@ export class ThreadsService {
           toolsAggregate.outputTokens += embeddedUsage.outputTokens;
           toolsAggregate.totalTokens += embeddedUsage.totalTokens;
           toolsAggregate.requestCount++;
+
+          // Accumulate into message-based total (captures in-progress subagent costs)
+          accumulateUsage(embeddedUsage);
         }
 
         // Subagent internal messages don't contribute to top-level byTool
@@ -470,6 +499,9 @@ export class ThreadsService {
       // not "tokens exclusively consumed by this tool".
       if (isAiMessage && requestUsage) {
         totalRequests++;
+
+        // Accumulate into message-based total
+        accumulateUsage(requestUsage);
 
         let attributeToTools: string[] | undefined;
 
@@ -526,6 +558,37 @@ export class ThreadsService {
 
     // Finalize price aggregations — always set totalPrice (even when 0) for consistency
     toolsAggregate.totalPrice = toolsPriceDecimal.toNumber();
+
+    // Reconcile checkpoint-based total with message-based total.
+    // Use Math.max per field to capture the most up-to-date value:
+    // - Checkpoint total is authoritative for completed threads (includes all costs)
+    // - Message total captures in-progress subagent costs that haven't been
+    //   folded into the parent checkpoint yet
+    const messageTotalPrice = messageTotalUsage.totalPriceDecimal.toNumber();
+    totalUsage = {
+      ...totalUsage,
+      inputTokens: Math.max(
+        totalUsage.inputTokens,
+        messageTotalUsage.inputTokens,
+      ),
+      cachedInputTokens: Math.max(
+        totalUsage.cachedInputTokens || 0,
+        messageTotalUsage.cachedInputTokens,
+      ),
+      outputTokens: Math.max(
+        totalUsage.outputTokens,
+        messageTotalUsage.outputTokens,
+      ),
+      reasoningTokens: Math.max(
+        totalUsage.reasoningTokens || 0,
+        messageTotalUsage.reasoningTokens,
+      ),
+      totalTokens: Math.max(
+        totalUsage.totalTokens,
+        messageTotalUsage.totalTokens,
+      ),
+      totalPrice: Math.max(totalUsage.totalPrice || 0, messageTotalPrice),
+    };
 
     // Build final byTool array with subCalls and toolTokens/toolPrice
     const byTool: UsageStatisticsByTool[] = Array.from(

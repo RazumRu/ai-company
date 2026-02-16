@@ -64,10 +64,6 @@ export const environment = () =>
       'LLM_EMBEDDING_MODEL',
       'openai/text-embedding-3-small',
     ),
-    llmSubagentExplorerModel: getEnv(
-      'LLM_SUBAGENT_EXPLORER_MODEL',
-      'gpt-5-mini',
-    ),
     llmNoReasoningModels: getEnv('LLM_NO_REASONING_MODELS', 'qwen3-coder:30b'),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),

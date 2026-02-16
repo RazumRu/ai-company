@@ -74,11 +74,13 @@ export class SubagentsRunTaskTool extends BaseTool<
 > {
   public name = 'subagents_run_task';
   public description =
-    'Spawn a subagent to perform a self-contained task autonomously. ' +
-    'The subagent runs in its own context window, absorbing verbose output (file reads, search results, ' +
-    'command output) and returning only a concise result. Use this proactively for exploration, ' +
-    'research, multi-file investigation, and self-contained code changes. ' +
-    'Prefer delegation over doing it yourself for any task requiring 2+ tool calls.';
+    'Spawn a subagent to perform a task autonomously in its own context window. ' +
+    'Returns only a concise result, protecting your main context from verbose output. ' +
+    'Best for: exploration, research, running commands, and small isolated edits. ' +
+    'PREFER subagents for any research task spanning 3+ files or 2+ areas of the codebase — ' +
+    'do NOT explore broadly yourself with repeated codebase_search/files_read calls. ' +
+    'Call this tool MULTIPLE TIMES IN PARALLEL to run independent tasks simultaneously. ' +
+    'Do NOT use for tasks you can do directly: reading 1-2 specific files you already know.';
 
   constructor(
     private readonly moduleRef: ModuleRef,
@@ -105,57 +107,90 @@ export class SubagentsRunTaskTool extends BaseTool<
   ): string {
     return dedent`
       ### Overview
-      Spawns a lightweight subagent with its own isolated context window. The subagent runs autonomously,
-      processes all intermediate data (file reads, search results, command outputs) internally, and returns
-      only a concise result to you. This keeps your main context clean and efficient.
+      Spawns a subagent with its own isolated context window. The subagent runs autonomously,
+      processes all intermediate data internally, and returns only a concise result to you.
 
-      ### Key Benefit: Context Window Protection
-      Every file you read and every command output you process consumes your context window.
-      Subagents absorb this cost in their own window and return only the distilled result.
-      **Always prefer delegation when a task would require reading multiple files or producing verbose output.**
+      Use subagents to **gather information and handle supporting tasks** while you focus on the core implementation.
 
-      ### When to Use (Default: Delegate)
-      - **Understanding code**: "How does feature X work?", "What does this module do?" → explorer
-      - **Finding implementations**: "Where is Y defined/used?", "What calls Z?" → explorer
-      - **Reading multiple files**: Any task requiring 3+ file reads → explorer
-      - **Analyzing structure**: "What's the project layout?", "List all API endpoints" → explorer
-      - **Cross-referencing**: Comparing implementations, tracing data flow across files → explorer
-      - **Quick fixes**: Rename a variable, add an import, small single-file edit → simple
-      - **Running a command**: Run lint, run a test, check build output → simple
-      - **Code changes**: Well-defined modifications across 1+ files → smart
-      - **Complex reasoning**: Architectural analysis, nuanced multi-step changes → smart
-      - **Parallel research**: Multiple independent questions → spawn multiple explorers simultaneously
+      ### ⚠️ CRITICAL: Always Use Subagents for Broad Exploration
+      **If your task requires exploring multiple areas of the codebase (3+ files, 2+ modules), delegate to subagents.**
+      Each codebase_search or files_read call you make yourself adds output to YOUR context, which grows linearly and wastes tokens.
+      Subagents absorb all that output internally and return only a concise summary.
 
-      ### When NOT to Use
-      - Reading a single file you already know the path to
-      - Running a single command with predictably short output
-      - Tasks that require interactive clarification (subagents cannot ask questions)
+      **Stop and ask yourself:** "Am I about to do a sequence of search→read→search→read? If yes, use a subagent."
+
+      ### Your Role vs. Subagent Roles
+      **You own the deliverable.** If the user asks you to implement, fix, or produce something — that's YOUR job.
+      **Subagents are your research team.** They gather information, explore code, run commands, and handle isolated changes.
+
+      Workflow:
+      1. Use subagents to **gather what you need** (explore code, find patterns, understand architecture)
+      2. **Produce the deliverable yourself** using the information they bring back
+      3. Use subagents for **follow-up tasks** (run tests, lint, make small fixes in other files)
+
+      ### When to Use Subagents
+      Subagents are most valuable when they absorb verbose output and return a distilled summary:
+
+      | Task | Subagent | Why |
+      |------|----------|-----|
+      | Broad research / architecture analysis | explorer | Prevents your context from bloating with search results |
+      | Reading 3+ files to understand a pattern | explorer | File contents are huge context consumers |
+      | "How does X work?" / "Find all usages of Y" | explorer | Requires reading multiple files |
+      | Running commands (test, lint, build) | simple | Command output stays in subagent context |
+      | Small isolated edit in a file you don't need | simple | Keeps file contents out of your context |
+      | Complex independent subtask | smart | Isolated work that doesn't need your oversight |
+
+      ### When NOT to Use Subagents — Do It Yourself
+      - **You need to read 1-2 specific files** and you know the paths → use \`files_read\` directly
+      - **You are searching within a specific file or 2-3 known files** → use \`files_search_text\` directly
+      - **You already have the context** in your conversation → just use it, don't re-fetch
+      - **Iterating on a change** → if you're tweaking code based on errors or feedback, do it yourself
 
       ### Choosing the Right Subagent
-      - **"system:explorer"**: Read-only, fast model. Default for investigation, research, understanding code.
-      - **"system:simple"**: Full access, small fast model, tiny 70k context. For quick, well-defined tasks: simple file edits, running a command, renaming, adding an import. NOT for complex reasoning.
-      - **"system:smart"**: Full access, same large model as you. For complex reasoning, architectural analysis, nuanced code changes, multi-file modifications.
+      - **"system:explorer"**: Read-only, fast model. Best for investigation, research, and comprehension tasks.
+      - **"system:simple"**: Full access, small fast model, tiny 70k context. For quick well-defined tasks: small edits, running commands, renaming.
+      - **"system:smart"**: Full access, same large model as you. For complex subtasks needing strong reasoning. Use sparingly — it's expensive.
+
+      ### CRITICAL: Always Parallelize Independent Tasks
+      You can call \`subagents_run_task\` **multiple times in a single response** — all calls run simultaneously.
+      **NEVER call subagents one after another if they don't depend on each other's output.**
+      Sequential subagent calls waste enormous time — each subagent takes 1-3 minutes.
+
+      **Correct approach: plan first, then batch.**
+      Before spawning any subagents, identify ALL information you need. Then send ALL independent tasks in ONE response.
+
+      **GOOD — 3 parallel calls in one response (runs in ~2 min total):**
+      Call 1: \`{"agentId": "system:explorer", "task": "Investigate how auth middleware works in ...", "purpose": "Understand auth flow"}\`
+      Call 2: \`{"agentId": "system:explorer", "task": "Find all API endpoints that use rate limiting in ...", "purpose": "Map rate-limited endpoints"}\`
+      Call 3: \`{"agentId": "system:explorer", "task": "Check how error handling is structured in ...", "purpose": "Understand error patterns"}\`
+
+      **BAD — 3 sequential calls (runs in ~6 min total, 3× slower):**
+      Turn 1: Call explorer for auth → wait 2 min → get result
+      Turn 2: Call explorer for rate limiting → wait 2 min → get result
+      Turn 3: Call explorer for error handling → wait 2 min → get result
+
+      Only run sequentially when task B genuinely requires the output of task A (e.g., "find the file path" → "edit the file").
 
       ### Writing Effective Task Descriptions
-      Subagents cannot ask follow-up questions. Your task description must be completely self-contained.
-      Include: what to find/do, where to look, what format to return results in, and any constraints.
+      Subagents start with a BLANK context — they know NOTHING about the project.
+      **Your task description is the ONLY information the subagent has.** Include ALL relevant context:
 
-      **Good — specific, self-contained, with clear output expectations:**
+      1. **Known paths and names** — file paths, function/class names, module structure, code snippets
+      2. **The goal** — what you need to know, acceptance criteria, constraints
+      3. **Specific locations** — exact directories and files, never "find the file" if you know the path
+      4. **Prior knowledge** — what you've already discovered, what failed before
+      5. **Expected output format** — what information you need back and how
+
+      **Rule of thumb: if you know it and it's relevant, include it.**
+
+      **Good:**
       \`\`\`json
-      {"agentId": "system:explorer", "task": "In ${BASE_RUNTIME_WORKDIR}/my-repo, find all files that import from '@auth' module. For each file, list: (1) the file path, (2) the specific named imports, (3) how they are used (function calls, class instantiation, etc). Start with codebase_search for '@auth' imports.", "purpose": "Map auth dependencies"}
+      {"agentId": "system:explorer", "task": "In ${BASE_RUNTIME_WORKDIR}/my-repo, find all files that import from '@auth' module. I already know that src/middleware/auth.ts and src/controllers/user.controller.ts use it. For each file found, list: (1) the file path, (2) the specific named imports, (3) how they are used.", "purpose": "Map auth dependencies"}
       \`\`\`
 
+      **Bad — vague, missing context the parent already has:**
       \`\`\`json
-      {"agentId": "system:explorer", "task": "Investigate how the user authentication flow works in ${BASE_RUNTIME_WORKDIR}/my-repo. Trace from the login API endpoint through middleware, service, and database layers. Return a summary of: (1) all files involved, (2) the request lifecycle, (3) where tokens are generated and validated.", "purpose": "Understand auth flow"}
-      \`\`\`
-
-      \`\`\`json
-      {"agentId": "system:smart", "task": "In ${BASE_RUNTIME_WORKDIR}/my-repo/src/utils/validators.ts, add a new export function 'isValidEmail(email: string): boolean' that validates email format using a regex. Follow the same style as existing validator functions in the file.", "purpose": "Add email validator"}
-      \`\`\`
-
-      **Bad — vague or missing context:**
-      \`\`\`json
-      {"agentId": "system:simple", "task": "Fix the bug", "purpose": "Fix bug"}
+      {"agentId": "system:simple", "task": "Fix the bug in the user service", "purpose": "Fix bug"}
       \`\`\`
     `;
   }

@@ -77,14 +77,11 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         | undefined;
 
       // Extract request-level token usage (full RequestTokenUsage from LLM request).
-      // Only saved for AI messages — they represent actual LLM requests.
+      // Saved for ALL AI messages — including subagent internal ones.
       // Tool messages carry __requestUsage from their parent AI message (set by ToolExecutorNode),
       // but storing it would double-count the same LLM call.
-      // Subagent internal messages (__hideForLlm) are also skipped — their usage is
-      // captured by the parent tool result's toolTokenUsage (e.g. subagents_run_task).
-      const isSubagentInternal = additionalKwargs?.__hideForLlm === true;
       const requestTokenUsage =
-        messageDto.role === MessageRole.AI && !isSubagentInternal
+        messageDto.role === MessageRole.AI
           ? (additionalKwargs?.__requestUsage as RequestTokenUsage | undefined)
           : undefined;
 
@@ -114,7 +111,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         externalThreadId: event.threadId,
         nodeId: event.nodeId,
         message: messageDto,
-        // Store requestTokenUsage if present (skipped for subagent internal messages above)
+        // Store requestTokenUsage if present (all AI messages, including subagent internals)
         ...(requestTokenUsage ? { requestTokenUsage } : {}),
         // Denormalize role, name, toolCallNames, and toolCallIds for query performance
         role: messageDto.role,
@@ -127,7 +124,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
           ? (additionalKwargs.__answeredToolCallNames as string[])
           : undefined,
         // Denormalize additionalKwargs for statistics queries (avoids fetching full message JSONB).
-        // Strip __requestUsage and __toolTokenUsage — already stored in dedicated columns.
+        // Strip __requestUsage and __toolTokenUsage — both stored in dedicated columns.
         additionalKwargs: additionalKwargs
           ? this.stripRedundantUsageFields(
               additionalKwargs as Record<string, unknown>,
@@ -165,7 +162,11 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     return out;
   }
 
-  /** Strip fields already stored in dedicated columns to avoid redundant data in additionalKwargs JSONB. */
+  /**
+   * Strip fields already stored in dedicated columns to avoid redundant data
+   * in the additionalKwargs JSONB.  Both __requestUsage and __toolTokenUsage
+   * have their own columns on the message entity.
+   */
   private stripRedundantUsageFields(
     kwargs: Record<string, unknown>,
   ): Record<string, unknown> {

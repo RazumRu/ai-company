@@ -346,7 +346,7 @@ describe('AgentMessageNotificationHandler', () => {
     expect(createManyCall[1]?.role).toBe('tool');
   });
 
-  it('does not save requestTokenUsage for subagent internal messages (__hideForLlm)', async () => {
+  it('saves requestTokenUsage for subagent internal AI messages (__hideForLlm)', async () => {
     const internalThread = createMockThreadEntity();
     vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
 
@@ -396,9 +396,15 @@ describe('AgentMessageNotificationHandler', () => {
 
     expect(createManyCall).toHaveLength(1);
 
-    // Subagent internal message should NOT have requestTokenUsage —
-    // its usage is captured by the parent tool result (subagents_run_task)
-    expect(createManyCall[0]?.requestTokenUsage).toBeUndefined();
+    // Subagent internal AI message should have requestTokenUsage in column
+    expect(createManyCall[0]?.requestTokenUsage).toEqual(subagentUsage);
+
+    // __requestUsage stripped from additionalKwargs (now in dedicated column)
+    const kwargs = createManyCall[0]?.additionalKwargs as Record<
+      string,
+      unknown
+    >;
+    expect(kwargs.__requestUsage).toBeUndefined();
   });
 
   it('does not save requestTokenUsage for tool messages, only toolTokenUsage', async () => {

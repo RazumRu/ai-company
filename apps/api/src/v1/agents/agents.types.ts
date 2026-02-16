@@ -39,6 +39,9 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
   __interAgentCommunication?: boolean;
   __sourceAgentNodeId?: string;
 
+  // Subagent communication metadata
+  __subagentCommunication?: boolean;
+
   __context?: unknown;
 
   // Per-message token usage (proportional share)

@@ -2,6 +2,7 @@ import {
   AIMessage,
   BaseMessage,
   HumanMessage,
+  SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
 import {
@@ -106,8 +107,51 @@ describe('SubAgent', () => {
       expect(result.error).toBeUndefined();
     });
 
-    it('should use fallback content when LLM returns empty content', async () => {
+    it('should extract result from array content blocks (output_text)', async () => {
+      // Regression test: some providers (e.g. gpt-5.1-codex-mini via LiteLLM)
+      // return content as an array of content blocks [{type: "output_text", text: "..."}]
+      // instead of a plain string.  Before the fix this fell through to "Task completed."
       mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: [
+            { type: 'output_text', text: 'Findings from analysis' },
+          ] as any,
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Analyze the codebase')],
+        defaultCfg,
+      );
+
+      expect(result.result).toBe('Findings from analysis');
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should extract result from mixed text and output_text content blocks', async () => {
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: [
+            { type: 'text', text: 'Part one' },
+            { type: 'output_text', text: 'Part two' },
+          ] as any,
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Do analysis')],
+        defaultCfg,
+      );
+
+      expect(result.result).toBe('Part one\nPart two');
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should fallback after exhausting empty response retries', async () => {
+      // All 3 responses are empty: 1 original + 2 retries = 3 total LLM calls
+      mockLlmInvokeRef.mockResolvedValue(
         new AIMessage({
           content: '',
           response_metadata: { usage: {} },
@@ -120,6 +164,122 @@ describe('SubAgent', () => {
       );
 
       expect(result.result).toBe('Task completed.');
+      // 1 original + 2 retries = 3 LLM invocations
+      expect(result.statistics.totalIterations).toBe(3);
+      expect(mockLlmInvokeRef).toHaveBeenCalledTimes(3);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('empty response guard exhausted'),
+      );
+    });
+  });
+
+  describe('empty response guard', () => {
+    it('should nudge LLM when it returns empty string content', async () => {
+      // 1st call: empty content, no tool calls → nudge
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          response_metadata: { usage: {} },
+        }),
+      );
+      // 2nd call (after nudge): real answer
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'Here is the actual answer.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Do something')],
+        defaultCfg,
+      );
+
+      expect(result.result).toBe('Here is the actual answer.');
+      expect(result.error).toBeUndefined();
+      expect(result.statistics.totalIterations).toBe(2);
+      expect(mockLlmInvokeRef).toHaveBeenCalledTimes(2);
+    });
+
+    it('should nudge LLM when it returns empty output_text content block', async () => {
+      // Exact scenario from the bug report: content is [{type: "output_text", text: ""}]
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: [{ type: 'output_text', text: '' }] as any,
+          response_metadata: { usage: {} },
+        }),
+      );
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'Real answer after nudge.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Research the codebase')],
+        defaultCfg,
+      );
+
+      expect(result.result).toBe('Real answer after nudge.');
+      expect(result.error).toBeUndefined();
+      expect(result.statistics.totalIterations).toBe(2);
+    });
+
+    it('should not nudge when LLM returns non-empty content', async () => {
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'A real answer on the first try.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Do something')],
+        defaultCfg,
+      );
+
+      expect(result.result).toBe('A real answer on the first try.');
+      expect(result.error).toBeUndefined();
+      expect(result.statistics.totalIterations).toBe(1);
+      expect(mockLlmInvokeRef).toHaveBeenCalledTimes(1);
+    });
+
+    it('should include nudge system message in retry LLM invocation', async () => {
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      let capturedMessages: BaseMessage[] = [];
+      mockLlmInvokeRef.mockImplementationOnce((msgs: BaseMessage[]) => {
+        capturedMessages = msgs;
+        return Promise.resolve(
+          new AIMessage({
+            content: 'Answer after nudge',
+            response_metadata: { usage: {} },
+          }),
+        );
+      });
+
+      await subAgent.runSubagent(
+        [new HumanMessage('Do something')],
+        defaultCfg,
+      );
+
+      // The second LLM call should contain a SystemMessage with the nudge text
+      const systemMessages = capturedMessages.filter(
+        (m) => m instanceof SystemMessage,
+      );
+      expect(
+        systemMessages.some(
+          (m) =>
+            typeof m.content === 'string' &&
+            m.content.includes('previous response was empty'),
+        ),
+      ).toBe(true);
     });
   });
 

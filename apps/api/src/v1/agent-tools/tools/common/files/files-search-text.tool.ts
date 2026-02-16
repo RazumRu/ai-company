@@ -27,7 +27,10 @@ export const FilesSearchTextToolSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Text or regex pattern to search for in file contents. Supports full regex syntax (e.g., "function\\s+createUser", "import.*from").',
+      'The regex pattern to search for in file contents. Supports full regex syntax ' +
+        '(e.g., "log.*Error", "function\\s+\\w+", "import.*from"). ' +
+        'For literal text with special chars, escape them: "run\\(" instead of "run(", ' +
+        '"array\\[0\\]" instead of "array[0]".',
     ),
   filePath: z
     .string()
@@ -39,13 +42,15 @@ export const FilesSearchTextToolSchema = z.object({
     .array(z.string())
     .optional()
     .describe(
-      'Only search files matching these glob patterns (e.g., ["*.ts", "src/**"])',
+      'Only search files matching these glob patterns (e.g., ["*.ts", "src/**"]). ' +
+        'If omitted, searches all non-excluded file types.',
     ),
   skipFilesMatching: z
     .array(z.string())
     .optional()
     .describe(
-      'Don\'t search files matching these glob patterns (e.g., ["*.test.ts", "node_modules/**"])',
+      'Exclude files matching these glob patterns (e.g., ["*.test.ts", "*.spec.ts"]). ' +
+        'If omitted, common build/cache directories (node_modules, dist, .next, etc.) are excluded by default.',
     ),
 });
 
@@ -67,7 +72,11 @@ type FilesSearchTextToolOutput = {
 export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchemaType> {
   public name = 'files_search_text';
   public description =
-    'Search file contents using a regex pattern and return matching file paths, line numbers, and matched text. Returns up to 15 matches. Best used after codebase_search for exact pattern matching (function names, variable references, import paths). Supports include/exclude glob filters via onlyInFilesMatching and skipFilesMatching. Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Supports full regex syntax including alternation, character classes, and quantifiers.';
+    'Search file contents using a regex pattern and return matching file paths, line numbers, and matched text. ' +
+    'Returns up to 15 matches. Supports full regex syntax (e.g., "function\\s+\\w+", "import.*from"). ' +
+    'Best used after codebase_search for exact pattern matching. ' +
+    'Supports include/exclude glob filters via onlyInFilesMatching and skipFilesMatching. ' +
+    'Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default.';
 
   protected override generateTitle(
     args: FilesSearchTextToolSchemaType,
@@ -85,7 +94,8 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   ): string {
     return dedent`
       ### Overview
-      Search file contents using regex. Returns matching file paths, line numbers, and matched text. Returns up to ${MAX_MATCHES} matches. Use after \`codebase_search\` for exact, literal pattern matching (function names, variable references, import paths).
+      Search file contents using a regex pattern. Returns matching file paths, line numbers, and matched text. Returns up to ${MAX_MATCHES} matches.
+      Supports full regex syntax for flexible pattern matching.
 
       ### When to Use
       - Finding exact usages of a function, variable, class, or import
@@ -102,11 +112,11 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       - \`\\s+\` — whitespace, \`\\w+\` — word chars, \`\\b\` — word boundary
       - \`.\` — any char, \`.*\` — greedy match, \`.*?\` — lazy match
       - \`(a|b)\` — alternation, \`[A-Z]\` — character class
-      - Escape special chars: \`\\.\`, \`\\(\`, \`\\[\`, \`\\{\`
+      - **Escape special chars** for literal matching: \`\\.\`, \`\\(\`, \`\\[\`, \`\\{\`
 
       ### Best Practices
       - Use \`codebase_search\` first for discovery, then this tool for exact matches
-      - Prefer one regex with alternation over multiple calls: \`(foo|bar|baz)\` instead of 3 separate searches
+      - Escape regex special characters when searching for literal text containing \`( ) [ ] { } . * + ? | ^ $\`
       - Use \`onlyInFilesMatching\` to limit scope (e.g., \`["*.ts"]\` for TypeScript only)
       - Use \`skipFilesMatching\` to exclude test files: \`["*.test.ts", "*.spec.ts"]\`
       - Common build/cache folders (node_modules, dist, .next, etc.) are excluded by default
@@ -119,24 +129,29 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       - \`matchedText\` — the exact matched substring
 
       ### Examples
-      **1. Find type/interface definitions:**
+      **1. Find function calls (escape the parenthesis):**
+      \`\`\`json
+      {"searchInDirectory":"/repo","textPattern":"run\\\\(","onlyInFilesMatching":["*.ts"]}
+      \`\`\`
+
+      **2. Find exact import statement:**
+      \`\`\`json
+      {"searchInDirectory":"/repo/src","textPattern":"from '@packages/common'"}
+      \`\`\`
+
+      **3. Find type/interface definitions:**
       \`\`\`json
       {"searchInDirectory":"/repo","textPattern":"(enum|type|interface)\\\\s+UserRole","onlyInFilesMatching":["*.ts"]}
       \`\`\`
 
-      **2. Find all imports of a module:**
-      \`\`\`json
-      {"searchInDirectory":"/repo/src","textPattern":"from\\\\s+['\\\"]@packages/common['\\\"]"}
-      \`\`\`
-
-      **3. Search in a single file:**
-      \`\`\`json
-      {"filePath":"/repo/src/auth/auth.service.ts","textPattern":"async\\\\s+validate"}
-      \`\`\`
-
-      **4. Find TODO/FIXME comments excluding tests:**
+      **4. Find TODO/FIXME comments:**
       \`\`\`json
       {"searchInDirectory":"/repo/src","textPattern":"(TODO|FIXME|HACK)","skipFilesMatching":["*.test.ts","*.spec.ts"]}
+      \`\`\`
+
+      **5. Search in a single file:**
+      \`\`\`json
+      {"filePath":"/repo/src/auth/auth.service.ts","textPattern":"async validate"}
       \`\`\`
     `;
   }
@@ -202,9 +217,26 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
         };
       }
 
+      const errorText = res.stderr || res.stdout || 'Failed to search text';
+
+      // Detect regex syntax errors and provide a helpful hint
+      if (errorText.includes('regex parse error')) {
+        const hint =
+          'HINT: Your regex pattern has a syntax error. ' +
+          'Escape special characters for literal matching: use "run\\(" instead of "run(", ' +
+          '"array\\[0\\]" instead of "array[0]".';
+
+        return {
+          output: {
+            error: `${errorText}\n\n${hint}`,
+          },
+          messageMetadata,
+        };
+      }
+
       return {
         output: {
-          error: res.stderr || res.stdout || 'Failed to search text',
+          error: errorText,
         },
         messageMetadata,
       };

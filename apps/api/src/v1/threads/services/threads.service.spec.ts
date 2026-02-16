@@ -1175,6 +1175,111 @@ describe('ThreadsService', () => {
       expect(result.byTool).toHaveLength(0);
     });
 
+    it('should use message-based total when it exceeds checkpoint total (in-progress subagent)', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        externalThreadId: 'external-thread-123',
+      });
+
+      // Checkpoint only has the parent AI message cost — subagent hasn't finished yet
+      const mockTokenUsageFromCheckpoint = {
+        inputTokens: 60,
+        outputTokens: 40,
+        totalTokens: 100,
+        totalPrice: 0.005,
+        byNode: {
+          'node-1': {
+            inputTokens: 60,
+            outputTokens: 40,
+            totalTokens: 100,
+            totalPrice: 0.005,
+          },
+        },
+      };
+
+      const parentToolCallId = 'call_inprogress_123';
+
+      const mockMessages = [
+        // 1. Parent AI message that calls subagents_run_task
+        createMockMessageEntity({
+          id: 'msg-parent-ai',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: ['subagents_run_task'],
+          toolCallIds: [parentToolCallId],
+          additionalKwargs: {},
+          requestTokenUsage: {
+            inputTokens: 60,
+            outputTokens: 40,
+            totalTokens: 100,
+            totalPrice: 0.005,
+          },
+        }),
+        // 2. Subagent internal AI message (streamed in real-time, subagent still running)
+        createMockMessageEntity({
+          id: 'msg-subagent-ai-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: ['files_read'],
+          requestTokenUsage: undefined,
+          additionalKwargs: {
+            __hideForLlm: true,
+            __toolCallId: parentToolCallId,
+            __requestUsage: {
+              inputTokens: 3000,
+              outputTokens: 2000,
+              totalTokens: 5000,
+              totalPrice: 0.003,
+            },
+          },
+        }),
+        // 3. Subagent internal AI message (another LLM call, subagent still running)
+        createMockMessageEntity({
+          id: 'msg-subagent-ai-2',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: [],
+          requestTokenUsage: undefined,
+          additionalKwargs: {
+            __hideForLlm: true,
+            __toolCallId: parentToolCallId,
+            __requestUsage: {
+              inputTokens: 4000,
+              outputTokens: 1500,
+              totalTokens: 5500,
+              totalPrice: 0.004,
+            },
+          },
+        }),
+        // No tool result yet — subagent is still running
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
+      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
+
+      const result = await service.getThreadUsageStatistics(mockThreadId);
+
+      // Message-based total: parent(60+40+100+0.005) + sub1(3000+2000+5000+0.003) + sub2(4000+1500+5500+0.004)
+      // = {7060, 3540, 10600, 0.012}
+      // Checkpoint total: {60, 40, 100, 0.005}
+      // Math.max per field → message-based wins for all fields
+      expect(result.total.inputTokens).toBe(7060);
+      expect(result.total.outputTokens).toBe(3540);
+      expect(result.total.totalTokens).toBe(10600);
+      expect(result.total.totalPrice).toBeCloseTo(0.012, 4);
+
+      // Subagent internal messages should still be counted in toolsAggregate
+      expect(result.toolsAggregate.totalTokens).toBe(10600);
+      expect(result.toolsAggregate.requestCount).toBe(3);
+    });
+
     it('should handle optional token usage fields correctly from checkpoint', async () => {
       const mockThread = createMockThreadEntity({
         status: ThreadStatus.Done,
