@@ -134,15 +134,14 @@ Create a `.env` file in the repo root with your provider keys:
 OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
 GITHUB_PAT_TOKEN=ghp_...
-TAVILY_API_KEY=tvly-...
 ```
 
 | Key | Required | Used for |
 |---|---|---|
 | `OPENAI_API_KEY` | Yes (unless using Ollama) | LLM calls and embeddings via LiteLLM |
 | `GEMINI_API_KEY` | No | Gemini models via LiteLLM |
+| `ZAI_API_KEY` | No | Zhipu AI GLM models via LiteLLM |
 | `GITHUB_PAT_TOKEN` | No | GitHub tool (repo access, PRs, commits) |
-| `TAVILY_API_KEY` | No | Web search tool |
 
 These keys are read by docker-compose and passed to the LiteLLM container at startup. In the future, API keys will be configurable through the web UI.
 
@@ -227,7 +226,7 @@ The API is configured through environment variables. Create a `.env` file in the
 | `HTTP_PORT` | API server port | `5000` |
 | `OPENAI_API_KEY` | OpenAI API key | — |
 | `GEMINI_API_KEY` | Google Gemini API key | — |
-| `TAVILY_API_KEY` | Tavily web search key | — |
+| `ZAI_API_KEY` | Zhipu AI (Z.AI) API key | — |
 | `LLM_USE_OFFLINE_MODEL` | Use local Ollama models | `false` |
 | `AUTH_DEV_MODE` | Skip Keycloak auth in dev | `true` |
 | `CREDENTIAL_ENCRYPTION_KEY` | 64-char hex for AES-256-GCM | dev default provided |

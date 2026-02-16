@@ -21,6 +21,7 @@ import {
   ThreadMessageDto,
   ThreadUsageStatisticsDto,
   UsageStatisticsAggregate,
+  UsageStatisticsByTool,
 } from '../dto/threads.dto';
 import { MessageEntity } from '../entity/message.entity';
 import { ThreadEntity } from '../entity/thread.entity';
@@ -49,7 +50,7 @@ export class ThreadsService {
       order: { updatedAt: 'DESC' },
     });
 
-    return await this.prepareThreadsResponse(threads);
+    return this.prepareThreadsResponse(threads);
   }
 
   async getThreadById(threadId: string): Promise<ThreadDto> {
@@ -64,7 +65,7 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    return (await this.prepareThreadsResponse([thread]))[0]!;
+    return this.prepareThreadsResponse([thread])[0]!;
   }
 
   async getThreadByExternalId(externalThreadId: string): Promise<ThreadDto> {
@@ -79,7 +80,7 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    return (await this.prepareThreadsResponse([thread]))[0]!;
+    return this.prepareThreadsResponse([thread])[0]!;
   }
 
   async getThreadMessages(
@@ -149,7 +150,7 @@ export class ThreadsService {
     }
 
     if (thread.status !== ThreadStatus.Running) {
-      return (await this.prepareThreadsResponse([thread]))[0]!;
+      return this.prepareThreadsResponse([thread])[0]!;
     }
 
     // Best effort: stop execution in the running graph (if present in registry)
@@ -164,7 +165,7 @@ export class ThreadsService {
     }
     // Do not emit ThreadUpdate here; GraphStateManager will emit ThreadUpdate with Stopped
     // when the agent run terminates due to abort.
-    return (await this.prepareThreadsResponse([thread]))[0]!;
+    return this.prepareThreadsResponse([thread])[0]!;
   }
 
   async stopThreadByExternalId(externalThreadId: string): Promise<ThreadDto> {
@@ -201,7 +202,7 @@ export class ThreadsService {
       metadata: dto.metadata,
     });
 
-    return (await this.prepareThreadsResponse([updated!]))[0]!;
+    return this.prepareThreadsResponse([updated!])[0]!;
   }
 
   async setMetadataByExternalId(
@@ -223,12 +224,10 @@ export class ThreadsService {
       metadata: dto.metadata,
     });
 
-    return (await this.prepareThreadsResponse([updated!]))[0]!;
+    return this.prepareThreadsResponse([updated!])[0]!;
   }
 
-  public async prepareThreadsResponse(
-    entities: ThreadEntity[],
-  ): Promise<ThreadDto[]> {
+  public prepareThreadsResponse(entities: ThreadEntity[]): ThreadDto[] {
     // Token usage is fetched separately via GET /threads/:threadId/usage-statistics
     return entities.map((entity) => {
       const { deletedAt: _deletedAt, ...entityWithoutExcludedFields } = entity;
@@ -241,8 +240,8 @@ export class ThreadsService {
     });
   }
 
-  public async prepareThreadResponse(entity: ThreadEntity): Promise<ThreadDto> {
-    return (await this.prepareThreadsResponse([entity]))[0]!;
+  public prepareThreadResponse(entity: ThreadEntity): ThreadDto {
+    return this.prepareThreadsResponse([entity])[0]!;
   }
 
   public prepareMessageResponse(entity: MessageEntity): ThreadMessageDto {
@@ -251,6 +250,7 @@ export class ThreadsService {
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
       requestTokenUsage: entity.requestTokenUsage ?? null,
+      toolTokenUsage: entity.toolTokenUsage ?? null,
     };
   }
 
@@ -295,13 +295,6 @@ export class ThreadsService {
       requestCount: 0,
     };
 
-    const messagesAggregate: UsageStatisticsAggregate = {
-      inputTokens: 0,
-      outputTokens: 0,
-      totalTokens: 0,
-      requestCount: 0,
-    };
-
     const threadUsage = await this.checkpointStateService.getThreadTokenUsage(
       thread.externalThreadId,
     );
@@ -314,8 +307,8 @@ export class ThreadsService {
       }
     }
 
-    // Format usage statistics from stored token usage data
-    // We need to get messages to calculate byTool and aggregates
+    // Format usage statistics from stored token usage data.
+    // Use denormalized columns instead of full message JSONB for performance.
     const messages =
       (await this.messagesDao.getAll({
         threadId: thread.id,
@@ -328,31 +321,145 @@ export class ThreadsService {
           'requestTokenUsage',
           'toolCallNames',
           'answeredToolCallNames',
+          'additionalKwargs',
+          'toolCallIds',
+          'toolTokenUsage',
         ],
       })) ?? [];
 
     // Use Decimal.js for price aggregation to avoid floating-point errors
     let toolsPriceDecimal = new Decimal(0);
-    let messagesPriceDecimal = new Decimal(0);
     let totalRequests = 0;
+    let userMessageCount = 0;
+
+    // Map: toolCallId -> parentToolName (for linking subagent internal messages)
+    const toolCallIdToToolName = new Map<string, string>();
+
+    // Map: parentToolName -> childToolName -> { callCount, totalTokens, priceDecimal }
+    const subCallsByParent = new Map<
+      string,
+      Map<
+        string,
+        { callCount: number; totalTokens: number; priceDecimal: Decimal }
+      >
+    >();
+
+    // Map: toolName -> { toolTokens, priceDecimal } (from tool result messages)
+    const toolOwnUsage = new Map<
+      string,
+      { toolTokens: number; priceDecimal: Decimal }
+    >();
 
     for (const messageEntity of messages) {
       const requestUsage = messageEntity.requestTokenUsage;
-      const isToolAnswerMessage =
-        messageEntity.role === MessageRole.AI &&
-        Array.isArray(messageEntity.answeredToolCallNames) &&
-        messageEntity.answeredToolCallNames.length > 0;
+      const isAiMessage = messageEntity.role === MessageRole.AI;
       const isToolMessage = messageEntity.role === MessageRole.Tool;
-      const isRealLlmRequest =
-        (isToolAnswerMessage && requestUsage) ||
-        (!isToolAnswerMessage && !isToolMessage);
+      const isHumanMessage = messageEntity.role === MessageRole.Human;
 
-      if (requestUsage) {
-        if (isRealLlmRequest) {
-          totalRequests++;
+      const additionalKwargs = messageEntity.additionalKwargs;
+      const isSubagentInternal = additionalKwargs?.__hideForLlm === true;
+
+      // Count user messages
+      if (isHumanMessage) {
+        userMessageCount++;
+      }
+
+      // Build toolCallId -> toolName mapping from non-subagent AI messages
+      // Uses denormalized toolCallIds + toolCallNames columns (parallel arrays)
+      if (isAiMessage && !isSubagentInternal) {
+        const ids = messageEntity.toolCallIds;
+        const names = messageEntity.toolCallNames;
+        if (Array.isArray(ids) && Array.isArray(names)) {
+          for (let i = 0; i < ids.length && i < names.length; i++) {
+            if (ids[i] && names[i]) {
+              toolCallIdToToolName.set(ids[i]!, names[i]!);
+            }
+          }
+        }
+      }
+
+      // Handle subagent internal AI messages: route to subCalls instead of top-level
+      if (isAiMessage && isSubagentInternal) {
+        const parentToolCallId = additionalKwargs?.__toolCallId as
+          | string
+          | undefined;
+        const parentToolName = parentToolCallId
+          ? toolCallIdToToolName.get(parentToolCallId)
+          : undefined;
+
+        if (parentToolName) {
+          // Extract __requestUsage from JSONB for actual token counts
+          const embeddedUsage = additionalKwargs?.__requestUsage as
+            | RequestTokenUsage
+            | undefined;
+          const embeddedTokens = embeddedUsage?.totalTokens || 0;
+          const embeddedPrice = embeddedUsage?.totalPrice || 0;
+
+          // Determine child tool name(s) or use (llm_response) for no-tool responses
+          const childToolNames =
+            Array.isArray(messageEntity.toolCallNames) &&
+            messageEntity.toolCallNames.length > 0
+              ? messageEntity.toolCallNames
+              : ['(llm_response)'];
+
+          if (!subCallsByParent.has(parentToolName)) {
+            subCallsByParent.set(parentToolName, new Map());
+          }
+          const parentSubCalls = subCallsByParent.get(parentToolName)!;
+
+          for (const childToolName of childToolNames) {
+            const current = parentSubCalls.get(childToolName);
+            parentSubCalls.set(childToolName, {
+              callCount: (current?.callCount || 0) + 1,
+              totalTokens: (current?.totalTokens || 0) + embeddedTokens,
+              priceDecimal: (current?.priceDecimal || new Decimal(0)).plus(
+                embeddedPrice,
+              ),
+            });
+          }
         }
 
-        if (isToolAnswerMessage || isToolMessage) {
+        // Subagent internal messages don't contribute to top-level byTool
+        continue;
+      }
+
+      // Count tool calls from non-subagent AI messages.
+      if (
+        isAiMessage &&
+        Array.isArray(messageEntity.toolCallNames) &&
+        messageEntity.toolCallNames.length > 0
+      ) {
+        for (const toolName of messageEntity.toolCallNames) {
+          const current = byToolUsage.get(toolName);
+          byToolUsage.set(toolName, {
+            totalTokens: current?.totalTokens || 0,
+            totalPrice: current?.totalPrice || 0,
+            callCount: (current?.callCount || 0) + 1,
+          });
+        }
+      }
+
+      // Attribute token usage to tools.
+      if (requestUsage) {
+        totalRequests++;
+
+        let attributeToTools: string[] | undefined;
+
+        if (isAiMessage) {
+          if (
+            Array.isArray(messageEntity.toolCallNames) &&
+            messageEntity.toolCallNames.length > 0
+          ) {
+            attributeToTools = messageEntity.toolCallNames;
+          } else if (
+            Array.isArray(messageEntity.answeredToolCallNames) &&
+            messageEntity.answeredToolCallNames.length > 0
+          ) {
+            attributeToTools = messageEntity.answeredToolCallNames;
+          }
+        }
+
+        if (attributeToTools && attributeToTools.length > 0) {
           toolsPriceDecimal = toolsPriceDecimal.plus(
             requestUsage.totalPrice || 0,
           );
@@ -360,38 +467,38 @@ export class ThreadsService {
           toolsAggregate.inputTokens += requestUsage.inputTokens;
           toolsAggregate.outputTokens += requestUsage.outputTokens;
           toolsAggregate.totalTokens += requestUsage.totalTokens;
+          toolsAggregate.requestCount++;
 
-          if (isRealLlmRequest) {
-            toolsAggregate.requestCount++;
-          }
-
-          let answeredToolCallNames = messageEntity.answeredToolCallNames;
-          if (!answeredToolCallNames && isToolMessage && messageEntity.name) {
-            answeredToolCallNames = [messageEntity.name];
-          }
-
-          for (const toolName of answeredToolCallNames || []) {
+          for (const toolName of attributeToTools) {
             const current = byToolUsage.get(toolName);
             byToolUsage.set(toolName, {
               totalTokens:
                 (current?.totalTokens || 0) + requestUsage.totalTokens,
               totalPrice:
                 (current?.totalPrice || 0) + (requestUsage.totalPrice || 0),
-              callCount: (current?.callCount || 0) + (isRealLlmRequest ? 1 : 0),
+              callCount: current?.callCount || 0,
             });
           }
-        } else {
-          messagesPriceDecimal = messagesPriceDecimal.plus(
-            requestUsage?.totalPrice || 0,
-          );
-
-          messagesAggregate.inputTokens += requestUsage.inputTokens;
-          messagesAggregate.outputTokens += requestUsage.outputTokens;
-          messagesAggregate.totalTokens += requestUsage.totalTokens;
-          if (isRealLlmRequest) {
-            messagesAggregate.requestCount++;
-          }
         }
+      }
+
+      // Aggregate tool's own execution cost from denormalized column
+      if (isToolMessage && messageEntity.name && messageEntity.toolTokenUsage) {
+        const toolUsage = messageEntity.toolTokenUsage;
+        const existing = toolOwnUsage.get(messageEntity.name);
+        toolOwnUsage.set(messageEntity.name, {
+          toolTokens: (existing?.toolTokens || 0) + toolUsage.totalTokens,
+          priceDecimal: (existing?.priceDecimal || new Decimal(0)).plus(
+            toolUsage.totalPrice || 0,
+          ),
+        });
+
+        // Count tool's own usage in toolsAggregate
+        toolsPriceDecimal = toolsPriceDecimal.plus(toolUsage.totalPrice || 0);
+        toolsAggregate.inputTokens += toolUsage.inputTokens;
+        toolsAggregate.outputTokens += toolUsage.outputTokens;
+        toolsAggregate.totalTokens += toolUsage.totalTokens;
+        toolsAggregate.requestCount++;
       }
     }
 
@@ -399,20 +506,45 @@ export class ThreadsService {
     if (!toolsPriceDecimal.isZero()) {
       toolsAggregate.totalPrice = toolsPriceDecimal.toNumber();
     }
-    if (!messagesPriceDecimal.isZero()) {
-      messagesAggregate.totalPrice = messagesPriceDecimal.toNumber();
-    }
+
+    // Build final byTool array with subCalls and toolTokens/toolPrice
+    const byTool: UsageStatisticsByTool[] = Array.from(
+      byToolUsage.entries(),
+    ).map(([toolName, usage]) => {
+      const entry: UsageStatisticsByTool = {
+        toolName,
+        ...usage,
+      };
+
+      // Attach tool's own execution cost (e.g. subagent aggregate tokens)
+      const ownUsage = toolOwnUsage.get(toolName);
+      if (ownUsage) {
+        entry.toolTokens = ownUsage.toolTokens;
+        entry.toolPrice = ownUsage.priceDecimal.toNumber();
+      }
+
+      // Attach subCalls from subagent internal messages
+      const subCalls = subCallsByParent.get(toolName);
+      if (subCalls && subCalls.size > 0) {
+        entry.subCalls = Array.from(subCalls.entries()).map(
+          ([childToolName, { priceDecimal, ...childUsage }]) => ({
+            toolName: childToolName,
+            ...childUsage,
+            totalPrice: priceDecimal.toNumber(),
+          }),
+        );
+      }
+
+      return entry;
+    });
 
     return {
       total: totalUsage,
       requests: totalRequests,
       byNode: Object.fromEntries(byNodeUsage),
-      byTool: Array.from(byToolUsage.entries()).map(([toolName, usage]) => ({
-        toolName,
-        ...usage,
-      })),
+      byTool,
       toolsAggregate,
-      messagesAggregate,
+      userMessageCount,
     };
   }
 }

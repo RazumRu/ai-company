@@ -28,15 +28,46 @@ export const ThreadTokenUsageSchema = TokenUsageSchema.extend({
 });
 
 // Usage statistics schemas
-export const UsageStatisticsByToolSchema = z.object({
-  toolName: z.string().describe('Tool name'),
-  totalTokens: z.number().describe('Total tokens used by this tool'),
-  totalPrice: z
-    .number()
-    .optional()
-    .describe('Total price for this tool in USD'),
-  callCount: z.number().describe('Number of times this tool was called'),
-});
+
+// Type declared explicitly for recursive z.lazy() self-reference
+export type UsageStatisticsByTool = {
+  toolName: string;
+  totalTokens: number;
+  totalPrice?: number;
+  callCount: number;
+  toolTokens?: number;
+  toolPrice?: number;
+  subCalls?: UsageStatisticsByTool[];
+};
+
+export const UsageStatisticsByToolSchema: z.ZodType<UsageStatisticsByTool> =
+  z.object({
+    toolName: z.string().describe('Tool name'),
+    totalTokens: z
+      .number()
+      .describe('Total tokens from LLM requests related to this tool'),
+    totalPrice: z
+      .number()
+      .optional()
+      .describe('Total price from LLM requests related to this tool in USD'),
+    callCount: z.number().describe('Number of times this tool was called'),
+    toolTokens: z
+      .number()
+      .optional()
+      .describe(
+        "Tool's own execution token cost (e.g. subagent aggregate tokens)",
+      ),
+    toolPrice: z
+      .number()
+      .optional()
+      .describe("Tool's own execution price in USD"),
+    subCalls: z
+      .lazy(() => z.array(UsageStatisticsByToolSchema))
+      .optional()
+      .describe(
+        'Sub-tool calls made within this tool (e.g. tools called by a subagent)',
+      ),
+  });
 
 export const UsageStatisticsAggregateSchema = TokenUsageSchema.extend({
   requestCount: z
@@ -58,11 +89,11 @@ export const ThreadUsageStatisticsSchema = z.object({
     .array(UsageStatisticsByToolSchema)
     .describe('Usage statistics breakdown by tool name'),
   toolsAggregate: UsageStatisticsAggregateSchema.describe(
-    'Aggregated statistics for all tool message requests',
+    'Aggregated statistics for all tool-related LLM requests',
   ),
-  messagesAggregate: UsageStatisticsAggregateSchema.describe(
-    'Aggregated statistics for all non-tool message requests (human, ai, system, reasoning)',
-  ),
+  userMessageCount: z
+    .number()
+    .describe('Number of user (human) messages in the thread'),
 });
 
 // Thread schema
@@ -107,6 +138,11 @@ export const ThreadMessageSchema = z.object({
     .nullable()
     .describe(
       'Full LLM request token usage & cost (entire request, not just this message)',
+    ),
+  toolTokenUsage: TokenUsageSchema.optional()
+    .nullable()
+    .describe(
+      "Tool's own execution token cost (e.g. subagent aggregate tokens). Only present on tool result messages.",
     ),
 });
 
@@ -166,7 +202,7 @@ export const SetThreadMetadataSchema = z.object({
 // Type exports
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 export type ThreadTokenUsage = z.infer<typeof ThreadTokenUsageSchema>;
-export type UsageStatisticsByTool = z.infer<typeof UsageStatisticsByToolSchema>;
+// UsageStatisticsByTool type is declared above (explicit for recursive z.lazy)
 export type UsageStatisticsAggregate = z.infer<
   typeof UsageStatisticsAggregateSchema
 >;

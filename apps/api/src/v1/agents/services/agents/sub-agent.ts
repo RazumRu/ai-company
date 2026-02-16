@@ -9,7 +9,11 @@ import { DefaultLogger } from '@packages/common';
 
 import { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
-import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
+import {
+  BaseAgentState,
+  BaseAgentStateChange,
+  SUBAGENT_THREAD_PREFIX,
+} from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
 import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
@@ -116,7 +120,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     // ID.  The MemorySaver is scoped to this single run and will be GC'd when
     // the method returns — no stale checkpoint data accumulates.
     const checkpointer = new MemorySaver();
-    const threadId = `subagent-${randomUUID()}`;
+    const threadId = `${SUBAGENT_THREAD_PREFIX}${randomUUID()}`;
 
     const initialMessages = updateMessagesListWithMetadata(
       messages,

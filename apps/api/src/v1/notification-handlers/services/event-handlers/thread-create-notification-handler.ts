@@ -41,7 +41,7 @@ export class ThreadCreateNotificationHandler extends BaseNotificationHandler<ITh
     const ownerId = await this.getGraphOwner(graphId);
 
     const threadsService = await this.moduleRef.create(ThreadsService);
-    const threadDto = await threadsService.prepareThreadResponse(data);
+    const threadDto = threadsService.prepareThreadResponse(data);
 
     return [
       {

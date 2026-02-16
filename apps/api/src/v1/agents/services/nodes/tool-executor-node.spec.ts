@@ -597,10 +597,12 @@ describe('ToolExecutorNode', () => {
       expect(result.totalTokens).toBe(450);
       expect(result.totalPrice).toBe(0.003);
 
-      // Verify usage is attached to tool messages
+      // Verify usage is attached to tool messages:
+      // __toolTokenUsage = tool's own execution cost
+      // __requestUsage = parent LLM call (undefined here since mock AI has none)
       expect(result.messages?.items).toHaveLength(2);
       expect(
-        result.messages?.items?.[0]?.additional_kwargs?.__requestUsage,
+        result.messages?.items?.[0]?.additional_kwargs?.__toolTokenUsage,
       ).toEqual({
         inputTokens: 100,
         outputTokens: 50,
@@ -608,13 +610,19 @@ describe('ToolExecutorNode', () => {
         totalPrice: 0.001,
       });
       expect(
-        result.messages?.items?.[1]?.additional_kwargs?.__requestUsage,
+        result.messages?.items?.[0]?.additional_kwargs?.__requestUsage,
+      ).toBeUndefined();
+      expect(
+        result.messages?.items?.[1]?.additional_kwargs?.__toolTokenUsage,
       ).toEqual({
         inputTokens: 200,
         outputTokens: 100,
         totalTokens: 300,
         totalPrice: 0.002,
       });
+      expect(
+        result.messages?.items?.[1]?.additional_kwargs?.__requestUsage,
+      ).toBeUndefined();
     });
 
     it('should handle tools without usage tracking', async () => {

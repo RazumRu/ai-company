@@ -44,8 +44,13 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
   // Per-message token usage (proportional share)
   __tokenUsage?: MessageTokenUsage;
 
-  // Full request token usage (entire LLM request, not just this message)
+  // Full request token usage (entire LLM request, not just this message).
+  // For AI messages: the LLM request that produced this response.
+  // For tool messages: the parent LLM request that decided to call this tool.
   __requestUsage?: RequestTokenUsage;
+
+  /** Tool's own execution token cost (e.g. subagent aggregate tokens) */
+  __toolTokenUsage?: RequestTokenUsage;
 
   /**
    * Marks a message that was already emitted in real-time via tool streaming.
@@ -59,6 +64,13 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
    */
   __toolCallId?: string;
 };
+
+/**
+ * Thread-ID prefix used by SubAgent. Checkpoints with this prefix
+ * are excluded from token-usage aggregation because their usage is
+ * already folded into the parent checkpoint by tool-executor-node.
+ */
+export const SUBAGENT_THREAD_PREFIX = 'subagent-';
 
 export type BaseAgentStateMessagesUpdateValue = {
   mode: 'append' | 'replace';

@@ -3,13 +3,10 @@ import { DefaultLogger } from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
-import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { MessageRole } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphsService } from '../../graphs/services/graphs.service';
-import { MessageTransformerService } from '../../graphs/services/message-transformer.service';
 import { LitellmService } from '../../litellm/services/litellm.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
@@ -28,7 +25,7 @@ describe('ThreadsService', () => {
   let graphRegistry: GraphRegistry;
   let authContext: AuthContextService;
   let notificationsService: NotificationsService;
-  let mockGraphRegistry: GraphRegistry;
+  let checkpointStateService: CheckpointStateService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -92,25 +89,6 @@ describe('ThreadsService', () => {
           provide: CheckpointStateService,
           useValue: {
             getThreadTokenUsage: vi.fn().mockResolvedValue(null),
-            getRootThreadTokenUsage: vi.fn().mockResolvedValue(null),
-          },
-        },
-        {
-          provide: GraphCheckpointsDao,
-          useValue: {
-            getOne: vi.fn().mockResolvedValue(null),
-          },
-        },
-        {
-          provide: PgCheckpointSaver,
-          useValue: {
-            getTuple: vi.fn().mockResolvedValue(undefined),
-          },
-        },
-        {
-          provide: MessageTransformerService,
-          useValue: {
-            transformMessagesToDto: vi.fn().mockReturnValue([]),
           },
         },
         {
@@ -161,14 +139,12 @@ describe('ThreadsService', () => {
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     messagesDao = module.get<MessagesDao>(MessagesDao);
     graphRegistry = module.get<GraphRegistry>(GraphRegistry);
-    mockGraphRegistry = module.get<GraphRegistry>(GraphRegistry);
     authContext = module.get<AuthContextService>(AuthContextService);
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
-
-    // Ensure litellmService is accessible
-    (service as any).litellmService =
-      module.get<LitellmService>(LitellmService);
+    checkpointStateService = module.get<CheckpointStateService>(
+      CheckpointStateService,
+    );
   });
 
   describe('getThreads', () => {
@@ -280,15 +256,7 @@ describe('ThreadsService', () => {
       });
     });
 
-    it('should throw error if thread not found', async () => {
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
-
-      await expect(service.getThreadById(mockThreadId)).rejects.toThrow(
-        '[THREAD_NOT_FOUND] An exception has occurred',
-      );
-    });
-
-    it('should throw error if thread belongs to different user', async () => {
+    it('should throw error if thread not found or belongs to different user', async () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
       await expect(service.getThreadById(mockThreadId)).rejects.toThrow(
@@ -319,23 +287,11 @@ describe('ThreadsService', () => {
       });
     });
 
-    it('should throw error if thread not found by external ID', async () => {
-      const externalThreadId = 'non-existent-external-id';
-
+    it('should throw error if thread not found or belongs to different user', async () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
       await expect(
-        service.getThreadByExternalId(externalThreadId),
-      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
-    });
-
-    it('should throw error if thread belongs to different user', async () => {
-      const externalThreadId = 'external-thread-123';
-
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
-
-      await expect(
-        service.getThreadByExternalId(externalThreadId),
+        service.getThreadByExternalId('non-existent-external-id'),
       ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
     });
 
@@ -352,7 +308,7 @@ describe('ThreadsService', () => {
   });
 
   describe('token usage aggregation', () => {
-    it('sums token usage from running graph state across agents and returns from Redis', async () => {
+    it('does not include tokenUsage in thread response for running threads', async () => {
       const mockThread = createMockThreadEntity({
         status: ThreadStatus.Running,
         externalThreadId: 'external-thread-123',
@@ -519,24 +475,7 @@ describe('ThreadsService', () => {
       expect(threadsDao.deleteById).toHaveBeenCalledWith(mockThreadId);
     });
 
-    it('should throw error if thread not found', async () => {
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
-
-      await expect(service.deleteThread(mockThreadId)).rejects.toThrow(
-        '[THREAD_NOT_FOUND] An exception has occurred',
-      );
-
-      expect(authContext.checkSub).toHaveBeenCalled();
-      expect(threadsDao.getOne).toHaveBeenCalledWith({
-        id: mockThreadId,
-        createdBy: mockUserId,
-      });
-      expect(messagesDao.delete).not.toHaveBeenCalled();
-      expect(notificationsService.emit).not.toHaveBeenCalled();
-      expect(threadsDao.deleteById).not.toHaveBeenCalled();
-    });
-
-    it('should throw error if thread belongs to different user', async () => {
+    it('should throw error if thread not found or belongs to different user', async () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
       await expect(service.deleteThread(mockThreadId)).rejects.toThrow(
@@ -760,15 +699,12 @@ describe('ThreadsService', () => {
       vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
 
       // Mock checkpoint service to return token usage
-      const mockCheckpointStateService = (service as any)
-        .checkpointStateService;
-      vi.spyOn(
-        mockCheckpointStateService,
-        'getThreadTokenUsage',
-      ).mockResolvedValue(mockTokenUsageFromCheckpoint);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
-      vi.spyOn(mockGraphRegistry, 'getNodesByType').mockReturnValue([]);
+      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 
@@ -788,6 +724,9 @@ describe('ThreadsService', () => {
           'requestTokenUsage',
           'toolCallNames',
           'answeredToolCallNames',
+          'additionalKwargs',
+          'toolCallIds',
+          'toolTokenUsage',
         ],
       });
 
@@ -813,43 +752,38 @@ describe('ThreadsService', () => {
       });
       expect(result.byNode['node-2']!.totalPrice).toBeCloseTo(0.004, 4);
 
-      // Check byTool (from AI message processing tool results)
-      // AI processing message has 80 tokens @ 0.004, split between 2 tools = 40 tokens @ 0.002 each
+      // Check byTool — callCount from toolCallNames, usage from AI messages
+      // msg-2 calls search+shell (callCount 1 each, 40 tokens each)
+      // msg-5 answers search+shell (no callCount, 80 tokens attributed to each)
       expect(result.byTool).toHaveLength(2);
       expect(result.byTool[0]).toMatchObject({
         toolName: 'search',
-        totalTokens: 80,
-        totalPrice: 0.004,
+        totalTokens: 120, // 40 (calling) + 80 (answering)
         callCount: 1,
       });
+      expect(result.byTool[0]!.totalPrice).toBeCloseTo(0.006, 4);
       expect(result.byTool[1]).toMatchObject({
         toolName: 'shell',
-        totalTokens: 80,
-        totalPrice: 0.004,
+        totalTokens: 120, // 40 (calling) + 80 (answering)
         callCount: 1,
       });
+      expect(result.byTool[1]!.totalPrice).toBeCloseTo(0.006, 4);
 
-      // Check total requests (only messages with requestTokenUsage)
+      // Check total requests (all messages with requestTokenUsage)
       expect(result.requests).toBe(3); // human + ai calling + ai processing
 
-      // Check toolsAggregate (AI messages processing tool results, not calling tools)
+      // Check toolsAggregate (all tool-related LLM requests)
+      // msg-2 (AI calling tools, 40 tokens) + msg-5 (AI answering tools, 80 tokens)
       expect(result.toolsAggregate).toMatchObject({
-        inputTokens: 50, // AI message processing tool results
-        outputTokens: 30,
-        totalTokens: 80,
-        requestCount: 1, // 1 AI message processing tool results
+        inputTokens: 65, // 15 + 50
+        outputTokens: 55, // 25 + 30
+        totalTokens: 120, // 40 + 80
+        requestCount: 2,
       });
-      expect(result.toolsAggregate.totalPrice).toBeCloseTo(0.004, 4);
+      expect(result.toolsAggregate.totalPrice).toBeCloseTo(0.006, 4);
 
-      // Check messagesAggregate (human + AI messages with tool calls)
-      // AI messages WITH tool calls now go to messagesAggregate (not toolsAggregate)
-      expect(result.messagesAggregate).toMatchObject({
-        inputTokens: 25, // 10 (human) + 15 (ai calling tools)
-        outputTokens: 45, // 20 (human) + 25 (ai calling tools)
-        totalTokens: 70, // 30 (human) + 40 (ai calling tools)
-        requestCount: 2, // human + ai calling tools
-      });
-      expect(result.messagesAggregate.totalPrice).toBeCloseTo(0.003, 4);
+      // Check userMessageCount
+      expect(result.userMessageCount).toBe(1);
     });
 
     it('should aggregate multiple calls to same tool', async () => {
@@ -954,25 +888,22 @@ describe('ThreadsService', () => {
       vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
 
       // Mock checkpoint service to return token usage
-      const mockCheckpointStateService = (service as any)
-        .checkpointStateService;
-      vi.spyOn(
-        mockCheckpointStateService,
-        'getThreadTokenUsage',
-      ).mockResolvedValue(mockTokenUsageFromCheckpoint);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
-      vi.spyOn(mockGraphRegistry, 'getNodesByType').mockReturnValue([]);
+      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 
-      // byTool should aggregate usage from the two AI messages processing tool results (msg-3 and msg-6)
+      // byTool should aggregate all tool-related usage (calling + answering)
       expect(result.byTool).toHaveLength(1);
       expect(result.byTool[0]).toMatchObject({
         toolName: 'search',
-        totalTokens: 75, // 30 + 45 (from processing messages)
-        totalPrice: 0.005, // 0.002 + 0.003 (from processing messages)
-        callCount: 2, // Two tool result messages
+        totalTokens: 111, // 15 + 30 + 21 + 45 (two calls + two answers)
+        totalPrice: 0.008, // 0.001 + 0.002 + 0.002 + 0.003
+        callCount: 2, // Two AI messages with toolCallNames=['search']
       });
     });
 
@@ -989,6 +920,189 @@ describe('ThreadsService', () => {
         createdBy: mockUserId,
       });
       expect(messagesDao.getAll).not.toHaveBeenCalled();
+    });
+
+    it('should nest subagent internal tool calls under parent tool as subCalls', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      const mockTokenUsageFromCheckpoint = {
+        inputTokens: 100,
+        outputTokens: 80,
+        totalTokens: 180,
+        totalPrice: 0.01,
+        byNode: {
+          'node-1': {
+            inputTokens: 100,
+            outputTokens: 80,
+            totalTokens: 180,
+            totalPrice: 0.01,
+          },
+        },
+      };
+
+      const parentToolCallId = 'call_867775e4';
+
+      const mockMessages = [
+        // 1. Parent AI message that calls subagents_run_task
+        createMockMessageEntity({
+          id: 'msg-parent-ai',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: ['subagents_run_task'],
+          toolCallIds: [parentToolCallId],
+          additionalKwargs: {},
+          requestTokenUsage: {
+            inputTokens: 60,
+            outputTokens: 40,
+            totalTokens: 100,
+            totalPrice: 0.005,
+          },
+        }),
+        // 2. Subagent internal AI message that calls files_write_file (__hideForLlm)
+        createMockMessageEntity({
+          id: 'msg-subagent-ai-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: ['files_write_file'],
+          requestTokenUsage: undefined, // Stripped for __hideForLlm
+          additionalKwargs: {
+            __hideForLlm: true,
+            __toolCallId: parentToolCallId,
+            __requestUsage: {
+              inputTokens: 2000,
+              outputTokens: 1563,
+              totalTokens: 3563,
+              totalPrice: 0,
+            },
+          },
+        }),
+        // 3. Subagent internal tool result (files_write_file)
+        createMockMessageEntity({
+          id: 'msg-subagent-tool',
+          nodeId: 'node-1',
+          role: MessageRole.Tool,
+          name: 'files_write_file',
+          requestTokenUsage: undefined,
+          additionalKwargs: {
+            __hideForLlm: true,
+            __toolCallId: parentToolCallId,
+          },
+        }),
+        // 4. Subagent internal AI final response (no tool calls) (__hideForLlm)
+        createMockMessageEntity({
+          id: 'msg-subagent-ai-2',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: [], // No tool calls - final response
+          requestTokenUsage: undefined, // Stripped for __hideForLlm
+          additionalKwargs: {
+            __hideForLlm: true,
+            __toolCallId: parentToolCallId,
+            __requestUsage: {
+              inputTokens: 2000,
+              outputTokens: 1518,
+              totalTokens: 3518,
+              totalPrice: 0,
+            },
+          },
+        }),
+        // 5. Tool result for subagents_run_task (with own toolTokenUsage)
+        createMockMessageEntity({
+          id: 'msg-tool-result',
+          nodeId: 'node-1',
+          role: MessageRole.Tool,
+          name: 'subagents_run_task',
+          requestTokenUsage: undefined, // Tool messages don't have requestTokenUsage
+          toolTokenUsage: {
+            inputTokens: 4000,
+            outputTokens: 3081,
+            totalTokens: 7081,
+            totalPrice: 0,
+          },
+          additionalKwargs: {},
+        }),
+        // 6. AI message processing the tool result (answeredToolCallNames)
+        createMockMessageEntity({
+          id: 'msg-answer-ai',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: [],
+          answeredToolCallNames: ['subagents_run_task'],
+          requestTokenUsage: {
+            inputTokens: 40,
+            outputTokens: 40,
+            totalTokens: 80,
+            totalPrice: 0.005,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
+      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
+
+      const result = await service.getThreadUsageStatistics(mockThreadId);
+
+      // subagents_run_task should appear in byTool with subCalls
+      const subagentEntry = result.byTool.find(
+        (t) => t.toolName === 'subagents_run_task',
+      );
+      expect(subagentEntry).toBeDefined();
+      expect(subagentEntry!.callCount).toBe(1);
+      // totalTokens = 100 (calling) + 80 (answering) = 180
+      expect(subagentEntry!.totalTokens).toBe(180);
+
+      // toolTokens/toolPrice from tool result message
+      expect(subagentEntry!.toolTokens).toBe(7081);
+      expect(subagentEntry!.toolPrice).toBe(0);
+
+      // subCalls should contain files_write_file and (llm_response)
+      expect(subagentEntry!.subCalls).toBeDefined();
+      expect(subagentEntry!.subCalls).toHaveLength(2);
+
+      const writeFileSubCall = subagentEntry!.subCalls!.find(
+        (sc) => sc.toolName === 'files_write_file',
+      );
+      expect(writeFileSubCall).toBeDefined();
+      expect(writeFileSubCall!.callCount).toBe(1);
+      expect(writeFileSubCall!.totalTokens).toBe(3563);
+      expect(writeFileSubCall!.totalPrice).toBe(0);
+
+      const llmResponseSubCall = subagentEntry!.subCalls!.find(
+        (sc) => sc.toolName === '(llm_response)',
+      );
+      expect(llmResponseSubCall).toBeDefined();
+      expect(llmResponseSubCall!.callCount).toBe(1);
+      expect(llmResponseSubCall!.totalTokens).toBe(3518);
+      expect(llmResponseSubCall!.totalPrice).toBe(0);
+
+      // files_write_file should NOT appear at top level
+      const topLevelWriteFile = result.byTool.find(
+        (t) => t.toolName === 'files_write_file',
+      );
+      expect(topLevelWriteFile).toBeUndefined();
+
+      // (llm_response) should NOT appear at top level
+      const topLevelLlmResponse = result.byTool.find(
+        (t) => t.toolName === '(llm_response)',
+      );
+      expect(topLevelLlmResponse).toBeUndefined();
+
+      // toolsAggregate should include subagents_run_task calling + answering + tool result
+      // msg-parent-ai (100 tokens) + msg-tool-result (7081 tokens) + msg-answer-ai (80 tokens)
+      expect(result.toolsAggregate.totalTokens).toBe(7261);
+      expect(result.toolsAggregate.requestCount).toBe(3);
     });
 
     it('should handle optional token usage fields correctly from checkpoint', async () => {
@@ -1040,15 +1154,12 @@ describe('ThreadsService', () => {
       vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
 
       // Mock checkpoint service to return token usage
-      const mockCheckpointStateService = (service as any)
-        .checkpointStateService;
-      vi.spyOn(
-        mockCheckpointStateService,
-        'getThreadTokenUsage',
-      ).mockResolvedValue(mockTokenUsage);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsage,
+      );
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
-      vi.spyOn(mockGraphRegistry, 'getNodesByType').mockReturnValue([]);
+      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 

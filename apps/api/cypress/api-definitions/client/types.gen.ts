@@ -110,7 +110,9 @@ export type RequestResult<
   : Promise<
       | (AxiosResponse<
           TData extends Record<string, unknown> ? TData[keyof TData] : TData
-        > & { error: undefined })
+        > & {
+          error: undefined;
+        })
       | (AxiosError<
           TError extends Record<string, unknown> ? TError[keyof TError] : TError
         > & {

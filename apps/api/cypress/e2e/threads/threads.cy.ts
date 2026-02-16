@@ -717,7 +717,7 @@ describe('Threads E2E', () => {
             expect(stats).to.have.property('byNode');
             expect(stats).to.have.property('byTool');
             expect(stats).to.have.property('toolsAggregate');
-            expect(stats).to.have.property('messagesAggregate');
+            expect(stats).to.have.property('userMessageCount');
 
             // Verify total has token counts
             expect(stats.total).to.have.property('totalTokens');
@@ -729,9 +729,8 @@ describe('Threads E2E', () => {
             expect(stats.byNode).to.have.property('agent-1');
             expect(stats.byNode['agent-1']?.totalTokens).to.be.greaterThan(0);
 
-            // Verify aggregates
-            expect(stats.messagesAggregate.requestCount).to.be.greaterThan(0);
-            expect(stats.messagesAggregate.totalTokens).to.be.greaterThan(0);
+            // Verify user message count
+            expect(stats.userMessageCount).to.be.greaterThan(0);
 
             // Cleanup
             destroyGraph(testGraphId).then(() => {

@@ -281,23 +281,29 @@ export class InvokeLlmNode extends BaseNode<
     // Find the most recent AI message that called tools, and ensure at least one
     // tool result message exists after it (before the next AI message).
     // We only persist tool NAMES for analytics (not call ids).
+    // Skip __hideForLlm messages (subagent internals) so we attribute usage
+    // to the correct parent-level tool call, not the subagent's internal calls.
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
       if (!(msg instanceof AIMessage)) continue;
+      if (msg.additional_kwargs?.__hideForLlm) continue;
 
       const toolNames = this.getToolCallNamesFromAiMessage(msg);
       if (toolNames.length === 0) continue;
 
       const stopAt = (() => {
         for (let j = i + 1; j < messages.length; j++) {
-          if (messages[j] instanceof AIMessage) return j;
+          const m = messages[j]!;
+          if (m instanceof AIMessage && !m.additional_kwargs?.__hideForLlm) {
+            return j;
+          }
         }
         return messages.length;
       })();
 
       const hasAnyToolResult = messages
         .slice(i + 1, stopAt)
-        .some((m) => m.type === 'tool');
+        .some((m) => m.type === 'tool' && !m.additional_kwargs?.__hideForLlm);
       if (!hasAnyToolResult) {
         return null;
       }

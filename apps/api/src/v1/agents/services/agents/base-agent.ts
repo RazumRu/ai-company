@@ -264,16 +264,12 @@ export abstract class BaseAgent<
 
     return {
       inputTokens: state.inputTokens,
-      ...(state.cachedInputTokens
-        ? { cachedInputTokens: state.cachedInputTokens }
-        : {}),
+      cachedInputTokens: state.cachedInputTokens,
       outputTokens: state.outputTokens,
-      ...(state.reasoningTokens
-        ? { reasoningTokens: state.reasoningTokens }
-        : {}),
+      reasoningTokens: state.reasoningTokens,
       totalTokens: state.totalTokens,
-      ...(state.totalPrice ? { totalPrice: state.totalPrice } : {}),
-      ...(state.currentContext ? { currentContext: state.currentContext } : {}),
+      totalPrice: state.totalPrice,
+      currentContext: state.currentContext,
     };
   }
 

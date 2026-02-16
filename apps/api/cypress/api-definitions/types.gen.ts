@@ -22,6 +22,10 @@ export type CreateRepositoryDto = {
    */
   provider?: 'GITHUB';
   /**
+   * Default branch of the repository (defaults to main)
+   */
+  defaultBranch?: string;
+  /**
    * GitHub personal access token (encrypted at rest, write-only)
    */
   token?: string;
@@ -49,22 +53,15 @@ export type GitRepositoryDto = {
    */
   provider: 'GITHUB';
   /**
+   * Default branch of the repository (e.g. main, master)
+   */
+  defaultBranch: string;
+  /**
    * User ID who cloned the repository
    */
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-};
-
-export type UpdateRepositoryDto = {
-  /**
-   * HTTPS URL of the repository
-   */
-  url?: string;
-  /**
-   * GitHub personal access token (encrypted at rest, write-only)
-   */
-  token?: string;
 };
 
 export type RepoIndexDto = {
@@ -80,6 +77,10 @@ export type RepoIndexDto = {
    * Repository URL
    */
   repoUrl: string;
+  /**
+   * Git branch name this index covers
+   */
+  branch: string;
   /**
    * Indexing status
    */
@@ -107,11 +108,11 @@ export type RepoIndexDto = {
   /**
    * Estimated token count
    */
-  estimatedTokens: number | null;
+  estimatedTokens: number;
   /**
    * Actual indexed tokens
    */
-  indexedTokens: number | null;
+  indexedTokens: number;
   /**
    * Error message if failed
    */
@@ -120,11 +121,30 @@ export type RepoIndexDto = {
   updatedAt: string;
 };
 
+export type UpdateRepositoryDto = {
+  /**
+   * HTTPS URL of the repository
+   */
+  url?: string;
+  /**
+   * Default branch of the repository
+   */
+  defaultBranch?: string;
+  /**
+   * GitHub personal access token (encrypted at rest, write-only)
+   */
+  token?: string;
+};
+
 export type TriggerReindexDto = {
   /**
    * Repository ID to reindex
    */
   repositoryId: string;
+  /**
+   * Branch to reindex. Defaults to the repository default branch (main).
+   */
+  branch?: string;
 };
 
 export type TriggerReindexResponseDto = {
@@ -141,6 +161,10 @@ export type TriggerReindexResponseDto = {
      * Repository URL
      */
     repoUrl: string;
+    /**
+     * Git branch name this index covers
+     */
+    branch: string;
     /**
      * Indexing status
      */
@@ -168,11 +192,11 @@ export type TriggerReindexResponseDto = {
     /**
      * Estimated token count
      */
-    estimatedTokens: number | null;
+    estimatedTokens: number;
     /**
      * Actual indexed tokens
      */
-    indexedTokens: number | null;
+    indexedTokens: number;
     /**
      * Error message if failed
      */
@@ -962,6 +986,12 @@ export type ExecuteTriggerDto = {
    * If true, do not wait for execution to finish (fire-and-forget).
    */
   async?: boolean;
+  /**
+   * Optional metadata to attach to the thread created by this execution.
+   */
+  metadata?: {
+    [key: string]: unknown;
+  };
 };
 
 export type ExecuteTriggerResponseDto = {
@@ -1389,6 +1419,70 @@ export type ThreadMessageDto = {
      */
     currentContext?: number;
   } | null;
+  /**
+   * Tool's own execution token cost (e.g. subagent aggregate tokens). Only present on tool result messages.
+   */
+  toolTokenUsage?: {
+    /**
+     * Input tokens
+     */
+    inputTokens: number;
+    /**
+     * Cached input tokens
+     */
+    cachedInputTokens?: number;
+    /**
+     * Output tokens
+     */
+    outputTokens: number;
+    /**
+     * Reasoning tokens
+     */
+    reasoningTokens?: number;
+    /**
+     * Total tokens
+     */
+    totalTokens: number;
+    /**
+     * Total price in USD
+     */
+    totalPrice?: number;
+    /**
+     * Current context size in tokens (snapshot, not additive)
+     */
+    currentContext?: number;
+  } | null;
+};
+
+export type ThreadUsageStatisticsDtoSchema0 = {
+  /**
+   * Tool name
+   */
+  toolName: string;
+  /**
+   * Total tokens from LLM requests related to this tool
+   */
+  totalTokens: number;
+  /**
+   * Total price from LLM requests related to this tool in USD
+   */
+  totalPrice?: number;
+  /**
+   * Number of times this tool was called
+   */
+  callCount: number;
+  /**
+   * Tool's own execution token cost (e.g. subagent aggregate tokens)
+   */
+  toolTokens?: number;
+  /**
+   * Tool's own execution price in USD
+   */
+  toolPrice?: number;
+  /**
+   * Sub-tool calls made within this tool (e.g. tools called by a subagent)
+   */
+  subCalls?: Array<ThreadUsageStatisticsDtoSchema0>;
 };
 
 export type ThreadUsageStatisticsDto = {
@@ -1467,26 +1561,9 @@ export type ThreadUsageStatisticsDto = {
   /**
    * Usage statistics breakdown by tool name
    */
-  byTool: Array<{
-    /**
-     * Tool name
-     */
-    toolName: string;
-    /**
-     * Total tokens used by this tool
-     */
-    totalTokens: number;
-    /**
-     * Total price for this tool in USD
-     */
-    totalPrice?: number;
-    /**
-     * Number of times this tool was called
-     */
-    callCount: number;
-  }>;
+  byTool: Array<ThreadUsageStatisticsDtoSchema0>;
   /**
-   * Aggregated statistics for all tool message requests
+   * Aggregated statistics for all tool-related LLM requests
    */
   toolsAggregate: {
     /**
@@ -1523,41 +1600,17 @@ export type ThreadUsageStatisticsDto = {
     requestCount: number;
   };
   /**
-   * Aggregated statistics for all non-tool message requests (human, ai, system, reasoning)
+   * Number of user (human) messages in the thread
    */
-  messagesAggregate: {
-    /**
-     * Input tokens
-     */
-    inputTokens: number;
-    /**
-     * Cached input tokens
-     */
-    cachedInputTokens?: number;
-    /**
-     * Output tokens
-     */
-    outputTokens: number;
-    /**
-     * Reasoning tokens
-     */
-    reasoningTokens?: number;
-    /**
-     * Total tokens
-     */
-    totalTokens: number;
-    /**
-     * Total price in USD
-     */
-    totalPrice?: number;
-    /**
-     * Current context size in tokens (snapshot, not additive)
-     */
-    currentContext?: number;
-    /**
-     * Number of requests (messages with requestTokenUsage)
-     */
-    requestCount: number;
+  userMessageCount: number;
+};
+
+export type SetThreadMetadataDto = {
+  /**
+   * Thread metadata to set (replaces existing metadata)
+   */
+  metadata: {
+    [key: string]: unknown;
   };
 };
 
@@ -1610,6 +1663,45 @@ export type CreateRepositoryResponses = {
 export type CreateRepositoryResponse =
   CreateRepositoryResponses[keyof CreateRepositoryResponses];
 
+export type GetRepoIndexesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Filter by repository ID
+     */
+    repositoryId?: string;
+    /**
+     * Filter by single branch name
+     */
+    branch?: string;
+    /**
+     * Filter by multiple branch names (comma-separated or repeated query param)
+     */
+    branches?: string | Array<string>;
+    /**
+     * Filter by status
+     */
+    status?: 'pending' | 'in_progress' | 'completed' | 'failed';
+    /**
+     * Maximum number of indexes to return
+     */
+    limit?: number;
+    /**
+     * Number of indexes to skip
+     */
+    offset?: number;
+  };
+  url: '/api/v1/git-repositories/indexes';
+};
+
+export type GetRepoIndexesResponses = {
+  200: Array<RepoIndexDto>;
+};
+
+export type GetRepoIndexesResponse =
+  GetRepoIndexesResponses[keyof GetRepoIndexesResponses];
+
 export type DeleteRepositoryData = {
   body?: never;
   path: {
@@ -1654,37 +1746,6 @@ export type UpdateRepositoryResponses = {
 
 export type UpdateRepositoryResponse =
   UpdateRepositoryResponses[keyof UpdateRepositoryResponses];
-
-export type GetRepoIndexesData = {
-  body?: never;
-  path?: never;
-  query?: {
-    /**
-     * Filter by repository ID
-     */
-    repositoryId?: string;
-    /**
-     * Filter by status
-     */
-    status?: 'pending' | 'in_progress' | 'completed' | 'failed';
-    /**
-     * Maximum number of indexes to return
-     */
-    limit?: number;
-    /**
-     * Number of indexes to skip
-     */
-    offset?: number;
-  };
-  url: '/api/v1/git-repositories/indexes';
-};
-
-export type GetRepoIndexesResponses = {
-  200: Array<RepoIndexDto>;
-};
-
-export type GetRepoIndexesResponse =
-  GetRepoIndexesResponses[keyof GetRepoIndexesResponses];
 
 export type GetRepoIndexByRepositoryIdData = {
   body?: never;
@@ -2193,6 +2254,38 @@ export type GetThreadUsageStatisticsResponses = {
 
 export type GetThreadUsageStatisticsResponse =
   GetThreadUsageStatisticsResponses[keyof GetThreadUsageStatisticsResponses];
+
+export type SetThreadMetadataData = {
+  body: SetThreadMetadataDto;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}/metadata';
+};
+
+export type SetThreadMetadataResponses = {
+  200: ThreadDto;
+};
+
+export type SetThreadMetadataResponse =
+  SetThreadMetadataResponses[keyof SetThreadMetadataResponses];
+
+export type SetThreadMetadataByExternalIdData = {
+  body: SetThreadMetadataDto;
+  path: {
+    externalThreadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/external/{externalThreadId}/metadata';
+};
+
+export type SetThreadMetadataByExternalIdResponses = {
+  200: ThreadDto;
+};
+
+export type SetThreadMetadataByExternalIdResponse =
+  SetThreadMetadataByExternalIdResponses[keyof SetThreadMetadataByExternalIdResponses];
 
 export type StopThreadData = {
   body?: never;

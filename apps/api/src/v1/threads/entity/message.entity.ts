@@ -64,4 +64,26 @@ export class MessageEntity extends TimestampsEntity {
 
   @Column({ type: 'simple-array', nullable: true })
   answeredToolCallNames?: string[];
+
+  /**
+   * Tool call IDs from AI message's toolCalls array (parallel to toolCallNames).
+   * Used to map toolCallId → toolName for subagent sub-call linking without parsing full JSONB.
+   */
+  @Column({ type: 'simple-array', nullable: true })
+  toolCallIds?: string[];
+
+  /**
+   * Denormalized additionalKwargs from message JSONB.
+   * Contains metadata like __hideForLlm, __toolCallId, __requestUsage, __model, etc.
+   * Used by statistics queries to avoid projecting the full message JSONB.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  additionalKwargs?: Record<string, unknown>;
+
+  /**
+   * Tool's own execution token cost (e.g. subagent aggregate tokens).
+   * Only populated for tool result messages whose tool produced its own LLM usage.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  toolTokenUsage?: RequestTokenUsage;
 }

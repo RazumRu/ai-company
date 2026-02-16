@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
+import Decimal from 'decimal.js';
 
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
 import type { ThreadTokenUsage } from '../../threads/dto/threads.dto';
@@ -18,11 +19,14 @@ export class CheckpointStateService {
   ) {}
 
   /**
-   * Get token usage for a thread by reading from all related checkpoints.
-   * Aggregates usage across all graphs/agents that share the same parent thread.
-   * Returns per-node breakdown and aggregated totals.
+   * Get token usage for a thread by reading from its latest checkpoint.
+   * Fetches the root thread checkpoint plus any nested agent checkpoints
+   * (linked via parentThreadId) for multi-agent graphs.
+   * Subagent checkpoints (threadId "subagent-*") are excluded because their
+   * token usage is already folded into the parent checkpoint by
+   * tool-executor-node.
    *
-   * @param threadId - External thread ID (can be root thread or nested thread)
+   * @param threadId - External thread ID
    * @param checkpointNs - Checkpoint namespace (default: empty string for root threads)
    * @returns Token usage with per-node breakdown, or null if no checkpoint found
    */
@@ -31,7 +35,7 @@ export class CheckpointStateService {
     checkpointNs = '',
   ): Promise<ThreadTokenUsage | null> {
     try {
-      // Get all checkpoint tuples for this thread and nested agents
+      // Get checkpoint tuples for this thread and any nested agents (multi-agent graphs).
       // includeWrites=false since we only need state data for token usage
       const tuples = await this.checkpointSaver.getTuples(
         threadId,
@@ -43,17 +47,17 @@ export class CheckpointStateService {
         return null;
       }
 
-      // Aggregate token usage across all checkpoints
+      // Aggregate token usage across all checkpoints.
+      // Use Decimal.js for totalPrice to avoid floating-point rounding errors.
       const byNode = new Map<string, RequestTokenUsage>();
-      const totalUsage: RequestTokenUsage = {
-        inputTokens: 0,
-        cachedInputTokens: 0,
-        outputTokens: 0,
-        reasoningTokens: 0,
-        totalTokens: 0,
-        totalPrice: 0,
-        currentContext: 0,
-      };
+      let inputTokens = 0;
+      let cachedInputTokens = 0;
+      let outputTokens = 0;
+      let reasoningTokens = 0;
+      let totalTokens = 0;
+      let totalPriceDecimal = new Decimal(0);
+      // currentContext is a point-in-time measurement, not additive — take max
+      let maxCurrentContext = 0;
 
       for (const tuple of tuples) {
         const state = tuple.checkpoint
@@ -75,13 +79,16 @@ export class CheckpointStateService {
         };
 
         // Aggregate totals
-        totalUsage.inputTokens += usage.inputTokens;
-        totalUsage.cachedInputTokens! += usage.cachedInputTokens || 0;
-        totalUsage.outputTokens += usage.outputTokens;
-        totalUsage.reasoningTokens! += usage.reasoningTokens || 0;
-        totalUsage.totalTokens += usage.totalTokens;
-        totalUsage.totalPrice! += usage.totalPrice || 0;
-        totalUsage.currentContext! += usage.currentContext || 0;
+        inputTokens += usage.inputTokens;
+        cachedInputTokens += usage.cachedInputTokens || 0;
+        outputTokens += usage.outputTokens;
+        reasoningTokens += usage.reasoningTokens || 0;
+        totalTokens += usage.totalTokens;
+        totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice || 0);
+        maxCurrentContext = Math.max(
+          maxCurrentContext,
+          usage.currentContext || 0,
+        );
 
         // Add to byNode map if we have a nodeId
         if (tuple.nodeId) {
@@ -90,12 +97,18 @@ export class CheckpointStateService {
       }
 
       // Return null if no valid usage data was found
-      if (totalUsage.totalTokens === 0 && byNode.size === 0) {
+      if (totalTokens === 0 && byNode.size === 0) {
         return null;
       }
 
       return {
-        ...totalUsage,
+        inputTokens,
+        cachedInputTokens,
+        outputTokens,
+        reasoningTokens,
+        totalTokens,
+        totalPrice: totalPriceDecimal.toNumber(),
+        currentContext: maxCurrentContext,
         byNode: byNode.size > 0 ? Object.fromEntries(byNode) : undefined,
       };
     } catch (error) {
@@ -106,20 +119,5 @@ export class CheckpointStateService {
       );
       return null;
     }
-  }
-
-  /**
-   * Get token usage for a root thread including all nested agent runs.
-   * Uses parentThreadId index to find all related checkpoints.
-   *
-   * @param rootThreadId - Root thread ID (parent_thread_id in config)
-   * @returns Aggregated token usage across all nested runs, or null if not found
-   */
-  async getRootThreadTokenUsage(
-    rootThreadId: string,
-  ): Promise<ThreadTokenUsage | null> {
-    // The updated getThreadTokenUsage now handles aggregation across all
-    // related threads, so we can just delegate to it
-    return this.getThreadTokenUsage(rootThreadId);
   }
 }

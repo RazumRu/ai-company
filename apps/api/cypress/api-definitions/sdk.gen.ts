@@ -65,6 +65,10 @@ import type {
   ListModelsResponses,
   RunGraphData,
   RunGraphResponses,
+  SetThreadMetadataByExternalIdData,
+  SetThreadMetadataByExternalIdResponses,
+  SetThreadMetadataData,
+  SetThreadMetadataResponses,
   StopThreadByExternalIdData,
   StopThreadByExternalIdResponses,
   StopThreadData,
@@ -134,6 +138,20 @@ export const createRepository = <ThrowOnError extends boolean = false>(
     },
   });
 
+export const getRepoIndexes = <ThrowOnError extends boolean = false>(
+  options?: Options<GetRepoIndexesData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    GetRepoIndexesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories/indexes',
+    ...options,
+  });
+
 export const deleteRepository = <ThrowOnError extends boolean = false>(
   options: Options<DeleteRepositoryData, ThrowOnError>,
 ) =>
@@ -177,20 +195,6 @@ export const updateRepository = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options.headers,
     },
-  });
-
-export const getRepoIndexes = <ThrowOnError extends boolean = false>(
-  options?: Options<GetRepoIndexesData, ThrowOnError>,
-) =>
-  (options?.client ?? client).get<
-    GetRepoIndexesResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: 'json',
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/git-repositories/indexes',
-    ...options,
   });
 
 export const getRepoIndexByRepositoryId = <
@@ -602,6 +606,44 @@ export const getThreadUsageStatistics = <ThrowOnError extends boolean = false>(
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/usage-statistics',
     ...options,
+  });
+
+export const setThreadMetadata = <ThrowOnError extends boolean = false>(
+  options: Options<SetThreadMetadataData, ThrowOnError>,
+) =>
+  (options.client ?? client).put<
+    SetThreadMetadataResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/{threadId}/metadata',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const setThreadMetadataByExternalId = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<SetThreadMetadataByExternalIdData, ThrowOnError>,
+) =>
+  (options.client ?? client).put<
+    SetThreadMetadataByExternalIdResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/external/{externalThreadId}/metadata',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
   });
 
 export const stopThread = <ThrowOnError extends boolean = false>(

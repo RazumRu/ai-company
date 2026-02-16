@@ -56,6 +56,18 @@ model_list:
       api_key: os.environ/GEMINI_API_KEY
       drop_params: true
 
+  - model_name: glm-5
+    litellm_params:
+      model: zai/glm-5
+      api_key: os.environ/ZAI_API_KEY
+      drop_params: true
+
+  - model_name: glm-5-code
+    litellm_params:
+      model: zai/glm-5-code
+      api_key: os.environ/ZAI_API_KEY
+      drop_params: true
+
   - model_name: qwen3-coder:30b
     litellm_params:
       model: openai/qwen3-coder:30b

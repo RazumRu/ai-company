@@ -12,6 +12,7 @@ import { Injectable, Optional, Scope } from '@nestjs/common';
 import { ValidationException } from '@packages/common';
 import { Brackets } from 'typeorm';
 
+import { SUBAGENT_THREAD_PREFIX } from '../agents.types';
 import { GraphCheckpointsDao } from '../dao/graph-checkpoints.dao';
 import { GraphCheckpointsWritesDao } from '../dao/graph-checkpoints-writes.dao';
 
@@ -93,11 +94,21 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       order: { checkpointId: 'DESC' },
     });
 
-    // Also get checkpoints where this threadId is the parent (nested agent runs)
+    // Also get checkpoints where this threadId is the parent (nested agent runs
+    // from inter-agent communication in multi-agent graphs).
+    // Subagent checkpoints (threadId starts with "subagent-") are excluded at
+    // the SQL level because their token usage is already folded into the parent
+    // checkpoint by tool-executor-node's aggregatedToolUsage spread.
     const nestedCheckpoints = await this.graphCheckpointsDao.getAll({
       parentThreadId: threadId,
       checkpointNs,
       order: { checkpointId: 'DESC' },
+      customCondition: new Brackets((qb) =>
+        qb.andWhere(
+          `${this.graphCheckpointsDao.alias}.threadId NOT LIKE :subagentPrefix`,
+          { subagentPrefix: `${SUBAGENT_THREAD_PREFIX}%` },
+        ),
+      ),
     });
 
     // Combine and deduplicate - keep latest checkpoint per unique threadId
@@ -341,7 +352,35 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
     );
   }
 
+  /**
+   * Delete all checkpoint data for a thread, including child checkpoints
+   * from nested agent runs and subagent executions.
+   *
+   * Finds child threadIds via parentThreadId, then deletes their writes
+   * and checkpoints before deleting the root thread's data.
+   */
   async deleteThread(threadId: string, ns = ''): Promise<void> {
+    // Find child checkpoints (nested agents and subagents linked via parentThreadId)
+    const childCheckpoints = await this.graphCheckpointsDao.getAll({
+      parentThreadId: threadId,
+    });
+
+    // Collect unique child threadIds to delete their writes too
+    const childThreadIds = [
+      ...new Set(childCheckpoints.map((cp) => cp.threadId)),
+    ];
+
+    // Delete writes and checkpoints for each child thread
+    for (const childThreadId of childThreadIds) {
+      await this.graphCheckpointsWritesDao.hardDelete({
+        threadId: childThreadId,
+      });
+      await this.graphCheckpointsDao.hardDelete({
+        threadId: childThreadId,
+      });
+    }
+
+    // Delete the root thread's writes and checkpoints
     await this.graphCheckpointsWritesDao.hardDelete({
       threadId,
       checkpointNs: ns,

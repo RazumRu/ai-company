@@ -12,6 +12,7 @@ import {
   BuiltAgentTool,
   ToolInvokeResult,
 } from '../../../agent-tools/tools/base-tool';
+import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
@@ -235,11 +236,19 @@ export class ToolExecutorNode extends BaseNode<
 
       if (!toolMsg) continue;
 
-      // Attach token usage to tool message if present
-      if (result.toolRequestUsage) {
+      // Attach token usage to tool message:
+      // - __requestUsage = parent LLM call (consistent with AI messages)
+      // - __toolTokenUsage = tool's own execution cost (e.g. subagent aggregate)
+      const parentRequestUsage = ai?.additional_kwargs?.__requestUsage as
+        | RequestTokenUsage
+        | undefined;
+      if (parentRequestUsage || result.toolRequestUsage) {
         toolMsg.additional_kwargs = {
           ...(toolMsg.additional_kwargs ?? {}),
-          __requestUsage: result.toolRequestUsage,
+          ...(parentRequestUsage ? { __requestUsage: parentRequestUsage } : {}),
+          ...(result.toolRequestUsage
+            ? { __toolTokenUsage: result.toolRequestUsage }
+            : {}),
         };
       }
 

@@ -64,19 +64,6 @@ describe('AgentMessageNotificationHandler', () => {
         {
           provide: MessagesDao,
           useValue: {
-            create: vi.fn().mockImplementation(async (data: unknown) => {
-              const record = data as Record<string, unknown>;
-              return {
-                id: '22222222-2222-4222-8222-222222222222',
-                threadId: record.threadId,
-                externalThreadId: record.externalThreadId,
-                nodeId: record.nodeId,
-                message: record.message,
-                requestTokenUsage: record.requestTokenUsage,
-                createdAt: new Date('2024-01-01T00:00:00Z'),
-                updatedAt: new Date('2024-01-01T00:00:00Z'),
-              };
-            }),
             createMany: vi
               .fn()
               .mockImplementation(async (dataArray: unknown[]) => {
@@ -92,7 +79,10 @@ describe('AgentMessageNotificationHandler', () => {
                     role: record.role,
                     name: record.name,
                     toolCallNames: record.toolCallNames,
+                    toolCallIds: record.toolCallIds,
                     answeredToolCallNames: record.answeredToolCallNames,
+                    additionalKwargs: record.additionalKwargs,
+                    toolTokenUsage: record.toolTokenUsage,
                     createdAt: new Date('2024-01-01T00:00:00Z'),
                     updatedAt: new Date('2024-01-01T00:00:00Z'),
                   };
@@ -182,9 +172,8 @@ describe('AgentMessageNotificationHandler', () => {
 
     expect(messagesDao.createMany).toHaveBeenCalledTimes(1);
 
-    const createManyCall = (
-      messagesDao.createMany as unknown as ReturnType<typeof vi.fn>
-    ).mock.calls[0]?.[0] as Record<string, unknown>[];
+    const createManyCall = vi.mocked(messagesDao.createMany).mock
+      .calls[0]?.[0] as Record<string, unknown>[];
 
     expect(createManyCall).toHaveLength(2);
 
@@ -265,9 +254,8 @@ describe('AgentMessageNotificationHandler', () => {
     // Verify messagesDao.createMany was called once with an array of 2 messages
     expect(messagesDao.createMany).toHaveBeenCalledTimes(1);
 
-    const createManyCall = (
-      messagesDao.createMany as unknown as ReturnType<typeof vi.fn>
-    ).mock.calls[0]?.[0] as Record<string, unknown>[];
+    const createManyCall = vi.mocked(messagesDao.createMany).mock
+      .calls[0]?.[0] as Record<string, unknown>[];
 
     expect(createManyCall).toHaveLength(2);
 
@@ -275,15 +263,197 @@ describe('AgentMessageNotificationHandler', () => {
     const aiCreateData = createManyCall[0];
     expect(aiCreateData?.requestTokenUsage).toEqual(requestUsage);
     expect(aiCreateData?.toolCallNames).toEqual(['finish']);
+    expect(aiCreateData?.toolCallIds).toEqual([toolCallId]);
     expect(aiCreateData?.role).toBe('ai');
+    expect(aiCreateData?.additionalKwargs).toBeDefined();
 
     // Check Tool message - should NOT have requestTokenUsage
     // (it's a function execution result, not an LLM response)
     const toolCreateData = createManyCall[1];
     expect(toolCreateData?.requestTokenUsage).toBeUndefined();
     expect(toolCreateData?.toolCallNames).toBeUndefined();
+    expect(toolCreateData?.toolCallIds).toBeUndefined();
     expect(toolCreateData?.role).toBe('tool');
     expect(toolCreateData?.name).toBe('finish');
+    expect(toolCreateData?.additionalKwargs).toBeDefined();
+  });
+
+  it('does not save requestTokenUsage for subagent internal messages (__hideForLlm)', async () => {
+    const internalThread = createMockThreadEntity();
+    vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
+
+    const subagentUsage = {
+      inputTokens: 3500,
+      outputTokens: 90,
+      totalTokens: 3590,
+      totalPrice: 0,
+    };
+
+    // Subagent internal AI message — has __hideForLlm and __requestUsage
+    const subagentAi = new AIMessage({
+      content: 'I will read the file first.',
+      tool_calls: [
+        {
+          id: 'call_sub_1',
+          type: 'tool_call' as const,
+          name: 'files_read',
+          args: { filePath: '/workspace/file.js' },
+        },
+      ],
+      additional_kwargs: {
+        __hideForLlm: true,
+        __streamedRealtime: true,
+        __toolCallId: 'call_parent_subagent',
+        __requestUsage: subagentUsage,
+      },
+    });
+
+    const notification: IAgentMessageNotification = {
+      type: NotificationEvent.AgentMessage,
+      graphId: mockGraphId,
+      nodeId: mockNodeId,
+      threadId: mockThreadId,
+      parentThreadId: mockParentThreadId,
+      data: {
+        messages: serializeBaseMessages([subagentAi]),
+      },
+    };
+
+    await handler.handle(notification);
+
+    expect(messagesDao.createMany).toHaveBeenCalledTimes(1);
+
+    const createManyCall = vi.mocked(messagesDao.createMany).mock
+      .calls[0]?.[0] as Record<string, unknown>[];
+
+    expect(createManyCall).toHaveLength(1);
+
+    // Subagent internal message should NOT have requestTokenUsage —
+    // its usage is captured by the parent tool result (subagents_run_task)
+    expect(createManyCall[0]?.requestTokenUsage).toBeUndefined();
+  });
+
+  it('keeps requestTokenUsage for subagent tool result (parent tool call with aggregated usage)', async () => {
+    const internalThread = createMockThreadEntity();
+    vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
+
+    const parentToolCallId = 'call_parent_subagent';
+
+    // Parent AI message dispatching subagent — has __requestUsage
+    const parentAiUsage = {
+      inputTokens: 5000,
+      outputTokens: 150,
+      totalTokens: 5150,
+      totalPrice: 0.01,
+    };
+    const parentAi = new AIMessage({
+      content: '',
+      tool_calls: [
+        {
+          id: parentToolCallId,
+          type: 'tool_call' as const,
+          name: 'subagents_run_task',
+          args: { task: 'do something' },
+        },
+      ],
+      additional_kwargs: {
+        __requestUsage: parentAiUsage,
+      },
+    });
+
+    // Parent tool result (subagents_run_task) — carries:
+    // __requestUsage = parent LLM call usage (same as parentAiUsage)
+    // __toolTokenUsage = aggregated subagent usage (tool's own cost)
+    const subagentToolUsage = {
+      inputTokens: 3500,
+      outputTokens: 90,
+      totalTokens: 3590,
+      totalPrice: 0.005,
+    };
+    const toolResult = new ToolMessage({
+      content: JSON.stringify({ result: 'done' }),
+      tool_call_id: parentToolCallId,
+      name: 'subagents_run_task',
+    });
+    Object.assign(toolResult, {
+      additional_kwargs: {
+        __requestUsage: parentAiUsage,
+        __toolTokenUsage: subagentToolUsage,
+      },
+    });
+
+    const notification: IAgentMessageNotification = {
+      type: NotificationEvent.AgentMessage,
+      graphId: mockGraphId,
+      nodeId: mockNodeId,
+      threadId: mockThreadId,
+      parentThreadId: mockParentThreadId,
+      data: {
+        messages: serializeBaseMessages([parentAi, toolResult]),
+      },
+    };
+
+    await handler.handle(notification);
+
+    expect(messagesDao.createMany).toHaveBeenCalledTimes(1);
+
+    const createManyCall = vi.mocked(messagesDao.createMany).mock
+      .calls[0]?.[0] as Record<string, unknown>[];
+
+    expect(createManyCall).toHaveLength(2);
+
+    // Parent AI message should have requestTokenUsage
+    expect(createManyCall[0]?.requestTokenUsage).toEqual(parentAiUsage);
+
+    // Subagent tool result: requestTokenUsage = parent LLM call (not tool's own cost)
+    expect(createManyCall[1]?.requestTokenUsage).toEqual(parentAiUsage);
+
+    // Subagent tool result: toolTokenUsage = tool's own execution cost
+    expect(createManyCall[1]?.toolTokenUsage).toEqual(subagentToolUsage);
+  });
+
+  it('extracts answeredToolCallNames from additional_kwargs', async () => {
+    const internalThread = createMockThreadEntity();
+    vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
+
+    // AI message that answers tool calls (no tool_calls of its own)
+    const ai = new AIMessage({
+      content: 'Based on the search results...',
+      additional_kwargs: {
+        __requestUsage: {
+          inputTokens: 50,
+          outputTokens: 30,
+          totalTokens: 80,
+          totalPrice: 0.004,
+        },
+        __answeredToolCallNames: ['search', 'shell'],
+      },
+    });
+
+    const notification: IAgentMessageNotification = {
+      type: NotificationEvent.AgentMessage,
+      graphId: mockGraphId,
+      nodeId: mockNodeId,
+      threadId: mockThreadId,
+      parentThreadId: mockParentThreadId,
+      data: {
+        messages: serializeBaseMessages([ai]),
+      },
+    };
+
+    await handler.handle(notification);
+
+    const createManyCall = vi.mocked(messagesDao.createMany).mock
+      .calls[0]?.[0] as Record<string, unknown>[];
+
+    expect(createManyCall).toHaveLength(1);
+    expect(createManyCall[0]?.answeredToolCallNames).toEqual([
+      'search',
+      'shell',
+    ]);
+    // No tool calls in this AI message
+    expect(createManyCall[0]?.toolCallNames).toBeUndefined();
+    expect(createManyCall[0]?.toolCallIds).toBeUndefined();
   });
 
   it('does not save requestTokenUsage for human messages', async () => {
@@ -324,9 +494,8 @@ describe('AgentMessageNotificationHandler', () => {
 
     expect(messagesDao.createMany).toHaveBeenCalledTimes(1);
 
-    const createManyCall = (
-      messagesDao.createMany as unknown as ReturnType<typeof vi.fn>
-    ).mock.calls[0]?.[0] as Record<string, unknown>[];
+    const createManyCall = vi.mocked(messagesDao.createMany).mock
+      .calls[0]?.[0] as Record<string, unknown>[];
 
     expect(createManyCall).toHaveLength(2);
 

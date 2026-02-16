@@ -76,32 +76,58 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         | MessageAdditionalKwargs
         | undefined;
 
-      // Extract request-level token usage (full RequestTokenUsage from LLM request)
-      const requestTokenUsage = additionalKwargs?.__requestUsage as
+      // Extract request-level token usage (full RequestTokenUsage from LLM request).
+      // Skip for subagent internal messages (__hideForLlm) — their token usage is
+      // already captured by the parent tool result's requestTokenUsage (e.g. subagents_run_task).
+      const isSubagentInternal = additionalKwargs?.__hideForLlm === true;
+      const requestTokenUsage = isSubagentInternal
+        ? undefined
+        : (additionalKwargs?.__requestUsage as RequestTokenUsage | undefined);
+
+      // Extract tool call names and IDs for AI messages with tool calls
+      const toolCalls =
+        messageDto.role === MessageRole.AI &&
+        Array.isArray(messageDto.toolCalls) &&
+        messageDto.toolCalls.length > 0
+          ? messageDto.toolCalls
+          : undefined;
+
+      const toolCallNames = toolCalls
+        ?.map((tc) => tc.name)
+        .filter((name): name is string => typeof name === 'string');
+
+      const toolCallIds = toolCalls
+        ?.map((tc) => tc.id)
+        .filter((id): id is string => typeof id === 'string');
+
+      // Extract tool's own execution token usage (e.g. subagent aggregate tokens)
+      const toolTokenUsage = additionalKwargs?.__toolTokenUsage as
         | RequestTokenUsage
         | undefined;
-
-      // Extract tool call names for AI messages with tool calls
-      const toolCallNames =
-        messageDto.role === MessageRole.AI &&
-        Array.isArray(messageDto.toolCalls)
-          ? messageDto.toolCalls
-              .map((tc) => tc.name)
-              .filter((name): name is string => typeof name === 'string')
-          : undefined;
 
       return {
         threadId: internalThread.id,
         externalThreadId: event.threadId,
         nodeId: event.nodeId,
         message: messageDto,
-        // Store requestTokenUsage if it exists (no fallback, no filtering)
+        // Store requestTokenUsage if present (skipped for subagent internal messages above)
         ...(requestTokenUsage ? { requestTokenUsage } : {}),
-        // Denormalize role, name, and toolCallNames for query performance
+        // Denormalize role, name, toolCallNames, and toolCallIds for query performance
         role: messageDto.role,
         name: 'name' in messageDto ? (messageDto.name as string) : undefined,
         ...(toolCallNames && toolCallNames.length > 0 ? { toolCallNames } : {}),
-        answeredToolCallNames: additionalKwargs?.__answeredToolCallNames,
+        ...(toolCallIds && toolCallIds.length > 0 ? { toolCallIds } : {}),
+        answeredToolCallNames: Array.isArray(
+          additionalKwargs?.__answeredToolCallNames,
+        )
+          ? (additionalKwargs.__answeredToolCallNames as string[])
+          : undefined,
+        // Denormalize additionalKwargs for statistics queries (avoids fetching full message JSONB)
+        additionalKwargs: additionalKwargs as
+          | Record<string, unknown>
+          | undefined,
+        // Tool's own execution cost (e.g. subagent aggregate tokens)
+        ...(toolTokenUsage ? { toolTokenUsage } : {}),
       };
     });
 

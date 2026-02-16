@@ -18,6 +18,10 @@ export const CreateRepositoryDtoSchema = {
       default: 'GITHUB',
       enum: ['GITHUB'],
     },
+    defaultBranch: {
+      type: 'string',
+      default: 'main',
+    },
     token: {
       type: 'string',
     },
@@ -48,6 +52,9 @@ export const GitRepositoryDtoSchema = {
       type: 'string',
       enum: ['GITHUB'],
     },
+    defaultBranch: {
+      type: 'string',
+    },
     createdBy: {
       type: 'string',
       format: 'uuid',
@@ -73,23 +80,11 @@ export const GitRepositoryDtoSchema = {
     'repo',
     'url',
     'provider',
+    'defaultBranch',
     'createdBy',
     'createdAt',
     'updatedAt',
   ],
-} as const;
-
-export const UpdateRepositoryDtoSchema = {
-  type: 'object',
-  properties: {
-    url: {
-      type: 'string',
-      format: 'uri',
-    },
-    token: {
-      type: 'string',
-    },
-  },
 } as const;
 
 export const RepoIndexDtoSchema = {
@@ -108,6 +103,9 @@ export const RepoIndexDtoSchema = {
         '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
     },
     repoUrl: {
+      type: 'string',
+    },
+    branch: {
       type: 'string',
     },
     status: {
@@ -160,28 +158,14 @@ export const RepoIndexDtoSchema = {
       ],
     },
     estimatedTokens: {
-      anyOf: [
-        {
-          type: 'integer',
-          minimum: -9007199254740991,
-          maximum: 9007199254740991,
-        },
-        {
-          type: 'null',
-        },
-      ],
+      type: 'integer',
+      minimum: -9007199254740991,
+      maximum: 9007199254740991,
     },
     indexedTokens: {
-      anyOf: [
-        {
-          type: 'integer',
-          minimum: -9007199254740991,
-          maximum: 9007199254740991,
-        },
-        {
-          type: 'null',
-        },
-      ],
+      type: 'integer',
+      minimum: -9007199254740991,
+      maximum: 9007199254740991,
     },
     errorMessage: {
       anyOf: [
@@ -210,6 +194,7 @@ export const RepoIndexDtoSchema = {
     'id',
     'repositoryId',
     'repoUrl',
+    'branch',
     'status',
     'qdrantCollection',
     'lastIndexedCommit',
@@ -224,6 +209,22 @@ export const RepoIndexDtoSchema = {
   ],
 } as const;
 
+export const UpdateRepositoryDtoSchema = {
+  type: 'object',
+  properties: {
+    url: {
+      type: 'string',
+      format: 'uri',
+    },
+    defaultBranch: {
+      type: 'string',
+    },
+    token: {
+      type: 'string',
+    },
+  },
+} as const;
+
 export const TriggerReindexDtoSchema = {
   type: 'object',
   properties: {
@@ -232,6 +233,9 @@ export const TriggerReindexDtoSchema = {
       format: 'uuid',
       pattern:
         '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    branch: {
+      type: 'string',
     },
   },
   required: ['repositoryId'],
@@ -256,6 +260,9 @@ export const TriggerReindexResponseDtoSchema = {
             '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
         },
         repoUrl: {
+          type: 'string',
+        },
+        branch: {
           type: 'string',
         },
         status: {
@@ -308,28 +315,14 @@ export const TriggerReindexResponseDtoSchema = {
           ],
         },
         estimatedTokens: {
-          anyOf: [
-            {
-              type: 'integer',
-              minimum: -9007199254740991,
-              maximum: 9007199254740991,
-            },
-            {
-              type: 'null',
-            },
-          ],
+          type: 'integer',
+          minimum: -9007199254740991,
+          maximum: 9007199254740991,
         },
         indexedTokens: {
-          anyOf: [
-            {
-              type: 'integer',
-              minimum: -9007199254740991,
-              maximum: 9007199254740991,
-            },
-            {
-              type: 'null',
-            },
-          ],
+          type: 'integer',
+          minimum: -9007199254740991,
+          maximum: 9007199254740991,
         },
         errorMessage: {
           anyOf: [
@@ -358,6 +351,7 @@ export const TriggerReindexResponseDtoSchema = {
         'id',
         'repositoryId',
         'repoUrl',
+        'branch',
         'status',
         'qdrantCollection',
         'lastIndexedCommit',
@@ -1630,6 +1624,13 @@ export const ExecuteTriggerDtoSchema = {
     async: {
       type: 'boolean',
     },
+    metadata: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
   },
   required: ['messages'],
 } as const;
@@ -2426,6 +2427,40 @@ export const ThreadMessageDtoSchema = {
         },
       ],
     },
+    toolTokenUsage: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            inputTokens: {
+              type: 'number',
+            },
+            cachedInputTokens: {
+              type: 'number',
+            },
+            outputTokens: {
+              type: 'number',
+            },
+            reasoningTokens: {
+              type: 'number',
+            },
+            totalTokens: {
+              type: 'number',
+            },
+            totalPrice: {
+              type: 'number',
+            },
+            currentContext: {
+              type: 'number',
+            },
+          },
+          required: ['inputTokens', 'outputTokens', 'totalTokens'],
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
   },
   required: [
     'id',
@@ -2436,6 +2471,37 @@ export const ThreadMessageDtoSchema = {
     'updatedAt',
     'message',
   ],
+} as const;
+
+export const ThreadUsageStatisticsDto__schema0Schema = {
+  type: 'object',
+  properties: {
+    toolName: {
+      type: 'string',
+    },
+    totalTokens: {
+      type: 'number',
+    },
+    totalPrice: {
+      type: 'number',
+    },
+    callCount: {
+      type: 'number',
+    },
+    toolTokens: {
+      type: 'number',
+    },
+    toolPrice: {
+      type: 'number',
+    },
+    subCalls: {
+      type: 'array',
+      items: {
+        $ref: '#/components/schemas/ThreadUsageStatisticsDto__schema0',
+      },
+    },
+  },
+  required: ['toolName', 'totalTokens', 'callCount'],
 } as const;
 
 export const ThreadUsageStatisticsDtoSchema = {
@@ -2507,22 +2573,7 @@ export const ThreadUsageStatisticsDtoSchema = {
     byTool: {
       type: 'array',
       items: {
-        type: 'object',
-        properties: {
-          toolName: {
-            type: 'string',
-          },
-          totalTokens: {
-            type: 'number',
-          },
-          totalPrice: {
-            type: 'number',
-          },
-          callCount: {
-            type: 'number',
-          },
-        },
-        required: ['toolName', 'totalTokens', 'callCount'],
+        $ref: '#/components/schemas/ThreadUsageStatisticsDto__schema0',
       },
     },
     toolsAggregate: {
@@ -2555,35 +2606,8 @@ export const ThreadUsageStatisticsDtoSchema = {
       },
       required: ['inputTokens', 'outputTokens', 'totalTokens', 'requestCount'],
     },
-    messagesAggregate: {
-      type: 'object',
-      properties: {
-        inputTokens: {
-          type: 'number',
-        },
-        cachedInputTokens: {
-          type: 'number',
-        },
-        outputTokens: {
-          type: 'number',
-        },
-        reasoningTokens: {
-          type: 'number',
-        },
-        totalTokens: {
-          type: 'number',
-        },
-        totalPrice: {
-          type: 'number',
-        },
-        currentContext: {
-          type: 'number',
-        },
-        requestCount: {
-          type: 'number',
-        },
-      },
-      required: ['inputTokens', 'outputTokens', 'totalTokens', 'requestCount'],
+    userMessageCount: {
+      type: 'number',
     },
   },
   required: [
@@ -2592,6 +2616,20 @@ export const ThreadUsageStatisticsDtoSchema = {
     'byNode',
     'byTool',
     'toolsAggregate',
-    'messagesAggregate',
+    'userMessageCount',
   ],
+} as const;
+
+export const SetThreadMetadataDtoSchema = {
+  type: 'object',
+  properties: {
+    metadata: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
+  },
+  required: ['metadata'],
 } as const;
