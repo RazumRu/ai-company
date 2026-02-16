@@ -418,6 +418,11 @@ export class ThreadsService {
               ),
             });
           }
+        } else if (parentToolCallId) {
+          this.logger.warn(
+            'Subagent message has __toolCallId but parent tool not found in toolCallIdToToolName map',
+            { messageId: messageEntity.id, parentToolCallId },
+          );
         }
 
         // Count subagent internal LLM calls in totalRequests and toolsAggregate
@@ -457,6 +462,12 @@ export class ThreadsService {
       // Attribute token usage to tools.
       // Only count AI messages — tool messages may carry duplicated parent usage
       // in legacy data (before the notification handler fix).
+      //
+      // NOTE: When an AI message calls multiple tools (e.g. ['search', 'shell']),
+      // the full LLM request cost is attributed to EACH tool in byTool.
+      // This means byTool totals may exceed toolsAggregate — this is intentional:
+      // byTool.totalTokens = "tokens from LLM requests involving this tool",
+      // not "tokens exclusively consumed by this tool".
       if (isAiMessage && requestUsage) {
         totalRequests++;
 
@@ -513,10 +524,8 @@ export class ThreadsService {
       }
     }
 
-    // Finalize price aggregations
-    if (!toolsPriceDecimal.isZero()) {
-      toolsAggregate.totalPrice = toolsPriceDecimal.toNumber();
-    }
+    // Finalize price aggregations — always set totalPrice (even when 0) for consistency
+    toolsAggregate.totalPrice = toolsPriceDecimal.toNumber();
 
     // Build final byTool array with subCalls and toolTokens/toolPrice
     const byTool: UsageStatisticsByTool[] = Array.from(

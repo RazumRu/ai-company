@@ -479,6 +479,23 @@ describe('AgentMessageNotificationHandler', () => {
 
     // Subagent tool result: toolTokenUsage = tool's own execution cost
     expect(createManyCall[1]?.toolTokenUsage).toEqual(subagentToolUsage);
+
+    // additionalKwargs should have __requestUsage and __toolTokenUsage stripped
+    // (already stored in dedicated columns, no need to duplicate in JSONB)
+    const aiKwargs = createManyCall[0]?.additionalKwargs as Record<
+      string,
+      unknown
+    >;
+    expect(aiKwargs).toBeDefined();
+    expect(aiKwargs.__requestUsage).toBeUndefined();
+
+    const toolKwargs = createManyCall[1]?.additionalKwargs as Record<
+      string,
+      unknown
+    >;
+    expect(toolKwargs).toBeDefined();
+    expect(toolKwargs.__requestUsage).toBeUndefined();
+    expect(toolKwargs.__toolTokenUsage).toBeUndefined();
   });
 
   it('extracts answeredToolCallNames from additional_kwargs', async () => {

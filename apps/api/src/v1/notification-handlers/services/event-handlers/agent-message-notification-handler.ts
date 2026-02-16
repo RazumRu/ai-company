@@ -126,10 +126,13 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         )
           ? (additionalKwargs.__answeredToolCallNames as string[])
           : undefined,
-        // Denormalize additionalKwargs for statistics queries (avoids fetching full message JSONB)
-        additionalKwargs: additionalKwargs as
-          | Record<string, unknown>
-          | undefined,
+        // Denormalize additionalKwargs for statistics queries (avoids fetching full message JSONB).
+        // Strip __requestUsage and __toolTokenUsage — already stored in dedicated columns.
+        additionalKwargs: additionalKwargs
+          ? this.stripRedundantUsageFields(
+              additionalKwargs as Record<string, unknown>,
+            )
+          : undefined,
         // Tool's own execution cost (e.g. subagent aggregate tokens)
         ...(toolTokenUsage ? { toolTokenUsage } : {}),
       };
@@ -160,6 +163,16 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     }
 
     return out;
+  }
+
+  /** Strip fields already stored in dedicated columns to avoid redundant data in additionalKwargs JSONB. */
+  private stripRedundantUsageFields(
+    kwargs: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const stripped = { ...kwargs };
+    delete stripped.__requestUsage;
+    delete stripped.__toolTokenUsage;
+    return stripped;
   }
 
   private async getGraphOwner(graphId: string): Promise<string> {

@@ -1105,6 +1105,76 @@ describe('ThreadsService', () => {
       expect(result.toolsAggregate.requestCount).toBe(4);
     });
 
+    it('should log warning and still count requests for subagent messages with unresolved parentToolCallId', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      const mockTokenUsageFromCheckpoint = {
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150,
+        totalPrice: 0.01,
+        byNode: {
+          'node-1': {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.01,
+          },
+        },
+      };
+
+      // Subagent internal AI message with __toolCallId pointing to unknown parent
+      const unknownParentToolCallId = 'call_unknown_parent';
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-orphan-subagent',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: undefined,
+          additionalKwargs: {
+            __hideForLlm: true,
+            __toolCallId: unknownParentToolCallId,
+            __requestUsage: {
+              inputTokens: 2000,
+              outputTokens: 500,
+              totalTokens: 2500,
+              totalPrice: 0,
+            },
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
+      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
+
+      const result = await service.getThreadUsageStatistics(mockThreadId);
+
+      // Should log a warning about unresolved parentToolCallId
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('parent tool not found'),
+        expect.objectContaining({
+          messageId: 'msg-orphan-subagent',
+          parentToolCallId: unknownParentToolCallId,
+        }),
+      );
+
+      // Subagent LLM call should still be counted in totalRequests and toolsAggregate
+      expect(result.requests).toBe(1);
+      expect(result.toolsAggregate.requestCount).toBe(1);
+      expect(result.toolsAggregate.totalTokens).toBe(2500);
+
+      // But should NOT appear in byTool (no parent to attribute to)
+      expect(result.byTool).toHaveLength(0);
+    });
+
     it('should handle optional token usage fields correctly from checkpoint', async () => {
       const mockThread = createMockThreadEntity({
         status: ThreadStatus.Done,

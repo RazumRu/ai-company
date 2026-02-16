@@ -59,17 +59,17 @@ export class MessageEntity extends TimestampsEntity {
    * Used to identify AI messages with tool calls and aggregate by tool without parsing full JSONB
    * Only populated for AI messages that have toolCalls
    */
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', array: true, nullable: true })
   toolCallNames?: string[];
 
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', array: true, nullable: true })
   answeredToolCallNames?: string[];
 
   /**
    * Tool call IDs from AI message's toolCalls array (parallel to toolCallNames).
    * Used to map toolCallId → toolName for subagent sub-call linking without parsing full JSONB.
    */
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', array: true, nullable: true })
   toolCallIds?: string[];
 
   /**
