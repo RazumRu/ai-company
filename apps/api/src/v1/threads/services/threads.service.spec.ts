@@ -620,12 +620,7 @@ describe('ThreadsService', () => {
           nodeId: 'node-1',
           role: MessageRole.Human,
           name: undefined,
-          requestTokenUsage: {
-            inputTokens: 10,
-            outputTokens: 20,
-            totalTokens: 30,
-            totalPrice: 0.001,
-          },
+          requestTokenUsage: undefined, // Human messages don't have requestTokenUsage
         }),
         createMockMessageEntity({
           id: 'msg-2',
@@ -769,8 +764,8 @@ describe('ThreadsService', () => {
       });
       expect(result.byTool[1]!.totalPrice).toBeCloseTo(0.006, 4);
 
-      // Check total requests (all messages with requestTokenUsage)
-      expect(result.requests).toBe(3); // human + ai calling + ai processing
+      // Check total requests (only AI messages with requestTokenUsage)
+      expect(result.requests).toBe(2); // ai calling + ai processing
 
       // Check toolsAggregate (all tool-related LLM requests)
       // msg-2 (AI calling tools, 40 tokens) + msg-5 (AI answering tools, 80 tokens)
@@ -1099,10 +1094,15 @@ describe('ThreadsService', () => {
       );
       expect(topLevelLlmResponse).toBeUndefined();
 
-      // toolsAggregate should include subagents_run_task calling + answering + tool result
-      // msg-parent-ai (100 tokens) + msg-tool-result (7081 tokens) + msg-answer-ai (80 tokens)
+      // toolsAggregate should include only LLM request tokens (not toolTokenUsage, which
+      // is an aggregate of already-counted subagent internal calls — adding it would double-count).
+      // msg-parent-ai (100) + subagent-ai-1 (3563) + subagent-ai-2 (3518) + msg-answer-ai (80)
       expect(result.toolsAggregate.totalTokens).toBe(7261);
-      expect(result.toolsAggregate.requestCount).toBe(3);
+      expect(result.toolsAggregate.inputTokens).toBe(4100);
+      expect(result.toolsAggregate.outputTokens).toBe(3161);
+      // requestCount = only LLM requests
+      // msg-parent-ai + subagent-ai-1 + subagent-ai-2 + msg-answer-ai = 4
+      expect(result.toolsAggregate.requestCount).toBe(4);
     });
 
     it('should handle optional token usage fields correctly from checkpoint', async () => {

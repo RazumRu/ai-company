@@ -387,11 +387,12 @@ export class ThreadsService {
           ? toolCallIdToToolName.get(parentToolCallId)
           : undefined;
 
+        // Extract __requestUsage from additionalKwargs for actual token counts
+        const embeddedUsage = additionalKwargs?.__requestUsage as
+          | RequestTokenUsage
+          | undefined;
+
         if (parentToolName) {
-          // Extract __requestUsage from JSONB for actual token counts
-          const embeddedUsage = additionalKwargs?.__requestUsage as
-            | RequestTokenUsage
-            | undefined;
           const embeddedTokens = embeddedUsage?.totalTokens || 0;
           const embeddedPrice = embeddedUsage?.totalPrice || 0;
 
@@ -419,6 +420,20 @@ export class ThreadsService {
           }
         }
 
+        // Count subagent internal LLM calls in totalRequests and toolsAggregate
+        if (embeddedUsage) {
+          totalRequests++;
+
+          // Attribute subagent LLM cost to toolsAggregate
+          toolsPriceDecimal = toolsPriceDecimal.plus(
+            embeddedUsage.totalPrice || 0,
+          );
+          toolsAggregate.inputTokens += embeddedUsage.inputTokens;
+          toolsAggregate.outputTokens += embeddedUsage.outputTokens;
+          toolsAggregate.totalTokens += embeddedUsage.totalTokens;
+          toolsAggregate.requestCount++;
+        }
+
         // Subagent internal messages don't contribute to top-level byTool
         continue;
       }
@@ -440,23 +455,23 @@ export class ThreadsService {
       }
 
       // Attribute token usage to tools.
-      if (requestUsage) {
+      // Only count AI messages — tool messages may carry duplicated parent usage
+      // in legacy data (before the notification handler fix).
+      if (isAiMessage && requestUsage) {
         totalRequests++;
 
         let attributeToTools: string[] | undefined;
 
-        if (isAiMessage) {
-          if (
-            Array.isArray(messageEntity.toolCallNames) &&
-            messageEntity.toolCallNames.length > 0
-          ) {
-            attributeToTools = messageEntity.toolCallNames;
-          } else if (
-            Array.isArray(messageEntity.answeredToolCallNames) &&
-            messageEntity.answeredToolCallNames.length > 0
-          ) {
-            attributeToTools = messageEntity.answeredToolCallNames;
-          }
+        if (
+          Array.isArray(messageEntity.toolCallNames) &&
+          messageEntity.toolCallNames.length > 0
+        ) {
+          attributeToTools = messageEntity.toolCallNames;
+        } else if (
+          Array.isArray(messageEntity.answeredToolCallNames) &&
+          messageEntity.answeredToolCallNames.length > 0
+        ) {
+          attributeToTools = messageEntity.answeredToolCallNames;
         }
 
         if (attributeToTools && attributeToTools.length > 0) {
@@ -482,7 +497,10 @@ export class ThreadsService {
         }
       }
 
-      // Aggregate tool's own execution cost from denormalized column
+      // Track tool's own execution cost (e.g. subagent aggregate tokens) for per-tool display.
+      // Do NOT add to toolsAggregate — toolTokenUsage is an aggregate of subagent internal
+      // LLM calls which are already counted individually from embeddedUsage above.
+      // Adding it here would double-count those tokens.
       if (isToolMessage && messageEntity.name && messageEntity.toolTokenUsage) {
         const toolUsage = messageEntity.toolTokenUsage;
         const existing = toolOwnUsage.get(messageEntity.name);
@@ -492,13 +510,6 @@ export class ThreadsService {
             toolUsage.totalPrice || 0,
           ),
         });
-
-        // Count tool's own usage in toolsAggregate
-        toolsPriceDecimal = toolsPriceDecimal.plus(toolUsage.totalPrice || 0);
-        toolsAggregate.inputTokens += toolUsage.inputTokens;
-        toolsAggregate.outputTokens += toolUsage.outputTokens;
-        toolsAggregate.totalTokens += toolUsage.totalTokens;
-        toolsAggregate.requestCount++;
       }
     }
 

@@ -77,12 +77,16 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
         | undefined;
 
       // Extract request-level token usage (full RequestTokenUsage from LLM request).
-      // Skip for subagent internal messages (__hideForLlm) — their token usage is
-      // already captured by the parent tool result's requestTokenUsage (e.g. subagents_run_task).
+      // Only saved for AI messages — they represent actual LLM requests.
+      // Tool messages carry __requestUsage from their parent AI message (set by ToolExecutorNode),
+      // but storing it would double-count the same LLM call.
+      // Subagent internal messages (__hideForLlm) are also skipped — their usage is
+      // captured by the parent tool result's toolTokenUsage (e.g. subagents_run_task).
       const isSubagentInternal = additionalKwargs?.__hideForLlm === true;
-      const requestTokenUsage = isSubagentInternal
-        ? undefined
-        : (additionalKwargs?.__requestUsage as RequestTokenUsage | undefined);
+      const requestTokenUsage =
+        messageDto.role === MessageRole.AI && !isSubagentInternal
+          ? (additionalKwargs?.__requestUsage as RequestTokenUsage | undefined)
+          : undefined;
 
       // Extract tool call names and IDs for AI messages with tool calls
       const toolCalls =

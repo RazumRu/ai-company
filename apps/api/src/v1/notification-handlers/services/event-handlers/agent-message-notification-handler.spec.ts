@@ -278,6 +278,74 @@ describe('AgentMessageNotificationHandler', () => {
     expect(toolCreateData?.additionalKwargs).toBeDefined();
   });
 
+  it('does not save requestTokenUsage for tool messages even when __requestUsage is present', async () => {
+    const internalThread = createMockThreadEntity();
+    vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
+
+    const parentAiUsage = {
+      inputTokens: 13257,
+      outputTokens: 63,
+      totalTokens: 13320,
+      totalPrice: 0.0068175,
+    };
+    const toolCallId = 'call_finish_1';
+
+    // AI message calling finish
+    const ai = new AIMessage({
+      content: '',
+      tool_calls: [
+        {
+          id: toolCallId,
+          type: 'tool_call' as const,
+          name: 'finish',
+          args: { message: 'done' },
+        },
+      ],
+      additional_kwargs: {
+        __requestUsage: parentAiUsage,
+      },
+    });
+
+    // Tool message carries __requestUsage from parent AI (set by ToolExecutorNode),
+    // but this should NOT be stored as requestTokenUsage (would double-count)
+    const tool = new ToolMessage({
+      content: JSON.stringify({ message: 'done' }),
+      tool_call_id: toolCallId,
+      name: 'finish',
+    });
+    Object.assign(tool, {
+      additional_kwargs: {
+        __requestUsage: parentAiUsage,
+      },
+    });
+
+    const notification: IAgentMessageNotification = {
+      type: NotificationEvent.AgentMessage,
+      graphId: mockGraphId,
+      nodeId: mockNodeId,
+      threadId: mockThreadId,
+      parentThreadId: mockParentThreadId,
+      data: {
+        messages: serializeBaseMessages([ai, tool]),
+      },
+    };
+
+    await handler.handle(notification);
+
+    const createManyCall = vi.mocked(messagesDao.createMany).mock
+      .calls[0]?.[0] as Record<string, unknown>[];
+
+    expect(createManyCall).toHaveLength(2);
+
+    // AI message should have requestTokenUsage
+    expect(createManyCall[0]?.requestTokenUsage).toEqual(parentAiUsage);
+
+    // Tool message should NOT — even though __requestUsage is on the original message,
+    // it's the parent AI's usage and storing it would double-count the LLM call
+    expect(createManyCall[1]?.requestTokenUsage).toBeUndefined();
+    expect(createManyCall[1]?.role).toBe('tool');
+  });
+
   it('does not save requestTokenUsage for subagent internal messages (__hideForLlm)', async () => {
     const internalThread = createMockThreadEntity();
     vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
@@ -333,7 +401,7 @@ describe('AgentMessageNotificationHandler', () => {
     expect(createManyCall[0]?.requestTokenUsage).toBeUndefined();
   });
 
-  it('keeps requestTokenUsage for subagent tool result (parent tool call with aggregated usage)', async () => {
+  it('does not save requestTokenUsage for tool messages, only toolTokenUsage', async () => {
     const internalThread = createMockThreadEntity();
     vi.spyOn(threadsDao, 'getOne').mockResolvedValue(internalThread);
 
@@ -405,8 +473,9 @@ describe('AgentMessageNotificationHandler', () => {
     // Parent AI message should have requestTokenUsage
     expect(createManyCall[0]?.requestTokenUsage).toEqual(parentAiUsage);
 
-    // Subagent tool result: requestTokenUsage = parent LLM call (not tool's own cost)
-    expect(createManyCall[1]?.requestTokenUsage).toEqual(parentAiUsage);
+    // Tool messages should NOT have requestTokenUsage — it would double-count the parent AI's LLM call.
+    // The __requestUsage on the tool message is the parent AI's context, not a separate LLM request.
+    expect(createManyCall[1]?.requestTokenUsage).toBeUndefined();
 
     // Subagent tool result: toolTokenUsage = tool's own execution cost
     expect(createManyCall[1]?.toolTokenUsage).toEqual(subagentToolUsage);
