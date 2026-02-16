@@ -119,9 +119,10 @@ export class RuntimeThreadProvider {
 
   async cleanup(): Promise<void> {
     this.initJobsByNodeId.clear();
-    await this.runtimeProvider.cleanupRuntimesByNodeId(
-      this.params.runtimeNodeId,
-    );
+    await this.runtimeProvider.cleanupRuntimesByNodeId({
+      graphId: this.params.graphId,
+      nodeId: this.params.runtimeNodeId,
+    });
   }
 
   public getRuntimeInfo(): string {

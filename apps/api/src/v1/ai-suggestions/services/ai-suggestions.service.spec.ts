@@ -12,6 +12,7 @@ import {
   GraphStatus,
   NodeKind,
 } from '../../graphs/graphs.types';
+import { GraphAiPreviewService } from '../../graphs/services/graph-ai-preview.service';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphStateManager } from '../../graphs/services/graph-state.manager';
 import { LitellmService } from '../../litellm/services/litellm.service';
@@ -36,6 +37,7 @@ describe('AiSuggestionsService', () => {
     'get' | 'filterNodesByType' | 'getNode'
   >;
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
+  let graphAiPreviewService: Pick<GraphAiPreviewService, 'withGraphAiContext'>;
   let authContext: Pick<AuthContextService, 'checkSub'>;
   let openaiService: {
     response: OpenaiService['response'];
@@ -57,6 +59,11 @@ describe('AiSuggestionsService', () => {
       getNode: vi.fn(),
     };
     templateRegistry = { getTemplate: vi.fn() };
+    graphAiPreviewService = {
+      withGraphAiContext: vi.fn(async (_graph, fn) =>
+        fn({ registryGraphId: 'graph-1' }),
+      ),
+    };
     authContext = {
       checkSub: vi.fn().mockReturnValue('user-1'),
     };
@@ -84,6 +91,7 @@ describe('AiSuggestionsService', () => {
       messagesDao as MessagesDao,
       graphDao as GraphDao,
       graphRegistry as GraphRegistry,
+      graphAiPreviewService as GraphAiPreviewService,
       templateRegistry as TemplateRegistry,
       authContext as AuthContextService,
       openaiService as OpenaiService,

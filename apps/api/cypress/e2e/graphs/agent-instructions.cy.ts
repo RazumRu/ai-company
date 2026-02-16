@@ -21,7 +21,8 @@ describe('Graph agent instructions suggestion (E2E)', () => {
 
       suggestAgentInstructions(graphId, 'agent-1', 'Make it concise').then(
         (suggestionResponse) => {
-          expect(suggestionResponse.status).to.equal(400);
+          expect(suggestionResponse.status).to.equal(200);
+          expect(suggestionResponse.body.instructions).to.be.a('string');
         },
       );
     });

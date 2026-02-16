@@ -14,6 +14,7 @@ import { GraphDao } from './dao/graph.dao';
 import { GraphRevisionDao } from './dao/graph-revision.dao';
 import { GraphEntity } from './entity/graph.entity';
 import { GraphRevisionEntity } from './entity/graph-revision.entity';
+import { GraphAiPreviewService } from './services/graph-ai-preview.service';
 import { GraphCompiler } from './services/graph-compiler';
 import { GraphMergeService } from './services/graph-merge.service';
 import { GraphRegistry } from './services/graph-registry';
@@ -42,6 +43,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphRevisionQueueService,
     GraphCompiler,
     GraphRegistry,
+    GraphAiPreviewService,
     GraphRestorationService,
     GraphMergeService,
     MessageTransformerService,
@@ -56,6 +58,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphRevisionService,
     GraphRevisionQueueService,
     GraphRegistry,
+    GraphAiPreviewService,
     GraphRestorationService,
     MessageTransformerService,
     GraphStateManager,

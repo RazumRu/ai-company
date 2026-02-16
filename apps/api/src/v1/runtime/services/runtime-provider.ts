@@ -158,9 +158,13 @@ export class RuntimeProvider {
     return instances.length;
   }
 
-  async cleanupRuntimesByNodeId(nodeId: string): Promise<number> {
+  async cleanupRuntimesByNodeId(params: {
+    graphId: string;
+    nodeId: string;
+  }): Promise<number> {
     const instances = await this.runtimeInstanceDao.getAll({
-      nodeId,
+      graphId: params.graphId,
+      nodeId: params.nodeId,
     });
 
     if (!instances.length) {

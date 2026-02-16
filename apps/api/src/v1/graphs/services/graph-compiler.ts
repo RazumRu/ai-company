@@ -188,6 +188,10 @@ export class GraphCompiler {
   async compile(
     entity: GraphEntity,
     additionalMetadata?: Partial<GraphMetadataSchemaType>,
+    compileOptions?: {
+      mode: 'Run' | 'AiPreview';
+      skipConfigureNodeKinds?: NodeKind[];
+    },
   ): Promise<CompiledGraph> {
     const schema = entity.schema;
     const metadata: GraphMetadataSchemaType = {
@@ -231,6 +235,7 @@ export class GraphCompiler {
             metadata,
             edges,
             stateManager,
+            compileOptions,
           );
           compiledNodes.set(node.id, compiledNode);
           stateManager.attachGraphNode(node.id, compiledNode);
@@ -295,6 +300,10 @@ export class GraphCompiler {
     metadata: GraphMetadataSchemaType,
     edges: GraphEdgeSchemaType[],
     stateManager: GraphStateManager,
+    compileOptions?: {
+      mode: 'Run' | 'AiPreview';
+      skipConfigureNodeKinds?: NodeKind[];
+    },
   ): Promise<CompiledGraphNode> {
     const { template, validatedConfig, init } = this.prepareNode(
       node,
@@ -309,6 +318,7 @@ export class GraphCompiler {
       template,
       validatedConfig,
       init,
+      compileOptions,
     );
 
     return {
@@ -367,13 +377,26 @@ export class GraphCompiler {
     template: NonNullable<ReturnType<TemplateRegistry['getTemplate']>>,
     validatedConfig: unknown,
     init: GraphNode<unknown>,
+    compileOptions?: {
+      mode: 'Run' | 'AiPreview';
+      skipConfigureNodeKinds?: NodeKind[];
+    },
   ): Promise<{
     handle: Awaited<ReturnType<typeof template.create>>;
     instance: unknown;
   }> {
     const handle = await template.create();
     const instance = await handle.provide(init);
-    await handle.configure(init, instance);
+
+    const mode = compileOptions?.mode ?? 'Run';
+    const skipKinds =
+      compileOptions?.skipConfigureNodeKinds ??
+      (mode === 'AiPreview' ? [NodeKind.Mcp] : []);
+
+    if (!skipKinds.includes(template.kind)) {
+      await handle.configure(init, instance);
+    }
+
     return { handle, instance };
   }
 
