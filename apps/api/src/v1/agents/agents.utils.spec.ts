@@ -474,7 +474,16 @@ describe('agents.utils', () => {
       expect(msg.role).toBe('reasoning');
       expect(msg.id).toBe('reasoning:parent-123');
       expect(msg.additional_kwargs?.__hideForLlm).toBe(true);
+      expect(msg.additional_kwargs?.__hideForSummary).toBe(true);
       expect(msg.additional_kwargs?.__reasoningId).toBe('reasoning:parent-123');
+    });
+
+    it('should set hideForLlm and hideForSummary even without parent id', () => {
+      const msg = buildReasoningMessage('reasoning text');
+
+      expect(msg.role).toBe('reasoning');
+      expect(msg.additional_kwargs?.__hideForLlm).toBe(true);
+      expect(msg.additional_kwargs?.__hideForSummary).toBe(true);
     });
   });
 

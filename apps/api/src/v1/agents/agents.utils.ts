@@ -445,5 +445,12 @@ export function buildReasoningMessage(
     };
   }
 
+  // Reasoning is ephemeral: hide from LLM context and summary compaction,
+  // but keep visible in the UI (displayed as a reasoning block).
+  msg.additional_kwargs = {
+    ...(msg.additional_kwargs ?? {}),
+    __hideForSummary: true,
+  };
+
   return markMessageHideForLlm(msg);
 }

@@ -87,6 +87,7 @@ type CodebaseSearchResult = {
 
 type CodebaseSearchOutput = {
   error?: string;
+  message?: string;
   results?: CodebaseSearchResult[];
   /** True when indexing is still in progress and results may be incomplete. */
   partialResults?: boolean;
@@ -330,7 +331,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
               output: {
                 results,
                 partialResults: true,
-                error: [
+                message: [
                   'NOTE: These are PARTIAL results — repository indexing is still in progress.',
                   ...progressParts,
                   'Results may be incomplete. You can also use files_directory_tree, files_find_paths, and files_search_text for additional exploration.',
@@ -339,8 +340,29 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
               messageMetadata,
             };
           }
-        } catch {
-          // Partial search failed (e.g. transient Qdrant error) — fall through
+        } catch (partialSearchError) {
+          // Auth errors should be surfaced immediately with fallback guidance.
+          const partialErrMsg =
+            partialSearchError instanceof Error
+              ? partialSearchError.message
+              : String(partialSearchError);
+          if (/auth|api.key|unauthorized|forbidden/i.test(partialErrMsg)) {
+            return {
+              output: {
+                error: dedent`
+                  Embedding service authentication failed: ${partialErrMsg}
+
+                  STOP: Do not retry codebase_search — the embedding service is unavailable.
+                  Switch immediately to these tools for all remaining codebase exploration:
+                  - files_directory_tree — to understand project structure
+                  - files_find_paths — to locate files by name/pattern
+                  - files_search_text — to search file contents with regex patterns
+                `,
+              },
+              messageMetadata,
+            };
+          }
+          // Non-auth error (e.g. transient Qdrant error) — fall through
           // to the standard "indexing in progress" response.
         }
       }
@@ -365,15 +387,44 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       repoRoot,
     );
 
-    const results = await this.repoIndexService.searchCodebase({
-      collection,
-      query: normalizedQuery,
-      repoId: indexResult.repoIndex.repoUrl,
-      topK: args.top_k ?? DEFAULT_TOP_K,
-      directoryFilter,
-      languageFilter: args.language ?? undefined,
-      minScore: DEFAULT_MIN_SCORE,
-    });
+    let results: CodebaseSearchResult[];
+    try {
+      results = await this.repoIndexService.searchCodebase({
+        collection,
+        query: normalizedQuery,
+        repoId: indexResult.repoIndex.repoUrl,
+        topK: args.top_k ?? DEFAULT_TOP_K,
+        directoryFilter,
+        languageFilter: args.language ?? undefined,
+        minScore: DEFAULT_MIN_SCORE,
+      });
+    } catch (searchError) {
+      const errMsg =
+        searchError instanceof Error
+          ? searchError.message
+          : String(searchError);
+
+      const isAuthError = /auth|api.key|unauthorized|forbidden/i.test(errMsg);
+
+      if (isAuthError) {
+        return {
+          output: {
+            error: dedent`
+              Embedding service authentication failed: ${errMsg}
+
+              STOP: Do not retry codebase_search — the embedding service is unavailable.
+              Switch immediately to these tools for all remaining codebase exploration:
+              - files_directory_tree — to understand project structure
+              - files_find_paths — to locate files by name/pattern
+              - files_search_text — to search file contents with regex patterns
+            `,
+          },
+          messageMetadata,
+        };
+      }
+
+      throw searchError;
+    }
 
     return {
       output: { results },

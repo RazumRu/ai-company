@@ -85,7 +85,7 @@ describe('InvokeLlmNode', () => {
 
     expect(mockLitellm.extractTokenUsageFromResponse).toHaveBeenCalledWith(
       'gpt-5-mini',
-      llmRes.usage_metadata as any,
+      expect.objectContaining(llmRes.usage_metadata as any),
     );
 
     expect(res.currentContext).toBe(usage.inputTokens);
@@ -133,6 +133,9 @@ describe('InvokeLlmNode', () => {
     expect(reasoningMsg?.content).toBe(
       'Let me think about this step by step...',
     );
+    expect(reasoningMsg?.additional_kwargs?.__model).toBe('gpt-5-mini');
+    expect(reasoningMsg?.additional_kwargs?.__hideForLlm).toBe(true);
+    expect(reasoningMsg?.additional_kwargs?.__hideForSummary).toBe(true);
   });
 
   it('does not produce reasoning messages when contentBlocks has no reasoning', async () => {
@@ -169,6 +172,50 @@ describe('InvokeLlmNode', () => {
     const reasoningMsg = items.find((m) => (m as any).role === 'reasoning');
 
     expect(reasoningMsg).toBeUndefined();
+  });
+
+  it('passes provider-reported cost from response_metadata.usage to extractTokenUsageFromResponse', async () => {
+    const usage: RequestTokenUsage = {
+      inputTokens: 3612,
+      outputTokens: 272,
+      totalTokens: 3884,
+      totalPrice: 0.00046689,
+    };
+
+    (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
+
+    const llmRes: AIMessageChunk = {
+      id: 'msg-openrouter',
+      content: 'ok',
+      contentBlocks: [],
+      response_metadata: {
+        usage: {
+          prompt_tokens: 3612,
+          completion_tokens: 272,
+          total_tokens: 3884,
+          cost: 0.00046689,
+        },
+      },
+      usage_metadata: {
+        input_tokens: 3612,
+        output_tokens: 272,
+        total_tokens: 3884,
+      },
+      tool_calls: [],
+    } as unknown as AIMessageChunk;
+
+    (mockLlm as any).bindTools.mockReturnValueOnce({
+      invoke: vi.fn().mockResolvedValue(llmRes),
+    });
+
+    await node.invoke(createState(), {
+      configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+    } as any);
+
+    expect(mockLitellm.extractTokenUsageFromResponse).toHaveBeenCalledWith(
+      'gpt-5-mini',
+      expect.objectContaining({ cost: 0.00046689 }),
+    );
   });
 
   it('injects state.summary as a pinned memory SystemMessage before the conversation tail', async () => {

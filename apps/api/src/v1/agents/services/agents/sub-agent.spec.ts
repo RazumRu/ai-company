@@ -68,6 +68,9 @@ describe('SubAgent', () => {
 
     mockLitellmService = {
       supportsParallelToolCall: vi.fn().mockResolvedValue(false),
+      supportsResponsesApi: vi.fn().mockResolvedValue(false),
+      supportsReasoning: vi.fn().mockResolvedValue(false),
+      supportsStreaming: vi.fn().mockResolvedValue(false),
       extractTokenUsageFromResponse: vi.fn().mockResolvedValue({
         inputTokens: 100,
         outputTokens: 30,

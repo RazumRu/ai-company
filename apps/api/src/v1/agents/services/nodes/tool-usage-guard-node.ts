@@ -55,6 +55,10 @@ export class ToolUsageGuardNode extends BaseNode<
         content:
           'Tool usage guard reached the maximum number of retries. The model returned an empty response without any tool calls, so this run is being ended to avoid an infinite loop. Please retry, or verify your model/provider supports tool calling for this configuration.',
       });
+      terminalMsg.additional_kwargs = {
+        ...(terminalMsg.additional_kwargs ?? {}),
+        __hideForUi: true,
+      };
 
       return {
         messages: {
@@ -80,6 +84,7 @@ export class ToolUsageGuardNode extends BaseNode<
       ...(msg.additional_kwargs ?? {}),
       __requiresFinishTool: true,
       __hideForSummary: true,
+      __hideForUi: true,
     };
     return {
       messages: {

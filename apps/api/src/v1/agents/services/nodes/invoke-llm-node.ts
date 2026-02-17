@@ -112,7 +112,17 @@ export class InvokeLlmNode extends BaseNode<
     }
 
     const model = String(this.llm.model);
-    const usageMetadata = res.usage_metadata || res.response_metadata?.usage;
+    const rawUsage = res.response_metadata?.usage as
+      | Record<string, unknown>
+      | undefined;
+    const providerCost =
+      typeof rawUsage?.cost === 'number' ? rawUsage.cost : undefined;
+    const usageMetadata = {
+      ...(res.usage_metadata ?? rawUsage ?? {}),
+      // Preserve provider-reported cost (e.g. OpenRouter `usage.cost`) which
+      // LangChain's normalised usage_metadata may strip.
+      ...(providerCost !== undefined ? { cost: providerCost } : {}),
+    };
     const threadUsage = await this.litellmService.extractTokenUsageFromResponse(
       model,
       usageMetadata as UsageMetadata,
@@ -133,10 +143,20 @@ export class InvokeLlmNode extends BaseNode<
     // Extract reasoning from contentBlocks.
     // ReasoningAwareChatCompletions ensures providers like DeepSeek
     // produce native reasoning blocks via the ChatDeepSeekTranslator.
+    // Reasoning messages carry the same identification kwargs (__model) as the
+    // parent AI message so analytics can attribute them to the right model,
+    // subagent, or inter-agent communication flow.
     const reasoningMessages = updateMessagesListWithMetadata(
       res.contentBlocks
         .filter((m) => m.type === 'reasoning' && m.reasoning !== '')
-        .map((block) => buildReasoningMessage(String(block.reasoning), res.id)),
+        .map((block) => {
+          const msg = buildReasoningMessage(String(block.reasoning), res.id);
+          msg.additional_kwargs = {
+            ...(msg.additional_kwargs ?? {}),
+            __model: model,
+          };
+          return msg;
+        }),
       cfg,
     );
 

@@ -121,6 +121,81 @@ describe('LitellmService', () => {
       expect(result).toBeDefined();
       expect(result!.totalPrice).toBeGreaterThan(0);
     });
+
+    it('falls back to provider-reported cost when model rates are unavailable', async () => {
+      // Simulate an OpenRouter model not in LiteLLM pricing database
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse(
+        'openrouter/minimax-m2.5',
+        {
+          prompt_tokens: 3612,
+          completion_tokens: 272,
+          total_tokens: 3884,
+          prompt_tokens_details: { cached_tokens: 3493 },
+          completion_tokens_details: { reasoning_tokens: 106 },
+          cost: 0.00046689,
+        },
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.inputTokens).toBe(3612);
+      expect(result!.outputTokens).toBe(272);
+      expect(result!.totalTokens).toBe(3884);
+      expect(result!.cachedInputTokens).toBe(3493);
+      expect(result!.reasoningTokens).toBe(106);
+      expect(result!.totalPrice).toBe(0.00046689);
+    });
+
+    it('prefers calculated price over provider-reported cost when both available', async () => {
+      const svc = createSvc(buildModelInfo());
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+        cost: 0.99, // Provider cost should be ignored when rates are available
+      });
+
+      expect(result).toBeDefined();
+      // Should use calculated price, not the provider cost of 0.99
+      expect(result!.totalPrice).not.toBe(0.99);
+      expect(result!.totalPrice).toBeGreaterThan(0);
+      // (10 * 0.00003) + (5 * 0.00006) = 0.0003 + 0.0003 = 0.0006
+      expect(result!.totalPrice).toBeCloseTo(0.0006, 10);
+    });
+
+    it('extracts tokens from OpenRouter prompt_tokens/completion_tokens format', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse(
+        'openrouter/some-model',
+        {
+          prompt_tokens: 3612,
+          completion_tokens: 272,
+          total_tokens: 3884,
+          prompt_tokens_details: {
+            cached_tokens: 3493,
+            audio_tokens: 0,
+          },
+          completion_tokens_details: {
+            reasoning_tokens: 106,
+            audio_tokens: 0,
+          },
+          cost: 0.00046689,
+        },
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.inputTokens).toBe(3612);
+      expect(result!.outputTokens).toBe(272);
+      expect(result!.totalTokens).toBe(3884);
+      expect(result!.cachedInputTokens).toBe(3493);
+      expect(result!.reasoningTokens).toBe(106);
+      expect(result!.totalPrice).toBe(0.00046689);
+    });
   });
 
   describe('estimateThreadTotalPriceFromModelRates', () => {

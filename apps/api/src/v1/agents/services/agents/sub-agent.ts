@@ -176,7 +176,21 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
             )
           : false;
 
-      const llm = this.buildLLM(config.invokeModelName);
+      const useResponsesApi = await this.litellmService.supportsResponsesApi(
+        config.invokeModelName,
+      );
+      const useReasoning = await this.litellmService.supportsReasoning(
+        config.invokeModelName,
+      );
+      const supportsStreaming = await this.litellmService.supportsStreaming(
+        config.invokeModelName,
+      );
+
+      const llm = this.buildLLM(config.invokeModelName, {
+        useResponsesApi,
+        reasoning: useReasoning ? { effort: 'low' } : undefined,
+        streaming: supportsStreaming,
+      });
 
       const invokeLlmNode = new InvokeLlmNode(
         this.litellmService,

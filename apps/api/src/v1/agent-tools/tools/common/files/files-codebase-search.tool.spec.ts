@@ -312,8 +312,9 @@ describe('FilesCodebaseSearchTool', () => {
       expect(output.partialResults).toBe(true);
       expect(output.results).toHaveLength(1);
       expect(output.results?.[0]?.path).toBe('src/partial.ts');
-      expect(output.error).toContain('PARTIAL results');
-      expect(output.error).toContain('Progress: 50%');
+      expect(output.error).toBeUndefined();
+      expect(output.message).toContain('PARTIAL results');
+      expect(output.message).toContain('Progress: 50%');
       expect(mockRepoIndexService.searchCodebase).toHaveBeenCalledTimes(1);
     });
 
@@ -426,6 +427,63 @@ describe('FilesCodebaseSearchTool', () => {
       expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
     });
 
+    it('should return auth error with fallback guidance when partial search hits authentication error', async () => {
+      vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'in_progress',
+        repoIndex: {
+          id: 'index-1',
+          status: RepoIndexStatus.InProgress,
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_main_1536',
+          estimatedTokens: 500000,
+          indexedTokens: 100000,
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockRejectedValue(
+        new Error('litellm.AuthenticationError: missing api_key'),
+      );
+
+      const { output } = await tool.invoke(
+        { query: 'search', gitRepoDirectory: 'apps/api' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(output.error).toContain('authentication failed');
+      expect(output.error).toContain('Do not retry codebase_search');
+      expect(output.error).toContain('files_search_text');
+      expect(output.results).toBeUndefined();
+    });
+
     it('should fall back gracefully when partial search throws', async () => {
       vi.spyOn(tool as any, 'execCommand')
         .mockResolvedValueOnce({
@@ -481,6 +539,111 @@ describe('FilesCodebaseSearchTool', () => {
       expect(output.error).toContain('Progress: 20%');
       expect(output.results).toEqual([]);
       expect(output.partialResults).toBeUndefined();
+    });
+
+    it('should return auth error with fallback guidance when ready search hits authentication error', async () => {
+      vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'ready',
+        repoIndex: {
+          id: 'index-1',
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_main_1536',
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockRejectedValue(
+        new Error('AuthenticationError: Incorrect API key provided'),
+      );
+
+      const { output } = await tool.invoke(
+        { query: 'find auth middleware', gitRepoDirectory: 'apps/api' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(output.error).toContain('authentication failed');
+      expect(output.error).toContain('Do not retry codebase_search');
+      expect(output.error).toContain('files_directory_tree');
+      expect(output.error).toContain('files_find_paths');
+      expect(output.error).toContain('files_search_text');
+      expect(output.results).toBeUndefined();
+    });
+
+    it('should re-throw non-auth errors from ready search', async () => {
+      vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'ready',
+        repoIndex: {
+          id: 'index-1',
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_main_1536',
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockRejectedValue(new Error('Qdrant connection timeout'));
+
+      await expect(
+        tool.invoke(
+          { query: 'find something', gitRepoDirectory: 'apps/api' },
+          mockConfig,
+          mockCfg,
+        ),
+      ).rejects.toThrow('Qdrant connection timeout');
     });
   });
 

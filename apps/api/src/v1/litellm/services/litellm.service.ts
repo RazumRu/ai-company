@@ -119,6 +119,9 @@ export class LitellmService {
    * Extract token usage and cost from LangChain's ChatOpenAI response.
    * Automatically recalculates price when cached or reasoning tokens are present.
    *
+   * When per-token model rates are unavailable (e.g. OpenRouter models not in
+   * LiteLLM's pricing database), falls back to the provider-reported `cost`
+   * field if present in the usage metadata.
    */
   async extractTokenUsageFromResponse(
     model: string,
@@ -146,13 +149,20 @@ export class LitellmService {
 
     const totalTokens = usageMetadata?.total_tokens ?? 0;
 
-    const totalPrice = await this.estimateThreadTotalPriceFromModelRates({
+    // Try to calculate price from per-token model rates first.
+    // Fall back to provider-reported cost (e.g. OpenRouter's `usage.cost`)
+    // when model rates are unavailable.
+    const calculatedPrice = await this.estimateThreadTotalPriceFromModelRates({
       model,
       inputTokens,
       cachedInputTokens,
       outputTokens,
       reasoningTokens,
     });
+
+    const providerCost =
+      typeof usageMetadata?.cost === 'number' ? usageMetadata.cost : null;
+    const totalPrice = calculatedPrice ?? providerCost ?? 0;
 
     return {
       inputTokens,
@@ -161,7 +171,7 @@ export class LitellmService {
       currentContext: inputTokens,
       cachedInputTokens,
       reasoningTokens,
-      totalPrice: totalPrice || 0,
+      totalPrice,
     };
   }
 

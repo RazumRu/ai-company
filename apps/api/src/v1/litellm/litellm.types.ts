@@ -24,6 +24,7 @@ export type UsageMetadata = Partial<ResponseUsage> & {
   prompt_tokens_details?: {
     cached_tokens?: number;
     cache_read?: number;
+    audio_tokens?: number;
   };
   input_token_details?: {
     cached_tokens?: number;
@@ -36,11 +37,17 @@ export type UsageMetadata = Partial<ResponseUsage> & {
   completion_tokens_details?: {
     reasoning_tokens?: number;
     reasoning?: number;
+    audio_tokens?: number;
   };
   output_tokens_details?: {
     reasoning_tokens?: number;
     reasoning?: number;
   };
+  /**
+   * Provider-reported cost (e.g. OpenRouter `usage.cost`).
+   * Used as a fallback when per-token model rates are unavailable.
+   */
+  cost?: number;
 };
 
 /**
