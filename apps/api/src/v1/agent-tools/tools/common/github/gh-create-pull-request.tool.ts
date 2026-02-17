@@ -477,7 +477,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
   ): string {
     return dedent`
       ### Overview
-      Creates a Pull Request in GitHub using the GitHub REST API (Octokit) and then optionally applies issue metadata and review requests.
+      Creates a Pull Request in GitHub and then optionally applies issue metadata and review requests.
 
       ### When to Use
       - You have pushed a branch and want to open a PR programmatically.

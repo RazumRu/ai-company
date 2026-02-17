@@ -102,9 +102,9 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
       {"semanticType": "refactor", "title": "extract validation logic", "body": "Reduces duplication\\n- Created validation/ dir\\n- Updated imports", "path": "/repo"}
       \`\`\`
 
-      **3. After cd into repo:**
+      **3. With explicit path:**
       \`\`\`json
-      {"semanticType": "fix", "title": "prevent duplicate submissions"}
+      {"semanticType": "fix", "title": "prevent duplicate submissions", "path": "/runtime-workspace/repo"}
       \`\`\`
 
       Example:

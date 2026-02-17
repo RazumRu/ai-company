@@ -56,7 +56,7 @@ type GhCloneToolOutput = {
 export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   public name = 'gh_clone';
   public description =
-    'Clone a GitHub repository into the runtime container using authenticated HTTPS. Returns the absolute path where the repository was cloned, which should be used for all subsequent file and git operations. Additionally searches the repository root for agent instruction files (like AGENTS.md, CLAUDE.md, .cursorrules, .aidigestignore) and returns their content if found, prioritizing the default configured file. You MUST carefully read and strictly follow the rules, conventions, and workflow described in the returned agent instructions file — it defines how to work with the codebase (coding style, commit conventions, testing requirements, forbidden patterns, etc.). Supports optional branch/tag checkout, shallow cloning (depth), and custom clone destinations (workdir). If the repository is already cloned, navigate to the existing path instead of re-cloning.';
+    'Clone a GitHub repository into the runtime container and return the absolute clone path for all subsequent operations. Also discovers and returns agent instruction files from the repository root — you MUST follow the rules they define. Supports optional branch/tag checkout, shallow cloning (depth), and custom clone destinations (workdir). If the repository is already cloned, navigate to the existing path instead of re-cloning.';
 
   constructor(
     private readonly gitRepositoriesDao: GitRepositoriesDao,

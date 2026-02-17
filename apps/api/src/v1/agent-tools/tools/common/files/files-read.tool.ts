@@ -76,7 +76,7 @@ type FilesReadToolOutput = {
 export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
   public name = 'files_read';
   public description =
-    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges. ⚠️ For large files (>300 lines), you MUST use fromLineNumber/toLineNumber to read only the relevant section — NEVER fetch full content of files with more than 300 lines. Use total_lines from codebase_search or lineCount from previous reads to check file size before reading. All file paths must be absolute. Always read a file before editing it. This is a read-only tool — to modify files use files_apply_changes, to create new files use files_write_file.';
+    'Read one or more files and return their contents with line numbers. Supports batching multiple files in a single call and optional line ranges (fromLineNumber/toLineNumber). For large files (>300 lines), use line ranges to read only the relevant section. All file paths must be absolute. This is read-only — to modify files use files_apply_changes, to create new files use files_write_file.';
 
   protected override generateTitle(
     args: FilesReadToolSchemaType,

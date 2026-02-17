@@ -77,8 +77,8 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
   public name = 'files_search_text';
   public description =
     'Search file contents using a regex pattern and return matching file paths, line numbers, and matched text. ' +
-    'Returns up to 15 matches. Supports full regex syntax (e.g., "function\\s+\\w+", "import.*from"). ' +
-    'Best used after codebase_search for exact pattern matching. ' +
+    'Returns up to 15 matches. Best used after codebase_search for exact pattern matching (function names, variable references, import paths), ' +
+    'or as a fallback when codebase_search indexing is in progress. ' +
     'Supports include/exclude glob filters via onlyInFilesMatching and skipFilesMatching. ' +
     'Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default.';
 
@@ -106,6 +106,7 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
       - Locating specific error messages or string literals in code
       - Searching for patterns across many files (e.g., all TODO comments)
       - Verifying that a rename or refactor caught all references
+      - As a fallback when \`codebase_search\` indexing is in progress
 
       ### When NOT to Use
       - Initial codebase discovery → use \`codebase_search\` first (semantic search is better for "where is X?")
