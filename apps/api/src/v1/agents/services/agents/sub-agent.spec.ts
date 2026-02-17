@@ -42,7 +42,7 @@ vi.mock('@langchain/openai', () => {
       model: 'test-model',
     };
   }
-  return { ChatOpenAI: MockChatOpenAI };
+  return { ChatOpenAI: MockChatOpenAI, ChatOpenAICompletions: class {} };
 });
 
 // Suppress the noisy LangGraph "Setting a recursionLimit" warning

@@ -62,6 +62,11 @@
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.0.18"
   },
+  "pnpm": {
+    "overrides": {
+      "ioredis": "5.9.3"
+    }
+  },
   "resolutions": {
     "jose": "^5.10.0"
   },

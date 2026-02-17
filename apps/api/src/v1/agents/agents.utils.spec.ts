@@ -11,12 +11,10 @@ import {
   buildReasoningMessage,
   convertChunkToMessage,
   extractExploredFilesFromMessages,
-  extractReasoningFromRawResponse,
   extractTextFromResponseContent,
   filterMessagesForLlm,
   markMessageHideForLlm,
   prepareMessagesForLlm,
-  stripRawResponse,
   updateMessagesListWithMetadata,
   updateMessageWithMetadata,
 } from './agents.utils';
@@ -639,120 +637,6 @@ describe('agents.utils', () => {
         message: 'y',
         needsMoreInfo: true,
       });
-    });
-  });
-
-  describe('extractReasoningFromRawResponse', () => {
-    it('should extract reasoning_content from non-streaming message shape', () => {
-      const kwargs = {
-        __raw_response: {
-          choices: [
-            {
-              message: {
-                role: 'assistant',
-                content: '',
-                reasoning_content: 'Let me think step by step...',
-              },
-            },
-          ],
-        },
-      };
-
-      expect(extractReasoningFromRawResponse(kwargs)).toBe(
-        'Let me think step by step...',
-      );
-    });
-
-    it('should extract reasoning_content from streaming delta shape', () => {
-      const kwargs = {
-        __raw_response: {
-          choices: [
-            {
-              delta: {
-                role: 'assistant',
-                reasoning_content: 'Thinking chunk...',
-              },
-            },
-          ],
-        },
-      };
-
-      expect(extractReasoningFromRawResponse(kwargs)).toBe('Thinking chunk...');
-    });
-
-    it('should return null when no raw response', () => {
-      expect(extractReasoningFromRawResponse(undefined)).toBeNull();
-      expect(extractReasoningFromRawResponse({})).toBeNull();
-    });
-
-    it('should return null when raw response has no reasoning_content', () => {
-      const kwargs = {
-        __raw_response: {
-          choices: [
-            {
-              message: {
-                role: 'assistant',
-                content: 'Regular response',
-              },
-            },
-          ],
-        },
-      };
-
-      expect(extractReasoningFromRawResponse(kwargs)).toBeNull();
-    });
-
-    it('should return null for empty reasoning_content', () => {
-      const kwargs = {
-        __raw_response: {
-          choices: [
-            {
-              message: {
-                role: 'assistant',
-                content: '',
-                reasoning_content: '',
-              },
-            },
-          ],
-        },
-      };
-
-      expect(extractReasoningFromRawResponse(kwargs)).toBeNull();
-    });
-
-    it('should return null for non-string reasoning_content', () => {
-      const kwargs = {
-        __raw_response: {
-          choices: [
-            {
-              message: {
-                role: 'assistant',
-                reasoning_content: 42,
-              },
-            },
-          ],
-        },
-      };
-
-      expect(extractReasoningFromRawResponse(kwargs)).toBeNull();
-    });
-  });
-
-  describe('stripRawResponse', () => {
-    it('should remove __raw_response from kwargs', () => {
-      const kwargs: Record<string, unknown> = {
-        __raw_response: { choices: [] },
-        __model: 'gpt-5-mini',
-      };
-
-      stripRawResponse(kwargs);
-
-      expect(kwargs.__raw_response).toBeUndefined();
-      expect(kwargs.__model).toBe('gpt-5-mini');
-    });
-
-    it('should handle undefined kwargs', () => {
-      expect(() => stripRawResponse(undefined)).not.toThrow();
     });
   });
 });

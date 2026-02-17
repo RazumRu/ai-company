@@ -18,6 +18,7 @@ import {
   BaseAgentStateMessagesUpdateValue,
 } from '../../agents.types';
 import { BaseAgentConfigurable } from '../nodes/base-node';
+import { ReasoningAwareChatCompletions } from '../reasoning-chat-completions';
 
 export type AgentOutput = {
   messages: BaseMessage[];
@@ -118,13 +119,16 @@ export abstract class BaseAgent<
     model: OpenAIChatModelId,
     params?: ChatOpenAIFields,
   ): ChatOpenAI {
-    return new ChatOpenAI({
+    const fields: ChatOpenAIFields = {
       model,
       apiKey: environment.litellmMasterKey,
       configuration: { baseURL: environment.llmBaseUrl },
       tags: ['ai-company'],
-      __includeRawResponse: true,
       ...params,
+    };
+    return new ChatOpenAI({
+      ...fields,
+      completions: new ReasoningAwareChatCompletions(fields),
     });
   }
 

@@ -35,7 +35,6 @@ import {
 } from '../../agents.types';
 import {
   buildReasoningMessage,
-  extractReasoningFromRawResponse,
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
@@ -709,12 +708,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       }
     }
 
-    // Fallback: providers like DeepSeek put reasoning in a non-standard
-    // `reasoning_content` field that @langchain/openai doesn't propagate
-    // to contentBlocks. Extract it from the raw response if available.
-    return extractReasoningFromRawResponse(
-      chunk?.additional_kwargs as Record<string, unknown> | undefined,
-    );
+    return null;
   }
 
   public async run(

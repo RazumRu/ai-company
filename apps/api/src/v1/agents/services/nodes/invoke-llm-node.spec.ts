@@ -1,8 +1,4 @@
-import {
-  AIMessage,
-  AIMessageChunk,
-  HumanMessage,
-} from '@langchain/core/messages';
+import { AIMessageChunk, HumanMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -95,7 +91,7 @@ describe('InvokeLlmNode', () => {
     expect(res.currentContext).toBe(usage.inputTokens);
   });
 
-  it('extracts reasoning from raw response when contentBlocks has no reasoning', async () => {
+  it('extracts reasoning from contentBlocks (e.g. DeepSeek via ReasoningAwareChatCompletions)', async () => {
     const usage: RequestTokenUsage = {
       inputTokens: 50,
       outputTokens: 10,
@@ -107,21 +103,13 @@ describe('InvokeLlmNode', () => {
     const llmRes: AIMessageChunk = {
       id: 'msg-deepseek',
       content: '',
-      contentBlocks: [],
-      response_metadata: {},
-      additional_kwargs: {
-        __raw_response: {
-          choices: [
-            {
-              message: {
-                role: 'assistant',
-                content: '',
-                reasoning_content: 'Let me think about this step by step...',
-              },
-            },
-          ],
+      contentBlocks: [
+        {
+          type: 'reasoning',
+          reasoning: 'Let me think about this step by step...',
         },
-      },
+      ],
+      response_metadata: {},
       usage_metadata: {
         input_tokens: 50,
         output_tokens: 10,
@@ -139,9 +127,7 @@ describe('InvokeLlmNode', () => {
     } as any);
 
     const items = res.messages?.items ?? [];
-    const reasoningMsg = items.find(
-      (m) => (m as any).role === 'reasoning',
-    );
+    const reasoningMsg = items.find((m) => (m as any).role === 'reasoning');
 
     expect(reasoningMsg).toBeDefined();
     expect(reasoningMsg?.content).toBe(
@@ -149,7 +135,7 @@ describe('InvokeLlmNode', () => {
     );
   });
 
-  it('prefers native contentBlocks reasoning over raw response fallback', async () => {
+  it('does not produce reasoning messages when contentBlocks has no reasoning', async () => {
     const usage: RequestTokenUsage = {
       inputTokens: 50,
       outputTokens: 10,
@@ -159,68 +145,10 @@ describe('InvokeLlmNode', () => {
     (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
 
     const llmRes: AIMessageChunk = {
-      id: 'msg-native',
-      content: '',
-      contentBlocks: [
-        { type: 'reasoning', reasoning: 'Native reasoning text' },
-      ],
-      response_metadata: {},
-      additional_kwargs: {
-        __raw_response: {
-          choices: [
-            {
-              message: {
-                role: 'assistant',
-                content: '',
-                reasoning_content: 'Should NOT be used',
-              },
-            },
-          ],
-        },
-      },
-      usage_metadata: {
-        input_tokens: 50,
-        output_tokens: 10,
-        total_tokens: 60,
-      },
-      tool_calls: [],
-    } as unknown as AIMessageChunk;
-
-    (mockLlm as any).bindTools.mockReturnValueOnce({
-      invoke: vi.fn().mockResolvedValue(llmRes),
-    });
-
-    const res = await node.invoke(createState(), {
-      configurable: { run_id: 'run-1', thread_id: 'thread-1' },
-    } as any);
-
-    const items = res.messages?.items ?? [];
-    const reasoningMsg = items.find(
-      (m) => (m as any).role === 'reasoning',
-    );
-
-    expect(reasoningMsg).toBeDefined();
-    expect(reasoningMsg?.content).toBe('Native reasoning text');
-    expect(reasoningMsg?.content).not.toBe('Should NOT be used');
-  });
-
-  it('strips __raw_response from persisted message kwargs', async () => {
-    const usage: RequestTokenUsage = {
-      inputTokens: 50,
-      outputTokens: 10,
-      totalTokens: 60,
-    };
-
-    (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
-
-    const llmRes: AIMessageChunk = {
-      id: 'msg-strip',
-      content: 'response',
+      id: 'msg-no-reasoning',
+      content: 'plain response',
       contentBlocks: [],
       response_metadata: {},
-      additional_kwargs: {
-        __raw_response: { choices: [{ message: { content: 'response' } }] },
-      },
       usage_metadata: {
         input_tokens: 50,
         output_tokens: 10,
@@ -238,10 +166,9 @@ describe('InvokeLlmNode', () => {
     } as any);
 
     const items = res.messages?.items ?? [];
-    const aiMsg = items.find((m) => m instanceof AIMessage);
+    const reasoningMsg = items.find((m) => (m as any).role === 'reasoning');
 
-    expect(aiMsg).toBeDefined();
-    expect((aiMsg as any)?.additional_kwargs?.__raw_response).toBeUndefined();
+    expect(reasoningMsg).toBeUndefined();
   });
 
   it('injects state.summary as a pinned memory SystemMessage before the conversation tail', async () => {

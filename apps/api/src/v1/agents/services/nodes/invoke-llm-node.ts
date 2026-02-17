@@ -16,9 +16,7 @@ import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
 import {
   buildReasoningMessage,
   convertChunkToMessage,
-  extractReasoningFromRawResponse,
   prepareMessagesForLlm,
-  stripRawResponse,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
@@ -132,35 +130,14 @@ export class InvokeLlmNode extends BaseNode<
       cfg,
     );
 
-    // Extract reasoning: native contentBlocks (OpenAI o-series), then fallback
-    // to raw response for providers that use `reasoning_content` (e.g. DeepSeek).
-    const nativeReasoningBlocks = res.contentBlocks.filter(
-      (m) => m.type === 'reasoning' && m.reasoning !== '',
-    );
-
-    const reasoningMessages =
-      nativeReasoningBlocks.length > 0
-        ? updateMessagesListWithMetadata(
-            nativeReasoningBlocks.map((block) =>
-              buildReasoningMessage(String(block.reasoning), res.id),
-            ),
-            cfg,
-          )
-        : (() => {
-            const rawReasoning = extractReasoningFromRawResponse(
-              res.additional_kwargs as Record<string, unknown> | undefined,
-            );
-            return rawReasoning
-              ? updateMessagesListWithMetadata(
-                  [buildReasoningMessage(rawReasoning, res.id)],
-                  cfg,
-                )
-              : [];
-          })();
-
-    // Remove __raw_response from the message to avoid persisting the full API response.
-    stripRawResponse(
-      preparedRes.additional_kwargs as Record<string, unknown> | undefined,
+    // Extract reasoning from contentBlocks.
+    // ReasoningAwareChatCompletions ensures providers like DeepSeek
+    // produce native reasoning blocks via the ChatDeepSeekTranslator.
+    const reasoningMessages = updateMessagesListWithMetadata(
+      res.contentBlocks
+        .filter((m) => m.type === 'reasoning' && m.reasoning !== '')
+        .map((block) => buildReasoningMessage(String(block.reasoning), res.id)),
+      cfg,
     );
 
     return {

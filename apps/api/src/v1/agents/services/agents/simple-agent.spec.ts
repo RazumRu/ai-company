@@ -986,26 +986,16 @@ describe('SimpleAgent', () => {
       expect(reasoningMessage.id).toBe('reasoning:chunk-123');
     });
 
-    it('should extract reasoning from raw response when contentBlocks has no reasoning', () => {
+    it('should extract reasoning from contentBlocks (e.g. DeepSeek via ReasoningAwareChatCompletions)', () => {
       const graphThreadState = new GraphThreadState();
       setGraphThreadState(graphThreadState);
 
       const reasoningChunk = {
         id: 'chunk-deepseek',
-        contentBlocks: [],
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'DeepSeek reasoning chunk' },
+        ],
         response_metadata: {},
-        additional_kwargs: {
-          __raw_response: {
-            choices: [
-              {
-                delta: {
-                  role: 'assistant',
-                  reasoning_content: 'DeepSeek reasoning chunk',
-                },
-              },
-            ],
-          },
-        },
       } as unknown as AIMessageChunk;
 
       (agent as any).handleReasoningChunk(threadId, reasoningChunk);
