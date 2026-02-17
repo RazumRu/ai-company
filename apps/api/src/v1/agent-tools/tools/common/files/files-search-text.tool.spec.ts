@@ -116,22 +116,22 @@ describe('FilesSearchTextTool', () => {
       expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
 
-    it('should coerce onlyInFilesMatching string to array', () => {
+    it('should accept onlyInFilesMatching as a bare string', () => {
       const data = {
         textPattern: 'function',
         onlyInFilesMatching: '*.ts',
       };
       const parsed = FilesSearchTextToolSchema.parse(data);
-      expect(parsed.onlyInFilesMatching).toEqual(['*.ts']);
+      expect(parsed.onlyInFilesMatching).toBe('*.ts');
     });
 
-    it('should coerce skipFilesMatching string to array', () => {
+    it('should accept skipFilesMatching as a bare string', () => {
       const data = {
         textPattern: 'function',
         skipFilesMatching: '*.test.ts',
       };
       const parsed = FilesSearchTextToolSchema.parse(data);
-      expect(parsed.skipFilesMatching).toEqual(['*.test.ts']);
+      expect(parsed.skipFilesMatching).toBe('*.test.ts');
     });
   });
 
@@ -179,6 +179,25 @@ describe('FilesSearchTextTool', () => {
       expect(call.cmd).toContain("'!dist/**'");
       expect(call.cmd).toContain("'!build/**'");
       expect(call.cmd).toContain("'!coverage/**'");
+    });
+
+    it('should coerce bare-string onlyInFilesMatching to array at invocation', async () => {
+      const args: FilesSearchTextToolSchemaType = {
+        textPattern: 'function',
+        onlyInFilesMatching: '*.ts',
+      };
+
+      vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '',
+      });
+
+      await tool.invoke(args, mockConfig, mockCfg);
+
+      const call = (tool as any).execCommand.mock.calls[0]![0];
+      expect(call.cmd).toContain("--glob '*.ts'");
     });
 
     it('should search text with include globs', async () => {

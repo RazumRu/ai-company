@@ -16,13 +16,18 @@ import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 const MAX_MATCHES = 15;
 
 /**
- * Coerce a bare string into a single-element array so that LLMs sending
- * `"*.ts"` instead of `["*.ts"]` don't fail schema validation.
+ * Accept a single string OR an array of strings.
+ *
+ * LLMs sometimes send `"*.ts"` instead of `["*.ts"]`; we accept both in
+ * the schema and normalise to `string[]` at invocation time via
+ * {@link coerceToArray}.
+ *
+ * NOTE: `z.preprocess()` / `z.transform()` must NOT be used in tool
+ * schemas because LangChain's `toJsonSchema` cannot convert Zod transform
+ * types back to JSON Schema (throws "Transforms cannot be represented in
+ * JSON Schema").
  */
-const stringOrArray = z.preprocess(
-  (val) => (typeof val === 'string' ? [val] : val),
-  z.array(z.string()),
-);
+const stringOrArray = z.union([z.string(), z.array(z.string())]);
 
 export const FilesSearchTextToolSchema = z.object({
   searchInDirectory: z
@@ -68,6 +73,14 @@ export const FilesSearchTextToolSchema = z.object({
 export type FilesSearchTextToolSchemaType = z.infer<
   typeof FilesSearchTextToolSchema
 >;
+
+/** Normalise `string | string[] | null | undefined` → `string[] | null`. */
+function coerceToArray(
+  value: string | string[] | null | undefined,
+): string[] | null {
+  if (value == null) return null;
+  return typeof value === 'string' ? [value] : value;
+}
 
 type FilesSearchTextToolOutput = {
   error?: string;
@@ -181,20 +194,25 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     const messageMetadata = { __title: title };
     const cmdParts: string[] = ['rg', '--json'];
 
+    // Coerce bare strings to single-element arrays (LLMs may send "*.ts"
+    // instead of ["*.ts"]).
+    const onlyIn = coerceToArray(args.onlyInFilesMatching);
+    const skipIn = coerceToArray(args.skipFilesMatching);
+
     if (args.filePath) {
       cmdParts.push('--', shQuote(args.textPattern), shQuote(args.filePath));
     } else {
       cmdParts.push('--hidden');
       cmdParts.push('--glob', shQuote('!.git/**'));
 
-      if (args.onlyInFilesMatching && args.onlyInFilesMatching.length > 0) {
-        for (const glob of args.onlyInFilesMatching) {
+      if (onlyIn && onlyIn.length > 0) {
+        for (const glob of onlyIn) {
           cmdParts.push('--glob', shQuote(glob));
         }
       }
 
-      if (args.skipFilesMatching && args.skipFilesMatching.length > 0) {
-        for (const glob of args.skipFilesMatching) {
+      if (skipIn && skipIn.length > 0) {
+        for (const glob of skipIn) {
           cmdParts.push('--glob', shQuote(`!${glob}`));
         }
       } else {
