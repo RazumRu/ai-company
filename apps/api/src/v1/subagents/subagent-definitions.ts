@@ -52,6 +52,9 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
     - **Avoid redundant searches.** If you already found what you need, stop searching. Don't keep exploring "just in case."
     - **Read larger sections at once** rather than many small reads of the same file.
     - **Stop when you have enough information** to answer the task. You don't need to explore every related file — return what you found.
+    - **Never read the same file twice.** Track which files you have already read and skip them on subsequent passes.
+    - **When a tool returns an error with fallback instructions**, follow those instructions immediately — do not retry the failed tool.
+    - **Search convergence**: if two consecutive codebase_search calls return the same top results, stop searching and read those files directly.
 
     ## Rules
     - Complete the task autonomously. You cannot ask follow-up questions.
@@ -115,6 +118,9 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
     ## Rules
     - Complete the task autonomously. You cannot ask follow-up questions.
     - Use tools efficiently. Minimize tool calls — batch file reads, use targeted searches.
+    - Never read the same file twice. When you already know a file path, read it directly instead of searching for it.
+    - When a tool returns an error with fallback instructions, follow those instructions immediately — do not retry the failed tool.
+    - If two consecutive codebase_search calls return the same top results, stop searching and read those files directly.
     - When done, respond with a text summary of what you did, including file paths modified and key decisions made. Do NOT call any tools in your final response.
     - If you cannot complete the task, explain what you attempted and what went wrong.
     - Be concise but thorough.

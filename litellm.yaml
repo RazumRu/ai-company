@@ -9,78 +9,96 @@ litellm_settings:
   drop_params: true
 
 model_list:
+  # OpenRouter provider — Anthropic
+  # Pricing in LiteLLM DB: claude-sonnet-4.5 ✓, claude-haiku-4.5 ✓
   - model_name: claude-sonnet-4.5
     litellm_params:
-      model: anthropic/claude-sonnet-4.5
+      model: openrouter/anthropic/claude-sonnet-4.5
+      api_key: os.environ/OPENROUTER_API_KEY
 
   - model_name: claude-opus-4.6
     litellm_params:
-      model: anthropic/claude-opus-4.6
+      model: openrouter/anthropic/claude-opus-4.6
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.000005      # $5/M — not in LiteLLM DB
+      output_cost_per_token: 0.000025      # $25/M
 
   - model_name: claude-haiku-4.5
     litellm_params:
-      model: anthropic/claude-haiku-4.5
+      model: openrouter/anthropic/claude-haiku-4.5
+      api_key: os.environ/OPENROUTER_API_KEY
 
+  # OpenRouter provider — OpenAI
+  # Pricing in LiteLLM DB: gpt-5-mini ✓, gpt-5.2-codex ✓, gpt-5.2 ✓
   - model_name: text-embedding-3-small
     litellm_params:
-      model: openai/text-embedding-3-small
-      api_key: os.environ/OPENAI_API_KEY
+      model: openrouter/openai/text-embedding-3-small
+      api_key: os.environ/OPENROUTER_API_KEY
       drop_params: true
       additional_drop_params: [ "stop" ]
+    model_info:
+      base_model: text-embedding-3-small  # map pricing from LiteLLM DB
 
   - model_name: gpt-5-mini
     litellm_params:
-      model: openai/gpt-5-mini
-      api_key: os.environ/OPENAI_API_KEY
+      model: openrouter/openai/gpt-5-mini
+      api_key: os.environ/OPENROUTER_API_KEY
       drop_params: true
       additional_drop_params: [ "stop" ]
 
   - model_name: gpt-5.2-codex
     litellm_params:
-      model: openai/gpt-5.2-codex
-      api_key: os.environ/OPENAI_API_KEY
+      model: openrouter/openai/gpt-5.2-codex
+      api_key: os.environ/OPENROUTER_API_KEY
       drop_params: true
       additional_drop_params: [ "stop" ]
 
   - model_name: gpt-5.1-codex-mini
     litellm_params:
-      model: openai/gpt-5.1-codex-mini
-      api_key: os.environ/OPENAI_API_KEY
+      model: openrouter/openai/gpt-5.1-codex-mini
+      api_key: os.environ/OPENROUTER_API_KEY
       drop_params: true
       additional_drop_params: [ "stop" ]
-
-  - model_name: gpt-5.3-codex
-    litellm_params:
-      model: openai/gpt-5.3-codex
-      api_key: os.environ/OPENAI_API_KEY
-      drop_params: true
-      additional_drop_params: [ "stop" ]
+    model_info:
+      base_model: gpt-5.1-codex-mini     # map pricing from LiteLLM DB
 
   - model_name: gpt-5.2
     litellm_params:
-      model: openai/gpt-5.2
-      api_key: os.environ/OPENAI_API_KEY
+      model: openrouter/openai/gpt-5.2
+      api_key: os.environ/OPENROUTER_API_KEY
       drop_params: true
       additional_drop_params: [ "stop" ]
 
+  # OpenRouter provider — Google
+  # Pricing in LiteLLM DB: gemini-3-flash-preview ✓
   - model_name: gemini-3-flash-preview
     litellm_params:
-      model: gemini/gemini-3-flash-preview
-      api_key: os.environ/GEMINI_API_KEY
+      model: openrouter/google/gemini-3-flash-preview
+      api_key: os.environ/OPENROUTER_API_KEY
       drop_params: true
 
+  # OpenRouter provider — Z.ai
   - model_name: glm-5
     litellm_params:
-      model: zai/glm-5
-      api_key: os.environ/ZAI_API_KEY
+      model: openrouter/z-ai/glm-5
+      api_key: os.environ/OPENROUTER_API_KEY
       drop_params: true
+    model_info:
+      input_cost_per_token: 0.0000003     # $0.30/M — not in LiteLLM DB
+      output_cost_per_token: 0.00000255    # $2.55/M
 
-  - model_name: glm-5-code
+  # OpenRouter provider — MiniMax
+  - model_name: openrouter/minimax-m2.5
     litellm_params:
-      model: zai/glm-5-code
-      api_key: os.environ/ZAI_API_KEY
+      model: openrouter/minimax/minimax-m2.5
+      api_key: os.environ/OPENROUTER_API_KEY
       drop_params: true
+    model_info:
+      input_cost_per_token: 0.0000003     # $0.30/M — not in LiteLLM DB
+      output_cost_per_token: 0.0000012     # $1.20/M
 
+  # Ollama local models
   - model_name: qwen3-coder:30b
     litellm_params:
       model: openai/qwen3-coder:30b

@@ -15,6 +15,15 @@ import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 
 const MAX_MATCHES = 15;
 
+/**
+ * Coerce a bare string into a single-element array so that LLMs sending
+ * `"*.ts"` instead of `["*.ts"]` don't fail schema validation.
+ */
+const stringOrArray = z.preprocess(
+  (val) => (typeof val === 'string' ? [val] : val),
+  z.array(z.string()),
+);
+
 export const FilesSearchTextToolSchema = z.object({
   searchInDirectory: z
     .string()
@@ -40,16 +49,14 @@ export const FilesSearchTextToolSchema = z.object({
     .describe(
       'Search only in this specific file. Can use paths from files_find_paths output.',
     ),
-  onlyInFilesMatching: z
-    .array(z.string())
+  onlyInFilesMatching: stringOrArray
     .nullable()
     .optional()
     .describe(
       'Only search files matching these glob patterns (e.g., ["*.ts", "src/**"]). ' +
         'If omitted, searches all non-excluded file types.',
     ),
-  skipFilesMatching: z
-    .array(z.string())
+  skipFilesMatching: stringOrArray
     .nullable()
     .optional()
     .describe(

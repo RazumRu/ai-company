@@ -30,6 +30,12 @@ import { FilesBaseTool, FilesBaseToolConfig } from './files-base.tool';
 const DEFAULT_TOP_K = 15;
 const MAX_TOP_K = 30;
 const DEFAULT_MIN_SCORE = 0.3;
+/**
+ * Cap top_k for partial searches during indexing. Keeps it below the
+ * query-expansion threshold (10) inside `searchCodebase()`, which avoids
+ * an extra LLM call + multiple embedding requests for incomplete data.
+ */
+const PARTIAL_SEARCH_TOP_K = 5;
 
 const CodebaseSearchSchema = z.object({
   query: z
@@ -82,13 +88,15 @@ type CodebaseSearchResult = {
 type CodebaseSearchOutput = {
   error?: string;
   results?: CodebaseSearchResult[];
+  /** True when indexing is still in progress and results may be incomplete. */
+  partialResults?: boolean;
 };
 
 @Injectable()
 export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaType> {
   public name = 'codebase_search';
   public description =
-    'Preferred first step for codebase exploration. Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, total_lines (file size), and code snippets ranked by relevance. Use this tool first after gh_clone — it is faster and more precise than files_directory_tree or files_find_paths. If indexing is in progress, fall back to other file tools instead of retrying. Check total_lines in results: read small files (≤300 lines) entirely, but for large files (>300 lines) ALWAYS use fromLineNumber/toLineNumber in files_read. The repository must be cloned first with gh_clone.';
+    'Preferred first step for codebase exploration. Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, total_lines (file size), and code snippets ranked by relevance. Use this tool first after gh_clone — it is faster and more precise than files_directory_tree or files_find_paths. If indexing is in progress, partial results may be returned — supplement with other file tools for complete coverage. Check total_lines in results: read small files (≤300 lines) entirely, but for large files (>300 lines) ALWAYS use fromLineNumber/toLineNumber in files_read. The repository must be cloned first with gh_clone.';
 
   constructor(
     private readonly repoIndexService: RepoIndexService,
@@ -104,14 +112,16 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     return dedent`
       ### ⚠️ PREFERRED FIRST STEP
       This tool SHOULD be your first action after cloning a repository. Prefer it over \`files_directory_tree\` or \`files_find_paths\` — those tools produce noisier output. \`codebase_search\` returns exactly the code you need with precise file paths and line numbers.
-      If indexing is in progress, fall back to other file tools immediately (see "Indexing In Progress" section below).
+      If indexing is in progress, the tool may return partial results. Supplement with other file tools for complete coverage.
 
       ### Overview
       Semantic codebase search that indexes a git repository on demand.
       Indexing is triggered automatically on the first call. For large repositories
-      indexing runs in the background — in that case the tool will indicate that
-      indexing is in progress. **Do NOT retry codebase_search when indexing is in progress.**
-      Instead, fall back to \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` for exploration while the index builds.
+      indexing runs in the background — when indexing is in progress, the tool will
+      attempt to search already-indexed data and return partial results if available.
+      Treat partial results as useful but incomplete — also use \`files_directory_tree\`,
+      \`files_find_paths\`, and \`files_search_text\` for broader coverage.
+      Do NOT repeatedly retry \`codebase_search\` hoping for more results.
 
       ### Prerequisites
       - Repository MUST be cloned first. Use \`gh_clone\` if not already done.
@@ -126,7 +136,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
       ### When NOT to Use
       - You already have the file paths and line numbers you need from a previous search
-      - Indexing is in progress — use \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` instead
+      - Indexing is in progress and you already received partial results from a prior call — use other tools for additional exploration
 
       ### Requirements
       - Must be inside a git repository
@@ -146,18 +156,25 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       - **Large files (>300 lines)**: you MUST use \`fromLineNumber\`/\`toLineNumber\` in \`files_read\`. Set the range to \`start_line - 30\` through \`end_line + 30\` from the search result. NEVER fetch the full content of files with more than 300 lines.
 
       ### ⚠️ CRITICAL — Indexing In Progress
-      If \`codebase_search\` returns an "indexing in progress" message, **do NOT call codebase_search again**.
-      Instead, immediately switch to these alternative exploration tools:
-      - \`files_directory_tree\` — get an overview of the repository structure
-      - \`files_find_paths\` — locate files by name or glob pattern
-      - \`files_search_text\` — search for exact text/regex patterns across files
-      - \`files_read\` — read specific files once you have their paths
-      Continue your task using these tools. Do NOT wait or retry \`codebase_search\`.
+      When \`codebase_search\` returns results marked as partial:
+      - **Use the partial results** — they are valid and relevant, just incomplete.
+      - **Supplement** with \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` for areas not yet indexed.
+      - **Do NOT retry** \`codebase_search\` expecting more results — the index builds in the background and retrying won't speed it up.
+
+      When \`codebase_search\` returns empty results with an "indexing in progress" message:
+      - The index has just started and no data is searchable yet.
+      - **Stop using \`codebase_search\` entirely for the rest of this task.** The index will not complete fast enough to help you.
+      - Switch to \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` for all remaining discovery.
+
+      ### Search Convergence
+      If two consecutive \`codebase_search\` calls with different queries return the same top results,
+      the search has converged — stop refining the query and read those files directly with \`files_read\`.
+      When you already know a file path from a previous search or from context, read it directly instead of searching for it again.
 
       ### Recommended Flow
       1) Clone repo with \`gh_clone\` (if not already cloned).
       2) Run \`codebase_search\` with semantic queries — this is your preferred first exploration step.
-      3) If indexing is in progress, immediately fall back to \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` (see above).
+      3) If indexing is in progress, use any partial results returned. Supplement with \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` for broader coverage.
       4) Check \`total_lines\` in results. For small files (≤300), read entirely. For large files (>300), use line ranges from \`start_line\`/\`end_line\`.
       5) Use additional \`codebase_search\` queries to explore other aspects of the codebase.
       6) Use \`files_search_text\` for exact pattern matching (function names, variable references).
@@ -285,13 +302,57 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
         );
       }
 
+      // Attempt partial search if some tokens have already been indexed
+      if (repoIndex.indexedTokens > 0 && repoIndex.qdrantCollection) {
+        try {
+          const collection = repoIndex.qdrantCollection;
+          const directoryFilter = this.normalizeDirectoryFilter(
+            gitRepoDirectory,
+            repoRoot,
+          );
+
+          const partialTopK = Math.min(
+            args.top_k ?? DEFAULT_TOP_K,
+            PARTIAL_SEARCH_TOP_K,
+          );
+          const results = await this.repoIndexService.searchCodebase({
+            collection,
+            query: normalizedQuery,
+            repoId: repoIndex.repoUrl,
+            topK: partialTopK,
+            directoryFilter,
+            languageFilter: args.language ?? undefined,
+            minScore: DEFAULT_MIN_SCORE,
+          });
+
+          if (results.length > 0) {
+            return {
+              output: {
+                results,
+                partialResults: true,
+                error: [
+                  'NOTE: These are PARTIAL results — repository indexing is still in progress.',
+                  ...progressParts,
+                  'Results may be incomplete. You can also use files_directory_tree, files_find_paths, and files_search_text for additional exploration.',
+                ].join('\n'),
+              },
+              messageMetadata,
+            };
+          }
+        } catch {
+          // Partial search failed (e.g. transient Qdrant error) — fall through
+          // to the standard "indexing in progress" response.
+        }
+      }
+
       return {
         output: {
           results: [],
           error: [
             'Repository indexing is currently in progress. This is normal for the first search in a repository.',
             ...progressParts,
-            'DO NOT retry codebase_search — use files_directory_tree, files_find_paths, and files_search_text to explore the codebase while the index builds.',
+            'STOP: Do not call codebase_search again for this task — the index will not complete fast enough.',
+            'Switch immediately to files_directory_tree, files_find_paths, and files_search_text for all remaining codebase exploration.',
           ].join('\n'),
         },
         messageMetadata,

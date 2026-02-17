@@ -115,6 +115,24 @@ describe('FilesSearchTextTool', () => {
       };
       expect(() => FilesSearchTextToolSchema.parse(validData)).not.toThrow();
     });
+
+    it('should coerce onlyInFilesMatching string to array', () => {
+      const data = {
+        textPattern: 'function',
+        onlyInFilesMatching: '*.ts',
+      };
+      const parsed = FilesSearchTextToolSchema.parse(data);
+      expect(parsed.onlyInFilesMatching).toEqual(['*.ts']);
+    });
+
+    it('should coerce skipFilesMatching string to array', () => {
+      const data = {
+        textPattern: 'function',
+        skipFilesMatching: '*.test.ts',
+      };
+      const parsed = FilesSearchTextToolSchema.parse(data);
+      expect(parsed.skipFilesMatching).toEqual(['*.test.ts']);
+    });
   });
 
   describe('invoke', () => {

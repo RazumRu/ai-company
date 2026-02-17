@@ -247,12 +247,12 @@ describe('FilesCodebaseSearchTool', () => {
       expect(output.error).toContain(
         'Repository indexing is currently in progress.',
       );
-      expect(output.error).toContain('DO NOT retry codebase_search');
+      expect(output.error).toContain('Do not call codebase_search again');
       expect(output.results).toEqual([]);
       expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
     });
 
-    it('should return status message when indexing is pending', async () => {
+    it('should return partial results when indexing is pending and search finds matches', async () => {
       vi.spyOn(tool as any, 'execCommand')
         .mockResolvedValueOnce({
           exitCode: 0,
@@ -282,8 +282,133 @@ describe('FilesCodebaseSearchTool', () => {
         repoIndex: {
           id: 'index-1',
           status: RepoIndexStatus.Pending,
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_main_1536',
           estimatedTokens: 500000,
           indexedTokens: 250000,
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue([
+        {
+          path: 'src/partial.ts',
+          start_line: 1,
+          end_line: 10,
+          text: 'partial result',
+          score: 0.8,
+        },
+      ]);
+
+      const { output } = await tool.invoke(
+        { query: 'search', gitRepoDirectory: 'apps/api' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(output.partialResults).toBe(true);
+      expect(output.results).toHaveLength(1);
+      expect(output.results?.[0]?.path).toBe('src/partial.ts');
+      expect(output.error).toContain('PARTIAL results');
+      expect(output.error).toContain('Progress: 50%');
+      expect(mockRepoIndexService.searchCodebase).toHaveBeenCalledTimes(1);
+    });
+
+    it('should fall back to indexing message when pending search returns empty', async () => {
+      vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'pending',
+        repoIndex: {
+          id: 'index-1',
+          status: RepoIndexStatus.Pending,
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_main_1536',
+          estimatedTokens: 500000,
+          indexedTokens: 250000,
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue([]);
+
+      const { output } = await tool.invoke(
+        { query: 'search', gitRepoDirectory: 'apps/api' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(output.error).toContain(
+        'Repository indexing is currently in progress.',
+      );
+      expect(output.error).toContain('Progress: 50%');
+      expect(output.error).toContain('Do not call codebase_search again');
+      expect(output.results).toEqual([]);
+      expect(output.partialResults).toBeUndefined();
+      expect(mockRepoIndexService.searchCodebase).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not attempt partial search when indexedTokens is 0', async () => {
+      vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'in_progress',
+        repoIndex: {
+          id: 'index-1',
+          status: RepoIndexStatus.InProgress,
+          qdrantCollection: 'codebase_test_repo_main_1536',
+          estimatedTokens: 500000,
+          indexedTokens: 0,
         },
       } as GetOrInitIndexResult);
 
@@ -296,10 +421,66 @@ describe('FilesCodebaseSearchTool', () => {
       expect(output.error).toContain(
         'Repository indexing is currently in progress.',
       );
-      expect(output.error).toContain('Progress: 50%');
-      expect(output.error).toContain('DO NOT retry codebase_search');
       expect(output.results).toEqual([]);
+      expect(output.partialResults).toBeUndefined();
       expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
+    });
+
+    it('should fall back gracefully when partial search throws', async () => {
+      vi.spyOn(tool as any, 'execCommand')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'https://github.com/org/repo',
+          stderr: '',
+          execPath: '',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'main',
+          stderr: '',
+          execPath: '',
+        });
+
+      (
+        mockRepoIndexService.getOrInitIndexForRepo as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        status: 'in_progress',
+        repoIndex: {
+          id: 'index-1',
+          status: RepoIndexStatus.InProgress,
+          repoUrl: 'https://github.com/org/repo',
+          qdrantCollection: 'codebase_test_repo_main_1536',
+          estimatedTokens: 500000,
+          indexedTokens: 100000,
+        },
+      } as GetOrInitIndexResult);
+
+      (
+        mockRepoIndexService.searchCodebase as unknown as ReturnType<
+          typeof vi.fn
+        >
+      ).mockRejectedValue(new Error('Qdrant connection error'));
+
+      const { output } = await tool.invoke(
+        { query: 'search', gitRepoDirectory: 'apps/api' },
+        mockConfig,
+        mockCfg,
+      );
+
+      expect(output.error).toContain(
+        'Repository indexing is currently in progress.',
+      );
+      expect(output.error).toContain('Progress: 20%');
+      expect(output.results).toEqual([]);
+      expect(output.partialResults).toBeUndefined();
     });
   });
 

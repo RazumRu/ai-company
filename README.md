@@ -10,7 +10,7 @@ Open-source platform for building, running, and managing AI agent workflows. Des
 - **LLM-powered agents** — Built on [LangGraph](https://github.com/langchain-ai/langgraph) with summarization, tool calling, checkpointing, and configurable iteration limits
 - **Built-in tools** — Web search (Tavily), shell execution, file operations, GitHub integration, codebase search, knowledge base, and agent-to-agent communication
 - **Sandboxed execution** — Tools run inside Docker containers with configurable resource limits
-- **Multi-model support** — Route to OpenAI, Google Gemini, or local models via Ollama through a [LiteLLM](https://github.com/BerriAI/litellm) proxy
+- **Multi-model support** — Route to OpenAI, Anthropic, Google, MiniMax, Z.ai, and local models via [OpenRouter](https://openrouter.ai/) + [LiteLLM](https://github.com/BerriAI/litellm) proxy
 - **Knowledge base** — Embed documents into [Qdrant](https://qdrant.tech/) for semantic search and retrieval-augmented generation
 - **Real-time notifications** — Track agent progress via Socket.IO WebSocket events
 - **Graph versioning** — Revisions with JSON patch diffs, automatic semver, and rollback support
@@ -109,7 +109,7 @@ Then set `LLM_USE_OFFLINE_MODEL=true` in your `.env` file.
 | Database | PostgreSQL (+ pgvector) |
 | Vector Store | Qdrant |
 | Cache & Queue | Redis + BullMQ |
-| LLM Proxy | LiteLLM (OpenAI, Gemini, Ollama) |
+| LLM Proxy | LiteLLM + OpenRouter (OpenAI, Anthropic, Google, Ollama) |
 | Auth | Keycloak |
 | Containerization | Docker / Podman |
 | Monorepo | pnpm + Turborepo |
@@ -131,27 +131,24 @@ packages/
 Create a `.env` file in the repo root with your provider keys:
 
 ```env
-OPENAI_API_KEY=sk-...
-GEMINI_API_KEY=...
+OPENROUTER_API_KEY=sk-or-v1-...
 GITHUB_PAT_TOKEN=ghp_...
 ```
 
 | Key | Required | Used for |
 |---|---|---|
-| `OPENAI_API_KEY` | Yes (unless using Ollama) | LLM calls and embeddings via LiteLLM |
-| `GEMINI_API_KEY` | No | Gemini models via LiteLLM |
-| `ZAI_API_KEY` | No | Zhipu AI GLM models via LiteLLM |
+| `OPENROUTER_API_KEY` | Yes (unless using Ollama) | All cloud LLM calls and embeddings via OpenRouter + LiteLLM |
 | `GITHUB_PAT_TOKEN` | No | GitHub tool (repo access, PRs, commits) |
 
-These keys are read by docker-compose and passed to the LiteLLM container at startup. In the future, API keys will be configurable through the web UI.
+These keys are read by docker-compose and passed to the LiteLLM container at startup. All cloud models are routed through [OpenRouter](https://openrouter.ai/), which provides access to OpenAI, Anthropic, Google, MiniMax, Z.ai, and many other providers with a single API key. In the future, API keys will be configurable through the web UI.
 
 ## LLM Configuration
 
 All LLM calls go through a [LiteLLM](https://github.com/BerriAI/litellm) proxy that runs as part of the docker-compose stack (port 4000). LiteLLM routes requests to the right provider based on the model name configured in `litellm.yaml`. You can also connect any OpenAI-compatible provider (Azure, Anthropic, Groq, etc.) — see the [LiteLLM docs](https://docs.litellm.ai/) for the full list.
 
-### Using OpenAI or Gemini
+### Using Cloud Models (via OpenRouter)
 
-Make sure your `.env` file contains the relevant API keys (see above), then start the infrastructure:
+Make sure your `.env` file contains `OPENROUTER_API_KEY` (see above), then start the infrastructure:
 
 ```bash
 pnpm deps:up
@@ -163,11 +160,17 @@ Pre-configured cloud models (in `litellm.yaml`):
 |---|---|---|
 | `gpt-5-mini` | OpenAI | Default mini model |
 | `gpt-5.2` | OpenAI | Default large model |
-| `gpt-5.3-codex` | OpenAI | Code generation |
+| `gpt-5.2-codex` | OpenAI | Code generation |
+| `gpt-5.1-codex-mini` | OpenAI | Mini code generation |
 | `text-embedding-3-small` | OpenAI | Embeddings |
-| `gemini-3-flash-preview` | Google | Requires `GEMINI_API_KEY` |
+| `claude-sonnet-4.5` | Anthropic | |
+| `claude-opus-4.6` | Anthropic | |
+| `claude-haiku-4.5` | Anthropic | |
+| `gemini-3-flash-preview` | Google | |
+| `glm-5` | Z.ai | |
+| `openrouter/minimax-m2.5` | MiniMax | |
 
-You can add more models by editing `litellm.yaml` in the repo root. See the [LiteLLM docs](https://docs.litellm.ai/) for supported providers.
+All cloud models route through [OpenRouter](https://openrouter.ai/) via the LiteLLM proxy. You can add more models by editing `litellm.yaml` in the repo root — any model available on OpenRouter can be added with the `openrouter/` prefix. See the [LiteLLM docs](https://docs.litellm.ai/) for other supported providers.
 
 ### Using Local Models (Ollama)
 
@@ -210,7 +213,7 @@ Pre-configured local models:
 | `LITELLM_MASTER_KEY` | LiteLLM admin key | `master` (dev) |
 | `LLM_LARGE_MODEL` | Default large model | `openai/gpt-5.2` |
 | `LLM_MINI_MODEL` | Default mini model | `gpt-5-mini` |
-| `LLM_LARGE_CODE_MODEL` | Code generation model | `gpt-5.3-codex` |
+| `LLM_LARGE_CODE_MODEL` | Code generation model | `gpt-5.2-codex` |
 | `LLM_EMBEDDING_MODEL` | Embedding model | `openai/text-embedding-3-small` |
 | `LLM_USE_OFFLINE_MODEL` | Switch to Ollama models | `false` |
 | `LLM_OFFLINE_CODING_MODEL` | Offline coding model | `glm-4.7-flash` |
@@ -224,9 +227,7 @@ The API is configured through environment variables. Create a `.env` file in the
 | Variable | Description | Default |
 |---|---|---|
 | `HTTP_PORT` | API server port | `5000` |
-| `OPENAI_API_KEY` | OpenAI API key | — |
-| `GEMINI_API_KEY` | Google Gemini API key | — |
-| `ZAI_API_KEY` | Zhipu AI (Z.AI) API key | — |
+| `OPENROUTER_API_KEY` | OpenRouter API key | — |
 | `LLM_USE_OFFLINE_MODEL` | Use local Ollama models | `false` |
 | `AUTH_DEV_MODE` | Skip Keycloak auth in dev | `true` |
 | `CREDENTIAL_ENCRYPTION_KEY` | 64-char hex for AES-256-GCM | dev default provided |
