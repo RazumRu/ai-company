@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { CommunicationToolGroup } from '../../../agent-tools/tools/common/communication/communication-tool-group';
 import { AgentInfo } from '../../../agent-tools/tools/common/communication/communication-tools.types';
+import { extractExploredFilesFromMessages } from '../../../agents/agents.utils';
 import { AgentOutput } from '../../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
@@ -179,9 +180,14 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
             const { responseMessage, needsMoreInfo } =
               this.extractMessageContent(lastMessage);
 
+            const exploredFiles = extractExploredFilesFromMessages(
+              response.messages,
+            );
+
             return {
               message: responseMessage || 'No response message available',
               needsMoreInfo,
+              ...(exploredFiles.length > 0 ? { exploredFiles } : {}),
               threadId: response.threadId,
               checkpointNs: response.checkpointNs,
             } as T;

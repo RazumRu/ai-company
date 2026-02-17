@@ -90,6 +90,7 @@ describe('SubagentsRunTaskTool', () => {
       toolCallsMade: 1,
       usage: { inputTokens: 200, outputTokens: 50, totalTokens: 250 },
     },
+    exploredFiles: [],
   };
 
   beforeEach(() => {
@@ -374,10 +375,52 @@ describe('SubagentsRunTaskTool', () => {
       });
     });
 
+    it('should include exploredFiles in output when subagent explored files', async () => {
+      mockSubAgent.runSubagent.mockResolvedValueOnce({
+        result: 'Found service patterns.',
+        statistics: {
+          totalIterations: 3,
+          toolCallsMade: 2,
+          usage: { inputTokens: 300, outputTokens: 80, totalTokens: 380 },
+        },
+        exploredFiles: ['/workspace/src/service.ts', '/workspace/src/dao.ts'],
+      });
+
+      const result = await tool.invoke(
+        {
+          agentId: 'system:explorer',
+          task: 'Find service patterns',
+          purpose: 'Research',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      expect(result.output.exploredFiles).toEqual([
+        '/workspace/src/service.ts',
+        '/workspace/src/dao.ts',
+      ]);
+    });
+
+    it('should omit exploredFiles from output when list is empty', async () => {
+      const result = await tool.invoke(
+        {
+          agentId: 'system:simple',
+          task: 'Do work',
+          purpose: 'Test',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      expect(result.output.exploredFiles).toBeUndefined();
+    });
+
     it('should propagate error from loop result', async () => {
       mockSubAgent.runSubagent.mockResolvedValueOnce({
         result: 'Subagent was aborted.',
         statistics: { totalIterations: 1, toolCallsMade: 0, usage: null },
+        exploredFiles: [],
         error: 'Aborted',
       });
 

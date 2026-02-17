@@ -24,6 +24,7 @@ import {
   SUBAGENT_THREAD_PREFIX,
 } from '../../agents.types';
 import {
+  extractExploredFilesFromMessages,
   extractTextFromResponseContent,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
@@ -49,6 +50,8 @@ export interface SubagentRunStatistics {
 export interface SubagentRunResult {
   result: string;
   statistics: SubagentRunStatistics;
+  /** Deduplicated list of file paths the subagent read or searched during execution. */
+  exploredFiles: string[];
   error?: string;
 }
 
@@ -375,6 +378,9 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
 
       // Aggregate usage
       const usage = this.extractUsageFromState(finalState);
+      const exploredFiles = extractExploredFilesFromMessages(
+        finalState.messages,
+      );
 
       return {
         result: resultContent,
@@ -383,6 +389,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           toolCallsMade,
           usage,
         },
+        exploredFiles,
       };
     } catch (err) {
       if (this.isAbortError(err)) {
@@ -399,6 +406,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
             toolCallsMade,
             usage: this.extractUsageFromState(finalState),
           },
+          exploredFiles: extractExploredFilesFromMessages(finalState.messages),
           error: 'Max iterations reached',
         };
       }
@@ -421,6 +429,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     return {
       result: 'Subagent was aborted.',
       statistics: { totalIterations: 0, toolCallsMade: 0, usage: null },
+      exploredFiles: [],
       error: 'Aborted',
     };
   }
@@ -447,6 +456,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         toolCallsMade,
         usage: this.extractUsageFromState(state),
       },
+      exploredFiles: extractExploredFilesFromMessages(state.messages),
       error: `Context limit reached (${state.currentContext}/${maxContextTokens})`,
     };
   }

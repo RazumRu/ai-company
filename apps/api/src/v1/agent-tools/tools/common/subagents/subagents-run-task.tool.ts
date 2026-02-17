@@ -62,6 +62,8 @@ export type SubagentsRunTaskToolSchemaType = z.infer<
 
 export interface SubagentsRunTaskToolOutput {
   result: string;
+  /** Deduplicated file paths the subagent read or found during exploration. Do NOT re-read these files. */
+  exploredFiles?: string[];
   statistics?: SubagentRunResult['statistics'];
   error?: string;
 }
@@ -170,6 +172,23 @@ export class SubagentsRunTaskTool extends BaseTool<
       Turn 3: Call explorer for error handling → wait 2 min → get result
 
       Only run sequentially when task B genuinely requires the output of task A (e.g., "find the file path" → "edit the file").
+
+      ### ⚠️ CRITICAL: After Receiving Subagent Results — Do NOT Re-explore
+      The subagent result includes an \`exploredFiles\` list showing every file it read or found.
+      **These files have ALREADY been thoroughly analyzed by the subagent.**
+
+      Rules after receiving a subagent result:
+      - **DO NOT re-read files listed in \`exploredFiles\`** with \`files_read\` — the subagent already read them and summarized the relevant parts.
+      - **DO NOT search for the same topics** with \`codebase_search\` — the subagent already searched.
+      - **Trust the subagent's summary** and proceed to the next step (implementation, next subagent, etc.).
+      - If the summary is missing specific details you need, **ask a NEW subagent** for those exact details rather than re-exploring yourself.
+      - If you need to **edit** a file the subagent explored, you may read the specific lines you'll change — but don't re-read entire files just to "verify" the subagent's findings.
+
+      **BAD — re-exploring after subagent returned (wastes tokens and time):**
+      Subagent returns summary of \`auth.service.ts\` → You call \`files_read("auth.service.ts")\` → You search "auth middleware" → You read 3 more files the subagent already covered.
+
+      **GOOD — trusting subagent and proceeding:**
+      Subagent returns summary of \`auth.service.ts\` → You use the summary to write your implementation → You only read files the subagent did NOT cover.
 
       ### Writing Effective Task Descriptions
       Subagents start with a BLANK context — they know NOTHING about the project.
@@ -378,6 +397,9 @@ export class SubagentsRunTaskTool extends BaseTool<
     return {
       output: {
         result: loopResult.result,
+        ...(loopResult.exploredFiles.length > 0
+          ? { exploredFiles: loopResult.exploredFiles }
+          : {}),
         statistics: loopResult.statistics,
         ...(loopResult.error ? { error: loopResult.error } : {}),
       },

@@ -354,6 +354,83 @@ export function convertChunkToMessage(chunk: AIMessageChunk): AIMessage {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Explored-files extraction — shared by SubAgent and inter-agent communication
+// ---------------------------------------------------------------------------
+
+/**
+ * Scans a list of messages for file-related tool calls / results and returns a
+ * sorted, deduplicated list of file paths the agent interacted with.
+ */
+export function extractExploredFilesFromMessages(
+  messages: BaseMessage[],
+): string[] {
+  const paths = new Set<string>();
+
+  for (const msg of messages) {
+    if (msg instanceof AIMessage && msg.tool_calls) {
+      extractFilePathsFromToolCalls(msg.tool_calls, paths);
+    }
+
+    if (msg instanceof ToolMessage) {
+      extractFilePathsFromToolResult(msg, paths);
+    }
+  }
+
+  return [...paths].sort();
+}
+
+/** Extract file paths from `files_read` tool call arguments. */
+function extractFilePathsFromToolCalls(
+  toolCalls: NonNullable<AIMessage['tool_calls']>,
+  paths: Set<string>,
+): void {
+  for (const tc of toolCalls) {
+    if (tc.name !== 'files_read') continue;
+    const filesToRead: unknown = tc.args?.filesToRead;
+    if (!Array.isArray(filesToRead)) continue;
+
+    for (const entry of filesToRead as Record<string, unknown>[]) {
+      if (typeof entry?.filePath === 'string') {
+        paths.add(entry.filePath);
+      }
+    }
+  }
+}
+
+/** Extract file paths from `codebase_search` / `files_search_text` tool results. */
+function extractFilePathsFromToolResult(
+  msg: ToolMessage,
+  paths: Set<string>,
+): void {
+  const toolName = msg.name;
+  if (toolName !== 'codebase_search' && toolName !== 'files_search_text') {
+    return;
+  }
+
+  try {
+    const parsed: unknown =
+      typeof msg.content === 'string'
+        ? (JSON.parse(msg.content) as unknown)
+        : msg.content;
+
+    const obj = parsed as Record<string, unknown> | null;
+    const results = (obj?.results ?? obj?.matches ?? []) as Record<
+      string,
+      unknown
+    >[];
+
+    for (const r of results) {
+      const filePath = r?.path ?? r?.filePath;
+      if (typeof filePath === 'string') {
+        paths.add(filePath);
+      }
+    }
+  } catch {
+    /* Ignore parse errors — content may not be JSON */
+  }
+}
+
 export function buildReasoningMessage(
   content: string,
   parentMessageId?: string,

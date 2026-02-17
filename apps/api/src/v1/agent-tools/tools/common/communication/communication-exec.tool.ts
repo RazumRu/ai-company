@@ -206,6 +206,23 @@ export class CommunicationExecTool extends BaseTool<
       - Parallel work is possible
       - Another agent has specific capabilities you lack
       - Complex tasks benefit from division of labor
+
+      ### ⚠️ CRITICAL: After Receiving an Agent's Response — Do NOT Re-explore
+      The response may include an \`exploredFiles\` list of every file the target agent read or found.
+      **These files have ALREADY been thoroughly analyzed by the target agent.**
+
+      Rules after receiving a response from another agent:
+      - **DO NOT re-read files listed in \`exploredFiles\`** with \`files_read\` or \`codebase_search\`
+      - **Trust the agent's analysis** — their response already contains all relevant findings
+      - If the agent provided an architectural spec with file paths, **proceed directly to implementation**
+      - If you need to **edit** a file, you may read only the specific lines you will change
+      - If the response is missing critical details, **ask the same agent again** rather than re-exploring yourself
+
+      **BAD — re-exploring after receiving agent response:**
+      Agent returns analysis of \`auth.service.ts\` → You call \`files_read("auth.service.ts")\` → You search "auth middleware"
+
+      **GOOD — trusting agent and proceeding:**
+      Agent returns analysis of \`auth.service.ts\` → You use their analysis to write your implementation plan or edits
     `;
   }
 

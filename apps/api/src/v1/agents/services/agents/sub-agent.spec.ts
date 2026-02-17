@@ -493,6 +493,93 @@ describe('SubAgent', () => {
     });
   });
 
+  describe('exploredFiles extraction', () => {
+    it('should return empty array when no files were explored', async () => {
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'No files needed.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Answer a question')],
+        defaultCfg,
+      );
+
+      expect(result.exploredFiles).toEqual([]);
+    });
+
+    it('should extract file paths from files_read tool calls', async () => {
+      const mockReadTool = {
+        name: 'files_read',
+        description: 'Read files',
+        schema: z.object({
+          filesToRead: z.array(z.object({ filePath: z.string() })),
+        }),
+        invoke: vi.fn(async () => ({
+          output: JSON.stringify({
+            files: [{ content: 'file content' }],
+          }),
+        })),
+      } as unknown as DynamicStructuredTool;
+
+      subAgent.addTool(mockReadTool);
+      subAgent.setConfig({ ...defaultAgentConfig, maxIterations: 10 });
+
+      // 1st call: tool call to read files
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_read1',
+              name: 'files_read',
+              args: {
+                filesToRead: [
+                  { filePath: '/workspace/src/service.ts' },
+                  { filePath: '/workspace/src/controller.ts' },
+                ],
+              },
+              type: 'tool_call',
+            },
+          ],
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      // 2nd call: final answer
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'Found the service and controller.',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Read the service files')],
+        defaultCfg,
+      );
+
+      expect(result.exploredFiles).toEqual([
+        '/workspace/src/controller.ts',
+        '/workspace/src/service.ts',
+      ]);
+    });
+
+    it('should return exploredFiles even on abort', async () => {
+      const abortController = new AbortController();
+      abortController.abort();
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Find files')],
+        { ...defaultCfg, signal: abortController.signal },
+      );
+
+      expect(result.exploredFiles).toEqual([]);
+    });
+  });
+
   describe('error handling', () => {
     it('should propagate non-abort errors', async () => {
       mockLlmInvokeRef.mockRejectedValueOnce(

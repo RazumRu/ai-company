@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildReasoningMessage,
   convertChunkToMessage,
+  extractExploredFilesFromMessages,
   extractTextFromResponseContent,
   filterMessagesForLlm,
   markMessageHideForLlm,
@@ -474,6 +475,130 @@ describe('agents.utils', () => {
       expect(msg.id).toBe('reasoning:parent-123');
       expect(msg.additional_kwargs?.__hideForLlm).toBe(true);
       expect(msg.additional_kwargs?.__reasoningId).toBe('reasoning:parent-123');
+    });
+  });
+
+  describe('extractExploredFilesFromMessages', () => {
+    it('should return empty array when no file-related messages exist', () => {
+      const messages = [new HumanMessage('Hello'), new AIMessage('Hi there')];
+      expect(extractExploredFilesFromMessages(messages)).toEqual([]);
+    });
+
+    it('should extract file paths from files_read tool calls', () => {
+      const messages = [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-1',
+              name: 'files_read',
+              args: {
+                filesToRead: [
+                  { filePath: '/repo/src/b.ts' },
+                  { filePath: '/repo/src/a.ts' },
+                ],
+              },
+              type: 'tool_call' as const,
+            },
+          ],
+        }),
+        new ToolMessage({
+          tool_call_id: 'call-1',
+          name: 'files_read',
+          content: 'file contents',
+        }),
+      ];
+      const result = extractExploredFilesFromMessages(messages);
+      expect(result).toEqual(['/repo/src/a.ts', '/repo/src/b.ts']);
+    });
+
+    it('should extract file paths from codebase_search results', () => {
+      const messages = [
+        new ToolMessage({
+          tool_call_id: 'call-2',
+          name: 'codebase_search',
+          content: JSON.stringify({
+            results: [
+              { path: '/repo/src/foo.ts', snippet: '...' },
+              { path: '/repo/src/bar.ts', snippet: '...' },
+            ],
+          }),
+        }),
+      ];
+      const result = extractExploredFilesFromMessages(messages);
+      expect(result).toEqual(['/repo/src/bar.ts', '/repo/src/foo.ts']);
+    });
+
+    it('should extract file paths from files_search_text results', () => {
+      const messages = [
+        new ToolMessage({
+          tool_call_id: 'call-3',
+          name: 'files_search_text',
+          content: JSON.stringify({
+            matches: [{ filePath: '/repo/src/utils.ts', line: 10 }],
+          }),
+        }),
+      ];
+      const result = extractExploredFilesFromMessages(messages);
+      expect(result).toEqual(['/repo/src/utils.ts']);
+    });
+
+    it('should deduplicate file paths across multiple messages', () => {
+      const messages = [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-1',
+              name: 'files_read',
+              args: { filesToRead: [{ filePath: '/repo/src/a.ts' }] },
+              type: 'tool_call' as const,
+            },
+          ],
+        }),
+        new ToolMessage({
+          tool_call_id: 'call-2',
+          name: 'codebase_search',
+          content: JSON.stringify({
+            results: [{ path: '/repo/src/a.ts' }, { path: '/repo/src/b.ts' }],
+          }),
+        }),
+      ];
+      const result = extractExploredFilesFromMessages(messages);
+      expect(result).toEqual(['/repo/src/a.ts', '/repo/src/b.ts']);
+    });
+
+    it('should ignore non-file tool calls', () => {
+      const messages = [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-1',
+              name: 'shell',
+              args: { command: 'ls' },
+              type: 'tool_call' as const,
+            },
+          ],
+        }),
+        new ToolMessage({
+          tool_call_id: 'call-1',
+          name: 'shell',
+          content: 'file1.ts\nfile2.ts',
+        }),
+      ];
+      expect(extractExploredFilesFromMessages(messages)).toEqual([]);
+    });
+
+    it('should handle malformed JSON in tool results gracefully', () => {
+      const messages = [
+        new ToolMessage({
+          tool_call_id: 'call-1',
+          name: 'codebase_search',
+          content: 'not valid json',
+        }),
+      ];
+      expect(extractExploredFilesFromMessages(messages)).toEqual([]);
     });
   });
 

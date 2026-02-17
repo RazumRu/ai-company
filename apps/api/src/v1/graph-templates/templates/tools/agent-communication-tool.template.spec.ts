@@ -2,6 +2,7 @@ import {
   AIMessage,
   HumanMessage,
   SystemMessage,
+  ToolMessage,
 } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -378,6 +379,125 @@ describe('AgentCommunicationToolTemplate', () => {
       // Should extract the AI message content, not the system summary marker
       expect(result.message).toBe('This is the actual response from Agent B');
       expect(result.message).not.toBe('Conversation history was summarized.');
+    });
+
+    it('should include exploredFiles in response when agent explored files', async () => {
+      const mockAgentWithFiles = {
+        ...mockAgent,
+        runOrAppend: vi.fn().mockResolvedValue({
+          messages: [
+            new AIMessage({
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call-1',
+                  name: 'files_read',
+                  args: {
+                    filesToRead: [
+                      { filePath: '/repo/src/b.ts' },
+                      { filePath: '/repo/src/a.ts' },
+                    ],
+                  },
+                  type: 'tool_call',
+                },
+              ],
+            }),
+            new ToolMessage({
+              tool_call_id: 'call-1',
+              name: 'files_read',
+              content: 'file contents',
+            }),
+            new AIMessage('Here is my analysis of the files'),
+          ],
+          threadId: 'test-thread',
+        }),
+      } as unknown as SimpleAgent;
+
+      const agentNodeWithFiles = buildCompiledNode({
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: mockAgentWithFiles,
+        config: {
+          name: 'Agent One',
+          description: 'Test agent one',
+        },
+      });
+
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(agentNodeWithFiles);
+
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+        graph_created_by: 'user-1',
+      };
+      const outputNodeIds = new Set(['agent-1']);
+
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      const buildCalls = vi.mocked(mockCommunicationToolGroup.buildTools).mock
+        .calls;
+      const buildConfig = buildCalls[0]![0] as any;
+      const agentInfo = buildConfig.agents[0];
+
+      const toolConfig = {
+        configurable: { thread_id: 'parent-thread' },
+      };
+
+      const result = await agentInfo.invokeAgent(
+        ['Analyze these files'],
+        toolConfig as any,
+      );
+
+      expect(result.exploredFiles).toEqual([
+        '/repo/src/a.ts',
+        '/repo/src/b.ts',
+      ]);
+      expect(result.message).toBe('Here is my analysis of the files');
+    });
+
+    it('should omit exploredFiles when agent did not explore any files', async () => {
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+        graph_created_by: 'user-1',
+      };
+      const outputNodeIds = new Set(['agent-1']);
+
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      const buildCalls = vi.mocked(mockCommunicationToolGroup.buildTools).mock
+        .calls;
+      const buildConfig = buildCalls[0]![0] as any;
+      const agentInfo = buildConfig.agents[0];
+
+      const toolConfig = {
+        configurable: { thread_id: 'parent-thread' },
+      };
+
+      const result = await agentInfo.invokeAgent(['Hello'], toolConfig as any);
+
+      // Default mock has HumanMessage('Agent response') — no file tools, so exploredFiles omitted
+      expect(result.exploredFiles).toBeUndefined();
+      expect(result.message).toBe('Agent response');
     });
 
     it('should extract response message when only system messages are present', async () => {
