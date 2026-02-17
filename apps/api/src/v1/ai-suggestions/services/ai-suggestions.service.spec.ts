@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@packages/common';
+import {
+  BadRequestException,
+  InternalException,
+  NotFoundException,
+} from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -269,6 +273,26 @@ describe('AiSuggestionsService', () => {
       expect(params.previous_response_id).toBeUndefined();
     });
 
+    it('includes instruction best practices in system message', async () => {
+      configureSuggestionHappyPath();
+
+      await service.suggest('graph-1', 'agent-1', {
+        userRequest: 'Improve structure',
+      } as SuggestAgentInstructionsDto);
+
+      const [payload] = responseMock.mock.calls[0] as [
+        { systemMessage?: string; message: string },
+        unknown,
+      ];
+      expect(payload.systemMessage).toContain(
+        '<instruction_quality_guidelines>',
+      );
+      expect(payload.systemMessage).toContain('XML tags');
+      expect(payload.systemMessage).toContain(
+        'Prefer positive instructions over negatives',
+      );
+    });
+
     it('generates threadId when not provided', async () => {
       configureSuggestionHappyPath();
 
@@ -334,6 +358,21 @@ describe('AiSuggestionsService', () => {
           userRequest: 'anything',
         } as SuggestAgentInstructionsDto),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('wraps unexpected LLM errors in InternalException', async () => {
+      configureSuggestionHappyPath();
+      responseMock.mockRejectedValueOnce(new Error('Connection timeout'));
+
+      await expect(
+        service.suggest('graph-1', 'agent-1', {
+          userRequest: 'Improve structure',
+        } as SuggestAgentInstructionsDto),
+      ).rejects.toSatisfy((error: InternalException) => {
+        expect(error).toBeInstanceOf(InternalException);
+        expect(error.errorCode).toBe('LLM_REQUEST_FAILED');
+        return true;
+      });
     });
   });
 

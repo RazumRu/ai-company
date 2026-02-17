@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { BadRequestException, NotFoundException } from '@packages/common';
+import {
+  BadRequestException,
+  BaseException,
+  InternalException,
+  NotFoundException,
+} from '@packages/common';
 import { AuthContextService } from '@packages/http-server';
 import { isPlainObject, isString } from 'lodash';
 import type { UnknownRecord } from 'type-fest';
@@ -74,6 +79,53 @@ type ConnectedToolInfo = {
   instructions?: string;
 };
 
+/**
+ * Best practices for writing/improving agent system instructions.
+ * Appended to the LLM system message when suggesting instruction changes
+ * so the model applies proven prompt-engineering patterns.
+ */
+const INSTRUCTION_BEST_PRACTICES = [
+  '',
+  '<instruction_quality_guidelines>',
+  'When rewriting instructions, apply these prompt-engineering best practices:',
+  '',
+  'Structure:',
+  '- Use XML tags (e.g. <role>, <tools>, <workflow>, <guardrails>, <examples>) to separate concerns. This prevents the model from conflating instructions with context or examples.',
+  '- Keep role definitions rich and specific — include specialization, experience level, and behavioral traits. Deeper role context yields better performance on complex tasks.',
+  '- Use consistent tag names throughout; refer to tags by name when directing the model.',
+  '- Nest tags for hierarchical content.',
+  '',
+  'Writing style:',
+  '- Prefer positive instructions over negatives. Instead of "Do NOT re-read files", write "Trust the upstream analysis and proceed directly. Only re-read a file if an edit fails."',
+  '- Provide context/motivation for important rules so the model understands *why* and can generalize.',
+  '- Be explicit about desired behavior — request it directly rather than relying on implication.',
+  '- Use calm, normal phrasing. Avoid excessive caps, "CRITICAL", "NEVER", "MUST" — modern models follow instructions more precisely and overtrigger on urgent language.',
+  '- Deduplicate: state each rule once in one authoritative section. Repetition dilutes signal and wastes context tokens.',
+  '',
+  'Tool & workflow guidance:',
+  '- Describe tools by what they enable, not just what they do (e.g. "Use files_read to verify assumptions or read lines you plan to edit").',
+  '- Include concrete examples for key behaviors — one example teaches more than a paragraph of abstract rules.',
+  '- Define effort scaling: when to take shortcuts vs. follow the full workflow.',
+  '- Specify output format explicitly (sections, JSON schema, bullet points).',
+  '',
+  'Multi-agent coordination (when applicable):',
+  '- Forward context verbatim between agents — summarizing loses critical details.',
+  '- Include exploredFiles in handoffs so downstream agents skip redundant file reads.',
+  '- Instruct downstream agents to trust upstream analysis and proceed directly rather than re-exploring.',
+  '- Define clear task boundaries: objective, expected output format, tools to use, and what is out of scope.',
+  '',
+  'Context window management:',
+  '- Add compaction awareness: "Your context window will be compacted automatically. Do not stop tasks early. Save progress before compaction."',
+  '- Encourage incremental progress and structured state tracking for long tasks.',
+  '',
+  'Anti-patterns to avoid in the output:',
+  '- Mixing instructions with examples in flat paragraphs without structural separation.',
+  '- Repeating the same rule in multiple sections.',
+  '- Leaving output format ambiguous.',
+  '- Passing absolute filesystem paths between isolated agents (use repo-relative paths).',
+  '</instruction_quality_guidelines>',
+].join('\n');
+
 @Injectable()
 export class AiSuggestionsService {
   constructor(
@@ -87,6 +139,26 @@ export class AiSuggestionsService {
     private readonly llmModelsService: LlmModelsService,
     private readonly litellmService: LitellmService,
   ) {}
+
+  private async callLlm<T>(
+    fn: () => Promise<T>,
+    operation: string,
+  ): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof BaseException) {
+        throw error;
+      }
+
+      const message =
+        error instanceof Error ? error.message : 'Unknown LLM error';
+
+      throw new InternalException('LLM_REQUEST_FAILED', message, {
+        operation,
+      });
+    }
+  }
 
   async analyzeThread(
     threadId: string,
@@ -146,9 +218,11 @@ export class AiSuggestionsService {
           'Do not overfit suggestions to this specific case; the agent must stay adaptable to any task, domain, or language.',
           'Keep the response concise, structured, and immediately actionable.',
           'Note: Some message content may show "[truncated]" markers—this is intentional for analysis purposes only. Do not flag truncation as an issue; focus on the patterns and errors visible in the available content.',
+          'Additionally, evaluate the agent instructions against prompt-engineering best practices: XML-tag structure, positive vs. negative phrasing, role definition richness, effort scaling, deduplication, output format clarity, and multi-agent coordination patterns (verbatim context forwarding, exploredFiles in handoffs, trust upstream analysis).',
           'Structure the answer with sections:',
           '- Tool call issues: bullet list of tool execution errors, failed calls, missing outputs, or incorrect tool usage patterns.',
           '- Workflow inefficiencies: bullet list of redundant operations, unnecessary tool calls, slow patterns, or suboptimal execution flow.',
+          '- Instruction quality: bullet list of improvements to agent system prompt structure, clarity, and adherence to prompt engineering best practices (XML tags, positive instructions, role specificity, deduplication, effort scaling, output format).',
           '- Optimization suggestions: bullet list of improvements to tool configurations, workflow design, error handling, and execution patterns that enhance reliability and performance.',
         ].join('\n');
 
@@ -171,11 +245,15 @@ export class AiSuggestionsService {
       message,
       reasoning: { effort: 'medium' as const },
     };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response(data, {
-          previous_response_id: payload.threadId,
-        })
-      : await this.openaiService.complete(data);
+    const response = await this.callLlm(
+      () =>
+        supportsResponsesApi
+          ? this.openaiService.response(data, {
+              previous_response_id: payload.threadId,
+            })
+          : this.openaiService.complete(data),
+      'analyzeThread',
+    );
 
     const analysis = String(response.content || '').trim();
 
@@ -221,7 +299,6 @@ export class AiSuggestionsService {
     }
 
     const currentInstructions = this.getCurrentInstructions(node.config);
-    const effectiveInstructions = this.composeInstructions(currentInstructions);
     const tools = this.getConnectedTools(
       graphId,
       nodeId,
@@ -245,7 +322,7 @@ export class AiSuggestionsService {
       ? (payload.userRequest || '').trim()
       : this.buildInstructionRequestPrompt(
           payload.userRequest,
-          effectiveInstructions,
+          currentInstructions,
           tools,
           mcpInstructions,
         );
@@ -259,14 +336,18 @@ export class AiSuggestionsService {
       message,
       reasoning: { effort: 'medium' as const },
     };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response(data, {
-          previous_response_id: threadId,
-        })
-      : await this.openaiService.complete(data);
+    const response = await this.callLlm(
+      () =>
+        supportsResponsesApi
+          ? this.openaiService.response(data, {
+              previous_response_id: threadId,
+            })
+          : this.openaiService.complete(data),
+      'suggest',
+    );
 
     const updated = String(response.content || '').trim();
-    const baseInstructions = this.stripInstructionExtras(effectiveInstructions);
+    const baseInstructions = this.stripInstructionExtras(currentInstructions);
     const sanitizedUpdated = updated.length
       ? this.stripInstructionExtras(updated)
       : baseInstructions;
@@ -371,13 +452,16 @@ export class AiSuggestionsService {
       jsonSchema: schema,
       reasoning: { effort: 'medium' as const },
     };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response<{
-          updates?: { nodeId?: string; instructions?: string }[];
-        }>(data)
-      : await this.openaiService.complete<{
-          updates?: { nodeId?: string; instructions?: string }[];
-        }>(data);
+    type GraphUpdates = {
+      updates?: { nodeId?: string; instructions?: string }[];
+    };
+    const response = await this.callLlm(
+      () =>
+        supportsResponsesApi
+          ? this.openaiService.response<GraphUpdates>(data)
+          : this.openaiService.complete<GraphUpdates>(data),
+      'suggestGraphInstructions',
+    );
 
     const parsed = schema.safeParse(response.content);
     if (!parsed.success) {
@@ -406,14 +490,7 @@ export class AiSuggestionsService {
       const currentInstructions = agent.instructions.trim();
       const suggested = suggestionsById.get(agent.nodeId);
 
-      if (!currentInstructions) {
-        throw new BadRequestException(
-          'INVALID_AGENT_CONFIG',
-          `Agent ${agent.nodeId} instructions are not configured`,
-        );
-      }
-
-      if (!suggested) {
+      if (!currentInstructions || !suggested) {
         continue;
       }
 
@@ -472,19 +549,20 @@ export class AiSuggestionsService {
       jsonSchema: knowledgeSchema,
       reasoning: { effort: 'medium' as const },
     };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response<{
-          title: string;
-          content: string;
-          tags: string[] | null;
-        }>(data, {
-          previous_response_id: payload.threadId,
-        })
-      : await this.openaiService.complete<{
-          title: string;
-          content: string;
-          tags: string[] | null;
-        }>(data);
+    type KnowledgeResult = {
+      title: string;
+      content: string;
+      tags: string[] | null;
+    };
+    const response = await this.callLlm(
+      () =>
+        supportsResponsesApi
+          ? this.openaiService.response<KnowledgeResult>(data, {
+              previous_response_id: payload.threadId,
+            })
+          : this.openaiService.complete<KnowledgeResult>(data),
+      'suggestKnowledgeContent',
+    );
 
     const validation = this.validateKnowledgeSuggestionResponse(
       response.content,
@@ -517,7 +595,7 @@ export class AiSuggestionsService {
   }): string {
     const threadStatusLine = `Thread status: ${data.thread.status}`;
     const userInputSection = data.userInput
-      ? ['User request:', data.userInput.trim().length]
+      ? ['User request:', data.userInput.trim()]
       : null;
 
     const agentSection = data.agents.length
@@ -795,6 +873,17 @@ export class AiSuggestionsService {
     return instructions;
   }
 
+  private getOutgoingNodeIds(
+    edges: GraphEdgeSchemaType[] | undefined,
+    nodeId: string,
+  ): Set<string> {
+    return new Set(
+      (edges || [])
+        .filter((edge) => edge.from === nodeId)
+        .map((edge) => edge.to),
+    );
+  }
+
   private getConnectedTools(
     graphId: string,
     nodeId: string,
@@ -805,12 +894,7 @@ export class AiSuggestionsService {
       return [];
     }
 
-    const outgoingNodeIds = new Set(
-      (edges || [])
-        .filter((edge) => edge.from === nodeId)
-        .map((edge) => edge.to),
-    );
-
+    const outgoingNodeIds = this.getOutgoingNodeIds(edges, nodeId);
     if (!outgoingNodeIds.size) {
       return [];
     }
@@ -831,7 +915,7 @@ export class AiSuggestionsService {
         return [];
       }
 
-      // Tool nodes now return ToolNodeOutput { tools: BuiltAgentTool[]; instructions?: string }.
+      // Tool nodes return ToolNodeOutput { tools: BuiltAgentTool[]; instructions?: string }.
       // Be defensive to support legacy states/mocks and partially-configured graphs.
       const tools = (
         (toolNode.instance?.tools as (BuiltAgentTool | undefined)[]) ?? []
@@ -857,12 +941,7 @@ export class AiSuggestionsService {
       return undefined;
     }
 
-    const outgoingNodeIds = new Set(
-      (edges || [])
-        .filter((edge) => edge.from === nodeId)
-        .map((edge) => edge.to),
-    );
-
+    const outgoingNodeIds = this.getOutgoingNodeIds(edges, nodeId);
     if (!outgoingNodeIds.size) {
       return undefined;
     }
@@ -888,7 +967,6 @@ export class AiSuggestionsService {
           return undefined;
         }
 
-        // Get detailed instructions from MCP service
         const instructions = mcpService.getDetailedInstructions?.(
           mcpService.config as never,
         );
@@ -923,12 +1001,7 @@ export class AiSuggestionsService {
       return [];
     }
 
-    const outgoingNodeIds = new Set(
-      (edges || [])
-        .filter((edge) => edge.from === nodeId)
-        .map((edge) => edge.to),
-    );
-
+    const outgoingNodeIds = this.getOutgoingNodeIds(edges, nodeId);
     if (!outgoingNodeIds.size) {
       return [];
     }
@@ -939,39 +1012,36 @@ export class AiSuggestionsService {
       NodeKind.Mcp,
     );
 
-    const details = mcpNodeIds.reduce(
-      (acc, mcpNodeId) => {
-        const mcpNode = this.graphRegistry.getNode<BaseMcp<unknown>>(
-          graphId,
-          mcpNodeId,
-        );
-        if (!mcpNode || mcpNode.type !== NodeKind.Mcp) {
-          return acc;
-        }
+    const details = mcpNodeIds.flatMap((mcpNodeId) => {
+      const mcpNode = this.graphRegistry.getNode<BaseMcp<unknown>>(
+        graphId,
+        mcpNodeId,
+      );
+      if (!mcpNode || mcpNode.type !== NodeKind.Mcp) {
+        return [];
+      }
 
-        const mcpService = mcpNode.instance;
-        if (!mcpService) {
-          return acc;
-        }
+      const mcpService = mcpNode.instance;
+      if (!mcpService) {
+        return [];
+      }
 
-        const config =
-          mcpService.config && typeof mcpService.getMcpConfig === 'function'
-            ? mcpService.getMcpConfig(mcpService.config as never)
-            : undefined;
-        const name = config?.name?.trim() || mcpNode.template || mcpNode.id;
-        const instructions = mcpService.getDetailedInstructions?.(
-          mcpService.config as never,
-        );
+      const config =
+        mcpService.config && typeof mcpService.getMcpConfig === 'function'
+          ? mcpService.getMcpConfig(mcpService.config as never)
+          : undefined;
+      const name = config?.name?.trim() || mcpNode.template || mcpNode.id;
+      const instructions = mcpService.getDetailedInstructions?.(
+        mcpService.config as never,
+      );
 
-        acc.push({
+      return [
+        {
           name,
           ...(typeof instructions === 'string' ? { instructions } : undefined),
-        });
-
-        return acc;
-      },
-      [] as { name: string; instructions?: string }[],
-    );
+        },
+      ];
+    });
 
     const unique = new Map<string, { name: string; instructions?: string }>();
     for (const entry of details) {
@@ -1005,9 +1075,8 @@ export class AiSuggestionsService {
       .join('\n\n');
   }
 
-  private buildInstructionSystemMessage(): string {
+  private buildBaseInstructionSystemRules(): string[] {
     return [
-      'You rewrite agent system instructions.',
       'Use the current instructions as a base and apply the user request.',
       'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
       'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
@@ -1016,28 +1085,28 @@ export class AiSuggestionsService {
       'Never include tool descriptions, tool lists, or MCP instructions in the output.',
       'Only modify content inside <current_instructions> tags. Do not add or remove anything outside these tags.',
       'Do NOT include the <current_instructions> tags in your output.',
+      'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
+      INSTRUCTION_BEST_PRACTICES,
+    ];
+  }
+
+  private buildInstructionSystemMessage(): string {
+    return [
+      'You rewrite agent system instructions.',
+      ...this.buildBaseInstructionSystemRules(),
       'Keep the result concise, actionable, and focused on how the agent should behave.',
       'Return only the updated instructions text without extra commentary.',
-      'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
     ].join('\n');
   }
 
   private buildGraphInstructionSystemMessage(): string {
     return [
       'You rewrite system instructions for multiple agents.',
-      'Use the current instructions as a base and apply the user request.',
-      'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
-      'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
-      'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
-      "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and MCP servers information in your response. You can only refer to it if needed.",
-      'Never include tool descriptions, tool lists, or MCP instructions in the output.',
+      ...this.buildBaseInstructionSystemRules(),
       'Keep the result concise, actionable, and focused on how each agent should behave.',
       'Return ONLY JSON in the shape: { "updates": [ { "nodeId": "...", "instructions": "..." } ] }',
       'Include ONLY agents that require changes. If no changes are needed, return { "updates": [] }.',
       'For each update, return the FULL updated instructions text (not a diff). Apply only minimal changes requested by the user.',
-      'Only modify content inside <current_instructions> tags. Do not add or remove anything outside these tags.',
-      'Do NOT include the <current_instructions> tags in your output.',
-      'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
     ].join('\n');
   }
 
@@ -1063,12 +1132,8 @@ export class AiSuggestionsService {
     return [
       `User request:\n${payload.userRequest}`,
       currentSection,
-      'Return JSON only. Only include updates for agents whose instructions must change.',
+      'Return JSON only with keys: title, content, tags.',
     ].join('\n\n');
-  }
-
-  private composeInstructions(baseInstructions: string): string {
-    return baseInstructions;
   }
 
   private isInstructionsUpdated(current: string, updated: string): boolean {
@@ -1093,36 +1158,46 @@ export class AiSuggestionsService {
     return withoutBlocks.replace(/\n{3,}/g, '\n\n').trim();
   }
 
+  private formatToolEntry(tool: ConnectedToolInfo): string {
+    const details = [`Name: ${tool.name}`, `Description: ${tool.description}`];
+
+    if (tool.instructions) {
+      details.push(
+        `Instructions:\n${this.wrapBlock(tool.instructions, 'tool_description')}`,
+      );
+    }
+
+    return details.join('\n');
+  }
+
+  private buildToolsReferenceBlock(
+    tools: ConnectedToolInfo[],
+    tag: string,
+    emptyFallback?: string,
+  ): string | undefined {
+    const toolsSection = tools.length
+      ? tools.map((tool) => this.formatToolEntry(tool)).join('\n\n')
+      : emptyFallback;
+
+    if (!toolsSection) {
+      return undefined;
+    }
+
+    return [
+      `<<<REFERENCE_ONLY_${tag}>>>`,
+      toolsSection,
+      `<<<END_REFERENCE_ONLY_${tag}>>>`,
+    ].join('\n');
+  }
+
   private buildConnectedToolsReferenceBlock(
     tools: ConnectedToolInfo[],
   ): string {
-    const toolsSection = tools.length
-      ? tools
-          .map((tool) => {
-            const details = [
-              `Name: ${tool.name}`,
-              `Description: ${tool.description}`,
-            ];
-
-            if (tool.instructions) {
-              details.push(
-                `Instructions:\n${this.wrapBlock(
-                  tool.instructions,
-                  'tool_description',
-                )}`,
-              );
-            }
-
-            return details.join('\n');
-          })
-          .join('\n\n')
-      : 'No connected tools available.';
-
-    return [
-      '<<<REFERENCE_ONLY_CONNECTED_TOOLS>>>',
-      toolsSection,
-      '<<<END_REFERENCE_ONLY_CONNECTED_TOOLS>>>',
-    ].join('\n');
+    return this.buildToolsReferenceBlock(
+      tools,
+      'CONNECTED_TOOLS',
+      'No connected tools available.',
+    ) as string;
   }
 
   private buildMcpReferenceBlock(mcpInstructions?: string): string | undefined {
@@ -1138,35 +1213,7 @@ export class AiSuggestionsService {
   private buildAllToolsReferenceBlock(
     tools: ConnectedToolInfo[],
   ): string | undefined {
-    if (!tools.length) {
-      return undefined;
-    }
-
-    const toolBlocks = tools
-      .map((tool) => {
-        const details = [
-          `Name: ${tool.name}`,
-          `Description: ${tool.description}`,
-        ];
-
-        if (tool.instructions) {
-          details.push(
-            `Instructions:\n${this.wrapBlock(
-              tool.instructions,
-              'tool_description',
-            )}`,
-          );
-        }
-
-        return details.join('\n');
-      })
-      .join('\n\n');
-
-    return [
-      '<<<REFERENCE_ONLY_ALL_TOOLS>>>',
-      toolBlocks,
-      '<<<END_REFERENCE_ONLY_ALL_TOOLS>>>',
-    ].join('\n');
+    return this.buildToolsReferenceBlock(tools, 'ALL_TOOLS');
   }
 
   private buildAllMcpReferenceBlock(
