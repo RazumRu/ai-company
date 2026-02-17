@@ -554,26 +554,36 @@ export class RepoIndexService implements OnModuleInit {
       collection,
       currentCommit,
       { embeddingModel, vectorSize, chunkingSignatureHash },
+      repoUrl,
     );
 
-    const { needsFullReindex, lastIndexedCommit, estimatedTokens } = strategy;
+    const {
+      needsFullReindex,
+      lastIndexedCommit,
+      estimatedTokens,
+      seededTokens,
+    } = strategy;
 
     this.logger.debug(
       'Estimated tokens calculated, deciding indexing strategy',
       {
         repoIndexId: existing?.id,
         estimatedTokens,
+        seededTokens,
         threshold: environment.codebaseIndexTokenThreshold,
         willIndexInline:
           estimatedTokens <= environment.codebaseIndexTokenThreshold,
       },
     );
 
-    // For incremental reindex, carry previous total so the progress bar stays meaningful
+    // For incremental reindex, carry previous total so the progress bar stays meaningful.
+    // When seeded from a donor branch, use the donor's token count as the baseline.
     const previousTotalTokens =
       !needsFullReindex && existing && existing.estimatedTokens > 0
         ? existing.estimatedTokens
-        : undefined;
+        : !needsFullReindex && seededTokens && seededTokens > 0
+          ? seededTokens
+          : undefined;
 
     // Claim the slot by upserting the entity with InProgress status.
     // Any concurrent caller that arrives here will see InProgress and bail out.
@@ -868,6 +878,7 @@ export class RepoIndexService implements OnModuleInit {
         collection,
         currentCommit,
         { embeddingModel, vectorSize, chunkingSignatureHash },
+        repoUrl,
       );
 
       const { needsFullReindex, lastIndexedCommit } = strategy;
@@ -1063,10 +1074,13 @@ export class RepoIndexService implements OnModuleInit {
       vectorSize: number;
       chunkingSignatureHash: string;
     },
+    repoUrl?: string,
   ): Promise<{
     needsFullReindex: boolean;
     lastIndexedCommit?: string;
     estimatedTokens: number;
+    /** Token count inherited from a donor branch via cross-branch seeding. */
+    seededTokens?: number;
   }> {
     let needsFullReindex =
       !existing ||
@@ -1092,13 +1106,16 @@ export class RepoIndexService implements OnModuleInit {
     // Cross-branch seeding: when no index exists (or no last commit),
     // copy points from a sibling branch
     let donorCommit: string | undefined;
+    let seededTokens: number | undefined;
     if (needsFullReindex && !existing?.lastIndexedCommit) {
       const seeding = await this.attemptCrossBranchSeeding(
         repositoryId,
         collection,
+        repoUrl,
       );
       if (seeding.seeded) {
         donorCommit = seeding.donorCommit;
+        seededTokens = seeding.donorTokens;
         needsFullReindex = false;
       }
     }
@@ -1122,7 +1139,12 @@ export class RepoIndexService implements OnModuleInit {
       );
     }
 
-    return { needsFullReindex, lastIndexedCommit, estimatedTokens };
+    return {
+      needsFullReindex,
+      lastIndexedCommit,
+      estimatedTokens,
+      seededTokens,
+    };
   }
 
   /**
@@ -1237,13 +1259,27 @@ export class RepoIndexService implements OnModuleInit {
   private async attemptCrossBranchSeeding(
     repositoryId: string,
     targetCollection: string,
-  ): Promise<{ seeded: boolean; donorCommit?: string }> {
-    const donors = await this.repoIndexDao.getAll({
+    repoUrl?: string,
+  ): Promise<{ seeded: boolean; donorCommit?: string; donorTokens?: number }> {
+    // First try finding a donor by repositoryId (same user's repo entity)
+    let donors = await this.repoIndexDao.getAll({
       repositoryId,
       status: RepoIndexStatus.Completed,
       limit: 1,
       order: { updatedAt: 'DESC' },
     });
+
+    // Fallback: find a donor by repoUrl (covers cross-user scenarios where
+    // different users have different repositoryId values for the same repo)
+    if (donors.length === 0 && repoUrl) {
+      donors = await this.repoIndexDao.getAll({
+        repoUrl,
+        status: RepoIndexStatus.Completed,
+        limit: 1,
+        order: { updatedAt: 'DESC' },
+      });
+    }
+
     const donor = donors[0];
 
     if (!donor?.lastIndexedCommit || !donor.qdrantCollection) {
@@ -1254,6 +1290,7 @@ export class RepoIndexService implements OnModuleInit {
       repositoryId,
       donorCollection: donor.qdrantCollection,
       donorCommit: donor.lastIndexedCommit,
+      donorTokens: donor.indexedTokens,
     });
 
     await this.repoIndexerService.copyCollectionPoints(
@@ -1261,7 +1298,11 @@ export class RepoIndexService implements OnModuleInit {
       targetCollection,
     );
 
-    return { seeded: true, donorCommit: donor.lastIndexedCommit };
+    return {
+      seeded: true,
+      donorCommit: donor.lastIndexedCommit,
+      donorTokens: donor.indexedTokens,
+    };
   }
 
   private async upsertIndexEntity(params: {

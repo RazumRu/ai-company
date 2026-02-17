@@ -21,6 +21,7 @@ export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
     ),
   body: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'Markdown body/description for the PR. Include context about the changes, motivation, and testing notes.',
@@ -41,6 +42,7 @@ export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
 
   draft: z
     .boolean()
+    .nullable()
     .optional()
     .describe(
       'If true, create the PR as a draft that cannot be merged until marked ready. Default: false.',
@@ -48,24 +50,28 @@ export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
 
   labels: z
     .array(z.string().min(1))
+    .nullable()
     .optional()
     .describe(
       'Labels to apply to the PR (e.g., ["bug", "priority:high"]). Labels must already exist in the repository.',
     ),
   assignees: z
     .array(z.string().min(1))
+    .nullable()
     .optional()
     .describe(
       'GitHub usernames to assign to the PR (e.g., ["octocat", "contributor1"]).',
     ),
   reviewers: z
     .array(z.string().min(1))
+    .nullable()
     .optional()
     .describe(
       'GitHub usernames to request as reviewers (e.g., ["reviewer1"]). Combined with teamReviewers, cannot exceed 15 total.',
     ),
   teamReviewers: z
     .array(z.string().min(1))
+    .nullable()
     .optional()
     .describe(
       'Organization team slugs to request as reviewers (e.g., ["platform-team"]). Only available for organization repositories. Combined with reviewers, cannot exceed 15 total.',
@@ -73,6 +79,7 @@ export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
 
   closesIssues: z
     .array(z.number().int().positive())
+    .nullable()
     .optional()
     .describe(
       'Issue numbers to auto-close when the PR is merged. Appends "Closes #N" lines to the PR body automatically if not already present.',
@@ -187,11 +194,14 @@ export class GhCreatePullRequestTool extends GhBaseTool<
     args: GhCreatePullRequestToolSchemaType,
     config: GhCreatePullRequestToolConfig,
   ): string[] | undefined {
-    return this.mergeUniqueStrings(config.additionalLabels, args.labels);
+    return this.mergeUniqueStrings(
+      config.additionalLabels,
+      args.labels ?? undefined,
+    );
   }
 
   private buildPullRequestBody(args: GhCreatePullRequestToolSchemaType) {
-    const baseBody = args.body;
+    const baseBody = args.body ?? undefined;
     return args.closesIssues?.length
       ? this.appendClosesIssues(baseBody, args.closesIssues)
       : baseBody;
@@ -335,8 +345,8 @@ export class GhCreatePullRequestTool extends GhBaseTool<
       title: args.title,
       head: args.head,
       base: args.base,
-      body: this.buildPullRequestBody(args),
-      draft: args.draft,
+      body: this.buildPullRequestBody(args) ?? undefined,
+      draft: args.draft ?? undefined,
     });
 
     return {
@@ -389,7 +399,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
         repo: args.repo,
         issue_number: pullRequestNumber,
         labels: labelsToApply,
-        assignees: args.assignees,
+        assignees: args.assignees ?? undefined,
       });
 
       const data = issueRes.data as IssuesUpdateResponseData;
@@ -434,8 +444,8 @@ export class GhCreatePullRequestTool extends GhBaseTool<
         owner: args.owner,
         repo: args.repo,
         pull_number: pullRequestNumber,
-        reviewers: args.reviewers,
-        team_reviewers: args.teamReviewers,
+        reviewers: args.reviewers ?? undefined,
+        team_reviewers: args.teamReviewers ?? undefined,
       });
 
       const reviewersData =

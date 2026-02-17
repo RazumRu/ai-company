@@ -19,12 +19,14 @@ export const GhPushToolSchema = z.object({
     ),
   remote: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'Remote name to push to (default: "origin"). Rarely needs to be changed.',
     ),
   branch: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'Branch name to push (e.g., "feat/add-authentication"). If omitted, pushes the currently checked-out branch.',

@@ -17,6 +17,7 @@ export const FilesFindPathsToolSchema = z.object({
   searchInDirectory: z
     .string()
     .min(1)
+    .nullable()
     .optional()
     .describe(
       'Directory to search in. If not specified, uses current working directory.',
@@ -29,6 +30,7 @@ export const FilesFindPathsToolSchema = z.object({
     ),
   includeSubdirectories: z
     .boolean()
+    .nullable()
     .optional()
     .describe(
       'Search in subdirectories recursively. Set to false to only search the specified directory.',
@@ -37,12 +39,14 @@ export const FilesFindPathsToolSchema = z.object({
     .number()
     .int()
     .positive()
+    .nullable()
     .optional()
     .describe(
       'Maximum directory depth to search (only used when includeSubdirectories is true)',
     ),
   skipPatterns: z
     .array(z.string().min(1))
+    .nullable()
     .optional()
     .describe(
       'Glob patterns to exclude from search (e.g., ["node_modules/**", "dist/**"]). If not specified, common build/cache folders are excluded.',
@@ -51,6 +55,7 @@ export const FilesFindPathsToolSchema = z.object({
     .number()
     .int()
     .positive()
+    .nullable()
     .optional()
     .describe('Maximum number of file paths to return (default: 200)'),
 });
@@ -72,7 +77,7 @@ export type FilesFindPathsToolOutput = {
 export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaType> {
   public name = 'files_find_paths';
   public description =
-    'Find file paths matching a glob pattern and return their absolute paths without reading file content. ⚠️ Do NOT use this for code discovery — use codebase_search first, which finds relevant code by meaning and returns paths with line numbers. Only use this tool when you need to list files by name/extension pattern (e.g., "*.config.ts", "*migration*"). Returns up to maxResults paths (default 200). Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Set includeSubdirectories=false to search only the specified directory without recursion.';
+    'Find file paths matching a glob pattern and return their absolute paths without reading file content. Prefer codebase_search for code discovery — it finds relevant code by meaning and returns paths with line numbers. Use this tool when you need to list files by name/extension pattern (e.g., "*.config.ts", "*migration*"), or as a fallback when codebase_search indexing is in progress. Returns up to maxResults paths (default 200). Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Set includeSubdirectories=false to search only the specified directory without recursion.';
 
   protected override generateTitle(
     args: FilesFindPathsToolSchemaType,
@@ -90,18 +95,18 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       ### Overview
       Find file paths by glob pattern. Returns absolute paths without reading file content. Use this to discover project structure, locate files by extension or name, and list directory contents. Returns up to \`maxResults\` paths (default 200).
 
-      ### ⚠️ Important — Use codebase_search First
-      Do NOT use this tool for code discovery or as your first exploration step. Use \`codebase_search\` first — it finds relevant code semantically and returns absolute file paths, line ranges, and code snippets. This tool is only for listing files by name/extension pattern when you need to browse the filesystem.
+      ### Prefer codebase_search First
+      Prefer \`codebase_search\` for code discovery — it finds relevant code semantically and returns absolute file paths, line ranges, and code snippets. This tool is for listing files by name/extension pattern when you need to browse the filesystem, or as a fallback when \`codebase_search\` indexing is in progress.
 
       ### When to Use
       - Locating files by extension: \`"*.ts"\`, \`"*.json"\`, \`"*.yaml"\`
       - Finding files by name pattern: \`"*controller*"\`, \`"*migration*"\`
       - Listing a directory's contents (set \`includeSubdirectories=false\`)
       - Checking if a file exists before reading or editing
+      - As a fallback when \`codebase_search\` indexing is in progress
 
       ### When NOT to Use
-      - ❌ As your first step to explore a codebase → use \`codebase_search\` instead
-      - ❌ Finding where specific code is implemented → use \`codebase_search\`
+      - ❌ Finding where specific code is implemented when \`codebase_search\` is available → prefer \`codebase_search\`
       - ❌ Resolving or verifying paths already returned by \`codebase_search\` (they are already absolute)
       - Searching file contents → use \`files_search_text\` or \`codebase_search\`
       - Reading file content → use \`files_read\`

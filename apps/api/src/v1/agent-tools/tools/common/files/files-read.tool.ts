@@ -30,6 +30,7 @@ const FilesReadToolReadSchema = z.object({
     .number()
     .int()
     .positive()
+    .nullable()
     .optional()
     .describe(
       'Start reading from this line number (1-based, optional). If provided, must also specify toLineNumber.',
@@ -38,6 +39,7 @@ const FilesReadToolReadSchema = z.object({
     .number()
     .int()
     .positive()
+    .nullable()
     .optional()
     .describe(
       'Stop reading at this line number (1-based, inclusive, optional). Must be provided if fromLineNumber is specified.',
@@ -169,8 +171,8 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
         };
       }
 
-      const hasStart = read.fromLineNumber !== undefined;
-      const hasEnd = read.toLineNumber !== undefined;
+      const hasStart = read.fromLineNumber != null;
+      const hasEnd = read.toLineNumber != null;
       if (hasStart && !hasEnd) {
         return {
           output: {
@@ -190,8 +192,8 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
       }
 
       if (
-        read.fromLineNumber !== undefined &&
-        read.toLineNumber !== undefined &&
+        read.fromLineNumber != null &&
+        read.toLineNumber != null &&
         read.fromLineNumber > read.toLineNumber
       ) {
         return {

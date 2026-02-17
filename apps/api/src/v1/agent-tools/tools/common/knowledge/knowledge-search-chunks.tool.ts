@@ -32,6 +32,7 @@ export const KnowledgeSearchChunksSchema = z.object({
     .int()
     .min(1)
     .max(20)
+    .nullable()
     .optional()
     .describe(
       'Maximum number of chunk snippets to return (default: 5, max: 20). Start with 3-7 for focused queries.',

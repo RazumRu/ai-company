@@ -38,6 +38,7 @@ export const GhCommitToolSchema = z.object({
     ),
   body: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'Extended commit body with additional context. Supports multiline text with \\n for line breaks. Use for explaining "why" behind changes, listing affected areas, or noting breaking changes.',

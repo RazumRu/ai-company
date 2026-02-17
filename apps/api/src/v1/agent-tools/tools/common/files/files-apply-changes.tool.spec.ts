@@ -811,16 +811,16 @@ describe('FilesApplyChangesTool', () => {
       expect(parsed.success).toBe(true);
     });
 
-    it('should reject empty edits array', () => {
+    it('should accept empty edits array (runtime handles empty-check)', () => {
       const parsed = FilesApplyChangesToolSchema.safeParse({
         filePath: '/test/file.ts',
         edits: [],
       });
 
-      expect(parsed.success).toBe(false);
+      expect(parsed.success).toBe(true);
     });
 
-    it('should reject edits array with more than 20 items', () => {
+    it('should accept edits array with more than 20 items (no schema-level cap)', () => {
       const edits = Array.from({ length: 21 }, (_, i) => ({
         oldText: `old${i}`,
         newText: `new${i}`,
@@ -831,7 +831,7 @@ describe('FilesApplyChangesTool', () => {
         edits,
       });
 
-      expect(parsed.success).toBe(false);
+      expect(parsed.success).toBe(true);
     });
 
     it('should accept single-element edits array', () => {

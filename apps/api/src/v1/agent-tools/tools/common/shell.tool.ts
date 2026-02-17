@@ -44,6 +44,7 @@ export const ShellToolSchema = z.object({
   timeoutMs: z
     .number()
     .positive()
+    .nullable()
     .optional()
     .describe(
       'Maximum time to wait in milliseconds (default: 300000 = 5 minutes)',
@@ -51,6 +52,7 @@ export const ShellToolSchema = z.object({
   tailTimeoutMs: z
     .number()
     .positive()
+    .nullable()
     .optional()
     .describe(
       'Time to keep listening after command finishes in milliseconds (default: 60000 = 1 minute)',
@@ -62,12 +64,14 @@ export const ShellToolSchema = z.object({
         value: z.string().describe('Environment variable value'),
       }),
     )
+    .nullable()
     .optional()
     .describe(
       'Environment variables to set for this command. These are merged with any pre-configured env vars and persist for the session.',
     ),
   outputFocus: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'Describe what specific information you need from the command output. ' +
@@ -356,8 +360,8 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         runtime,
         {
           cmd: command,
-          timeoutMs,
-          tailTimeoutMs,
+          timeoutMs: timeoutMs ?? undefined,
+          tailTimeoutMs: tailTimeoutMs ?? undefined,
           env: mergedEnv,
         },
         cfg,

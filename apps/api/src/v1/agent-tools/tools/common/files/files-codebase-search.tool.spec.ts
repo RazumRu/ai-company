@@ -233,6 +233,8 @@ describe('FilesCodebaseSearchTool', () => {
         repoIndex: {
           id: 'index-1',
           status: RepoIndexStatus.InProgress,
+          estimatedTokens: 0,
+          indexedTokens: 0,
         },
       } as GetOrInitIndexResult);
 
@@ -242,9 +244,10 @@ describe('FilesCodebaseSearchTool', () => {
         mockCfg,
       );
 
-      expect(output.error).toBe(
-        'Repository indexing is currently in progress. This is normal for the first search in a repository.',
+      expect(output.error).toContain(
+        'Repository indexing is currently in progress.',
       );
+      expect(output.error).toContain('DO NOT retry codebase_search');
       expect(output.results).toEqual([]);
       expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
     });
@@ -279,6 +282,8 @@ describe('FilesCodebaseSearchTool', () => {
         repoIndex: {
           id: 'index-1',
           status: RepoIndexStatus.Pending,
+          estimatedTokens: 500000,
+          indexedTokens: 250000,
         },
       } as GetOrInitIndexResult);
 
@@ -288,9 +293,11 @@ describe('FilesCodebaseSearchTool', () => {
         mockCfg,
       );
 
-      expect(output.error).toBe(
-        'Repository indexing is currently in progress. This is normal for the first search in a repository.',
+      expect(output.error).toContain(
+        'Repository indexing is currently in progress.',
       );
+      expect(output.error).toContain('Progress: 50%');
+      expect(output.error).toContain('DO NOT retry codebase_search');
       expect(output.results).toEqual([]);
       expect(mockRepoIndexService.searchCodebase).not.toHaveBeenCalled();
     });

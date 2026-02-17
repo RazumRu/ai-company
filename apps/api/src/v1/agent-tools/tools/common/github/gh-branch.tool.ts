@@ -25,6 +25,7 @@ export const GhBranchToolSchema = z.object({
     ),
   base: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'The base branch to create the new branch from (default: "main"). The tool checks out this branch first before creating the new one.',

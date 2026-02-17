@@ -1,6 +1,7 @@
 general_settings:
   store_model_in_db: true
   store_prompts_in_spend_logs: true
+  forward_client_headers_to_llm_api: true
 
 litellm_settings:
   proxy_logging: false
@@ -8,6 +9,18 @@ litellm_settings:
   drop_params: true
 
 model_list:
+  - model_name: claude-sonnet-4.5
+    litellm_params:
+      model: anthropic/claude-sonnet-4.5
+
+  - model_name: claude-opus-4.6
+    litellm_params:
+      model: anthropic/claude-opus-4.6
+
+  - model_name: claude-haiku-4.5
+    litellm_params:
+      model: anthropic/claude-haiku-4.5
+
   - model_name: text-embedding-3-small
     litellm_params:
       model: openai/text-embedding-3-small

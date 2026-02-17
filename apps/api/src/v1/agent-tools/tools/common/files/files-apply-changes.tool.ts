@@ -19,6 +19,7 @@ const SingleEditSchema = z.object({
   newText: z.string().describe('Replacement text.'),
   replaceAll: z
     .boolean()
+    .nullable()
     .optional()
     .describe('If true, replaces all occurrences of oldText.'),
 });
@@ -32,26 +33,28 @@ const FilesApplyChangesToolSchemaBase = z.object({
     ),
   oldText: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'The exact text to find and replace, copied verbatim from files_read output (without line number prefixes). Must be non-empty for replacements. Use empty string ("") only with insertAfterLine to insert text at a specific line. Ignored when edits array is provided.',
     ),
   newText: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'The replacement text. Indentation is automatically adjusted to match the matched oldText block indentation. Ignored when edits array is provided.',
     ),
   replaceAll: z
     .boolean()
+    .nullable()
     .optional()
     .describe(
       'If true, replaces all occurrences of oldText. If false or undefined, requires exactly one match. Ignored when edits array is provided.',
     ),
   edits: z
     .array(SingleEditSchema)
-    .min(1)
-    .max(20)
+    .nullable()
     .optional()
     .describe(
       'Array of {oldText, newText, replaceAll?} pairs to apply atomically in order. When provided, the flat oldText/newText/replaceAll params are ignored. Each edit is applied against the result of the previous edit. If any edit fails, no changes are written.',
@@ -60,6 +63,7 @@ const FilesApplyChangesToolSchemaBase = z.object({
     .number()
     .int()
     .min(0)
+    .nullable()
     .optional()
     .describe(
       'Insert newText after this line number (0 = beginning of file). When used, oldText must be empty string.',
@@ -856,7 +860,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     }
 
     // Single-edit mode: require oldText and newText
-    if (args.oldText === undefined || args.newText === undefined) {
+    if (args.oldText == null || args.newText == null) {
       return {
         output: {
           success: false,

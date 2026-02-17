@@ -103,7 +103,7 @@ export class KnowledgeService {
     }
 
     const updateData: Partial<KnowledgeDocEntity> = pickBy(
-      dto,
+      { ...dto, tags: dto.tags ?? undefined },
       (v) => !isUndefined(v),
     );
 

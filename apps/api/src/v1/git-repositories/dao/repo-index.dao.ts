@@ -11,6 +11,7 @@ export type RepoIndexSearchTerms = Partial<{
   id: string;
   repositoryId: string;
   repositoryIds: string[];
+  repoUrl: string;
   status: RepoIndexStatus | RepoIndexStatus[];
   branch: string | string[];
 }>;
@@ -46,6 +47,10 @@ export class RepoIndexDao extends BaseDao<
 
     if (params?.repositoryIds && params.repositoryIds.length > 0) {
       builder.andWhere({ repositoryId: In(params.repositoryIds) });
+    }
+
+    if (params?.repoUrl) {
+      builder.andWhere({ repoUrl: params.repoUrl });
     }
 
     if (params?.branch) {

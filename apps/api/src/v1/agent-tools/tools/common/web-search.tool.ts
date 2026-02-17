@@ -27,12 +27,14 @@ export const WebSearchToolSchema = z.object({
     .describe(
       'Only search these websites (e.g., ["stackoverflow.com", "github.com"])',
     )
+    .nullable()
     .optional(),
   skipDomains: z
     .array(z.string())
     .describe(
       'Exclude results from these domains (e.g., ["pinterest.com", "w3schools.com"]). Useful for filtering out low-quality sources.',
     )
+    .nullable()
     .optional(),
   maxResults: z
     .number()
@@ -40,6 +42,7 @@ export const WebSearchToolSchema = z.object({
     .min(1)
     .max(20)
     .describe('Maximum number of results to return (1-20)')
+    .nullable()
     .optional(),
 });
 export type WebSearchToolSchemaType = z.infer<typeof WebSearchToolSchema>;
@@ -121,9 +124,9 @@ export class WebSearchTool extends BaseTool<
     // Map to Tavily API parameter names
     const res = await client.search(searchQuery, {
       searchDepth,
-      includeDomains: onlyFromDomains,
-      excludeDomains: skipDomains,
-      maxResults,
+      includeDomains: onlyFromDomains ?? undefined,
+      excludeDomains: skipDomains ?? undefined,
+      maxResults: maxResults ?? undefined,
     });
 
     const title = this.generateTitle?.(args, config);

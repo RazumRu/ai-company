@@ -43,6 +43,7 @@ const CodebaseSearchSchema = z.object({
     .int()
     .min(1)
     .max(MAX_TOP_K)
+    .nullable()
     .optional()
     .describe(
       'Maximum number of code chunk results to return (default: 15, max: 30). Start with 5-10 for focused queries.',
@@ -50,6 +51,7 @@ const CodebaseSearchSchema = z.object({
   gitRepoDirectory: z
     .string()
     .min(1)
+    .nullable()
     .optional()
     .describe(
       `Absolute path to the git repository root (the directory containing the .git folder). ` +
@@ -59,6 +61,7 @@ const CodebaseSearchSchema = z.object({
   language: z
     .string()
     .min(1)
+    .nullable()
     .optional()
     .describe(
       'Filter results to a specific programming language by file extension (e.g., "ts", "py", "go", "rs"). Omit to search all languages.',
@@ -85,7 +88,7 @@ type CodebaseSearchOutput = {
 export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaType> {
   public name = 'codebase_search';
   public description =
-    'MANDATORY FIRST STEP for any codebase exploration. Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, total_lines (file size), and code snippets ranked by relevance. ALWAYS use this tool immediately after gh_clone — do NOT start with files_directory_tree or files_find_paths. Check total_lines in results: read small files (≤300 lines) entirely, but for large files (>300 lines) ALWAYS use fromLineNumber/toLineNumber in files_read. The repository must be cloned first with gh_clone.';
+    'Preferred first step for codebase exploration. Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, total_lines (file size), and code snippets ranked by relevance. Use this tool first after gh_clone — it is faster and more precise than files_directory_tree or files_find_paths. If indexing is in progress, fall back to other file tools instead of retrying. Check total_lines in results: read small files (≤300 lines) entirely, but for large files (>300 lines) ALWAYS use fromLineNumber/toLineNumber in files_read. The repository must be cloned first with gh_clone.';
 
   constructor(
     private readonly repoIndexService: RepoIndexService,
@@ -99,14 +102,16 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     return dedent`
-      ### ⚠️ MANDATORY FIRST STEP
-      This tool MUST be your very first action after cloning a repository. Do NOT use \`files_directory_tree\` or \`files_find_paths\` before \`codebase_search\`. Those tools produce noisy, unfocused output. \`codebase_search\` returns exactly the code you need with precise file paths and line numbers.
+      ### ⚠️ PREFERRED FIRST STEP
+      This tool SHOULD be your first action after cloning a repository. Prefer it over \`files_directory_tree\` or \`files_find_paths\` — those tools produce noisier output. \`codebase_search\` returns exactly the code you need with precise file paths and line numbers.
+      If indexing is in progress, fall back to other file tools immediately (see "Indexing In Progress" section below).
 
       ### Overview
       Semantic codebase search that indexes a git repository on demand.
       Indexing is triggered automatically on the first call. For large repositories
       indexing runs in the background — in that case the tool will indicate that
-      indexing is in progress and you should retry shortly.
+      indexing is in progress. **Do NOT retry codebase_search when indexing is in progress.**
+      Instead, fall back to \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` for exploration while the index builds.
 
       ### Prerequisites
       - Repository MUST be cloned first. Use \`gh_clone\` if not already done.
@@ -114,13 +119,14 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       - When provided, use the exact path returned by gh_clone. It must point to the repository root (containing .git folder).
 
       ### When to Use
-      - ALWAYS your first action after \`gh_clone\` — no exceptions
+      - Your preferred first action after \`gh_clone\`
       - Any codebase discovery or "where is X?" question
       - Understanding architecture, finding implementations, locating definitions
       - Use multiple queries to explore different aspects (e.g., "authentication middleware", "database models", "API routes")
 
       ### When NOT to Use
       - You already have the file paths and line numbers you need from a previous search
+      - Indexing is in progress — use \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` instead
 
       ### Requirements
       - Must be inside a git repository
@@ -139,12 +145,22 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       - **Small files (≤300 lines)**: read the entire file with \`files_read\`
       - **Large files (>300 lines)**: you MUST use \`fromLineNumber\`/\`toLineNumber\` in \`files_read\`. Set the range to \`start_line - 30\` through \`end_line + 30\` from the search result. NEVER fetch the full content of files with more than 300 lines.
 
+      ### ⚠️ CRITICAL — Indexing In Progress
+      If \`codebase_search\` returns an "indexing in progress" message, **do NOT call codebase_search again**.
+      Instead, immediately switch to these alternative exploration tools:
+      - \`files_directory_tree\` — get an overview of the repository structure
+      - \`files_find_paths\` — locate files by name or glob pattern
+      - \`files_search_text\` — search for exact text/regex patterns across files
+      - \`files_read\` — read specific files once you have their paths
+      Continue your task using these tools. Do NOT wait or retry \`codebase_search\`.
+
       ### Recommended Flow
       1) Clone repo with \`gh_clone\` (if not already cloned).
-      2) Run \`codebase_search\` with semantic queries — this is ALWAYS your first exploration step.
-      3) Check \`total_lines\` in results. For small files (≤300), read entirely. For large files (>300), use line ranges from \`start_line\`/\`end_line\`.
-      4) Use additional \`codebase_search\` queries to explore other aspects of the codebase.
-      5) Use \`files_search_text\` for exact pattern matching (function names, variable references).
+      2) Run \`codebase_search\` with semantic queries — this is your preferred first exploration step.
+      3) If indexing is in progress, immediately fall back to \`files_directory_tree\`, \`files_find_paths\`, and \`files_search_text\` (see above).
+      4) Check \`total_lines\` in results. For small files (≤300), read entirely. For large files (>300), use line ranges from \`start_line\`/\`end_line\`.
+      5) Use additional \`codebase_search\` queries to explore other aspects of the codebase.
+      6) Use \`files_search_text\` for exact pattern matching (function names, variable references).
 
       ### Examples
       \`\`\`json
@@ -255,11 +271,28 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     });
 
     if (indexResult.status !== 'ready') {
+      const { repoIndex } = indexResult;
+      const progressParts: string[] = [];
+      if (repoIndex.estimatedTokens > 0) {
+        const pct = Math.min(
+          100,
+          Math.round(
+            (repoIndex.indexedTokens / repoIndex.estimatedTokens) * 100,
+          ),
+        );
+        progressParts.push(
+          `Progress: ${pct}% (${repoIndex.indexedTokens}/${repoIndex.estimatedTokens} tokens)`,
+        );
+      }
+
       return {
         output: {
           results: [],
-          error:
+          error: [
             'Repository indexing is currently in progress. This is normal for the first search in a repository.',
+            ...progressParts,
+            'DO NOT retry codebase_search — use files_directory_tree, files_find_paths, and files_search_text to explore the codebase while the index builds.',
+          ].join('\n'),
         },
         messageMetadata,
       };
@@ -277,7 +310,7 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       repoId: indexResult.repoIndex.repoUrl,
       topK: args.top_k ?? DEFAULT_TOP_K,
       directoryFilter,
-      languageFilter: args.language,
+      languageFilter: args.language ?? undefined,
       minScore: DEFAULT_MIN_SCORE,
     });
 

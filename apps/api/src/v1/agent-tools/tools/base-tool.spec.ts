@@ -8,7 +8,7 @@ import { BaseTool, ToolInvokeResult } from './base-tool';
 // Create a concrete test implementation of BaseTool
 const TestToolSchema = z.object({
   requiredField: z.string().min(1),
-  optionalField: z.string().optional(),
+  optionalField: z.string().nullable().optional(),
 });
 
 type TestToolSchemaType = z.infer<typeof TestToolSchema>;
@@ -64,14 +64,18 @@ describe('BaseTool', () => {
       );
     });
 
-    it('should treat null optional fields as undefined (LLM null tolerance)', () => {
-      // LLMs often emit explicit null for omitted optional parameters
+    it('should accept null for nullable optional fields (LLM null tolerance)', () => {
+      // LLMs often emit explicit null for omitted optional parameters.
+      // All optional fields use .nullable().optional() to handle this.
       const dataWithNull = {
         requiredField: 'test value',
         optionalField: null,
       };
       const result = tool.validate(dataWithNull);
-      expect(result).toEqual({ requiredField: 'test value' });
+      expect(result).toEqual({
+        requiredField: 'test value',
+        optionalField: null,
+      });
     });
 
     it('should reject null on required fields', () => {

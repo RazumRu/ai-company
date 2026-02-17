@@ -19,6 +19,7 @@ export const FilesSearchTextToolSchema = z.object({
   searchInDirectory: z
     .string()
     .min(1)
+    .nullable()
     .optional()
     .describe(
       'Directory to search in. If not specified, searches in current working directory.',
@@ -34,12 +35,14 @@ export const FilesSearchTextToolSchema = z.object({
     ),
   filePath: z
     .string()
+    .nullable()
     .optional()
     .describe(
       'Search only in this specific file. Can use paths from files_find_paths output.',
     ),
   onlyInFilesMatching: z
     .array(z.string())
+    .nullable()
     .optional()
     .describe(
       'Only search files matching these glob patterns (e.g., ["*.ts", "src/**"]). ' +
@@ -47,6 +50,7 @@ export const FilesSearchTextToolSchema = z.object({
     ),
   skipFilesMatching: z
     .array(z.string())
+    .nullable()
     .optional()
     .describe(
       'Exclude files matching these glob patterns (e.g., ["*.test.ts", "*.spec.ts"]). ' +
