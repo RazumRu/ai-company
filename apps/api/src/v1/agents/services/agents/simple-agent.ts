@@ -21,6 +21,7 @@ import { ZodSchema } from 'zod';
 
 import { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { zodToAjvSchema } from '../../../agent-tools/agent-tools.utils';
+import type { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
@@ -34,6 +35,7 @@ import {
 } from '../../agents.types';
 import {
   buildReasoningMessage,
+  extractReasoningFromRawResponse,
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
@@ -620,8 +622,11 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       connectedTools: allTools.map((t) => ({
         name: t.name,
         description: t.description,
-        // Tools in this codebase provide JSONSchema already (see BaseTool.buildToolConfiguration()).
-        schema: zodToAjvSchema(t.schema as ZodSchema),
+        // Use the pre-computed JSON Schema from build() to avoid re-converting
+        // Zod schemas at runtime (MCP tool schemas may contain transforms).
+        schema:
+          (t as BuiltAgentTool).__ajvSchema ??
+          zodToAjvSchema(t.schema as ZodSchema),
       })),
     };
 
@@ -690,23 +695,26 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     const blocks =
       chunk?.contentBlocks ?? chunk?.response_metadata?.output ?? [];
 
-    if (!Array.isArray(blocks)) {
-      return null;
+    if (Array.isArray(blocks)) {
+      const reasoningBlocks = blocks.filter(
+        (b) =>
+          b &&
+          b.type === 'reasoning' &&
+          typeof b.reasoning === 'string' &&
+          b.reasoning.length > 0,
+      );
+
+      if (reasoningBlocks.length) {
+        return reasoningBlocks.map((b) => b.reasoning).join('\n');
+      }
     }
 
-    const reasoningBlocks = blocks.filter(
-      (b) =>
-        b &&
-        b.type === 'reasoning' &&
-        typeof b.reasoning === 'string' &&
-        b.reasoning.length > 0,
+    // Fallback: providers like DeepSeek put reasoning in a non-standard
+    // `reasoning_content` field that @langchain/openai doesn't propagate
+    // to contentBlocks. Extract it from the raw response if available.
+    return extractReasoningFromRawResponse(
+      chunk?.additional_kwargs as Record<string, unknown> | undefined,
     );
-
-    if (!reasoningBlocks.length) {
-      return null;
-    }
-
-    return reasoningBlocks.map((b) => b.reasoning).join('\n');
   }
 
   public async run(

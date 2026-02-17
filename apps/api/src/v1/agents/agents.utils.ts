@@ -431,6 +431,53 @@ function extractFilePathsFromToolResult(
   }
 }
 
+/**
+ * Extract reasoning content from the raw LLM response stored by `__includeRawResponse`.
+ *
+ * Some providers (e.g. DeepSeek via LiteLLM) return reasoning text on a non-standard
+ * `reasoning_content` field of the chat-completion message/delta. `@langchain/openai`
+ * does not propagate this into `contentBlocks`, so we fall back to inspecting the raw
+ * response attached by `__includeRawResponse`.
+ *
+ * Works for both non-streaming (message) and streaming (delta) shapes.
+ */
+export function extractReasoningFromRawResponse(
+  additionalKwargs: Record<string, unknown> | undefined,
+): string | null {
+  const raw = additionalKwargs?.__raw_response;
+  if (!raw || typeof raw !== 'object') return null;
+
+  const choice = (raw as Record<string, unknown>).choices;
+  if (!Array.isArray(choice) || choice.length === 0) return null;
+
+  const first = choice[0] as Record<string, unknown> | undefined;
+  if (!first) return null;
+
+  // Non-streaming: choices[0].message.reasoning_content
+  // Streaming:     choices[0].delta.reasoning_content
+  const msg = (first.message ?? first.delta) as
+    | Record<string, unknown>
+    | undefined;
+  if (!msg) return null;
+
+  const reasoning = msg.reasoning_content;
+  if (typeof reasoning === 'string' && reasoning.length > 0) return reasoning;
+
+  return null;
+}
+
+/**
+ * Remove the `__raw_response` key from additional_kwargs to avoid persisting
+ * the full API response in message checkpoints.
+ */
+export function stripRawResponse(
+  additionalKwargs: Record<string, unknown> | undefined,
+): void {
+  if (additionalKwargs) {
+    delete additionalKwargs.__raw_response;
+  }
+}
+
 export function buildReasoningMessage(
   content: string,
   parentMessageId?: string,

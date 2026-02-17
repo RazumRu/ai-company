@@ -7,6 +7,7 @@ import { ZodSchema } from 'zod';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
+  JSONSchema,
   ToolInvokeResult,
 } from '../../agent-tools/tools/base-tool';
 import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
@@ -32,6 +33,15 @@ export class BaseMcpTool<TSchema, TConfig = unknown> extends BaseTool<
     };
 
     return jsonSchemaToZod(this.tool.inputSchema);
+  }
+
+  /**
+   * Returns the original MCP JSON Schema directly, bypassing the lossy
+   * Zod round-trip (jsonSchemaToZod may produce transforms/nullable that
+   * cannot be converted back to JSON Schema).
+   */
+  public override get ajvSchema(): JSONSchema {
+    return (this.tool.inputSchema ?? {}) as JSONSchema;
   }
 
   constructor(

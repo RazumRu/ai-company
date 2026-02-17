@@ -36,6 +36,12 @@ export type BuiltAgentTool = DynamicStructuredTool & {
   __instructions?: string;
   __titleFromArgs?: (args: unknown) => string | undefined;
   /**
+   * Pre-computed AJV-compatible JSON Schema for this tool's arguments.
+   * Avoids re-converting from Zod at runtime (which can fail for MCP tools
+   * whose Zod schemas contain transforms produced by jsonSchemaToZod).
+   */
+  __ajvSchema?: JSONSchema;
+  /**
    * Optional streaming invoke handler. When present, ToolExecutorNode calls this
    * directly (bypassing LangChain's DynamicStructuredTool.invoke) to consume
    * streamed messages in real-time.
@@ -185,6 +191,7 @@ export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {
     return Object.assign(builtTool, {
       __instructions: instructions,
       __titleFromArgs: titleFromArgs,
+      __ajvSchema: this.ajvSchema,
       ...(streamingInvoke ? { __streamingInvoke: streamingInvoke } : {}),
     }) as BuiltAgentTool;
   }

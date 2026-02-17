@@ -985,6 +985,40 @@ describe('SimpleAgent', () => {
       expect(metadataEntry?.id).toBe(reasoningMessage.id);
       expect(reasoningMessage.id).toBe('reasoning:chunk-123');
     });
+
+    it('should extract reasoning from raw response when contentBlocks has no reasoning', () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const reasoningChunk = {
+        id: 'chunk-deepseek',
+        contentBlocks: [],
+        response_metadata: {},
+        additional_kwargs: {
+          __raw_response: {
+            choices: [
+              {
+                delta: {
+                  role: 'assistant',
+                  reasoning_content: 'DeepSeek reasoning chunk',
+                },
+              },
+            ],
+          },
+        },
+      } as unknown as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, reasoningChunk);
+
+      const metadata = agent.getGraphNodeMetadata({ threadId });
+      const reasoningMetadata = metadata?.reasoningChunks as
+        | Record<string, { id: string; content: string }>
+        | undefined;
+
+      const metadataEntry = reasoningMetadata?.['reasoning:chunk-deepseek'];
+      expect(metadataEntry).toBeDefined();
+      expect(metadataEntry?.content).toBe('DeepSeek reasoning chunk');
+    });
   });
 
   describe('nodeAdditionalMetadataUpdate events', () => {

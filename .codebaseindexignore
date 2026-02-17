@@ -6,6 +6,7 @@
 /pnpm-lock.yaml
 /pnpm-workspace.yaml
 /release.config.cjs
+**/node_modules
 /CLAUDE.md
 /LICENSE
 /README.md
