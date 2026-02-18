@@ -10,11 +10,18 @@ litellm_settings:
 
 model_list:
   # OpenRouter provider — Anthropic
-  # Pricing in LiteLLM DB: claude-sonnet-4.5 ✓, claude-haiku-4.5 ✓
+  # Pricing in LiteLLM DB: claude-sonnet-4.5 ✓, claude-sonnet-4.6 (via base_model), claude-haiku-4.5 ✓
   - model_name: claude-sonnet-4.5
     litellm_params:
       model: openrouter/anthropic/claude-sonnet-4.5
       api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: claude-sonnet-4.6
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4.6
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      base_model: claude-sonnet-4-6         # map pricing from LiteLLM DB
 
   - model_name: claude-opus-4.6
     litellm_params:

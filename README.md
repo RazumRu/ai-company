@@ -164,6 +164,7 @@ Pre-configured cloud models (in `litellm.yaml`):
 | `gpt-5.1-codex-mini` | OpenAI | Mini code generation |
 | `text-embedding-3-small` | OpenAI | Embeddings |
 | `claude-sonnet-4.5` | Anthropic | |
+| `claude-sonnet-4.6` | Anthropic | |
 | `claude-opus-4.6` | Anthropic | |
 | `claude-haiku-4.5` | Anthropic | |
 | `gemini-3-flash-preview` | Google | |

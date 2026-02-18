@@ -587,6 +587,45 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     return stage1;
   }
 
+  /**
+   * Compare oldText and a similar block line-by-line and return human-readable
+   * hints about which lines differ and how. Helps the LLM understand WHY a
+   * match failed instead of forcing it to visually diff two code blocks.
+   */
+  private generateMismatchHints(
+    oldText: string,
+    candidateText: string,
+    maxHints = 5,
+  ): string {
+    const oldLines = this.splitLines(oldText);
+    const candidateLines = this.splitLines(candidateText);
+    const hints: string[] = [];
+
+    const maxLen = Math.min(oldLines.length, candidateLines.length);
+    for (let i = 0; i < maxLen && hints.length < maxHints; i++) {
+      const oldLine = oldLines[i]!.trim();
+      const candLine = candidateLines[i]!.trim();
+
+      if (oldLine === candLine) continue;
+
+      // Truncate long lines for readability
+      const truncate = (s: string, max = 80): string =>
+        s.length > max ? s.substring(0, max) + '…' : s;
+
+      hints.push(
+        `  Line ${i + 1}: yours has "${truncate(oldLine)}" but file has "${truncate(candLine)}"`,
+      );
+    }
+
+    if (oldLines.length !== candidateLines.length) {
+      hints.push(
+        `  Line count: yours has ${oldLines.length} lines but file has ${candidateLines.length} lines`,
+      );
+    }
+
+    return hints.length > 0 ? `Differences found:\n${hints.join('\n')}` : '';
+  }
+
   private findSimilarBlocks(
     originalLines: string[],
     oldText: string,
@@ -691,19 +730,33 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
       const similarBlocks = this.findSimilarBlocks(originalLines, oldText, 2);
       let similarContext = '';
+      let readSuggestion = '';
       if (similarBlocks.length > 0) {
+        const closestBlock = similarBlocks[0]!;
+
+        // Generate per-line diff hints for the closest match
+        const mismatchHints = this.generateMismatchHints(
+          oldText,
+          closestBlock.text,
+        );
+
         similarContext = dedent`
 
-          Possible similar blocks found in the file (these are NOT exact matches):
-          ${similarBlocks
-            .map(
-              (b) =>
-                `Lines ${b.lineStart + 1}-${b.lineEnd + 1}:\n${b.text.split('\n').slice(0, 5).join('\n')}${b.text.split('\n').length > 5 ? '\n...' : ''}`,
-            )
-            .join('\n\n')}
+          Closest similar block found at lines ${closestBlock.lineStart + 1}-${closestBlock.lineEnd + 1} (NOT an exact match):
+          ${closestBlock.text.split('\n').slice(0, 5).join('\n')}${closestBlock.text.split('\n').length > 5 ? '\n...' : ''}
 
-          Compare these with what you were searching for to see the differences.
+          ${mismatchHints}
         `;
+
+        if (similarBlocks.length > 1) {
+          const other = similarBlocks[1]!;
+          similarContext += `\n\nAnother similar block at lines ${other.lineStart + 1}-${other.lineEnd + 1}.`;
+        }
+
+        // Suggest a targeted files_read line range instead of re-reading the whole file
+        const suggestedStart = Math.max(1, closestBlock.lineStart - 5);
+        const suggestedEnd = closestBlock.lineEnd + 20;
+        readSuggestion = `\nTIP: Run files_read with fromLineNumber=${suggestedStart} and toLineNumber=${suggestedEnd} to see the actual content around the closest match.`;
       }
 
       errors.push(
@@ -719,6 +772,7 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
           2. Copy the EXACT text from the output (including whitespace)
           3. Do NOT type from memory or guess
           4. Compare the "Searched for" text above with actual file content
+          ${readSuggestion}
 
           Common mistakes:
           - Wrong indentation or spaces
@@ -945,10 +999,23 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     );
 
     if (errors.length > 0) {
+      let errorMsg = errors.join(' ');
+
+      // Suggest insertAfterLine when the edit looks like an insertion attempt
+      // (newText contains oldText as a substring, suggesting the LLM is wrapping
+      // existing code with additions rather than replacing it)
+      if (
+        args.oldText.trim().length > 0 &&
+        args.newText.includes(args.oldText.trim())
+      ) {
+        errorMsg +=
+          '\n\nTIP: Your newText appears to contain your oldText plus additional code. Consider using insertAfterLine mode instead — set oldText to "" and insertAfterLine to the line number where you want to insert new code.';
+      }
+
       return {
         output: {
           success: false,
-          error: errors.join(' '),
+          error: errorMsg,
         },
         messageMetadata,
       };
@@ -1166,11 +1233,17 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       );
 
       if (errors.length > 0) {
+        const progressNote =
+          i > 0
+            ? ` ${i} of ${edits.length} edits matched successfully before this failure.`
+            : '';
         return {
           output: {
             success: false,
-            error: `Edit ${i} failed: ${errors.join(' ')}`,
+            error: `Edit ${i} failed: ${errors.join(' ')}${progressNote} The file was NOT modified (atomic mode). Fix edit ${i} and retry all edits, or split into separate single-edit calls.`,
             failedEditIndex: i,
+            appliedEdits: i,
+            totalEdits: edits.length,
           },
           messageMetadata,
         };
