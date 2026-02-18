@@ -16,6 +16,7 @@ import {
   GraphStatus,
   NodeKind,
 } from '../../graphs/graphs.types';
+import { GraphCompiler } from '../../graphs/services/graph-compiler';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphStateManager } from '../../graphs/services/graph-state.manager';
 import { LitellmService } from '../../litellm/services/litellm.service';
@@ -37,7 +38,7 @@ describe('AiSuggestionsService', () => {
   let graphDao: Pick<GraphDao, 'getOne'>;
   let graphRegistry: Pick<
     GraphRegistry,
-    'get' | 'filterNodesByType' | 'getNode'
+    'get' | 'filterNodesByType' | 'getNode' | 'unregister'
   >;
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
   let authContext: Pick<AuthContextService, 'checkSub'>;
@@ -49,17 +50,22 @@ describe('AiSuggestionsService', () => {
   let litellmService: Pick<LitellmService, 'supportsResponsesApi'>;
   let responseMock: ReturnType<typeof vi.fn> & OpenaiService['response'];
   let completeMock: ReturnType<typeof vi.fn> & OpenaiService['complete'];
+  let graphCompiler: Pick<GraphCompiler, 'compile'>;
   let service: AiSuggestionsService;
 
   beforeEach(() => {
     threadsDao = { getOne: vi.fn() };
     messagesDao = { getAll: vi.fn() };
     graphDao = { getOne: vi.fn() };
+    graphCompiler = { compile: vi.fn() };
+
     graphRegistry = {
       get: vi.fn(),
       filterNodesByType: vi.fn(),
       getNode: vi.fn(),
+      unregister: vi.fn(),
     };
+
     templateRegistry = { getTemplate: vi.fn() };
     authContext = {
       checkSub: vi.fn().mockReturnValue('user-1'),
@@ -93,6 +99,7 @@ describe('AiSuggestionsService', () => {
       openaiService as OpenaiService,
       llmModelsService as LlmModelsService,
       litellmService as LitellmService,
+      graphCompiler as unknown as any,
     );
   });
 
@@ -182,9 +189,12 @@ describe('AiSuggestionsService', () => {
       kind: NodeKind.SimpleAgent,
     });
 
-    (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue({
-      edges: graph.schema.edges as GraphEdgeSchemaType[],
-    });
+    const compiled = buildCompiledGraph();
+    (graphCompiler.compile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      compiled,
+    );
+
+    (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(compiled);
 
     (
       graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
@@ -317,6 +327,9 @@ describe('AiSuggestionsService', () => {
       const graph = buildGraph();
       graph.schema.nodes = [];
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        buildCompiledGraph(),
+      );
 
       await expect(
         service.suggest('graph-1', 'agent-1', {
@@ -333,6 +346,9 @@ describe('AiSuggestionsService', () => {
       ).mockReturnValue({
         kind: NodeKind.Tool,
       });
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        buildCompiledGraph(),
+      );
 
       await expect(
         service.suggest('graph-1', 'agent-1', {
@@ -341,14 +357,8 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws when graph is not running (no compiled graph)', async () => {
-      const graph = buildGraph();
-      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
-      (
-        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
-      ).mockReturnValue({
-        kind: NodeKind.SimpleAgent,
-      });
+    it('throws when graph is not found in ensureGraphContext', async () => {
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
         undefined,
       );
@@ -357,7 +367,7 @@ describe('AiSuggestionsService', () => {
         service.suggest('graph-1', 'agent-1', {
           userRequest: 'anything',
         } as SuggestAgentInstructionsDto),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('wraps unexpected LLM errors in InternalException', async () => {
@@ -399,7 +409,7 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws when compiled graph is missing', async () => {
+    it('builds context if graph is not running for analyzeThread', async () => {
       (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildThread(),
       );
@@ -409,10 +419,20 @@ describe('AiSuggestionsService', () => {
       (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
         undefined,
       );
+      const compiled = buildCompiledGraph();
+      (graphCompiler.compile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        compiled,
+      );
+      (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      responseMock.mockResolvedValue({
+        content: 'Analysis',
+        conversationId: 'conv-1',
+      });
 
-      await expect(
-        service.analyzeThread('thread-1', {} as never),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await service.analyzeThread('thread-1', {} as never);
+
+      expect(graphCompiler.compile).toHaveBeenCalled();
+      expect(compiled.destroy).toHaveBeenCalled();
     });
 
     it('returns prompt content when analysis is generated and uses provided thread id', async () => {
@@ -673,6 +693,33 @@ describe('AiSuggestionsService', () => {
           currentContent: 'Existing content',
         } as KnowledgeContentSuggestionRequest),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('builds temporary graph context when and destroys it after', async () => {
+      const graph = buildGraph();
+      const compiled = buildCompiledGraph();
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        undefined,
+      );
+      (graphCompiler.compile as ReturnType<typeof vi.fn>).mockResolvedValue(
+        compiled,
+      );
+      (
+        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
+      ).mockReturnValue({ kind: NodeKind.SimpleAgent });
+      (
+        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
+      ).mockReturnValue([]);
+
+      const result = await service.suggest('graph-1', 'agent-1', {
+        userRequest: 'Make it concise',
+      } as SuggestAgentInstructionsDto);
+
+      expect(result.instructions).toBe('Updated instructions');
+      expect(graphCompiler.compile).toHaveBeenCalledWith(graph);
+      expect(compiled.destroy).toHaveBeenCalled();
+      expect(graphRegistry.unregister).toHaveBeenCalledWith('graph-1');
     });
   });
 });
