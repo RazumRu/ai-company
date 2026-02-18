@@ -185,8 +185,79 @@ export class GraphCompiler {
     }
   }
 
+  async getStaticContext(entity: GraphEntity): Promise<CompiledGraph> {
+    const schema = entity.schema;
+    const metadata: GraphMetadataSchemaType = {
+      name: entity.name,
+      version: entity.version,
+      graphId: entity.id,
+      temporary: entity.temporary,
+      graph_created_by: entity.createdBy,
+    };
+
+    const graphId = entity.id;
+
+    this.validateSchema(schema);
+
+    const compiledNodes = new Map<string, CompiledGraphNode>();
+    const stateManager = await this.graphStateFactory.create(graphId);
+    const edges = schema.edges || [];
+
+    const compiledGraph: CompiledGraph = {
+      nodes: compiledNodes,
+      edges,
+      state: stateManager,
+      destroy: async () => {
+        await this.destroyGraph(compiledNodes);
+        stateManager.destroy();
+      },
+      status: GraphStatus.Compiling,
+    };
+
+    try {
+      const buildOrder = this.getBuildOrder(schema);
+
+      for (const node of buildOrder) {
+        const { template, validatedConfig, init } = this.prepareNode(
+          node,
+          compiledNodes,
+          metadata,
+          edges,
+        );
+
+        stateManager.registerNode(node.id);
+
+        const { handle, instance } = await this.createAndConfigureHandle(
+          template,
+          validatedConfig,
+          init,
+        );
+
+        const compiledNode = {
+          id: node.id,
+          type: template.kind,
+          template: node.template,
+          handle,
+          instance,
+          config: validatedConfig,
+        } satisfies CompiledGraphNode;
+
+        compiledNodes.set(node.id, compiledNode);
+        stateManager.attachGraphNode(node.id, compiledNode);
+      }
+
+      compiledGraph.status = GraphStatus.Running;
+
+      return compiledGraph;
+    } catch (error) {
+      await compiledGraph.destroy();
+      throw error;
+    }
+  }
+
   async compile(
     entity: GraphEntity,
+
     additionalMetadata?: Partial<GraphMetadataSchemaType>,
   ): Promise<CompiledGraph> {
     const schema = entity.schema;
