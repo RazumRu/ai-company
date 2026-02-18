@@ -49,9 +49,7 @@ describe('AiSuggestionsService', () => {
   let litellmService: Pick<LitellmService, 'supportsResponsesApi'>;
   let responseMock: ReturnType<typeof vi.fn> & OpenaiService['response'];
   let completeMock: ReturnType<typeof vi.fn> & OpenaiService['complete'];
-  let graphCompiler: { getStaticContext: any };
   let service: AiSuggestionsService;
-
 
   beforeEach(() => {
     threadsDao = { getOne: vi.fn() };
@@ -85,7 +83,6 @@ describe('AiSuggestionsService', () => {
       supportsResponsesApi: vi.fn().mockResolvedValue(true),
     };
 
-    graphCompiler = { getStaticContext: vi.fn() };
     service = new AiSuggestionsService(
       threadsDao as ThreadsDao,
       messagesDao as MessagesDao,
@@ -96,9 +93,7 @@ describe('AiSuggestionsService', () => {
       openaiService as OpenaiService,
       llmModelsService as LlmModelsService,
       litellmService as LitellmService,
-      graphCompiler as any,
     );
-
   });
 
   const makeHandle = <TInstance, TConfig = unknown>(
@@ -187,12 +182,9 @@ describe('AiSuggestionsService', () => {
       kind: NodeKind.SimpleAgent,
     });
 
-    const mockCompiledGraph = {
-      nodes: new Map(),
+    (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue({
       edges: graph.schema.edges as GraphEdgeSchemaType[],
-    };
-
-    (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(mockCompiledGraph);
+    });
 
     (
       graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
@@ -200,37 +192,23 @@ describe('AiSuggestionsService', () => {
       type === NodeKind.Tool ? ['tool-1'] : [],
     );
 
-    (graphRegistry.getNode as ReturnType<typeof vi.fn>).mockImplementation((_graphId, nodeId) => {
-      if (nodeId === 'tool-1') {
-        return {
-          type: NodeKind.Tool,
-          instance: {
-            tools: [
-              {
-                name: 'Sample Tool',
-                description: 'Does work',
-                __instructions: 'Use it',
-              },
-            ],
-          },
-        };
-      }
-      return undefined;
-    });
-
-    mockCompiledGraph.nodes.set('tool-1', {
+    (graphRegistry.getNode as ReturnType<typeof vi.fn>).mockReturnValue({
       type: NodeKind.Tool,
-      instance: {
-        tools: [
-          {
-            name: 'Sample Tool',
-            description: 'Does work',
-            __instructions: 'Use it',
-          },
-        ],
-      },
-    } as any);
-
+      instance: [
+        {
+          name: 'Sample Tool',
+          description: 'Does work',
+          __instructions: 'Use it',
+        },
+      ],
+      handle: makeHandle([
+        {
+          name: 'Sample Tool',
+          description: 'Does work',
+          __instructions: 'Use it',
+        },
+      ]),
+    });
   };
 
   describe('suggest', () => {
@@ -363,7 +341,7 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('uses static context when graph is not running (no compiled graph)', async () => {
+    it('throws when graph is not running (no compiled graph)', async () => {
       const graph = buildGraph();
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
       (
@@ -374,18 +352,13 @@ describe('AiSuggestionsService', () => {
       (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
         undefined,
       );
-      const staticCompiledGraph = buildCompiledGraph();
-      graphCompiler.getStaticContext.mockResolvedValue(staticCompiledGraph);
 
-      const result = await service.suggest('graph-1', 'agent-1', {
-        userRequest: 'anything',
-      } as SuggestAgentInstructionsDto);
-
-      expect(result.instructions).toBe('Updated instructions');
-      expect(graphCompiler.getStaticContext).toHaveBeenCalledWith(graph);
-      expect(staticCompiledGraph.destroy).toHaveBeenCalled();
+      await expect(
+        service.suggest('graph-1', 'agent-1', {
+          userRequest: 'anything',
+        } as SuggestAgentInstructionsDto),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
-
 
     it('wraps unexpected LLM errors in InternalException', async () => {
       configureSuggestionHappyPath();
@@ -426,27 +399,21 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('uses static context when compiled graph is missing', async () => {
+    it('throws when compiled graph is missing', async () => {
       (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildThread(),
       );
-      const graph = buildGraph();
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
-        graph,
+        buildGraph(),
       );
       (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
         undefined,
       );
-      const staticCompiledGraph = buildCompiledGraph();
-      graphCompiler.getStaticContext.mockResolvedValue(staticCompiledGraph);
-      (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-      await service.analyzeThread('thread-1', {} as never);
-
-      expect(graphCompiler.getStaticContext).toHaveBeenCalledWith(graph);
-      expect(staticCompiledGraph.destroy).toHaveBeenCalled();
+      await expect(
+        service.analyzeThread('thread-1', {} as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
-
 
     it('returns prompt content when analysis is generated and uses provided thread id', async () => {
       (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
