@@ -3,7 +3,7 @@
   "version": "1.6.7",
   "author": "Sergey Razumovskiy <s.razumru@gmail.com>",
   "dependencies": {
-    "@nestjs/common": "^11.1.13",
+    "@nestjs/common": "^11.1.14",
     "@nestjs/swagger": "^11.2.6",
     "@packages/common": "workspace:*",
     "fastify": "^5.7.4",

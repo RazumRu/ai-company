@@ -6,10 +6,10 @@
     "@fastify/compress": "^8.3.1",
     "@fastify/multipart": "^9.4.0",
     "@fastify/static": "^9.0.0",
-    "@nestjs/common": "^11.1.13",
+    "@nestjs/common": "^11.1.14",
     "@nestjs/config": "^4.0.3",
-    "@nestjs/core": "^11.1.13",
-    "@nestjs/platform-fastify": "^11.1.13",
+    "@nestjs/core": "^11.1.14",
+    "@nestjs/platform-fastify": "^11.1.14",
     "@nestjs/swagger": "^11.2.6",
     "@packages/common": "workspace:*",
     "@packages/metrics": "workspace:*",
@@ -28,7 +28,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@nestjs/testing": "^11.1.13",
+    "@nestjs/testing": "^11.1.14",
     "@types/lodash": "^4.17.23",
     "@types/node": "^25.2.3",
     "eslint": "^10.0.0",

@@ -203,7 +203,7 @@ Pre-configured local models:
 | `qwen3-coder:30b` | Coding (large) | ~18 GB |
 | `qwen3-coder-next` | Coding (next-gen) | varies |
 | `qwen2.5-coder:7b` | Coding (mini) | ~4.5 GB |
-| `phi3.5:3.8b-mini-instruct-q4_K_M` | General (mini) | ~2.2 GB |
+| `phi3.5:latest` | General (mini) | ~2.2 GB |
 | `qwen3-embedding:4b` | Embeddings | ~2.5 GB |
 
 ### LLM Environment Variables

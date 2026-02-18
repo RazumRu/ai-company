@@ -179,9 +179,9 @@ model_list:
       input_cost_per_token: 0
       output_cost_per_token: 0
 
-  - model_name: phi3.5:3.8b-mini-instruct-q4_K_M
+  - model_name: phi3.5:latest
     litellm_params:
-      model: openai/phi3.5:3.8b-mini-instruct-q4_K_M
+      model: openai/phi3.5:latest
       api_base: http://host.docker.internal:11434/v1/
       api_key: ollama
       drop_params: true

@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@hey-api/openapi-ts": "^0.92.4",
-    "@nestjs/common": "^11.1.13",
+    "@nestjs/common": "^11.1.14",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "axios": "^1.13.5",

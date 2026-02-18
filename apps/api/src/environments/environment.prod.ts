@@ -56,10 +56,7 @@ export const environment = () =>
       'LLM_OFFLINE_EMBEDDING_MODEL',
       'qwen3-embedding:4b',
     ),
-    llmOfflineMiniModel: getEnv(
-      'LLM_OFFLINE_MINI_MODEL',
-      'phi3.5:3.8b-mini-instruct-q4_K_M',
-    ),
+    llmOfflineMiniModel: getEnv('LLM_OFFLINE_MINI_MODEL', 'phi3.5:latest'),
     llmEmbeddingModel: getEnv(
       'LLM_EMBEDDING_MODEL',
       'openai/text-embedding-3-small',

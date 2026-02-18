@@ -13,8 +13,8 @@ ollama pull qwen3-coder:30b
 echo "Pulling model: qwen3-embedding:4b"
 ollama pull qwen3-embedding:4b
 
-echo "Pulling model: phi3.5:3.8b-mini-instruct-q4_K_M"
-ollama pull phi3.5:3.8b-mini-instruct-q4_K_M
+echo "Pulling model: phi3.5:latest"
+ollama pull phi3.5:latest
 
 echo "Pulling model: qwen2.5-coder:7b"
 ollama pull qwen2.5-coder:7b
