@@ -29,13 +29,15 @@ import {
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
 import type { GraphRevisionConfig } from '../entity/graph-revision.entity';
-import { GraphStatus, NodeKind } from '../graphs.types';
+import { CompiledGraph, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
 
 @Injectable()
 export class GraphsService {
+  private readonly ephemeralCleanupTimeouts = new Map<string, NodeJS.Timeout>();
+
   constructor(
     private readonly graphDao: GraphDao,
     private readonly graphCompiler: GraphCompiler,
@@ -133,7 +135,7 @@ export class GraphsService {
       );
     }
 
-    return compiledGraph!.state.getSnapshots(data.threadId, data.runId);
+    return compiledGraph.state.getSnapshots(data.threadId, data.runId);
   }
 
   async update(
@@ -307,6 +309,8 @@ export class GraphsService {
   }
 
   async run(ctx: AuthContextStorage, id: string): Promise<GraphDto> {
+    this.clearEphemeralCleanup(id);
+
     const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id,
@@ -463,6 +467,8 @@ export class GraphsService {
   }
 
   async destroy(ctx: AuthContextStorage, id: string): Promise<GraphDto> {
+    this.clearEphemeralCleanup(id);
+
     const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id,
@@ -565,5 +571,74 @@ export class GraphsService {
       externalThreadId: res.threadId,
       checkpointNs: res.checkpointNs,
     };
+  }
+
+  /**
+   * Ensures that graph resources are built and MCP clients connected.
+   * If graph is not running, it initializes resources ephemerally.
+   */
+  async ensureResources(
+    ctx: AuthContextStorage,
+    graphId: string,
+  ): Promise<CompiledGraph> {
+    const compiled = this.graphRegistry.get(graphId);
+    if (compiled) {
+      // If it was ephemeral, refresh the timeout
+      if (compiled.status === GraphStatus.ReadyButNotRunning) {
+        this.scheduleEphemeralCleanup(graphId);
+      }
+      return compiled;
+    }
+
+    const userId = ctx.checkSub();
+    const graph = await this.graphDao.getOne({
+      id: graphId,
+      createdBy: userId,
+    });
+
+    if (!graph) {
+      throw new NotFoundException('GRAPH_NOT_FOUND');
+    }
+
+    // Build resources without entering full RUNNING state in DB if possible,
+    // but we use the existing compiler which registers it in registry.
+    const compiledGraph = await this.graphCompiler.compile(graph, {
+      graphId: graph.id,
+      name: graph.name,
+      version: graph.version,
+    });
+
+    // Set status to ReadyButNotRunning to distinguish from a fully started graph
+    compiledGraph.status = GraphStatus.ReadyButNotRunning;
+    this.graphRegistry.setStatus(graphId, GraphStatus.ReadyButNotRunning);
+
+    this.scheduleEphemeralCleanup(graphId);
+
+    return compiledGraph;
+  }
+
+  private scheduleEphemeralCleanup(graphId: string) {
+    this.clearEphemeralCleanup(graphId);
+
+    const timeout = setTimeout(
+      async () => {
+        this.ephemeralCleanupTimeouts.delete(graphId);
+        const compiled = this.graphRegistry.get(graphId);
+        if (compiled && compiled.status === GraphStatus.ReadyButNotRunning) {
+          await this.graphRegistry.destroy(graphId);
+        }
+      },
+      5 * 60 * 1000,
+    ); // 5 minutes
+
+    this.ephemeralCleanupTimeouts.set(graphId, timeout);
+  }
+
+  private clearEphemeralCleanup(graphId: string) {
+    const timeout = this.ephemeralCleanupTimeouts.get(graphId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.ephemeralCleanupTimeouts.delete(graphId);
+    }
   }
 }

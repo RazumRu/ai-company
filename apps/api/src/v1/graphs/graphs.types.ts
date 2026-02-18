@@ -23,6 +23,7 @@ export enum GraphStatus {
   Created = 'created',
   Compiling = 'compiling',
   Running = 'running',
+  ReadyButNotRunning = 'ready_but_not_running',
   Stopped = 'stopped',
   Error = 'error',
 }

@@ -22,7 +22,7 @@ import {
   GraphEdgeSchemaType,
   NodeKind,
 } from '../../graphs/graphs.types';
-import { GraphRegistry } from '../../graphs/services/graph-registry';
+import { GraphsService } from '../../graphs/services/graphs.service';
 import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import {
@@ -132,7 +132,7 @@ export class AiSuggestionsService {
     private readonly threadsDao: ThreadsDao,
     private readonly messagesDao: MessagesDao,
     private readonly graphDao: GraphDao,
-    private readonly graphRegistry: GraphRegistry,
+    private readonly graphsService: GraphsService,
     private readonly templateRegistry: TemplateRegistry,
     private readonly authContext: AuthContextService,
     private readonly openaiService: OpenaiService,
@@ -184,14 +184,10 @@ export class AiSuggestionsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    const compiledGraph = this.graphRegistry.get(thread.graphId);
-
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to analyze threads',
-      );
-    }
+    const compiledGraph = await this.graphsService.ensureResources(
+      this.authContext.contextStorage(),
+      thread.graphId,
+    );
 
     const messages = await this.messagesDao.getAll({
       threadId: thread.id,
@@ -290,25 +286,20 @@ export class AiSuggestionsService {
       );
     }
 
-    const compiledGraph = this.graphRegistry.get(graphId);
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to suggest instructions',
-      );
-    }
+    const compiledGraph = await this.graphsService.ensureResources(
+      this.authContext.contextStorage(),
+      graphId,
+    );
 
     const currentInstructions = this.getCurrentInstructions(node.config);
     const tools = this.getConnectedTools(
-      graphId,
       nodeId,
-      compiledGraph?.edges || graph.schema.edges,
+      compiledGraph.edges || graph.schema.edges,
       compiledGraph,
     );
     const mcpInstructions = this.getConnectedMcpInstructions(
-      graphId,
       nodeId,
-      compiledGraph?.edges || graph.schema.edges,
+      compiledGraph.edges || graph.schema.edges,
       compiledGraph,
     );
 
@@ -371,13 +362,10 @@ export class AiSuggestionsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    const compiledGraph = this.graphRegistry.get(graphId);
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to suggest instructions',
-      );
-    }
+    const compiledGraph = await this.graphsService.ensureResources(
+      this.authContext.contextStorage(),
+      graphId,
+    );
 
     const agents = this.buildAgentContexts(compiledGraph);
     if (!agents.length) {
@@ -385,19 +373,14 @@ export class AiSuggestionsService {
     }
 
     const userRequest = payload.userRequest.trim();
-    const edges = compiledGraph?.edges || graph.schema.edges;
+    const edges = compiledGraph.edges || graph.schema.edges;
     const allToolsMap = new Map<string, ConnectedToolInfo>();
     const allMcpMap = new Map<
       string,
       { name: string; instructions?: string }
     >();
     const agentConnections = agents.map((agent) => {
-      const tools = this.getConnectedTools(
-        graphId,
-        agent.nodeId,
-        edges,
-        compiledGraph,
-      );
+      const tools = this.getConnectedTools(agent.nodeId, edges, compiledGraph);
       tools.forEach((tool) => {
         if (!allToolsMap.has(tool.name)) {
           allToolsMap.set(tool.name, tool);
@@ -405,7 +388,6 @@ export class AiSuggestionsService {
       });
 
       const mcpDetails = this.getConnectedMcpDetails(
-        graphId,
         agent.nodeId,
         edges,
         compiledGraph,
@@ -885,7 +867,6 @@ export class AiSuggestionsService {
   }
 
   private getConnectedTools(
-    graphId: string,
     nodeId: string,
     edges: GraphEdgeSchemaType[] | undefined,
     compiledGraph?: CompiledGraph,
@@ -899,17 +880,13 @@ export class AiSuggestionsService {
       return [];
     }
 
-    const toolNodeIds = this.graphRegistry.filterNodesByType(
-      graphId,
-      outgoingNodeIds,
-      NodeKind.Tool,
-    );
+    const toolNodeIds = Array.from(outgoingNodeIds).filter((id) => {
+      const node = compiledGraph.nodes.get(id);
+      return node?.type === NodeKind.Tool;
+    });
 
     return toolNodeIds.flatMap((toolNodeId) => {
-      const toolNode = this.graphRegistry.getNode<ToolNodeOutput>(
-        graphId,
-        toolNodeId,
-      );
+      const toolNode = compiledGraph.nodes.get(toolNodeId);
 
       if (!toolNode || toolNode.type !== NodeKind.Tool) {
         return [];
@@ -918,7 +895,10 @@ export class AiSuggestionsService {
       // Tool nodes return ToolNodeOutput { tools: BuiltAgentTool[]; instructions?: string }.
       // Be defensive to support legacy states/mocks and partially-configured graphs.
       const tools = (
-        (toolNode.instance?.tools as (BuiltAgentTool | undefined)[]) ?? []
+        ((toolNode.instance as ToolNodeOutput)?.tools as (
+          | BuiltAgentTool
+          | undefined
+        )[]) ?? []
       ).filter((t): t is BuiltAgentTool => Boolean(t));
 
       return tools.map(
@@ -932,7 +912,6 @@ export class AiSuggestionsService {
   }
 
   private getConnectedMcpInstructions(
-    graphId: string,
     nodeId: string,
     edges: GraphEdgeSchemaType[] | undefined,
     compiledGraph?: CompiledGraph,
@@ -946,23 +925,19 @@ export class AiSuggestionsService {
       return undefined;
     }
 
-    const mcpNodeIds = this.graphRegistry.filterNodesByType(
-      graphId,
-      outgoingNodeIds,
-      NodeKind.Mcp,
-    );
+    const mcpNodeIds = Array.from(outgoingNodeIds).filter((id) => {
+      const node = compiledGraph.nodes.get(id);
+      return node?.type === NodeKind.Mcp;
+    });
 
     const blocks = mcpNodeIds
       .map((mcpNodeId) => {
-        const mcpNode = this.graphRegistry.getNode<BaseMcp<unknown>>(
-          graphId,
-          mcpNodeId,
-        );
+        const mcpNode = compiledGraph.nodes.get(mcpNodeId);
         if (!mcpNode || mcpNode.type !== NodeKind.Mcp) {
           return undefined;
         }
 
-        const mcpService = mcpNode.instance;
+        const mcpService = mcpNode.instance as BaseMcp<unknown>;
         if (!mcpService) {
           return undefined;
         }
@@ -992,7 +967,6 @@ export class AiSuggestionsService {
   }
 
   private getConnectedMcpDetails(
-    graphId: string,
     nodeId: string,
     edges: GraphEdgeSchemaType[] | undefined,
     compiledGraph?: CompiledGraph,
@@ -1006,22 +980,18 @@ export class AiSuggestionsService {
       return [];
     }
 
-    const mcpNodeIds = this.graphRegistry.filterNodesByType(
-      graphId,
-      outgoingNodeIds,
-      NodeKind.Mcp,
-    );
+    const mcpNodeIds = Array.from(outgoingNodeIds).filter((id) => {
+      const node = compiledGraph.nodes.get(id);
+      return node?.type === NodeKind.Mcp;
+    });
 
     const details = mcpNodeIds.flatMap((mcpNodeId) => {
-      const mcpNode = this.graphRegistry.getNode<BaseMcp<unknown>>(
-        graphId,
-        mcpNodeId,
-      );
+      const mcpNode = compiledGraph.nodes.get(mcpNodeId);
       if (!mcpNode || mcpNode.type !== NodeKind.Mcp) {
         return [];
       }
 
-      const mcpService = mcpNode.instance;
+      const mcpService = mcpNode.instance as BaseMcp<unknown>;
       if (!mcpService) {
         return [];
       }

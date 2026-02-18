@@ -11,13 +11,12 @@ import { GraphDao } from '../../graphs/dao/graph.dao';
 import { GraphEntity } from '../../graphs/entity/graph.entity';
 import {
   CompiledGraph,
-  GraphEdgeSchemaType,
   GraphNodeInstanceHandle,
   GraphStatus,
   NodeKind,
 } from '../../graphs/graphs.types';
-import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphStateManager } from '../../graphs/services/graph-state.manager';
+import { GraphsService } from '../../graphs/services/graphs.service';
 import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
@@ -35,12 +34,9 @@ describe('AiSuggestionsService', () => {
   let threadsDao: Pick<ThreadsDao, 'getOne'>;
   let messagesDao: Pick<MessagesDao, 'getAll'>;
   let graphDao: Pick<GraphDao, 'getOne'>;
-  let graphRegistry: Pick<
-    GraphRegistry,
-    'get' | 'filterNodesByType' | 'getNode'
-  >;
+  let graphsService: Pick<GraphsService, 'ensureResources'>;
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
-  let authContext: Pick<AuthContextService, 'checkSub'>;
+  let authContext: Pick<AuthContextService, 'checkSub' | 'contextStorage'>;
   let openaiService: {
     response: OpenaiService['response'];
     complete: OpenaiService['complete'];
@@ -55,14 +51,13 @@ describe('AiSuggestionsService', () => {
     threadsDao = { getOne: vi.fn() };
     messagesDao = { getAll: vi.fn() };
     graphDao = { getOne: vi.fn() };
-    graphRegistry = {
-      get: vi.fn(),
-      filterNodesByType: vi.fn(),
-      getNode: vi.fn(),
+    graphsService = {
+      ensureResources: vi.fn(),
     };
     templateRegistry = { getTemplate: vi.fn() };
     authContext = {
       checkSub: vi.fn().mockReturnValue('user-1'),
+      contextStorage: vi.fn().mockReturnValue({}),
     };
     responseMock = vi.fn(async () => ({
       content: 'Updated instructions',
@@ -87,7 +82,7 @@ describe('AiSuggestionsService', () => {
       threadsDao as ThreadsDao,
       messagesDao as MessagesDao,
       graphDao as GraphDao,
-      graphRegistry as GraphRegistry,
+      graphsService as GraphsService,
       templateRegistry as TemplateRegistry,
       authContext as AuthContextService,
       openaiService as OpenaiService,
@@ -164,9 +159,13 @@ describe('AiSuggestionsService', () => {
         __instructions: 'Use to gather facts.',
       }),
       instance: {
-        name: 'Search',
-        description: 'Search the web',
-        __instructions: 'Use to gather facts.',
+        tools: [
+          {
+            name: 'Sample Tool',
+            description: 'Does work',
+            __instructions: 'Use it',
+          },
+        ],
       },
       config: {},
     });
@@ -182,33 +181,10 @@ describe('AiSuggestionsService', () => {
       kind: NodeKind.SimpleAgent,
     });
 
-    (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue({
-      edges: graph.schema.edges as GraphEdgeSchemaType[],
-    });
-
+    const compiledGraph = buildCompiledGraph();
     (
-      graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
-    ).mockImplementation((_graphId, _nodeIds, type) =>
-      type === NodeKind.Tool ? ['tool-1'] : [],
-    );
-
-    (graphRegistry.getNode as ReturnType<typeof vi.fn>).mockReturnValue({
-      type: NodeKind.Tool,
-      instance: [
-        {
-          name: 'Sample Tool',
-          description: 'Does work',
-          __instructions: 'Use it',
-        },
-      ],
-      handle: makeHandle([
-        {
-          name: 'Sample Tool',
-          description: 'Does work',
-          __instructions: 'Use it',
-        },
-      ]),
-    });
+      graphsService.ensureResources as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(compiledGraph);
   };
 
   describe('suggest', () => {
@@ -341,7 +317,7 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws when graph is not running (no compiled graph)', async () => {
+    it('throws when ensureResources fails', async () => {
       const graph = buildGraph();
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
       (
@@ -349,9 +325,9 @@ describe('AiSuggestionsService', () => {
       ).mockReturnValue({
         kind: NodeKind.SimpleAgent,
       });
-      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
-        undefined,
-      );
+      (
+        graphsService.ensureResources as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new BadRequestException('GRAPH_NOT_RUNNING'));
 
       await expect(
         service.suggest('graph-1', 'agent-1', {
@@ -399,16 +375,16 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws when compiled graph is missing', async () => {
+    it('throws when ensureResources fails', async () => {
       (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildThread(),
       );
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildGraph(),
       );
-      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
-        undefined,
-      );
+      (
+        graphsService.ensureResources as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new BadRequestException('GRAPH_NOT_FOUND'));
 
       await expect(
         service.analyzeThread('thread-1', {} as never),
@@ -422,9 +398,9 @@ describe('AiSuggestionsService', () => {
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildGraph(),
       );
-      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
-        buildCompiledGraph(),
-      );
+      (
+        graphsService.ensureResources as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildCompiledGraph());
       (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
         {
           id: 'msg-0',
@@ -534,9 +510,9 @@ describe('AiSuggestionsService', () => {
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildGraph(),
       );
-      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
-        buildCompiledGraph(),
-      );
+      (
+        graphsService.ensureResources as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildCompiledGraph());
       (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       await service.analyzeThread('thread-1', {
@@ -555,12 +531,10 @@ describe('AiSuggestionsService', () => {
     it('uses requested model when provided', async () => {
       const graph = buildGraph();
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
-      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
-        buildCompiledGraph(),
-      );
       (
-        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
-      ).mockReturnValue([]);
+        graphsService.ensureResources as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildCompiledGraph());
+
       responseMock.mockResolvedValueOnce({
         content: { updates: [{ nodeId: 'agent-1', instructions: 'Updated' }] },
         conversationId: 'graph-1',
