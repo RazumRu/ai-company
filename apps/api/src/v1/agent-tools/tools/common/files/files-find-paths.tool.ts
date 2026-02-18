@@ -113,11 +113,17 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       - Viewing directory tree → use \`files_directory_tree\` (visual tree format)
 
       ### Glob Pattern Syntax
+      This tool uses \`fd\` which searches recursively by default. Patterns match against **file names only** (not full paths).
       - \`*\` — matches any characters within a filename (not path separators)
       - \`*.ts\` — all TypeScript files
       - \`*controller*\` — files with "controller" anywhere in the name
       - \`*.{ts,tsx}\` — TypeScript and TSX files
       - \`Dockerfile*\` — Dockerfile and variants
+
+      **Pattern pitfalls to avoid:**
+      - Do NOT use \`**/\` prefix (e.g., \`**/*.ts\`) — fd already searches recursively, and \`**/\` causes pattern matching failures. Just use \`*.ts\`.
+      - Do NOT use path-containing patterns like \`**/agent-mcp/**/*.ts\` — this does not work with fd. Instead, set \`searchInDirectory\` to the specific subdirectory and use a simple filename pattern: \`{"searchInDirectory": "/repo/src/v1/agent-mcp", "filenamePattern": "*.ts"}\`
+      - When you need files within a specific subdirectory, always use \`searchInDirectory\` to narrow the scope instead of embedding the directory in the pattern.
 
       ### Best Practices
       - Use specific patterns and small \`maxResults\` to limit output
@@ -125,6 +131,7 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       - Common build/cache folders (node_modules, dist, .next, etc.) are excluded by default
       - Use \`maxDepth\` to limit recursion depth for large repos
       - Use \`skipPatterns\` to exclude additional directories: \`["test/**", "docs/**"]\`
+      - To find files in a specific subdirectory, set \`searchInDirectory\` to that path instead of using path patterns
 
       ### Output Format
       Returns an object with:
@@ -160,6 +167,43 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
     return FilesFindPathsToolSchema;
   }
 
+  /**
+   * Normalizes glob patterns for `fd` compatibility.
+   *
+   * fd searches recursively by default, so `** /` prefixes are unnecessary and
+   * can cause pattern matching failures.  This method also detects patterns
+   * containing directory components (e.g. `** /agent-mcp/** /*.ts`) and splits
+   * them into a searchInDirectory + simple filename pattern.
+   */
+  private normalizePattern(args: FilesFindPathsToolSchemaType): {
+    pattern: string;
+    searchInDirectory?: string;
+  } {
+    let pattern = args.filenamePattern;
+
+    // Handle patterns like "**/dir/**/*.ext" → extract dir into searchInDirectory
+    const dirPatternMatch = pattern.match(/^\*\*\/([^*?[\]{}]+?)\/\*\*\/(.+)$/);
+    if (dirPatternMatch) {
+      const [, dirFragment, filePattern] = dirPatternMatch;
+      // If no searchInDirectory is set, try to resolve the directory fragment
+      if (!args.searchInDirectory) {
+        return {
+          pattern: filePattern!,
+          searchInDirectory: undefined, // caller will use cwd; we just fix the pattern
+        };
+      }
+      return {
+        pattern: filePattern!,
+        searchInDirectory: `${args.searchInDirectory}`,
+      };
+    }
+
+    // Strip leading "**/" — fd already searches recursively
+    pattern = pattern.replace(/^\*\*\//, '');
+
+    return { pattern, searchInDirectory: args.searchInDirectory ?? undefined };
+  }
+
   public async invoke(
     args: FilesFindPathsToolSchemaType,
     config: FilesBaseToolConfig,
@@ -177,6 +221,12 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
         ? args.skipPatterns
         : this.defaultSkipPatterns;
 
+    // Normalize the pattern for fd compatibility
+    const normalized = this.normalizePattern(args);
+    const effectivePattern = normalized.pattern;
+    const effectiveSearchDir =
+      normalized.searchInDirectory ?? args.searchInDirectory;
+
     const fdCmdParts: string[] = [
       'fd',
       '--absolute-path',
@@ -186,7 +236,7 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       '--exclude',
       '.git',
       '--glob',
-      shQuote(args.filenamePattern),
+      shQuote(effectivePattern),
       '--max-results',
       String(probeLimit),
     ];
@@ -219,8 +269,8 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
       'exit "$__ec"',
     ].join('; ');
 
-    const cmd = args.searchInDirectory
-      ? `cd ${shQuote(args.searchInDirectory)} && ${script}`
+    const cmd = effectiveSearchDir
+      ? `cd ${shQuote(effectiveSearchDir)} && ${script}`
       : script;
 
     const res = await this.execCommand({ cmd }, config, cfg);
@@ -230,7 +280,7 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
         output: {
           error: res.stderr || res.stdout || 'Failed to find paths',
           files: [],
-          cwd: (args.searchInDirectory ?? '').trim(),
+          cwd: (effectiveSearchDir ?? '').trim(),
           returned: 0,
           truncated: false,
         },
@@ -248,7 +298,7 @@ export class FilesFindPathsTool extends FilesBaseTool<FilesFindPathsToolSchemaTy
     const cwd =
       cwdIdx !== -1 && cwdIdx + 1 < stdoutLines.length
         ? (stdoutLines[cwdIdx + 1] ?? '').trim()
-        : (args.searchInDirectory ?? '').trim();
+        : (effectiveSearchDir ?? '').trim();
 
     const rawFiles =
       filesIdx !== -1 && exitIdx !== -1 && exitIdx > filesIdx

@@ -157,10 +157,28 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       \`\`\`
 
       ### When to Use
-      File/git operations, build/test/install commands, system inspection, custom scripts, or when specialized tools don't exist.
+      Git operations, build/test/install commands, system inspection, custom scripts, or when specialized tools don't exist.
 
       ### When NOT to Use
-      For reading/finding/searching/editing files → use specialized file tools (better structured output, safer operations).
+      - For reading/finding/searching/editing files → use specialized file tools (better structured output, safer operations).
+      - For listing directories or exploring file structure → use \`files_directory_tree\` or \`files_find_paths\`. Never use \`ls\`, \`find\`, or \`tree\` shell commands for directory exploration — file tools are faster and produce better output.
+
+      ### Use \`outputFocus\` for Build/Test/Lint/Install Commands
+      Build, test, lint, and install commands typically produce large output. Use \`outputFocus\` as the default approach for these commands to avoid wasting context window tokens. If the focused result lacks detail you need, you can re-run without \`outputFocus\` to get the full output.
+
+      When \`outputFocus\` is set, a small model reads the raw stdout/stderr, extracts only the parts you asked for, and returns them in the \`focusResult\` field. \`stdout\` and \`stderr\` will be empty — all relevant content is in \`focusResult\`. If extraction fails, you receive raw (truncated) output as a fallback.
+
+      **Examples — build/test/lint with \`outputFocus\`:**
+      \`\`\`json
+      {"command": "npm install", "purpose": "Install deps", "outputFocus": "only warnings, errors, and the final added/removed summary"}
+      {"command": "npm run build", "purpose": "Build project", "outputFocus": "pass/fail status only. If failed, list only the error messages"}
+      {"command": "npm test", "purpose": "Run tests", "outputFocus": "pass/fail status: total tests, passed count, failed count. If any failed, list their names and error messages"}
+      {"command": "npm run lint", "purpose": "Lint code", "outputFocus": "pass/fail status: number of errors and warnings. If any errors, list only the file paths and rule names"}
+      \`\`\`
+
+      ### Avoid Duplicate Command Runs
+      Track which commands you have already run and their results. Do not run the same test/build/lint command more than once unless you made code changes in between. Running the same command repeatedly wastes time and tokens.
+      If a test fails, fix the code first, then re-run — but use the exact same invocation method (do not switch between different test runners).
 
       ### Best Practices
       **1. Quote paths with spaces:**
@@ -173,33 +191,17 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       rg "TODO" --max-count=10 /workspace/src
       \`\`\`
 
-      **3. Use \`outputFocus\` for large outputs:**
-      When a command may produce large output but you only need specific information, set \`outputFocus\` to describe exactly what you need.
-      A small model will read the raw output, extract the relevant parts, and return them in the \`focusResult\` field.
-      When \`outputFocus\` is set, \`stdout\` and \`stderr\` will be empty — all relevant content is in \`focusResult\`.
-      If the extraction fails, you will receive the raw (truncated) output as a fallback.
-
-      **When to use \`outputFocus\`:**
-      - Build/install logs where you only care about errors or warnings
-      - Test output where you only need failing test names and messages
-      - Status checks where you need a pass/fail summary, not the full output
-      - Long file listings where you need files matching a pattern
-      - Any command with potentially large output where only a subset matters
+      **3. Use \`outputFocus\` for any large output:**
+      Beyond build/test/lint, use \`outputFocus\` whenever output may be large and you only need specific information.
 
       **Examples — extracting specific content:**
       \`\`\`json
-      {"command": "npm test", "purpose": "Run tests", "outputFocus": "only the failing test names and their error messages"}
-      {"command": "npm install", "purpose": "Install deps", "outputFocus": "only warnings, errors, and the final added/removed summary"}
-      {"command": "find /workspace -name '*.ts'", "purpose": "List TS files", "outputFocus": "only files containing 'controller' in the path"}
       {"command": "cat package.json", "purpose": "Check deps", "outputFocus": "only the dependencies and devDependencies sections"}
+      {"command": "git log --oneline -20", "purpose": "Recent commits", "outputFocus": "list of commit hashes and messages"}
       \`\`\`
 
-      **Examples — status-only checks (pass/fail, no content needed):**
-      Use \`outputFocus\` when you need to know whether something passed or failed but don't need the full output.
+      **Examples — status-only checks:**
       \`\`\`json
-      {"command": "npm test", "purpose": "Verify tests pass after refactor", "outputFocus": "pass/fail status: total tests, passed count, failed count. If any failed list only their names"}
-      {"command": "npm run build", "purpose": "Check build succeeds", "outputFocus": "pass/fail status only. If failed, list only the error messages"}
-      {"command": "npm run lint", "purpose": "Check lint status", "outputFocus": "pass/fail status: number of errors and warnings. If any errors, list only the file paths and rule names"}
       {"command": "tsc --noEmit", "purpose": "Type-check project", "outputFocus": "pass/fail status: number of type errors. If any, list only the first 5 file:line and error message"}
       {"command": "docker compose ps", "purpose": "Check services health", "outputFocus": "for each service: name and status (running/stopped/unhealthy). Omit ports and other details"}
       \`\`\`

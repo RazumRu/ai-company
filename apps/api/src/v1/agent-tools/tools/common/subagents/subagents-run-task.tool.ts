@@ -45,8 +45,9 @@ export const SubagentsRunTaskToolSchema = z.object({
     .min(1)
     .describe(
       'A clear, self-contained description of the task to delegate. Include all context needed: ' +
-        'file paths, specific questions, constraints, expected output format. The subagent cannot ' +
-        'ask follow-up questions — it must be able to complete the task from this description alone.',
+        'ABSOLUTE file paths (starting with /runtime-workspace/), specific questions, constraints, expected output format. ' +
+        'Never use relative paths like "src/..." — always use absolute paths like "/runtime-workspace/repo/src/...". ' +
+        'The subagent cannot ask follow-up questions — it must be able to complete the task from this description alone.',
     ),
   purpose: z
     .string()
@@ -194,17 +195,27 @@ export class SubagentsRunTaskTool extends BaseTool<
       Subagents start with a BLANK context — they know NOTHING about the project.
       **Your task description is the ONLY information the subagent has.** Include ALL relevant context:
 
-      1. **Known paths and names** — file paths, function/class names, module structure, code snippets
+      1. **ABSOLUTE file paths** — always use full absolute paths starting with \`${BASE_RUNTIME_WORKDIR}/\`. Subagents cannot resolve relative paths like \`src/v1/...\` because they don't know the repo root. Every path must be absolute.
       2. **The goal** — what you need to know, acceptance criteria, constraints
       3. **Specific locations** — exact directories and files, never "find the file" if you know the path
       4. **Prior knowledge** — what you've already discovered, what failed before
       5. **Expected output format** — what information you need back and how
+      6. **Repository instructions** — if gh_clone returned agentInstructions (e.g., from CLAUDE.md), include the relevant sections (commands, conventions, testing rules) so the subagent can follow them
 
       **Rule of thumb: if you know it and it's relevant, include it.**
 
-      **Good:**
+      **⚠️ CRITICAL: Always use ABSOLUTE paths in task descriptions**
+      Subagents run in isolated contexts and have NO knowledge of your working directory. Paths like \`src/v1/agents/\` will FAIL.
+      Always convert to absolute: \`${BASE_RUNTIME_WORKDIR}/repo-name/src/v1/agents/\`
+
+      **Good — absolute paths, includes repo instructions:**
       \`\`\`json
-      {"agentId": "system:explorer", "task": "In ${BASE_RUNTIME_WORKDIR}/my-repo, find all files that import from '@auth' module. I already know that src/middleware/auth.ts and src/controllers/user.controller.ts use it. For each file found, list: (1) the file path, (2) the specific named imports, (3) how they are used.", "purpose": "Map auth dependencies"}
+      {"agentId": "system:explorer", "task": "In ${BASE_RUNTIME_WORKDIR}/my-repo, find all files that import from '@auth' module. The repo root is ${BASE_RUNTIME_WORKDIR}/my-repo. I already know that ${BASE_RUNTIME_WORKDIR}/my-repo/src/middleware/auth.ts and ${BASE_RUNTIME_WORKDIR}/my-repo/src/controllers/user.controller.ts use it. For each file found, list: (1) the file path, (2) the specific named imports, (3) how they are used.", "purpose": "Map auth dependencies"}
+      \`\`\`
+
+      **Bad — relative paths (subagent will fail to find files):**
+      \`\`\`json
+      {"agentId": "system:explorer", "task": "Explore src/v1/graphs/ and src/v1/agents/ to find entity definitions.", "purpose": "Find entities"}
       \`\`\`
 
       **Bad — vague, missing context the parent already has:**

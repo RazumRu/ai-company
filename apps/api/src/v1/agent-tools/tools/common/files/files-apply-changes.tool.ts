@@ -861,11 +861,40 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     // Single-edit mode: require oldText and newText
     if (args.oldText == null || args.newText == null) {
+      const received = {
+        oldText:
+          args.oldText === null
+            ? 'null'
+            : args.oldText === undefined
+              ? 'missing'
+              : 'present',
+        newText:
+          args.newText === null
+            ? 'null'
+            : args.newText === undefined
+              ? 'missing'
+              : 'present',
+        edits:
+          args.edits === null
+            ? 'null'
+            : args.edits === undefined
+              ? 'missing'
+              : 'present',
+      };
       return {
         output: {
           success: false,
-          error:
-            'Either provide edits array or both oldText and newText parameters.',
+          error: dedent`
+            Either provide edits array or both oldText and newText parameters.
+
+            Received: oldText=${received.oldText}, newText=${received.newText}, edits=${received.edits}
+
+            Two valid modes:
+            1. Single edit: {"filePath": "...", "oldText": "exact text", "newText": "replacement text"}
+            2. Multi edit:  {"filePath": "...", "edits": [{"oldText": "...", "newText": "..."}]}
+
+            Common mistake: passing null instead of a string for oldText/newText.
+          `,
         },
         messageMetadata,
       };

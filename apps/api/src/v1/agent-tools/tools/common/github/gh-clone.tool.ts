@@ -114,7 +114,15 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       \`\`\`
 
       ### After Cloning
-      Use returned path for all operations. **If agent instructions are returned, you MUST read them carefully and strictly follow all rules, conventions, and workflows they define for the entire duration of your work on this repository.** These instructions are authoritative — they dictate coding style, commit conventions, testing requirements, forbidden patterns, required commands, and any other project-specific rules. Run files_find_paths to explore structure. Use shell for git commands.
+      Use returned path for all operations. **If agent instructions are returned, you MUST read them carefully and strictly follow all rules, conventions, and workflows they define for the entire duration of your work on this repository.** These instructions are authoritative — they dictate coding style, commit conventions, testing requirements, forbidden patterns, required commands, and any other project-specific rules.
+
+      **Specifically, extract and follow these from the instructions:**
+      - **Build/test/lint commands** — use the exact commands specified in the instructions instead of guessing. If the instructions specify a mandatory pre-completion command (e.g., a full-check or validation script), you MUST run it before finishing.
+      - **Forbidden patterns** — respect all "never do X" and "always do Y" rules.
+      - **Testing conventions** — follow the repo's testing approach (specific test runners, file targeting rules, etc.).
+      - When delegating to subagents, include the relevant instruction sections so subagents follow the same rules.
+
+      Run files_find_paths to explore structure. Use shell for git commands.
     `;
   }
 

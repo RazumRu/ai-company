@@ -14,7 +14,10 @@ function buildWorkspaceContext(ctx: SubagentPromptContext): string {
   const lines: string[] = [];
 
   if (ctx.gitRepoPath) {
-    lines.push(`- Git repository: ${ctx.gitRepoPath}`);
+    lines.push(`- Git repository root: ${ctx.gitRepoPath}`);
+    lines.push(
+      `- Always use absolute paths starting with ${ctx.gitRepoPath}/ when referencing files`,
+    );
   }
 
   if (ctx.resourcesInformation) {
@@ -40,7 +43,7 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
     Your parent agent delegated a task to you to keep its context window clean. You must complete it fully and return a concise, structured result.
 
     ## Strategy — Be Fast and Efficient
-    1. Start with codebase_search (semantic search) to find relevant code — do NOT begin with directory listings or broad file reads.
+    1. Start with codebase_search (semantic search) to find relevant code — do NOT begin with directory listings or broad file reads. Never use shell commands (ls, find, tree) for directory exploration — use files_directory_tree or files_find_paths instead.
     2. Use files_search_text for exact pattern matching (e.g., function names, imports, identifiers).
     3. Use targeted file reads with line ranges for large files (>300 lines). Read only the sections you need.
     4. When tracing code paths, follow imports and function calls systematically — don't guess.
@@ -75,16 +78,17 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
       'running a single command, renaming a variable, or applying a straightforward fix. ' +
       'Do NOT use for tasks requiring deep analysis, multi-file understanding, or complex reasoning — ' +
       'use "system:smart" instead. Examples: "rename function foo to bar in src/utils.ts", ' +
-      '"run pnpm lint:fix and report results", "add a missing import for XyzService".',
+      '"run the lint fix command and report results", "add a missing import for XyzService".',
     systemPrompt: (ctx) =>
       dedent`
     You are a fast subagent — a lightweight agent spawned to perform a small, well-defined task quickly.
     Your parent agent delegated this task to you. Complete it and return a concise result.
 
     ## Strategy
-    1. Read only the files you need — keep it minimal.
+    1. Read only the files you need — keep it minimal. Never use shell commands (ls, find, tree) for directory exploration — use files_directory_tree or files_find_paths instead.
     2. Make targeted, minimal changes. Do not refactor or "improve" code beyond what was requested.
     3. After making changes, verify they work (e.g., check for syntax errors).
+    4. When running build/test/lint/install commands via shell, prefer setting outputFocus to extract only the relevant information (pass/fail status, error messages) instead of consuming your small context with full output. If the focused result lacks detail, re-run without outputFocus.
 
     ## Rules
     - Complete the task autonomously. You cannot ask follow-up questions.
@@ -110,10 +114,11 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
     Your parent agent delegated this task to you because it requires careful reasoning. Complete it fully and return a concise result.
 
     ## Strategy
-    1. Understand the task completely before making changes. Read relevant files first.
+    1. Understand the task completely before making changes. Read relevant files first. Never use shell commands (ls, find, tree) for directory exploration — use files_directory_tree or files_find_paths instead.
     2. Think through the problem carefully — consider edge cases, architectural implications, and correctness.
     3. Make targeted, minimal changes. Do not refactor or "improve" code beyond what was requested.
     4. After making changes, verify they work (e.g., check for syntax errors, run relevant tests if instructed).
+    5. When running build/test/lint/install commands via shell, prefer setting outputFocus to extract only the relevant information (pass/fail status, error messages) to conserve context window space. If the focused result lacks detail, re-run without outputFocus.
 
     ## Rules
     - Complete the task autonomously. You cannot ask follow-up questions.
