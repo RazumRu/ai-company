@@ -78,9 +78,11 @@ export class LitellmService {
     let totalTokens = 0;
     let totalPriceDecimal = new Decimal(0);
     let currentContext = 0;
+    let durationMs = 0;
     let sawAny = false;
     let sawPrice = false;
     let sawContext = false;
+    let sawDuration = false;
 
     for (const usage of usages) {
       if (!usage) continue;
@@ -98,6 +100,10 @@ export class LitellmService {
         currentContext = Math.max(currentContext, usage.currentContext);
         sawContext = true;
       }
+      if (typeof usage.durationMs === 'number') {
+        durationMs += usage.durationMs;
+        sawDuration = true;
+      }
     }
 
     if (!sawAny) {
@@ -112,6 +118,7 @@ export class LitellmService {
       totalTokens,
       ...(sawPrice ? { totalPrice: totalPriceDecimal.toNumber() } : {}),
       ...(sawContext ? { currentContext } : {}),
+      ...(sawDuration ? { durationMs } : {}),
     };
   }
 
@@ -119,9 +126,10 @@ export class LitellmService {
    * Extract token usage and cost from LangChain's ChatOpenAI response.
    * Automatically recalculates price when cached or reasoning tokens are present.
    *
-   * When per-token model rates are unavailable (e.g. OpenRouter models not in
-   * LiteLLM's pricing database), falls back to the provider-reported `cost`
-   * field if present in the usage metadata.
+   * Prefers the provider-reported cost (e.g. OpenRouter's `usage.cost`) when
+   * available, as it reflects the actual upstream charge including any markup
+   * or pricing differences. Falls back to a calculated price from per-token
+   * model rates when the provider does not report a cost.
    */
   async extractTokenUsageFromResponse(
     model: string,
@@ -149,9 +157,14 @@ export class LitellmService {
 
     const totalTokens = usageMetadata?.total_tokens ?? 0;
 
-    // Try to calculate price from per-token model rates first.
-    // Fall back to provider-reported cost (e.g. OpenRouter's `usage.cost`)
-    // when model rates are unavailable.
+    // Prefer the provider-reported cost when available — it represents the
+    // actual upstream charge (e.g. OpenRouter includes markup, tiered pricing,
+    // or per-model rates that may differ from LiteLLM's pricing database).
+    // Fall back to our calculated price from per-token model rates when the
+    // provider does not report a cost (e.g. direct OpenAI/Azure calls).
+    const providerCost =
+      typeof usageMetadata?.cost === 'number' ? usageMetadata.cost : null;
+
     const calculatedPrice = await this.estimateThreadTotalPriceFromModelRates({
       model,
       inputTokens,
@@ -160,9 +173,7 @@ export class LitellmService {
       reasoningTokens,
     });
 
-    const providerCost =
-      typeof usageMetadata?.cost === 'number' ? usageMetadata.cost : null;
-    const totalPrice = calculatedPrice ?? providerCost ?? 0;
+    const totalPrice = providerCost ?? calculatedPrice ?? 0;
 
     return {
       inputTokens,
@@ -249,6 +260,17 @@ export class LitellmService {
     }
 
     return !!entry.model_info?.supports_native_streaming;
+  }
+
+  async supportsAssistantPrefill(model: string): Promise<boolean> {
+    const entry = await this.getLiteLLMModelInfo(model);
+    if (!entry) {
+      return true;
+    }
+
+    // Default to true — most providers accept assistant prefill.
+    // Only return false when explicitly configured as false in model_info.
+    return entry.model_info?.supports_assistant_prefill !== false;
   }
 
   async estimateThreadTotalPriceFromModelRates(args: {

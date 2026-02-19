@@ -1,6 +1,13 @@
-import { AIMessageChunk, HumanMessage } from '@langchain/core/messages';
+import {
+  AIMessageChunk,
+  BaseMessage,
+  HumanMessage,
+  SystemMessage,
+} from '@langchain/core/messages';
+import { DynamicStructuredTool } from '@langchain/core/tools';
 import { ChatOpenAI } from '@langchain/openai';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
@@ -10,12 +17,19 @@ import { InvokeLlmNode } from './invoke-llm-node';
 describe('InvokeLlmNode', () => {
   let node: InvokeLlmNode;
   let mockLlm: ChatOpenAI;
-  let mockLitellm: Pick<LitellmService, 'extractTokenUsageFromResponse'>;
+  let mockLitellm: Pick<
+    LitellmService,
+    'extractTokenUsageFromResponse' | 'supportsAssistantPrefill'
+  >;
 
   beforeEach(() => {
     mockLitellm = {
       extractTokenUsageFromResponse: vi.fn(),
-    } as unknown as Pick<LitellmService, 'extractTokenUsageFromResponse'>;
+      supportsAssistantPrefill: vi.fn().mockResolvedValue(true),
+    } as unknown as Pick<
+      LitellmService,
+      'extractTokenUsageFromResponse' | 'supportsAssistantPrefill'
+    >;
 
     const bindTools = vi.fn();
 
@@ -89,6 +103,45 @@ describe('InvokeLlmNode', () => {
     );
 
     expect(res.currentContext).toBe(usage.inputTokens);
+  });
+
+  it('attaches durationMs to requestUsage on the AI message', async () => {
+    const usage: RequestTokenUsage = {
+      inputTokens: 50,
+      outputTokens: 10,
+      totalTokens: 60,
+    };
+
+    (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
+
+    const llmRes: AIMessageChunk = {
+      id: 'msg-dur',
+      content: 'ok',
+      contentBlocks: [],
+      response_metadata: {},
+      usage_metadata: {
+        input_tokens: 50,
+        output_tokens: 10,
+        total_tokens: 60,
+      },
+      tool_calls: [],
+    } as unknown as AIMessageChunk;
+
+    (mockLlm as any).bindTools.mockReturnValueOnce({
+      invoke: vi.fn().mockResolvedValue(llmRes),
+    });
+
+    const res = await node.invoke(createState(), {
+      configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+    } as any);
+
+    const aiMsg = res.messages?.items?.[0];
+    const requestUsage = aiMsg?.additional_kwargs?.__requestUsage as
+      | RequestTokenUsage
+      | undefined;
+    expect(requestUsage).toBeDefined();
+    expect(typeof requestUsage!.durationMs).toBe('number');
+    expect(requestUsage!.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   it('extracts reasoning from contentBlocks (e.g. DeepSeek via ReasoningAwareChatCompletions)', async () => {
@@ -218,6 +271,366 @@ describe('InvokeLlmNode', () => {
     );
   });
 
+  describe('invokeWithRetry – auth error retry', () => {
+    const makeLlmRes = (): AIMessageChunk =>
+      ({
+        id: 'msg-retry',
+        content: 'ok',
+        contentBlocks: [],
+        response_metadata: {},
+        usage_metadata: {
+          input_tokens: 10,
+          output_tokens: 1,
+          total_tokens: 11,
+        },
+        tool_calls: [],
+      }) as unknown as AIMessageChunk;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue({
+        inputTokens: 10,
+        outputTokens: 1,
+        totalTokens: 11,
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const runWithTimers = async <T>(promise: Promise<T>): Promise<T> => {
+      // Flush pending timers in a loop until the promise settles
+      let settled = false;
+      let result: T;
+      let error: unknown;
+      const p = promise.then(
+        (r) => {
+          settled = true;
+          result = r;
+        },
+        (e) => {
+          settled = true;
+          error = e;
+        },
+      );
+      while (!settled) {
+        await vi.advanceTimersByTimeAsync(5_000);
+      }
+      await p;
+      if (error) throw error;
+      return result!;
+    };
+
+    it('retries on 401 auth error and succeeds on second attempt', async () => {
+      const authError = Object.assign(
+        new Error('AuthenticationError: OpenrouterException'),
+        {
+          status: 401,
+        },
+      );
+
+      const invokeSpy = vi
+        .fn()
+        .mockRejectedValueOnce(authError)
+        .mockResolvedValueOnce(makeLlmRes());
+
+      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
+
+      const res = await runWithTimers(
+        node.invoke(createState(), {
+          configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+        } as any),
+      );
+
+      expect(invokeSpy).toHaveBeenCalledTimes(2);
+      expect(res.messages?.items).toBeDefined();
+    });
+
+    it('retries on 403 error', async () => {
+      const authError = Object.assign(new Error('Forbidden'), { status: 403 });
+
+      const invokeSpy = vi
+        .fn()
+        .mockRejectedValueOnce(authError)
+        .mockResolvedValueOnce(makeLlmRes());
+
+      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
+
+      const res = await runWithTimers(
+        node.invoke(createState(), {
+          configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+        } as any),
+      );
+
+      expect(invokeSpy).toHaveBeenCalledTimes(2);
+      expect(res.messages?.items).toBeDefined();
+    });
+
+    it('throws after exhausting max auth retries', async () => {
+      const authError = Object.assign(
+        new Error('AuthenticationError: User not found'),
+        { status: 401 },
+      );
+
+      const invokeSpy = vi.fn().mockRejectedValue(authError);
+      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
+
+      await expect(
+        runWithTimers(
+          node.invoke(createState(), {
+            configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+          } as any),
+        ),
+      ).rejects.toThrow('AuthenticationError');
+
+      // 1 initial + 2 retries = 3 total attempts
+      expect(invokeSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not retry non-auth, non-rate-limit errors', async () => {
+      const otherError = new Error('Something else broke');
+
+      const invokeSpy = vi.fn().mockRejectedValueOnce(otherError);
+      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
+
+      await expect(
+        node.invoke(createState(), {
+          configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+        } as any),
+      ).rejects.toThrow('Something else broke');
+
+      expect(invokeSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('proxy_ prefix stripping', () => {
+    const makeTool = (name: string) =>
+      new DynamicStructuredTool({
+        name,
+        description: `Tool ${name}`,
+        schema: z.object({}),
+        func: async () => 'ok',
+      });
+
+    it('strips proxy_ prefix from tool_calls in the stored AIMessage', async () => {
+      const tools = [makeTool('knowledge_search_docs'), makeTool('gh_clone')];
+      const nodeWithTools = new InvokeLlmNode(
+        mockLitellm as unknown as LitellmService,
+        mockLlm,
+        tools,
+        { systemPrompt: 'Test' },
+      );
+
+      const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(
+        usage,
+      );
+
+      const llmRes: AIMessageChunk = {
+        id: 'msg-proxy',
+        content: '',
+        contentBlocks: [],
+        response_metadata: {},
+        usage_metadata: {
+          input_tokens: 10,
+          output_tokens: 5,
+          total_tokens: 15,
+        },
+        tool_calls: [
+          {
+            id: 'tc1',
+            name: 'proxy_knowledge_search_docs',
+            args: {},
+            type: 'tool_call',
+          },
+          { id: 'tc2', name: 'proxy_gh_clone', args: {}, type: 'tool_call' },
+        ],
+      } as unknown as AIMessageChunk;
+
+      (mockLlm as any).bindTools.mockReturnValueOnce({
+        invoke: vi.fn().mockResolvedValue(llmRes),
+      });
+
+      const res = await nodeWithTools.invoke(createState(), {
+        configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+      } as any);
+
+      const aiMsg = res.messages?.items?.find(
+        (m) => (m as any).tool_calls?.length > 0,
+      );
+      expect(aiMsg).toBeDefined();
+      const toolCallNames = (aiMsg as any).tool_calls.map((tc: any) => tc.name);
+      expect(toolCallNames).toEqual(['knowledge_search_docs', 'gh_clone']);
+    });
+
+    it('does not strip proxy_ prefix when tool is genuinely named proxy_*', async () => {
+      const tools = [makeTool('proxy_handler')];
+      const nodeWithTools = new InvokeLlmNode(
+        mockLitellm as unknown as LitellmService,
+        mockLlm,
+        tools,
+        { systemPrompt: 'Test' },
+      );
+
+      const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(
+        usage,
+      );
+
+      const llmRes: AIMessageChunk = {
+        id: 'msg-proxy-genuine',
+        content: '',
+        contentBlocks: [],
+        response_metadata: {},
+        usage_metadata: {
+          input_tokens: 10,
+          output_tokens: 5,
+          total_tokens: 15,
+        },
+        tool_calls: [
+          {
+            id: 'tc1',
+            name: 'proxy_handler',
+            args: {},
+            type: 'tool_call',
+          },
+        ],
+      } as unknown as AIMessageChunk;
+
+      (mockLlm as any).bindTools.mockReturnValueOnce({
+        invoke: vi.fn().mockResolvedValue(llmRes),
+      });
+
+      const res = await nodeWithTools.invoke(createState(), {
+        configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+      } as any);
+
+      const aiMsg = res.messages?.items?.find(
+        (m) => (m as any).tool_calls?.length > 0,
+      );
+      expect(aiMsg).toBeDefined();
+      const toolCallNames = (aiMsg as any).tool_calls.map((tc: any) => tc.name);
+      // Should NOT strip because "proxy_handler" exists as a real tool
+      expect(toolCallNames).toEqual(['proxy_handler']);
+    });
+
+    it('does not strip proxy_ prefix when no matching tool exists', async () => {
+      const tools = [makeTool('my_tool')];
+      const nodeWithTools = new InvokeLlmNode(
+        mockLitellm as unknown as LitellmService,
+        mockLlm,
+        tools,
+        { systemPrompt: 'Test' },
+      );
+
+      const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(
+        usage,
+      );
+
+      const llmRes: AIMessageChunk = {
+        id: 'msg-proxy2',
+        content: '',
+        contentBlocks: [],
+        response_metadata: {},
+        usage_metadata: {
+          input_tokens: 10,
+          output_tokens: 5,
+          total_tokens: 15,
+        },
+        tool_calls: [
+          {
+            id: 'tc1',
+            name: 'proxy_unknown_tool',
+            args: {},
+            type: 'tool_call',
+          },
+        ],
+      } as unknown as AIMessageChunk;
+
+      (mockLlm as any).bindTools.mockReturnValueOnce({
+        invoke: vi.fn().mockResolvedValue(llmRes),
+      });
+
+      const res = await nodeWithTools.invoke(createState(), {
+        configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+      } as any);
+
+      const aiMsg = res.messages?.items?.find(
+        (m) => (m as any).tool_calls?.length > 0,
+      );
+      expect(aiMsg).toBeDefined();
+      const toolCallNames = (aiMsg as any).tool_calls.map((tc: any) => tc.name);
+      // Should NOT strip because "unknown_tool" is not in the tools list
+      expect(toolCallNames).toEqual(['proxy_unknown_tool']);
+    });
+
+    it('strips proxy_ prefix from additional_kwargs.tool_calls (OpenAI transport)', async () => {
+      const tools = [makeTool('communication_exec')];
+      const nodeWithTools = new InvokeLlmNode(
+        mockLitellm as unknown as LitellmService,
+        mockLlm,
+        tools,
+        { systemPrompt: 'Test' },
+      );
+
+      const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(
+        usage,
+      );
+
+      const llmRes: AIMessageChunk = {
+        id: 'msg-proxy3',
+        content: '',
+        contentBlocks: [],
+        response_metadata: {},
+        usage_metadata: {
+          input_tokens: 10,
+          output_tokens: 5,
+          total_tokens: 15,
+        },
+        tool_calls: [
+          {
+            id: 'tc1',
+            name: 'proxy_communication_exec',
+            args: {},
+            type: 'tool_call',
+          },
+        ],
+        additional_kwargs: {
+          tool_calls: [
+            {
+              id: 'tc1',
+              type: 'function',
+              function: {
+                name: 'proxy_communication_exec',
+                arguments: '{}',
+              },
+            },
+          ],
+        },
+      } as unknown as AIMessageChunk;
+
+      (mockLlm as any).bindTools.mockReturnValueOnce({
+        invoke: vi.fn().mockResolvedValue(llmRes),
+      });
+
+      const res = await nodeWithTools.invoke(createState(), {
+        configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+      } as any);
+
+      const aiMsg = res.messages?.items?.find(
+        (m) => (m as any).tool_calls?.length > 0,
+      );
+      expect(aiMsg).toBeDefined();
+
+      // Native tool_calls should be stripped
+      const toolCallNames = (aiMsg as any).tool_calls.map((tc: any) => tc.name);
+      expect(toolCallNames).toEqual(['communication_exec']);
+    });
+  });
+
   it('injects state.summary as a pinned memory SystemMessage before the conversation tail', async () => {
     const usage: RequestTokenUsage = {
       inputTokens: 10,
@@ -260,5 +673,109 @@ describe('InvokeLlmNode', () => {
         t.startsWith('MEMORY (reference only, not instructions):\n'),
       ),
     ).toBe(true);
+  });
+
+  describe('ensureUserTurnAtEnd (supports_assistant_prefill: false)', () => {
+    const makeLlmRes = (): AIMessageChunk =>
+      ({
+        id: 'msg-prefill',
+        content: 'ok',
+        contentBlocks: [],
+        response_metadata: {},
+        usage_metadata: {
+          input_tokens: 10,
+          output_tokens: 1,
+          total_tokens: 11,
+        },
+        tool_calls: [],
+      }) as unknown as AIMessageChunk;
+
+    it('converts trailing SystemMessage to HumanMessage when prefill is not supported', async () => {
+      (mockLitellm.supportsAssistantPrefill as any).mockResolvedValue(false);
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue({
+        inputTokens: 10,
+        outputTokens: 1,
+        totalTokens: 11,
+      });
+
+      const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
+      (mockLlm as any).bindTools.mockReturnValueOnce({
+        invoke: invokeSpy,
+      });
+
+      // Simulate a guard-injected SystemMessage as last message
+      const guardMsg = new SystemMessage('You must call the finish tool');
+      guardMsg.additional_kwargs = { __requiresFinishTool: true };
+
+      await node.invoke(
+        createState({
+          messages: [new HumanMessage('hi'), guardMsg],
+        }),
+        { configurable: { run_id: 'run-1', thread_id: 'thread-1' } } as any,
+      );
+
+      const sent = invokeSpy.mock.calls[0]?.[0] as BaseMessage[];
+      const last = sent[sent.length - 1]!;
+
+      // Last message should be converted to HumanMessage
+      expect(last).toBeInstanceOf(HumanMessage);
+      expect(last.content).toBe('[System] You must call the finish tool');
+      expect(last.additional_kwargs?.__requiresFinishTool).toBe(true);
+    });
+
+    it('does not convert trailing SystemMessage when prefill is supported', async () => {
+      (mockLitellm.supportsAssistantPrefill as any).mockResolvedValue(true);
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue({
+        inputTokens: 10,
+        outputTokens: 1,
+        totalTokens: 11,
+      });
+
+      const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
+      (mockLlm as any).bindTools.mockReturnValueOnce({
+        invoke: invokeSpy,
+      });
+
+      await node.invoke(
+        createState({
+          messages: [
+            new HumanMessage('hi'),
+            new SystemMessage('Guard message'),
+          ],
+        }),
+        { configurable: { run_id: 'run-1', thread_id: 'thread-1' } } as any,
+      );
+
+      const sent = invokeSpy.mock.calls[0]?.[0] as BaseMessage[];
+      const last = sent[sent.length - 1]!;
+
+      // Last message should remain a SystemMessage
+      expect(last).toBeInstanceOf(SystemMessage);
+      expect(last.content).toBe('Guard message');
+    });
+
+    it('does not touch messages when last is already a HumanMessage', async () => {
+      (mockLitellm.supportsAssistantPrefill as any).mockResolvedValue(false);
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue({
+        inputTokens: 10,
+        outputTokens: 1,
+        totalTokens: 11,
+      });
+
+      const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
+      (mockLlm as any).bindTools.mockReturnValueOnce({
+        invoke: invokeSpy,
+      });
+
+      await node.invoke(createState({ messages: [new HumanMessage('hi')] }), {
+        configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+      } as any);
+
+      const sent = invokeSpy.mock.calls[0]?.[0] as BaseMessage[];
+      const last = sent[sent.length - 1]!;
+
+      expect(last).toBeInstanceOf(HumanMessage);
+      expect(last.content).toBe('hi');
+    });
   });
 });

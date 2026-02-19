@@ -41,6 +41,7 @@ export const environment = () =>
     llmLargeModel: getEnv('LLM_LARGE_MODEL', 'openai/gpt-5.2'),
     llmLargeCodeModel: getEnv('LLM_LARGE_CODE_MODEL', 'gpt-5.2-codex'),
     llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'openrouter/minimax-m2.5'),
+    llmCodeExplorerSubagentModel: getEnv('LLM_CODE_EXPLORER_SUBAGENT_MODEL'),
     llmMiniModel: getEnv('LLM_MINI_MODEL', 'gpt-5-mini'),
     llmSummarizeOnlineThreshold: +getEnv(
       'LLM_SUMMARIZE_ONLINE_THRESHOLD',
@@ -57,10 +58,7 @@ export const environment = () =>
       'qwen3-embedding:4b',
     ),
     llmOfflineMiniModel: getEnv('LLM_OFFLINE_MINI_MODEL', 'phi3.5:latest'),
-    llmEmbeddingModel: getEnv(
-      'LLM_EMBEDDING_MODEL',
-      'openai/text-embedding-3-small',
-    ),
+    llmEmbeddingModel: getEnv('LLM_EMBEDDING_MODEL', 'text-embedding-3-small'),
     llmNoReasoningModels: getEnv('LLM_NO_REASONING_MODELS', 'qwen3-coder:30b'),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),
@@ -85,11 +83,11 @@ export const environment = () =>
     ),
     codebaseEmbeddingMaxTokens: +getEnv(
       'CODEBASE_EMBEDDING_MAX_TOKENS',
-      '15000',
+      '30000',
     ),
     codebaseEmbeddingConcurrency: +getEnv(
       'CODEBASE_EMBEDDING_CONCURRENCY',
-      '2',
+      '3',
     ),
     codebaseChunkTargetTokens: +getEnv('CODEBASE_CHUNK_TARGET_TOKENS', '200'),
     codebaseChunkOverlapTokens: +getEnv('CODEBASE_CHUNK_OVERLAP_TOKENS', '30'),

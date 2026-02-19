@@ -130,10 +130,20 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
 
   private buildCommand(cmd: string, path?: string): string {
     if (path) {
-      const p = JSON.stringify(path);
-      return `cd ${p} && ${cmd}`;
+      return `cd ${this.shellQuote(path)} && ${cmd}`;
     }
     return cmd;
+  }
+
+  /**
+   * Wraps a value in single quotes with proper escaping for /bin/sh.
+   * Single quotes prevent all shell interpretation (no $, backticks, (), etc.).
+   * The only character that needs escaping inside single quotes is the single
+   * quote itself, done via the standard '\'' technique (end quote, escaped
+   * literal quote, reopen quote).
+   */
+  private shellQuote(value: string): string {
+    return `'${value.replace(/'/g, "'\\''")}'`;
   }
 
   public async invoke(
@@ -170,10 +180,11 @@ export class GhCommitTool extends GhBaseTool<GhCommitToolSchemaType> {
     }
 
     // Create commit with message
-    // Use multiple -m flags for multi-line messages (title and body)
+    // Use single-quoted shell strings to prevent interpretation of special
+    // characters (parentheses, $, backticks, etc.) in commit messages.
     const commitCmd = args.body
-      ? `git commit -m ${JSON.stringify(commitMessage)} -m ${JSON.stringify(args.body)}`
-      : `git commit -m ${JSON.stringify(commitMessage)}`;
+      ? `git commit -m ${this.shellQuote(commitMessage)} -m ${this.shellQuote(args.body)}`
+      : `git commit -m ${this.shellQuote(commitMessage)}`;
 
     const commitRes = await this.execGhCommand(
       {

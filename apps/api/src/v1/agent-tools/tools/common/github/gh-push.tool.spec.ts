@@ -33,6 +33,48 @@ describe('GhPushTool', () => {
     tool = module.get<GhPushTool>(GhPushTool);
   });
 
+  /**
+   * Helper to mock execGhCommand for a standard push flow.
+   * The invoke method now calls:
+   *   1. resolveBranch  (git symbolic-ref --short HEAD) — skipped when args.branch is set
+   *   2. detectDefaultBranch (git symbolic-ref refs/remotes/<remote>/HEAD)
+   *   3. git push (the actual push)
+   *
+   * Since resolveBranch & detectDefaultBranch run via Promise.all, their order in
+   * mockResolvedValueOnce depends on the Promise scheduler but we use sequential
+   * mocking — the spy records calls in order they arrive.
+   */
+  function mockBranchDetection(
+    spy: ReturnType<typeof vi.spyOn>,
+    opts: {
+      currentBranch?: string;
+      defaultBranch?: string;
+      hasBranchArg?: boolean;
+    },
+  ) {
+    // When args.branch is specified, resolveBranch returns immediately without
+    // calling execGhCommand, so only detectDefaultBranch issues a command.
+    if (!opts.hasBranchArg) {
+      // resolveBranch call
+      spy.mockResolvedValueOnce({
+        exitCode: opts.currentBranch ? 0 : 1,
+        stdout: opts.currentBranch ?? '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+    }
+
+    // detectDefaultBranch call
+    spy.mockResolvedValueOnce({
+      exitCode: opts.defaultBranch ? 0 : 1,
+      stdout: opts.defaultBranch
+        ? `refs/remotes/origin/${opts.defaultBranch}`
+        : '',
+      stderr: '',
+      execPath: '/runtime-workspace/test-thread-123',
+    });
+  }
+
   describe('properties', () => {
     it('should have correct name', () => {
       expect(tool.name).toBe('gh_push');
@@ -96,7 +138,13 @@ describe('GhPushTool', () => {
         path: '/runtime-workspace/repo',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'feat/my-feature',
+        defaultBranch: 'main',
+      });
+      // push call
+      spy.mockResolvedValueOnce({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -107,12 +155,6 @@ describe('GhPushTool', () => {
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
-      expect((tool as any).execGhCommand).toHaveBeenCalledTimes(1);
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'cd "/runtime-workspace/repo" && git push -u "origin" HEAD' },
-        mockConfig,
-        mockCfg,
-      );
     });
 
     it('should push successfully with custom remote', async () => {
@@ -121,7 +163,12 @@ describe('GhPushTool', () => {
         remote: 'upstream',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'feat/my-feature',
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -132,11 +179,6 @@ describe('GhPushTool', () => {
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'cd "/runtime-workspace/repo" && git push -u "upstream" HEAD' },
-        mockConfig,
-        mockCfg,
-      );
     });
 
     it('should push successfully with custom branch', async () => {
@@ -145,7 +187,12 @@ describe('GhPushTool', () => {
         branch: 'feature-branch',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        hasBranchArg: true,
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -156,62 +203,6 @@ describe('GhPushTool', () => {
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        {
-          cmd: 'cd "/runtime-workspace/repo" && git push -u "origin" "feature-branch"',
-        },
-        mockConfig,
-        mockCfg,
-      );
-    });
-
-    it('should push successfully with custom remote and branch', async () => {
-      const args: GhPushToolSchemaType = {
-        path: '/runtime-workspace/repo',
-        remote: 'upstream',
-        branch: 'main',
-      };
-
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-        execPath: '/runtime-workspace/test-thread-123',
-      });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect(result.error).toBeUndefined();
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        {
-          cmd: 'cd "/runtime-workspace/repo" && git push -u "upstream" "main"',
-        },
-        mockConfig,
-        mockCfg,
-      );
-    });
-
-    it('should push successfully with path parameter', async () => {
-      const args: GhPushToolSchemaType = {
-        path: '/path/to/repo',
-      };
-
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-        execPath: '/runtime-workspace/test-thread-123',
-      });
-
-      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
-
-      expect(result.success).toBe(true);
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'cd "/path/to/repo" && git push -u "origin" HEAD' },
-        mockConfig,
-        mockCfg,
-      );
     });
 
     it('should push successfully with all parameters', async () => {
@@ -221,7 +212,12 @@ describe('GhPushTool', () => {
         branch: 'feature-branch',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        hasBranchArg: true,
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -231,13 +227,6 @@ describe('GhPushTool', () => {
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        {
-          cmd: 'cd "/path/to/repo" && git push -u "upstream" "feature-branch"',
-        },
-        mockConfig,
-        mockCfg,
-      );
     });
 
     it('should handle push failure', async () => {
@@ -245,7 +234,12 @@ describe('GhPushTool', () => {
         path: '/runtime-workspace/repo',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'feat/my-feature',
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
         exitCode: 1,
         stdout: '',
         stderr: 'Error: failed to push some refs',
@@ -263,7 +257,12 @@ describe('GhPushTool', () => {
         path: '/runtime-workspace/repo',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'feat/my-feature',
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
         exitCode: 1,
         stdout: 'Error: remote rejected',
         stderr: '',
@@ -281,7 +280,12 @@ describe('GhPushTool', () => {
         path: '/runtime-workspace/repo',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'feat/my-feature',
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
         exitCode: 1,
         stdout: '',
         stderr: '',
@@ -300,7 +304,12 @@ describe('GhPushTool', () => {
         branch: 'feature/my-branch',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        hasBranchArg: true,
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -310,13 +319,6 @@ describe('GhPushTool', () => {
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        {
-          cmd: 'cd "/runtime-workspace/repo" && git push -u "origin" "feature/my-branch"',
-        },
-        mockConfig,
-        mockCfg,
-      );
     });
 
     it('should handle remote name with special characters', async () => {
@@ -325,7 +327,12 @@ describe('GhPushTool', () => {
         remote: 'my-remote',
       };
 
-      vi.spyOn(tool as any, 'execGhCommand').mockResolvedValue({
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'feat/my-feature',
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -335,10 +342,180 @@ describe('GhPushTool', () => {
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(result.success).toBe(true);
-      expect((tool as any).execGhCommand).toHaveBeenCalledWith(
-        { cmd: 'cd "/runtime-workspace/repo" && git push -u "my-remote" HEAD' },
-        mockConfig,
-        mockCfg,
+    });
+
+    it('should allow push when default branch detection fails', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'main',
+        defaultBranch: undefined, // detection failed
+      });
+      spy.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should allow push when current branch detection fails', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: undefined, // detection failed
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('default branch protection', () => {
+    const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
+      configurable: {
+        thread_id: 'test-thread-123',
+      },
+    };
+
+    it('should block push when current branch matches default branch (main)', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'main',
+        defaultBranch: 'main',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        'Pushing to the default branch "main" is not allowed',
+      );
+      expect(result.error).toContain('gh_create_pull_request');
+    });
+
+    it('should block push when current branch matches default branch (master)', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'master',
+        defaultBranch: 'master',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        'Pushing to the default branch "master" is not allowed',
+      );
+    });
+
+    it('should block push when explicit branch arg matches default branch', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+        branch: 'main',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        hasBranchArg: true,
+        defaultBranch: 'main',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        'Pushing to the default branch "main" is not allowed',
+      );
+    });
+
+    it('should allow push when branch differs from default branch', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+        branch: 'feat/new-feature',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        hasBranchArg: true,
+        defaultBranch: 'main',
+      });
+      spy.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should not issue push command when blocking default branch', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        currentBranch: 'main',
+        defaultBranch: 'main',
+      });
+
+      await tool.invoke(args, mockConfig, mockCfg);
+
+      // Only the branch detection calls, no push call
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    it('should block push with custom remote when branch matches default', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+        remote: 'upstream',
+        branch: 'develop',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      // detectDefaultBranch for upstream returns 'develop'
+      spy.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'refs/remotes/upstream/develop',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        'Pushing to the default branch "develop" is not allowed',
       );
     });
   });

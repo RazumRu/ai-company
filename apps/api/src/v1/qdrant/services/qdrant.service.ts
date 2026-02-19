@@ -132,13 +132,20 @@ export class QdrantService {
     }
 
     if (existingSize !== vectorSize) {
-      throw new InternalException('QDRANT_VECTOR_SIZE_MISMATCH', {
-        expected: existingSize,
-        actual: vectorSize,
+      this.logger.warn(
+        `Collection "${name}" vector size changed (${existingSize} → ${vectorSize}). ` +
+          `Dropping and recreating collection.`,
+      );
+      await this.client.deleteCollection(name);
+      this.knownCollections.delete(name);
+      this.vectorSizeCache.delete(name);
+
+      await this.client.createCollection(name, {
+        vectors: { size: vectorSize, distance },
       });
     }
 
-    this.vectorSizeCache.set(name, existingSize);
+    this.vectorSizeCache.set(name, vectorSize);
     this.knownCollections.add(name);
   }
 

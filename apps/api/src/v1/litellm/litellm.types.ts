@@ -16,6 +16,11 @@ export type RequestTokenUsage = {
    * This is not additive; it's a point-in-time measurement.
    */
   currentContext?: number;
+  /**
+   * Wall-clock duration of the LLM API call in milliseconds.
+   * Measured client-side around the invoke() call.
+   */
+  durationMs?: number;
 };
 
 export type UsageMetadata = Partial<ResponseUsage> & {
@@ -86,5 +91,6 @@ export type LiteLLMModelInfo = {
     supports_function_calling?: boolean;
     supports_parallel_function_calling?: boolean;
     supports_native_streaming?: boolean;
+    supports_assistant_prefill?: boolean;
   } | null;
 };

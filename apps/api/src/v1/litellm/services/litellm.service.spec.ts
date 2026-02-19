@@ -147,7 +147,7 @@ describe('LitellmService', () => {
       expect(result!.totalPrice).toBe(0.00046689);
     });
 
-    it('prefers calculated price over provider-reported cost when both available', async () => {
+    it('prefers provider-reported cost over calculated price when both available', async () => {
       const svc = createSvc(buildModelInfo());
 
       const result = await svc.extractTokenUsageFromResponse('gpt-4', {
@@ -156,12 +156,27 @@ describe('LitellmService', () => {
         total_tokens: 15,
         input_tokens_details: { cached_tokens: 0 },
         output_tokens_details: { reasoning_tokens: 0 },
-        cost: 0.99, // Provider cost should be ignored when rates are available
+        cost: 0.00075, // Provider cost takes precedence (actual upstream charge)
       });
 
       expect(result).toBeDefined();
-      // Should use calculated price, not the provider cost of 0.99
-      expect(result!.totalPrice).not.toBe(0.99);
+      // Should use provider-reported cost, as it reflects the actual upstream charge
+      expect(result!.totalPrice).toBe(0.00075);
+    });
+
+    it('falls back to calculated price when provider cost is absent', async () => {
+      const svc = createSvc(buildModelInfo());
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+        // No cost field — should use calculated price
+      });
+
+      expect(result).toBeDefined();
       expect(result!.totalPrice).toBeGreaterThan(0);
       // (10 * 0.00003) + (5 * 0.00006) = 0.0003 + 0.0003 = 0.0006
       expect(result!.totalPrice).toBeCloseTo(0.0006, 10);
@@ -271,6 +286,40 @@ describe('LitellmService', () => {
         totalPrice: 0.003,
         currentContext: 20, // Max of all contexts
       });
+    });
+
+    it('sums durationMs across usages', () => {
+      const svc = createSvc();
+      const result = svc.sumTokenUsages([
+        {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          durationMs: 1500,
+        },
+        {
+          inputTokens: 20,
+          outputTokens: 10,
+          totalTokens: 30,
+          durationMs: 2300,
+        },
+      ]);
+
+      expect(result).toEqual({
+        inputTokens: 30,
+        outputTokens: 15,
+        totalTokens: 45,
+        durationMs: 3800,
+      });
+    });
+
+    it('omits durationMs when no usages have it', () => {
+      const svc = createSvc();
+      const result = svc.sumTokenUsages([
+        { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      ]);
+
+      expect(result).not.toHaveProperty('durationMs');
     });
   });
 });

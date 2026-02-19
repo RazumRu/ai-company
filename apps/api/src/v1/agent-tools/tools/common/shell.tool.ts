@@ -143,6 +143,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       - \`cd\` changes persist between shell calls within the same thread
       - No need to repeat \`cd\` if already in correct directory
       - Environment variables also persist
+      - **Track your current directory** — if a command fails with "No package.json found" or "ENOENT", you are likely in the wrong directory. Verify by running \`pwd\` before retrying.
 
       **Example:**
       \`\`\`bash
@@ -155,6 +156,11 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       # Third command: still in the same directory
       npm test  # Still in ${BASE_RUNTIME_WORKDIR}/myproject
       \`\`\`
+
+      ### Monorepo Commands — Root vs. Workspace
+      In monorepo projects, some commands must run from the **repository root** (e.g., turbo scripts, workspace-level build/lint), while others run from a **specific workspace** directory. If a command fails with "No package.json found" errors, verify you are in the correct directory:
+      - Root-level scripts (build, lint, full-check): run from the repository root (e.g., \`${BASE_RUNTIME_WORKDIR}/myproject\`)
+      - Workspace-specific scripts: run from the workspace directory or use \`--filter\` flags
 
       ### When to Use
       Git operations, build/test/install commands, system inspection, custom scripts, or when specialized tools don't exist.

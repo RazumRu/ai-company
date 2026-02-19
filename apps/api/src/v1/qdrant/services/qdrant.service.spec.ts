@@ -33,6 +33,7 @@ type MockQdrantClient = {
   getCollections: ReturnType<typeof vi.fn>;
   getCollection: ReturnType<typeof vi.fn>;
   createCollection: ReturnType<typeof vi.fn>;
+  deleteCollection: ReturnType<typeof vi.fn>;
   createPayloadIndex: ReturnType<typeof vi.fn>;
   upsert: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
@@ -59,6 +60,7 @@ describe('QdrantService', () => {
         config: { params: { vectors: { size: 2 } } },
       }),
       createCollection: vi.fn(),
+      deleteCollection: vi.fn(),
       createPayloadIndex: vi.fn(),
       upsert: vi.fn(),
       delete: vi.fn(),
@@ -212,6 +214,34 @@ describe('QdrantService', () => {
         must: [{ key: 'x', match: { value: 'y' } }],
       });
       expect(mockClient.getCollection).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('ensureCollection – vector size mismatch', () => {
+    it('drops and recreates the collection when vector size changes', async () => {
+      // Existing collection has size 2 (from default getCollection mock)
+      await service.ensureCollection('resized-col', 5);
+
+      expect(mockClient.deleteCollection).toHaveBeenCalledWith('resized-col');
+      expect(mockClient.createCollection).toHaveBeenCalledWith('resized-col', {
+        vectors: { size: 5, distance: 'Cosine' },
+      });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('vector size changed (2 → 5)'),
+      );
+    });
+
+    it('caches the new size after recreating', async () => {
+      await service.ensureCollection('resized-col', 5);
+      mockClient.getCollection.mockClear();
+      mockClient.deleteCollection.mockClear();
+      mockClient.createCollection.mockClear();
+
+      // Second call with same size should hit cache — no Qdrant calls
+      await service.ensureCollection('resized-col', 5);
+      expect(mockClient.getCollection).not.toHaveBeenCalled();
+      expect(mockClient.deleteCollection).not.toHaveBeenCalled();
+      expect(mockClient.createCollection).not.toHaveBeenCalled();
     });
   });
 

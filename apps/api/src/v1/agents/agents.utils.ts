@@ -1,10 +1,11 @@
 import {
   AIMessage,
   AIMessageChunk,
+  BaseMessage,
   ChatMessage,
   ContentBlock,
+  ToolMessage,
 } from '@langchain/core/messages';
-import { BaseMessage, ToolMessage } from '@langchain/core/messages';
 import type { InvalidToolCall, ToolCall } from '@langchain/core/messages/tool';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { isPlainObject } from 'lodash';
@@ -275,6 +276,27 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
  */
 export function prepareMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
   return filterMessagesForLlm(messages).map((m) => sanitizeMessageForLlm(m));
+}
+
+/**
+ * Some OAuth proxies (e.g. CLIProxyAPI) inject a Claude Code system prompt
+ * that causes the model to prefix tool names with "proxy_".
+ *
+ * Strips the prefix only when the prefixed name is not a real tool AND the
+ * stripped name matches an existing tool. This avoids mangling tools that are
+ * genuinely named `proxy_*`.
+ */
+const PROXY_PREFIX = 'proxy_';
+
+export function stripProxyPrefix(
+  name: string,
+  knownToolNames: ReadonlySet<string>,
+): string {
+  if (!name.startsWith(PROXY_PREFIX) || knownToolNames.has(name)) {
+    return name;
+  }
+  const stripped = name.slice(PROXY_PREFIX.length);
+  return knownToolNames.has(stripped) ? stripped : name;
 }
 
 export function convertChunkToMessage(chunk: AIMessageChunk): AIMessage {

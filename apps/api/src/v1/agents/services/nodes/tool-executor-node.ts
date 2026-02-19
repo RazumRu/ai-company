@@ -15,7 +15,10 @@ import {
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
-import { updateMessagesListWithMetadata } from '../../agents.utils';
+import {
+  stripProxyPrefix,
+  updateMessagesListWithMetadata,
+} from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
 
 export class ToolExecutorNode extends BaseNode<
@@ -51,6 +54,7 @@ export class ToolExecutorNode extends BaseNode<
     }
 
     const toolsMap = keyBy(this.tools, 'name');
+    const toolNameSet = new Set(Object.keys(toolsMap));
 
     // Normalise tool-call IDs: some providers (e.g. Gemini via LiteLLM) may
     // return tool_calls with undefined ids.  ToolMessages require a matching
@@ -66,6 +70,13 @@ export class ToolExecutorNode extends BaseNode<
     const results = await Promise.all(
       calls.map(async (tc) => {
         const callId = tc.id!;
+
+        // Defence-in-depth: InvokeLlmNode.stripProxyToolNamePrefix() already
+        // cleans "proxy_" prefixes from tool calls before they are stored.
+        // This secondary check catches edge cases (e.g. loaded from older
+        // checkpoints that were persisted before the upstream fix).
+        tc.name = stripProxyPrefix(tc.name, toolNameSet);
+
         const tool = toolsMap[tc.name];
         const makeMsg = (
           content: string,

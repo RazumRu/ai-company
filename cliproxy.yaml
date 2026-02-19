@@ -1,0 +1,27 @@
+# CLIProxyAPI configuration
+# Docs: https://help.router-for.me/
+
+host: ""
+port: 8317
+# Auth directory for OAuth tokens (Claude subscription login)
+auth-dir: "/root/.cli-proxy-api"
+# API key that litellm uses to authenticate to this proxy
+api-keys:
+  - "cliproxy-local-key"
+remote-management:
+  allow-remote: true
+  secret-key: "$2a$10$iWoj7nZl7mjgI04GMUMWgelVq21HJZcyjx.XSBhO6aiX1Oc2FHSti"
+  disable-control-panel: false
+debug: true
+request-retry: 3
+max-retry-interval: 30
+routing:
+  strategy: "round-robin"
+
+# Claude OAuth is handled via the auth-dir tokens.
+# To log in, run the container and follow the OAuth flow via the management API.
+# After authenticating, Claude models become available through the proxy's OpenAI-compatible API.
+
+# If you also have Claude API keys, uncomment below:
+# claude-api-key:
+#   - api-key: "sk-..."

@@ -17,6 +17,7 @@ import {
   buildReasoningMessage,
   convertChunkToMessage,
   prepareMessagesForLlm,
+  stripProxyPrefix,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
@@ -77,13 +78,25 @@ export class InvokeLlmNode extends BaseNode<
     // Messages sent to the LLM should be sanitized without internal metadata.
     // DO NOT call updateMessagesListWithMetadata here as it adds back internal tracking data
     // (__runId, __createdAt) that the LLM doesn't need and might interfere with the request.
-    const messages: BaseMessage[] = [
+    let messages: BaseMessage[] = [
       new SystemMessage(
         this.opts?.systemPrompt || 'You are a helpful AI assistant.',
       ),
       ...(summaryMemoryMessage ? [summaryMemoryMessage] : []),
       ...preparedMessages,
     ];
+
+    // Some providers (e.g. Claude via OAuth proxies) reject conversations that
+    // end with a non-user message ("prefill" error).  When the model is marked
+    // `supports_assistant_prefill: false`, convert a trailing SystemMessage
+    // (e.g. injected by tool-usage-guard) to a HumanMessage so the
+    // conversation always ends on a user turn.
+    const model = String(this.llm.model);
+    const prefillSupported =
+      await this.litellmService.supportsAssistantPrefill(model);
+    if (!prefillSupported) {
+      messages = this.ensureUserTurnAtEnd(messages);
+    }
 
     // Note: runner.invoke() is always non-streaming.
     // If the model doesn't support streaming, we still use invoke() which is correct.
@@ -95,9 +108,12 @@ export class InvokeLlmNode extends BaseNode<
             'unknown-thread',
         ],
       });
+    const invokeStartMs = performance.now();
     const res = await this.invokeWithRetry(invokeLlm);
+    const durationMs = Math.round(performance.now() - invokeStartMs);
 
     const preparedRes = convertChunkToMessage(res);
+    this.stripProxyToolNamePrefix(preparedRes);
     this.attachToolCallTitles(preparedRes);
 
     // If this invocation is happening right after tool execution, tag the AI response
@@ -111,7 +127,6 @@ export class InvokeLlmNode extends BaseNode<
       };
     }
 
-    const model = String(this.llm.model);
     const rawUsage = res.response_metadata?.usage as
       | Record<string, unknown>
       | undefined;
@@ -127,6 +142,9 @@ export class InvokeLlmNode extends BaseNode<
       model,
       usageMetadata as UsageMetadata,
     );
+    if (threadUsage) {
+      threadUsage.durationMs = durationMs;
+    }
 
     // Attach model metadata and request usage
     preparedRes.additional_kwargs = {
@@ -173,6 +191,8 @@ export class InvokeLlmNode extends BaseNode<
 
   private async invokeWithRetry<T>(invoke: () => Promise<T>): Promise<T> {
     const maxRetryMs = 60_000;
+    const authRetryDelayMs = 5_000;
+    const maxAuthRetries = 2;
     const retryAfterRe = /Please try again in ([0-9.]+)s/i;
     const sleep = (ms: number) =>
       new Promise<void>((resolve) => {
@@ -224,11 +244,26 @@ export class InvokeLlmNode extends BaseNode<
       return diffMs > 0 ? Math.ceil(diffMs) : null;
     };
 
-    const getRetryDelayMs = (error: unknown): number | null => {
+    const getErrorStatus = (error: unknown): number | undefined => {
       const status =
         (error as { status?: unknown })?.status ??
         (error as { response?: { status?: unknown } })?.response?.status ??
         (error as { statusCode?: unknown })?.statusCode;
+      return typeof status === 'number' ? status : undefined;
+    };
+
+    const isAuthError = (error: unknown): boolean => {
+      const status = getErrorStatus(error);
+      if (status === 401 || status === 403) return true;
+      const message = getMessage(error);
+      return (
+        typeof message === 'string' &&
+        /AuthenticationError|Unauthorized/i.test(message)
+      );
+    };
+
+    const getRetryDelayMs = (error: unknown): number | null => {
+      const status = getErrorStatus(error);
       const code =
         (error as { code?: unknown })?.code ??
         (error as { error?: { code?: unknown } })?.error?.code;
@@ -251,28 +286,99 @@ export class InvokeLlmNode extends BaseNode<
       return match?.[1] ? parseRetryAfterMs(match[1]) : null;
     };
 
-    try {
-      return await invoke();
-    } catch (error: unknown) {
-      const retryDelayMs = getRetryDelayMs(error);
-      if (retryDelayMs === null) {
-        throw error;
-      }
+    let authRetries = 0;
 
-      if (retryDelayMs > maxRetryMs) {
-        const retrySeconds = Math.ceil(retryDelayMs / 1000);
-        throw new Error(
-          `Rate limit retry delay ${retrySeconds}s exceeds 60s.`,
-          { cause: error },
+    const attempt = async (): Promise<T> => {
+      try {
+        return await invoke();
+      } catch (error: unknown) {
+        // Retry transient auth errors (e.g. upstream provider returning 401
+        // due to temporary issues like session expiry or provider restarts)
+        if (isAuthError(error) && authRetries < maxAuthRetries) {
+          authRetries++;
+          this.logger?.warn(
+            `Auth error (attempt ${authRetries}/${maxAuthRetries}). ` +
+              `Retrying LLM call after ${authRetryDelayMs}ms. ` +
+              `Error: ${getMessage(error)}`,
+          );
+          await sleep(authRetryDelayMs);
+          return attempt();
+        }
+
+        const retryDelayMs = getRetryDelayMs(error);
+        if (retryDelayMs === null) {
+          throw error;
+        }
+
+        if (retryDelayMs > maxRetryMs) {
+          const retrySeconds = Math.ceil(retryDelayMs / 1000);
+          throw new Error(
+            `Rate limit retry delay ${retrySeconds}s exceeds 60s.`,
+            { cause: error },
+          );
+        }
+
+        this.logger?.warn(
+          `Rate limit hit. Retrying LLM call after ${retryDelayMs}ms.`,
         );
+        await sleep(retryDelayMs);
+        return invoke();
       }
+    };
 
-      this.logger?.warn(
-        `Rate limit hit. Retrying LLM call after ${retryDelayMs}ms.`,
-      );
-      await sleep(retryDelayMs);
-      return invoke();
+    return attempt();
+  }
+
+  /**
+   * Strips "proxy_" prefixes injected by OAuth proxies (e.g. CLIProxyAPI)
+   * from tool_calls and additional_kwargs.tool_calls so the stored AIMessage
+   * (and therefore the UI) shows clean tool names.
+   */
+  private stripProxyToolNamePrefix(msg: AIMessage): void {
+    const knownNames = new Set(this.tools.map((t) => t.name));
+
+    if (Array.isArray(msg.tool_calls)) {
+      for (const tc of msg.tool_calls) {
+        tc.name = stripProxyPrefix(tc.name, knownNames);
+      }
     }
+
+    const kwToolCalls = (msg.additional_kwargs as { tool_calls?: unknown[] })
+      ?.tool_calls;
+    if (Array.isArray(kwToolCalls)) {
+      for (const tc of kwToolCalls) {
+        const obj = tc as { function?: { name?: string } };
+        if (typeof obj?.function?.name === 'string') {
+          obj.function.name = stripProxyPrefix(obj.function.name, knownNames);
+        }
+      }
+    }
+  }
+
+  /**
+   * If the last message is a SystemMessage, convert it to a HumanMessage.
+   * This prevents "assistant message prefill" errors on providers that reject
+   * conversations not ending with a user turn.
+   */
+  private ensureUserTurnAtEnd(messages: BaseMessage[]): BaseMessage[] {
+    if (messages.length === 0) {
+      return messages;
+    }
+
+    const last = messages[messages.length - 1];
+    if (!(last instanceof SystemMessage)) {
+      return messages;
+    }
+
+    const content =
+      typeof last.content === 'string'
+        ? `[System] ${last.content}`
+        : last.content;
+
+    const replacement = new HumanMessage({ content });
+    replacement.additional_kwargs = { ...(last.additional_kwargs ?? {}) };
+
+    return [...messages.slice(0, -1), replacement];
   }
 
   private attachToolCallTitles(msg: ReturnType<typeof convertChunkToMessage>) {

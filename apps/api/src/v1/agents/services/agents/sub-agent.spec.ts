@@ -71,6 +71,7 @@ describe('SubAgent', () => {
       supportsResponsesApi: vi.fn().mockResolvedValue(false),
       supportsReasoning: vi.fn().mockResolvedValue(false),
       supportsStreaming: vi.fn().mockResolvedValue(false),
+      supportsAssistantPrefill: vi.fn().mockResolvedValue(true),
       extractTokenUsageFromResponse: vi.fn().mockResolvedValue({
         inputTokens: 100,
         outputTokens: 30,
@@ -272,7 +273,6 @@ describe('SubAgent', () => {
         defaultCfg,
       );
 
-      // The second LLM call should contain a SystemMessage with the nudge text
       const systemMessages = capturedMessages.filter(
         (m) => m instanceof SystemMessage,
       );

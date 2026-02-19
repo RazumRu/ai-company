@@ -111,6 +111,46 @@ model_list:
     model_info:
       base_model: minimax/MiniMax-M2.5    # map pricing from LiteLLM DB
 
+  # CLIProxyAPI (Claude OAuth subscription)
+  # Key settings for OAuth proxy compatibility:
+  #   - supports_response_schema: false — forces chat completions API instead of
+  #     Responses API (/v1/responses), avoiding Claude Code system prompt cloaking
+  #     that prefixes tool names with "proxy_"
+  #   - supports_assistant_prefill: false — CLIProxyAPI rejects conversations ending
+  #     with an assistant message ("prefill" error); this tells LiteLLM to strip them
+  - model_name: claude-sonnet-4.6-oauth
+    litellm_params:
+      model: openai/claude-sonnet-4-6
+      api_base: http://cli-proxy-api:8317/v1/
+      api_key: cliproxy-local-key
+      drop_params: true
+    model_info:
+      base_model: claude-sonnet-4-6         # map pricing from LiteLLM DB
+      supports_response_schema: false
+      supports_assistant_prefill: false
+
+  - model_name: claude-opus-4.6-oauth
+    litellm_params:
+      model: openai/claude-opus-4-6
+      api_base: http://cli-proxy-api:8317/v1/
+      api_key: cliproxy-local-key
+      drop_params: true
+    model_info:
+      base_model: claude-opus-4-6           # map pricing from LiteLLM DB
+      supports_response_schema: false
+      supports_assistant_prefill: false
+
+  - model_name: claude-haiku-4.5-oauth
+    litellm_params:
+      model: openai/claude-haiku-4-5-20251001
+      api_base: http://cli-proxy-api:8317/v1/
+      api_key: cliproxy-local-key
+      drop_params: true
+    model_info:
+      base_model: claude-haiku-4.5
+      supports_response_schema: false
+      supports_assistant_prefill: false
+
   # Ollama local models
   - model_name: qwen3-coder:30b
     litellm_params:

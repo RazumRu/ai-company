@@ -109,7 +109,7 @@ Then set `LLM_USE_OFFLINE_MODEL=true` in your `.env` file.
 | Database | PostgreSQL (+ pgvector) |
 | Vector Store | Qdrant |
 | Cache & Queue | Redis + BullMQ |
-| LLM Proxy | LiteLLM + OpenRouter (OpenAI, Anthropic, Google, Ollama) |
+| LLM Proxy | LiteLLM + OpenRouter (OpenAI, Anthropic, Google, Ollama) + CLIProxyAPI (Claude OAuth) |
 | Auth | Keycloak |
 | Containerization | Docker / Podman |
 | Monorepo | pnpm + Turborepo |
@@ -173,6 +173,55 @@ Pre-configured cloud models (in `litellm.yaml`):
 
 All cloud models route through [OpenRouter](https://openrouter.ai/) via the LiteLLM proxy. You can add more models by editing `litellm.yaml` in the repo root — any model available on OpenRouter can be added with the `openrouter/` prefix. See the [LiteLLM docs](https://docs.litellm.ai/) for other supported providers.
 
+### Using Claude OAuth (via CLIProxyAPI)
+
+You can use your Claude subscription (OAuth) instead of paying per-token via OpenRouter. This is powered by [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), which runs as a Docker service and exposes an OpenAI-compatible API backed by your Claude OAuth session.
+
+#### Setup
+
+```bash
+# 1. Start infrastructure (CLIProxyAPI is included on port 8317)
+pnpm deps:up
+
+# 2. Open the management panel in your browser
+open http://localhost:8317/management.html
+
+# 3. Enter the management secret key (default: "cliproxy-mgmt-secret")
+#    and click "Anthropic" to start the Claude OAuth login flow
+
+# 4. Complete the OAuth flow — once authenticated, models are available immediately
+```
+
+#### Configuration
+
+CLIProxyAPI is configured via `cliproxy.yaml` in the repo root. Key settings:
+
+| Setting | Description | Default |
+|---|---|---|
+| `api-keys` | API keys that LiteLLM uses to authenticate to the proxy | `cliproxy-local-key` |
+| `remote-management.secret-key` | Secret for the management panel (hashed on first startup) | `cliproxy-mgmt-secret` |
+| `remote-management.allow-remote` | Allow management access from outside the container | `true` |
+| `auth-dir` | Directory where OAuth tokens are stored | `/root/.cli-proxy-api` |
+| `routing.strategy` | Credential selection strategy (`round-robin` or `fill-first`) | `round-robin` |
+
+OAuth tokens are persisted in a Docker volume (`cliproxy-auth`) and survive container restarts. See the [CLIProxyAPI docs](https://help.router-for.me/) for advanced options (multi-account load balancing, request cloaking, model aliases, etc.).
+
+#### Available models
+
+Pre-configured Claude OAuth models (in `litellm.yaml`):
+
+| Model name | Upstream model | Notes |
+|---|---|---|
+| `claude-sonnet-4.6-oauth` | `claude-sonnet-4-6` | Uses Claude subscription |
+| `claude-opus-4.6-oauth` | `claude-opus-4-6` | Uses Claude subscription |
+| `claude-haiku-4.5-oauth` | `claude-haiku-4-5-20251001` | Uses Claude subscription |
+
+To see all models available from your OAuth session, run:
+
+```bash
+curl http://localhost:8317/v1/models -H "Authorization: Bearer cliproxy-local-key"
+```
+
 ### Using Local Models (Ollama)
 
 Run fully offline with no API keys required. Install the [Ollama](https://ollama.com/download) client first, then:
@@ -215,7 +264,7 @@ Pre-configured local models:
 | `LLM_LARGE_MODEL` | Default large model | `openai/gpt-5.2` |
 | `LLM_MINI_MODEL` | Default mini model | `gpt-5-mini` |
 | `LLM_LARGE_CODE_MODEL` | Code generation model | `gpt-5.2-codex` |
-| `LLM_EMBEDDING_MODEL` | Embedding model | `openai/text-embedding-3-small` |
+| `LLM_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
 | `LLM_USE_OFFLINE_MODEL` | Switch to Ollama models | `false` |
 | `LLM_OFFLINE_CODING_MODEL` | Offline coding model | `glm-4.7-flash` |
 | `LLM_OFFLINE_EMBEDDING_MODEL` | Offline embedding model | `qwen3-embedding:4b` |

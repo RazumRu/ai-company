@@ -15,6 +15,7 @@ import {
   filterMessagesForLlm,
   markMessageHideForLlm,
   prepareMessagesForLlm,
+  stripProxyPrefix,
   updateMessagesListWithMetadata,
   updateMessageWithMetadata,
 } from './agents.utils';
@@ -608,6 +609,34 @@ describe('agents.utils', () => {
         }),
       ];
       expect(extractExploredFilesFromMessages(messages)).toEqual([]);
+    });
+  });
+
+  describe('stripProxyPrefix', () => {
+    const tools = new Set([
+      'gh_clone',
+      'knowledge_search_docs',
+      'proxy_handler',
+    ]);
+
+    it('strips proxy_ when stripped name is a known tool', () => {
+      expect(stripProxyPrefix('proxy_gh_clone', tools)).toBe('gh_clone');
+      expect(stripProxyPrefix('proxy_knowledge_search_docs', tools)).toBe(
+        'knowledge_search_docs',
+      );
+    });
+
+    it('does not strip when the prefixed name itself is a known tool', () => {
+      expect(stripProxyPrefix('proxy_handler', tools)).toBe('proxy_handler');
+    });
+
+    it('does not strip when the stripped name is not a known tool', () => {
+      expect(stripProxyPrefix('proxy_unknown', tools)).toBe('proxy_unknown');
+    });
+
+    it('returns name unchanged when it does not start with proxy_', () => {
+      expect(stripProxyPrefix('gh_clone', tools)).toBe('gh_clone');
+      expect(stripProxyPrefix('finish', tools)).toBe('finish');
     });
   });
 

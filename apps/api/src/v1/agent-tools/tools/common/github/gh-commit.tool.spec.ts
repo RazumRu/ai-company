@@ -164,21 +164,21 @@ describe('GhCommitTool', () => {
       expect((tool as any).execGhCommand).toHaveBeenCalledTimes(3);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'cd "/path/to/repo" && git diff --cached --quiet' },
+        { cmd: `cd '/path/to/repo' && git diff --cached --quiet` },
         mockConfig,
         mockCfg,
       );
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         2,
         {
-          cmd: 'cd "/path/to/repo" && git commit -m "feat: [AI] Add new feature"',
+          cmd: `cd '/path/to/repo' && git commit -m 'feat: [AI] Add new feature'`,
         },
         mockConfig,
         mockCfg,
       );
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         3,
-        { cmd: 'cd "/path/to/repo" && git rev-parse HEAD' },
+        { cmd: `cd '/path/to/repo' && git rev-parse HEAD` },
         mockConfig,
         mockCfg,
       );
@@ -220,11 +220,53 @@ describe('GhCommitTool', () => {
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         2,
         {
-          cmd: 'cd "/path/to/repo" && git commit -m "fix: [AI] Fix bug in authentication" -m "This fixes a critical bug where users could not authenticate."',
+          cmd: `cd '/path/to/repo' && git commit -m 'fix: [AI] Fix bug in authentication' -m 'This fixes a critical bug where users could not authenticate.'`,
         },
         mockConfig,
         mockCfg,
       );
+    });
+
+    it('should escape shell special characters in body', async () => {
+      const args: GhCommitToolSchemaType = {
+        semanticType: SemanticCommitType.FEAT,
+        title: 'add compileTemporary(entity, callback)',
+        body: 'Uses existing getOrCompile() de-dup.\n- Created validation/ dir\n- $(whoami) should not execute',
+        path: '/path/to/repo',
+      };
+
+      vi.spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'abc123',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      // Verify single-quote escaping prevents shell interpretation of (), $()
+      const commitCall = (tool as any).execGhCommand.mock.calls[1][0].cmd;
+      expect(commitCall).toContain(
+        "git commit -m 'feat: [AI] add compileTemporary(entity, callback)'",
+      );
+      expect(commitCall).toContain("'Uses existing getOrCompile()");
+      expect(commitCall).toContain('$(whoami) should not execute');
+      // Must not use double quotes (which allow shell interpretation)
+      expect(commitCall).not.toMatch(/git commit -m "[^']/);
     });
 
     it('should handle no staged changes', async () => {
@@ -411,7 +453,7 @@ describe('GhCommitTool', () => {
         expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
           2,
           {
-            cmd: `cd "/path/to/repo" && git commit -m "${type}: [AI] Test commit"`,
+            cmd: `cd '/path/to/repo' && git commit -m '${type}: [AI] Test commit'`,
           },
           mockConfig,
           mockCfg,
@@ -453,21 +495,21 @@ describe('GhCommitTool', () => {
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'cd "/path/to/repo" && git diff --cached --quiet' },
+        { cmd: `cd '/path/to/repo' && git diff --cached --quiet` },
         mockConfig,
         mockCfg,
       );
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         2,
         {
-          cmd: 'cd "/path/to/repo" && git commit -m "feat: [AI] Add new feature"',
+          cmd: `cd '/path/to/repo' && git commit -m 'feat: [AI] Add new feature'`,
         },
         mockConfig,
         mockCfg,
       );
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         3,
-        { cmd: 'cd "/path/to/repo" && git rev-parse HEAD' },
+        { cmd: `cd '/path/to/repo' && git rev-parse HEAD` },
         mockConfig,
         mockCfg,
       );
@@ -505,7 +547,7 @@ describe('GhCommitTool', () => {
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'cd "/path/to/repo" && git diff --cached --quiet' },
+        { cmd: `cd '/path/to/repo' && git diff --cached --quiet` },
         mockConfig,
         mockCfg,
       );
