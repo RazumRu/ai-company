@@ -270,8 +270,7 @@ export class GraphCompiler {
       return await callback(compiledGraph);
     } finally {
       if (!alreadyRunning) {
-        const currentStatus = this.graphRegistry.getStatus(entity.id);
-        if (currentStatus !== undefined) {
+        if (this.graphRegistry.get(entity.id)) {
           await this.graphRegistry.destroy(entity.id).catch((err) => {
             this.logger.error(
               err as Error,

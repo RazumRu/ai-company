@@ -290,13 +290,13 @@ export class AiSuggestionsService {
       const tools = this.getConnectedTools(
         graphId,
         nodeId,
-        compiledGraph?.edges || graph.schema.edges,
+        compiledGraph.edges,
         compiledGraph,
       );
       const mcpInstructions = this.getConnectedMcpInstructions(
         graphId,
         nodeId,
-        compiledGraph?.edges || graph.schema.edges,
+        compiledGraph.edges,
         compiledGraph,
       );
 
@@ -367,7 +367,7 @@ export class AiSuggestionsService {
       }
 
       const userRequest = payload.userRequest.trim();
-      const edges = compiledGraph?.edges || graph.schema.edges;
+      const edges = compiledGraph.edges;
       const allToolsMap = new Map<string, ConnectedToolInfo>();
       const allMcpMap = new Map<
         string,

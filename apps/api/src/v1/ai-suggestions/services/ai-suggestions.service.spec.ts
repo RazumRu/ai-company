@@ -350,31 +350,25 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('succeeds when graph is not running by compiling temporarily', async () => {
-      const graph = buildGraph();
-      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
-      (
-        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
-      ).mockReturnValue({
-        kind: NodeKind.SimpleAgent,
-      });
-      (
-        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
-      ).mockReturnValue([]);
+    it('returns same result whether graph is running or not', async () => {
+      configureSuggestionHappyPath();
 
       const result = await service.suggest('graph-1', 'agent-1', {
-        userRequest: 'anything',
+        userRequest: 'Improve structure',
       } as SuggestAgentInstructionsDto);
 
-      expect(result.instructions).toBeDefined();
+      expect(result.instructions).toBe('Updated instructions');
+      expect(result.threadId).toBe('thread-1');
       expect(
         (graphCompiler.compileTemporary as ReturnType<typeof vi.fn>).mock.calls
           .length,
       ).toBe(1);
-      const [entityArg] = (
-        graphCompiler.compileTemporary as ReturnType<typeof vi.fn>
-      ).mock.calls[0] as [GraphEntity, unknown];
-      expect(entityArg.id).toBe('graph-1');
+      expect(
+        (
+          (graphCompiler.compileTemporary as ReturnType<typeof vi.fn>).mock
+            .calls[0]! as [GraphEntity, unknown]
+        )[0].id,
+      ).toBe('graph-1');
     });
 
     it('wraps unexpected LLM errors in InternalException', async () => {
@@ -416,7 +410,7 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('succeeds when graph is not running by compiling temporarily', async () => {
+    it('returns same result whether graph is running or not', async () => {
       (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildThread(),
       );
@@ -424,18 +418,25 @@ describe('AiSuggestionsService', () => {
         buildGraph(),
       );
       (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      responseMock.mockResolvedValueOnce({
+        content: 'Analysis result',
+        conversationId: 'conv-1',
+      });
 
       const result = await service.analyzeThread('thread-1', {} as never);
 
-      expect(result.analysis).toBeDefined();
+      expect(result.analysis).toBe('Analysis result');
+      expect(result.conversationId).toBe('conv-1');
       expect(
         (graphCompiler.compileTemporary as ReturnType<typeof vi.fn>).mock.calls
           .length,
       ).toBe(1);
-      const [entityArg] = (
-        graphCompiler.compileTemporary as ReturnType<typeof vi.fn>
-      ).mock.calls[0] as [GraphEntity, unknown];
-      expect(entityArg.id).toBe('graph-1');
+      expect(
+        (
+          (graphCompiler.compileTemporary as ReturnType<typeof vi.fn>).mock
+            .calls[0]! as [GraphEntity, unknown]
+        )[0].id,
+      ).toBe('graph-1');
     });
 
     it('returns prompt content when analysis is generated and uses provided thread id', async () => {
@@ -592,14 +593,14 @@ describe('AiSuggestionsService', () => {
       expect(payload.model).toBe('openai/custom-model');
     });
 
-    it('succeeds when graph is not running by compiling temporarily', async () => {
+    it('returns same result whether graph is running or not', async () => {
       const graph = buildGraph();
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
       (
         graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
       ).mockReturnValue([]);
       responseMock.mockResolvedValueOnce({
-        content: { updates: [] },
+        content: { updates: [{ nodeId: 'agent-1', instructions: 'Improved' }] },
         conversationId: 'graph-1',
       });
 
@@ -607,15 +608,19 @@ describe('AiSuggestionsService', () => {
         userRequest: 'Improve all agents',
       });
 
-      expect(result.updates).toBeDefined();
+      expect(result.updates).toEqual([
+        { nodeId: 'agent-1', name: 'Primary agent', instructions: 'Improved' },
+      ]);
       expect(
         (graphCompiler.compileTemporary as ReturnType<typeof vi.fn>).mock.calls
           .length,
       ).toBe(1);
-      const [entityArg] = (
-        graphCompiler.compileTemporary as ReturnType<typeof vi.fn>
-      ).mock.calls[0] as [GraphEntity, unknown];
-      expect(entityArg.id).toBe('graph-1');
+      expect(
+        (
+          (graphCompiler.compileTemporary as ReturnType<typeof vi.fn>).mock
+            .calls[0]! as [GraphEntity, unknown]
+        )[0].id,
+      ).toBe('graph-1');
     });
   });
 
