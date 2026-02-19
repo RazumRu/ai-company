@@ -246,6 +246,43 @@ export class GraphCompiler {
     });
   }
 
+  /**
+   * Compiles the graph temporarily for read-only operations (e.g. AI suggestions,
+   * thread analysis) when the graph may not be currently running.
+   *
+   * If the graph is already running in the registry, the live instance is used
+   * directly and is NOT destroyed after the callback completes.
+   *
+   * If the graph is not running, it is compiled in-memory, the callback is
+   * executed, and the compiled graph is destroyed in a `finally` block —
+   * regardless of whether the callback succeeds or throws.
+   *
+   * Does NOT mutate graph.status in the database.
+   */
+  async compileTemporary<T>(
+    entity: GraphEntity,
+    callback: (compiledGraph: CompiledGraph) => Promise<T>,
+  ): Promise<T> {
+    const alreadyRunning = !!this.graphRegistry.get(entity.id);
+    const compiledGraph = await this.compile(entity);
+
+    try {
+      return await callback(compiledGraph);
+    } finally {
+      if (!alreadyRunning) {
+        const currentStatus = this.graphRegistry.getStatus(entity.id);
+        if (currentStatus !== undefined) {
+          await this.graphRegistry.destroy(entity.id).catch((err) => {
+            this.logger.error(
+              err as Error,
+              `compileTemporary: failed to destroy temporary graph ${entity.id}`,
+            );
+          });
+        }
+      }
+    }
+  }
+
   async destroyNode(node: CompiledGraphNode): Promise<void> {
     try {
       await node.handle.destroy(node.instance);
