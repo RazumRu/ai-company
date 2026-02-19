@@ -78,11 +78,9 @@ export class LitellmService {
     let totalTokens = 0;
     let totalPriceDecimal = new Decimal(0);
     let currentContext = 0;
-    let durationMs = 0;
     let sawAny = false;
     let sawPrice = false;
     let sawContext = false;
-    let sawDuration = false;
 
     for (const usage of usages) {
       if (!usage) continue;
@@ -100,10 +98,6 @@ export class LitellmService {
         currentContext = Math.max(currentContext, usage.currentContext);
         sawContext = true;
       }
-      if (typeof usage.durationMs === 'number') {
-        durationMs += usage.durationMs;
-        sawDuration = true;
-      }
     }
 
     if (!sawAny) {
@@ -118,7 +112,6 @@ export class LitellmService {
       totalTokens,
       ...(sawPrice ? { totalPrice: totalPriceDecimal.toNumber() } : {}),
       ...(sawContext ? { currentContext } : {}),
-      ...(sawDuration ? { durationMs } : {}),
     };
   }
 

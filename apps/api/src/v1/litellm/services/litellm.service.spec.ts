@@ -288,7 +288,7 @@ describe('LitellmService', () => {
       });
     });
 
-    it('sums durationMs across usages', () => {
+    it('ignores durationMs (per-message metadata, not aggregatable)', () => {
       const svc = createSvc();
       const result = svc.sumTokenUsages([
         {
@@ -305,21 +305,12 @@ describe('LitellmService', () => {
         },
       ]);
 
+      expect(result).not.toHaveProperty('durationMs');
       expect(result).toEqual({
         inputTokens: 30,
         outputTokens: 15,
         totalTokens: 45,
-        durationMs: 3800,
       });
-    });
-
-    it('omits durationMs when no usages have it', () => {
-      const svc = createSvc();
-      const result = svc.sumTokenUsages([
-        { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-      ]);
-
-      expect(result).not.toHaveProperty('durationMs');
     });
   });
 });

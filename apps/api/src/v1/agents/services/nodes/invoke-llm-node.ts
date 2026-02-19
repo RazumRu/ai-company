@@ -178,9 +178,13 @@ export class InvokeLlmNode extends BaseNode<
       cfg,
     );
 
+    // Destructure durationMs out — it is per-message metadata stored in
+    // __requestUsage on the AI message kwargs, not an aggregatable state counter.
+    const { durationMs: _dur, ...stateUsage } = threadUsage || {};
+
     return {
       messages: { mode: 'append', items: [...reasoningMessages, ...out] },
-      ...(threadUsage || {}),
+      ...stateUsage,
       ...(shouldResetNeedsMoreInfo
         ? {
             toolsMetadata: FinishTool.clearState(),
