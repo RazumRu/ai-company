@@ -1,6 +1,6 @@
 {
-  "id": "ai-company",
-  "realm": "ai-company",
+  "id": "geniro",
+  "realm": "geniro",
   "enabled": true,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
@@ -14,8 +14,8 @@
   "offlineSessionIdleTimeout": 2592000,
   "clients": [
     {
-      "clientId": "ai-company",
-      "name": "Ai Company",
+      "clientId": "geniro",
+      "name": "Geniro",
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
@@ -48,7 +48,7 @@
       "emailVerified": true,
       "firstName": "Demo",
       "lastName": "User",
-      "email": "demo@ai-company.test",
+      "email": "demo@geniro.test",
       "credentials": [
         {
           "type": "password",

@@ -1,6 +1,6 @@
 # Testing Guidelines
 
-This document explains how to run and write tests for the Ai company API project.
+This document explains how to run and write tests for the Geniro API project.
 
 ## Overview
 

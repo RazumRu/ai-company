@@ -229,19 +229,19 @@ export class RuntimeProvider {
     const baseLabels = record.config.labels ?? {};
     const labels: Record<string, string> = {
       ...baseLabels,
-      'ai-company/graph_id': record.graphId,
-      'ai-company/node_id': record.nodeId,
-      'ai-company/thread_id': record.threadId,
-      'ai-company/instance_id': record.id,
-      'ai-company/type': 'runtime',
+      'geniro/graph_id': record.graphId,
+      'geniro/node_id': record.nodeId,
+      'geniro/thread_id': record.threadId,
+      'geniro/instance_id': record.id,
+      'geniro/type': 'runtime',
     };
     if (record.temporary) {
-      labels['ai-company/temporary'] = 'true';
+      labels['geniro/temporary'] = 'true';
     }
 
     await runtime.start({
       ...(record.config || {}),
-      network: `ai-company-${record.graphId}`,
+      network: `geniro-${record.graphId}`,
       registryMirrors,
       insecureRegistries,
       containerName: record.containerName,

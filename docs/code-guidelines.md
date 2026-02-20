@@ -1,6 +1,6 @@
 # Code Guidelines
 
-This document outlines the coding standards and best practices for the Ai company API project.
+This document outlines the coding standards and best practices for the Geniro API project.
 
 ## General Principles
 

@@ -1,6 +1,6 @@
 # Project Structure and Description
 
-This document describes the Ai company API project structure and architectural patterns.
+This document describes the Geniro API project structure and architectural patterns.
 
 ## Overview
 
@@ -9,7 +9,7 @@ This is a monorepo project containing a NestJS-based API application and shared 
 ## Monorepo Structure
 
 ```
-ai-company/
+geniro/
 ├── apps/
 │   └── api/              # Main API application
 ├── packages/             # Shared libraries and utilities

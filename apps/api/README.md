@@ -1,4 +1,4 @@
-# Ai company API
+# Geniro API
 
 ## Database (TypeORM)
 We use TypeORM with migrations (no auto-sync in production). For details and API, see `packages/typeorm/README.md`.

@@ -1,8 +1,8 @@
-# AI Company
+# Geniro
 
 Open-source platform for building, running, and managing AI agent workflows. Design agents as visual graphs, connect them to tools, and execute them in isolated environments — all through a REST API with real-time updates.
 
-> **This repository contains the backend API.** The web UI lives at [ai-company-web](https://github.com/RazumRu/ai-company-web).
+> **This repository contains the backend API.** The web UI lives at [geniro-web](https://github.com/RazumRu/geniro-web).
 
 ## Features
 
@@ -36,8 +36,8 @@ Open-source platform for building, running, and managing AI agent workflows. Des
 
 ```bash
 # Clone and install
-git clone https://github.com/RazumRu/ai-company.git
-cd ai-company
+git clone https://github.com/RazumRu/geniro.git
+cd geniro
 pnpm install
 
 # Configure API keys (see "API Keys" section below)

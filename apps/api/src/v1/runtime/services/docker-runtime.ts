@@ -543,8 +543,8 @@ export class DockerRuntime extends BaseRuntime {
         Name: networkName,
         Driver: 'bridge',
         Labels: {
-          'ai-company/managed': 'true',
-          'ai-company/created-by': 'docker-runtime',
+          'geniro/managed': 'true',
+          'geniro/created-by': 'docker-runtime',
         },
       });
     } catch (error) {
@@ -643,7 +643,7 @@ export class DockerRuntime extends BaseRuntime {
     await this.ensureImage(imageName);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
 
-    const networkName = params?.network || 'ai-company-runtime';
+    const networkName = params?.network || 'geniro-runtime';
     await this.ensureNetwork(networkName);
 
     let containerEnv = params?.env || {};

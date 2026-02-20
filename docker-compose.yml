@@ -22,7 +22,7 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - DATABASES=ai_company,keycloak,litellm,infisical
+      - DATABASES=geniro,keycloak,litellm,infisical
     networks:
       - ai
     ports:

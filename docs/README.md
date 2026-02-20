@@ -1,6 +1,6 @@
 # Development Guidelines
 
-Welcome to the Ai company API development guidelines. This directory contains comprehensive documentation for working on the project.
+Welcome to the Geniro API development guidelines. This directory contains comprehensive documentation for working on the project.
 
 ## 📚 Documentation Structure
 

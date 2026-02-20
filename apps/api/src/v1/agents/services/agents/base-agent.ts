@@ -123,7 +123,7 @@ export abstract class BaseAgent<
       model,
       apiKey: environment.litellmMasterKey,
       configuration: { baseURL: environment.llmBaseUrl },
-      tags: ['ai-company'],
+      tags: ['geniro'],
       ...params,
     };
     return new ChatOpenAI({

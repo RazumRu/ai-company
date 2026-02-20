@@ -17,7 +17,7 @@ export const environment = () =>
     // connections
     postgresUrl: getEnv(
       'POSTGRES_URL',
-      'postgresql://postgres:postgres@localhost:5439/ai_company',
+      'postgresql://postgres:postgres@localhost:5439/geniro',
     ),
     llmBaseUrl: getEnv('LLM_BASE_URL', 'http://localhost:4000'),
     redisUrl: getEnv('REDIS_URL', 'redis://localhost:6379'),
@@ -31,7 +31,7 @@ export const environment = () =>
     // auth
     authDevMode: getEnv('AUTH_DEV_MODE', true),
     keycloakUrl: getEnv('KEYCLOAK_URL', 'http://localhost:8082'),
-    keycloakRealm: getEnv('KEYCLOAK_REALM', 'ai-company'),
+    keycloakRealm: getEnv('KEYCLOAK_REALM', 'geniro'),
 
     // docker registry mirror (for DinD)
     dockerRegistryMirror: getEnv(

@@ -1,5 +1,5 @@
 {
-  "name": "@ai-company/api",
+  "name": "@geniro/api",
   "version": "1.0.0",
   "main": "dist/main.js",
   "description": "",
@@ -11,7 +11,7 @@
     "lint": "pnpm eslint \"src/**/*.{js,ts,tsx}\" \"cypress/**/*.{js,ts,tsx}\"",
     "build": "pnpm ts-patch install -s && tsc -p tsconfig.build.json",
     "build:tests": "tsc -p tsconfig.tests.json",
-    "build:runtime": "podman build -f runtime.Dockerfile -t ai-company-runtime:latest .",
+    "build:runtime": "podman build -f runtime.Dockerfile -t geniro-runtime:latest .",
     "prebuild": "rm -rf ./dist || true",
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --passWithNoTests --exclude='src/**/*.int.ts' --fileParallelism",

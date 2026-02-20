@@ -13,7 +13,7 @@ on:
 
 env:
   APP_NAME: api
-  TAG_PREFIX: ai-company
+  TAG_PREFIX: geniro
   NODE_VERSION: 22
   ECR_REGISTRY_NAME:
 
@@ -56,8 +56,8 @@ jobs:
 
       - name: Prepare repository
         run: |
-          git config user.email "ci@company.ai"
-          git config user.name "AI Company Bot"
+          git config user.email "ci@geniro.ai"
+          git config user.name "Geniro Bot"
 
       - name: up version
         id: semantic
