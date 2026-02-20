@@ -30,7 +30,10 @@ describe('Knowledge docs API', () => {
 
       listKnowledgeDocs({ search: 'Cypress' }).then((listResponse) => {
         expect(listResponse.status).to.eq(200);
-        expect(listResponse.body.some((doc) => doc.id === docId)).to.eq(true);
+        const items = (
+          listResponse.body as unknown as { items: { id: string }[] }
+        ).items;
+        expect(items.some((doc) => doc.id === docId)).to.eq(true);
       });
 
       updateKnowledgeDoc(docId, {

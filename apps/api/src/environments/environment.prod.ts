@@ -38,7 +38,7 @@ export const environment = () =>
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY'),
     llmRequestTimeoutMs: +getEnv('LLM_REQUEST_TIMEOUT_MS', '600000'),
-    llmLargeModel: getEnv('LLM_LARGE_MODEL', 'openai/gpt-5.2'),
+    llmLargeModel: getEnv('LLM_LARGE_MODEL', 'gpt-5.2'),
     llmLargeCodeModel: getEnv('LLM_LARGE_CODE_MODEL', 'gpt-5.2-codex'),
     llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'openrouter/minimax-m2.5'),
     llmCodeExplorerSubagentModel: getEnv('LLM_CODE_EXPLORER_SUBAGENT_MODEL'),
@@ -97,10 +97,7 @@ export const environment = () =>
 
     // LLM model defaults for tools (do not override per-call)
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),
-    dockerRuntimeImage: getEnv(
-      'DOCKER_RUNTIME_IMAGE',
-      'geniro-runtime:latest',
-    ),
+    dockerRuntimeImage: getEnv('DOCKER_RUNTIME_IMAGE', 'geniro-runtime:latest'),
     dockerRegistryMirror: getEnv('DOCKER_REGISTRY_MIRROR'),
     dockerInsecureRegistry: getEnv('DOCKER_INSECURE_REGISTRY'),
     restoreGraphs: getEnv('RESTORE_GRAPHS', true),

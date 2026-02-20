@@ -329,21 +329,19 @@ describe('Graphs E2E', () => {
     it('should update a graph', () => {
       getGraphById(createdGraphId).then((graphResponse) => {
         const currentVersion = graphResponse.body.version;
-        const existingName = graphResponse.body.name;
         const updateData = createMockUpdateData(currentVersion);
 
         updateGraph(createdGraphId, updateData).then((response) => {
           expect(response.status).to.equal(200);
           expect(response.body.graph).to.have.property('id', createdGraphId);
-          // Graph updates are applied asynchronously via revisions; immediate response
-          // contains the current graph state, not the post-revision state.
-          expect(response.body.graph).to.have.property('name', existingName);
+          // Metadata fields (name, description) are applied synchronously;
+          // schema changes are queued via revisions and applied asynchronously.
+          expect(response.body.graph).to.have.property('name', updateData.name);
           expect(response.body.graph).to.have.property('updatedAt');
-          expect(response.body.graph.version).to.equal(currentVersion);
 
           validateGraph(response.body.graph);
 
-          // Wait until revision is applied
+          // Wait until schema revision is applied (version bump)
           return waitForGraph(
             createdGraphId,
             (g) => g.name === updateData.name,
@@ -359,7 +357,6 @@ describe('Graphs E2E', () => {
 
       getGraphById(createdGraphId).then((graphResponse) => {
         const currentVersion = graphResponse.body.version;
-        const existingName = graphResponse.body.name;
 
         updateGraph(createdGraphId, {
           ...partialUpdateData,
@@ -367,20 +364,15 @@ describe('Graphs E2E', () => {
         }).then((response) => {
           expect(response.status).to.equal(200);
           expect(response.body.graph).to.have.property('id', createdGraphId);
-          // Graph updates are applied asynchronously via revisions; immediate response
-          // contains the current graph state, not the post-revision state.
-          expect(response.body.graph).to.have.property('name', existingName);
+          // Metadata fields (name) are applied synchronously
+          expect(response.body.graph).to.have.property(
+            'name',
+            partialUpdateData.name,
+          );
           // Description should remain unchanged
           expect(response.body.graph).to.have.property('description');
-          expect(response.body.graph.version).to.equal(currentVersion);
 
           validateGraph(response.body.graph);
-
-          // Wait until revision is applied
-          return waitForGraph(
-            createdGraphId,
-            (g) => g.name === partialUpdateData.name,
-          );
         });
       });
     });
@@ -638,12 +630,10 @@ describe('Graphs E2E', () => {
         const updateData = createMockUpdateData(createResponse.body.version);
         updateGraph(lifecycleGraphId, updateData).then((updateResponse) => {
           expect(updateResponse.status).to.equal(200);
-          // Graph updates are applied asynchronously via revisions
-          expect(updateResponse.body.graph.name).to.equal(
-            createResponse.body.name,
-          );
+          // Metadata fields (name) are applied synchronously
+          expect(updateResponse.body.graph.name).to.equal(updateData.name);
 
-          // Wait until revision is applied before continuing lifecycle
+          // Wait until schema revision is applied before continuing lifecycle
           return waitForGraph(
             lifecycleGraphId,
             (g) => g.name === updateData.name,

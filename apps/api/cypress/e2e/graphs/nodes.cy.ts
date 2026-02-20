@@ -28,7 +28,8 @@ const extractRunId = (messages: ThreadMessageDto[]): string | undefined => {
     const additionalKwargs =
       (entry.message as { additionalKwargs?: Record<string, unknown> })
         .additionalKwargs ?? {};
-    const runId = additionalKwargs['run_id'];
+    // The agent stores runId as __runId in additionalKwargs
+    const runId = additionalKwargs['__runId'] ?? additionalKwargs['run_id'];
 
     if (typeof runId === 'string' && runId.length > 0) {
       return runId;
