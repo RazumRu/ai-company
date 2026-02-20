@@ -5,13 +5,8 @@ import { DefaultLogger } from '@packages/common';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
-import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
-import {
-  CompleteJsonData,
-  OpenaiService,
-  ResponseJsonData,
-} from '../../openai/openai.service';
+import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeType } from '../../runtime/runtime.types';
@@ -90,7 +85,6 @@ export class RepoIndexService implements OnModuleInit {
     private readonly gitRepositoriesService: GitRepositoriesService,
     private readonly repoIndexerService: RepoIndexerService,
     private readonly repoIndexQueueService: RepoIndexQueueService,
-    private readonly litellmService: LitellmService,
     private readonly llmModelsService: LlmModelsService,
     private readonly openaiService: OpenaiService,
     private readonly qdrantService: QdrantService,
@@ -1408,17 +1402,13 @@ export class RepoIndexService implements OnModuleInit {
       ].join('\n');
 
       const modelName = this.llmModelsService.getKnowledgeSearchModel();
-      const supportsResponsesApi =
-        await this.litellmService.supportsResponsesApi(modelName);
-      const data: ResponseJsonData | CompleteJsonData = {
+      const response = await this.openaiService.jsonRequest<{
+        queries: string[];
+      }>({
         model: modelName,
         message: prompt,
-        json: true as const,
         jsonSchema: CodeSearchQueryExpansionSchema,
-      };
-      const response = supportsResponsesApi
-        ? await this.openaiService.response<{ queries: string[] }>(data)
-        : await this.openaiService.complete<{ queries: string[] }>(data);
+      });
 
       const validation = CodeSearchQueryExpansionSchema.safeParse(
         response.content,

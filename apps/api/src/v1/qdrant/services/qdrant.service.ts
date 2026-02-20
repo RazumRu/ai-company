@@ -106,6 +106,15 @@ export class QdrantService {
     return this.client;
   }
 
+  /**
+   * Invalidate cached knowledge about a collection so the next operation
+   * re-checks Qdrant. Useful when external processes drop/recreate collections.
+   */
+  invalidateCollectionCache(name: string): void {
+    this.knownCollections.delete(name);
+    this.vectorSizeCache.delete(name);
+  }
+
   async ensureCollection(
     name: string,
     vectorSize: number,

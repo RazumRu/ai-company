@@ -44,6 +44,18 @@ export const GraphSchema = z.object({
   schema: RealGraphSchema,
   status: z.enum(GraphStatus),
   metadata: GraphMetadataSchema.optional().nullable(),
+  runningThreads: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(0)
+    .describe('Number of threads currently in running state'),
+  totalThreads: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(0)
+    .describe('Total number of threads for this graph'),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   temporary: z
@@ -60,6 +72,8 @@ export const GraphEditableSchema = GraphSchema.omit({
   id: true,
   status: true,
   error: true,
+  runningThreads: true,
+  totalThreads: true,
   createdAt: true,
   updatedAt: true,
   version: true,

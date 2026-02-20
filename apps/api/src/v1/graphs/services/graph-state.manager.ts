@@ -13,7 +13,6 @@ import {
   AgentStopEvent,
 } from '../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
-import { LitellmService } from '../../litellm/services/litellm.service';
 import type { IGraphNodeUpdateData } from '../../notifications/notifications.types';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { serializeBaseMessages } from '../../notifications/notifications.utils';
@@ -67,7 +66,6 @@ export class GraphStateManager {
 
   constructor(
     private readonly notificationsService: NotificationsService,
-    private readonly litellmService: LitellmService,
     private readonly logger: DefaultLogger,
   ) {}
 
@@ -252,6 +250,26 @@ export class GraphStateManager {
     state.error = null;
   }
 
+  /**
+   * Remove per-thread/run tracking data after execution completes.
+   * Prevents unbounded growth of lastEmitted, metadata and threadToRunMap maps.
+   */
+  private cleanupExecutionData(
+    state: NodeState,
+    threadId?: string,
+    runId?: string,
+  ) {
+    if (threadId) {
+      state.lastEmitted.byThread.delete(threadId);
+      state.metadata.byThread.delete(threadId);
+      state.threadToRunMap.delete(threadId);
+    }
+    if (runId) {
+      state.lastEmitted.byRun.delete(runId);
+      state.metadata.byRun.delete(runId);
+    }
+  }
+
   private attachAgentListeners(
     state: NodeState,
     node: CompiledGraphNode<SimpleAgent>,
@@ -404,6 +422,9 @@ export class GraphStateManager {
     }
 
     this.emitNodeUpdate(state, threadId, runId);
+
+    // Clean up per-run tracking data after final emission to prevent unbounded map growth
+    this.cleanupExecutionData(state, threadId, runId);
   }
 
   private async handleAgentStop(state: NodeState, data: AgentStopEvent) {

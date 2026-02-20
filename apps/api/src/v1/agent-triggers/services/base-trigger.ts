@@ -36,7 +36,7 @@ export type TriggerEventType =
 export abstract class BaseTrigger<TConfig = unknown, TPayload = unknown> {
   protected status: TriggerStatus = TriggerStatus.IDLE;
   protected eventEmitter = new EventEmitter();
-  public invokeAgent!: (
+  public invokeAgent?: (
     messages: HumanMessage[],
     config: RunnableConfig<BaseAgentConfigurable>,
   ) => Promise<AgentOutput>;

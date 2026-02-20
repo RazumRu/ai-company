@@ -36,10 +36,10 @@ export class CacheService implements OnModuleDestroy {
 
   /**
    * Set a string value with optional TTL
-   * @param ttl Time to live in seconds
+   * @param ttl Time to live in seconds (must be > 0)
    */
   async set(key: string, value: string, ttl?: number): Promise<void> {
-    if (ttl) {
+    if (ttl != null && ttl > 0) {
       await this.redis.setex(key, ttl, value);
     } else {
       await this.redis.set(key, value);

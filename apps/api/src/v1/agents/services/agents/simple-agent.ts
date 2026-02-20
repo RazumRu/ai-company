@@ -143,19 +143,17 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
       // ---- invoke ----
       const toolsArray = this.getTools();
-      const useResponsesApi = await this.litellmService.supportsResponsesApi(
-        config.invokeModelName,
-      );
-      const useReasoning = await this.litellmService.supportsReasoning(
-        config.invokeModelName,
-      );
-      const useParallelToolCall =
-        await this.litellmService.supportsParallelToolCall(
-          config.invokeModelName,
-        );
-      const supportsStreaming = await this.litellmService.supportsStreaming(
-        config.invokeModelName,
-      );
+      const [
+        useResponsesApi,
+        useReasoning,
+        useParallelToolCall,
+        supportsStreaming,
+      ] = await Promise.all([
+        this.litellmService.supportsResponsesApi(config.invokeModelName),
+        this.litellmService.supportsReasoning(config.invokeModelName),
+        this.litellmService.supportsParallelToolCall(config.invokeModelName),
+        this.litellmService.supportsStreaming(config.invokeModelName),
+      ]);
 
       const invokeLlmNode = new InvokeLlmNode(
         this.litellmService,
@@ -956,17 +954,14 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       this.clearReasoningState(threadId);
     }
 
-    // If no updates were received, finalState will still be null - use runEntry.lastState as fallback
-    const stateForResult = finalState || runEntry.lastState;
-
     const result = {
       // Preserve historical behavior: the AgentOutput is the *new* messages produced by the run,
       // not the initial user input we already provided to the graph.
-      messages: stateForResult.messages.filter((m) => !inputMessageSet.has(m)),
+      messages: finalState.messages.filter((m) => !inputMessageSet.has(m)),
       threadId,
       checkpointNs: mergedConfig?.configurable?.checkpoint_ns,
       needsMoreInfo:
-        FinishTool.getStateFromToolsMetadata(stateForResult.toolsMetadata)
+        FinishTool.getStateFromToolsMetadata(finalState.toolsMetadata)
           ?.needsMoreInfo === true,
     };
 

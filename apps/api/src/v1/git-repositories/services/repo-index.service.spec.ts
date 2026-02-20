@@ -1,7 +1,6 @@
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
@@ -78,10 +77,6 @@ const mockRepoIndexQueueService = {
   setCallbacks: vi.fn(),
   addIndexJob: vi.fn().mockResolvedValue(undefined),
   removeJob: vi.fn().mockResolvedValue(undefined),
-};
-
-const mockLitellmService = {
-  supportsResponsesApi: vi.fn().mockResolvedValue(false),
 };
 
 const mockLlmModelsService = {
@@ -176,7 +171,6 @@ describe('RepoIndexService', () => {
       mockGitRepositoriesService as unknown as GitRepositoriesService,
       mockRepoIndexerService as unknown as RepoIndexerService,
       mockRepoIndexQueueService as unknown as RepoIndexQueueService,
-      mockLitellmService as unknown as LitellmService,
       mockLlmModelsService as unknown as LlmModelsService,
       mockOpenaiService as unknown as OpenaiService,
       mockQdrantService as unknown as QdrantService,
@@ -800,7 +794,6 @@ describe('RepoIndexService', () => {
         mockGitRepositoriesService as unknown as GitRepositoriesService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
-        mockLitellmService as unknown as LitellmService,
         mockLlmModelsService as unknown as LlmModelsService,
         mockOpenaiService as unknown as OpenaiService,
         mockQdrantService as unknown as QdrantService,
@@ -864,7 +857,6 @@ describe('RepoIndexService', () => {
         mockGitRepositoriesService as unknown as GitRepositoriesService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
-        mockLitellmService as unknown as LitellmService,
         mockLlmModelsService as unknown as LlmModelsService,
         mockOpenaiService as unknown as OpenaiService,
         mockQdrantService as unknown as QdrantService,
@@ -911,7 +903,6 @@ describe('RepoIndexService', () => {
         mockGitRepositoriesService as unknown as GitRepositoriesService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
-        mockLitellmService as unknown as LitellmService,
         mockLlmModelsService as unknown as LlmModelsService,
         mockOpenaiService as unknown as OpenaiService,
         mockQdrantService as unknown as QdrantService,
@@ -1059,7 +1050,6 @@ describe('RepoIndexService', () => {
         mockGitRepositoriesService as unknown as GitRepositoriesService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
-        mockLitellmService as unknown as LitellmService,
         mockLlmModelsService as unknown as LlmModelsService,
         mockOpenaiService as unknown as OpenaiService,
         mockQdrantService as unknown as QdrantService,
@@ -1173,7 +1163,7 @@ describe('RepoIndexService', () => {
       (mockOpenaiService as Record<string, unknown>).response = vi
         .fn()
         .mockResolvedValue(mockOpenaiResponse);
-      (mockOpenaiService as Record<string, unknown>).complete = vi
+      (mockOpenaiService as Record<string, unknown>).jsonRequest = vi
         .fn()
         .mockResolvedValue(mockOpenaiResponse);
       (mockQdrantService as Record<string, unknown>).searchPoints = vi
@@ -1203,7 +1193,7 @@ describe('RepoIndexService', () => {
         (mockOpenaiService as Record<string, unknown>).response,
       ).not.toHaveBeenCalled();
       expect(
-        (mockOpenaiService as Record<string, unknown>).complete,
+        (mockOpenaiService as Record<string, unknown>).jsonRequest,
       ).not.toHaveBeenCalled();
     });
 
@@ -1228,16 +1218,15 @@ describe('RepoIndexService', () => {
         >
       ).mock.calls.length;
       const completeCalls = (
-        (mockOpenaiService as Record<string, unknown>).complete as ReturnType<
-          typeof vi.fn
-        >
+        (mockOpenaiService as Record<string, unknown>)
+          .jsonRequest as ReturnType<typeof vi.fn>
       ).mock.calls.length;
       expect(responseCalls + completeCalls).toBeGreaterThan(0);
     });
 
     it('uses searchMany with multiple embeddings when expansion produces variants', async () => {
       // Return 2 additional unique variants (original is filtered out)
-      (mockOpenaiService as Record<string, unknown>).complete = vi
+      (mockOpenaiService as Record<string, unknown>).jsonRequest = vi
         .fn()
         .mockResolvedValue({
           content: {
@@ -1268,7 +1257,7 @@ describe('RepoIndexService', () => {
     });
 
     it('falls back to single embedding when expansion fails', async () => {
-      (mockOpenaiService as Record<string, unknown>).complete = vi
+      (mockOpenaiService as Record<string, unknown>).jsonRequest = vi
         .fn()
         .mockRejectedValue(new Error('LLM timeout'));
 
@@ -1281,7 +1270,7 @@ describe('RepoIndexService', () => {
     });
 
     it('deduplicates expansion variants case-insensitively', async () => {
-      (mockOpenaiService as Record<string, unknown>).complete = vi
+      (mockOpenaiService as Record<string, unknown>).jsonRequest = vi
         .fn()
         .mockResolvedValue({
           content: {
@@ -1327,7 +1316,7 @@ describe('RepoIndexService', () => {
     });
 
     it('uses reduced expansion factor when multiple variants are active', async () => {
-      (mockOpenaiService as Record<string, unknown>).complete = vi
+      (mockOpenaiService as Record<string, unknown>).jsonRequest = vi
         .fn()
         .mockResolvedValue({
           content: {

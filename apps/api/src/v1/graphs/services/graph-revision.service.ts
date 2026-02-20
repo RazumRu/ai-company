@@ -501,11 +501,12 @@ export class GraphRevisionService {
       ? revision.toVersion
       : graph.targetVersion;
 
+    // Only update schema and version fields from the revision.
+    // name, description, and temporary are managed synchronously (applied
+    // immediately during the update call) and must not be overwritten here
+    // with potentially stale revision-snapshot values.
     const graphUpdates: Partial<GraphEntity> = {
       schema: revision.newConfig.schema,
-      name: revision.newConfig.name,
-      description: revision.newConfig.description ?? undefined,
-      temporary: revision.newConfig.temporary,
       version: revision.toVersion,
       targetVersion,
     };
@@ -557,8 +558,9 @@ export class GraphRevisionService {
       });
     }
 
-    const baseSchemaCache = await this.fetchBaseSchemaCache(revision);
-    const baseConfigCache = await this.fetchBaseConfigCache(revision);
+    const baseRevisionCache = await this.fetchBaseRevisionCache(revision);
+    const baseSchemaCache = baseRevisionCache?.newConfig.schema ?? null;
+    const baseConfigCache = baseRevisionCache?.newConfig ?? null;
 
     try {
       await this.applyRevisionTransaction(
@@ -573,24 +575,10 @@ export class GraphRevisionService {
     }
   }
 
-  private async fetchBaseSchemaCache(
+  private async fetchBaseRevisionCache(
     revision: GraphRevisionEntity,
-  ): Promise<GraphSchemaType | null> {
-    const baseRevision = await this.getSchemaAtVersion(
-      revision.graphId,
-      revision.baseVersion,
-    );
-    return baseRevision?.newConfig.schema ?? null;
-  }
-
-  private async fetchBaseConfigCache(
-    revision: GraphRevisionEntity,
-  ): Promise<GraphRevisionConfig | null> {
-    const baseRevision = await this.getSchemaAtVersion(
-      revision.graphId,
-      revision.baseVersion,
-    );
-    return baseRevision?.newConfig ?? null;
+  ): Promise<GraphRevisionEntity | null> {
+    return this.getSchemaAtVersion(revision.graphId, revision.baseVersion);
   }
 
   private async applyRevisionTransaction(
@@ -720,14 +708,13 @@ export class GraphRevisionService {
     revision: GraphRevisionEntity,
     compiledGraph: CompiledGraph,
   ): Promise<void> {
-    const name = revision.newConfig.name;
-    const temporary = revision.newConfig.temporary;
-
+    // Read name/temporary from the graph entity (source of truth for sync fields)
+    // rather than from the revision snapshot which may be stale.
     const metadata = {
       graphId: graph.id,
-      name,
+      name: graph.name,
       version: revision.toVersion,
-      temporary,
+      temporary: graph.temporary,
       graph_created_by: graph.createdBy,
     };
 
@@ -980,7 +967,7 @@ export class GraphRevisionService {
     return coerced?.version ?? version;
   }
 
-  private isVersionLess(a: string, b: string): boolean {
+  public isVersionLess(a: string, b: string): boolean {
     const av = coerce(a)?.version;
     const bv = coerce(b)?.version;
     if (!av || !bv) {

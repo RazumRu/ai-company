@@ -7,13 +7,9 @@ import { z } from 'zod';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
 import { KnowledgeDocEntity } from '../../../../knowledge/entity/knowledge-doc.entity';
-import { LitellmService } from '../../../../litellm/services/litellm.service';
+import { normalizeFilterTags } from '../../../../knowledge/knowledge.utils';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
-import {
-  CompleteJsonData,
-  OpenaiService,
-  ResponseJsonData,
-} from '../../../../openai/openai.service';
+import { OpenaiService } from '../../../../openai/openai.service';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -70,7 +66,6 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     private readonly docDao: KnowledgeDocDao,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
-    private readonly litellmService: LitellmService,
   ) {
     super();
   }
@@ -130,7 +125,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       throw new BadRequestException('TASK_REQUIRED');
     }
 
-    const tagsFilter = this.normalizeTags(config.tags);
+    const tagsFilter = normalizeFilterTags(config.tags);
 
     const docs = await this.docDao.getAll({
       createdBy: graphCreatedBy,
@@ -186,15 +181,6 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     return `Knowledge docs selection: ${args.task}`;
   }
 
-  private normalizeTags(tags?: string[]): string[] | undefined {
-    const merged = new Set<string>();
-    for (const tag of tags ?? []) {
-      const normalized = tag.trim().toLowerCase();
-      if (normalized) merged.add(normalized);
-    }
-    return merged.size ? Array.from(merged) : undefined;
-  }
-
   private async selectRelevantDocs(
     task: string,
     docs: KnowledgeDocEntity[],
@@ -217,17 +203,12 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     ].join('\n');
 
     const modelName = this.llmModelsService.getKnowledgeSearchModel();
-    const supportsResponsesApi =
-      await this.litellmService.supportsResponsesApi(modelName);
-    const data: ResponseJsonData | CompleteJsonData = {
-      model: modelName,
-      message: prompt,
-      json: true as const,
-      jsonSchema: KnowledgeDocSelectionSchema,
-    };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response<KnowledgeDocSelection>(data)
-      : await this.openaiService.complete<KnowledgeDocSelection>(data);
+    const response =
+      await this.openaiService.jsonRequest<KnowledgeDocSelection>({
+        model: modelName,
+        message: prompt,
+        jsonSchema: KnowledgeDocSelectionSchema,
+      });
 
     const validation = KnowledgeDocSelectionSchema.safeParse(response.content);
     if (!validation.success) {

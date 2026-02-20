@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
+import { normalizeFilterTags } from '../../../../knowledge/knowledge.utils';
 import { KnowledgeChunksService } from '../../../../knowledge/services/knowledge-chunks.service';
 import {
   BaseTool,
@@ -132,7 +133,7 @@ export class KnowledgeSearchChunksTool extends BaseTool<
       throw new BadRequestException('QUERY_REQUIRED');
     }
 
-    const tagsFilter = this.normalizeTags(config.tags);
+    const tagsFilter = normalizeFilterTags(config.tags);
     const docs = await this.docDao.getAll({
       createdBy: graphCreatedBy,
       publicIds: args.docIds,
@@ -179,14 +180,5 @@ export class KnowledgeSearchChunksTool extends BaseTool<
     _config: KnowledgeToolGroupConfig,
   ): string {
     return `Knowledge chunk search: ${args.query}`;
-  }
-
-  private normalizeTags(tags?: string[]): string[] | undefined {
-    const merged = new Set<string>();
-    for (const tag of tags ?? []) {
-      const normalized = tag.trim().toLowerCase();
-      if (normalized) merged.add(normalized);
-    }
-    return merged.size ? Array.from(merged) : undefined;
   }
 }

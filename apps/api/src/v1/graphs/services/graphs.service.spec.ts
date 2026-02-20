@@ -98,6 +98,8 @@ describe('GraphsService', () => {
       edges: [],
     },
     status: GraphStatus.Created,
+    runningThreads: 0,
+    totalThreads: 0,
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
@@ -186,6 +188,7 @@ describe('GraphsService', () => {
             updateById: vi.fn(),
             deleteById: vi.fn(),
             delete: vi.fn(),
+            countByGraphIds: vi.fn(),
           },
         },
         {
@@ -235,6 +238,7 @@ describe('GraphsService', () => {
             getRevisions: vi.fn(),
             generateNextVersion: vi.fn(),
             enqueueRevisionProcessing: vi.fn(),
+            isVersionLess: vi.fn().mockReturnValue(false),
           },
         },
       ],
@@ -260,6 +264,7 @@ describe('GraphsService', () => {
     vi.mocked(threadsDao.updateById).mockResolvedValue(null as any);
     vi.mocked(threadsDao.deleteById).mockResolvedValue(undefined);
     vi.mocked(threadsDao.delete).mockResolvedValue(undefined as any);
+    vi.mocked(threadsDao.countByGraphIds).mockResolvedValue(new Map());
     vi.mocked(messagesDao.delete).mockResolvedValue(undefined as any);
     vi.mocked(graphRegistry.getStatus).mockReturnValue(undefined);
     vi.mocked(notificationsService.emit).mockResolvedValue(void 0 as any);
@@ -730,7 +735,7 @@ describe('GraphsService', () => {
   });
 
   describe('update', () => {
-    it('should update graph successfully', async () => {
+    it('should update name and description synchronously without creating revision', async () => {
       const updateData: UpdateGraphDto = {
         name: 'Updated Graph',
         description: 'Updated description',
@@ -742,36 +747,32 @@ describe('GraphsService', () => {
       });
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(
+        createMockGraphEntity({
+          name: 'Updated Graph',
+          description: 'Updated description',
+        }),
+      );
 
       const result = await service.update(mockCtx, mockGraphId, updateData);
 
-      expect(result.revision).toBeDefined();
+      expect(result.revision).toBeUndefined();
       expect(result.graph.version).toBe(mockGraph.version);
-      expect(result.graph.targetVersion).toBe('1.0.1');
+      expect(result.graph.name).toBe('Updated Graph');
+      expect(result.graph.description).toBe('Updated description');
 
-      expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
-        mockCtx,
-        mockGraph,
-        '1.0.0',
-        expect.objectContaining({
-          schema: mockGraph.schema,
-          name: 'Updated Graph',
-          description: 'Updated description',
-          temporary: mockGraph.temporary,
-        }),
-        expect.any(Object),
-        { enqueueImmediately: false },
-      );
+      expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
       expect(
         graphRevisionService.enqueueRevisionProcessing,
-      ).toHaveBeenCalledWith({
-        id: 'revision-1',
-        graphId: mockGraphId,
-      });
-      expect(graphDao.updateById).not.toHaveBeenCalled();
+      ).not.toHaveBeenCalled();
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        { name: 'Updated Graph', description: 'Updated description' },
+        expect.any(Object),
+      );
     });
 
-    it('should filter out undefined values from update data', async () => {
+    it('should only update changed fields and ignore undefined values', async () => {
       const updateData: UpdateGraphDto = {
         name: 'Updated Graph',
         description: undefined,
@@ -783,24 +784,20 @@ describe('GraphsService', () => {
       });
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(
+        createMockGraphEntity({ name: 'Updated Graph' }),
+      );
 
       const result = await service.update(mockCtx, mockGraphId, updateData);
 
-      expect(result.revision).toBeDefined();
-      expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
-        mockCtx,
-        mockGraph,
-        '1.0.0',
-        expect.objectContaining({
-          schema: mockGraph.schema,
-          name: 'Updated Graph',
-          description: mockGraph.description ?? null,
-          temporary: mockGraph.temporary,
-        }),
+      expect(result.revision).toBeUndefined();
+      expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
+      // Only name should be in the sync update (description is undefined → unchanged)
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        { name: 'Updated Graph' },
         expect.any(Object),
-        { enqueueImmediately: false },
       );
-      expect(graphDao.updateById).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when graph not found', async () => {
@@ -907,7 +904,7 @@ describe('GraphsService', () => {
       expect(result.revision).toBeUndefined();
     });
 
-    it('should queue revision when updating other fields even if schema is unchanged', async () => {
+    it('should apply name synchronously even if same schema is provided', async () => {
       const mockGraph = createMockGraphEntity({ status: GraphStatus.Running });
       const updateData: UpdateGraphDto = {
         schema: mockGraph.schema,
@@ -916,24 +913,20 @@ describe('GraphsService', () => {
       };
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(
+        createMockGraphEntity({ name: 'Updated Graph' }),
+      );
 
       const result = await service.update(mockCtx, mockGraphId, updateData);
 
-      expect(result.revision).toBeDefined();
-      expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
-        mockCtx,
-        mockGraph,
-        mockGraph.version,
-        expect.objectContaining({
-          schema: mockGraph.schema,
-          name: 'Updated Graph',
-          description: mockGraph.description ?? null,
-          temporary: mockGraph.temporary,
-        }),
+      // Name is applied synchronously; schema unchanged → no revision
+      expect(result.revision).toBeUndefined();
+      expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        { name: 'Updated Graph' },
         expect.any(Object),
-        { enqueueImmediately: false },
       );
-      expect(graphDao.updateById).not.toHaveBeenCalled();
     });
 
     it('should queue revision when updating compiling graph schema', async () => {
@@ -1037,7 +1030,7 @@ describe('GraphsService', () => {
       expect(result.revision).toBeUndefined();
     });
 
-    it('should create a revision when schema unchanged but other fields updated', async () => {
+    it('should apply name synchronously without revision when schema unchanged on non-running graph', async () => {
       const mockGraph = createMockGraphEntity({ status: GraphStatus.Created });
       const updateData: UpdateGraphDto = {
         schema: mockGraph.schema,
@@ -1046,24 +1039,20 @@ describe('GraphsService', () => {
       };
 
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(
+        createMockGraphEntity({ name: 'Updated Graph' }),
+      );
 
       const result = await service.update(mockCtx, mockGraphId, updateData);
 
-      expect(result.revision).toBeDefined();
-      expect(graphRevisionService.queueRevision).toHaveBeenCalledWith(
-        mockCtx,
-        mockGraph,
-        mockGraph.version,
-        expect.objectContaining({
-          schema: mockGraph.schema,
-          name: 'Updated Graph',
-          description: mockGraph.description ?? null,
-          temporary: mockGraph.temporary,
-        }),
+      // Name is applied synchronously; schema unchanged → no revision
+      expect(result.revision).toBeUndefined();
+      expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        { name: 'Updated Graph' },
         expect.any(Object),
-        { enqueueImmediately: false },
       );
-      expect(graphDao.updateById).not.toHaveBeenCalled();
     });
   });
 

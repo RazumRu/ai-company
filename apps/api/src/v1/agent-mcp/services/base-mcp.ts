@@ -141,8 +141,9 @@ export abstract class BaseMcp<TConfig = unknown> {
     transport: DockerExecTransport,
     timeoutMs: number,
   ): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+      timer = setTimeout(() => {
         reject(
           new Error(
             `MCP initialization timed out after ${timeoutMs / 1000} seconds`,
@@ -162,6 +163,8 @@ export abstract class BaseMcp<TConfig = unknown> {
       // Cleanup client on timeout or connection error
       await client.close().catch(() => undefined);
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
   }
 

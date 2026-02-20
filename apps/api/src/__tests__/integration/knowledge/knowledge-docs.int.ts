@@ -155,8 +155,9 @@ describe('KnowledgeService (integration)', () => {
         limit: 10,
         offset: 0,
       });
-      expect(results.some((entry) => entry.id === doc.id)).toBe(true);
-      results.forEach((entry) => {
+      expect(results.items.some((entry) => entry.id === doc.id)).toBe(true);
+      expect(results.total).toBeGreaterThanOrEqual(results.items.length);
+      results.items.forEach((entry) => {
         expect(entry.tags).toEqual(
           expect.arrayContaining([tagsFilter[0] as string]),
         );
@@ -205,7 +206,7 @@ describe('KnowledgeService (integration)', () => {
       limit: 10,
       offset: 0,
     });
-    expect(remaining.some((entry) => entry.id === doc.id)).toBe(false);
+    expect(remaining.items.some((entry) => entry.id === doc.id)).toBe(false);
 
     await expect(
       knowledgeService.getDoc(contextDataStorage, doc.id),

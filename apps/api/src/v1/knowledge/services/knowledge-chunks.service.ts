@@ -7,13 +7,8 @@ import { v5 as uuidv5 } from 'uuid';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
-import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
-import {
-  CompleteJsonData,
-  OpenaiService,
-  ResponseJsonData,
-} from '../../openai/openai.service';
+import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { KnowledgeChunkBoundary } from '../knowledge.types';
 
@@ -23,6 +18,15 @@ const QueryExpansionSchema = z.object({
 
 // Stable namespace for deterministic chunk point IDs (UUID v5)
 const KNOWLEDGE_CHUNK_UUID_NS = '9e107d9d-372b-4b2f-8253-225585c5e162';
+
+const MAX_QUERY_VARIANTS = 5;
+const MIN_KEYWORD_LENGTH = 3;
+const KEYWORD_SNIPPET_WINDOW = 120;
+const EDGE_SNIPPET_LENGTH = 250;
+const MIN_CHUNK_CHARS = 100;
+const MIN_CHUNK_PLAN_CHARS = 200;
+const CHARS_PER_TOKEN = 4;
+const CHUNK_SIZE_SHRINK_FACTOR = 0.8;
 
 type SearchBatchItem = Parameters<QdrantService['searchMany']>[1][number];
 type KnowledgeUpsertPoints = Parameters<QdrantService['upsertPoints']>[1];
@@ -60,13 +64,13 @@ export type KnowledgeIndexResult = {
 
 @Injectable()
 export class KnowledgeChunksService {
+  /** Cached vector size resolved from the first embedding call. */
   private knowledgeVectorSizePromise?: Promise<number>;
 
   constructor(
     private readonly qdrantService: QdrantService,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
-    private readonly litellmService: LitellmService,
   ) {}
 
   async embedTexts(texts: string[]): Promise<number[][]> {
@@ -174,6 +178,14 @@ export class KnowledgeChunksService {
       this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
     );
 
+    // Cache vector size from the first successful upsert so that
+    // deleteDocChunks can resolve the collection without a probe embedding.
+    if (!this.knowledgeVectorSizePromise) {
+      this.knowledgeVectorSizePromise = Promise.resolve(
+        this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
+      );
+    }
+
     // Upsert first so search never returns zero results mid-update.
     // Deterministic point IDs (uuid5 from docId+chunkHash) ensure that
     // matching chunks are overwritten in-place.
@@ -238,7 +250,8 @@ export class KnowledgeChunksService {
 
   private async getKnowledgeVectorSize(): Promise<number> {
     if (!this.knowledgeVectorSizePromise) {
-      this.knowledgeVectorSizePromise = this.embedTexts(['ping']).then(
+      // Probe embedding to discover vector dimensions on first use.
+      this.knowledgeVectorSizePromise = this.embedTexts(['probe']).then(
         (embeddings) =>
           this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
       );
@@ -389,17 +402,13 @@ export class KnowledgeChunksService {
     ].join('\n');
 
     const modelName = this.llmModelsService.getKnowledgeSearchModel();
-    const supportsResponsesApi =
-      await this.litellmService.supportsResponsesApi(modelName);
-    const data: ResponseJsonData | CompleteJsonData = {
+    const response = await this.openaiService.jsonRequest<{
+      queries: string[];
+    }>({
       model: modelName,
       message: prompt,
-      json: true as const,
       jsonSchema: QueryExpansionSchema,
-    };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response<{ queries: string[] }>(data)
-      : await this.openaiService.complete<{ queries: string[] }>(data);
+    });
 
     const validation = QueryExpansionSchema.safeParse(response.content);
     if (!validation.success) {
@@ -413,7 +422,7 @@ export class KnowledgeChunksService {
       if (normalized) unique.add(normalized);
     }
 
-    return Array.from(unique).slice(0, 5);
+    return Array.from(unique).slice(0, MAX_QUERY_VARIANTS);
   }
 
   private extractKeywords(text: string): string[] {
@@ -424,7 +433,7 @@ export class KnowledgeChunksService {
 
     const unique = new Set<string>();
     for (const match of matches) {
-      if (match.length > 2) {
+      if (match.length >= MIN_KEYWORD_LENGTH) {
         unique.add(match);
       }
     }
@@ -447,8 +456,6 @@ export class KnowledgeChunksService {
   }
 
   private buildKeywordSnippet(text: string, keywords: string[]): string | null {
-    const KEYWORD_WINDOW = 120;
-
     if (keywords.length === 0) {
       return null;
     }
@@ -469,10 +476,10 @@ export class KnowledgeChunksService {
       return null;
     }
 
-    const start = Math.max(0, bestIndex - KEYWORD_WINDOW);
+    const start = Math.max(0, bestIndex - KEYWORD_SNIPPET_WINDOW);
     const end = Math.min(
       text.length,
-      bestIndex + bestKeyword.length + KEYWORD_WINDOW,
+      bestIndex + bestKeyword.length + KEYWORD_SNIPPET_WINDOW,
     );
     const prefix = start > 0 ? '...' : '';
     const suffix = end < text.length ? '...' : '';
@@ -511,13 +518,11 @@ export class KnowledgeChunksService {
   }
 
   private buildEdgeSnippet(text: string): string {
-    const FALLBACK_EDGE = 250;
-
-    if (text.length <= FALLBACK_EDGE * 2) {
+    if (text.length <= EDGE_SNIPPET_LENGTH * 2) {
       return text.trim();
     }
-    const start = text.slice(0, FALLBACK_EDGE).trim();
-    const end = text.slice(-FALLBACK_EDGE).trim();
+    const start = text.slice(0, EDGE_SNIPPET_LENGTH).trim();
+    const end = text.slice(-EDGE_SNIPPET_LENGTH).trim();
     return `${start} ... ${end}`;
   }
 
@@ -564,7 +569,10 @@ export class KnowledgeChunksService {
       }
     }
 
-    const maxChars = Math.max(200, environment.knowledgeChunkMaxTokens * 4);
+    const maxChars = Math.max(
+      MIN_CHUNK_PLAN_CHARS,
+      environment.knowledgeChunkMaxTokens * CHARS_PER_TOKEN,
+    );
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i]!;
       const chunkLength = chunk.end - chunk.start;
@@ -580,7 +588,10 @@ export class KnowledgeChunksService {
     content: string,
   ): Promise<KnowledgeChunkBoundary[] | null> {
     const maxTokens = environment.knowledgeChunkMaxTokens;
-    const maxChars = Math.max(200, maxTokens * 4);
+    const maxChars = Math.max(
+      MIN_CHUNK_PLAN_CHARS,
+      maxTokens * CHARS_PER_TOKEN,
+    );
     const maxCount = environment.knowledgeChunkMaxCount;
     const baseSeparators = [
       '\n## ',
@@ -622,12 +633,12 @@ export class KnowledgeChunksService {
   private buildChunkSizes(maxChars: number): number[] {
     const sizes: number[] = [];
     let current = maxChars;
-    while (current >= 100) {
+    while (current >= MIN_CHUNK_CHARS) {
       const size = Math.floor(current);
       if (sizes[sizes.length - 1] !== size) {
         sizes.push(size);
       }
-      current *= 0.8;
+      current *= CHUNK_SIZE_SHRINK_FACTOR;
     }
     return sizes;
   }

@@ -3,8 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
-import { isEqual, omit } from 'lodash';
-import { coerce, compare as compareSemver } from 'semver';
+import { isEqual } from 'lodash';
 import { EntityManager } from 'typeorm';
 
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
@@ -47,9 +46,14 @@ export class GraphsService {
     private readonly messagesDao: MessagesDao,
   ) {}
 
-  private prepareResponse(entity: GraphEntity): GraphDto {
+  private prepareResponse(
+    entity: GraphEntity,
+    threadCounts?: { total: number; running: number },
+  ): GraphDto {
     return {
       ...entity,
+      runningThreads: threadCounts?.running ?? 0,
+      totalThreads: threadCounts?.total ?? 0,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
     };
@@ -91,7 +95,8 @@ export class GraphsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    return this.prepareResponse(graph);
+    const threadCounts = await this.threadsDao.countByGraphIds([id]);
+    return this.prepareResponse(graph, threadCounts.get(id));
   }
 
   async getAll(
@@ -99,7 +104,7 @@ export class GraphsService {
     query?: GetAllGraphsQueryDto,
   ): Promise<GraphDto[]> {
     const userId = ctx.checkSub();
-    const row = await this.graphDao.getAll({
+    const rows = await this.graphDao.getAll({
       createdBy: userId,
       ...query,
       order: {
@@ -107,7 +112,12 @@ export class GraphsService {
       },
     });
 
-    return row.map(this.prepareResponse);
+    const graphIds = rows.map((r) => r.id);
+    const threadCounts = await this.threadsDao.countByGraphIds(graphIds);
+
+    return rows.map((entity) =>
+      this.prepareResponse(entity, threadCounts.get(entity.id)),
+    );
   }
 
   async getCompiledNodes(
@@ -133,7 +143,7 @@ export class GraphsService {
       );
     }
 
-    return compiledGraph!.state.getSnapshots(data.threadId, data.runId);
+    return compiledGraph.state.getSnapshots(data.threadId, data.runId);
   }
 
   async update(
@@ -175,7 +185,12 @@ export class GraphsService {
         // Invariant repair: targetVersion must never be lower than version.
         // If this happened due to legacy bugs or manual DB edits, clamp it before
         // we compute the revision head (targetVersion) for new revisions.
-        if (this.isVersionLess(graph.targetVersion, graph.version)) {
+        if (
+          this.graphRevisionService.isVersionLess(
+            graph.targetVersion,
+            graph.version,
+          )
+        ) {
           const updated = await this.graphDao.updateById(
             id,
             { targetVersion: graph.version },
@@ -187,57 +202,61 @@ export class GraphsService {
           graph.targetVersion = updated.targetVersion;
         }
 
-        type GraphUpdateSnapshot = GraphRevisionConfig & {
-          metadata?: GraphEntity['metadata'];
-        };
+        // --- Synchronous (in-place) fields: metadata, name, description, temporary ---
+        // These are simple scalar fields that don't affect the compiled graph and
+        // can be applied immediately without going through the revision pipeline.
+        const syncUpdates: Partial<GraphEntity> = {};
 
-        const baseGraph: GraphUpdateSnapshot = {
-          schema: graph.schema,
-          name: graph.name,
-          description: graph.description ?? null,
-          temporary: graph.temporary,
-          metadata: graph.metadata,
-        };
+        if (metadata !== undefined && !isEqual(metadata, graph.metadata)) {
+          syncUpdates.metadata = metadata;
+        }
+        if (name !== undefined && name !== graph.name) {
+          syncUpdates.name = name;
+        }
+        if (
+          description !== undefined &&
+          (description ?? null) !== (graph.description ?? null)
+        ) {
+          syncUpdates.description = description ?? undefined;
+        }
+        if (
+          temporary !== undefined &&
+          temporary !== null &&
+          temporary !== graph.temporary
+        ) {
+          syncUpdates.temporary = temporary;
+        }
 
-        const nextGraph: GraphUpdateSnapshot = {
-          schema: schema ?? baseGraph.schema,
-          name: name ?? baseGraph.name,
-          description:
-            description !== undefined ? description : baseGraph.description,
-          temporary: temporary ?? baseGraph.temporary,
-          metadata: metadata !== undefined ? metadata : baseGraph.metadata,
-        };
-
-        const metadataChanged = !isEqual(
-          baseGraph.metadata,
-          nextGraph.metadata,
-        );
-
-        const revisionRelevantChanged = !isEqual(
-          omit(baseGraph, ['metadata']),
-          omit(nextGraph, ['metadata']),
-        );
-
-        // Metadata is UI-only and is applied immediately (excluded from revisions).
-        if (metadataChanged) {
+        if (Object.keys(syncUpdates).length > 0) {
           const updated = await this.graphDao.updateById(
             id,
-            { metadata },
+            syncUpdates,
             entityManager,
           );
           if (!updated) {
             throw new NotFoundException('GRAPH_NOT_FOUND');
           }
-          graph.metadata = updated.metadata;
+          Object.assign(graph, syncUpdates);
         }
 
-        if (revisionRelevantChanged) {
-          const { metadata: _ignored, ...nextConfig } = nextGraph;
+        // --- Revision-relevant field: schema ---
+        // Schema changes require async processing (compilation, live-update, etc.)
+        const schemaChanged =
+          schema !== undefined && !isEqual(schema, graph.schema);
+
+        if (schemaChanged) {
+          const revisionConfig: GraphRevisionConfig = {
+            schema: schema!,
+            name: graph.name,
+            description: graph.description ?? null,
+            temporary: graph.temporary,
+          };
+
           const revision = await this.graphRevisionService.queueRevision(
             ctx,
             graph,
             currentVersion,
-            nextConfig,
+            revisionConfig,
             entityManager,
             { enqueueImmediately: false },
           );
@@ -255,7 +274,7 @@ export class GraphsService {
           };
         }
 
-        // No revision-worthy changes (metadata-only or no-op).
+        // No schema change (sync-only or no-op).
         return { graph: this.prepareResponse(graph) };
       },
     );
@@ -268,16 +287,6 @@ export class GraphsService {
     }
 
     return response;
-  }
-
-  private isVersionLess(a: string, b: string): boolean {
-    const av = coerce(a)?.version;
-    const bv = coerce(b)?.version;
-    if (!av || !bv) {
-      // Best-effort: if we cannot parse semver, do not attempt to "fix" it here.
-      return false;
-    }
-    return compareSemver(av, bv) === -1;
   }
 
   async delete(ctx: AuthContextStorage, id: string): Promise<void> {
@@ -420,11 +429,9 @@ export class GraphsService {
 
     await Promise.allSettled(
       runningThreads.map((thread) =>
-        (async () => {
-          await this.threadsDao.updateById(thread.id, {
-            status: ThreadStatus.Stopped,
-          });
-        })(),
+        this.threadsDao.updateById(thread.id, {
+          status: ThreadStatus.Stopped,
+        }),
       ),
     );
   }
@@ -552,6 +559,13 @@ export class GraphsService {
     }
 
     const messages = dto.messages.map((msg) => new HumanMessage(msg));
+
+    if (!trigger.invokeAgent) {
+      throw new BadRequestException(
+        'TRIGGER_NOT_CONFIGURED',
+        'Agent invocation function not set on trigger',
+      );
+    }
 
     const res = await trigger.invokeAgent(messages, {
       configurable: {

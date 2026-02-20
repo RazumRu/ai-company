@@ -141,7 +141,26 @@ export class DockerExecTransport implements Transport {
       if (success) {
         resolve();
       } else {
-        this.stdin.once('drain', () => resolve());
+        const onDrain = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = (err: Error) => {
+          cleanup();
+          reject(err);
+        };
+        const onClose = () => {
+          cleanup();
+          reject(new Error('Transport stream closed while waiting for drain'));
+        };
+        const cleanup = () => {
+          this.stdin?.removeListener('drain', onDrain);
+          this.stdin?.removeListener('error', onError);
+          this.stdin?.removeListener('close', onClose);
+        };
+        this.stdin.once('drain', onDrain);
+        this.stdin.once('error', onError);
+        this.stdin.once('close', onClose);
       }
     });
   }

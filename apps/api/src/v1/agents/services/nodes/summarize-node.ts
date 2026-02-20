@@ -406,18 +406,15 @@ export class SummarizeNode extends BaseNode<
       if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
         parts.push(`TOOL_CALLS:${JSON.stringify(msg.tool_calls)}`);
       }
-      const kwToolCalls = (msg.additional_kwargs as { tool_calls?: unknown })
-        ?.tool_calls;
-      if (Array.isArray(kwToolCalls) && kwToolCalls.length > 0) {
-        parts.push(`KW_TOOL_CALLS:${JSON.stringify(kwToolCalls)}`);
-      }
     }
 
-    // Some implementations store tool call payloads in additional_kwargs for other message types.
-    const maybeKwToolCalls = (msg.additional_kwargs as { tool_calls?: unknown })
+    // Include additional_kwargs.tool_calls for all message types.
+    // AIMessage may store tool calls here as well; other implementations
+    // may also use this field.
+    const kwToolCalls = (msg.additional_kwargs as { tool_calls?: unknown })
       ?.tool_calls;
-    if (Array.isArray(maybeKwToolCalls) && maybeKwToolCalls.length > 0) {
-      parts.push(`KW_TOOL_CALLS:${JSON.stringify(maybeKwToolCalls)}`);
+    if (Array.isArray(kwToolCalls) && kwToolCalls.length > 0) {
+      parts.push(`KW_TOOL_CALLS:${JSON.stringify(kwToolCalls)}`);
     }
 
     return parts.join('\n');

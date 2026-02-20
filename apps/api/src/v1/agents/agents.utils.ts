@@ -226,13 +226,11 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
 
       // If the AI message has tool_calls entries but none had extractable IDs,
       // accept the ToolMessages that immediately follow it positionally.
+      const kwToolCallsList = (m.additional_kwargs as { tool_calls?: unknown })
+        ?.tool_calls;
       const hasToolCallsEntries =
         (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) ||
-        (Array.isArray(
-          (m.additional_kwargs as { tool_calls?: unknown })?.tool_calls,
-        ) &&
-          ((m.additional_kwargs as { tool_calls?: unknown[] }).tool_calls!
-            .length ?? 0) > 0);
+        (Array.isArray(kwToolCallsList) && kwToolCallsList.length > 0);
 
       if (hasToolCallsEntries) {
         for (let j = i + 1; j < visible.length; j++) {

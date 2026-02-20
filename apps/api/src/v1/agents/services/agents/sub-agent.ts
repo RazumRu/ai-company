@@ -169,22 +169,19 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     };
 
     try {
-      const useParallelToolCall =
+      const [
+        useParallelToolCall,
+        useResponsesApi,
+        useReasoning,
+        supportsStreaming,
+      ] = await Promise.all([
         toolsArray.length > 0
-          ? await this.litellmService.supportsParallelToolCall(
-              config.invokeModelName,
-            )
-          : false;
-
-      const useResponsesApi = await this.litellmService.supportsResponsesApi(
-        config.invokeModelName,
-      );
-      const useReasoning = await this.litellmService.supportsReasoning(
-        config.invokeModelName,
-      );
-      const supportsStreaming = await this.litellmService.supportsStreaming(
-        config.invokeModelName,
-      );
+          ? this.litellmService.supportsParallelToolCall(config.invokeModelName)
+          : Promise.resolve(false),
+        this.litellmService.supportsResponsesApi(config.invokeModelName),
+        this.litellmService.supportsReasoning(config.invokeModelName),
+        this.litellmService.supportsStreaming(config.invokeModelName),
+      ]);
 
       const llm = this.buildLLM(config.invokeModelName, {
         useResponsesApi,

@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
+import { normalizeFilterTags } from '../../../../knowledge/knowledge.utils';
 import { KnowledgeChunksService } from '../../../../knowledge/services/knowledge-chunks.service';
 import { QdrantService } from '../../../../qdrant/services/qdrant.service';
 import {
@@ -121,7 +122,7 @@ export class KnowledgeGetChunksTool extends BaseTool<
       return { output: [] };
     }
 
-    const tagsFilter = this.normalizeTags(config.tags);
+    const tagsFilter = normalizeFilterTags(config.tags);
     const parsedChunks = chunks
       .map((chunk) => this.parseChunkPayload(chunk))
       .filter((chunk): chunk is StoredChunkPayload => Boolean(chunk));
@@ -217,15 +218,6 @@ export class KnowledgeGetChunksTool extends BaseTool<
 
   private getNumber(value: unknown): number | null {
     return typeof value === 'number' && Number.isFinite(value) ? value : null;
-  }
-
-  private normalizeTags(tags?: string[]): string[] | undefined {
-    const merged = new Set<string>();
-    for (const tag of tags ?? []) {
-      const normalized = tag.trim().toLowerCase();
-      if (normalized) merged.add(normalized);
-    }
-    return merged.size ? Array.from(merged) : undefined;
   }
 
   private hasMatchingTag(tags: string[], filter: string[]): boolean {

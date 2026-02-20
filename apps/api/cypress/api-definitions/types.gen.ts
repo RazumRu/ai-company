@@ -233,11 +233,11 @@ export type KnowledgeDocCreateDto = {
   /**
    * Optional LLM usage guidance for this document. If the politic instructs to fetch full content (e.g. "always fetch the full content instead of fetching only specific chunks"), full document retrieval is permitted.
    */
-  politic?: string;
+  politic?: string | null;
   /**
    * Optional tags to apply to the document
    */
-  tags?: Array<string>;
+  tags?: Array<string> | null;
 };
 
 export type KnowledgeDocDto = {
@@ -265,11 +265,11 @@ export type KnowledgeDocUpdateDto = {
   /**
    * Optional LLM usage guidance for this document. If the politic instructs to fetch full content (e.g. "always fetch the full content instead of fetching only specific chunks"), full document retrieval is permitted.
    */
-  politic?: string;
+  politic?: string | null;
   /**
    * Optional tags to apply to the document
    */
-  tags?: Array<string>;
+  tags?: Array<string> | null;
 };
 
 export type SuggestAgentInstructionsDto = {
@@ -587,6 +587,14 @@ export type GraphDto = {
       | number
       | undefined;
   } | null;
+  /**
+   * Number of threads currently in running state
+   */
+  runningThreads?: number;
+  /**
+   * Total number of threads for this graph
+   */
+  totalThreads?: number;
   createdAt: string;
   updatedAt: string;
   /**
@@ -831,6 +839,14 @@ export type UpdateGraphResponseDto = {
         | number
         | undefined;
     } | null;
+    /**
+     * Number of threads currently in running state
+     */
+    runningThreads?: number;
+    /**
+     * Total number of threads for this graph
+     */
+    totalThreads?: number;
     createdAt: string;
     updatedAt: string;
     /**
@@ -1811,7 +1827,9 @@ export type ListDocsData = {
 };
 
 export type ListDocsResponses = {
-  200: Array<KnowledgeDocDto>;
+  200: {
+    [key: string]: unknown;
+  };
 };
 
 export type ListDocsResponse = ListDocsResponses[keyof ListDocsResponses];

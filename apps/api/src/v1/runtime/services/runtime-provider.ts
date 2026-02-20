@@ -144,18 +144,7 @@ export class RuntimeProvider {
       statuses: [RuntimeInstanceStatus.Running, RuntimeInstanceStatus.Starting],
     });
 
-    if (!instances.length) {
-      return 0;
-    }
-
-    await Promise.all(
-      instances.map(async (instance) => {
-        await this.stopRuntime(instance);
-        await this.runtimeInstanceDao.hardDeleteById(instance.id);
-      }),
-    );
-
-    return instances.length;
+    return this.stopAndDeleteInstances(instances);
   }
 
   async cleanupRuntimesByNodeId(nodeId: string): Promise<number> {
@@ -163,18 +152,7 @@ export class RuntimeProvider {
       nodeId,
     });
 
-    if (!instances.length) {
-      return 0;
-    }
-
-    await Promise.all(
-      instances.map(async (instance) => {
-        await this.stopRuntime(instance);
-        await this.runtimeInstanceDao.hardDeleteById(instance.id);
-      }),
-    );
-
-    return instances.length;
+    return this.stopAndDeleteInstances(instances);
   }
 
   async cleanupTemporaryRuntimes(): Promise<number> {
@@ -188,6 +166,12 @@ export class RuntimeProvider {
       lastUsedBefore,
     });
 
+    return this.stopAndDeleteInstances(instances);
+  }
+
+  private async stopAndDeleteInstances(
+    instances: RuntimeInstanceEntity[],
+  ): Promise<number> {
     if (!instances.length) {
       return 0;
     }

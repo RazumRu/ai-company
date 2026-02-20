@@ -44,11 +44,13 @@ describe('AiSuggestionsService', () => {
   let openaiService: {
     response: OpenaiService['response'];
     complete: OpenaiService['complete'];
+    jsonRequest: OpenaiService['jsonRequest'];
   };
   let llmModelsService: Pick<LlmModelsService, 'getAiSuggestionsDefaultModel'>;
   let litellmService: Pick<LitellmService, 'supportsResponsesApi'>;
   let responseMock: ReturnType<typeof vi.fn> & OpenaiService['response'];
   let completeMock: ReturnType<typeof vi.fn> & OpenaiService['complete'];
+  let jsonRequestMock: ReturnType<typeof vi.fn> & OpenaiService['jsonRequest'];
   let service: AiSuggestionsService;
 
   beforeEach(() => {
@@ -72,9 +74,14 @@ describe('AiSuggestionsService', () => {
       content: 'Updated instructions',
       conversationId: 'thread-1',
     })) as ReturnType<typeof vi.fn> & OpenaiService['complete'];
+    jsonRequestMock = vi.fn(async () => ({
+      content: { updates: [] },
+      conversationId: 'thread-1',
+    })) as ReturnType<typeof vi.fn> & OpenaiService['jsonRequest'];
     openaiService = {
       response: responseMock,
       complete: completeMock,
+      jsonRequest: jsonRequestMock,
     };
     llmModelsService = {
       getAiSuggestionsDefaultModel: vi.fn().mockReturnValue('openai/gpt-5.2'),
@@ -561,7 +568,7 @@ describe('AiSuggestionsService', () => {
       (
         graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
       ).mockReturnValue([]);
-      responseMock.mockResolvedValueOnce({
+      jsonRequestMock.mockResolvedValueOnce({
         content: { updates: [{ nodeId: 'agent-1', instructions: 'Updated' }] },
         conversationId: 'graph-1',
       });
@@ -571,9 +578,8 @@ describe('AiSuggestionsService', () => {
         model: 'openai/custom-model',
       });
 
-      const [payload] = responseMock.mock.calls[0] as [
+      const [payload] = jsonRequestMock.mock.calls[0] as [
         { systemMessage?: string; message: string; model: string },
-        { previous_response_id?: string },
       ];
       expect(payload.model).toBe('openai/custom-model');
     });

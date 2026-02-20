@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
+import { normalizeFilterTags } from '../../../../knowledge/knowledge.utils';
 import {
   BaseTool,
   ExtendedLangGraphRunnableConfig,
@@ -115,7 +116,7 @@ export class KnowledgeGetDocTool extends BaseTool<
       throw new BadRequestException(undefined, 'graph_created_by is required');
     }
 
-    const tagsFilter = this.normalizeTags(config.tags);
+    const tagsFilter = normalizeFilterTags(config.tags);
     const doc = await this.findDoc(args.docId, graphCreatedBy, tagsFilter);
 
     if (!doc) {
@@ -148,15 +149,6 @@ export class KnowledgeGetDocTool extends BaseTool<
     _config: KnowledgeToolGroupConfig,
   ): string {
     return `Fetch knowledge doc (${args.docId})`;
-  }
-
-  private normalizeTags(tags?: string[]): string[] | undefined {
-    const merged = new Set<string>();
-    for (const tag of tags ?? []) {
-      const normalized = tag.trim().toLowerCase();
-      if (normalized) merged.add(normalized);
-    }
-    return merged.size ? Array.from(merged) : undefined;
   }
 
   private findDoc(

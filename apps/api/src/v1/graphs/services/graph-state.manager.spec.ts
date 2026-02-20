@@ -129,12 +129,7 @@ describe('GraphStateManager', () => {
       info: vi.fn(),
       warn: vi.fn(),
     } as unknown as DefaultLogger;
-    const litellmService = {};
-    manager = new GraphStateManager(
-      notifications,
-      litellmService as any,
-      logger,
-    );
+    manager = new GraphStateManager(notifications, logger);
     manager.setGraphId('graph-1');
   });
 

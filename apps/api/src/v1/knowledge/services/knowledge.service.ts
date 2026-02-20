@@ -6,13 +6,8 @@ import { isUndefined, pickBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 import { z } from 'zod';
 
-import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
-import {
-  CompleteJsonData,
-  OpenaiService,
-  ResponseJsonData,
-} from '../../openai/openai.service';
+import { OpenaiService } from '../../openai/openai.service';
 import { KnowledgeDocDao } from '../dao/knowledge-doc.dao';
 import {
   KnowledgeDocCreateDto,
@@ -21,15 +16,27 @@ import {
   KnowledgeDocUpdateDto,
 } from '../dto/knowledge.dto';
 import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
-import { KnowledgeChunkBoundary, KnowledgeSummary } from '../knowledge.types';
+import { KnowledgeSummary } from '../knowledge.types';
+import {
+  MAX_TAGS,
+  normalizeFilterTags,
+  normalizeTags,
+} from '../knowledge.utils';
 import {
   ChunkMaterial,
   KnowledgeChunksService,
 } from './knowledge-chunks.service';
 
+const FALLBACK_SUMMARY_LENGTH = 500;
+
 const KnowledgeSummarySchema = z.object({
   summary: z.string().min(1),
 });
+
+export type KnowledgeDocListResult = {
+  items: KnowledgeDocDto[];
+  total: number;
+};
 
 @Injectable()
 export class KnowledgeService {
@@ -39,7 +46,6 @@ export class KnowledgeService {
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
     private readonly knowledgeChunksService: KnowledgeChunksService,
-    private readonly litellmService: LitellmService,
   ) {}
 
   async createDoc(
@@ -58,7 +64,7 @@ export class KnowledgeService {
       this.generateSummary(content),
       this.knowledgeChunksService.generateChunkPlan(content),
     ]);
-    const tags = this.normalizeTags(dto.tags ?? []);
+    const tags = normalizeTags(dto.tags ?? [], MAX_TAGS);
     const chunks = this.knowledgeChunksService.materializeChunks(content, plan);
     const embeddings = await this.knowledgeChunksService.embedTexts(
       chunks.map((c) => c.text),
@@ -107,7 +113,9 @@ export class KnowledgeService {
       (v) => !isUndefined(v),
     );
 
-    let chunkPlan: KnowledgeChunkBoundary[] | null = null;
+    let chunks: ChunkMaterial[] = [];
+    let embeddings: number[][] = [];
+
     if (dto.content) {
       const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
       const [summary, plan] = await Promise.all([
@@ -116,14 +124,17 @@ export class KnowledgeService {
       ]);
       updateData.summary = summary;
       updateData.embeddingModel = embeddingModel;
-      chunkPlan = plan;
+      chunks = this.knowledgeChunksService.materializeChunks(dto.content, plan);
+      embeddings = await this.knowledgeChunksService.embedTexts(
+        chunks.map((c) => c.text),
+      );
     }
 
     if (dto.tags) {
-      updateData.tags = this.normalizeTags(dto.tags);
+      updateData.tags = normalizeTags(dto.tags, MAX_TAGS);
     }
 
-    const { updated, embeddings, chunkInputs } = await this.typeorm.trx(
+    const updated = await this.typeorm.trx(
       async (entityManager: EntityManager) => {
         const updated = await this.docDao.updateById(
           id,
@@ -135,23 +146,7 @@ export class KnowledgeService {
           throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
         }
 
-        let chunkInputs: ChunkMaterial[] = [];
-        let embeddings: number[][] = [];
-        if (dto.content) {
-          const plan =
-            chunkPlan ??
-            (await this.knowledgeChunksService.generateChunkPlan(dto.content));
-          const chunks = this.knowledgeChunksService.materializeChunks(
-            dto.content,
-            plan,
-          );
-          embeddings = await this.knowledgeChunksService.embedTexts(
-            chunks.map((c) => c.text),
-          );
-          chunkInputs = chunks;
-        }
-
-        return { updated, chunkInputs, embeddings };
+        return updated;
       },
     );
 
@@ -159,7 +154,7 @@ export class KnowledgeService {
       await this.knowledgeChunksService.upsertDocChunks(
         id,
         updated.publicId,
-        chunkInputs,
+        chunks,
         embeddings,
       );
     }
@@ -175,31 +170,44 @@ export class KnowledgeService {
       throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
     }
 
+    // Delete from Qdrant first — if this fails, the DB record still exists
+    // and the operation can be retried. The reverse order would leave
+    // orphan vectors in Qdrant with no DB record to reference.
+    await this.knowledgeChunksService.deleteDocChunks(id);
+
     await this.typeorm.trx(async (entityManager: EntityManager) => {
       await this.docDao.deleteById(id, entityManager);
     });
-
-    await this.knowledgeChunksService.deleteDocChunks(id);
   }
 
   async listDocs(
     ctx: AuthContextStorage,
     query: KnowledgeDocListQuery,
-  ): Promise<KnowledgeDocDto[]> {
+  ): Promise<KnowledgeDocListResult> {
     const userId = ctx.checkSub();
 
-    const tags = this.normalizeFilterTags(query.tags);
+    const tags = normalizeFilterTags(query.tags);
 
-    const rows = await this.docDao.getAll({
+    const searchParams = {
       createdBy: userId,
       tags,
       search: query.search,
-      limit: query.limit,
-      offset: query.offset,
-      order: { updatedAt: 'DESC' },
-    });
+      order: { updatedAt: 'DESC' as const },
+    };
 
-    return rows.map((row) => this.prepareDocResponse(row));
+    const [rows, total] = await Promise.all([
+      this.docDao.getAll({
+        ...searchParams,
+        limit: query.limit,
+        offset: query.offset,
+      }),
+      this.docDao.count(searchParams),
+    ]);
+
+    return {
+      items: rows.map((row) => this.prepareDocResponse(row)),
+      total,
+    };
   }
 
   async getDoc(ctx: AuthContextStorage, id: string): Promise<KnowledgeDocDto> {
@@ -241,18 +249,13 @@ export class KnowledgeService {
       typeof modelParams.model === 'string'
         ? modelParams.model
         : String(modelParams.model);
-    const supportsResponsesApi =
-      await this.litellmService.supportsResponsesApi(modelName);
-    const data: ResponseJsonData | CompleteJsonData = {
+
+    const response = await this.openaiService.jsonRequest<KnowledgeSummary>({
       model: modelName,
       message: prompt,
-      json: true as const,
       jsonSchema: KnowledgeSummarySchema,
       ...(modelParams.reasoning ? { reasoning: modelParams.reasoning } : {}),
-    };
-    const response = supportsResponsesApi
-      ? await this.openaiService.response<KnowledgeSummary>(data)
-      : await this.openaiService.complete<KnowledgeSummary>(data);
+    });
 
     const validation = KnowledgeSummarySchema.safeParse(response.content);
     if (!validation.success) {
@@ -263,23 +266,7 @@ export class KnowledgeService {
   }
 
   private buildFallbackSummary(content: string): string {
-    const summary = content.trim().slice(0, 500);
+    const summary = content.trim().slice(0, FALLBACK_SUMMARY_LENGTH);
     return summary.length ? summary : 'No summary available.';
-  }
-
-  private normalizeTags(tags: string[]): string[] {
-    const normalized = tags
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean);
-    return Array.from(new Set(normalized)).slice(0, 12);
-  }
-
-  private normalizeFilterTags(tags?: string[]): string[] | undefined {
-    if (!tags || tags.length === 0) {
-      return undefined;
-    }
-    return Array.from(
-      new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean)),
-    );
   }
 }

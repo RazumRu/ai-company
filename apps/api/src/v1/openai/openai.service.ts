@@ -189,6 +189,22 @@ export class OpenaiService {
     };
   }
 
+  /**
+   * Convenience wrapper that picks the right API (Responses vs Chat Completions)
+   * for a JSON-schema-constrained request based on model capabilities.
+   */
+  async jsonRequest<T>(
+    data: Omit<ResponseJsonData, 'json'>,
+  ): Promise<GenerateResult<T>> {
+    const supportsResponsesApi = await this.litellmService.supportsResponsesApi(
+      data.model,
+    );
+    const payload: ResponseJsonData = { ...data, json: true as const };
+    return supportsResponsesApi
+      ? this.response<T>(payload)
+      : this.complete<T>(payload);
+  }
+
   async embeddings(args: EmbeddingsInput): Promise<EmbeddingsResult> {
     const response = await this.client.embeddings.create({
       model: args.model,

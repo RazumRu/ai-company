@@ -391,21 +391,37 @@ export const KnowledgeDocCreateDtoSchema = {
     title: {
       type: 'string',
       minLength: 1,
+      maxLength: 500,
     },
     content: {
       type: 'string',
       minLength: 1,
+      maxLength: 2000000,
     },
     politic: {
-      type: 'string',
-      minLength: 1,
+      anyOf: [
+        {
+          type: 'string',
+          minLength: 1,
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     tags: {
-      type: 'array',
-      items: {
-        type: 'string',
-        minLength: 1,
-      },
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
   },
   required: ['title', 'content'],
@@ -497,21 +513,37 @@ export const KnowledgeDocUpdateDtoSchema = {
     title: {
       type: 'string',
       minLength: 1,
+      maxLength: 500,
     },
     content: {
       type: 'string',
       minLength: 1,
+      maxLength: 2000000,
     },
     politic: {
-      type: 'string',
-      minLength: 1,
+      anyOf: [
+        {
+          type: 'string',
+          minLength: 1,
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     tags: {
-      type: 'array',
-      items: {
-        type: 'string',
-        minLength: 1,
-      },
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
   },
 } as const;
@@ -928,6 +960,18 @@ export const GraphDtoSchema = {
         },
       ],
     },
+    runningThreads: {
+      default: 0,
+      type: 'integer',
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+    totalThreads: {
+      default: 0,
+      type: 'integer',
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
     createdAt: {
       type: 'string',
       format: 'date-time',
@@ -1277,6 +1321,18 @@ export const UpdateGraphResponseDtoSchema = {
               type: 'null',
             },
           ],
+        },
+        runningThreads: {
+          default: 0,
+          type: 'integer',
+          minimum: 0,
+          maximum: 9007199254740991,
+        },
+        totalThreads: {
+          default: 0,
+          type: 'integer',
+          minimum: 0,
+          maximum: 9007199254740991,
         },
         createdAt: {
           type: 'string',

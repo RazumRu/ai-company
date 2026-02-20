@@ -7,6 +7,7 @@ import {
 import { Brackets, DataSource, In } from 'typeorm';
 
 import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
+import { escapeIlike } from '../knowledge.utils';
 
 export type KnowledgeDocSearchTerms = Partial<{
   id: string;
@@ -72,12 +73,16 @@ export class KnowledgeDocDao extends BaseDao<
     }
 
     if (params?.search && params.search.trim().length > 0) {
-      const query = `%${params.search.trim()}%`;
+      const query = `%${escapeIlike(params.search.trim())}%`;
       builder.andWhere(
         new Brackets((qb) => {
-          qb.where(`${this.alias}.title ILIKE :query`, { query })
-            .orWhere(`${this.alias}.summary ILIKE :query`, { query })
-            .orWhere(`${this.alias}.content ILIKE :query`, { query });
+          qb.where(`${this.alias}.title ILIKE :query ESCAPE '\\'`, { query })
+            .orWhere(`${this.alias}.summary ILIKE :query ESCAPE '\\'`, {
+              query,
+            })
+            .orWhere(`${this.alias}.content ILIKE :query ESCAPE '\\'`, {
+              query,
+            });
         }),
       );
     }

@@ -84,10 +84,8 @@ export class RuntimeThreadProvider {
         runtimeStartParams: {
           ...this.params.runtimeStartParams,
           initScript,
-          initScriptTimeoutMs: Math.max(
+          initScriptTimeoutMs:
             this.params.runtimeStartParams.initScriptTimeoutMs ?? 0,
-            this.params.runtimeStartParams.initScriptTimeoutMs ?? 0,
-          ),
           env: {
             ...(this.params.runtimeStartParams.env || {}),
             ...this.additionalEnv,

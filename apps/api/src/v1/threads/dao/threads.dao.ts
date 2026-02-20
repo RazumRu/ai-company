@@ -77,6 +77,41 @@ export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms> {
     }
   }
 
+  /**
+   * Returns thread counts grouped by graphId.
+   * Each entry contains the total count and the running count.
+   */
+  async countByGraphIds(
+    graphIds: string[],
+  ): Promise<Map<string, { total: number; running: number }>> {
+    const result = new Map<string, { total: number; running: number }>();
+    if (graphIds.length === 0) {
+      return result;
+    }
+
+    const rows: { graphId: string; status: string; cnt: string }[] =
+      await this.getQueryBuilder()
+        .select(`${this.alias}.graphId`, 'graphId')
+        .addSelect(`${this.alias}.status`, 'status')
+        .addSelect('COUNT(*)', 'cnt')
+        .where(`${this.alias}.graphId IN (:...graphIds)`, { graphIds })
+        .groupBy(`${this.alias}.graphId`)
+        .addGroupBy(`${this.alias}.status`)
+        .getRawMany();
+
+    for (const row of rows) {
+      const count = parseInt(row.cnt, 10);
+      const entry = result.get(row.graphId) ?? { total: 0, running: 0 };
+      entry.total += count;
+      if (row.status === ThreadStatus.Running) {
+        entry.running = count;
+      }
+      result.set(row.graphId, entry);
+    }
+
+    return result;
+  }
+
   async touchById(id: string): Promise<void> {
     await this.getQueryBuilder()
       .update()

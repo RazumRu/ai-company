@@ -442,24 +442,18 @@ export class AiSuggestionsService {
     });
 
     const modelName = this.resolveAiSuggestionsModel(payload.model);
-    const supportsResponsesApi =
-      await this.litellmService.supportsResponsesApi(modelName);
-    const data: ResponseJsonData | CompleteJsonData = {
-      model: modelName,
-      systemMessage,
-      message,
-      json: true as const,
-      jsonSchema: schema,
-      reasoning: { effort: 'medium' as const },
-    };
     type GraphUpdates = {
       updates?: { nodeId?: string; instructions?: string }[];
     };
     const response = await this.callLlm(
       () =>
-        supportsResponsesApi
-          ? this.openaiService.response<GraphUpdates>(data)
-          : this.openaiService.complete<GraphUpdates>(data),
+        this.openaiService.jsonRequest<GraphUpdates>({
+          model: modelName,
+          systemMessage,
+          message,
+          jsonSchema: schema,
+          reasoning: { effort: 'medium' as const },
+        }),
       'suggestGraphInstructions',
     );
 
@@ -541,6 +535,11 @@ export class AiSuggestionsService {
       content: z.string(),
       tags: z.array(z.string()).nullable(),
     });
+    type KnowledgeResult = {
+      title: string;
+      content: string;
+      tags: string[] | null;
+    };
     const data: ResponseJsonData | CompleteJsonData = {
       model: modelName,
       systemMessage,
@@ -548,11 +547,6 @@ export class AiSuggestionsService {
       json: true as const,
       jsonSchema: knowledgeSchema,
       reasoning: { effort: 'medium' as const },
-    };
-    type KnowledgeResult = {
-      title: string;
-      content: string;
-      tags: string[] | null;
     };
     const response = await this.callLlm(
       () =>

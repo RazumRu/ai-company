@@ -23,7 +23,10 @@ import {
   KnowledgeDocListQueryDto,
   KnowledgeDocUpdateDto,
 } from '../dto/knowledge.dto';
-import { KnowledgeService } from '../services/knowledge.service';
+import {
+  KnowledgeDocListResult,
+  KnowledgeService,
+} from '../services/knowledge.service';
 
 @ApiTags('knowledge')
 @Controller('knowledge-docs')
@@ -62,7 +65,7 @@ export class KnowledgeController {
   async listDocs(
     @Query() query: KnowledgeDocListQueryDto,
     @CtxStorage() contextDataStorage: AuthContextStorage,
-  ): Promise<KnowledgeDocDto[]> {
+  ): Promise<KnowledgeDocListResult> {
     return this.knowledgeService.listDocs(contextDataStorage, query);
   }
 

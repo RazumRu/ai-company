@@ -16,9 +16,16 @@ export const KnowledgeDocSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+/** Maximum content length in characters (~500k tokens at 4 chars/token). */
+const MAX_CONTENT_LENGTH = 2_000_000;
+
 export const KnowledgeDocInputSchema = z.object({
-  title: z.string().min(1).describe('Knowledge document title'),
-  content: z.string().min(1).describe('Raw knowledge document content'),
+  title: z.string().min(1).max(500).describe('Knowledge document title'),
+  content: z
+    .string()
+    .min(1)
+    .max(MAX_CONTENT_LENGTH)
+    .describe('Raw knowledge document content'),
   politic: z
     .string()
     .min(1)

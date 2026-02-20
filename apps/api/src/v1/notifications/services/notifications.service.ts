@@ -75,8 +75,8 @@ export class NotificationsService implements OnModuleDestroy {
   }
 
   async onModuleDestroy() {
+    await this.worker.close(true);
     await this.queue.close();
     await this.redis.quit();
-    await this.worker.close(true);
   }
 }

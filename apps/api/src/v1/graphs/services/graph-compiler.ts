@@ -385,17 +385,10 @@ export class GraphCompiler {
     const inputNodeIds = new Set<string>();
     const outputNodeIds = new Set<string>();
 
-    const outgoingEdges = edges.filter((edge) => edge.from === nodeId);
-    const incomingEdges = edges.filter((edge) => edge.to === nodeId);
-
-    for (const edge of incomingEdges) {
-      if (compiledNodes.has(edge.from)) {
+    for (const edge of edges) {
+      if (edge.to === nodeId && compiledNodes.has(edge.from)) {
         inputNodeIds.add(edge.from);
-      }
-    }
-
-    for (const edge of outgoingEdges) {
-      if (compiledNodes.has(edge.to)) {
+      } else if (edge.from === nodeId && compiledNodes.has(edge.to)) {
         outputNodeIds.add(edge.to);
       }
     }
@@ -406,6 +399,7 @@ export class GraphCompiler {
   public getBuildOrder(schema: GraphSchemaType): GraphNodeSchemaType[] {
     const edges = schema.edges || [];
 
+    const nodeMap = new Map(schema.nodes.map((n) => [n.id, n]));
     const outgoingEdgeCount = new Map<string, number>();
     const incomingEdges = new Map<string, Set<string>>();
 
@@ -432,9 +426,10 @@ export class GraphCompiler {
     }
 
     const buildOrder: GraphNodeSchemaType[] = [];
+    let queueHead = 0;
 
-    while (queue.length > 0) {
-      const currentNode = queue.shift()!;
+    while (queueHead < queue.length) {
+      const currentNode = queue[queueHead++]!;
       buildOrder.push(currentNode);
 
       const dependents = incomingEdges.get(currentNode.id)!;
@@ -443,7 +438,7 @@ export class GraphCompiler {
         outgoingEdgeCount.set(dependentId, newCount);
 
         if (newCount === 0) {
-          const dependentNode = schema.nodes.find((n) => n.id === dependentId);
+          const dependentNode = nodeMap.get(dependentId);
           if (dependentNode) {
             queue.push(dependentNode);
           }
