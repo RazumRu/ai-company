@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AgentsModule } from './v1/agents/agents.module';
 import { AiSuggestionsModule } from './v1/ai-suggestions/ai-suggestions.module';
+import { AnalyticsModule } from './v1/analytics/analytics.module';
 import { CacheModule } from './v1/cache/cache.module';
 import { GitRepositoriesModule } from './v1/git-repositories/git-repositories.module';
 import { GraphTemplatesModule } from './v1/graph-templates/graph-templates.module';
@@ -18,6 +19,7 @@ import { ThreadsModule } from './v1/threads/threads.module';
     RuntimeModule,
     AgentsModule,
     AiSuggestionsModule,
+    AnalyticsModule,
     GraphsModule,
     LitellmModule,
     KnowledgeModule,

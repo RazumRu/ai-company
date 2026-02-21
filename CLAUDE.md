@@ -187,6 +187,7 @@ src/v1/feature-name/
 - **Unit tests** (`*.spec.ts`): placed next to the source file. Run with `pnpm test:unit`. Prefer updating an existing spec file over creating a new one.
 - **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). **Mandatory** when modifying code that already has integration tests — always run with a specific filename: `pnpm test:integration {filename}`. **NEVER** run bare `pnpm test:integration` without a filename.
 - **E2E tests** (`*.cy.ts`): in `apps/api/cypress/e2e/`. Smoke-test endpoints over HTTP. Require a running server + deps.
+- **E2E type safety**: When creating or modifying E2E tests, always regenerate API type definitions first (`cd apps/api && pnpm test:e2e:generate-api`). E2E helpers and tests **must** import request/response types from `../../api-definitions` (e.g. `import type { GraphDto, GetAllGraphsData } from '../../api-definitions'`) instead of defining inline types. Use the generated `*Data['query']` types for query parameters and the generated `*Dto` types for response bodies.
 - **Must-fail policy**: Tests must never conditionally skip based on missing env vars or services. If a prerequisite is absent, the test must fail with a clear error — no `it.skip` or early returns.
 - **Coverage thresholds** (when enabled): 90% lines/functions/statements, 80% branches.
 - **E2E logging**: use `cy.task('log', message)` to print to terminal output.

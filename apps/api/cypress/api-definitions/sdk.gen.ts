@@ -33,6 +33,8 @@ import type {
   GetAllGraphsResponses,
   GetAllTemplatesData,
   GetAllTemplatesResponses,
+  GetByGraphData,
+  GetByGraphResponses,
   GetCompiledNodesData,
   GetCompiledNodesResponses,
   GetDocData,
@@ -41,6 +43,8 @@ import type {
   GetGraphRevisionResponses,
   GetGraphRevisionsData,
   GetGraphRevisionsResponses,
+  GetOverviewData,
+  GetOverviewResponses,
   GetRepoIndexByRepositoryIdData,
   GetRepoIndexByRepositoryIdResponses,
   GetRepoIndexesData,
@@ -667,5 +671,25 @@ export const stopThreadByExternalId = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/external/{externalThreadId}/stop',
+    ...options,
+  });
+
+export const getOverview = <ThrowOnError extends boolean = false>(
+  options?: Options<GetOverviewData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetOverviewResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/analytics/overview',
+    ...options,
+  });
+
+export const getByGraph = <ThrowOnError extends boolean = false>(
+  options?: Options<GetByGraphData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetByGraphResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/analytics/by-graph',
     ...options,
   });

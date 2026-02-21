@@ -2689,3 +2689,99 @@ export const SetThreadMetadataDtoSchema = {
   },
   required: ['metadata'],
 } as const;
+
+export const AnalyticsOverviewDtoSchema = {
+  type: 'object',
+  properties: {
+    totalThreads: {
+      type: 'integer',
+      minimum: -9007199254740991,
+      maximum: 9007199254740991,
+    },
+    inputTokens: {
+      type: 'number',
+    },
+    cachedInputTokens: {
+      type: 'number',
+    },
+    outputTokens: {
+      type: 'number',
+    },
+    reasoningTokens: {
+      type: 'number',
+    },
+    totalTokens: {
+      type: 'number',
+    },
+    totalPrice: {
+      type: 'number',
+    },
+  },
+  required: [
+    'totalThreads',
+    'inputTokens',
+    'cachedInputTokens',
+    'outputTokens',
+    'reasoningTokens',
+    'totalTokens',
+    'totalPrice',
+  ],
+} as const;
+
+export const AnalyticsByGraphResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    graphs: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          totalThreads: {
+            type: 'integer',
+            minimum: -9007199254740991,
+            maximum: 9007199254740991,
+          },
+          inputTokens: {
+            type: 'number',
+          },
+          cachedInputTokens: {
+            type: 'number',
+          },
+          outputTokens: {
+            type: 'number',
+          },
+          reasoningTokens: {
+            type: 'number',
+          },
+          totalTokens: {
+            type: 'number',
+          },
+          totalPrice: {
+            type: 'number',
+          },
+          graphId: {
+            type: 'string',
+            format: 'uuid',
+            pattern:
+              '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+          },
+          graphName: {
+            type: 'string',
+          },
+        },
+        required: [
+          'totalThreads',
+          'inputTokens',
+          'cachedInputTokens',
+          'outputTokens',
+          'reasoningTokens',
+          'totalTokens',
+          'totalPrice',
+          'graphId',
+          'graphName',
+        ],
+      },
+    },
+  },
+  required: ['graphs'],
+} as const;

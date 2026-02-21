@@ -1630,6 +1630,78 @@ export type SetThreadMetadataDto = {
   };
 };
 
+export type AnalyticsOverviewDto = {
+  /**
+   * Total number of threads
+   */
+  totalThreads: number;
+  /**
+   * Sum of input tokens
+   */
+  inputTokens: number;
+  /**
+   * Sum of cached input tokens
+   */
+  cachedInputTokens: number;
+  /**
+   * Sum of output tokens
+   */
+  outputTokens: number;
+  /**
+   * Sum of reasoning tokens
+   */
+  reasoningTokens: number;
+  /**
+   * Sum of all tokens
+   */
+  totalTokens: number;
+  /**
+   * Total cost in USD
+   */
+  totalPrice: number;
+};
+
+export type AnalyticsByGraphResponseDto = {
+  graphs: Array<{
+    /**
+     * Total number of threads
+     */
+    totalThreads: number;
+    /**
+     * Sum of input tokens
+     */
+    inputTokens: number;
+    /**
+     * Sum of cached input tokens
+     */
+    cachedInputTokens: number;
+    /**
+     * Sum of output tokens
+     */
+    outputTokens: number;
+    /**
+     * Sum of reasoning tokens
+     */
+    reasoningTokens: number;
+    /**
+     * Sum of all tokens
+     */
+    totalTokens: number;
+    /**
+     * Total cost in USD
+     */
+    totalPrice: number;
+    /**
+     * Graph ID
+     */
+    graphId: string;
+    /**
+     * Graph name
+     */
+    graphName: string;
+  }>;
+};
+
 export type GetRepositoriesData = {
   body?: never;
   path?: never;
@@ -2335,3 +2407,52 @@ export type StopThreadByExternalIdResponses = {
 
 export type StopThreadByExternalIdResponse =
   StopThreadByExternalIdResponses[keyof StopThreadByExternalIdResponses];
+
+export type GetOverviewData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Include threads created on or after this ISO 8601 datetime
+     */
+    dateFrom?: string;
+    /**
+     * Include threads created before this ISO 8601 datetime
+     */
+    dateTo?: string;
+  };
+  url: '/api/v1/analytics/overview';
+};
+
+export type GetOverviewResponses = {
+  200: AnalyticsOverviewDto;
+};
+
+export type GetOverviewResponse =
+  GetOverviewResponses[keyof GetOverviewResponses];
+
+export type GetByGraphData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Include threads created on or after this ISO 8601 datetime
+     */
+    dateFrom?: string;
+    /**
+     * Include threads created before this ISO 8601 datetime
+     */
+    dateTo?: string;
+    /**
+     * Filter to a specific graph
+     */
+    graphId?: string;
+  };
+  url: '/api/v1/analytics/by-graph';
+};
+
+export type GetByGraphResponses = {
+  200: AnalyticsByGraphResponseDto;
+};
+
+export type GetByGraphResponse = GetByGraphResponses[keyof GetByGraphResponses];
