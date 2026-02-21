@@ -121,22 +121,18 @@ describe('Graph Nodes Integration Tests', () => {
 
   const extractRunId = (messages: ThreadMessageDto[]): string | undefined => {
     for (const entry of messages) {
+      // runId is extracted to a top-level field on the message DTO by
+      // MessageTransformerService (from __runId in additionalKwargs).
+      const message = entry.message as { runId?: string | null };
+      if (typeof message.runId === 'string' && message.runId.length > 0) {
+        return message.runId;
+      }
+
+      // Fallback: check additionalKwargs for legacy keys
       const additionalKwargs =
-        (
-          entry.message as {
-            additionalKwargs?: Record<string, unknown>;
-            additional_kwargs?: Record<string, unknown>;
-          }
-        ).additionalKwargs ||
-        (
-          entry.message as {
-            additionalKwargs?: Record<string, unknown>;
-            additional_kwargs?: Record<string, unknown>;
-          }
-        ).additional_kwargs ||
-        {};
-      const runId = (additionalKwargs['run_id'] ??
-        additionalKwargs['runId']) as string | undefined;
+        (entry.message as { additionalKwargs?: Record<string, unknown> })
+          .additionalKwargs ?? {};
+      const runId = additionalKwargs['__runId'] ?? additionalKwargs['run_id'];
       if (typeof runId === 'string' && runId.length > 0) {
         return runId;
       }
@@ -454,7 +450,10 @@ describe('Graph Nodes Integration Tests', () => {
             const metadata = node.additionalNodeMetadata as
               | { pendingMessages?: unknown[] }
               | undefined;
-            return Array.isArray(metadata?.pendingMessages);
+            return (
+              Array.isArray(metadata?.pendingMessages) &&
+              metadata.pendingMessages.length > 0
+            );
           }),
       );
 

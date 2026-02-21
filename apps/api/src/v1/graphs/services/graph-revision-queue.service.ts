@@ -126,6 +126,13 @@ export class GraphRevisionQueueService
   async onModuleDestroy(): Promise<void> {
     await this.worker.close();
     await this.queue.close();
-    await this.redis.quit();
+
+    try {
+      if (this.redis.status === 'ready') {
+        await this.redis.quit();
+      }
+    } catch {
+      // Redis connection may already be closed by worker/queue teardown
+    }
   }
 }

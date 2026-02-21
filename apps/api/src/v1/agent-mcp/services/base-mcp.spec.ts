@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
-import { IMcpServerConfig } from '../agent-mcp.types';
-import { BaseMcp, McpToolMetadata } from './base-mcp';
+import { IMcpServerConfig, McpStatus } from '../agent-mcp.types';
+import { BaseMcp, McpEventType, McpToolMetadata } from './base-mcp';
 
 // Create a concrete test implementation of BaseMcp
 class TestMcp extends BaseMcp<Record<string, never>> {
@@ -52,6 +52,7 @@ describe('BaseMcp', () => {
     } as unknown as BaseRuntime;
     mockRuntimeThreadProvider = {
       registerJob: vi.fn(),
+      removeExecutor: vi.fn(),
     } as unknown as RuntimeThreadProvider;
   });
 
@@ -333,6 +334,156 @@ describe('BaseMcp', () => {
       await expect(testMcp.setup(config, mockRuntime)).rejects.toThrow(
         'Connection failed',
       );
+    });
+  });
+
+  describe('status', () => {
+    it('should start with IDLE status', () => {
+      expect(testMcp.getStatus()).toBe(McpStatus.IDLE);
+      expect(testMcp.isReady).toBe(false);
+    });
+
+    it('should transition to READY after successful initialize', async () => {
+      vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+      vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({
+        tools: [],
+      } as ListToolsResult);
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
+
+      await testMcp.initialize(
+        {},
+        mockRuntimeThreadProvider,
+        mockRuntime,
+        'executor-1',
+      );
+
+      expect(testMcp.getStatus()).toBe(McpStatus.READY);
+      expect(testMcp.isReady).toBe(true);
+    });
+
+    it('should revert to IDLE on failed initialize', async () => {
+      vi.spyOn(Client.prototype, 'connect').mockRejectedValue(
+        new Error('Connection failed'),
+      );
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
+
+      await expect(
+        testMcp.initialize(
+          {},
+          mockRuntimeThreadProvider,
+          mockRuntime,
+          'executor-1',
+        ),
+      ).rejects.toThrow('Connection failed');
+
+      expect(testMcp.getStatus()).toBe(McpStatus.IDLE);
+      expect(testMcp.isReady).toBe(false);
+    });
+
+    it('should transition to DESTROYED after cleanup', async () => {
+      vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+      vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({
+        tools: [],
+      } as ListToolsResult);
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
+
+      await testMcp.initialize(
+        {},
+        mockRuntimeThreadProvider,
+        mockRuntime,
+        'executor-1',
+      );
+      await testMcp.cleanup();
+
+      expect(testMcp.getStatus()).toBe(McpStatus.DESTROYED);
+      expect(testMcp.isReady).toBe(false);
+    });
+  });
+
+  describe('events', () => {
+    it('should emit initialize and ready events on successful initialize', async () => {
+      vi.spyOn(Client.prototype, 'connect').mockResolvedValue();
+      vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({
+        tools: [
+          {
+            name: 'tool1',
+            description: 'Tool 1',
+            inputSchema: { type: 'object', properties: {} },
+          },
+        ],
+      } as ListToolsResult);
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
+
+      const events: McpEventType[] = [];
+      testMcp.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      await testMcp.initialize(
+        {},
+        mockRuntimeThreadProvider,
+        mockRuntime,
+        'executor-1',
+      );
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatchObject({ type: 'initialize' });
+      expect(events[1]).toMatchObject({
+        type: 'ready',
+        data: { toolCount: 1 },
+      });
+    });
+
+    it('should emit initialize event with error on failed initialize', async () => {
+      vi.spyOn(Client.prototype, 'connect').mockRejectedValue(
+        new Error('Connection failed'),
+      );
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
+
+      const events: McpEventType[] = [];
+      testMcp.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      await expect(
+        testMcp.initialize(
+          {},
+          mockRuntimeThreadProvider,
+          mockRuntime,
+          'executor-1',
+        ),
+      ).rejects.toThrow();
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatchObject({ type: 'initialize' });
+      expect(events[1]).toMatchObject({ type: 'initialize' });
+      expect(
+        (events[1] as { data: { error?: unknown } }).data.error,
+      ).toBeDefined();
+    });
+
+    it('should emit destroy event on cleanup', async () => {
+      const events: McpEventType[] = [];
+      testMcp.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      await testMcp.cleanup();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ type: 'destroy' });
+    });
+
+    it('should support unsubscribe', async () => {
+      const events: McpEventType[] = [];
+      const unsub = testMcp.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      unsub();
+      await testMcp.cleanup();
+
+      expect(events).toHaveLength(0);
     });
   });
 });

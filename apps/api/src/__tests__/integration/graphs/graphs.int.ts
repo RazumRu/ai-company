@@ -431,20 +431,12 @@ describe('Graphs Integration Tests', () => {
         graphForPartial.id,
         partialUpdate,
       );
-      expect(partialResponse.revision).toBeDefined();
+      // Metadata-only updates (name, description) are applied synchronously and
+      // do NOT create revisions. Revisions are only created for schema changes.
+      expect(partialResponse.revision).toBeUndefined();
       expect(partialResponse.graph.version).toBe(graphForPartial.version);
+      expect(partialResponse.graph.name).toBe(partialUpdate.name);
       expect(partialResponse.graph.schema).toMatchObject(
-        graphForPartial.schema,
-      );
-
-      // Mutable updates are represented as a revision (tracked & applied consistently).
-      expect(partialResponse.revision!.toVersion).toBe('1.0.1');
-      expect(partialResponse.graph.targetVersion).toBe('1.0.1');
-      expect(partialResponse.revision!.newConfig.name).toBe(partialUpdate.name);
-      expect(partialResponse.revision!.newConfig.description).toBe(
-        graphForPartial.description ?? null,
-      );
-      expect(partialResponse.revision!.newConfig.schema).toMatchObject(
         graphForPartial.schema,
       );
 
@@ -459,19 +451,11 @@ describe('Graphs Integration Tests', () => {
         graphForFull.id,
         fullUpdate,
       );
-      expect(fullResponse.revision).toBeDefined();
+      expect(fullResponse.revision).toBeUndefined();
       expect(fullResponse.graph.version).toBe(graphForFull.version);
+      expect(fullResponse.graph.name).toBe(fullUpdate.name);
+      expect(fullResponse.graph.description).toBe(fullUpdate.description);
       expect(fullResponse.graph.schema).toMatchObject(graphForFull.schema);
-
-      expect(fullResponse.revision!.toVersion).toBe('1.0.1');
-      expect(fullResponse.graph.targetVersion).toBe('1.0.1');
-      expect(fullResponse.revision!.newConfig.name).toBe(fullUpdate.name);
-      expect(fullResponse.revision!.newConfig.description).toBe(
-        fullUpdate.description ?? null,
-      );
-      expect(fullResponse.revision!.newConfig.schema).toMatchObject(
-        graphForFull.schema,
-      );
     });
 
     it('throws when updating a non-existent graph', async () => {

@@ -3,6 +3,7 @@ import { DefaultLogger, NotFoundException } from '@packages/common';
 import { isEqual } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 
+import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import {
   AgentInvokeEvent,
@@ -120,6 +121,9 @@ export class GraphStateManager {
           state,
           node as CompiledGraphNode<BaseTrigger>,
         );
+        break;
+      case NodeKind.Mcp:
+        this.attachMcpListeners(state, node as CompiledGraphNode<BaseMcp>);
         break;
     }
 
@@ -511,6 +515,48 @@ export class GraphStateManager {
         }
       } catch (error) {
         this.logger.error(error as Error, 'Error handling trigger event');
+      }
+    });
+
+    this.addUnsubscriber(state.nodeId, unsub);
+  }
+
+  private attachMcpListeners(
+    state: NodeState,
+    node: CompiledGraphNode<BaseMcp>,
+  ) {
+    const mcp = node.instance;
+
+    const unsub = mcp.subscribe(async (event) => {
+      try {
+        if (event.type === 'initialize') {
+          state.baseStatus = event.data.error
+            ? GraphNodeStatus.Stopped
+            : GraphNodeStatus.Starting;
+          state.error = event.data.error
+            ? this.toErrorMessage(event.data.error)
+            : null;
+          this.emitNodeUpdate(state);
+          return;
+        }
+
+        if (event.type === 'ready') {
+          state.baseStatus = GraphNodeStatus.Idle;
+          state.error = null;
+          this.emitNodeUpdate(state);
+          return;
+        }
+
+        if (event.type === 'destroy') {
+          state.baseStatus = GraphNodeStatus.Stopped;
+          if (event.data.error) {
+            state.error = this.toErrorMessage(event.data.error);
+          }
+          this.emitNodeUpdate(state);
+          return;
+        }
+      } catch (error) {
+        this.logger.error(error as Error, 'Error handling MCP event');
       }
     });
 

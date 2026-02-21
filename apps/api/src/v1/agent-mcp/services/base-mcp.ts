@@ -2,6 +2,7 @@ import type { ToolRunnableConfig } from '@langchain/core/tools';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
+import { EventEmitter } from 'events';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
@@ -10,9 +11,27 @@ import { RuntimeStartParams, RuntimeType } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
-import { IMcpServerConfig } from '../agent-mcp.types';
+import { IMcpServerConfig, McpStatus } from '../agent-mcp.types';
 import { BaseMcpTool } from './base-mcp-tool';
 import { DockerExecTransport } from './docker-exec-transport';
+
+export type McpInitializeEvent = {
+  config: unknown;
+  error?: unknown;
+};
+
+export type McpReadyEvent = {
+  toolCount: number;
+};
+
+export type McpDestroyEvent = {
+  error?: unknown;
+};
+
+export type McpEventType =
+  | { type: 'initialize'; data: McpInitializeEvent }
+  | { type: 'ready'; data: McpReadyEvent }
+  | { type: 'destroy'; data: McpDestroyEvent };
 
 /**
  * Configuration for a mapped MCP tool
@@ -33,6 +52,8 @@ export interface McpToolMetadata {
 export abstract class BaseMcp<TConfig = unknown> {
   protected runtimeThreadProvider?: RuntimeThreadProvider;
   protected logger: DefaultLogger;
+  protected status: McpStatus = McpStatus.IDLE;
+  protected eventEmitter = new EventEmitter();
   public config?: TConfig;
   private cachedTools?: BuiltAgentTool[];
   private readonly clients = new Map<string, Client>();
@@ -42,6 +63,39 @@ export abstract class BaseMcp<TConfig = unknown> {
 
   constructor(logger: DefaultLogger) {
     this.logger = logger;
+  }
+
+  /**
+   * Subscribe to MCP events
+   * Returns an unsubscriber function
+   */
+  subscribe(callback: (event: McpEventType) => Promise<void>): () => void {
+    const handler = (event: McpEventType) => callback(event);
+    this.eventEmitter.on('event', handler);
+    return () => {
+      this.eventEmitter.off('event', handler);
+    };
+  }
+
+  /**
+   * Emit MCP events
+   */
+  protected emit(event: McpEventType): void {
+    this.eventEmitter.emit('event', event);
+  }
+
+  /**
+   * Get current MCP status
+   */
+  getStatus(): McpStatus {
+    return this.status;
+  }
+
+  /**
+   * Whether the MCP has been initialized and is ready for tool calls
+   */
+  get isReady(): boolean {
+    return this.status === McpStatus.READY;
   }
 
   protected getRuntimeInstance(): RuntimeThreadProvider | undefined {
@@ -179,10 +233,22 @@ export abstract class BaseMcp<TConfig = unknown> {
     this.executorNodeId = executorNodeId;
     this.registerRuntimeInitJob();
 
-    const client = await this.setup(config, runtime);
-    const tools = await this.listTools(client);
-    this.cachedTools = tools;
-    await client.close().catch(() => undefined);
+    this.status = McpStatus.INITIALIZING;
+    this.emit({ type: 'initialize', data: { config } });
+
+    try {
+      const client = await this.setup(config, runtime);
+      const tools = await this.listTools(client);
+      this.cachedTools = tools;
+      await client.close().catch(() => undefined);
+
+      this.status = McpStatus.READY;
+      this.emit({ type: 'ready', data: { toolCount: tools.length } });
+    } catch (error) {
+      this.status = McpStatus.IDLE;
+      this.emit({ type: 'initialize', data: { config, error } });
+      throw error;
+    }
   }
 
   public async provideTemporaryRuntime(params: {
@@ -324,11 +390,14 @@ export abstract class BaseMcp<TConfig = unknown> {
     this.clientRuntimes.clear();
     this.cachedTools = undefined;
 
+    let cleanupError: unknown;
+
     await Promise.all(
       clients.map(async (client) => {
         try {
           await client.close();
         } catch (error) {
+          cleanupError = error;
           this.logger.error(
             error instanceof Error ? error : new Error(String(error)),
             'Error closing MCP client',
@@ -340,6 +409,12 @@ export abstract class BaseMcp<TConfig = unknown> {
     if (this.runtimeThreadProvider && this.executorNodeId) {
       this.runtimeThreadProvider.removeExecutor(this.executorNodeId);
     }
+
+    this.status = McpStatus.DESTROYED;
+    this.emit({
+      type: 'destroy',
+      data: { ...(cleanupError ? { error: cleanupError } : {}) },
+    });
   }
 
   /**

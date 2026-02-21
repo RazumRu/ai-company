@@ -132,12 +132,9 @@ describe('Message token usage (integration)', () => {
 
     const humanStored = stored.find((m) => m.message.role === 'human');
     expect(humanStored).toBeDefined();
-    expect(humanStored?.requestTokenUsage).toEqual({
-      inputTokens: 2,
-      outputTokens: 0,
-      totalTokens: 2,
-      totalPrice: 0.01,
-    });
+    // requestTokenUsage is only extracted for AI messages by design
+    // (see AgentMessageNotificationHandler and the corresponding spec tests)
+    expect(humanStored?.requestTokenUsage).toBeNull();
 
     const aiNotification = enriched.find((n) => n.data.message.role === 'ai');
     expect(aiNotification?.data.requestTokenUsage).not.toBeNull();

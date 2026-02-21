@@ -5,6 +5,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { environment } from '../../../environments';
 import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
 import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
+import { LitellmService } from '../../../v1/litellm/services/litellm.service';
+import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
+import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
@@ -27,7 +30,12 @@ describe('ShellTool tail timeout behavior (integration)', () => {
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
-      providers: [ShellTool],
+      providers: [
+        ShellTool,
+        { provide: OpenaiService, useValue: {} },
+        { provide: LitellmService, useValue: {} },
+        { provide: LlmModelsService, useValue: {} },
+      ],
     }).compile();
     shellTool = moduleRef.get(ShellTool);
 

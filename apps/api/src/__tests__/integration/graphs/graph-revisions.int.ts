@@ -588,7 +588,7 @@ describe('Graph Revisions Integration Tests', () => {
               ...node,
               config: {
                 ...(node.config as SimpleAgentSchemaType),
-                invokeModelName: 'gpt-5.1',
+                invokeModelName: 'gpt-5.2',
               } satisfies SimpleAgentSchemaType,
             }
           : node,
@@ -637,7 +637,7 @@ describe('Graph Revisions Integration Tests', () => {
       );
       expect(agentNode?.config.instructions).toBe('User A instructions');
       expect((agentNode?.config as SimpleAgentSchemaType).invokeModelName).toBe(
-        'gpt-5.1',
+        'gpt-5.2',
       );
     },
   );
@@ -885,7 +885,7 @@ describe('Graph Revisions Integration Tests', () => {
   );
 
   it(
-    'creates and applies revision for name-only update (non-running graph)',
+    'applies name-only update synchronously without creating a revision',
     { timeout: 60000 },
     async () => {
       const graphData = createMockGraphData();
@@ -911,23 +911,18 @@ describe('Graph Revisions Integration Tests', () => {
         },
       );
 
-      expect(updateResponse.revision).toBeDefined();
-      const revisionId = updateResponse.revision!.id;
-
-      await waitForRevisionStatus(
-        graphId,
-        revisionId,
-        GraphRevisionStatus.Applied,
-        30000,
-      );
+      // Metadata-only updates (name, description) are applied synchronously
+      // and do NOT create revisions. Only schema changes create revisions.
+      expect(updateResponse.revision).toBeUndefined();
+      expect(updateResponse.graph.name).toBe(newName);
 
       const updatedGraph = await graphsService.findById(
         contextDataStorage,
         graphId,
       );
       expect(updatedGraph.name).toBe(newName);
-      expect(updatedGraph.version).not.toBe(currentVersion);
-      expect(updatedGraph.version).toBe(updatedGraph.targetVersion);
+      // Version stays the same since no schema change occurred
+      expect(updatedGraph.version).toBe(currentVersion);
     },
   );
 
@@ -1232,7 +1227,7 @@ describe('Graph Revisions Integration Tests', () => {
                 ...node,
                 config: {
                   ...(node.config as SimpleAgentSchemaType),
-                  invokeModelName: 'gpt-5.1',
+                  invokeModelName: 'gpt-5.2',
                 } satisfies SimpleAgentSchemaType,
               }
             : node,
@@ -1265,7 +1260,7 @@ describe('Graph Revisions Integration Tests', () => {
         );
         expect(
           (updatedAgentNode?.config as SimpleAgentSchemaType).invokeModelName,
-        ).toBe('gpt-5.1');
+        ).toBe('gpt-5.2');
         expect(
           (updatedAgentNode?.config as SimpleAgentSchemaType).invokeModelName,
         ).not.toBe(originalModel);

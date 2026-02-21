@@ -19,6 +19,9 @@ import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-no
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { LitellmService } from '../../../v1/litellm/services/litellm.service';
+import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
+import { OpenaiService } from '../../../v1/openai/openai.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
@@ -115,6 +118,9 @@ describe('Files tools integration', () => {
         FilesWriteFileTool,
         FilesDeleteTool,
         ShellTool,
+        { provide: OpenaiService, useValue: {} },
+        { provide: LitellmService, useValue: {} },
+        { provide: LlmModelsService, useValue: {} },
       ],
     }).compile();
 
