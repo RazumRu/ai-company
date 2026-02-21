@@ -48,6 +48,10 @@ import {
 
 @Injectable()
 export class GraphRevisionService {
+  private static readonly REVISION_RETENTION_LIMIT = 50;
+
+  private readonly graphLocks = new Map<string, Promise<void>>();
+
   constructor(
     private readonly logger: DefaultLogger,
     private readonly typeorm: TypeormService,
@@ -424,14 +428,11 @@ export class GraphRevisionService {
     const baseSchema = baseSchemaCache ?? nextBaseConfig?.schema ?? null;
 
     if (!nextBaseConfig || !baseSchema) {
-      // Can't reliably re-merge; just refresh diff against current head
-      await this.updateRevisionConfig(
-        revision,
-        revision.newConfig,
-        currentHeadConfig,
-        entityManager,
+      throw new BadRequestException(
+        'REVISION_BASE_UNAVAILABLE',
+        `Cannot re-merge revision: base version ${revision.baseVersion} is no longer available. ` +
+          `Please create a new revision from the current version.`,
       );
-      return;
     }
 
     const reMergedSchema = this.mergeAndValidateSchemas(
@@ -534,9 +535,32 @@ export class GraphRevisionService {
         status: GraphRevisionStatus.Applied,
       },
     });
+
+    await this.pruneOldRevisions(graph.id, entityManager);
   }
 
   private async applyRevision(job: GraphRevisionJobData): Promise<void> {
+    const graphId = job.graphId;
+    const previousLock = this.graphLocks.get(graphId) ?? Promise.resolve();
+
+    let releaseLock: () => void;
+    const currentLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.graphLocks.set(graphId, currentLock);
+
+    try {
+      await previousLock;
+      await this.processRevision(job);
+    } finally {
+      releaseLock!();
+      if (this.graphLocks.get(graphId) === currentLock) {
+        this.graphLocks.delete(graphId);
+      }
+    }
+  }
+
+  private async processRevision(job: GraphRevisionJobData): Promise<void> {
     const revision = await this.graphRevisionDao.getById(job.revisionId);
     if (!revision) {
       throw new NotFoundException('GRAPH_REVISION_NOT_FOUND');
@@ -586,6 +610,7 @@ export class GraphRevisionService {
     baseSchemaCache: GraphSchemaType | null,
     baseConfigCache: GraphRevisionConfig | null,
   ): Promise<void> {
+    // Phase 1: Short DB transaction -- re-merge and validate only
     await this.typeorm.trx(async (entityManager) => {
       const graph = await this.graphDao.getOne(
         { id: revision.graphId },
@@ -603,14 +628,30 @@ export class GraphRevisionService {
         baseConfigCache,
         entityManager,
       );
+    });
 
-      const compiledGraph = this.graphRegistry.get(revision.graphId);
-      await this.waitForGraphCompilationIfNeeded(compiledGraph);
+    // Phase 2: Live update OUTSIDE transaction (no DB lock held)
+    const compiledGraph = this.graphRegistry.get(revision.graphId);
+    await this.waitForGraphCompilationIfNeeded(compiledGraph);
+    const shouldApplyLive = compiledGraph?.status === GraphStatus.Running;
 
-      const shouldApplyLive = compiledGraph?.status === GraphStatus.Running;
+    if (shouldApplyLive && compiledGraph) {
+      const graph = await this.graphDao.getOne({ id: revision.graphId });
+      if (!graph) {
+        throw new NotFoundException('GRAPH_NOT_FOUND');
+      }
+      await this.applyLiveUpdate(graph, revision, compiledGraph);
+    }
 
-      if (shouldApplyLive) {
-        await this.applyLiveUpdate(graph, revision, compiledGraph);
+    // Phase 3: Short DB transaction to finalize
+    await this.typeorm.trx(async (entityManager) => {
+      const graph = await this.graphDao.getOne(
+        { id: revision.graphId },
+        entityManager,
+      );
+
+      if (!graph) {
+        throw new NotFoundException('GRAPH_NOT_FOUND');
       }
 
       await this.finalizeAppliedRevision(graph, revision, entityManager);
@@ -633,9 +674,8 @@ export class GraphRevisionService {
       await setTimeout(5_000);
     }
 
-    // Graph is still compiling after timeout - proceed anyway
-    this.logger.warn(
-      `Graph compilation timeout after 3min, proceeding with revision application`,
+    throw new Error(
+      `Graph compilation did not complete within 3 minutes. Cannot safely apply revision while graph is still compiling.`,
     );
   }
 
@@ -649,6 +689,27 @@ export class GraphRevisionService {
       await this.resetTargetVersionIfNeeded(revision, entityManager);
       await this.markRevisionAsFailed(revision, error, entityManager);
     });
+
+    const compiledGraph = this.graphRegistry.get(revision.graphId);
+    if (compiledGraph && compiledGraph.status === GraphStatus.Running) {
+      try {
+        await this.graphRegistry.destroy(revision.graphId);
+        await this.graphDao.updateById(revision.graphId, {
+          status: GraphStatus.Error,
+          error: `Graph stopped due to failed revision ${revision.toVersion}: ${error.message}`,
+        });
+        await this.notificationsService.emit({
+          type: NotificationEvent.Graph,
+          graphId: revision.graphId,
+          data: { status: GraphStatus.Error },
+        });
+      } catch (stopError) {
+        this.logger.error(
+          stopError as Error,
+          `Failed to stop graph ${revision.graphId} after revision failure`,
+        );
+      }
+    }
 
     await this.notificationsService.emit({
       type: NotificationEvent.GraphRevisionFailed,
@@ -752,6 +813,7 @@ export class GraphRevisionService {
       nodesToRebuild,
       metadata,
       newEdges,
+      { revisionId: revision.id, toVersion: revision.toVersion },
     );
   }
 
@@ -764,7 +826,14 @@ export class GraphRevisionService {
       if (!newNodeIds.has(nodeId)) {
         const node = compiledGraph.nodes.get(nodeId);
         if (node) {
-          await this.graphCompiler.destroyNode(node);
+          try {
+            await this.graphCompiler.destroyNode(node);
+          } catch (error) {
+            this.logger.error(
+              error as Error,
+              `Failed to destroy node ${nodeId} during live update`,
+            );
+          }
         }
         compiledGraph.nodes.delete(nodeId);
         compiledGraph.state.unregisterNode(nodeId);
@@ -783,8 +852,12 @@ export class GraphRevisionService {
     for (const nodeSchema of newNodeSchemas) {
       const existingNode = compiledGraph.nodes.get(nodeSchema.id);
 
+      const validatedNewConfig = this.templateRegistry.validateTemplateConfig(
+        nodeSchema.template,
+        nodeSchema.config,
+      );
       const configChanged =
-        !existingNode || !isEqual(existingNode.config, nodeSchema.config);
+        !existingNode || !isEqual(existingNode.config, validatedNewConfig);
 
       const edgesChanged = this.haveEdgesChanged(
         nodeSchema.id,
@@ -843,7 +916,11 @@ export class GraphRevisionService {
       graph_created_by: string;
     },
     edges: GraphEdgeSchemaType[],
+    revisionContext?: { revisionId: string; toVersion: string },
   ): Promise<void> {
+    const totalNodes = nodesToRebuild.size;
+    let currentNode = 0;
+
     for (const nodeSchema of buildOrder) {
       if (!nodesToRebuild.has(nodeSchema.id)) {
         continue;
@@ -863,6 +940,24 @@ export class GraphRevisionService {
         compiledGraph.state.registerNode(nodeSchema.id);
       }
 
+      currentNode++;
+
+      if (revisionContext) {
+        await this.notificationsService.emit({
+          type: NotificationEvent.GraphRevisionProgress,
+          graphId: metadata.graphId,
+          data: {
+            revisionId: revisionContext.revisionId,
+            graphId: metadata.graphId,
+            toVersion: revisionContext.toVersion,
+            currentNode,
+            totalNodes,
+            nodeId: nodeSchema.id,
+            phase: 'rebuilding',
+          },
+        });
+      }
+
       const reconfigured = await this.tryReconfigureInPlace(
         existingNode,
         nodeSchema,
@@ -871,19 +966,33 @@ export class GraphRevisionService {
         compiledGraph,
       );
 
-      if (reconfigured) {
-        continue;
+      if (!reconfigured) {
+        // Reconfigure failed or node is new - recreate from scratch
+        await this.recreateNode(
+          existingNode,
+          nodeSchema,
+          template,
+          validatedConfig,
+          init,
+          compiledGraph,
+        );
       }
 
-      // Reconfigure failed or node is new - recreate from scratch
-      await this.recreateNode(
-        existingNode,
-        nodeSchema,
-        template,
-        validatedConfig,
-        init,
-        compiledGraph,
-      );
+      if (revisionContext) {
+        await this.notificationsService.emit({
+          type: NotificationEvent.GraphRevisionProgress,
+          graphId: metadata.graphId,
+          data: {
+            revisionId: revisionContext.revisionId,
+            graphId: metadata.graphId,
+            toVersion: revisionContext.toVersion,
+            currentNode,
+            totalNodes,
+            nodeId: nodeSchema.id,
+            phase: 'completed',
+          },
+        });
+      }
     }
   }
 
@@ -950,6 +1059,41 @@ export class GraphRevisionService {
 
     compiledGraph.nodes.set(nodeSchema.id, compiledNode);
     compiledGraph.state.attachGraphNode(nodeSchema.id, compiledNode);
+  }
+
+  private async pruneOldRevisions(
+    graphId: string,
+    entityManager: EntityManager,
+  ): Promise<void> {
+    try {
+      const revisionsToKeep = await entityManager
+        .getRepository(GraphRevisionEntity)
+        .createQueryBuilder('gr')
+        .select('gr.id')
+        .where('gr.graphId = :graphId', { graphId })
+        .orderBy('gr.createdAt', 'DESC')
+        .limit(GraphRevisionService.REVISION_RETENTION_LIMIT)
+        .getMany();
+
+      const keepIds = revisionsToKeep.map((r) => r.id);
+
+      if (keepIds.length < GraphRevisionService.REVISION_RETENTION_LIMIT) {
+        return;
+      }
+
+      await entityManager
+        .getRepository(GraphRevisionEntity)
+        .createQueryBuilder()
+        .delete()
+        .from(GraphRevisionEntity)
+        .where('graphId = :graphId', { graphId })
+        .andWhere('id NOT IN (:...keepIds)', { keepIds })
+        .execute();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to prune old revisions for graph ${graphId}: ${(error as Error).message}`,
+      );
+    }
   }
 
   public prepareResponse(entity: GraphRevisionEntity): GraphRevisionDto {

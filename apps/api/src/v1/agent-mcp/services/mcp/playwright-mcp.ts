@@ -1,10 +1,14 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import dedent from 'dedent';
 
+import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { BASE_RUNTIME_WORKDIR } from '../../../runtime/services/base-runtime';
 import { IMcpServerConfig } from '../../agent-mcp.types';
 import { BaseMcp } from '../base-mcp';
+
+const PLAYWRIGHT_IMAGE = 'mcp/playwright';
 
 export interface PlaywrightMcpConfig {}
 
@@ -22,9 +26,9 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
 
     return {
       name: 'playwright',
-      'command': 'docker',
+      command: 'docker',
       requiresDockerDaemon: true,
-      'args': [
+      args: [
         'run',
         '--rm',
         '-i',
@@ -32,13 +36,24 @@ export class PlaywrightMcp extends BaseMcp<PlaywrightMcpConfig> {
         `${sharedWorkdir}:${sharedWorkdir}`,
         '-v',
         `${sharedWorkdir}/playwright:/data`,
-        'mcp/playwright',
+        PLAYWRIGHT_IMAGE,
       ],
     };
   }
 
+  public override async setup(
+    config: PlaywrightMcpConfig,
+    runtime: BaseRuntime,
+  ): Promise<Client> {
+    // Daemon must be ready before ensureImagePulled can exec docker commands.
+    // super.setup() calls it again via requiresDockerDaemon but the cache makes it a no-op.
+    await this.ensureDockerDaemonReady(runtime);
+    await this.ensureImagePulled(runtime, PLAYWRIGHT_IMAGE);
+    return super.setup(config, runtime);
+  }
+
   protected getInitTimeoutMs(): number {
-    return 600_000; // 10 minutes
+    return 120_000; // 2 minutes — image pull is handled separately in setup()
   }
 
   public getDetailedInstructions(_config: PlaywrightMcpConfig): string {

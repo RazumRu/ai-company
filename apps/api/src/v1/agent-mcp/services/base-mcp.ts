@@ -50,6 +50,14 @@ export interface McpToolMetadata {
  */
 @Injectable()
 export abstract class BaseMcp<TConfig = unknown> {
+  /** Process-level cache: tracks images verified as available per runtime instance */
+  private static readonly verifiedImages = new WeakMap<
+    BaseRuntime,
+    Set<string>
+  >();
+  /** Process-level cache: tracks runtimes whose Docker daemon has been confirmed ready */
+  private static readonly daemonReadyRuntimes = new WeakSet<BaseRuntime>();
+
   protected runtimeThreadProvider?: RuntimeThreadProvider;
   protected logger: DefaultLogger;
   protected status: McpStatus = McpStatus.IDLE;
@@ -160,11 +168,15 @@ export abstract class BaseMcp<TConfig = unknown> {
     return client;
   }
 
-  private async ensureDockerDaemonReady(
+  protected async ensureDockerDaemonReady(
     runtime: BaseRuntime,
     timeoutMs = 90_000,
     intervalMs = 1000,
   ): Promise<void> {
+    if (BaseMcp.daemonReadyRuntimes.has(runtime)) {
+      return;
+    }
+
     const start = Date.now();
     for (;;) {
       try {
@@ -174,6 +186,7 @@ export abstract class BaseMcp<TConfig = unknown> {
           tailTimeoutMs: 10_000,
         });
         if (!res.fail) {
+          BaseMcp.daemonReadyRuntimes.add(runtime);
           return;
         }
       } catch {
@@ -185,6 +198,81 @@ export abstract class BaseMcp<TConfig = unknown> {
       }
       await new Promise((r) => setTimeout(r, intervalMs));
     }
+  }
+
+  protected async ensureImagePulled(
+    runtime: BaseRuntime,
+    image: string,
+    options?: {
+      pullTimeoutMs?: number;
+      tailTimeoutMs?: number;
+      maxRetries?: number;
+      retryDelayMs?: number;
+    },
+  ): Promise<void> {
+    // Fast path: skip if we already verified this image on this runtime instance
+    const verified = BaseMcp.verifiedImages.get(runtime);
+    if (verified?.has(image)) {
+      return;
+    }
+
+    const {
+      pullTimeoutMs = 20 * 60_000,
+      tailTimeoutMs = 5 * 60_000,
+      maxRetries = 3,
+      retryDelayMs = 10_000,
+    } = options ?? {};
+
+    const inspectResult = await runtime.exec({
+      cmd: `docker image inspect "${image}" >/dev/null 2>&1`,
+      timeoutMs: 30_000,
+      tailTimeoutMs: 10_000,
+    });
+
+    if (!inspectResult.fail) {
+      this.logger.log(`Image ${image} already available locally`);
+      this.markImageVerified(runtime, image);
+      return;
+    }
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      this.logger.log(
+        `Pulling image ${image} (attempt ${attempt}/${maxRetries})...`,
+      );
+
+      const pullResult = await runtime.exec({
+        cmd: `docker pull "${image}"`,
+        timeoutMs: pullTimeoutMs,
+        tailTimeoutMs,
+      });
+
+      if (!pullResult.fail) {
+        this.logger.log(`Image ${image} pulled successfully`);
+        this.markImageVerified(runtime, image);
+        return;
+      }
+
+      this.logger.warn(
+        `Image pull attempt ${attempt}/${maxRetries} failed: ${pullResult.stderr || pullResult.stdout}`,
+      );
+
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+      }
+    }
+
+    throw new Error(
+      `Failed to pull image ${image} after ${maxRetries} attempts`,
+    );
+  }
+
+  private markImageVerified(runtime: BaseRuntime, image: string): void {
+    let set = BaseMcp.verifiedImages.get(runtime);
+    if (!set) {
+      set = new Set();
+      BaseMcp.verifiedImages.set(runtime, set);
+    }
+    set.add(image);
   }
 
   /**

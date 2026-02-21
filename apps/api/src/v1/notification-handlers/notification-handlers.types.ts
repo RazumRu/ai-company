@@ -28,4 +28,5 @@ export enum EnrichedNotificationEvent {
   GraphRevisionApplying = 'graph.revision.applying',
   GraphRevisionApplied = 'graph.revision.applied',
   GraphRevisionFailed = 'graph.revision.failed',
+  GraphRevisionProgress = 'graph.revision.progress',
 }

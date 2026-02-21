@@ -159,6 +159,7 @@ describe('GraphRevisionService', () => {
           provide: GraphRegistry,
           useValue: {
             get: vi.fn(),
+            destroy: vi.fn(),
           },
         },
         {
@@ -896,6 +897,38 @@ describe('GraphRevisionService', () => {
       );
     });
 
+    it('should throw when graph stays in Compiling status beyond the timeout', async () => {
+      const compiledGraph = {
+        nodes: new Map(),
+        edges: [],
+        state: {
+          registerNode: vi.fn(),
+          unregisterNode: vi.fn(),
+          attachGraphNode: vi.fn(),
+        },
+        status: GraphStatus.Compiling,
+      };
+
+      const setTimeoutMock = vi.mocked(timers.setTimeout);
+      // Each setTimeout call simulates waiting but does NOT change the status,
+      // so the loop keeps going until the time exceeds 180_000 ms.
+      let elapsedTime = 0;
+      vi.spyOn(Date, 'now').mockImplementation(() => {
+        // First call returns 0 (startTime), subsequent calls advance past timeout
+        const current = elapsedTime;
+        elapsedTime += 200_000;
+        return current;
+      });
+      setTimeoutMock.mockResolvedValue(undefined);
+
+      await expect(
+        (service as any).waitForGraphCompilationIfNeeded(compiledGraph),
+      ).rejects.toThrow('Graph compilation did not complete within 3 minutes');
+
+      vi.restoreAllMocks();
+      setTimeoutMock.mockReset();
+    });
+
     it('should stop waiting when graph status changes to non-running state', async () => {
       const revision = createMockUpdateEntity({
         status: GraphRevisionStatus.Pending,
@@ -937,6 +970,217 @@ describe('GraphRevisionService', () => {
       expect(graphRegistry.get).toHaveBeenCalled();
       // Revision should still be finalized to persisted schema
       expect(graphDao.updateById).toHaveBeenCalled();
+    });
+  });
+
+  describe('handleRevisionFailure', () => {
+    it('should destroy running graph and set status to Error', async () => {
+      const revision = createMockUpdateEntity();
+      const error = new Error('Live update failed');
+      const graph = createMockGraphEntity({ status: GraphStatus.Running });
+
+      const compiledGraph = {
+        nodes: new Map(),
+        edges: [],
+        state: {
+          registerNode: vi.fn(),
+          unregisterNode: vi.fn(),
+          attachGraphNode: vi.fn(),
+        },
+        status: GraphStatus.Running,
+      };
+
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph as any);
+      vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      await (service as any).handleRevisionFailure(revision, error);
+
+      expect(graphRegistry.destroy).toHaveBeenCalledWith(revision.graphId);
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        revision.graphId,
+        expect.objectContaining({
+          status: GraphStatus.Error,
+        }),
+      );
+      expect(notificationsService.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.Graph,
+          graphId: revision.graphId,
+          data: { status: GraphStatus.Error },
+        }),
+      );
+      // GraphRevisionFailed notification should also be emitted
+      expect(notificationsService.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.GraphRevisionFailed,
+          graphId: revision.graphId,
+        }),
+      );
+    });
+
+    it('should NOT destroy graph when compiled graph is not running', async () => {
+      const revision = createMockUpdateEntity();
+      const error = new Error('Merge failed');
+      const graph = createMockGraphEntity({ status: GraphStatus.Stopped });
+
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      await (service as any).handleRevisionFailure(revision, error);
+
+      expect(graphRegistry.destroy).not.toHaveBeenCalled();
+      // GraphRevisionFailed notification should still be emitted
+      expect(notificationsService.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.GraphRevisionFailed,
+          graphId: revision.graphId,
+        }),
+      );
+    });
+
+    it('should still emit GraphRevisionFailed even if graphRegistry.destroy() throws', async () => {
+      const revision = createMockUpdateEntity();
+      const error = new Error('Live update failed');
+      const graph = createMockGraphEntity({ status: GraphStatus.Running });
+
+      const compiledGraph = {
+        nodes: new Map(),
+        edges: [],
+        state: {
+          registerNode: vi.fn(),
+          unregisterNode: vi.fn(),
+          attachGraphNode: vi.fn(),
+        },
+        status: GraphStatus.Running,
+      };
+
+      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
+        return await callback({} as EntityManager);
+      });
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph as any);
+      vi.mocked(graphRegistry.destroy).mockRejectedValue(
+        new Error('Container cleanup failed'),
+      );
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      await (service as any).handleRevisionFailure(revision, error);
+
+      expect(graphRegistry.destroy).toHaveBeenCalledWith(revision.graphId);
+      // Even though destroy threw, the GraphRevisionFailed notification must still be emitted
+      expect(notificationsService.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.GraphRevisionFailed,
+          graphId: revision.graphId,
+        }),
+      );
+    });
+  });
+
+  describe('reMergeRevisionIfNeeded', () => {
+    it('should throw REVISION_BASE_UNAVAILABLE when base config is null and re-merge is needed', async () => {
+      const revision = createMockUpdateEntity({
+        baseVersion: '1.0.0',
+      });
+      const graph = createMockGraphEntity({
+        version: '1.0.1', // Different from revision.baseVersion, so re-merge is needed
+      });
+
+      vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
+
+      const thrownError = await (service as any)
+        .reMergeRevisionIfNeeded(
+          revision,
+          graph,
+          null, // baseSchemaCache is null
+          null, // baseConfigCache is null
+          {} as EntityManager,
+        )
+        .catch((e: unknown) => e);
+
+      expect(thrownError).toBeInstanceOf(BadRequestException);
+      expect((thrownError as BadRequestException).errorCode).toBe(
+        'REVISION_BASE_UNAVAILABLE',
+      );
+    });
+  });
+
+  describe('finalizeAppliedRevision', () => {
+    it('should call pruneOldRevisions and finalize even if pruning fails', async () => {
+      const revision = createMockUpdateEntity({
+        toVersion: '1.0.1',
+      });
+      const graph = createMockGraphEntity({
+        version: '1.0.0',
+        targetVersion: '1.0.1',
+      });
+
+      const mockEntityManager = {
+        getRepository: vi.fn().mockReturnValue({
+          createQueryBuilder: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockReturnThis(),
+            getMany: vi.fn().mockRejectedValue(new Error('DB connection lost')),
+            delete: vi.fn().mockReturnThis(),
+            from: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            execute: vi.fn().mockResolvedValue(undefined),
+          }),
+        }),
+      } as unknown as EntityManager;
+
+      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
+
+      // Should not throw even though pruning will fail internally
+      await expect(
+        (service as any).finalizeAppliedRevision(
+          graph,
+          revision,
+          mockEntityManager,
+        ),
+      ).resolves.not.toThrow();
+
+      // Graph and revision should still be updated (finalization succeeded)
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        revision.graphId,
+        expect.objectContaining({
+          schema: revision.newConfig.schema,
+          version: revision.toVersion,
+        }),
+        mockEntityManager,
+      );
+      expect(graphUpdateDao.updateById).toHaveBeenCalledWith(
+        revision.id,
+        expect.objectContaining({
+          status: GraphRevisionStatus.Applied,
+        }),
+        {},
+        mockEntityManager,
+      );
+      expect(notificationsService.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationEvent.GraphRevisionApplied,
+        }),
+      );
     });
   });
 });

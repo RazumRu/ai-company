@@ -48,6 +48,7 @@ describe('BaseMcp', () => {
 
     testMcp = new TestMcp(mockLogger);
     mockRuntime = {
+      exec: vi.fn(),
       execStream: vi.fn(),
     } as unknown as BaseRuntime;
     mockRuntimeThreadProvider = {
@@ -397,6 +398,140 @@ describe('BaseMcp', () => {
 
       expect(testMcp.getStatus()).toBe(McpStatus.DESTROYED);
       expect(testMcp.isReady).toBe(false);
+    });
+  });
+
+  describe('ensureImagePulled', () => {
+    const TEST_IMAGE = 'test/image:latest';
+
+    it('should skip pull when image already exists locally', async () => {
+      const execMock = vi.mocked(mockRuntime.exec);
+      execMock.mockResolvedValueOnce({
+        fail: false,
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '',
+      });
+
+      await testMcp['ensureImagePulled'](mockRuntime, TEST_IMAGE);
+
+      expect(execMock).toHaveBeenCalledTimes(1);
+      expect(execMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cmd: `docker image inspect "${TEST_IMAGE}" >/dev/null 2>&1`,
+        }),
+      );
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        `Image ${TEST_IMAGE} already available locally`,
+      );
+    });
+
+    it('should pull image on first attempt when not present locally', async () => {
+      const execMock = vi.mocked(mockRuntime.exec);
+      // inspect fails
+      execMock.mockResolvedValueOnce({
+        fail: true,
+        exitCode: 1,
+        stdout: '',
+        stderr: 'No such image',
+        execPath: '',
+      });
+      // pull succeeds
+      execMock.mockResolvedValueOnce({
+        fail: false,
+        exitCode: 0,
+        stdout: 'Pull complete',
+        stderr: '',
+        execPath: '',
+      });
+
+      await testMcp['ensureImagePulled'](mockRuntime, TEST_IMAGE);
+
+      expect(execMock).toHaveBeenCalledTimes(2);
+      expect(execMock).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          cmd: `docker pull "${TEST_IMAGE}"`,
+        }),
+      );
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        `Image ${TEST_IMAGE} pulled successfully`,
+      );
+    });
+
+    it('should retry and succeed on second attempt', async () => {
+      const execMock = vi.mocked(mockRuntime.exec);
+      // inspect fails
+      execMock.mockResolvedValueOnce({
+        fail: true,
+        exitCode: 1,
+        stdout: '',
+        stderr: '',
+        execPath: '',
+      });
+      // first pull fails
+      execMock.mockResolvedValueOnce({
+        fail: true,
+        exitCode: 1,
+        stdout: '',
+        stderr: 'network error',
+        execPath: '',
+      });
+      // second pull succeeds
+      execMock.mockResolvedValueOnce({
+        fail: false,
+        exitCode: 0,
+        stdout: 'Pull complete',
+        stderr: '',
+        execPath: '',
+      });
+
+      await testMcp['ensureImagePulled'](mockRuntime, TEST_IMAGE, {
+        maxRetries: 3,
+        retryDelayMs: 0,
+      });
+
+      expect(execMock).toHaveBeenCalledTimes(3);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('attempt 1/3 failed'),
+      );
+      expect(mockLogger.log).toHaveBeenCalledWith(
+        `Image ${TEST_IMAGE} pulled successfully`,
+      );
+    });
+
+    it('should throw after all retries are exhausted', async () => {
+      const execMock = vi.mocked(mockRuntime.exec);
+      // inspect fails
+      execMock.mockResolvedValueOnce({
+        fail: true,
+        exitCode: 1,
+        stdout: '',
+        stderr: '',
+        execPath: '',
+      });
+      // all 3 pulls fail
+      for (let i = 0; i < 3; i++) {
+        execMock.mockResolvedValueOnce({
+          fail: true,
+          exitCode: 1,
+          stdout: '',
+          stderr: 'timeout',
+          execPath: '',
+        });
+      }
+
+      await expect(
+        testMcp['ensureImagePulled'](mockRuntime, TEST_IMAGE, {
+          maxRetries: 3,
+          retryDelayMs: 0,
+        }),
+      ).rejects.toThrow(`Failed to pull image ${TEST_IMAGE} after 3 attempts`);
+
+      // 1 inspect + 3 pull attempts
+      expect(execMock).toHaveBeenCalledTimes(4);
+      expect(mockLogger.warn).toHaveBeenCalledTimes(3);
     });
   });
 

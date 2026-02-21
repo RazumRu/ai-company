@@ -43,7 +43,7 @@ export class GraphRevisionQueueService
       this.processJob.bind(this),
       {
         connection: this.redis,
-        concurrency: 1,
+        concurrency: 5,
         // Graph revision processing can take time for complex graphs
         // Set lock duration to 5 minutes to prevent premature stall detection
         lockDuration: 5 * 60 * 1000, // 5 minutes in milliseconds

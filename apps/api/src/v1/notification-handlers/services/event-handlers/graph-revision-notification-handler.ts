@@ -7,6 +7,8 @@ import { GraphRevisionDto } from '../../../graphs/dto/graph-revisions.dto';
 import { GraphRevisionService } from '../../../graphs/services/graph-revision.service';
 import {
   IGraphRevisionNotification,
+  IGraphRevisionProgressData,
+  IGraphRevisionProgressNotification,
   Notification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
@@ -18,7 +20,8 @@ import {
 import { BaseNotificationHandler } from './base-notification-handler';
 
 export type IGraphRevisionEnrichedNotification =
-  IEnrichedNotification<GraphRevisionDto>;
+  | IEnrichedNotification<GraphRevisionDto>
+  | IEnrichedNotification<IGraphRevisionProgressData>;
 
 @Injectable()
 export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IGraphRevisionEnrichedNotification> {
@@ -27,6 +30,7 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
     NotificationEvent.GraphRevisionApplying,
     NotificationEvent.GraphRevisionApplied,
     NotificationEvent.GraphRevisionFailed,
+    NotificationEvent.GraphRevisionProgress,
   ];
 
   constructor(
@@ -41,6 +45,25 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
     event: Notification,
   ): Promise<IGraphRevisionEnrichedNotification[]> {
     try {
+      // Progress events use a different data shape and don't need prepareResponse
+      if (event.type === NotificationEvent.GraphRevisionProgress) {
+        const progressNotification =
+          event as IGraphRevisionProgressNotification;
+        const graph = await this.graphDao.getById(progressNotification.graphId);
+        if (!graph) {
+          return [];
+        }
+        return [
+          {
+            type: EnrichedNotificationEvent.GraphRevisionProgress,
+            data: progressNotification.data,
+            graphId: progressNotification.graphId,
+            ownerId: graph.createdBy,
+            scope: [NotificationScope.Graph],
+          },
+        ];
+      }
+
       const notification = event as IGraphRevisionNotification;
       const { graphId, data } = notification;
 

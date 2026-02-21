@@ -81,6 +81,7 @@ export enum NotificationEvent {
   GraphRevisionApplying = 'graph.revision.applying',
   GraphRevisionApplied = 'graph.revision.applied',
   GraphRevisionFailed = 'graph.revision.failed',
+  GraphRevisionProgress = 'graph.revision.progress',
 }
 
 export interface INotification<T> {
@@ -193,6 +194,20 @@ export interface IGraphRevisionNotification extends INotification<GraphRevisionE
     | NotificationEvent.GraphRevisionFailed;
 }
 
+export interface IGraphRevisionProgressData {
+  revisionId: string;
+  graphId: string;
+  toVersion: string;
+  currentNode: number;
+  totalNodes: number;
+  nodeId: string;
+  phase: 'rebuilding' | 'completed';
+}
+
+export interface IGraphRevisionProgressNotification extends INotification<IGraphRevisionProgressData> {
+  type: NotificationEvent.GraphRevisionProgress;
+}
+
 export type Notification =
   | IGraphNotification
   | IAgentMessageNotification
@@ -202,4 +217,5 @@ export type Notification =
   | IThreadUpdateNotification
   | IThreadDeleteNotification
   | IGraphNodeUpdateNotification
-  | IGraphRevisionNotification;
+  | IGraphRevisionNotification
+  | IGraphRevisionProgressNotification;
