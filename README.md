@@ -311,11 +311,16 @@ pnpm commit
 
 Contributions are welcome! If you're planning a significant change, please open an issue first to discuss your approach.
 
+Authors:
+- Sergey
+- [Other Authors]
+
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feat/my-feature`)
 3. Make your changes and add tests
 4. Run `pnpm run full-check` to verify everything passes
 5. Submit a pull request
+
 
 ## License
 
