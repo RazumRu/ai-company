@@ -110,4 +110,10 @@ export const environment = () =>
 
     // agents
     agentsInstructionsFile: getEnv('AGENTS_INSTRUCTIONS_FILE', 'AGENTS.md'),
+
+    // --- GitHub App (optional — feature available when all are set) ---
+    githubAppId: getEnv('GITHUB_APP_ID'),
+    githubAppPrivateKey: getEnv('GITHUB_APP_PRIVATE_KEY'),
+    githubAppClientId: getEnv('GITHUB_APP_CLIENT_ID'),
+    githubAppClientSecret: getEnv('GITHUB_APP_CLIENT_SECRET'),
   }) as const satisfies Record<string, string | number | boolean>;

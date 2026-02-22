@@ -1202,6 +1202,65 @@ export type TemplateDto = {
   >;
 };
 
+export type SetupInfoResponseDto = {
+  /**
+   * URL to redirect the user to for GitHub App installation
+   */
+  installUrl: string;
+  /**
+   * Whether the GitHub App is fully configured
+   */
+  configured: boolean;
+};
+
+export type LinkInstallationResponseDto = {
+  /**
+   * Whether the installation was successfully linked
+   */
+  linked: boolean;
+  /**
+   * GitHub org/user login where the app is installed
+   */
+  accountLogin: string;
+  /**
+   * Account type: Organization or User
+   */
+  accountType: string;
+};
+
+export type ListInstallationsResponseDto = {
+  installations: Array<{
+    /**
+     * Installation record ID
+     */
+    id: string;
+    /**
+     * GitHub installation ID
+     */
+    installationId: number;
+    /**
+     * GitHub org/user login
+     */
+    accountLogin: string;
+    /**
+     * Account type: Organization or User
+     */
+    accountType: string;
+    /**
+     * Whether the installation is active
+     */
+    isActive: boolean;
+    createdAt: string;
+  }>;
+};
+
+export type UnlinkInstallationResponseDto = {
+  /**
+   * Whether the installation was successfully unlinked
+   */
+  unlinked: boolean;
+};
+
 export type ThreadDto = {
   /**
    * Thread ID
@@ -1700,6 +1759,13 @@ export type AnalyticsByGraphResponseDto = {
      */
     graphName: string;
   }>;
+};
+
+export type SystemSettingsResponseDto = {
+  /**
+   * Whether the GitHub App integration is configured and available
+   */
+  githubAppEnabled: boolean;
 };
 
 export type GetRepositoriesData = {
@@ -2225,6 +2291,66 @@ export type GetAllTemplatesResponses = {
 export type GetAllTemplatesResponse =
   GetAllTemplatesResponses[keyof GetAllTemplatesResponses];
 
+export type GetSetupInfoData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/github-app/setup';
+};
+
+export type GetSetupInfoResponses = {
+  200: SetupInfoResponseDto;
+};
+
+export type GetSetupInfoResponse =
+  GetSetupInfoResponses[keyof GetSetupInfoResponses];
+
+export type LinkInstallationData = {
+  body?: never;
+  path: {
+    installationId: string;
+  };
+  query?: never;
+  url: '/api/v1/github-app/installations/{installationId}/link';
+};
+
+export type LinkInstallationResponses = {
+  201: LinkInstallationResponseDto;
+};
+
+export type LinkInstallationResponse =
+  LinkInstallationResponses[keyof LinkInstallationResponses];
+
+export type ListInstallationsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/github-app/installations';
+};
+
+export type ListInstallationsResponses = {
+  200: ListInstallationsResponseDto;
+};
+
+export type ListInstallationsResponse =
+  ListInstallationsResponses[keyof ListInstallationsResponses];
+
+export type UnlinkInstallationData = {
+  body?: never;
+  path: {
+    installationId: string;
+  };
+  query?: never;
+  url: '/api/v1/github-app/installations/{installationId}';
+};
+
+export type UnlinkInstallationResponses = {
+  200: UnlinkInstallationResponseDto;
+};
+
+export type UnlinkInstallationResponse =
+  UnlinkInstallationResponses[keyof UnlinkInstallationResponses];
+
 export type GetThreadsData = {
   body?: never;
   path?: never;
@@ -2456,3 +2582,17 @@ export type GetByGraphResponses = {
 };
 
 export type GetByGraphResponse = GetByGraphResponses[keyof GetByGraphResponses];
+
+export type GetSettingsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/system/settings';
+};
+
+export type GetSettingsResponses = {
+  200: SystemSettingsResponseDto;
+};
+
+export type GetSettingsResponse =
+  GetSettingsResponses[keyof GetSettingsResponses];

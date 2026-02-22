@@ -53,6 +53,10 @@ import type {
   GetRepositoriesResponses,
   GetRepositoryByIdData,
   GetRepositoryByIdResponses,
+  GetSettingsData,
+  GetSettingsResponses,
+  GetSetupInfoData,
+  GetSetupInfoResponses,
   GetThreadByExternalIdData,
   GetThreadByExternalIdResponses,
   GetThreadByIdData,
@@ -63,8 +67,12 @@ import type {
   GetThreadsResponses,
   GetThreadUsageStatisticsData,
   GetThreadUsageStatisticsResponses,
+  LinkInstallationData,
+  LinkInstallationResponses,
   ListDocsData,
   ListDocsResponses,
+  ListInstallationsData,
+  ListInstallationsResponses,
   ListModelsData,
   ListModelsResponses,
   RunGraphData,
@@ -85,6 +93,8 @@ import type {
   SuggestKnowledgeContentResponses,
   TriggerReindexData,
   TriggerReindexResponses,
+  UnlinkInstallationData,
+  UnlinkInstallationResponses,
   UpdateDocData,
   UpdateDocResponses,
   UpdateGraphData,
@@ -535,6 +545,60 @@ export const getAllTemplates = <ThrowOnError extends boolean = false>(
     ...options,
   });
 
+export const getSetupInfo = <ThrowOnError extends boolean = false>(
+  options?: Options<GetSetupInfoData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetSetupInfoResponses, unknown, ThrowOnError>(
+    {
+      responseType: 'json',
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/github-app/setup',
+      ...options,
+    },
+  );
+
+export const linkInstallation = <ThrowOnError extends boolean = false>(
+  options: Options<LinkInstallationData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    LinkInstallationResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/github-app/installations/{installationId}/link',
+    ...options,
+  });
+
+export const listInstallations = <ThrowOnError extends boolean = false>(
+  options?: Options<ListInstallationsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    ListInstallationsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/github-app/installations',
+    ...options,
+  });
+
+export const unlinkInstallation = <ThrowOnError extends boolean = false>(
+  options: Options<UnlinkInstallationData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<
+    UnlinkInstallationResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/github-app/installations/{installationId}',
+    ...options,
+  });
+
 export const getThreads = <ThrowOnError extends boolean = false>(
   options?: Options<GetThreadsData, ThrowOnError>,
 ) =>
@@ -691,5 +755,15 @@ export const getByGraph = <ThrowOnError extends boolean = false>(
     responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/analytics/by-graph',
+    ...options,
+  });
+
+export const getSettings = <ThrowOnError extends boolean = false>(
+  options?: Options<GetSettingsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetSettingsResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/system/settings',
     ...options,
   });

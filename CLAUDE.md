@@ -155,6 +155,18 @@ src/v1/feature-name/
 | `cache` | Redis caching layer |
 | `qdrant` | Qdrant client wrapper |
 
+### GitHub App integration (optional)
+
+The GitHub App feature (`github-app` module) provides an alternative to PAT tokens for authenticating with GitHub. It is **optional** — the system works with PAT tokens only when not configured.
+
+To enable, set these environment variables:
+- `GITHUB_APP_ID` — the numeric App ID
+- `GITHUB_APP_PRIVATE_KEY` — the PEM private key (literal `\n` sequences are converted to newlines at runtime)
+- `GITHUB_APP_CLIENT_ID` — the OAuth Client ID (used for the install/authorize redirect flow)
+- `GITHUB_APP_CLIENT_SECRET` — the OAuth Client Secret (used to exchange authorization codes for tokens)
+
+When all four are set, the `GET /api/system/settings` endpoint returns `githubAppEnabled: true`, and users can link GitHub App installations to their accounts via the OAuth flow. When not set, `githubAppEnabled` is `false` and the system operates with PAT tokens only.
+
 ### Cross-cutting infrastructure
 
 - **Auth**: Keycloak-backed. `AuthContextService` provides the current user. Dev-mode bypass available via `AUTH_DEV_MODE=true`.

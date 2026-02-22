@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
+import { DefaultLogger, NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
 import { execRuntimeWithContext } from '../../../agent-tools/agent-tools.utils';
@@ -8,6 +8,7 @@ import {
   GhToolGroup,
   GhToolType,
 } from '../../../agent-tools/tools/common/github/gh-tool-group';
+import { GitHubTokenResolverService } from '../../../github-app/services/github-token-resolver.service';
 import { IGithubResourceOutput } from '../../../graph-resources/services/github-resource';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
@@ -69,6 +70,8 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
   constructor(
     private readonly ghToolGroup: GhToolGroup,
     private readonly graphRegistry: GraphRegistry,
+    private readonly gitHubTokenResolverService: GitHubTokenResolverService,
+    private readonly logger: DefaultLogger,
   ) {
     super();
   }
@@ -190,12 +193,27 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
           ? parsedConfig.additionalLabels
           : undefined;
 
+        // Build a resolver callback so GitHub tools can obtain App tokens
+        const userId = params.metadata.graph_created_by;
+        const resolveTokenForOwner = userId
+          ? async (owner: string): Promise<string | null> => {
+              const resolved =
+                await this.gitHubTokenResolverService.resolveTokenForOwner(
+                  owner,
+                  userId,
+                  patToken,
+                );
+              return resolved?.token ?? null;
+            }
+          : undefined;
+
         const { tools: builtTools, instructions } = this.ghToolGroup.buildTools(
           {
             runtimeProvider: runtimeNode.instance,
             patToken,
             tools,
             additionalLabels,
+            resolveTokenForOwner,
           },
         );
 

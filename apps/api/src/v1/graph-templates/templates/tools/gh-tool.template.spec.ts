@@ -1,9 +1,10 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@packages/common';
+import { DefaultLogger, NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GhToolGroup } from '../../../agent-tools/tools/common/github/gh-tool-group';
+import { GitHubTokenResolverService } from '../../../github-app/services/github-token-resolver.service';
 import { IGithubResourceOutput } from '../../../graph-resources/services/github-resource';
 import {
   CompiledGraphNode,
@@ -72,6 +73,22 @@ describe('GhToolTemplate', () => {
         {
           provide: GraphRegistry,
           useValue: mockGraphRegistry,
+        },
+        {
+          provide: GitHubTokenResolverService,
+          useValue: {
+            resolveTokenForOwner: vi.fn().mockResolvedValue(null),
+            resolveDefaultToken: vi.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: DefaultLogger,
+          useValue: {
+            log: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+            debug: vi.fn(),
+          },
         },
       ],
     }).compile();

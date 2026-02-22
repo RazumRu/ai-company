@@ -533,12 +533,15 @@ export class GhCreatePullRequestTool extends GhBaseTool<
   ): Promise<ToolInvokeResult<GhCreatePullRequestToolOutput>> {
     const validated = this.validate(args);
 
-    const token = config.patToken;
-    if (!token) {
+    let token: string;
+    try {
+      token = await this.resolveToken(config, validated.owner);
+    } catch {
       return {
         output: {
           success: false,
-          error: 'ValidationError: Missing GitHub PAT token',
+          error:
+            'No GitHub token available. Configure a PAT or install the GitHub App.',
         },
       };
     }

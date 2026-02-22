@@ -160,6 +160,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     const res = await this.execGhCommand(
       {
         cmd: cmd.join(' '),
+        owner: args.owner,
       },
       config,
       cfg,
@@ -187,6 +188,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     );
 
     // Track the cloned repository with GitHub token and detected default branch
+    // Only store PAT tokens (App tokens are short-lived and should not be persisted)
     const userId = cfg.configurable?.graph_created_by as string | undefined;
     if (userId) {
       await this.upsertGitRepository(
@@ -216,7 +218,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   private async upsertGitRepository(
     args: GhCloneToolSchemaType,
     userId: string,
-    patToken: string,
+    patToken: string | undefined,
     detectedDefaultBranch?: string,
   ): Promise<void> {
     try {
@@ -228,14 +230,16 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       });
 
       const url = `https://github.com/${args.owner}/${args.repo}.git`;
-      const encryptedToken =
-        this.gitRepositoriesService.encryptCredential(patToken);
+      const encryptedToken = patToken
+        ? this.gitRepositoriesService.encryptCredential(patToken)
+        : null;
 
       if (existing) {
-        const updatePayload: Record<string, unknown> = {
-          url,
-          encryptedToken,
-        };
+        const updatePayload: Record<string, unknown> = { url };
+        // Only update the stored token if a PAT was provided
+        if (encryptedToken) {
+          updatePayload.encryptedToken = encryptedToken;
+        }
         // Update defaultBranch if detected and changed
         if (
           detectedDefaultBranch &&

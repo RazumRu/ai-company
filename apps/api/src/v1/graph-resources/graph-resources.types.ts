@@ -1,3 +1,8 @@
+export enum GitHubAuthMethod {
+  Pat = 'pat',
+  GithubApp = 'github_app',
+}
+
 export interface ShellResourceData {
   env?: Record<string, string>;
   initScript?: string[] | string;

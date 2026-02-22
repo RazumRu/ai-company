@@ -2122,6 +2122,94 @@ export const TemplateDtoSchema = {
   required: ['id', 'name', 'description', 'kind', 'schema'],
 } as const;
 
+export const SetupInfoResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    installUrl: {
+      type: 'string',
+    },
+    configured: {
+      type: 'boolean',
+    },
+  },
+  required: ['installUrl', 'configured'],
+} as const;
+
+export const LinkInstallationResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    linked: {
+      type: 'boolean',
+    },
+    accountLogin: {
+      type: 'string',
+    },
+    accountType: {
+      type: 'string',
+    },
+  },
+  required: ['linked', 'accountLogin', 'accountType'],
+} as const;
+
+export const ListInstallationsResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    installations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid',
+            pattern:
+              '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+          },
+          installationId: {
+            type: 'integer',
+            minimum: -9007199254740991,
+            maximum: 9007199254740991,
+          },
+          accountLogin: {
+            type: 'string',
+          },
+          accountType: {
+            type: 'string',
+          },
+          isActive: {
+            type: 'boolean',
+          },
+          createdAt: {
+            type: 'string',
+            format: 'date-time',
+            pattern:
+              '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+          },
+        },
+        required: [
+          'id',
+          'installationId',
+          'accountLogin',
+          'accountType',
+          'isActive',
+          'createdAt',
+        ],
+      },
+    },
+  },
+  required: ['installations'],
+} as const;
+
+export const UnlinkInstallationResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    unlinked: {
+      type: 'boolean',
+    },
+  },
+  required: ['unlinked'],
+} as const;
+
 export const ThreadDtoSchema = {
   type: 'object',
   properties: {
@@ -2784,4 +2872,14 @@ export const AnalyticsByGraphResponseDtoSchema = {
     },
   },
   required: ['graphs'],
+} as const;
+
+export const SystemSettingsResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    githubAppEnabled: {
+      type: 'boolean',
+    },
+  },
+  required: ['githubAppEnabled'],
 } as const;

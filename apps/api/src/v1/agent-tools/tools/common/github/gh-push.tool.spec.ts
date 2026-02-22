@@ -35,14 +35,16 @@ describe('GhPushTool', () => {
 
   /**
    * Helper to mock execGhCommand for a standard push flow.
-   * The invoke method now calls:
+   * The invoke method now calls via Promise.all:
    *   1. resolveBranch  (git symbolic-ref --short HEAD) — skipped when args.branch is set
    *   2. detectDefaultBranch (git symbolic-ref refs/remotes/<remote>/HEAD)
-   *   3. git push (the actual push)
+   *   3. resolveOwnerFromRemote (git remote get-url <remote>)
+   *   4. git push (the actual push)
    *
-   * Since resolveBranch & detectDefaultBranch run via Promise.all, their order in
-   * mockResolvedValueOnce depends on the Promise scheduler but we use sequential
-   * mocking — the spy records calls in order they arrive.
+   * Since resolveBranch, detectDefaultBranch & resolveOwnerFromRemote run via
+   * Promise.all, their order in mockResolvedValueOnce depends on the Promise
+   * scheduler but we use sequential mocking — the spy records calls in order
+   * they arrive.
    */
   function mockBranchDetection(
     spy: ReturnType<typeof vi.spyOn>,
@@ -50,6 +52,7 @@ describe('GhPushTool', () => {
       currentBranch?: string;
       defaultBranch?: string;
       hasBranchArg?: boolean;
+      remoteUrl?: string;
     },
   ) {
     // When args.branch is specified, resolveBranch returns immediately without
@@ -70,6 +73,14 @@ describe('GhPushTool', () => {
       stdout: opts.defaultBranch
         ? `refs/remotes/origin/${opts.defaultBranch}`
         : '',
+      stderr: '',
+      execPath: '/runtime-workspace/test-thread-123',
+    });
+
+    // resolveOwnerFromRemote call
+    spy.mockResolvedValueOnce({
+      exitCode: opts.remoteUrl ? 0 : 1,
+      stdout: opts.remoteUrl ?? '',
       stderr: '',
       execPath: '/runtime-workspace/test-thread-123',
     });
@@ -491,8 +502,8 @@ describe('GhPushTool', () => {
 
       await tool.invoke(args, mockConfig, mockCfg);
 
-      // Only the branch detection calls, no push call
-      expect(spy).toHaveBeenCalledTimes(2);
+      // Only the branch detection + owner resolution calls, no push call
+      expect(spy).toHaveBeenCalledTimes(3);
     });
 
     it('should block push with custom remote when branch matches default', async () => {
@@ -510,6 +521,13 @@ describe('GhPushTool', () => {
         stderr: '',
         execPath: '/runtime-workspace/test-thread-123',
       });
+      // resolveOwnerFromRemote call
+      spy.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'https://github.com/myorg/myrepo.git',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
 
       const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
 
@@ -517,6 +535,99 @@ describe('GhPushTool', () => {
       expect(result.error).toContain(
         'Pushing to the default branch "develop" is not allowed',
       );
+    });
+  });
+
+  describe('GitHub App token resolution via owner', () => {
+    const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
+      configurable: {
+        thread_id: 'test-thread-123',
+      },
+    };
+
+    it('should resolve owner from HTTPS remote URL and pass to push command', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+        branch: 'feat/new-feature',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        hasBranchArg: true,
+        defaultBranch: 'main',
+        remoteUrl: 'https://github.com/my-org/my-repo.git',
+      });
+      // push call
+      spy.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      // The push execGhCommand call (last one) should include owner
+      const pushCall = spy.mock.calls.at(-1);
+      expect(pushCall).toBeDefined();
+      expect(pushCall![0]).toHaveProperty('owner', 'my-org');
+    });
+
+    it('should resolve owner from SSH remote URL and pass to push command', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+        branch: 'feat/new-feature',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        hasBranchArg: true,
+        defaultBranch: 'main',
+        remoteUrl: 'git@github.com:my-org/my-repo.git',
+      });
+      // push call
+      spy.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      const pushCall = spy.mock.calls.at(-1);
+      expect(pushCall).toBeDefined();
+      expect(pushCall![0]).toHaveProperty('owner', 'my-org');
+    });
+
+    it('should pass undefined owner when remote URL resolution fails', async () => {
+      const args: GhPushToolSchemaType = {
+        path: '/runtime-workspace/repo',
+        branch: 'feat/new-feature',
+      };
+
+      const spy = vi.spyOn(tool as any, 'execGhCommand');
+      mockBranchDetection(spy, {
+        hasBranchArg: true,
+        defaultBranch: 'main',
+        // remoteUrl not set — resolveOwnerFromRemote will get exitCode: 1
+      });
+      // push call
+      spy.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        execPath: '/runtime-workspace/test-thread-123',
+      });
+
+      const { output: result } = await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(result.success).toBe(true);
+      const pushCall = spy.mock.calls.at(-1);
+      expect(pushCall).toBeDefined();
+      expect(pushCall![0]).toHaveProperty('owner', undefined);
     });
   });
 });

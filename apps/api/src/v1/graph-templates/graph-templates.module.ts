@@ -6,6 +6,7 @@ import { AgentMcpModule } from '../agent-mcp/agent-mcp.module';
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
 import { AgentTriggersModule } from '../agent-triggers/agent-triggers.module';
 import { AgentsModule } from '../agents/agents.module';
+import { GitHubAppModule } from '../github-app/github-app.module';
 import { GraphResourcesModule } from '../graph-resources/graph-resources.module';
 import { GraphsModule } from '../graphs/graphs.module';
 import { RuntimeModule } from '../runtime/runtime.module';
@@ -33,6 +34,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
 @Module({
   imports: [
     RuntimeModule,
+    GitHubAppModule,
     AgentToolsModule,
     AgentMcpModule,
     AgentsModule,

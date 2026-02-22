@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ResourceKind } from '../../../graph-resources/graph-resources.types';
+import {
+  GitHubAuthMethod,
+  ResourceKind,
+} from '../../../graph-resources/graph-resources.types';
 import {
   GithubResource,
   IGithubResourceOutput,
@@ -80,10 +83,11 @@ describe('GithubResourceTemplate', () => {
       expect(parsed.auth).toBe(true); // default value
     });
 
-    it('should reject missing patToken', () => {
-      const invalidData = {};
+    it('should accept missing patToken (optional for GitHub App auth)', () => {
+      const data = {};
 
-      expect(() => GithubResourceTemplateSchema.parse(invalidData)).toThrow();
+      const parsed = GithubResourceTemplateSchema.parse(data);
+      expect(parsed.patToken).toBeUndefined();
     });
 
     it('should reject empty patToken', () => {
@@ -141,11 +145,64 @@ describe('GithubResourceTemplate', () => {
       expect(parsed.patToken).toBe('ghp_1234567890abcdef');
       expect(parsed).not.toHaveProperty('invalidField');
     });
+
+    it('should default authMethod to pat when not provided (backward compatibility)', () => {
+      const data = {
+        patToken: 'ghp_1234567890abcdef',
+      };
+
+      const parsed = GithubResourceTemplateSchema.parse(data);
+      expect(parsed.authMethod).toBe(GitHubAuthMethod.Pat);
+    });
+
+    it('should accept authMethod github_app', () => {
+      const data = {
+        authMethod: GitHubAuthMethod.GithubApp,
+      };
+
+      const parsed = GithubResourceTemplateSchema.parse(data);
+      expect(parsed.authMethod).toBe(GitHubAuthMethod.GithubApp);
+    });
+
+    it('should accept authMethod pat explicitly', () => {
+      const data = {
+        authMethod: GitHubAuthMethod.Pat,
+        patToken: 'ghp_1234567890abcdef',
+      };
+
+      const parsed = GithubResourceTemplateSchema.parse(data);
+      expect(parsed.authMethod).toBe(GitHubAuthMethod.Pat);
+    });
+
+    it('should reject invalid authMethod values', () => {
+      const data = {
+        authMethod: 'oauth',
+        patToken: 'ghp_1234567890abcdef',
+      };
+
+      expect(() => GithubResourceTemplateSchema.parse(data)).toThrow();
+    });
+
+    it('should parse existing configs without authMethod correctly', () => {
+      const legacyConfig = {
+        patToken: 'ghp_1234567890abcdef',
+        name: 'Test User',
+        email: 'test@example.com',
+        auth: true,
+      };
+
+      const parsed = GithubResourceTemplateSchema.parse(legacyConfig);
+      expect(parsed.authMethod).toBe(GitHubAuthMethod.Pat);
+      expect(parsed.patToken).toBe('ghp_1234567890abcdef');
+      expect(parsed.name).toBe('Test User');
+      expect(parsed.auth).toBe(true);
+    });
   });
 
   describe('create', () => {
     it('should call setup if available', async () => {
       const config = {
+        authMethod: GitHubAuthMethod.Pat,
         patToken: 'ghp_1234567890abcdef',
         auth: false,
       };
@@ -196,6 +253,7 @@ describe('GithubResourceTemplate', () => {
 
     it('should work without setup method', async () => {
       const config = {
+        authMethod: GitHubAuthMethod.Pat,
         patToken: 'ghp_1234567890abcdef',
         auth: false,
       };
@@ -245,6 +303,7 @@ describe('GithubResourceTemplate', () => {
 
     it('should handle setup errors', async () => {
       const config = {
+        authMethod: GitHubAuthMethod.Pat,
         patToken: 'ghp_1234567890abcdef',
         auth: false,
       };
@@ -275,6 +334,7 @@ describe('GithubResourceTemplate', () => {
 
     it('should handle getData errors', async () => {
       const config = {
+        authMethod: GitHubAuthMethod.Pat,
         patToken: 'ghp_1234567890abcdef',
         auth: false,
       };
@@ -306,6 +366,7 @@ describe('GithubResourceTemplate', () => {
 
     it('should pass correct config to both setup and getData', async () => {
       const config = {
+        authMethod: GitHubAuthMethod.Pat,
         patToken: 'ghp_1234567890abcdef',
         auth: true,
       };

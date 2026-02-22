@@ -19,7 +19,8 @@ export type GhBaseToolSchemaType = z.infer<typeof GhBaseToolSchema>;
 
 export type GhBaseToolConfig = {
   runtimeProvider: RuntimeThreadProvider;
-  patToken: string;
+  patToken?: string;
+  resolveTokenForOwner?: (owner: string) => Promise<string | null>;
 };
 
 @Injectable()
@@ -32,18 +33,43 @@ export abstract class GhBaseTool<
     return new Octokit({ auth: token });
   }
 
+  protected async resolveToken(
+    config: GhBaseToolConfig,
+    owner?: string,
+  ): Promise<string> {
+    if (owner && config.resolveTokenForOwner) {
+      const token = await config.resolveTokenForOwner(owner);
+      if (token) return token;
+    }
+    if (config.patToken) return config.patToken;
+    throw new Error(
+      'No GitHub token available. Configure a PAT or install the GitHub App.',
+    );
+  }
+
   protected async execGhCommand(
-    params: { cmd: string[] | string },
+    params: { cmd: string[] | string; owner?: string },
     config: GhBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ) {
     try {
       const runtime = await config.runtimeProvider.provide(cfg);
 
+      // Resolve a token for GH_TOKEN injection.
+      let env: Record<string, string> | undefined;
+      try {
+        const token = await this.resolveToken(config, params.owner);
+        env = { GH_TOKEN: token };
+      } catch {
+        // No token available — proceed without GH_TOKEN.
+        // Commands that don't require auth (local git operations) will still work.
+      }
+
       const res = await execRuntimeWithContext(
         runtime,
         {
           cmd: params.cmd,
+          env,
         },
         cfg,
       );

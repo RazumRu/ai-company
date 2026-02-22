@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
-import { ResourceKind } from '../../../graph-resources/graph-resources.types';
+import {
+  GitHubAuthMethod,
+  ResourceKind,
+} from '../../../graph-resources/graph-resources.types';
 import {
   GithubResource,
   IGithubResourceOutput,
@@ -13,10 +16,15 @@ import { ResourceNodeBaseTemplate } from '../base-node.template';
 
 export const GithubResourceTemplateSchema = z
   .object({
+    authMethod: z
+      .nativeEnum(GitHubAuthMethod)
+      .default(GitHubAuthMethod.Pat)
+      .describe('Authentication method: PAT token or GitHub App installation'),
     patToken: z
       .string()
       .min(1, 'GitHub PAT token cannot be empty')
-      .describe('GitHub pat token'),
+      .optional()
+      .describe('GitHub PAT token (optional when using GitHub App)'),
     name: z.string().optional().describe('Git user name to configure'),
     email: z.email().optional().describe('Email'),
     auth: z

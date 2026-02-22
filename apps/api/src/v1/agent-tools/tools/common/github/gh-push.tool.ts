@@ -164,6 +164,33 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     return undefined;
   }
 
+  /**
+   * Extract the GitHub owner from the git remote URL.
+   * Supports both HTTPS (github.com/owner/repo) and SSH (github.com:owner/repo) formats.
+   */
+  private async resolveOwnerFromRemote(
+    args: GhPushToolSchemaType,
+    remote: string,
+    config: GhBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<string | undefined> {
+    const res = await this.execGhCommand(
+      {
+        cmd: this.buildCommand(
+          `git remote get-url ${JSON.stringify(remote)}`,
+          args.path,
+        ),
+      },
+      config,
+      cfg,
+    );
+    if (res.exitCode !== 0) return undefined;
+    const url = res.stdout.trim();
+    const httpsMatch = url.match(/github\.com\/([^/]+)\//);
+    const sshMatch = url.match(/github\.com:([^/]+)\//);
+    return httpsMatch?.[1] ?? sshMatch?.[1] ?? undefined;
+  }
+
   public async invoke(
     args: GhPushToolSchemaType,
     config: GhBaseToolConfig,
@@ -174,10 +201,11 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
 
     const remote = args.remote || 'origin';
 
-    // Detect the branch being pushed and the remote default branch
-    const [targetBranch, defaultBranch] = await Promise.all([
+    // Detect the branch being pushed, the remote default branch, and the owner for auth
+    const [targetBranch, defaultBranch, owner] = await Promise.all([
       this.resolveBranch(args, config, cfg),
       this.detectDefaultBranch(args, remote, config, cfg),
+      this.resolveOwnerFromRemote(args, remote, config, cfg),
     ]);
 
     // Block pushes to the repository's default branch
@@ -200,6 +228,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     const pushRes = await this.execGhCommand(
       {
         cmd: this.buildCommand(pushCmd, args.path),
+        owner,
       },
       config,
       cfg,
