@@ -14,6 +14,14 @@ import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
+/**
+ * Handles AgentInvoke notifications by creating or updating internal threads.
+ *
+ * NOTE: This handler is a side-effect handler -- it does NOT produce enriched
+ * notifications for the WebSocket gateway. Instead, it performs DB operations
+ * (thread creation/update) and re-emits new ThreadCreate / ThreadUpdate
+ * notifications back into the NotificationsService queue.
+ */
 @Injectable()
 export class AgentInvokeNotificationHandler extends BaseNotificationHandler<never> {
   readonly pattern = NotificationEvent.AgentInvoke;

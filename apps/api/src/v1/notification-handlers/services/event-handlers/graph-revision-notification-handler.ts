@@ -12,7 +12,6 @@ import {
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import {
-  EnrichedNotificationEvent,
   IEnrichedNotification,
   NotificationScope,
 } from '../../notification-handlers.types';
@@ -24,7 +23,7 @@ export type IGraphRevisionEnrichedNotification =
 
 @Injectable()
 export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IGraphRevisionEnrichedNotification> {
-  pattern = [
+  readonly pattern = [
     NotificationEvent.GraphRevisionCreate,
     NotificationEvent.GraphRevisionApplying,
     NotificationEvent.GraphRevisionApplied,
@@ -45,6 +44,11 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
   ): Promise<IGraphRevisionEnrichedNotification[]> {
     try {
       // Progress events use a different data shape and don't need prepareResponse
+      //
+      // NOTE: This handler uses graphDao.getById() directly instead of the shared
+      // getGraphOwner() from BaseNotificationHandler because revision notifications
+      // have different error semantics: a missing graph returns [] (graceful skip)
+      // rather than throwing NotFoundException, and getById is used instead of getOne.
       if (event.type === NotificationEvent.GraphRevisionProgress) {
         const progressNotification =
           event as IGraphRevisionProgressNotification;
@@ -54,7 +58,7 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
         }
         return [
           {
-            type: EnrichedNotificationEvent.GraphRevisionProgress,
+            type: NotificationEvent.GraphRevisionProgress,
             data: progressNotification.data,
             graphId: progressNotification.graphId,
             ownerId: graph.createdBy,
@@ -76,28 +80,9 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
 
       const revisionDto = this.graphRevisionService.prepareResponse(data);
 
-      // Map NotificationEvent to EnrichedNotificationEvent
-      let enrichedType: EnrichedNotificationEvent;
-      switch (notification.type) {
-        case NotificationEvent.GraphRevisionCreate:
-          enrichedType = EnrichedNotificationEvent.GraphRevisionCreate;
-          break;
-        case NotificationEvent.GraphRevisionApplying:
-          enrichedType = EnrichedNotificationEvent.GraphRevisionApplying;
-          break;
-        case NotificationEvent.GraphRevisionApplied:
-          enrichedType = EnrichedNotificationEvent.GraphRevisionApplied;
-          break;
-        case NotificationEvent.GraphRevisionFailed:
-          enrichedType = EnrichedNotificationEvent.GraphRevisionFailed;
-          break;
-        default:
-          enrichedType = EnrichedNotificationEvent.Graph;
-      }
-
       return [
         {
-          type: enrichedType,
+          type: notification.type,
           data: revisionDto,
           graphId: notification.graphId,
           ownerId: graph.createdBy,

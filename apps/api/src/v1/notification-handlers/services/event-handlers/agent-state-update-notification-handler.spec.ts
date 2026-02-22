@@ -8,43 +8,17 @@ import {
   IAgentStateUpdateNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
-import { NotificationsService } from '../../../notifications/services/notifications.service';
-import { ThreadsDao } from '../../../threads/dao/threads.dao';
-import { ThreadEntity } from '../../../threads/entity/thread.entity';
-import { ThreadStatus } from '../../../threads/threads.types';
-import {
-  EnrichedNotificationEvent,
-  NotificationScope,
-} from '../../notification-handlers.types';
+import { NotificationScope } from '../../notification-handlers.types';
 import { AgentStateUpdateNotificationHandler } from './agent-state-update-notification-handler';
 
 describe('AgentStateUpdateNotificationHandler', () => {
   let handler: AgentStateUpdateNotificationHandler;
-  let _threadsDao: ThreadsDao;
-  let _notificationsService: NotificationsService;
 
   const mockGraphId = 'graph-456';
   const mockNodeId = 'node-789';
   const mockThreadId = 'thread-abc';
   const mockParentThreadId = 'parent-thread-def';
   const mockOwnerId = 'user-123';
-
-  const _createMockThreadEntity = (
-    overrides: Partial<ThreadEntity> = {},
-  ): ThreadEntity => ({
-    id: 'thread-internal-123',
-    graphId: mockGraphId,
-    createdBy: mockOwnerId,
-    externalThreadId: mockThreadId,
-    metadata: {},
-    source: undefined,
-    name: undefined,
-    createdAt: new Date('2024-01-01T00:00:00Z'),
-    updatedAt: new Date('2024-01-01T00:00:00Z'),
-    deletedAt: null,
-    status: ThreadStatus.Running,
-    ...overrides,
-  });
 
   const createMockNotification = (
     overrides: Partial<IAgentStateUpdateNotification> = {},
@@ -81,21 +55,9 @@ describe('AgentStateUpdateNotificationHandler', () => {
       providers: [
         AgentStateUpdateNotificationHandler,
         {
-          provide: ThreadsDao,
-          useValue: {
-            getOne: vi.fn(),
-          },
-        },
-        {
           provide: GraphDao,
           useValue: {
             getOne: vi.fn().mockResolvedValue(mockGraph),
-          },
-        },
-        {
-          provide: NotificationsService,
-          useValue: {
-            emit: vi.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -104,9 +66,6 @@ describe('AgentStateUpdateNotificationHandler', () => {
     handler = module.get<AgentStateUpdateNotificationHandler>(
       AgentStateUpdateNotificationHandler,
     );
-    _threadsDao = module.get<ThreadsDao>(ThreadsDao);
-    _notificationsService =
-      module.get<NotificationsService>(NotificationsService);
   });
 
   describe('handle', () => {
@@ -120,7 +79,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       // Handler now only enriches AgentStateUpdate, ThreadUpdate is handled in graph-state.manager
       expect(result).toEqual([
         {
-          type: EnrichedNotificationEvent.AgentStateUpdate,
+          type: NotificationEvent.AgentStateUpdate,
           scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,
@@ -142,7 +101,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       // Handler now only enriches AgentStateUpdate
       expect(result).toEqual([
         {
-          type: EnrichedNotificationEvent.AgentStateUpdate,
+          type: NotificationEvent.AgentStateUpdate,
           scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,
@@ -165,7 +124,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       // Handler now only enriches AgentStateUpdate, status updates are handled in graph-state.manager
       expect(result).toEqual([
         {
-          type: EnrichedNotificationEvent.AgentStateUpdate,
+          type: NotificationEvent.AgentStateUpdate,
           scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,
@@ -188,7 +147,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       // Handler now only enriches AgentStateUpdate, status updates are handled in graph-state.manager
       expect(result).toEqual([
         {
-          type: EnrichedNotificationEvent.AgentStateUpdate,
+          type: NotificationEvent.AgentStateUpdate,
           scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,
@@ -209,7 +168,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
       // No ThreadUpdate emissions in this handler anymore
       expect(result).toEqual([
         {
-          type: EnrichedNotificationEvent.AgentStateUpdate,
+          type: NotificationEvent.AgentStateUpdate,
           scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,
@@ -229,7 +188,7 @@ describe('AgentStateUpdateNotificationHandler', () => {
 
       expect(result).toEqual([
         {
-          type: EnrichedNotificationEvent.AgentStateUpdate,
+          type: NotificationEvent.AgentStateUpdate,
           scope: [NotificationScope.Graph],
           graphId: mockGraphId,
           ownerId: mockOwnerId,

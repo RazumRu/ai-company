@@ -8,10 +8,7 @@ import {
   IGraphNodeUpdateNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
-import {
-  EnrichedNotificationEvent,
-  NotificationScope,
-} from '../../notification-handlers.types';
+import { NotificationScope } from '../../notification-handlers.types';
 import {
   GraphNodeUpdateNotificationHandler,
   IGraphNodeUpdateEnrichedNotification,
@@ -59,7 +56,7 @@ describe('GraphNodeUpdateNotificationHandler', () => {
     const result = await handler.handle(notification);
 
     const expected: IGraphNodeUpdateEnrichedNotification = {
-      type: EnrichedNotificationEvent.GraphNodeUpdate,
+      type: NotificationEvent.GraphNodeUpdate,
       graphId: mockGraphId,
       ownerId: mockOwnerId,
       nodeId: 'node-1',

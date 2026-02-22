@@ -12,10 +12,7 @@ import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
-import {
-  EnrichedNotificationEvent,
-  NotificationScope,
-} from '../../notification-handlers.types';
+import { NotificationScope } from '../../notification-handlers.types';
 import {
   IThreadDeleteEnrichedNotification,
   ThreadDeleteNotificationHandler,
@@ -132,7 +129,7 @@ describe('ThreadDeleteNotificationHandler', () => {
     const firstResult = result[0]!;
 
     expect(firstResult).toEqual({
-      type: EnrichedNotificationEvent.ThreadDelete,
+      type: NotificationEvent.ThreadDelete,
       graphId: mockGraphId,
       ownerId: mockOwnerId,
       threadId: mockThreadId,

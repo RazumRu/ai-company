@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
@@ -9,14 +8,13 @@ import {
 import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadsService } from '../../../threads/services/threads.service';
 import {
-  EnrichedNotificationEvent,
   IEnrichedNotification,
   NotificationScope,
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
 export interface IThreadDeleteEnrichedNotification extends IEnrichedNotification<ThreadDto> {
-  type: EnrichedNotificationEvent.ThreadDelete;
+  type: NotificationEvent.ThreadDelete;
   threadId: string;
   internalThreadId: string;
 }
@@ -37,13 +35,13 @@ export class ThreadDeleteNotificationHandler extends BaseNotificationHandler<ITh
   ): Promise<IThreadDeleteEnrichedNotification[]> {
     const { graphId, threadId, data } = event;
 
-    const ownerId = await this.getGraphOwner(graphId);
+    const ownerId = await this.getGraphOwner(this.graphDao, graphId);
 
     const threadDto = this.threadsService.prepareThreadResponse(data);
 
     return [
       {
-        type: EnrichedNotificationEvent.ThreadDelete,
+        type: NotificationEvent.ThreadDelete,
         graphId,
         ownerId,
         threadId,
@@ -52,15 +50,5 @@ export class ThreadDeleteNotificationHandler extends BaseNotificationHandler<ITh
         data: threadDto,
       },
     ];
-  }
-
-  private async getGraphOwner(graphId: string): Promise<string> {
-    const graph = await this.graphDao.getOne({ id: graphId });
-
-    if (!graph) {
-      throw new NotFoundException('GRAPH_NOT_FOUND');
-    }
-
-    return graph.createdBy;
   }
 }

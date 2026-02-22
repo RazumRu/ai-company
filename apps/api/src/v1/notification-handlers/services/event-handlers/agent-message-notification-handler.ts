@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
 
 import type { MessageAdditionalKwargs } from '../../../agents/agents.types';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -17,14 +16,13 @@ import {
   ThreadMessageSchema,
 } from '../../../threads/dto/threads.dto';
 import {
-  EnrichedNotificationEvent,
   IEnrichedNotification,
   NotificationScope,
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
 export interface IAgentMessageEnrichedNotification extends IEnrichedNotification<ThreadMessageDto> {
-  type: EnrichedNotificationEvent.AgentMessage;
+  type: NotificationEvent.AgentMessage;
   nodeId: string;
   threadId: string;
   internalThreadId: string;
@@ -33,7 +31,6 @@ export interface IAgentMessageEnrichedNotification extends IEnrichedNotification
 @Injectable()
 export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAgentMessageEnrichedNotification> {
   readonly pattern = NotificationEvent.AgentMessage;
-  private readonly graphOwnerCache = new Map<string, string>();
 
   constructor(
     private readonly graphDao: GraphDao,
@@ -47,7 +44,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
   async handle(
     event: IAgentMessageNotification,
   ): Promise<IAgentMessageEnrichedNotification[]> {
-    const ownerId = await this.getGraphOwner(event.graphId);
+    const ownerId = await this.getGraphOwner(this.graphDao, event.graphId);
     const out: IAgentMessageEnrichedNotification[] = [];
 
     const externalThreadKey = event.parentThreadId ?? event.threadId;
@@ -143,7 +140,7 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     // Build notification events for each created message
     for (const createdMessage of createdMessages) {
       out.push({
-        type: EnrichedNotificationEvent.AgentMessage,
+        type: NotificationEvent.AgentMessage,
         graphId: event.graphId,
         ownerId,
         nodeId: event.nodeId,
@@ -173,17 +170,5 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     delete stripped.__requestUsage;
     delete stripped.__toolTokenUsage;
     return stripped;
-  }
-
-  private async getGraphOwner(graphId: string): Promise<string> {
-    if (this.graphOwnerCache.has(graphId)) {
-      return this.graphOwnerCache.get(graphId)!;
-    }
-    const graph = await this.graphDao.getOne({ id: graphId });
-    if (!graph) {
-      throw new NotFoundException('GRAPH_NOT_FOUND');
-    }
-    this.graphOwnerCache.set(graphId, graph.createdBy);
-    return graph.createdBy;
   }
 }

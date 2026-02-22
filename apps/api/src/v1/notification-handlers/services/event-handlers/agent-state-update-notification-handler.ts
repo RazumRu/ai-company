@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
@@ -7,7 +6,6 @@ import {
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import {
-  EnrichedNotificationEvent,
   IEnrichedNotification,
   NotificationScope,
 } from '../../notification-handlers.types';
@@ -16,7 +14,7 @@ import { BaseNotificationHandler } from './base-notification-handler';
 export interface IAgentStateUpdateEnrichedNotification extends IEnrichedNotification<
   IAgentStateUpdateNotification['data']
 > {
-  type: EnrichedNotificationEvent.AgentStateUpdate;
+  type: NotificationEvent.AgentStateUpdate;
   nodeId: string;
   threadId: string;
 }
@@ -24,7 +22,6 @@ export interface IAgentStateUpdateEnrichedNotification extends IEnrichedNotifica
 @Injectable()
 export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler<IAgentStateUpdateEnrichedNotification> {
   readonly pattern = NotificationEvent.AgentStateUpdate;
-  private readonly graphOwnerCache = new Map<string, string>();
 
   constructor(private readonly graphDao: GraphDao) {
     super();
@@ -37,12 +34,12 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
     const externalThreadKey = parentThreadId ?? threadId;
 
     // Get graph owner for enriching notification
-    const ownerId = await this.getGraphOwner(graphId);
+    const ownerId = await this.getGraphOwner(this.graphDao, graphId);
 
     const notifications: IAgentStateUpdateEnrichedNotification[] = [];
 
     const agentStateNotification: IAgentStateUpdateEnrichedNotification = {
-      type: EnrichedNotificationEvent.AgentStateUpdate,
+      type: NotificationEvent.AgentStateUpdate,
       graphId,
       ownerId,
       nodeId,
@@ -55,24 +52,5 @@ export class AgentStateUpdateNotificationHandler extends BaseNotificationHandler
 
     // All thread updates (status, name) are now centralized in graph-state-manager
     return notifications;
-  }
-
-  private async getGraphOwner(graphId: string): Promise<string> {
-    // Check cache first
-    if (this.graphOwnerCache.has(graphId)) {
-      return this.graphOwnerCache.get(graphId)!;
-    }
-
-    // Fetch from database
-    const graph = await this.graphDao.getOne({ id: graphId });
-
-    if (!graph) {
-      throw new NotFoundException('GRAPH_NOT_FOUND');
-    }
-
-    // Cache the result
-    this.graphOwnerCache.set(graphId, graph.createdBy);
-
-    return graph.createdBy;
   }
 }

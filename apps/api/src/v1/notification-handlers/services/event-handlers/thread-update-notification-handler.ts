@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
@@ -11,14 +10,13 @@ import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadsService } from '../../../threads/services/threads.service';
 import {
-  EnrichedNotificationEvent,
   IEnrichedNotification,
   NotificationScope,
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
 export interface IThreadUpdateEnrichedNotification extends IEnrichedNotification<ThreadDto> {
-  type: EnrichedNotificationEvent.ThreadUpdate;
+  type: NotificationEvent.ThreadUpdate;
   threadId: string;
   internalThreadId: string;
 }
@@ -40,7 +38,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
   ): Promise<IThreadUpdateEnrichedNotification[]> {
     const { graphId, threadId, parentThreadId, data } = event;
 
-    const ownerId = await this.getGraphOwner(graphId);
+    const ownerId = await this.getGraphOwner(this.graphDao, graphId);
 
     const externalThreadKey = parentThreadId ?? threadId;
 
@@ -83,7 +81,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
 
     return [
       {
-        type: EnrichedNotificationEvent.ThreadUpdate,
+        type: NotificationEvent.ThreadUpdate,
         graphId,
         ownerId,
         threadId: externalThreadKey,
@@ -92,15 +90,5 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
         data: threadDto,
       },
     ];
-  }
-
-  private async getGraphOwner(graphId: string): Promise<string> {
-    const graph = await this.graphDao.getOne({ id: graphId });
-
-    if (!graph) {
-      throw new NotFoundException('GRAPH_NOT_FOUND');
-    }
-
-    return graph.createdBy;
   }
 }

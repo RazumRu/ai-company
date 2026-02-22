@@ -1,3 +1,5 @@
+import { NotificationEvent } from '../notifications/notifications.types';
+
 export enum NotificationScope {
   /** Send notification only to graph room (users who explicitly subscribed) */
   Graph = 'graph',
@@ -6,7 +8,7 @@ export enum NotificationScope {
 }
 
 export interface IEnrichedNotification<T> {
-  type: EnrichedNotificationEvent;
+  type: NotificationEvent;
   data: T;
   graphId: string;
   ownerId: string;
@@ -14,19 +16,4 @@ export interface IEnrichedNotification<T> {
   threadId?: string;
   runId?: string;
   scope: NotificationScope[];
-}
-
-export enum EnrichedNotificationEvent {
-  Graph = 'graph.update',
-  AgentMessage = 'agent.message',
-  AgentStateUpdate = 'agent.state.update',
-  ThreadCreate = 'thread.create',
-  ThreadUpdate = 'thread.update',
-  ThreadDelete = 'thread.delete',
-  GraphNodeUpdate = 'graph.node.update',
-  GraphRevisionCreate = 'graph.revision.create',
-  GraphRevisionApplying = 'graph.revision.applying',
-  GraphRevisionApplied = 'graph.revision.applied',
-  GraphRevisionFailed = 'graph.revision.failed',
-  GraphRevisionProgress = 'graph.revision.progress',
 }

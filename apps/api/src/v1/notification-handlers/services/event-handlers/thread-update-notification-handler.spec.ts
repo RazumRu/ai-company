@@ -13,10 +13,7 @@ import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
-import {
-  EnrichedNotificationEvent,
-  NotificationScope,
-} from '../../notification-handlers.types';
+import { NotificationScope } from '../../notification-handlers.types';
 import {
   IThreadUpdateEnrichedNotification,
   ThreadUpdateNotificationHandler,
@@ -141,7 +138,7 @@ describe('ThreadUpdateNotificationHandler', () => {
 
     expect(result).toEqual([
       {
-        type: EnrichedNotificationEvent.ThreadUpdate,
+        type: NotificationEvent.ThreadUpdate,
         graphId: mockGraphId,
         ownerId: mockOwnerId,
         threadId: mockThreadId,

@@ -1,5 +1,4 @@
 import { INestApplication } from '@nestjs/common';
-import { IoAdapter } from '@nestjs/platform-socket.io';
 import { buildBootstrapper, LogLevel } from '@packages/common';
 import {
   buildAuthExtension,
@@ -12,6 +11,7 @@ import { buildTypeormExtension } from '@packages/typeorm';
 import { AppModule } from './app.module';
 import typeormconfig from './db/typeormconfig';
 import { environment } from './environments';
+import { RedisIoAdapter } from './v1/notification-handlers/gateways/redis-io.adapter';
 
 const bootstrapper = buildBootstrapper({
   environment: environment.env,
@@ -39,7 +39,12 @@ bootstrapper.addExtension(
       },
     },
     (app: INestApplication) => {
-      app.useWebSocketAdapter(new IoAdapter(app));
+      const adapter = new RedisIoAdapter(app, environment.redisUrl);
+      // Redis connection happens asynchronously after server start.
+      // This is intentional: the appChangeCb is synchronous, and single-instance
+      // mode works correctly until the adapter connects.
+      void adapter.connectToRedis();
+      app.useWebSocketAdapter(adapter);
 
       return app;
     },

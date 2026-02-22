@@ -12,10 +12,7 @@ import {
 } from '../../notifications/notifications.types';
 import { serializeBaseMessages } from '../../notifications/notifications.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
-import {
-  EnrichedNotificationEvent,
-  NotificationScope,
-} from '../notification-handlers.types';
+import { NotificationScope } from '../notification-handlers.types';
 import {
   AgentMessageNotificationHandler,
   IAgentMessageEnrichedNotification,
@@ -146,7 +143,7 @@ describe('NotificationHandler', () => {
 
     it('should handle graph notification and emit enriched notification', async () => {
       const mockEnrichedNotification: IGraphEnrichedNotification = {
-        type: EnrichedNotificationEvent.Graph,
+        type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
         ownerId: mockOwnerId,
@@ -179,7 +176,7 @@ describe('NotificationHandler', () => {
 
     it('should handle agent message notification and emit message event', async () => {
       const mockMessageNotification: IAgentMessageEnrichedNotification = {
-        type: EnrichedNotificationEvent.AgentMessage,
+        type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
         ownerId: mockOwnerId,
@@ -238,7 +235,7 @@ describe('NotificationHandler', () => {
 
     it('should handle agent message notification with AI message and tool calls', async () => {
       const mockMessageNotification: IAgentMessageEnrichedNotification = {
-        type: EnrichedNotificationEvent.AgentMessage,
+        type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
         ownerId: mockOwnerId,
@@ -315,7 +312,7 @@ describe('NotificationHandler', () => {
 
     it('should handle agent message notification and emit multiple events', async () => {
       const mockMessageNotification: IAgentMessageEnrichedNotification = {
-        type: EnrichedNotificationEvent.AgentMessage,
+        type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
         ownerId: mockOwnerId,
@@ -337,7 +334,7 @@ describe('NotificationHandler', () => {
       };
 
       const mockMessageNotification2: IAgentMessageEnrichedNotification = {
-        type: EnrichedNotificationEvent.AgentMessage,
+        type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
         ownerId: mockOwnerId,
@@ -400,7 +397,7 @@ describe('NotificationHandler', () => {
 
     it('should handle agent message notification and emit shell tool message', async () => {
       const mockMessageNotification: IAgentMessageEnrichedNotification = {
-        type: EnrichedNotificationEvent.AgentMessage,
+        type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
         ownerId: mockOwnerId,
@@ -474,7 +471,7 @@ describe('NotificationHandler', () => {
 
     it('should process multiple notifications', async () => {
       const mockEnrichedNotification: IGraphEnrichedNotification = {
-        type: EnrichedNotificationEvent.Graph,
+        type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
         ownerId: mockOwnerId,
@@ -541,7 +538,7 @@ describe('NotificationHandler', () => {
 
       // Emit a test event
       const testEvent: IGraphEnrichedNotification = {
-        type: EnrichedNotificationEvent.Graph,
+        type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
         ownerId: mockOwnerId,
