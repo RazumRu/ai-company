@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 
@@ -11,22 +10,13 @@ import { GraphStatus } from '../graphs.types';
 import { GraphRegistry } from './graph-registry';
 import { GraphsService } from './graphs.service';
 
-/**
- * GraphRestorationService handles restoring graphs with their agent states
- * after server restart. It queries the database for graphs with 'running' status
- * and recompiles them into the GraphRegistry.
- *
- * Note: This service uses ModuleRef to lazily resolve GraphsService to avoid
- * issues with request-scoped providers (AuthContextService) that would prevent
- * onModuleInit from running.
- */
 @Injectable()
 export class GraphRestorationService {
   constructor(
     private readonly graphDao: GraphDao,
     private readonly graphRegistry: GraphRegistry,
     private readonly threadsDao: ThreadsDao,
-    private readonly moduleRef: ModuleRef,
+    private readonly graphsService: GraphsService,
     private readonly logger: DefaultLogger,
   ) {}
 
@@ -63,27 +53,18 @@ export class GraphRestorationService {
     await Promise.allSettled(restorationPromises);
   }
 
-  /**
-   * Restores a single graph by recompiling it and registering it in the registry
-   * Uses ModuleRef to lazily resolve GraphsService to avoid request-scoped dependency issues
-   */
   private async restoreGraph(graph: GraphEntity): Promise<void> {
     const { id, name } = graph;
 
     try {
-      // Check if graph is already registered (shouldn't happen, but safety check)
       if (this.graphRegistry.get(id)) {
         return;
       }
 
-      // Lazily resolve GraphsService using ModuleRef to avoid request-scoped issues
-      const graphsService = await this.moduleRef.create(GraphsService);
-
-      // Use the run method from GraphsService
       const contextDataStorage = new AuthContextStorage({
         sub: graph.createdBy,
       });
-      await graphsService.run(contextDataStorage, id);
+      await this.graphsService.run(contextDataStorage, id);
 
       // Stop interrupted threads instead of resuming them
       await this.stopInterruptedThreads(id);

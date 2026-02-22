@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -23,7 +22,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     private readonly threadDao: ThreadsDao,
     private readonly graphDao: GraphDao,
     private readonly notificationsService: NotificationsService,
-    private readonly moduleRef: ModuleRef,
+    private readonly threadsService: ThreadsService,
     private readonly threadNameGenerator: ThreadNameGeneratorService,
     private readonly logger: DefaultLogger,
   ) {
@@ -115,9 +114,8 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         });
 
         if (refreshedThread) {
-          const threadsService = await this.moduleRef.create(ThreadsService);
           const threadDto =
-            threadsService.prepareThreadResponse(refreshedThread);
+            this.threadsService.prepareThreadResponse(refreshedThread);
 
           await this.notificationsService.emit({
             type: NotificationEvent.ThreadUpdate,

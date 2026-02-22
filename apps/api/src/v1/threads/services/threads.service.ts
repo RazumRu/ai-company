@@ -5,10 +5,8 @@ import Decimal from 'decimal.js';
 
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { MessageRole } from '../../graphs/graphs.types';
-import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphsService } from '../../graphs/services/graphs.service';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
-import { LitellmService } from '../../litellm/services/litellm.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../dao/messages.dao';
@@ -35,10 +33,8 @@ export class ThreadsService {
     private readonly authContext: AuthContextService,
     private readonly notificationsService: NotificationsService,
     private readonly graphsService: GraphsService,
-    private readonly graphRegistry: GraphRegistry,
     private readonly logger: DefaultLogger,
     private readonly checkpointStateService: CheckpointStateService,
-    private readonly litellmService: LitellmService,
   ) {}
 
   async getThreads(query: GetThreadsQueryDto): Promise<ThreadDto[]> {

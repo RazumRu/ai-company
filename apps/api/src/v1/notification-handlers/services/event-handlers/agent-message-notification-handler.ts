@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DefaultLogger, NotFoundException } from '@packages/common';
+import { NotFoundException } from '@packages/common';
 
 import type { MessageAdditionalKwargs } from '../../../agents/agents.types';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -40,7 +40,6 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
     private readonly messageTransformer: MessageTransformerService,
     private readonly messagesDao: MessagesDao,
     private readonly threadsDao: ThreadsDao,
-    private readonly logger: DefaultLogger,
   ) {
     super();
   }

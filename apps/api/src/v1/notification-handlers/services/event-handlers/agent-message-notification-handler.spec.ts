@@ -1,6 +1,5 @@
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -88,15 +87,6 @@ describe('AgentMessageNotificationHandler', () => {
                   };
                 });
               }),
-          },
-        },
-        {
-          provide: DefaultLogger,
-          useValue: {
-            warn: vi.fn(),
-            error: vi.fn(),
-            info: vi.fn(),
-            debug: vi.fn(),
           },
         },
       ],

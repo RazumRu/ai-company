@@ -1,4 +1,3 @@
-import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,7 +24,6 @@ import {
 describe('ThreadCreateNotificationHandler', () => {
   let handler: ThreadCreateNotificationHandler;
   let graphDao: GraphDao;
-  let moduleRefMock: { create: ReturnType<typeof vi.fn> };
   let threadsServiceMock: {
     prepareThreadResponse: ReturnType<typeof vi.fn>;
   };
@@ -100,10 +98,6 @@ describe('ThreadCreateNotificationHandler', () => {
         .mockImplementation((entity: ThreadEntity) => toThreadDto(entity)),
     };
 
-    moduleRefMock = {
-      create: vi.fn().mockResolvedValue(threadsServiceMock),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ThreadCreateNotificationHandler,
@@ -114,8 +108,8 @@ describe('ThreadCreateNotificationHandler', () => {
           },
         },
         {
-          provide: ModuleRef,
-          useValue: moduleRefMock,
+          provide: ThreadsService,
+          useValue: threadsServiceMock,
         },
       ],
     }).compile();
@@ -132,7 +126,6 @@ describe('ThreadCreateNotificationHandler', () => {
   ) => {
     const expectedDto = toThreadDto(threadEntity);
 
-    expect(moduleRefMock.create).toHaveBeenCalledWith(ThreadsService);
     expect(threadsServiceMock.prepareThreadResponse).toHaveBeenCalledWith(
       threadEntity,
     );
@@ -194,7 +187,7 @@ describe('ThreadCreateNotificationHandler', () => {
       await expect(handler.handle(notification)).rejects.toThrow(
         'GRAPH_NOT_FOUND',
       );
-      expect(moduleRefMock.create).not.toHaveBeenCalled();
+      expect(threadsServiceMock.prepareThreadResponse).not.toHaveBeenCalled();
     });
 
     it('includes metadata in thread payload', async () => {

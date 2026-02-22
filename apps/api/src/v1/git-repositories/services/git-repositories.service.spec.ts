@@ -8,7 +8,6 @@ import {
 import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
@@ -96,12 +95,6 @@ describe('GitRepositoriesService', () => {
               repoSlug: 'my_repo',
               collection: 'codebase_my_repo_1536',
             }),
-          },
-        },
-        {
-          provide: LlmModelsService,
-          useValue: {
-            getKnowledgeEmbeddingModel: vi.fn(() => 'text-embedding-3-small'),
           },
         },
         {

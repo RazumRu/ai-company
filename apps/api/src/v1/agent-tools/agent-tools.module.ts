@@ -1,6 +1,5 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 
-import { AgentsModule } from '../agents/agents.module';
 import { GitRepositoriesModule } from '../git-repositories/git-repositories.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { LitellmModule } from '../litellm/litellm.module';
@@ -44,7 +43,6 @@ import { FinishTool } from './tools/core/finish.tool';
     KnowledgeModule,
     QdrantModule,
     SubagentsModule,
-    forwardRef(() => AgentsModule),
   ],
   controllers: [],
   providers: [

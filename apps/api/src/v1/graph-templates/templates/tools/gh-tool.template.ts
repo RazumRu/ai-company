@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DefaultLogger, NotFoundException } from '@packages/common';
+import { NotFoundException } from '@packages/common';
 import { z } from 'zod';
 
 import { execRuntimeWithContext } from '../../../agent-tools/agent-tools.utils';
@@ -71,7 +71,6 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
     private readonly ghToolGroup: GhToolGroup,
     private readonly graphRegistry: GraphRegistry,
     private readonly gitHubTokenResolverService: GitHubTokenResolverService,
-    private readonly logger: DefaultLogger,
   ) {
     super();
   }

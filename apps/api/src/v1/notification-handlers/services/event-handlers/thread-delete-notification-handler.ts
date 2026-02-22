@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
 import { NotFoundException } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -28,7 +27,7 @@ export class ThreadDeleteNotificationHandler extends BaseNotificationHandler<ITh
 
   constructor(
     private readonly graphDao: GraphDao,
-    private readonly moduleRef: ModuleRef,
+    private readonly threadsService: ThreadsService,
   ) {
     super();
   }
@@ -39,9 +38,8 @@ export class ThreadDeleteNotificationHandler extends BaseNotificationHandler<ITh
     const { graphId, threadId, data } = event;
 
     const ownerId = await this.getGraphOwner(graphId);
-    const threadsService = await this.moduleRef.create(ThreadsService);
 
-    const threadDto = threadsService.prepareThreadResponse(data);
+    const threadDto = this.threadsService.prepareThreadResponse(data);
 
     return [
       {

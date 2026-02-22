@@ -26,7 +26,6 @@ import {
   UpdateRepositoryDto,
 } from '../dto/git-repositories.dto';
 import { GitRepositoriesService } from '../services/git-repositories.service';
-import { RepoIndexService } from '../services/repo-index.service';
 
 @ApiTags('git-repositories')
 @Controller('git-repositories')
@@ -35,7 +34,6 @@ import { RepoIndexService } from '../services/repo-index.service';
 export class GitRepositoriesController {
   constructor(
     private readonly gitRepositoriesService: GitRepositoriesService,
-    private readonly repoIndexService: RepoIndexService,
   ) {}
 
   @Post()

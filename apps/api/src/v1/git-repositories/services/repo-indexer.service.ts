@@ -12,8 +12,6 @@ import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { shQuote } from '../../utils/shell.utils';
-import { RepoIndexDao } from '../dao/repo-index.dao';
-
 // Batch size for upserting points (copy, seed, etc.) to avoid overwhelming Qdrant
 const POINT_COPY_BATCH_SIZE = 500;
 
@@ -109,7 +107,6 @@ export class RepoIndexerService {
     private readonly openaiService: OpenaiService,
     private readonly litellmService: LitellmService,
     private readonly llmModelsService: LlmModelsService,
-    private readonly repoIndexDao: RepoIndexDao,
     private readonly logger: DefaultLogger,
   ) {}
 

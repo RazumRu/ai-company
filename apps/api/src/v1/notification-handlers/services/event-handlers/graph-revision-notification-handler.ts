@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
 import { DefaultLogger } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
@@ -36,7 +35,7 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
   constructor(
     private readonly graphDao: GraphDao,
     private readonly logger: DefaultLogger,
-    private readonly moduleRef: ModuleRef,
+    private readonly graphRevisionService: GraphRevisionService,
   ) {
     super();
   }
@@ -75,14 +74,7 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
         return [];
       }
 
-      // Convert entity to DTO
-      // Use resolve instead of create to look up from entire application context
-      const graphRevisionService = await this.moduleRef.resolve(
-        GraphRevisionService,
-        undefined,
-        { strict: false },
-      );
-      const revisionDto = graphRevisionService.prepareResponse(data);
+      const revisionDto = this.graphRevisionService.prepareResponse(data);
 
       // Map NotificationEvent to EnrichedNotificationEvent
       let enrichedType: EnrichedNotificationEvent;

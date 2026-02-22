@@ -10,7 +10,6 @@ import {
 import { AuthContextStorage } from '@packages/http-server';
 
 import { environment } from '../../../environments';
-import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
@@ -41,7 +40,6 @@ export class GitRepositoriesService {
     private readonly repoIndexDao: RepoIndexDao,
     private readonly repoIndexQueueService: RepoIndexQueueService,
     private readonly repoIndexerService: RepoIndexerService,
-    private readonly llmModelsService: LlmModelsService,
     private readonly qdrantService: QdrantService,
     private readonly logger: DefaultLogger,
   ) {}

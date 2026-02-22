@@ -1,5 +1,4 @@
 import { HumanMessage } from '@langchain/core/messages';
-import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,7 +24,9 @@ describe('AgentInvokeNotificationHandler', () => {
   let threadsDao: ThreadsDao;
   let graphDao: GraphDao;
   let notificationsService: NotificationsService;
-  let moduleRefMock: { create: ReturnType<typeof vi.fn> };
+  let threadsServiceMock: {
+    prepareThreadResponse: ReturnType<typeof vi.fn>;
+  };
   let threadNameGenerator: {
     generateFromFirstUserMessage: ReturnType<typeof vi.fn>;
   };
@@ -102,21 +103,9 @@ describe('AgentInvokeNotificationHandler', () => {
     updatedAt: new Date(thread.updatedAt).toISOString(),
   });
 
-  type ThreadResponseDto = ReturnType<typeof buildThreadResponseDto>;
-  type ThreadResponseMock = ReturnType<typeof vi.fn> &
-    ((thread: ThreadEntity) => ThreadResponseDto);
-
-  let threadsServiceMock: {
-    prepareThreadResponse: ThreadResponseMock;
-  };
-
   beforeEach(async () => {
     threadsServiceMock = {
       prepareThreadResponse: vi.fn(buildThreadResponseDto),
-    };
-
-    moduleRefMock = {
-      create: vi.fn().mockResolvedValue(threadsServiceMock),
     };
 
     threadNameGenerator = {
@@ -152,8 +141,8 @@ describe('AgentInvokeNotificationHandler', () => {
           },
         },
         {
-          provide: ModuleRef,
-          useValue: moduleRefMock,
+          provide: ThreadsService,
+          useValue: threadsServiceMock,
         },
         {
           provide: ThreadNameGeneratorService,
@@ -314,7 +303,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(threadsDao.create).not.toHaveBeenCalled();
       expect(threadsDao.updateById).not.toHaveBeenCalled();
       expect(touchSpy).toHaveBeenCalledWith(existingThread.id);
-      expect(moduleRefMock.create).not.toHaveBeenCalled();
+      expect(threadsServiceMock.prepareThreadResponse).not.toHaveBeenCalled();
       expect(notificationsService.emit).not.toHaveBeenCalled();
     });
 
@@ -340,10 +329,8 @@ describe('AgentInvokeNotificationHandler', () => {
         .spyOn(threadsDao, 'updateById')
         .mockResolvedValue(updatedThread);
 
-      const expectedThreadDto =
-        threadsServiceMock.prepareThreadResponse(updatedThread);
+      const expectedThreadDto = buildThreadResponseDto(updatedThread);
       threadsServiceMock.prepareThreadResponse.mockClear();
-      moduleRefMock.create.mockClear();
 
       await handler.handle(notification);
 
@@ -355,7 +342,6 @@ describe('AgentInvokeNotificationHandler', () => {
         id: existingThread.id,
         graphId: mockGraphId,
       });
-      expect(moduleRefMock.create).toHaveBeenCalledWith(ThreadsService);
       expect(threadsServiceMock.prepareThreadResponse).toHaveBeenCalledWith(
         updatedThread,
       );

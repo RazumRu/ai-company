@@ -1,4 +1,4 @@
-import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
@@ -8,7 +8,7 @@ import { AgentTriggersModule } from '../agent-triggers/agent-triggers.module';
 import { AgentsModule } from '../agents/agents.module';
 import { GitHubAppModule } from '../github-app/github-app.module';
 import { GraphResourcesModule } from '../graph-resources/graph-resources.module';
-import { GraphsModule } from '../graphs/graphs.module';
+import { GraphRegistry } from '../graphs/services/graph-registry';
 import { RuntimeModule } from '../runtime/runtime.module';
 import { SubagentsModule } from '../subagents/subagents.module';
 import { TemplatesController } from './controllers/templates.controller';
@@ -41,11 +41,11 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     AgentTriggersModule,
     GraphResourcesModule,
     SubagentsModule,
-    forwardRef(() => GraphsModule),
     DiscoveryModule,
   ],
   controllers: [TemplatesController],
   providers: [
+    GraphRegistry,
     TemplateRegistry,
     TemplatesService,
     // --- templates ---
@@ -66,7 +66,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     // --- resources ---
     GithubResourceTemplate,
   ],
-  exports: [TemplateRegistry, TemplatesService],
+  exports: [GraphRegistry, TemplateRegistry, TemplatesService],
 })
 export class GraphTemplatesModule implements OnModuleInit {
   constructor(

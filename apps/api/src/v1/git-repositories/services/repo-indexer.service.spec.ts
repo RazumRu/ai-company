@@ -5,7 +5,6 @@ import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
-import { RepoIndexDao } from '../dao/repo-index.dao';
 import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
 
 const mockQdrantService = {
@@ -49,8 +48,6 @@ const mockLlmModelsService = {
   getKnowledgeEmbeddingModel: vi.fn(() => 'text-embedding-3-small'),
 };
 
-const mockRepoIndexDao = {};
-
 const mockLogger = {
   debug: vi.fn(),
   warn: vi.fn(),
@@ -68,7 +65,6 @@ describe('RepoIndexerService', () => {
       mockOpenaiService as unknown as OpenaiService,
       mockLitellmService as unknown as LitellmService,
       mockLlmModelsService as unknown as LlmModelsService,
-      mockRepoIndexDao as unknown as RepoIndexDao,
       mockLogger as unknown as DefaultLogger,
     );
   });

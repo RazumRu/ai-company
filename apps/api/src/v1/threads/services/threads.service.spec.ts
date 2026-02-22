@@ -5,9 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { MessageRole } from '../../graphs/graphs.types';
-import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphsService } from '../../graphs/services/graphs.service';
-import { LitellmService } from '../../litellm/services/litellm.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../dao/messages.dao';
@@ -22,7 +20,6 @@ describe('ThreadsService', () => {
   let service: ThreadsService;
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
-  let graphRegistry: GraphRegistry;
   let authContext: AuthContextService;
   let notificationsService: NotificationsService;
   let checkpointStateService: CheckpointStateService;
@@ -75,13 +72,6 @@ describe('ThreadsService', () => {
       providers: [
         ThreadsService,
         {
-          provide: GraphRegistry,
-          useValue: {
-            get: vi.fn().mockReturnValue(undefined),
-            getNodesByType: vi.fn().mockReturnValue([]),
-          },
-        },
-        {
           provide: DefaultLogger,
           useValue: mockLogger,
         },
@@ -128,17 +118,12 @@ describe('ThreadsService', () => {
             stopThreadExecution: vi.fn(),
           },
         },
-        {
-          provide: LitellmService,
-          useValue: {},
-        },
       ],
     }).compile();
 
     service = module.get<ThreadsService>(ThreadsService);
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     messagesDao = module.get<MessagesDao>(MessagesDao);
-    graphRegistry = module.get<GraphRegistry>(GraphRegistry);
     authContext = module.get<AuthContextService>(AuthContextService);
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
@@ -315,35 +300,6 @@ describe('ThreadsService', () => {
       });
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.spyOn(graphRegistry, 'get').mockReturnValue({} as unknown as never);
-      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([
-        {
-          id: 'agent-1',
-          instance: {
-            getThreadTokenUsage: () => ({
-              inputTokens: 10,
-              cachedInputTokens: 2,
-              outputTokens: 5,
-              reasoningTokens: 1,
-              totalTokens: 15,
-              totalPrice: 0.01,
-            }),
-          },
-        },
-        {
-          id: 'agent-2',
-          instance: {
-            getThreadTokenUsage: () => ({
-              inputTokens: 3,
-              outputTokens: 2,
-              totalTokens: 5,
-            }),
-          },
-        },
-      ] as unknown as ReturnType<GraphRegistry['getNodesByType']>);
-
-      // Token usage is no longer batched from Redis
-      // It's fetched separately via getThreadUsageStatistics()
 
       const result = await service.getThreadById(mockThreadId);
 
@@ -359,12 +315,9 @@ describe('ThreadsService', () => {
       });
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.spyOn(graphRegistry, 'get').mockReturnValue(undefined);
 
       const result = await service.getThreadById(mockThreadId);
 
-      // tokenUsage is no longer included in thread response
-      // Use GET /threads/:threadId/usage-statistics instead
       expect(result).not.toHaveProperty('tokenUsage');
     });
   });
@@ -699,7 +652,6 @@ describe('ThreadsService', () => {
       );
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
-      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 
@@ -888,7 +840,6 @@ describe('ThreadsService', () => {
       );
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
-      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 
@@ -1045,7 +996,6 @@ describe('ThreadsService', () => {
       vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
         mockTokenUsageFromCheckpoint,
       );
-      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 
@@ -1153,7 +1103,6 @@ describe('ThreadsService', () => {
       vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
         mockTokenUsageFromCheckpoint,
       );
-      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 
@@ -1262,7 +1211,6 @@ describe('ThreadsService', () => {
       vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
         mockTokenUsageFromCheckpoint,
       );
-      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 
@@ -1334,7 +1282,6 @@ describe('ThreadsService', () => {
       );
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
-      vi.spyOn(graphRegistry, 'getNodesByType').mockReturnValue([]);
 
       const result = await service.getThreadUsageStatistics(mockThreadId);
 

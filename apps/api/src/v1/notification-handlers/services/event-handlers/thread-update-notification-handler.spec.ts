@@ -1,4 +1,3 @@
-import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,7 +26,6 @@ describe('ThreadUpdateNotificationHandler', () => {
   let handler: ThreadUpdateNotificationHandler;
   let threadsDao: ThreadsDao;
   let graphDao: GraphDao;
-  let moduleRefMock: { create: ReturnType<typeof vi.fn> };
   let threadsServiceMock: {
     prepareThreadResponse: ReturnType<typeof vi.fn>;
   };
@@ -101,10 +99,6 @@ describe('ThreadUpdateNotificationHandler', () => {
         .mockImplementation(threadDtoFactory),
     };
 
-    moduleRefMock = {
-      create: vi.fn().mockResolvedValue(threadsServiceMock),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ThreadUpdateNotificationHandler,
@@ -122,8 +116,8 @@ describe('ThreadUpdateNotificationHandler', () => {
           },
         },
         {
-          provide: ModuleRef,
-          useValue: moduleRefMock,
+          provide: ThreadsService,
+          useValue: threadsServiceMock,
         },
       ],
     }).compile();
@@ -139,7 +133,6 @@ describe('ThreadUpdateNotificationHandler', () => {
     result: IThreadUpdateEnrichedNotification[],
     thread: ThreadEntity,
   ) => {
-    expect(moduleRefMock.create).toHaveBeenCalledWith(ThreadsService);
     expect(threadsServiceMock.prepareThreadResponse).toHaveBeenCalledWith(
       thread,
     );

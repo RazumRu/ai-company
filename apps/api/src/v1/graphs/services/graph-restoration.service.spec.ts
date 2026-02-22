@@ -1,4 +1,3 @@
-import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,6 +13,7 @@ import { GraphStatus } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRestorationService } from './graph-restoration.service';
+import { GraphsService } from './graphs.service';
 
 // Mock DockerRuntime static method
 vi.mock('../../runtime/services/docker-runtime', () => ({
@@ -130,10 +130,6 @@ describe('GraphRestorationService', () => {
       run: vi.fn(),
     };
 
-    const mockModuleRef = {
-      create: vi.fn().mockResolvedValue(mockGraphsService),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GraphRestorationService,
@@ -166,8 +162,8 @@ describe('GraphRestorationService', () => {
           useValue: mockGraphCheckpointsDao,
         },
         {
-          provide: ModuleRef,
-          useValue: mockModuleRef,
+          provide: GraphsService,
+          useValue: mockGraphsService,
         },
         {
           provide: DefaultLogger,
