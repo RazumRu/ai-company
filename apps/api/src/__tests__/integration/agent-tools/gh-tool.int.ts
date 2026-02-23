@@ -3,6 +3,7 @@ import { BaseException } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { environment } from '../../../environments';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
@@ -165,11 +166,8 @@ describe('GitHub Tool Integration Tests', () => {
             template: 'docker-runtime',
             config: {
               runtimeType: 'Docker',
-              image: 'python:3.11-slim',
+              image: environment.dockerRuntimeImage,
               env: {},
-              initScript:
-                'apt-get update && apt-get install -y curl && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && apt-get install -y gh',
-              initScriptTimeoutMs: 300000,
             },
           },
           {

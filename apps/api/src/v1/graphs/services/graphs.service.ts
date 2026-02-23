@@ -1,6 +1,10 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
-import { BadRequestException, NotFoundException } from '@packages/common';
+import {
+  BadRequestException,
+  DefaultLogger,
+  NotFoundException,
+} from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { isEqual } from 'lodash';
@@ -14,7 +18,6 @@ import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
-import { GraphRevisionDto } from '../dto/graph-revisions.dto';
 import {
   CreateGraphDto,
   ExecuteTriggerDto,
@@ -44,6 +47,7 @@ export class GraphsService {
     private readonly notificationsService: NotificationsService,
     private readonly threadsDao: ThreadsDao,
     private readonly messagesDao: MessagesDao,
+    private readonly logger: DefaultLogger,
   ) {}
 
   private prepareResponse(
@@ -155,11 +159,10 @@ export class GraphsService {
     const { currentVersion, metadata, schema, name, description, temporary } =
       data;
 
-    // Use transaction with row-level locking to prevent simultaneous updates
-    let revisionToEnqueue: Pick<GraphRevisionDto, 'id' | 'graphId'> | null =
-      null;
-
-    const response = await this.typeorm.trx(
+    // Use transaction with row-level locking to prevent simultaneous updates.
+    // Post-transaction data (revision to enqueue, notification to emit) is returned
+    // from the transaction callback so TypeScript can track it through control flow.
+    const { response, postCommit } = await this.typeorm.trx(
       async (entityManager: EntityManager) => {
         // Lock the graph row for update (prevents race conditions)
         const graph = await this.graphDao.getOne(
@@ -261,28 +264,43 @@ export class GraphsService {
             { enqueueImmediately: false },
           );
 
-          revisionToEnqueue = {
-            id: revision.id,
-            graphId: revision.graphId,
-          };
-
           // Return updated graph state with the created revision
           graph.targetVersion = revision.toVersion;
           return {
-            graph: this.prepareResponse(graph),
-            revision,
+            response: {
+              graph: this.prepareResponse(graph),
+              revision,
+            } as UpdateGraphResponseDto,
+            postCommit: {
+              revisionToEnqueue: { id: revision.id, graphId: revision.graphId },
+              revisionEntity: revision.entity,
+              graphId: graph.id,
+            },
           };
         }
 
         // No schema change (sync-only or no-op).
-        return { graph: this.prepareResponse(graph) };
+        return {
+          response: {
+            graph: this.prepareResponse(graph),
+          } as UpdateGraphResponseDto,
+          postCommit: null,
+        };
       },
     );
 
-    // Enqueue revision processing outside transaction
-    if (revisionToEnqueue) {
+    // Post-transaction: emit notification and enqueue processing.
+    // These run after the transaction commits so the enrichment handler
+    // can read the committed revision data from the database.
+    if (postCommit) {
+      await this.notificationsService.emit({
+        type: NotificationEvent.GraphRevisionCreate,
+        graphId: postCommit.graphId,
+        data: postCommit.revisionEntity,
+      });
+
       await this.graphRevisionService.enqueueRevisionProcessing(
-        revisionToEnqueue,
+        postCommit.revisionToEnqueue,
       );
     }
 
@@ -575,8 +593,44 @@ export class GraphsService {
       },
     });
 
+    const externalThreadId = res.threadId;
+
+    // Eagerly create thread to avoid race condition with async notification handler.
+    // The handler's check-then-create pattern will find this thread and enter the update path.
+    const existingThread = await this.threadsDao.getOne({
+      externalThreadId,
+      graphId,
+    });
+    if (!existingThread) {
+      try {
+        await this.threadsDao.create({
+          graphId,
+          createdBy: userId,
+          externalThreadId,
+          status: ThreadStatus.Running,
+          ...(dto.metadata ? { metadata: dto.metadata } : {}),
+        });
+      } catch (error: unknown) {
+        const isUniqueViolation =
+          error instanceof Error &&
+          'code' in error &&
+          (error as { code: string }).code === '23505';
+        if (isUniqueViolation) {
+          this.logger.debug(
+            `Eager thread creation skipped (race with notification handler): ${error instanceof Error ? error.message : String(error)}`,
+          );
+        } else {
+          this.logger.warn(
+            `Eager thread creation failed unexpectedly: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          // Don't rethrow — the notification handler will create the thread as a fallback.
+          // But log at warn level so it's visible in production.
+        }
+      }
+    }
+
     return {
-      externalThreadId: res.threadId,
+      externalThreadId,
       checkpointNs: res.checkpointNs,
     };
   }

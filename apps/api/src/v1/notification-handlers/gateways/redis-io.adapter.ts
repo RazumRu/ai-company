@@ -6,6 +6,8 @@ import { Server, ServerOptions } from 'socket.io';
 
 export class RedisIoAdapter extends IoAdapter {
   private adapterConstructor?: ReturnType<typeof createAdapter>;
+  private pubClient?: IORedis;
+  private subClient?: IORedis;
 
   constructor(
     app: INestApplication,
@@ -20,20 +22,37 @@ export class RedisIoAdapter extends IoAdapter {
     }
 
     try {
-      const pubClient = new IORedis(this.redisUrl, {
+      this.pubClient = new IORedis(this.redisUrl, {
         maxRetriesPerRequest: null,
       });
-      const subClient = pubClient.duplicate();
+      this.subClient = this.pubClient.duplicate();
 
       await Promise.all([
-        new Promise<void>((resolve) => pubClient.on('ready', resolve)),
-        new Promise<void>((resolve) => subClient.on('ready', resolve)),
+        new Promise<void>((resolve) => this.pubClient!.on('ready', resolve)),
+        new Promise<void>((resolve) => this.subClient!.on('ready', resolve)),
       ]);
 
-      this.adapterConstructor = createAdapter(pubClient, subClient);
+      this.adapterConstructor = createAdapter(this.pubClient, this.subClient);
     } catch {
       // Fall back to in-memory adapter if Redis is unavailable.
       // This is expected in development when Redis may not be running.
+    }
+  }
+
+  async close(): Promise<void> {
+    try {
+      if (this.pubClient?.status === 'ready') {
+        await this.pubClient.quit();
+      }
+    } catch {
+      // Connection may already be closed
+    }
+    try {
+      if (this.subClient?.status === 'ready') {
+        await this.subClient.quit();
+      }
+    } catch {
+      // Connection may already be closed
     }
   }
 

@@ -1148,7 +1148,6 @@ describe('GraphRevisionService', () => {
 
       vi.mocked(graphDao.updateById).mockResolvedValue(graph);
       vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
-      vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
       // Should not throw even though pruning will fail internally
       await expect(
@@ -1176,11 +1175,9 @@ describe('GraphRevisionService', () => {
         {},
         mockEntityManager,
       );
-      expect(notificationsService.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: NotificationEvent.GraphRevisionApplied,
-        }),
-      );
+      // GraphRevisionApplied notification is now emitted by applyRevisionTransaction
+      // after the Phase 3 transaction commits, not inside finalizeAppliedRevision.
+      expect(notificationsService.emit).not.toHaveBeenCalled();
     });
   });
 });

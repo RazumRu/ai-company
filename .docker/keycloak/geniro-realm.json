@@ -56,6 +56,21 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "claude-test",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Claude",
+      "lastName": "Test",
+      "email": "claude-test@geniro.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "claude-test-2026",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

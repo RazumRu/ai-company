@@ -51,7 +51,14 @@ export class RuntimeCleanupService implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     await this.worker?.close();
     await this.queue?.close();
-    await this.redis?.quit();
+
+    try {
+      if (this.redis?.status === 'ready') {
+        await this.redis.quit();
+      }
+    } catch {
+      // Redis connection may already be closed by worker/queue teardown
+    }
   }
 
   private async processJob(_job: Job): Promise<void> {

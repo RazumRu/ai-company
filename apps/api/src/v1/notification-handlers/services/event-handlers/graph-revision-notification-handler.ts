@@ -54,6 +54,9 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
           event as IGraphRevisionProgressNotification;
         const graph = await this.graphDao.getById(progressNotification.graphId);
         if (!graph) {
+          this.logger.warn(
+            `Graph ${progressNotification.graphId} not found for ${progressNotification.type} notification — skipping`,
+          );
           return [];
         }
         return [
@@ -73,7 +76,7 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
       const graph = await this.graphDao.getById(graphId);
       if (!graph) {
         this.logger.warn(
-          `Graph ${graphId} not found for revision notification`,
+          `Graph ${graphId} not found for ${notification.type} notification — skipping`,
         );
         return [];
       }
@@ -92,7 +95,7 @@ export class GraphRevisionNotificationHandler extends BaseNotificationHandler<IG
     } catch (error) {
       this.logger.error(
         error as Error,
-        `[GraphRevisionHandler] Failed to handle revision notification`,
+        `[GraphRevisionHandler] Failed to handle ${event.type} notification for graph ${event.graphId}`,
       );
       return [];
     }

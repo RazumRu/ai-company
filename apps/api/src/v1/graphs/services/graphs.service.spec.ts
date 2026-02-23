@@ -1,6 +1,10 @@
 import type { BaseMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@packages/common';
+import {
+  BadRequestException,
+  DefaultLogger,
+  NotFoundException,
+} from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { EntityManager } from 'typeorm';
@@ -49,6 +53,7 @@ describe('GraphsService', () => {
   let graphRevisionService: GraphRevisionService;
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
+  let logger: DefaultLogger;
 
   const mockUserId = 'user-123';
   const mockCtx = new AuthContextStorage({ sub: mockUserId });
@@ -184,7 +189,9 @@ describe('GraphsService', () => {
         {
           provide: ThreadsDao,
           useValue: {
+            getOne: vi.fn(),
             getAll: vi.fn(),
+            create: vi.fn(),
             updateById: vi.fn(),
             deleteById: vi.fn(),
             delete: vi.fn(),
@@ -241,6 +248,15 @@ describe('GraphsService', () => {
             isVersionLess: vi.fn().mockReturnValue(false),
           },
         },
+        {
+          provide: DefaultLogger,
+          useValue: {
+            debug: vi.fn(),
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -260,6 +276,9 @@ describe('GraphsService', () => {
       module.get<GraphRevisionService>(GraphRevisionService);
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     messagesDao = module.get<MessagesDao>(MessagesDao);
+    logger = module.get<DefaultLogger>(DefaultLogger);
+    vi.mocked(threadsDao.getOne).mockResolvedValue(null);
+    vi.mocked(threadsDao.create).mockResolvedValue({} as any);
     vi.mocked(threadsDao.getAll).mockResolvedValue([]);
     vi.mocked(threadsDao.updateById).mockResolvedValue(null as any);
     vi.mocked(threadsDao.deleteById).mockResolvedValue(undefined);
@@ -280,6 +299,19 @@ describe('GraphsService', () => {
       createdBy: mockUserId,
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
+      entity: {
+        id: 'revision-1',
+        graphId: mockGraphId,
+        baseVersion: '1.0.0',
+        toVersion: '1.0.1',
+        status: 'pending',
+        configDiff: [],
+        clientConfig: {} as any,
+        newConfig: {} as any,
+        createdBy: mockUserId,
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      },
     } as any);
     vi.mocked(graphRevisionService.enqueueRevisionProcessing).mockResolvedValue(
       undefined,
@@ -1851,6 +1883,136 @@ describe('GraphsService', () => {
           messages: ['Test'],
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    describe('eager thread creation', () => {
+      const triggerId = 'trigger-1';
+      const expectedThreadId = `${mockGraphId}:my-thread`;
+
+      const setupTriggerMocks = () => {
+        const mockTrigger = {
+          isStarted: true,
+          invokeAgent: vi.fn().mockResolvedValue({
+            messages: [],
+            threadId: expectedThreadId,
+            checkpointNs: `${expectedThreadId}:agent-1`,
+          }),
+        };
+        const mockTriggerNode = {
+          id: triggerId,
+          type: NodeKind.Trigger,
+          template: 'manual-trigger',
+          instance: mockTrigger,
+          handle: {
+            provide: async () => mockTrigger,
+            configure: vi.fn().mockResolvedValue(undefined),
+            destroy: vi.fn().mockResolvedValue(undefined),
+          },
+          getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
+        };
+        const mockGraph = createMockGraphEntity({
+          status: GraphStatus.Running,
+        });
+        const mockCompiledGraph = createMockCompiledGraph();
+
+        vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+        vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+        vi.mocked(graphRegistry.getNode).mockReturnValue(
+          mockTriggerNode as unknown as CompiledGraphNode,
+        );
+
+        return mockTrigger;
+      };
+
+      it('should eagerly create thread when it does not exist', async () => {
+        setupTriggerMocks();
+        vi.mocked(threadsDao.getOne).mockResolvedValue(null);
+        vi.mocked(threadsDao.create).mockResolvedValue({
+          id: 'thread-uuid',
+          graphId: mockGraphId,
+          externalThreadId: expectedThreadId,
+          createdBy: mockUserId,
+          status: ThreadStatus.Running,
+        } as any);
+
+        const result = await service.executeTrigger(
+          mockCtx,
+          mockGraphId,
+          triggerId,
+          {
+            messages: ['Hello'],
+            threadSubId: 'my-thread',
+            metadata: { key: 'value' },
+          },
+        );
+
+        expect(result.externalThreadId).toBe(expectedThreadId);
+        expect(threadsDao.getOne).toHaveBeenCalledWith({
+          externalThreadId: expectedThreadId,
+          graphId: mockGraphId,
+        });
+        expect(threadsDao.create).toHaveBeenCalledWith({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          externalThreadId: expectedThreadId,
+          status: ThreadStatus.Running,
+          metadata: { key: 'value' },
+        });
+      });
+
+      it('should skip creation when thread already exists', async () => {
+        setupTriggerMocks();
+        vi.mocked(threadsDao.getOne).mockResolvedValue({
+          id: 'existing-thread',
+          graphId: mockGraphId,
+          externalThreadId: expectedThreadId,
+          createdBy: mockUserId,
+          status: ThreadStatus.Running,
+        } as any);
+
+        const result = await service.executeTrigger(
+          mockCtx,
+          mockGraphId,
+          triggerId,
+          {
+            messages: ['Hello'],
+            threadSubId: 'my-thread',
+          },
+        );
+
+        expect(result.externalThreadId).toBe(expectedThreadId);
+        expect(threadsDao.getOne).toHaveBeenCalledWith({
+          externalThreadId: expectedThreadId,
+          graphId: mockGraphId,
+        });
+        expect(threadsDao.create).not.toHaveBeenCalled();
+      });
+
+      it('should swallow unique constraint error when handler wins the race', async () => {
+        setupTriggerMocks();
+        vi.mocked(threadsDao.getOne).mockResolvedValue(null);
+        const uniqueViolation = Object.assign(
+          new Error('duplicate key value violates unique constraint'),
+          { code: '23505' },
+        );
+        vi.mocked(threadsDao.create).mockRejectedValue(uniqueViolation);
+
+        const result = await service.executeTrigger(
+          mockCtx,
+          mockGraphId,
+          triggerId,
+          {
+            messages: ['Hello'],
+            threadSubId: 'my-thread',
+          },
+        );
+
+        expect(result.externalThreadId).toBe(expectedThreadId);
+        expect(threadsDao.create).toHaveBeenCalled();
+        expect(logger.debug).toHaveBeenCalledWith(
+          expect.stringContaining('Eager thread creation skipped'),
+        );
+      });
     });
   });
 

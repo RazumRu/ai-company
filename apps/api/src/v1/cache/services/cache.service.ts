@@ -24,7 +24,13 @@ export class CacheService implements OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.redis.quit();
+    try {
+      if (this.redis.status === 'ready') {
+        await this.redis.quit();
+      }
+    } catch {
+      // Redis connection may already be closed during shutdown
+    }
   }
 
   /**

@@ -163,6 +163,35 @@ describe('SocketGateway', () => {
       );
     });
 
+    it('should catch and log broadcast errors without propagating', () => {
+      const mockServer = {
+        emit: vi.fn(),
+        to: vi.fn().mockImplementation(() => {
+          throw new Error('Socket.IO internal error');
+        }),
+      };
+      (gateway as unknown as { ws: unknown }).ws = mockServer;
+
+      gateway.afterInit();
+
+      const mockNotification: IEnrichedNotification<unknown> = {
+        type: 'graph.update' as any,
+        graphId: mockGraphId,
+        ownerId: mockUserId,
+        data: { status: GraphStatus.Running },
+        scope: [NotificationScope.Graph],
+      };
+
+      const eventHandlerCallback =
+        eventsHandler.onEnrichedNotification.mock.calls[0]![0];
+
+      expect(() => eventHandlerCallback(mockNotification)).not.toThrow();
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.stringContaining('Failed to broadcast'),
+      );
+    });
+
     it('should deduplicate when broadcasting to both graph and user rooms', () => {
       const mockServer = {
         emit: vi.fn(),
@@ -356,13 +385,63 @@ describe('SocketGateway', () => {
         deletedAt: null,
       });
 
-      await gateway.handleSubscribeGraph(mockClient, { graphId: mockGraphId });
+      const result = await gateway.handleSubscribeGraph(mockClient, {
+        graphId: mockGraphId,
+      });
 
       expect(graphDao.getOne).toHaveBeenCalledWith({
         id: mockGraphId,
         createdBy: mockUserId,
       });
       expect(mockClient.join).toHaveBeenCalledWith(`graph:${mockGraphId}`);
+      expect(result).toEqual({ success: true });
+    });
+
+    it('should return error acknowledgment when user is not authenticated', async () => {
+      mockClient.data = {};
+
+      const result = await gateway.handleSubscribeGraph(mockClient, {
+        graphId: mockGraphId,
+      });
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Unauthorized',
+      });
+      expect(mockClient.emit).toHaveBeenCalledWith('server_error', {
+        message: 'Unauthorized',
+      });
+    });
+
+    it('should return error acknowledgment when graphId is missing', async () => {
+      const result = await gateway.handleSubscribeGraph(
+        mockClient,
+        {} as { graphId: string },
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Graph ID is required',
+      });
+      expect(mockClient.emit).toHaveBeenCalledWith('server_error', {
+        message: 'Graph ID is required',
+      });
+    });
+
+    it('should return error acknowledgment when graph is not found', async () => {
+      graphDao.getOne.mockResolvedValue(null);
+
+      const result = await gateway.handleSubscribeGraph(mockClient, {
+        graphId: mockGraphId,
+      });
+
+      expect(result).toEqual({
+        success: false,
+        error: '[GRAPH_NOT_FOUND] An exception has occurred',
+      });
+      expect(mockClient.emit).toHaveBeenCalledWith('server_error', {
+        message: '[GRAPH_NOT_FOUND] An exception has occurred',
+      });
     });
 
     it('should handle thread state updates through graph room', () => {

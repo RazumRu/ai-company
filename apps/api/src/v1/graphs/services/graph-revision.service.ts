@@ -74,7 +74,7 @@ export class GraphRevisionService {
     clientConfig: GraphRevisionConfig,
     entityManager?: EntityManager,
     options?: { enqueueImmediately?: boolean },
-  ): Promise<GraphRevisionDto> {
+  ): Promise<GraphRevisionDto & { entity: GraphRevisionEntity }> {
     const userId = ctx.checkSub();
 
     const revision = await this.typeorm.trx(async (em: EntityManager) => {
@@ -147,16 +147,22 @@ export class GraphRevisionService {
         em,
       );
 
+      return revision;
+    }, entityManager);
+
+    // Emit notification only when queueRevision owns the transaction (no outer entityManager).
+    // When called within an outer transaction, the caller is responsible for emitting
+    // after their transaction commits — otherwise the enrichment handler may query
+    // uncommitted data and fail silently.
+    if (!entityManager) {
       await this.notificationsService.emit({
         type: NotificationEvent.GraphRevisionCreate,
         graphId: graph.id,
         data: revision,
       });
+    }
 
-      return revision;
-    }, entityManager);
-
-    const response = this.prepareResponse(revision);
+    const response = { ...this.prepareResponse(revision), entity: revision };
 
     const shouldEnqueue = options?.enqueueImmediately ?? true;
     if (shouldEnqueue) {
@@ -527,15 +533,6 @@ export class GraphRevisionService {
       entityManager,
     );
 
-    await this.notificationsService.emit({
-      type: NotificationEvent.GraphRevisionApplied,
-      graphId: revision.graphId,
-      data: {
-        ...revision,
-        status: GraphRevisionStatus.Applied,
-      },
-    });
-
     await this.pruneOldRevisions(graph.id, entityManager);
   }
 
@@ -655,6 +652,17 @@ export class GraphRevisionService {
       }
 
       await this.finalizeAppliedRevision(graph, revision, entityManager);
+    });
+
+    // Emit after Phase 3 transaction commits so the enrichment handler
+    // can read the committed Applied status from the database.
+    await this.notificationsService.emit({
+      type: NotificationEvent.GraphRevisionApplied,
+      graphId: revision.graphId,
+      data: {
+        ...revision,
+        status: GraphRevisionStatus.Applied,
+      },
     });
   }
 

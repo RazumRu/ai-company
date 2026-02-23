@@ -83,7 +83,14 @@ export class SocketGateway
         }
 
         if (rooms.length > 0) {
-          this.broadcastToRooms(rooms, type, event);
+          try {
+            this.broadcastToRooms(rooms, type, event);
+          } catch (error) {
+            this.logger.error(
+              error as Error,
+              `Failed to broadcast ${type} to rooms ${rooms.join(', ')}`,
+            );
+          }
         }
       },
     );
@@ -154,7 +161,7 @@ export class SocketGateway
   async handleSubscribeGraph(
     client: Socket,
     payload: { graphId: string },
-  ): Promise<void> {
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       const userIdRaw = (client.data as Record<string, unknown>).userId;
       const userId = typeof userIdRaw === 'string' ? userIdRaw : undefined;
@@ -183,9 +190,13 @@ export class SocketGateway
       // Join graph room
       const graphRoom = this.getGraphRoomName(payload.graphId);
       await client.join(graphRoom);
+
+      return { success: true };
     } catch (err) {
       this.logger.error(err as Error, 'Subscribe graph error');
       this.emitError(err as Error, client);
+
+      return { success: false, error: (err as Error).message };
     }
   }
 
