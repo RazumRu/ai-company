@@ -8,12 +8,9 @@ import { ThreadsModule } from '../threads/threads.module';
 import { SocketGateway } from './gateways/socket.gateway';
 import { AgentInvokeNotificationHandler } from './services/event-handlers/agent-invoke-notification-handler';
 import { AgentMessageNotificationHandler } from './services/event-handlers/agent-message-notification-handler';
-import { AgentStateUpdateNotificationHandler } from './services/event-handlers/agent-state-update-notification-handler';
-import { GraphNodeUpdateNotificationHandler } from './services/event-handlers/graph-node-update-notification-handler';
-import { GraphNotificationHandler } from './services/event-handlers/graph-notification-handler';
 import { GraphRevisionNotificationHandler } from './services/event-handlers/graph-revision-notification-handler';
-import { ThreadCreateNotificationHandler } from './services/event-handlers/thread-create-notification-handler';
-import { ThreadDeleteNotificationHandler } from './services/event-handlers/thread-delete-notification-handler';
+import { SimpleEnrichmentHandler } from './services/event-handlers/simple-enrichment-handler';
+import { ThreadLifecycleNotificationHandler } from './services/event-handlers/thread-lifecycle-notification-handler';
 import { ThreadUpdateNotificationHandler } from './services/event-handlers/thread-update-notification-handler';
 import { NotificationHandler } from './services/notification-handler.service';
 
@@ -26,14 +23,11 @@ import { NotificationHandler } from './services/notification-handler.service';
     LitellmModule,
   ],
   providers: [
-    GraphNotificationHandler,
+    SimpleEnrichmentHandler,
     GraphRevisionNotificationHandler,
     AgentMessageNotificationHandler,
     AgentInvokeNotificationHandler,
-    AgentStateUpdateNotificationHandler,
-    GraphNodeUpdateNotificationHandler,
-    ThreadCreateNotificationHandler,
-    ThreadDeleteNotificationHandler,
+    ThreadLifecycleNotificationHandler,
     ThreadUpdateNotificationHandler,
     NotificationHandler,
     SocketGateway,
@@ -43,29 +37,21 @@ import { NotificationHandler } from './services/notification-handler.service';
 export class NotificationHandlersModule implements OnModuleInit {
   constructor(
     private readonly eventsHandlerService: NotificationHandler,
-    private readonly graphEventHandler: GraphNotificationHandler,
-    private readonly graphUpdateEventHandler: GraphRevisionNotificationHandler,
-    private readonly agentMessageEventHandler: AgentMessageNotificationHandler,
-    private readonly agentInvokeEventHandler: AgentInvokeNotificationHandler,
-    private readonly agentStateUpdateEventHandler: AgentStateUpdateNotificationHandler,
-    private readonly threadCreateEventHandler: ThreadCreateNotificationHandler,
-    private readonly threadDeleteEventHandler: ThreadDeleteNotificationHandler,
-    private readonly threadUpdateEventHandler: ThreadUpdateNotificationHandler,
-    private readonly graphNodeUpdateEventHandler: GraphNodeUpdateNotificationHandler,
+    private readonly simpleEnrichmentHandler: SimpleEnrichmentHandler,
+    private readonly graphRevisionHandler: GraphRevisionNotificationHandler,
+    private readonly agentMessageHandler: AgentMessageNotificationHandler,
+    private readonly agentInvokeHandler: AgentInvokeNotificationHandler,
+    private readonly threadLifecycleHandler: ThreadLifecycleNotificationHandler,
+    private readonly threadUpdateHandler: ThreadUpdateNotificationHandler,
   ) {}
 
   async onModuleInit() {
-    this.eventsHandlerService.registerHandler(this.graphEventHandler);
-    this.eventsHandlerService.registerHandler(this.graphUpdateEventHandler);
-    this.eventsHandlerService.registerHandler(this.agentMessageEventHandler);
-    this.eventsHandlerService.registerHandler(this.agentInvokeEventHandler);
-    this.eventsHandlerService.registerHandler(
-      this.agentStateUpdateEventHandler,
-    );
-    this.eventsHandlerService.registerHandler(this.threadCreateEventHandler);
-    this.eventsHandlerService.registerHandler(this.threadDeleteEventHandler);
-    this.eventsHandlerService.registerHandler(this.threadUpdateEventHandler);
-    this.eventsHandlerService.registerHandler(this.graphNodeUpdateEventHandler);
+    this.eventsHandlerService.registerHandler(this.simpleEnrichmentHandler);
+    this.eventsHandlerService.registerHandler(this.graphRevisionHandler);
+    this.eventsHandlerService.registerHandler(this.agentMessageHandler);
+    this.eventsHandlerService.registerHandler(this.agentInvokeHandler);
+    this.eventsHandlerService.registerHandler(this.threadLifecycleHandler);
+    this.eventsHandlerService.registerHandler(this.threadUpdateHandler);
 
     await this.eventsHandlerService.init();
   }

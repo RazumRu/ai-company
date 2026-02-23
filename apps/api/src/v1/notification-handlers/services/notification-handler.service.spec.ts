@@ -10,24 +10,22 @@ import {
   IGraphNotification,
   NotificationEvent,
 } from '../../notifications/notifications.types';
-import { serializeBaseMessages } from '../../notifications/notifications.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { NotificationScope } from '../notification-handlers.types';
+import { IAgentMessageEnrichedNotification } from './event-handlers/agent-message-notification-handler';
 import {
-  AgentMessageNotificationHandler,
-  IAgentMessageEnrichedNotification,
-} from './event-handlers/agent-message-notification-handler';
-import {
-  GraphNotificationHandler,
-  IGraphEnrichedNotification,
-} from './event-handlers/graph-notification-handler';
+  SimpleEnrichedNotification,
+  SimpleEnrichmentHandler,
+} from './event-handlers/simple-enrichment-handler';
 import { NotificationHandler } from './notification-handler.service';
 
 describe('NotificationHandler', () => {
   let service: NotificationHandler;
   let notificationsService: MockProxy<NotificationsService>;
-  let graphEventHandler: MockProxy<GraphNotificationHandler>;
-  let agentMessageEventHandler: MockProxy<AgentMessageNotificationHandler>;
+  let simpleEnrichmentHandler: MockProxy<SimpleEnrichmentHandler>;
+  let agentMessageEventHandler: MockProxy<
+    import('./event-handlers/agent-message-notification-handler').AgentMessageNotificationHandler
+  >;
   let logger: MockProxy<DefaultLogger>;
 
   const mockGraphId = 'graph-123';
@@ -50,30 +48,22 @@ describe('NotificationHandler', () => {
     },
   };
 
-  const _mockCheckpoint = {
-    v: 1,
-    ts: '2023-01-01T00:00:00.000Z',
-    id: 'checkpoint-1',
-    channel_values: {},
-    channel_versions: {},
-    versions_seen: {},
-  };
-
-  const _mockCheckpointMetadata = {
-    source: 'update' as const,
-    step: 1,
-    parents: {},
-  };
-
   beforeEach(async () => {
     notificationsService = mockDeep<NotificationsService>();
-    graphEventHandler = mockDeep<GraphNotificationHandler>();
-    agentMessageEventHandler = mockDeep<AgentMessageNotificationHandler>();
+    simpleEnrichmentHandler = mockDeep<SimpleEnrichmentHandler>();
+    agentMessageEventHandler =
+      mockDeep<
+        import('./event-handlers/agent-message-notification-handler').AgentMessageNotificationHandler
+      >();
     logger = mockDeep<DefaultLogger>();
 
     // Set up mock pattern properties using Object.defineProperty
-    Object.defineProperty(graphEventHandler, 'pattern', {
-      value: NotificationEvent.Graph,
+    Object.defineProperty(simpleEnrichmentHandler, 'pattern', {
+      value: [
+        NotificationEvent.Graph,
+        NotificationEvent.GraphNodeUpdate,
+        NotificationEvent.AgentStateUpdate,
+      ],
       writable: true,
     });
     Object.defineProperty(agentMessageEventHandler, 'pattern', {
@@ -82,8 +72,8 @@ describe('NotificationHandler', () => {
     });
 
     // Set up mock constructor names
-    Object.defineProperty(graphEventHandler, 'constructor', {
-      value: { name: 'GraphNotificationHandler' },
+    Object.defineProperty(simpleEnrichmentHandler, 'constructor', {
+      value: { name: 'SimpleEnrichmentHandler' },
       writable: true,
     });
     Object.defineProperty(agentMessageEventHandler, 'constructor', {
@@ -99,11 +89,11 @@ describe('NotificationHandler', () => {
           useValue: notificationsService,
         },
         {
-          provide: GraphNotificationHandler,
-          useValue: graphEventHandler,
+          provide: SimpleEnrichmentHandler,
+          useValue: simpleEnrichmentHandler,
         },
         {
-          provide: AgentMessageNotificationHandler,
+          provide: 'AgentMessageNotificationHandler',
           useValue: agentMessageEventHandler,
         },
         {
@@ -118,7 +108,7 @@ describe('NotificationHandler', () => {
 
   describe('registerHandler', () => {
     it('should register event handlers', () => {
-      service.registerHandler(graphEventHandler);
+      service.registerHandler(simpleEnrichmentHandler);
       service.registerHandler(agentMessageEventHandler);
     });
   });
@@ -134,7 +124,7 @@ describe('NotificationHandler', () => {
   describe('handleNotification', () => {
     beforeEach(async () => {
       // Register handlers for testing
-      service.registerHandler(graphEventHandler);
+      service.registerHandler(simpleEnrichmentHandler);
       service.registerHandler(agentMessageEventHandler);
 
       // Initialize the service to set up the subscription
@@ -142,7 +132,7 @@ describe('NotificationHandler', () => {
     });
 
     it('should handle graph notification and emit enriched notification', async () => {
-      const mockEnrichedNotification: IGraphEnrichedNotification = {
+      const mockEnrichedNotification: SimpleEnrichedNotification = {
         type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
@@ -150,7 +140,9 @@ describe('NotificationHandler', () => {
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
-      graphEventHandler.handle.mockResolvedValue([mockEnrichedNotification]);
+      simpleEnrichmentHandler.handle.mockResolvedValue([
+        mockEnrichedNotification,
+      ]);
 
       const mockNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
@@ -158,10 +150,8 @@ describe('NotificationHandler', () => {
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
-      let emittedEvent: unknown;
-      service.on('enriched_notification', (event) => {
-        emittedEvent = event;
-      });
+      const callback = vi.fn();
+      service.onEnrichedNotification(callback);
 
       // Get the subscribe callback and call it
       const subscribeCallback =
@@ -170,8 +160,10 @@ describe('NotificationHandler', () => {
         await subscribeCallback(mockNotification);
       }
 
-      expect(graphEventHandler.handle).toHaveBeenCalledWith(mockNotification);
-      expect(emittedEvent).toEqual(mockEnrichedNotification);
+      expect(simpleEnrichmentHandler.handle).toHaveBeenCalledWith(
+        mockNotification,
+      );
+      expect(callback).toHaveBeenCalledWith(mockEnrichedNotification);
     });
 
     it('should handle agent message notification and emit message event', async () => {
@@ -201,9 +193,7 @@ describe('NotificationHandler', () => {
         mockMessageNotification,
       ]);
 
-      const mockMessages = serializeBaseMessages([
-        new AIMessage('Hello, world!'),
-      ]);
+      const mockMessages = [new AIMessage('Hello, world!')];
       const mockNotification: IAgentMessageNotification = {
         type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
@@ -215,10 +205,8 @@ describe('NotificationHandler', () => {
         },
       };
 
-      let emittedEvent: unknown;
-      service.on('enriched_notification', (event) => {
-        emittedEvent = event;
-      });
+      const callback = vi.fn();
+      service.onEnrichedNotification(callback);
 
       // Get the subscribe callback and call it
       const subscribeCallback =
@@ -230,7 +218,7 @@ describe('NotificationHandler', () => {
       expect(agentMessageEventHandler.handle).toHaveBeenCalledWith(
         mockNotification,
       );
-      expect(emittedEvent).toEqual(mockMessageNotification);
+      expect(callback).toHaveBeenCalledWith(mockMessageNotification);
     });
 
     it('should handle agent message notification with AI message and tool calls', async () => {
@@ -269,7 +257,7 @@ describe('NotificationHandler', () => {
         mockMessageNotification,
       ]);
 
-      const mockMessages = serializeBaseMessages([
+      const mockMessages = [
         new AIMessage({
           content: '',
           tool_calls: [
@@ -280,7 +268,7 @@ describe('NotificationHandler', () => {
             },
           ],
         }),
-      ]);
+      ];
       const mockNotification: IAgentMessageNotification = {
         type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
@@ -292,10 +280,8 @@ describe('NotificationHandler', () => {
         },
       };
 
-      let emittedEvent: unknown;
-      service.on('enriched_notification', (event) => {
-        emittedEvent = event;
-      });
+      const callback = vi.fn();
+      service.onEnrichedNotification(callback);
 
       // Get the subscribe callback and call it
       const subscribeCallback =
@@ -307,7 +293,7 @@ describe('NotificationHandler', () => {
       expect(agentMessageEventHandler.handle).toHaveBeenCalledWith(
         mockNotification,
       );
-      expect(emittedEvent).toEqual(mockMessageNotification);
+      expect(callback).toHaveBeenCalledWith(mockMessageNotification);
     });
 
     it('should handle agent message notification and emit multiple events', async () => {
@@ -360,10 +346,7 @@ describe('NotificationHandler', () => {
         mockMessageNotification2,
       ]);
 
-      const mockMessages = serializeBaseMessages([
-        new AIMessage('Hello!'),
-        new HumanMessage('Hi!'),
-      ]);
+      const mockMessages = [new AIMessage('Hello!'), new HumanMessage('Hi!')];
       const mockNotification: IAgentMessageNotification = {
         type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
@@ -375,10 +358,8 @@ describe('NotificationHandler', () => {
         },
       };
 
-      const emittedEvents: unknown[] = [];
-      service.on('enriched_notification', (event) => {
-        emittedEvents.push(event);
-      });
+      const callback = vi.fn();
+      service.onEnrichedNotification(callback);
 
       // Get the subscribe callback and call it
       const subscribeCallback =
@@ -390,9 +371,9 @@ describe('NotificationHandler', () => {
       expect(agentMessageEventHandler.handle).toHaveBeenCalledWith(
         mockNotification,
       );
-      expect(emittedEvents).toHaveLength(2);
-      expect(emittedEvents[0]).toEqual(mockMessageNotification);
-      expect(emittedEvents[1]).toEqual(mockMessageNotification2);
+      expect(callback).toHaveBeenCalledTimes(2);
+      expect(callback).toHaveBeenNthCalledWith(1, mockMessageNotification);
+      expect(callback).toHaveBeenNthCalledWith(2, mockMessageNotification2);
     });
 
     it('should handle agent message notification and emit shell tool message', async () => {
@@ -428,7 +409,7 @@ describe('NotificationHandler', () => {
         mockMessageNotification,
       ]);
 
-      const mockMessages = serializeBaseMessages([
+      const mockMessages = [
         new ToolMessage({
           content: JSON.stringify({
             exitCode: 0,
@@ -439,7 +420,7 @@ describe('NotificationHandler', () => {
           tool_call_id: 'call-shell-1',
           name: 'shell',
         }),
-      ]);
+      ];
       const mockNotification: IAgentMessageNotification = {
         type: NotificationEvent.AgentMessage,
         graphId: mockGraphId,
@@ -451,10 +432,8 @@ describe('NotificationHandler', () => {
         },
       };
 
-      let emittedEvent: unknown;
-      service.on('enriched_notification', (event) => {
-        emittedEvent = event;
-      });
+      const callback = vi.fn();
+      service.onEnrichedNotification(callback);
 
       // Get the subscribe callback and call it
       const subscribeCallback =
@@ -466,11 +445,11 @@ describe('NotificationHandler', () => {
       expect(agentMessageEventHandler.handle).toHaveBeenCalledWith(
         mockNotification,
       );
-      expect(emittedEvent).toEqual(mockMessageNotification);
+      expect(callback).toHaveBeenCalledWith(mockMessageNotification);
     });
 
     it('should process multiple notifications', async () => {
-      const mockEnrichedNotification: IGraphEnrichedNotification = {
+      const mockEnrichedNotification: SimpleEnrichedNotification = {
         type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
@@ -478,7 +457,9 @@ describe('NotificationHandler', () => {
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
-      graphEventHandler.handle.mockResolvedValue([mockEnrichedNotification]);
+      simpleEnrichmentHandler.handle.mockResolvedValue([
+        mockEnrichedNotification,
+      ]);
 
       const mockNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
@@ -486,10 +467,8 @@ describe('NotificationHandler', () => {
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
-      const emittedEvents: unknown[] = [];
-      service.on('enriched_notification', (event) => {
-        emittedEvents.push(event);
-      });
+      const callback = vi.fn();
+      service.onEnrichedNotification(callback);
 
       // Get the subscribe callback
       const subscribeCallback =
@@ -497,16 +476,16 @@ describe('NotificationHandler', () => {
       if (subscribeCallback) {
         // First call
         await subscribeCallback(mockNotification);
-        expect(graphEventHandler.handle).toHaveBeenCalledTimes(1);
+        expect(simpleEnrichmentHandler.handle).toHaveBeenCalledTimes(1);
 
         // Second call
         await subscribeCallback(mockNotification);
-        expect(graphEventHandler.handle).toHaveBeenCalledTimes(2);
+        expect(simpleEnrichmentHandler.handle).toHaveBeenCalledTimes(2);
       }
     });
 
     it('should handle empty results from event handler', async () => {
-      graphEventHandler.handle.mockResolvedValue([]);
+      simpleEnrichmentHandler.handle.mockResolvedValue([]);
 
       const mockNotification: IGraphNotification = {
         type: NotificationEvent.Graph,
@@ -514,10 +493,8 @@ describe('NotificationHandler', () => {
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
-      const emittedEvents: unknown[] = [];
-      service.on('enriched_notification', (event) => {
-        emittedEvents.push(event);
-      });
+      const callback = vi.fn();
+      service.onEnrichedNotification(callback);
 
       // Get the subscribe callback and call it
       const subscribeCallback =
@@ -526,18 +503,19 @@ describe('NotificationHandler', () => {
         await subscribeCallback(mockNotification);
       }
 
-      expect(graphEventHandler.handle).toHaveBeenCalledWith(mockNotification);
-      expect(emittedEvents).toHaveLength(0);
+      expect(simpleEnrichmentHandler.handle).toHaveBeenCalledWith(
+        mockNotification,
+      );
+      expect(callback).not.toHaveBeenCalled();
     });
   });
 
-  describe('subscribeEvents', () => {
-    it('should allow subscribing to enriched notifications', () => {
-      const callback = vi.fn();
-      service.subscribeEvents(callback);
+  describe('onEnrichedNotification', () => {
+    it('should register a callback that receives enriched notifications', async () => {
+      service.registerHandler(simpleEnrichmentHandler);
+      await service.init();
 
-      // Emit a test event
-      const testEvent: IGraphEnrichedNotification = {
+      const mockEnrichedNotification: SimpleEnrichedNotification = {
         type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
@@ -545,9 +523,55 @@ describe('NotificationHandler', () => {
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
 
-      service.emit('enriched_notification', testEvent);
+      simpleEnrichmentHandler.handle.mockResolvedValue([
+        mockEnrichedNotification,
+      ]);
 
-      expect(callback).toHaveBeenCalledWith(testEvent);
+      const callback = vi.fn();
+      service.onEnrichedNotification(callback);
+
+      const subscribeCallback =
+        notificationsService.subscribe.mock.calls[0]![0];
+      await subscribeCallback({
+        type: NotificationEvent.Graph,
+        graphId: mockGraphId,
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
+      });
+
+      expect(callback).toHaveBeenCalledWith(mockEnrichedNotification);
+    });
+
+    it('should replace previous callback when called again', async () => {
+      service.registerHandler(simpleEnrichmentHandler);
+      await service.init();
+
+      const mockEnrichedNotification: SimpleEnrichedNotification = {
+        type: NotificationEvent.Graph,
+        scope: [NotificationScope.Graph],
+        graphId: mockGraphId,
+        ownerId: mockOwnerId,
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
+      };
+
+      simpleEnrichmentHandler.handle.mockResolvedValue([
+        mockEnrichedNotification,
+      ]);
+
+      const firstCallback = vi.fn();
+      const secondCallback = vi.fn();
+      service.onEnrichedNotification(firstCallback);
+      service.onEnrichedNotification(secondCallback);
+
+      const subscribeCallback =
+        notificationsService.subscribe.mock.calls[0]![0];
+      await subscribeCallback({
+        type: NotificationEvent.Graph,
+        graphId: mockGraphId,
+        data: { status: GraphStatus.Running, schema: mockGraphSchema },
+      });
+
+      expect(firstCallback).not.toHaveBeenCalled();
+      expect(secondCallback).toHaveBeenCalledWith(mockEnrichedNotification);
     });
   });
 });

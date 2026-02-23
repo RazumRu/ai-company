@@ -1,6 +1,12 @@
+import {
+  AIMessage,
+  ChatMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from '@langchain/core/messages';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import {
   AIMessageDto,
   HumanMessageDto,
@@ -13,20 +19,13 @@ import { MessageTransformerService } from './message-transformer.service';
 describe('MessageTransformerService', () => {
   let service: MessageTransformerService;
 
-  const msg = (
-    m: Omit<SerializedBaseMessage, '__serialized'>,
-  ): SerializedBaseMessage => ({
-    __serialized: true,
-    ...m,
-  });
-
   beforeEach(() => {
     service = new MessageTransformerService();
   });
 
   describe('transformMessageToDto', () => {
     it('should transform human message', () => {
-      const m = msg({ type: 'HumanMessage', content: 'Hello, world!' });
+      const m = new HumanMessage('Hello, world!');
 
       const result = service.transformMessageToDto(m);
 
@@ -39,8 +38,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should convert agent instruction human messages into ai responses', () => {
-      const m = msg({
-        type: 'HumanMessage',
+      const m = new HumanMessage({
         content: 'Please help the user with the deployment.',
         additional_kwargs: {
           isAgentInstructionMessage: true,
@@ -65,8 +63,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform system message', () => {
-      const m = msg({
-        type: 'SystemMessage',
+      const m = new SystemMessage({
         content: 'System instruction',
         additional_kwargs: { context: 'test', run_id: 'run-1' },
       });
@@ -82,8 +79,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform AI message without tool calls', () => {
-      const m = msg({
-        type: 'AIMessage',
+      const m = new AIMessage({
         content: 'AI response',
         id: 'msg-123',
       });
@@ -102,8 +98,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform AI message with tool calls', () => {
-      const m = msg({
-        type: 'AIMessage',
+      const m = new AIMessage({
         content: 'Calling tools',
         id: 'msg-456',
         tool_calls: [
@@ -138,8 +133,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should pass through __title metadata for tool call requests', () => {
-      const m = msg({
-        type: 'AIMessage',
+      const m = new AIMessage({
         content: 'Calling tools',
         id: 'msg-req-1',
         tool_calls: [
@@ -148,17 +142,22 @@ describe('MessageTransformerService', () => {
             args: { purpose: 'List repo root', cmd: 'ls' },
             type: 'tool_call',
             id: 'call-shell-req-1',
-            __title: 'List repo root',
           },
           {
             name: 'web_search',
             args: { query: 'NestJS interceptors', searchDepth: 'basic' },
             type: 'tool_call',
             id: 'call-web-req-1',
-            __title: 'Search in internet: NestJS interceptors',
           },
         ],
       });
+
+      // Inject __title into tool_calls after creation (LangChain doesn't support it natively)
+      const toolCalls = (m as unknown as Record<string, unknown>)[
+        'tool_calls'
+      ] as Record<string, unknown>[];
+      toolCalls[0]!.__title = 'List repo root';
+      toolCalls[1]!.__title = 'Search in internet: NestJS interceptors';
 
       const result = service.transformMessageToDto(m) as AIMessageDto;
 
@@ -182,10 +181,9 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform reasoning chat message', () => {
-      const m = msg({
-        type: 'ChatMessage',
-        role: 'reasoning',
+      const m = new ChatMessage({
         content: 'Detailed reasoning steps',
+        role: 'reasoning',
         additional_kwargs: { hideForLlm: true },
       });
 
@@ -200,10 +198,9 @@ describe('MessageTransformerService', () => {
     });
 
     it('should preserve reasoning id for reasoning messages', () => {
-      const m = msg({
-        type: 'ChatMessage',
-        role: 'reasoning',
+      const m = new ChatMessage({
         content: 'Serialized reasoning',
+        role: 'reasoning',
         additional_kwargs: {
           hideForLlm: true,
           reasoningId: 'reasoning:parent-42',
@@ -225,8 +222,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform tool message', () => {
-      const m = msg({
-        type: 'ToolMessage',
+      const m = new ToolMessage({
         content: '{"result": "success"}',
         name: 'web_search',
         tool_call_id: 'call-789',
@@ -253,8 +249,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform shell tool message', () => {
-      const m = msg({
-        type: 'ToolMessage',
+      const m = new ToolMessage({
         content: JSON.stringify({
           exitCode: 0,
           stdout: 'Success',
@@ -284,8 +279,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should transform shell tool message from yaml', () => {
-      const m = msg({
-        type: 'ToolMessage',
+      const m = new ToolMessage({
         content: [
           'exitCode: 0',
           'stdout: Success',
@@ -315,8 +309,7 @@ describe('MessageTransformerService', () => {
     });
 
     it('should handle malformed tool content', () => {
-      const m = msg({
-        type: 'ToolMessage',
+      const m = new ToolMessage({
         content: 'not valid json',
         name: 'test_tool',
         tool_call_id: 'call-1',
@@ -330,10 +323,10 @@ describe('MessageTransformerService', () => {
   });
 
   describe('transformMessagesToDto', () => {
-    it('should transform multiple SerializedBaseMessage to MessageDto array', () => {
+    it('should transform multiple BaseMessage to MessageDto array', () => {
       const messages = [
-        msg({ type: 'HumanMessage', content: 'First message' }),
-        msg({ type: 'AIMessage', content: 'Second message', id: 'msg-2' }),
+        new HumanMessage('First message'),
+        new AIMessage({ content: 'Second message', id: 'msg-2' }),
       ];
 
       const results = service.transformMessagesToDto(messages);
@@ -352,8 +345,7 @@ describe('MessageTransformerService', () => {
 
     it('should handle messages with tool calls', () => {
       const messages = [
-        msg({
-          type: 'AIMessage',
+        new AIMessage({
           content: 'Using tools',
           id: 'msg-1',
           tool_calls: [

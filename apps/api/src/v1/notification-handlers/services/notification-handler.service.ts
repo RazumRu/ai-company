@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
-import { EventEmitter } from 'events';
 
 import {
   Notification,
@@ -10,19 +9,23 @@ import { NotificationsService } from '../../notifications/services/notifications
 import { IEnrichedNotification } from '../notification-handlers.types';
 import { BaseNotificationHandler } from './event-handlers/base-notification-handler';
 
+type EnrichedNotificationCallback = (
+  event: IEnrichedNotification<unknown>,
+) => Promise<void> | void;
+
 @Injectable()
-export class NotificationHandler extends EventEmitter {
+export class NotificationHandler {
   private readonly handlers = new Map<
     NotificationEvent,
     BaseNotificationHandler[]
   >();
 
+  private callback: EnrichedNotificationCallback | undefined;
+
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly logger: DefaultLogger,
-  ) {
-    super();
-  }
+  ) {}
 
   /**
    * Register an event handler
@@ -59,14 +62,16 @@ export class NotificationHandler extends EventEmitter {
       const result = await handler.handle(event);
 
       for (const item of result) {
-        this.emit('enriched_notification', item);
+        this.callback?.(item);
       }
     }
   }
 
-  public subscribeEvents(
-    cb: (event: IEnrichedNotification<unknown>) => Promise<void> | void,
-  ) {
-    this.on('enriched_notification', cb);
+  /**
+   * Register a single callback for enriched notifications.
+   * Replaces the previous EventEmitter-based subscribeEvents approach.
+   */
+  public onEnrichedNotification(cb: EnrichedNotificationCallback): void {
+    this.callback = cb;
   }
 }

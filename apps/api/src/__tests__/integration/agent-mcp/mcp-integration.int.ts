@@ -323,10 +323,12 @@ describe('MCP Integration Tests', () => {
           'mkdir -p /runtime-workspace/playwright',
           'dockerd --host=unix:///var/run/docker.sock > /var/log/dockerd.log 2>&1 &',
           "sh -c 'i=0; while [ $i -lt 120 ]; do docker info >/dev/null 2>&1 && exit 0; i=$((i+1)); sleep 1; done; exit 1'",
+          // Pre-pull the Playwright MCP image so individual tests don't timeout waiting for it
+          'docker pull mcp/playwright',
         ],
-        initScriptTimeoutMs: 300_000,
+        initScriptTimeoutMs: 600_000,
       });
-    }, 300_000);
+    }, 600_000);
 
     afterAll(async () => {
       if (playwrightRuntime) {
@@ -359,7 +361,7 @@ describe('MCP Integration Tests', () => {
       expect(names.some((n) => /screenshot|snapshot/i.test(n))).toBe(true);
 
       await mcp.cleanup();
-    }, 120000);
+    }, 300_000);
 
     it('should execute navigate tool successfully', async () => {
       const runtimeThreadProvider =
@@ -392,7 +394,7 @@ describe('MCP Integration Tests', () => {
       expect(result.output).toBeDefined();
 
       await mcp.cleanup();
-    }, 120000);
+    }, 300_000);
   });
 
   describe('Full Agent Integration', () => {

@@ -1,3 +1,4 @@
+import type { BaseMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@packages/common';
 import { AuthContextStorage } from '@packages/http-server';
@@ -7,7 +8,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
-import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesDao } from '../../threads/dao/messages.dao';
@@ -314,31 +314,42 @@ describe('GraphsService', () => {
       return callback(mockEntityManager);
     });
 
-    // Mock message transformer to transform serialized messages
-    const transformMessage = (msg: SerializedBaseMessage): MessageDto => {
-      if (msg.type === 'HumanMessage') {
+    // Mock message transformer to transform BaseMessage instances
+    const transformMessage = (msg: BaseMessage): MessageDto => {
+      const typeName =
+        (msg.constructor as unknown as { name?: string })?.name ??
+        'BaseMessage';
+      const obj = msg as unknown as Record<string, unknown>;
+
+      if (typeName === 'HumanMessage') {
         return {
           role: MessageRole.Human,
-          content: String(msg.content ?? ''),
-          additionalKwargs: msg.additional_kwargs,
+          content: String(obj['content'] ?? ''),
+          additionalKwargs: obj['additional_kwargs'] as
+            | Record<string, unknown>
+            | undefined,
         };
       }
 
-      if (msg.type === 'AIMessage' || msg.type === 'AIMessageChunk') {
+      if (typeName === 'AIMessage' || typeName === 'AIMessageChunk') {
         return {
           role: MessageRole.AI,
-          content: String(msg.content ?? ''),
-          id: msg.id,
+          content: String(obj['content'] ?? ''),
+          id: typeof obj['id'] === 'string' ? obj['id'] : undefined,
           // Keep this mock minimal; detailed toolCall mapping is tested elsewhere.
           toolCalls: undefined,
-          additionalKwargs: msg.additional_kwargs,
+          additionalKwargs: obj['additional_kwargs'] as
+            | Record<string, unknown>
+            | undefined,
         };
       }
 
       return {
         role: MessageRole.System,
-        content: String(msg.content ?? ''),
-        additionalKwargs: msg.additional_kwargs,
+        content: String(obj['content'] ?? ''),
+        additionalKwargs: obj['additional_kwargs'] as
+          | Record<string, unknown>
+          | undefined,
       };
     };
 
@@ -346,8 +357,7 @@ describe('GraphsService', () => {
       transformMessage as unknown as typeof messageTransformer.transformMessageToDto,
     );
     vi.mocked(messageTransformer.transformMessagesToDto).mockImplementation(
-      (messages) =>
-        (messages as SerializedBaseMessage[]).map((m) => transformMessage(m)),
+      (messages) => (messages as BaseMessage[]).map((m) => transformMessage(m)),
     );
   });
 

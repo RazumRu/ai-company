@@ -63,7 +63,7 @@ export class SocketGateway
 
   afterInit() {
     // Subscribe to events handler for enriched notifications
-    this.eventsHandler.subscribeEvents(
+    this.eventsHandler.onEnrichedNotification(
       (event: IEnrichedNotification<unknown>) => {
         const { graphId, ownerId, type, scope } = event;
 

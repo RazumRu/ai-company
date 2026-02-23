@@ -23,7 +23,11 @@ const GITHUB_RESOURCE_NODE_ID = 'github-resource-1';
 const COMMAND_AGENT_INSTRUCTIONS =
   'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, call the finish tool with the stdout (and stderr if present). If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
 
-const THREAD_COMPLETION_STATUS = ThreadStatus.Done;
+const TERMINAL_THREAD_STATUSES = [
+  ThreadStatus.Done,
+  ThreadStatus.Stopped,
+  ThreadStatus.NeedMoreInfo,
+];
 
 const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
@@ -61,7 +65,7 @@ describe('Graph Resources Integration Tests', () => {
   const waitForGraphStatus = async (
     graphId: string,
     status: GraphStatus,
-    timeoutMs = 180_000,
+    timeoutMs = 120_000,
   ) => {
     return waitForCondition(
       () => graphsService.findById(contextDataStorage, graphId),
@@ -72,13 +76,18 @@ describe('Graph Resources Integration Tests', () => {
 
   const waitForThreadCompletion = async (
     externalThreadId: string,
-    timeoutMs = 180_000,
+    timeoutMs = 120_000,
   ) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-
+    // With async: true the thread may not exist in the DB immediately,
+    // so look it up inside the polling loop where errors are retried.
     return waitForCondition(
-      () => threadsService.getThreadById(thread.id),
-      (currentThread) => currentThread.status === THREAD_COMPLETION_STATUS,
+      async () => {
+        const thread =
+          await threadsService.getThreadByExternalId(externalThreadId);
+        return threadsService.getThreadById(thread.id);
+      },
+      (currentThread) =>
+        TERMINAL_THREAD_STATUSES.includes(currentThread.status),
       { timeout: timeoutMs, interval: 1_000 },
     );
   };
@@ -180,17 +189,12 @@ describe('Graph Resources Integration Tests', () => {
         template: 'docker-runtime',
         config: {
           runtimeType: 'Docker',
-          image: 'python:3.11-slim',
+          image: 'node:20',
           env: {},
           initScript: [
-            'apt-get update',
-            'apt-get install -y curl git',
-            'curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg',
-            'chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg',
-            'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null',
-            'apt-get update',
-            'apt-get install -y gh',
+            'GH_VERSION=2.67.0 && ARCH=$(dpkg --print-architecture) && curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" | tar xz -C /usr/local --strip-components=1',
           ],
+          initScriptTimeoutMs: 90_000,
         },
       },
     ];
@@ -231,15 +235,15 @@ describe('Graph Resources Integration Tests', () => {
     resourceGraphId = graph.id;
 
     await graphsService.run(contextDataStorage, resourceGraphId);
-    await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 240_000);
-  }, 300_000);
+    await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 120_000);
+  }, 120_000);
 
   afterAll(async () => {
     if (resourceGraphId) {
       await cleanupGraph(resourceGraphId);
     }
     await app.close();
-  }, 300_000);
+  }, 120_000);
 
   const ensureGraphRunning = async () => {
     const graph = await graphsService.findById(
@@ -249,7 +253,7 @@ describe('Graph Resources Integration Tests', () => {
     if (graph.status === GraphStatus.Running) return;
 
     await graphsService.run(contextDataStorage, resourceGraphId);
-    await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 240_000);
+    await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 120_000);
   };
 
   const uniqueThreadSubId = (prefix: string) =>
@@ -258,7 +262,7 @@ describe('Graph Resources Integration Tests', () => {
   describe('GitHub resource execution', () => {
     it(
       'propagates GitHub resource env and init config to shell tool',
-      { timeout: 240_000 },
+      { timeout: 120_000 },
       async () => {
         await ensureGraphRunning();
 
@@ -270,7 +274,7 @@ describe('Graph Resources Integration Tests', () => {
             messages: [
               'Run this command: printf "TOKEN=%s\\n" "$GITHUB_PAT_TOKEN"; gh config get git_protocol; gh --version',
             ],
-            async: false,
+            async: true,
             threadSubId: uniqueThreadSubId('gh-resource'),
           },
         );
@@ -279,15 +283,14 @@ describe('Graph Resources Integration Tests', () => {
 
         const thread = await waitForThreadCompletion(
           execution.externalThreadId,
-          180_000,
         );
-        expect(thread.status).toBe(THREAD_COMPLETION_STATUS);
+        expect(thread.status).toBe(ThreadStatus.Done);
 
         const messages = await waitForCondition(
           () => getThreadMessages(execution.externalThreadId),
           (threadMessages) =>
             Boolean(findShellExecution(threadMessages).result),
-          { timeout: 180_000, interval: 2_000 },
+          { timeout: 120_000, interval: 2_000 },
         );
 
         const shellExecution = findShellExecution(messages);

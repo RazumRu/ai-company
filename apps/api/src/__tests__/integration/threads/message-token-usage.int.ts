@@ -9,7 +9,6 @@ import {
   IAgentMessageNotification,
   NotificationEvent,
 } from '../../../v1/notifications/notifications.types';
-import { serializeBaseMessages } from '../../../v1/notifications/notifications.utils';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
@@ -97,7 +96,7 @@ describe('Message token usage (integration)', () => {
       },
     };
 
-    const serializedMessages = serializeBaseMessages([human, ai]);
+    const serializedMessages = [human, ai];
 
     const event: IAgentMessageNotification = {
       type: NotificationEvent.AgentMessage,

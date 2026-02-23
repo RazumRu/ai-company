@@ -1,8 +1,9 @@
+import type { BaseMessage } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
 import { isObject, isString } from 'lodash';
 
+import type { MessageAdditionalKwargs } from '../../agents/agents.types';
 import { extractTextFromResponseContent } from '../../agents/agents.utils';
-import type { SerializedBaseMessage } from '../../notifications/notifications.types';
 import { MessageDto } from '../dto/graphs.dto';
 import { MessageRole } from '../graphs.types';
 import { parseStructuredContent } from '../graphs.utils';
@@ -25,20 +26,28 @@ interface RawToolCall {
 @Injectable()
 export class MessageTransformerService {
   /**
-   * Transform SerializedBaseMessage array to MessageDto array
+   * Transform BaseMessage array to MessageDto array
    */
-  transformMessagesToDto(messages: SerializedBaseMessage[]): MessageDto[] {
+  transformMessagesToDto(messages: BaseMessage[]): MessageDto[] {
     return messages
       .map((msg) => this.transformMessageToDto(msg))
       .filter((dto): dto is MessageDto => dto !== null);
   }
 
   /**
-   * Transform a serialized message to MessageDto
+   * Transform a LangChain BaseMessage to MessageDto.
+   *
+   * Uses the constructor name to determine the message type (e.g. HumanMessage,
+   * AIMessage, ToolMessage).  This replaces the previous SerializedBaseMessage
+   * approach where the type was stored in a `.type` string field.
    */
-  transformMessageToDto(msg: SerializedBaseMessage): MessageDto {
-    const messageType = msg.type;
-    const rawAdditionalKwargs = msg.additional_kwargs;
+  transformMessageToDto(msg: BaseMessage): MessageDto {
+    const messageType =
+      (msg.constructor as unknown as { name?: string })?.name ?? 'BaseMessage';
+    const obj = msg as unknown as Record<string, unknown>;
+    const rawAdditionalKwargs = obj['additional_kwargs'] as
+      | MessageAdditionalKwargs
+      | undefined;
     const additionalKwargs =
       this.normalizeAdditionalKwargs(rawAdditionalKwargs);
     const runId = (() => {
@@ -52,7 +61,7 @@ export class MessageTransformerService {
       (additionalKwargs as unknown as { isAgentInstructionMessage?: unknown })
         ?.isAgentInstructionMessage,
     );
-    const contentStr = this.normalizeContent(msg.content);
+    const contentStr = this.normalizeContent(obj['content']);
 
     switch (messageType) {
       case 'HumanMessage':
@@ -60,7 +69,7 @@ export class MessageTransformerService {
           return {
             role: MessageRole.AI,
             content: contentStr,
-            rawContent: msg.content,
+            rawContent: obj['content'],
             additionalKwargs,
             runId,
           };
@@ -81,9 +90,11 @@ export class MessageTransformerService {
         };
 
       case 'ChatMessage': {
-        const role = typeof msg.role === 'string' ? msg.role : undefined;
+        const role =
+          typeof obj['role'] === 'string' ? (obj['role'] as string) : undefined;
         const reasoningId = (() => {
-          const fromId = typeof msg.id === 'string' ? msg.id : undefined;
+          const fromId =
+            typeof obj['id'] === 'string' ? (obj['id'] as string) : undefined;
           if (fromId) return fromId;
           const raw = rawAdditionalKwargs as unknown as Record<string, unknown>;
           const v = raw?.__reasoningId ?? raw?.reasoningId;
@@ -103,8 +114,8 @@ export class MessageTransformerService {
         return {
           role: MessageRole.AI,
           content: contentStr,
-          rawContent: msg.content,
-          id: typeof msg.id === 'string' ? msg.id : undefined,
+          rawContent: obj['content'],
+          id: typeof obj['id'] === 'string' ? (obj['id'] as string) : undefined,
           additionalKwargs,
           runId,
         };
@@ -113,15 +124,15 @@ export class MessageTransformerService {
       case 'AIMessageChunk':
       case 'AIMessage': {
         const toolCalls = this.mapToolCalls(
-          Array.isArray(msg.tool_calls)
-            ? (msg.tool_calls as RawToolCall[])
+          Array.isArray(obj['tool_calls'])
+            ? (obj['tool_calls'] as RawToolCall[])
             : [],
         );
         return {
           role: MessageRole.AI,
           content: contentStr,
-          rawContent: msg.content,
-          id: typeof msg.id === 'string' ? msg.id : undefined,
+          rawContent: obj['content'],
+          id: typeof obj['id'] === 'string' ? (obj['id'] as string) : undefined,
           toolCalls: toolCalls.length ? toolCalls : undefined,
           additionalKwargs,
           runId,
@@ -129,9 +140,9 @@ export class MessageTransformerService {
       }
 
       case 'ToolMessage': {
-        const toolName = msg.name || 'unknown';
-        const toolCallId = msg.tool_call_id || '';
-        const parsed = parseStructuredContent(msg.content);
+        const toolName = (obj['name'] as string) || 'unknown';
+        const toolCallId = (obj['tool_call_id'] as string) || '';
+        const parsed = parseStructuredContent(obj['content']);
         const parsedRecord = Array.isArray(parsed)
           ? { data: parsed }
           : isObject(parsed)

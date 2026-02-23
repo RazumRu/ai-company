@@ -57,10 +57,10 @@ describe('SocketGateway', () => {
   });
 
   describe('afterInit', () => {
-    it('should initialize the gateway and subscribe to events handler', () => {
+    it('should initialize the gateway and register enriched notification callback', () => {
       gateway.afterInit();
 
-      expect(eventsHandler.subscribeEvents).toHaveBeenCalledWith(
+      expect(eventsHandler.onEnrichedNotification).toHaveBeenCalledWith(
         expect.any(Function),
       );
     });
@@ -86,7 +86,7 @@ describe('SocketGateway', () => {
 
       // Get the event handler callback and call it
       const eventHandlerCallback =
-        eventsHandler.subscribeEvents.mock.calls[0]![0];
+        eventsHandler.onEnrichedNotification.mock.calls[0]![0];
       eventHandlerCallback(mockEnrichedNotification);
 
       // Verify that the gateway broadcasts only to graph room (as single-item array)
@@ -119,7 +119,7 @@ describe('SocketGateway', () => {
 
       // Get the event handler callback and call it
       const eventHandlerCallback =
-        eventsHandler.subscribeEvents.mock.calls[0]![0];
+        eventsHandler.onEnrichedNotification.mock.calls[0]![0];
       eventHandlerCallback(mockAgentStateUpdateNotification);
 
       // Verify that the gateway broadcasts only to graph room (as single-item array)
@@ -153,7 +153,7 @@ describe('SocketGateway', () => {
       };
 
       const eventHandlerCallback =
-        eventsHandler.subscribeEvents.mock.calls[0]![0];
+        eventsHandler.onEnrichedNotification.mock.calls[0]![0];
       eventHandlerCallback(mockThreadUpdateNotification);
 
       expect(mockServer.to).toHaveBeenCalledWith([`graph:${mockGraphId}`]);
@@ -181,7 +181,7 @@ describe('SocketGateway', () => {
       };
 
       const eventHandlerCallback =
-        eventsHandler.subscribeEvents.mock.calls[0]![0];
+        eventsHandler.onEnrichedNotification.mock.calls[0]![0];
       eventHandlerCallback(mockDualScopeNotification);
 
       // Verify a single .to() call with both rooms (Socket.IO deduplicates)
@@ -392,7 +392,7 @@ describe('SocketGateway', () => {
 
       // Get the event handler callback and call it
       const eventHandlerCallback =
-        eventsHandler.subscribeEvents.mock.calls[0]![0];
+        eventsHandler.onEnrichedNotification.mock.calls[0]![0];
       eventHandlerCallback(threadStateUpdate);
 
       // Verify that the gateway broadcasts only to the graph room (as single-item array)

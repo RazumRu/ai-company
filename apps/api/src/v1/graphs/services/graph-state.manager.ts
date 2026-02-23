@@ -16,7 +16,6 @@ import {
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import type { IGraphNodeUpdateData } from '../../notifications/notifications.types';
 import { NotificationEvent } from '../../notifications/notifications.types';
-import { serializeBaseMessages } from '../../notifications/notifications.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ThreadStatus } from '../../threads/threads.types';
 import {
@@ -355,7 +354,7 @@ export class GraphStateManager {
       source: cfg?.source,
       ...(threadMetadata ? { threadMetadata } : {}),
       data: {
-        messages: serializeBaseMessages(data.messages),
+        messages: data.messages,
       },
     });
   }
@@ -371,7 +370,7 @@ export class GraphStateManager {
       threadId,
       parentThreadId: cfg?.parent_thread_id ?? threadId,
       data: {
-        messages: serializeBaseMessages(data.messages),
+        messages: data.messages,
       },
     });
   }

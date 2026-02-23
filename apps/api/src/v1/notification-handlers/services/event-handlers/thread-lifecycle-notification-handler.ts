@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import {
   IThreadCreateNotification,
+  IThreadDeleteNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import { ThreadDto } from '../../../threads/dto/threads.dto';
@@ -13,15 +14,22 @@ import {
 } from '../../notification-handlers.types';
 import { BaseNotificationHandler } from './base-notification-handler';
 
-export interface IThreadCreateEnrichedNotification extends IEnrichedNotification<ThreadDto> {
-  type: NotificationEvent.ThreadCreate;
+type ThreadLifecycleNotification =
+  | IThreadCreateNotification
+  | IThreadDeleteNotification;
+
+export interface IThreadLifecycleEnrichedNotification extends IEnrichedNotification<ThreadDto> {
+  type: NotificationEvent.ThreadCreate | NotificationEvent.ThreadDelete;
   threadId: string;
   internalThreadId: string;
 }
 
 @Injectable()
-export class ThreadCreateNotificationHandler extends BaseNotificationHandler<IThreadCreateEnrichedNotification> {
-  readonly pattern = NotificationEvent.ThreadCreate;
+export class ThreadLifecycleNotificationHandler extends BaseNotificationHandler<IThreadLifecycleEnrichedNotification> {
+  readonly pattern = [
+    NotificationEvent.ThreadCreate,
+    NotificationEvent.ThreadDelete,
+  ];
 
   constructor(
     private readonly graphDao: GraphDao,
@@ -31,8 +39,8 @@ export class ThreadCreateNotificationHandler extends BaseNotificationHandler<ITh
   }
 
   async handle(
-    event: IThreadCreateNotification,
-  ): Promise<IThreadCreateEnrichedNotification[]> {
+    event: ThreadLifecycleNotification,
+  ): Promise<IThreadLifecycleEnrichedNotification[]> {
     const { graphId, threadId, data } = event;
 
     const ownerId = await this.getGraphOwner(this.graphDao, graphId);
@@ -41,7 +49,7 @@ export class ThreadCreateNotificationHandler extends BaseNotificationHandler<ITh
 
     return [
       {
-        type: NotificationEvent.ThreadCreate,
+        type: event.type,
         graphId,
         ownerId,
         threadId,

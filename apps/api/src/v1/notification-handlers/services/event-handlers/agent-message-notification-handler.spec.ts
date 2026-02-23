@@ -6,7 +6,6 @@ import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { MessageTransformerService } from '../../../graphs/services/message-transformer.service';
 import type { IAgentMessageNotification } from '../../../notifications/notifications.types';
 import { NotificationEvent } from '../../../notifications/notifications.types';
-import { serializeBaseMessages } from '../../../notifications/notifications.utils';
 import { MessagesDao } from '../../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
@@ -149,7 +148,7 @@ describe('AgentMessageNotificationHandler', () => {
       threadId: mockThreadId,
       parentThreadId: mockParentThreadId,
       data: {
-        messages: serializeBaseMessages([ai, tool]),
+        messages: [ai, tool],
       },
     };
 
@@ -235,7 +234,7 @@ describe('AgentMessageNotificationHandler', () => {
       threadId: mockThreadId,
       parentThreadId: mockParentThreadId,
       data: {
-        messages: serializeBaseMessages([ai, tool]),
+        messages: [ai, tool],
       },
     };
 
@@ -316,7 +315,7 @@ describe('AgentMessageNotificationHandler', () => {
       threadId: mockThreadId,
       parentThreadId: mockParentThreadId,
       data: {
-        messages: serializeBaseMessages([ai, tool]),
+        messages: [ai, tool],
       },
     };
 
@@ -373,7 +372,7 @@ describe('AgentMessageNotificationHandler', () => {
       threadId: mockThreadId,
       parentThreadId: mockParentThreadId,
       data: {
-        messages: serializeBaseMessages([subagentAi]),
+        messages: [subagentAi],
       },
     };
 
@@ -453,7 +452,7 @@ describe('AgentMessageNotificationHandler', () => {
       threadId: mockThreadId,
       parentThreadId: mockParentThreadId,
       data: {
-        messages: serializeBaseMessages([parentAi, toolResult]),
+        messages: [parentAi, toolResult],
       },
     };
 
@@ -519,7 +518,7 @@ describe('AgentMessageNotificationHandler', () => {
       threadId: mockThreadId,
       parentThreadId: mockParentThreadId,
       data: {
-        messages: serializeBaseMessages([ai]),
+        messages: [ai],
       },
     };
 
@@ -568,7 +567,7 @@ describe('AgentMessageNotificationHandler', () => {
       threadId: mockThreadId,
       parentThreadId: mockParentThreadId,
       data: {
-        messages: serializeBaseMessages([human, ai]),
+        messages: [human, ai],
       },
     };
 

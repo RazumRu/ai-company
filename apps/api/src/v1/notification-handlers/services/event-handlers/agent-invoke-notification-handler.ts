@@ -1,3 +1,4 @@
+import { HumanMessage } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 
@@ -163,7 +164,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     externalThreadKey: string,
   ): Promise<void> {
     const firstHuman = event.data.messages.find(
-      (m) => m.type === 'HumanMessage',
+      (m) => m instanceof HumanMessage,
     );
 
     if (!firstHuman) {

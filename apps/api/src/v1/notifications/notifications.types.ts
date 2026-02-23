@@ -1,4 +1,5 @@
-import type { MessageAdditionalKwargs } from '../agents/agents.types';
+import type { BaseMessage } from '@langchain/core/messages';
+
 import { GraphRevisionEntity } from '../graphs/entity/graph-revision.entity';
 import {
   GraphExecutionMetadata,
@@ -9,64 +10,6 @@ import {
 import { ThreadDto } from '../threads/dto/threads.dto';
 import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
-
-/**
- * Minimal, JSON-serializable message shape that we persist through BullMQ.
- * Keep this interface focused on fields we actually need downstream:
- * - message type (for DTO transformation / thread name generation)
- * - content
- * - tool metadata (for tool messages and AI tool calls)
- * - usage/response metadata + additional_kwargs (for tokenUsage)
- */
-export interface SerializedBaseMessage {
-  /**
-   * Hidden marker to reliably distinguish our BullMQ-safe serialized messages.
-   */
-  __serialized: true;
-
-  /**
-   * LangChain message class name (e.g. HumanMessage / AIMessage / ToolMessage / SystemMessage / ChatMessage).
-   */
-  type: string;
-
-  /**
-   * Raw content as produced by the model/tool/user.
-   */
-  content?: unknown;
-
-  /**
-   * LangChain message id (optional).
-   */
-  id?: string;
-
-  /**
-   * Chat role (mainly for ChatMessage / reasoning).
-   */
-  role?: string;
-
-  /**
-   * Tool message fields.
-   */
-  name?: string;
-  tool_call_id?: string;
-
-  /**
-   * AI tool calls as emitted by LangChain.
-   */
-  tool_calls?: unknown[];
-  invalid_tool_calls?: unknown[];
-
-  /**
-   * Provider metadata used to compute token usage/cost.
-   */
-  usage_metadata?: unknown;
-  response_metadata?: unknown;
-
-  /**
-   * IMPORTANT: must preserve for tokenUsage.
-   */
-  additional_kwargs?: MessageAdditionalKwargs;
-}
 
 export enum NotificationEvent {
   Graph = 'graph.update',
@@ -102,7 +45,7 @@ export interface IGraphNotification extends INotification<{
 }
 
 export interface IAgentMessageData {
-  messages: SerializedBaseMessage[];
+  messages: BaseMessage[];
 }
 
 export interface IAgentMessageNotification extends INotification<IAgentMessageData> {
@@ -113,7 +56,7 @@ export interface IAgentMessageNotification extends INotification<IAgentMessageDa
 }
 
 export interface IAgentInvokeData {
-  messages: SerializedBaseMessage[];
+  messages: BaseMessage[];
 }
 
 export interface IAgentInvokeNotification extends INotification<IAgentInvokeData> {

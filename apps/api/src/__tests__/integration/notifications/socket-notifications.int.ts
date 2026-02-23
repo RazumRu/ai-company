@@ -40,7 +40,6 @@ import {
   NotificationEvent,
 } from '../../../v1/notifications/notifications.types';
 import { IAgentStateUpdateData } from '../../../v1/notifications/notifications.types';
-import { serializeBaseMessages } from '../../../v1/notifications/notifications.utils';
 import { NotificationsService } from '../../../v1/notifications/services/notifications.service';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import {
@@ -180,8 +179,8 @@ describe('Socket Notifications Integration Tests', () => {
     for (const graphId of createdGraphIds) {
       try {
         await graphsService.destroy(contextDataStorage, graphId);
-      } catch {
-        // best effort
+      } catch (error) {
+        console.warn(`afterEach: destroy failed for graph ${graphId}:`, error);
       }
     }
   }, 180_000);
@@ -191,13 +190,13 @@ describe('Socket Notifications Integration Tests', () => {
     for (const graphId of createdGraphIds) {
       try {
         await graphsService.destroy(contextDataStorage, graphId);
-      } catch {
-        // best effort
+      } catch (error) {
+        console.warn(`afterAll: destroy failed for graph ${graphId}:`, error);
       }
       try {
         await graphsService.delete(contextDataStorage, graphId);
-      } catch {
-        // best effort
+      } catch (error) {
+        console.warn(`afterAll: delete failed for graph ${graphId}:`, error);
       }
     }
     await app.close();
@@ -208,7 +207,24 @@ describe('Socket Notifications Integration Tests', () => {
 
   const ensureGraphRunning = async (graphId: string) => {
     const graph = await graphsService.findById(contextDataStorage, graphId);
-    if (graph.status === GraphStatus.Running) return;
+    const registryNode = graphRegistry.getNode(graphId, 'agent-1');
+    if (graph.status === GraphStatus.Running && registryNode) {
+      return;
+    }
+
+    // If graph shows Running in DB but registry is empty (e.g. after destroy),
+    // we need to stop it first so run() doesn't get GRAPH_ALREADY_RUNNING.
+    if (graph.status === GraphStatus.Running) {
+      try {
+        await graphsService.destroy(contextDataStorage, graphId);
+      } catch (error) {
+        console.warn(
+          `ensureGraphRunning: destroy before re-run failed for graph ${graphId}:`,
+          error,
+        );
+      }
+    }
+
     await graphsService.run(contextDataStorage, graphId);
     await waitForCondition(
       () => graphsService.findById(contextDataStorage, graphId),
@@ -220,8 +236,8 @@ describe('Socket Notifications Integration Tests', () => {
   const restartGraph = async (graphId: string) => {
     try {
       await graphsService.destroy(contextDataStorage, graphId);
-    } catch {
-      // best effort
+    } catch (error) {
+      console.warn(`restartGraph: destroy failed for graph ${graphId}:`, error);
     }
     await ensureGraphRunning(graphId);
   };
@@ -423,7 +439,7 @@ describe('Socket Notifications Integration Tests', () => {
           expect(msg.type).toBe('agent.message');
           expect(msg.data.message).toBeDefined();
           expect(msg.data.message.content).toBeDefined(); // Content can be empty string
-          expect(['human', 'ai']).toContain(msg.data.message.role);
+          expect(['human', 'ai', 'tool']).toContain(msg.data.message.role);
         });
       },
     );
@@ -735,13 +751,11 @@ describe('Socket Notifications Integration Tests', () => {
 
           socket.once('server_error', (error) => reject(error));
           setTimeout(() => {
-            if (nodeEvents.length > 0) {
-              resolve();
-            } else {
-              reject(
-                new Error('Timeout waiting for node update notifications'),
-              );
-            }
+            reject(
+              new Error(
+                `Timeout waiting for node update notifications. Received ${nodeEvents.length} events, statuses seen: ${[...statusesSeen].join(', ') || 'none'}`,
+              ),
+            );
           }, 60_000);
         });
 
@@ -1220,17 +1234,12 @@ describe('Socket Notifications Integration Tests', () => {
             graphThreadState.getByThread(threadId).reasoningChunks.size;
           expect(finalStateCount).toBe(0);
 
-          const [serializedReasoning] = serializeBaseMessages([
-            buildReasoningMessage(
-              'integration reasoning step',
-              'chunk-integration',
-            ),
-          ]);
-          if (!serializedReasoning) {
-            throw new Error('Failed to serialize reasoning message');
-          }
+          const reasoningMsg = buildReasoningMessage(
+            'integration reasoning step',
+            'chunk-integration',
+          );
           const reasoningMessageDto =
-            messageTransformer.transformMessageToDto(serializedReasoning);
+            messageTransformer.transformMessageToDto(reasoningMsg);
 
           await messagesDao.create({
             threadId: persistedThread.id,
@@ -1624,15 +1633,11 @@ describe('Socket Notifications Integration Tests', () => {
           socket.once('server_error', (error) => reject(error));
 
           setTimeout(() => {
-            if (stateUpdateNotifications.length > 0) {
-              resolve(stateUpdateNotifications);
-            } else {
-              reject(
-                new Error(
-                  'Timeout: No agent.state.update notifications with token usage received',
-                ),
-              );
-            }
+            reject(
+              new Error(
+                `Timeout: Expected agent.state.update notifications with token usage > 0. Received ${stateUpdateNotifications.length} matching notifications.`,
+              ),
+            );
           }, 60_000);
         });
 
@@ -1782,9 +1787,10 @@ describe('Socket Notifications Integration Tests', () => {
           setTimeout(() => reject(new Error('Second socket timeout')), 10000);
         });
 
-        // Subscribe both sockets
+        // Subscribe both sockets and wait for server to process
         socket.emit('subscribe_graph', { graphId });
         secondSocket.emit('subscribe_graph', { graphId });
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
         // Trigger notification
         await restartGraph(graphId);
