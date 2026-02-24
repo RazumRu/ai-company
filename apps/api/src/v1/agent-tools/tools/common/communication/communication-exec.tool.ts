@@ -253,10 +253,40 @@ export class CommunicationExecTool extends BaseTool<
       );
     }
 
-    const output = await targetAgent.invokeAgent(
-      [args.message],
-      runnableConfig,
-    );
+    let output: unknown;
+    try {
+      output = await targetAgent.invokeAgent(
+        [args.message],
+        runnableConfig,
+      );
+    } catch (error: unknown) {
+      if (this.isPromptTooLongError(error)) {
+        return {
+          output: {
+            error: true,
+            message: dedent`
+              CONTEXT OVERFLOW: The target agent "${args.agent}" has exceeded its context window limit.
+              The conversation history with this agent is too large to send a new message.
+
+              REQUIRED ACTIONS:
+              1. Do NOT retry with the same message — it will fail again.
+              2. Summarize the conversation so far into a concise recap (key decisions, current state, remaining work).
+              3. Send a shorter message containing ONLY:
+                 - A brief recap of what was accomplished (2-3 sentences)
+                 - The specific remaining task
+                 - Any critical context (file paths, branch name, error messages)
+              4. If the remaining task is trivial (e.g. a single line fix), provide the exact change needed so the agent can apply it without needing full conversation history.
+            `,
+          },
+          messageMetadata: {
+            __title: title,
+            __interAgentCommunication: true,
+            __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+          },
+        };
+      }
+      throw error;
+    }
 
     return {
       output,
@@ -266,5 +296,26 @@ export class CommunicationExecTool extends BaseTool<
         __sourceAgentNodeId: runnableConfig.configurable?.node_id,
       },
     };
+  }
+
+  private isPromptTooLongError(error: unknown): boolean {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof (error as { message?: unknown })?.message === 'string'
+          ? (error as { message: string }).message
+          : '';
+    if (typeof message === 'string') {
+      const lower = message.toLowerCase();
+      if (
+        lower.includes('prompt is too long') ||
+        lower.includes('maximum context length') ||
+        lower.includes('context_length_exceeded') ||
+        lower.includes('too many tokens')
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 }
