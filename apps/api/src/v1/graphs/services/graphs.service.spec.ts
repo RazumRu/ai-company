@@ -2127,7 +2127,8 @@ describe('GraphsService', () => {
 
       const result = await service.compileTemporary(mockGraphId, mockUserId);
 
-      expect(result).toBe(compiledGraph);
+      expect(result.compiledGraph).toBe(compiledGraph);
+      expect(result.wasAlreadyRunning).toBe(true);
       expect(graphDao.getOne).not.toHaveBeenCalled();
       expect(graphCompiler.compile).not.toHaveBeenCalled();
     });
@@ -2142,7 +2143,8 @@ describe('GraphsService', () => {
 
       const result = await service.compileTemporary(mockGraphId, mockUserId);
 
-      expect(result).toBe(compiledGraph);
+      expect(result.compiledGraph).toBe(compiledGraph);
+      expect(result.wasAlreadyRunning).toBe(false);
       expect(graphCompiler.compile).toHaveBeenCalledWith(
         expect.objectContaining({ temporary: true }),
         { graphId: graph.id, name: graph.name, version: graph.version },
@@ -2173,6 +2175,56 @@ describe('GraphsService', () => {
       await service.compileTemporary(mockGraphId, mockUserId);
 
       expect(graphDao.updateById).not.toHaveBeenCalled();
+    });
+
+    it('sets wasAlreadyRunning=true when graph is registered concurrently between DB load and compile', async () => {
+      // Simulates TOCTOU: graphRegistry.get returns undefined on first call
+      // (before DB load), but returns a compiled graph on second call (before compile),
+      // as if run() was called concurrently while we were querying the DB.
+      const graph = createMockGraphEntity();
+      const compiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphRegistry.get)
+        .mockReturnValueOnce(undefined) // first check: not running yet
+        .mockReturnValueOnce(compiledGraph); // second check (before compile): now running
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
+
+      const result = await service.compileTemporary(mockGraphId, mockUserId);
+
+      // wasAlreadyRunning must be true because the graph was registered
+      // between the two registry checks — the finalizer must not destroy it
+      expect(result.wasAlreadyRunning).toBe(true);
+    });
+
+    it('serializes concurrent compilation — second call awaits the first', async () => {
+      const graph = createMockGraphEntity();
+      const compiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+
+      // graphCompiler.compile resolves after a tick to simulate async work
+      let resolveCompile!: (g: CompiledGraph) => void;
+      const compilePromise = new Promise<CompiledGraph>((res) => {
+        resolveCompile = res;
+      });
+      vi.mocked(graphCompiler.compile).mockReturnValueOnce(compilePromise);
+
+      // After the first compile promise is created, wire up the second call
+      // to also return the same promise (simulating getOrCompile in-flight dedup)
+      vi.mocked(graphCompiler.compile).mockReturnValue(compilePromise);
+
+      // Both concurrent calls: kick off first, then resolve and start second
+      const p1 = service.compileTemporary(mockGraphId, mockUserId);
+      resolveCompile(compiledGraph);
+      const p2 = service.compileTemporary(mockGraphId, mockUserId);
+
+      const [r1, r2] = await Promise.all([p1, p2]);
+
+      expect(r1.compiledGraph).toBe(compiledGraph);
+      expect(r2.compiledGraph).toBe(compiledGraph);
     });
   });
 
@@ -2243,6 +2295,28 @@ describe('GraphsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
 
       expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('swallows destroy errors and logs them so callback error is not masked', async () => {
+      const graph = createMockGraphEntity();
+      const compiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
+      vi.mocked(graphRegistry.destroy).mockRejectedValue(
+        new Error('Registry error'),
+      );
+
+      const callbackError = new Error('Callback error');
+      const callback = vi.fn().mockRejectedValue(callbackError);
+
+      // The callback error must propagate, not the destroy error
+      await expect(
+        service.runForSuggestions(mockGraphId, mockUserId, callback),
+      ).rejects.toThrow('Callback error');
+
+      expect(logger.error).toHaveBeenCalled();
     });
   });
 });

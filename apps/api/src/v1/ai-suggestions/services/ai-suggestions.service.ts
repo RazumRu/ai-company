@@ -285,9 +285,10 @@ export class AiSuggestionsService {
     nodeId: string,
     payload: SuggestAgentInstructionsDto,
   ): Promise<SuggestAgentInstructionsResponse> {
+    const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id: graphId,
-      createdBy: ctx.checkSub(),
+      createdBy: userId,
     });
 
     if (!graph) {
@@ -309,7 +310,7 @@ export class AiSuggestionsService {
 
     return this.graphsService.runForSuggestions(
       graphId,
-      ctx.checkSub(),
+      userId,
       async (compiledGraph) =>
         this.suggestWithGraph(graph, graphId, nodeId, compiledGraph, payload),
     );
@@ -388,9 +389,10 @@ export class AiSuggestionsService {
     graphId: string,
     payload: SuggestGraphInstructionsRequest,
   ): Promise<SuggestGraphInstructionsResponse> {
+    const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id: graphId,
-      createdBy: ctx.checkSub(),
+      createdBy: userId,
     });
 
     if (!graph) {
@@ -399,7 +401,7 @@ export class AiSuggestionsService {
 
     return this.graphsService.runForSuggestions(
       graphId,
-      ctx.checkSub(),
+      userId,
       async (compiledGraph) =>
         this.suggestGraphInstructionsWithGraph(
           graph,

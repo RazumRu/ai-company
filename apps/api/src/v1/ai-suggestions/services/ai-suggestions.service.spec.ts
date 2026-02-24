@@ -722,6 +722,30 @@ describe('AiSuggestionsService', () => {
 
       expect(graphsService.runForSuggestions).not.toHaveBeenCalled();
     });
+
+    it('suggest() — propagates errors from the underlying suggestion logic', async () => {
+      const graph = buildGraph();
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
+      (
+        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
+      ).mockReturnValue({
+        kind: NodeKind.SimpleAgent,
+      });
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        buildCompiledGraph(),
+      );
+      (
+        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
+      ).mockReturnValue([]);
+      // Make the LLM call fail
+      responseMock.mockRejectedValueOnce(new Error('LLM timeout'));
+
+      await expect(
+        service.suggest(mockCtx, 'graph-1', 'agent-1', {
+          userRequest: 'Improve',
+        } as SuggestAgentInstructionsDto),
+      ).rejects.toThrow('LLM timeout');
+    });
   });
 
   describe('suggestKnowledgeContent', () => {

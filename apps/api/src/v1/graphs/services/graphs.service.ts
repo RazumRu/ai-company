@@ -638,16 +638,23 @@ export class GraphsService {
   /**
    * Compiles a graph temporarily for internal use (e.g., AI suggestions)
    * without persisting status changes to the database.
-   * If the graph is already running, returns the existing CompiledGraph immediately.
+   * Returns { compiledGraph, wasAlreadyRunning } so callers can decide
+   * whether to destroy the registry entry afterward.
+   *
+   * The wasAlreadyRunning flag is set at the point just before compilation,
+   * which avoids a TOCTOU race: if another request concurrently calls run()
+   * between the initial registry check and compile(), the flag is still
+   * accurate because it is re-read inside compileTemporary right before
+   * graphCompiler.compile() is invoked.
    */
   async compileTemporary(
     graphId: string,
     userId: string,
-  ): Promise<CompiledGraph> {
-    // If already running, return the existing compiled graph
+  ): Promise<{ compiledGraph: CompiledGraph; wasAlreadyRunning: boolean }> {
+    // If already running, return immediately — nothing to compile or destroy.
     const existing = this.graphRegistry.get(graphId);
     if (existing) {
-      return existing;
+      return { compiledGraph: existing, wasAlreadyRunning: true };
     }
 
     const graph = await this.graphDao.getOne({
@@ -665,31 +672,43 @@ export class GraphsService {
       { temporary: true },
     );
 
-    return this.graphCompiler.compile(temporaryEntity, {
+    // Re-read the registry immediately before compile to catch any concurrent
+    // run() calls that registered the graph while we were loading it from DB.
+    const beforeCompile = this.graphRegistry.get(graphId);
+    const compiledGraph = await this.graphCompiler.compile(temporaryEntity, {
       graphId: graph.id,
       name: graph.name,
       version: graph.version,
     });
+
+    return { compiledGraph, wasAlreadyRunning: !!beforeCompile };
   }
 
   /**
    * Compiles the graph temporarily, runs the callback with the compiled graph,
    * and then destroys the temporary compilation.
-   * If the graph was already running before the call, it is NOT destroyed afterward.
+   * If the graph was already running before compilation, it is NOT destroyed afterward.
    */
   async runForSuggestions<T>(
     graphId: string,
     userId: string,
     callback: (compiledGraph: CompiledGraph) => Promise<T>,
   ): Promise<T> {
-    const wasAlreadyRunning = Boolean(this.graphRegistry.get(graphId));
-    const compiledGraph = await this.compileTemporary(graphId, userId);
+    const { compiledGraph, wasAlreadyRunning } = await this.compileTemporary(
+      graphId,
+      userId,
+    );
 
     try {
       return await callback(compiledGraph);
     } finally {
       if (!wasAlreadyRunning) {
-        await this.graphRegistry.destroy(graphId);
+        await this.graphRegistry.destroy(graphId).catch((err: unknown) => {
+          this.logger.error(
+            err as Error,
+            `Failed to destroy temporary graph ${graphId}`,
+          );
+        });
       }
     }
   }
