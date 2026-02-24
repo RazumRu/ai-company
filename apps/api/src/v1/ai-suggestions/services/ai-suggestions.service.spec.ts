@@ -18,6 +18,7 @@ import {
 } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import { GraphStateManager } from '../../graphs/services/graph-state.manager';
+import { GraphsService } from '../../graphs/services/graphs.service';
 import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
@@ -40,6 +41,7 @@ describe('AiSuggestionsService', () => {
     'get' | 'filterNodesByType' | 'getNode'
   >;
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
+  let graphsService: Pick<GraphsService, 'runForSuggestions'>;
   const mockCtx = {
     checkSub: vi.fn().mockReturnValue('user-1'),
   } as unknown as AuthContextStorage;
@@ -90,6 +92,23 @@ describe('AiSuggestionsService', () => {
       supportsResponsesApi: vi.fn().mockResolvedValue(true),
     };
 
+    // Default: runForSuggestions calls through to the callback
+    // with whatever graphRegistry.get() returns as the compiled graph.
+    graphsService = {
+      runForSuggestions: vi
+        .fn()
+        .mockImplementation(
+          async (
+            graphId: string,
+            _userId: string,
+            callback: (cg: unknown) => Promise<unknown>,
+          ) => {
+            const compiledGraph = vi.mocked(graphRegistry.get)(graphId);
+            return callback(compiledGraph);
+          },
+        ),
+    };
+
     service = new AiSuggestionsService(
       threadsDao as ThreadsDao,
       messagesDao as MessagesDao,
@@ -99,6 +118,7 @@ describe('AiSuggestionsService', () => {
       openaiService as OpenaiService,
       llmModelsService as LlmModelsService,
       litellmService as LitellmService,
+      graphsService as GraphsService,
     );
   });
 
@@ -347,23 +367,18 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws when graph is not running (no compiled graph)', async () => {
-      const graph = buildGraph();
-      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
-      (
-        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
-      ).mockReturnValue({
-        kind: NodeKind.SimpleAgent,
-      });
-      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
-        undefined,
-      );
+    it('calls graphsService.runForSuggestions with correct graphId and userId', async () => {
+      configureSuggestionHappyPath();
 
-      await expect(
-        service.suggest(mockCtx, 'graph-1', 'agent-1', {
-          userRequest: 'anything',
-        } as SuggestAgentInstructionsDto),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await service.suggest(mockCtx, 'graph-1', 'agent-1', {
+        userRequest: 'Make it concise',
+      } as SuggestAgentInstructionsDto);
+
+      expect(graphsService.runForSuggestions).toHaveBeenCalledWith(
+        'graph-1',
+        'user-1',
+        expect.any(Function),
+      );
     });
 
     it('wraps unexpected LLM errors in InternalException', async () => {
@@ -405,20 +420,24 @@ describe('AiSuggestionsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws when compiled graph is missing', async () => {
-      (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
-        buildThread(),
-      );
+    it('calls graphsService.runForSuggestions with correct graphId and userId', async () => {
+      const thread = buildThread();
+      (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(thread);
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
         buildGraph(),
       );
+      (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
       (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
-        undefined,
+        buildCompiledGraph(),
       );
 
-      await expect(
-        service.analyzeThread(mockCtx, 'thread-1', {} as never),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await service.analyzeThread(mockCtx, 'thread-1', {} as never);
+
+      expect(graphsService.runForSuggestions).toHaveBeenCalledWith(
+        'graph-1',
+        'user-1',
+        expect.any(Function),
+      );
     });
 
     it('returns prompt content when analysis is generated and uses provided thread id', async () => {
@@ -581,6 +600,127 @@ describe('AiSuggestionsService', () => {
         { systemMessage?: string; message: string; model: string },
       ];
       expect(payload.model).toBe('openai/custom-model');
+    });
+  });
+
+  describe('on-demand compilation via graphsService', () => {
+    const buildThread = (): ThreadEntity =>
+      ({
+        id: 'thread-1',
+        graphId: 'graph-1',
+        createdBy: 'user-1',
+        externalThreadId: 'ext-thread',
+        status: ThreadStatus.Running,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        metadata: {},
+        source: null,
+        name: null,
+      }) as unknown as ThreadEntity;
+
+    it('suggest() — calls runForSuggestions when graph is not running', async () => {
+      // Graph is not in the registry (would have been GRAPH_NOT_RUNNING before)
+      const graph = buildGraph();
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
+      (
+        templateRegistry.getTemplate as ReturnType<typeof vi.fn>
+      ).mockReturnValue({
+        kind: NodeKind.SimpleAgent,
+      });
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        buildCompiledGraph(),
+      );
+      (
+        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
+      ).mockReturnValue([]);
+      (graphRegistry.getNode as ReturnType<typeof vi.fn>).mockReturnValue(
+        undefined,
+      );
+
+      await service.suggest(mockCtx, 'graph-1', 'agent-1', {
+        userRequest: 'Improve',
+      } as SuggestAgentInstructionsDto);
+
+      expect(graphsService.runForSuggestions).toHaveBeenCalledWith(
+        'graph-1',
+        'user-1',
+        expect.any(Function),
+      );
+    });
+
+    it('suggest() — when graph is already running, uses existing compiled graph', async () => {
+      const compiledGraph = buildCompiledGraph();
+      configureSuggestionHappyPath();
+      // Override mock so graphRegistry.get returns the already-running graph
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        compiledGraph,
+      );
+
+      const result = await service.suggest(mockCtx, 'graph-1', 'agent-1', {
+        userRequest: 'Make it concise',
+      } as SuggestAgentInstructionsDto);
+
+      expect(result.instructions).toBeDefined();
+      expect(graphsService.runForSuggestions).toHaveBeenCalledTimes(1);
+    });
+
+    it('analyzeThread() — delegates to graphsService.runForSuggestions', async () => {
+      const thread = buildThread();
+      (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(thread);
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildGraph(),
+      );
+      (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        buildCompiledGraph(),
+      );
+
+      await service.analyzeThread(mockCtx, 'thread-1', {} as never);
+
+      expect(graphsService.runForSuggestions).toHaveBeenCalledWith(
+        'graph-1',
+        'user-1',
+        expect.any(Function),
+      );
+    });
+
+    it('suggestGraphInstructions() — delegates to graphsService.runForSuggestions', async () => {
+      const graph = buildGraph();
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(
+        buildCompiledGraph(),
+      );
+      (
+        graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>
+      ).mockReturnValue([]);
+      jsonRequestMock.mockResolvedValueOnce({
+        content: { updates: [] },
+        conversationId: 'graph-1',
+      });
+
+      await service.suggestGraphInstructions(mockCtx, 'graph-1', {
+        userRequest: 'Improve all agents',
+      });
+
+      expect(graphsService.runForSuggestions).toHaveBeenCalledWith(
+        'graph-1',
+        'user-1',
+        expect.any(Function),
+      );
+    });
+
+    it('suggestKnowledgeContent() — works without graph (no runForSuggestions call)', async () => {
+      // suggestKnowledgeContent has no graph dependency
+      responseMock.mockResolvedValueOnce({
+        content: { title: 'T', content: 'C' },
+        conversationId: 'k-1',
+      });
+
+      await service.suggestKnowledgeContent(mockCtx, {
+        userRequest: 'Create doc',
+      } as import('../dto/ai-suggestions.dto').KnowledgeContentSuggestionRequest);
+
+      expect(graphsService.runForSuggestions).not.toHaveBeenCalled();
     });
   });
 

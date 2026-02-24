@@ -31,7 +31,7 @@ import {
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
 import type { GraphRevisionConfig } from '../entity/graph-revision.entity';
-import { GraphStatus, NodeKind } from '../graphs.types';
+import { CompiledGraph, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -633,5 +633,64 @@ export class GraphsService {
       externalThreadId,
       checkpointNs: res.checkpointNs,
     };
+  }
+
+  /**
+   * Compiles a graph temporarily for internal use (e.g., AI suggestions)
+   * without persisting status changes to the database.
+   * If the graph is already running, returns the existing CompiledGraph immediately.
+   */
+  async compileTemporary(
+    graphId: string,
+    userId: string,
+  ): Promise<CompiledGraph> {
+    // If already running, return the existing compiled graph
+    const existing = this.graphRegistry.get(graphId);
+    if (existing) {
+      return existing;
+    }
+
+    const graph = await this.graphDao.getOne({
+      id: graphId,
+      createdBy: userId,
+    });
+    if (!graph) {
+      throw new NotFoundException('GRAPH_NOT_FOUND');
+    }
+
+    // Build in-memory entity with temporary=true — no DB write
+    const temporaryEntity: GraphEntity = Object.assign(
+      new GraphEntity(),
+      graph,
+      { temporary: true },
+    );
+
+    return this.graphCompiler.compile(temporaryEntity, {
+      graphId: graph.id,
+      name: graph.name,
+      version: graph.version,
+    });
+  }
+
+  /**
+   * Compiles the graph temporarily, runs the callback with the compiled graph,
+   * and then destroys the temporary compilation.
+   * If the graph was already running before the call, it is NOT destroyed afterward.
+   */
+  async runForSuggestions<T>(
+    graphId: string,
+    userId: string,
+    callback: (compiledGraph: CompiledGraph) => Promise<T>,
+  ): Promise<T> {
+    const wasAlreadyRunning = Boolean(this.graphRegistry.get(graphId));
+    const compiledGraph = await this.compileTemporary(graphId, userId);
+
+    try {
+      return await callback(compiledGraph);
+    } finally {
+      if (!wasAlreadyRunning) {
+        await this.graphRegistry.destroy(graphId);
+      }
+    }
   }
 }

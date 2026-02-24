@@ -23,6 +23,7 @@ import {
   NodeKind,
 } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
+import { GraphsService } from '../../graphs/services/graphs.service';
 import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import {
@@ -137,6 +138,7 @@ export class AiSuggestionsService {
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
     private readonly litellmService: LitellmService,
+    private readonly graphsService: GraphsService,
   ) {}
 
   private async callLlm<T>(
@@ -184,20 +186,34 @@ export class AiSuggestionsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    const compiledGraph = this.graphRegistry.get(thread.graphId);
-
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to analyze threads',
-      );
-    }
-
     const messages = await this.messagesDao.getAll({
       threadId: thread.id,
       order: { createdAt: 'ASC' },
     });
 
+    return this.graphsService.runForSuggestions(
+      thread.graphId,
+      userId,
+      async (compiledGraph) =>
+        this.analyzeThreadWithGraph(
+          ctx,
+          thread,
+          graph,
+          messages,
+          compiledGraph,
+          payload,
+        ),
+    );
+  }
+
+  private async analyzeThreadWithGraph(
+    _ctx: AuthContextStorage,
+    thread: ThreadEntity,
+    graph: GraphEntity,
+    messages: Awaited<ReturnType<MessagesDao['getAll']>>,
+    compiledGraph: CompiledGraph,
+    payload: ThreadAnalysisRequestDto,
+  ): Promise<ThreadAnalysisResponse> {
     const sanitizedMessages = this.sanitizeMessages(
       messages.map((m) => ({ message: m.message, from: m.nodeId })),
       compiledGraph,
@@ -212,12 +228,12 @@ export class AiSuggestionsService {
           'You are an expert AI / agent-ops reviewer.',
           'Analyze the full thread messages and the current agent configuration.',
           'Focus on tool calls, tool execution errors, workflow inefficiencies, and optimization opportunities.',
-          'Do NOT focus on the specific agent task or problem in the conversation—instead, focus on how tools were used, what failed, and how the workflow can be optimized.',
+          'Do NOT focus on the specific agent task or problem in the conversation\u2014instead, focus on how tools were used, what failed, and how the workflow can be optimized.',
           'Identify tool call patterns, error patterns, tool misuse, missing tool features, redundant operations, and workflow bottlenecks.',
           'Recommend concrete, generalizable improvements to tool usage patterns, tool implementations, error handling, and workflow design.',
           'Do not overfit suggestions to this specific case; the agent must stay adaptable to any task, domain, or language.',
           'Keep the response concise, structured, and immediately actionable.',
-          'Note: Some message content may show "[truncated]" markers—this is intentional for analysis purposes only. Do not flag truncation as an issue; focus on the patterns and errors visible in the available content.',
+          'Note: Some message content may show "[truncated]" markers\u2014this is intentional for analysis purposes only. Do not flag truncation as an issue; focus on the patterns and errors visible in the available content.',
           'Additionally, evaluate the agent instructions against prompt-engineering best practices: XML-tag structure, positive vs. negative phrasing, role definition richness, effort scaling, deduplication, output format clarity, and multi-agent coordination patterns (verbatim context forwarding, exploredFiles in handoffs, trust upstream analysis).',
           'Structure the answer with sections:',
           '- Tool call issues: bullet list of tool execution errors, failed calls, missing outputs, or incorrect tool usage patterns.',
@@ -291,14 +307,22 @@ export class AiSuggestionsService {
       );
     }
 
-    const compiledGraph = this.graphRegistry.get(graphId);
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to suggest instructions',
-      );
-    }
+    return this.graphsService.runForSuggestions(
+      graphId,
+      ctx.checkSub(),
+      async (compiledGraph) =>
+        this.suggestWithGraph(graph, graphId, nodeId, compiledGraph, payload),
+    );
+  }
 
+  private async suggestWithGraph(
+    graph: GraphEntity,
+    graphId: string,
+    nodeId: string,
+    compiledGraph: CompiledGraph,
+    payload: SuggestAgentInstructionsDto,
+  ): Promise<SuggestAgentInstructionsResponse> {
+    const node = graph.schema.nodes.find((n) => n.id === nodeId)!;
     const currentInstructions = this.getCurrentInstructions(node.config);
     const tools = this.getConnectedTools(
       graphId,
@@ -373,14 +397,25 @@ export class AiSuggestionsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    const compiledGraph = this.graphRegistry.get(graphId);
-    if (!compiledGraph) {
-      throw new BadRequestException(
-        'GRAPH_NOT_RUNNING',
-        'Graph must be running to suggest instructions',
-      );
-    }
+    return this.graphsService.runForSuggestions(
+      graphId,
+      ctx.checkSub(),
+      async (compiledGraph) =>
+        this.suggestGraphInstructionsWithGraph(
+          graph,
+          graphId,
+          compiledGraph,
+          payload,
+        ),
+    );
+  }
 
+  private async suggestGraphInstructionsWithGraph(
+    graph: GraphEntity,
+    graphId: string,
+    compiledGraph: CompiledGraph,
+    payload: SuggestGraphInstructionsRequest,
+  ): Promise<SuggestGraphInstructionsResponse> {
     const agents = this.buildAgentContexts(compiledGraph);
     if (!agents.length) {
       return { updates: [] };

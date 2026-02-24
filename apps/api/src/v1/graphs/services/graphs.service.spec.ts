@@ -2120,4 +2120,129 @@ describe('GraphsService', () => {
       );
     });
   });
+  describe('compileTemporary', () => {
+    it('returns existing compiled graph when graph is already running', async () => {
+      const compiledGraph = createMockCompiledGraph();
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
+
+      const result = await service.compileTemporary(mockGraphId, mockUserId);
+
+      expect(result).toBe(compiledGraph);
+      expect(graphDao.getOne).not.toHaveBeenCalled();
+      expect(graphCompiler.compile).not.toHaveBeenCalled();
+    });
+
+    it('compiles graph temporarily when not running and sets temporary=true', async () => {
+      const graph = createMockGraphEntity({ temporary: false });
+      const compiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
+
+      const result = await service.compileTemporary(mockGraphId, mockUserId);
+
+      expect(result).toBe(compiledGraph);
+      expect(graphCompiler.compile).toHaveBeenCalledWith(
+        expect.objectContaining({ temporary: true }),
+        { graphId: graph.id, name: graph.name, version: graph.version },
+      );
+      // DB status must NOT be updated
+      expect(graphDao.updateById).not.toHaveBeenCalled();
+      // Notifications must NOT be emitted
+      expect(notificationsService.emit).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when graph does not exist', async () => {
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(null);
+
+      await expect(
+        service.compileTemporary('nonexistent-id', mockUserId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('does not write DB status changes during temporary compilation', async () => {
+      const graph = createMockGraphEntity();
+      const compiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
+
+      await service.compileTemporary(mockGraphId, mockUserId);
+
+      expect(graphDao.updateById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('runForSuggestions', () => {
+    it('destroys graph after callback when graph was not already running', async () => {
+      const graph = createMockGraphEntity();
+      const compiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
+      vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
+
+      const callback = vi.fn().mockResolvedValue('result');
+
+      const result = await service.runForSuggestions(
+        mockGraphId,
+        mockUserId,
+        callback,
+      );
+
+      expect(result).toBe('result');
+      expect(callback).toHaveBeenCalledWith(compiledGraph);
+      expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
+    });
+
+    it('does NOT destroy graph when it was already running before the call', async () => {
+      const compiledGraph = createMockCompiledGraph();
+
+      // Graph is already running
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
+
+      const callback = vi.fn().mockResolvedValue('result');
+
+      await service.runForSuggestions(mockGraphId, mockUserId, callback);
+
+      expect(callback).toHaveBeenCalledWith(compiledGraph);
+      expect(graphRegistry.destroy).not.toHaveBeenCalled();
+    });
+
+    it('destroys graph in finally block even when callback throws', async () => {
+      const graph = createMockGraphEntity();
+      const compiledGraph = createMockCompiledGraph();
+
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphCompiler.compile).mockResolvedValue(compiledGraph);
+      vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
+
+      const callback = vi.fn().mockRejectedValue(new Error('Callback error'));
+
+      await expect(
+        service.runForSuggestions(mockGraphId, mockUserId, callback),
+      ).rejects.toThrow('Callback error');
+
+      // Graph must be cleaned up even on error
+      expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
+    });
+
+    it('propagates NotFoundException when graph not found during compile', async () => {
+      vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(graphDao.getOne).mockResolvedValue(null);
+
+      const callback = vi.fn();
+
+      await expect(
+        service.runForSuggestions(mockGraphId, mockUserId, callback),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+  });
 });
