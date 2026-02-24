@@ -1554,10 +1554,13 @@ describe('Files tools graph execution', () => {
     externalThreadId: string,
     timeoutMs = 120_000,
   ) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
 
     return waitForCondition(
-      () => threadsService.getThreadById(thread.id),
+      () => threadsService.getThreadById(contextDataStorage, thread.id),
       (currentThread) => THREAD_STATUSES.includes(currentThread.status),
       {
         timeout: timeoutMs,
@@ -1567,8 +1570,11 @@ describe('Files tools graph execution', () => {
   };
 
   const getThreadMessages = async (externalThreadId: string) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-    return threadsService.getThreadMessages(thread.id);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
+    return threadsService.getThreadMessages(contextDataStorage, thread.id);
   };
 
   type ToolMessage = Extract<ThreadMessageDto['message'], { role: 'tool' }>;

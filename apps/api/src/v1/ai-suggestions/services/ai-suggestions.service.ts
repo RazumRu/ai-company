@@ -5,7 +5,7 @@ import {
   InternalException,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import { isPlainObject, isString } from 'lodash';
 import type { UnknownRecord } from 'type-fest';
 import { z } from 'zod';
@@ -134,7 +134,6 @@ export class AiSuggestionsService {
     private readonly graphDao: GraphDao,
     private readonly graphRegistry: GraphRegistry,
     private readonly templateRegistry: TemplateRegistry,
-    private readonly authContext: AuthContextService,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
     private readonly litellmService: LitellmService,
@@ -161,10 +160,11 @@ export class AiSuggestionsService {
   }
 
   async analyzeThread(
+    ctx: AuthContextStorage,
     threadId: string,
     payload: ThreadAnalysisRequestDto,
   ): Promise<ThreadAnalysisResponse> {
-    const userId = this.authContext.checkSub();
+    const userId = ctx.checkSub();
 
     const thread = await this.threadsDao.getOne({
       id: threadId,
@@ -264,13 +264,14 @@ export class AiSuggestionsService {
   }
 
   async suggest(
+    ctx: AuthContextStorage,
     graphId: string,
     nodeId: string,
     payload: SuggestAgentInstructionsDto,
   ): Promise<SuggestAgentInstructionsResponse> {
     const graph = await this.graphDao.getOne({
       id: graphId,
-      createdBy: this.authContext.checkSub(),
+      createdBy: ctx.checkSub(),
     });
 
     if (!graph) {
@@ -359,12 +360,13 @@ export class AiSuggestionsService {
   }
 
   async suggestGraphInstructions(
+    ctx: AuthContextStorage,
     graphId: string,
     payload: SuggestGraphInstructionsRequest,
   ): Promise<SuggestGraphInstructionsResponse> {
     const graph = await this.graphDao.getOne({
       id: graphId,
-      createdBy: this.authContext.checkSub(),
+      createdBy: ctx.checkSub(),
     });
 
     if (!graph) {
@@ -504,9 +506,10 @@ export class AiSuggestionsService {
   }
 
   async suggestKnowledgeContent(
+    ctx: AuthContextStorage,
     payload: KnowledgeContentSuggestionRequest,
   ): Promise<KnowledgeContentSuggestionResponse> {
-    this.authContext.checkSub();
+    ctx.checkSub();
 
     const isContinuation = !!payload.threadId;
     const systemMessage = isContinuation

@@ -82,9 +82,11 @@ describe('Graph Resources Integration Tests', () => {
     // so look it up inside the polling loop where errors are retried.
     return waitForCondition(
       async () => {
-        const thread =
-          await threadsService.getThreadByExternalId(externalThreadId);
-        return threadsService.getThreadById(thread.id);
+        const thread = await threadsService.getThreadByExternalId(
+          contextDataStorage,
+          externalThreadId,
+        );
+        return threadsService.getThreadById(contextDataStorage, thread.id);
       },
       (currentThread) =>
         TERMINAL_THREAD_STATUSES.includes(currentThread.status),
@@ -93,8 +95,11 @@ describe('Graph Resources Integration Tests', () => {
   };
 
   const getThreadMessages = async (externalThreadId: string) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-    return threadsService.getThreadMessages(thread.id);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
+    return threadsService.getThreadMessages(contextDataStorage, thread.id);
   };
 
   const isAiThreadMessage = (

@@ -151,7 +151,11 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
     );
 
     const thread = await waitForCondition(
-      () => threadsService.getThreadByExternalId(exec.externalThreadId),
+      () =>
+        threadsService.getThreadByExternalId(
+          contextDataStorage,
+          exec.externalThreadId,
+        ),
       (t) => Boolean(t),
       { timeout: 60_000, interval: 1000 },
     );
@@ -160,7 +164,10 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
     const usageStats = await waitForCondition(
       async () => {
         try {
-          return await threadsService.getThreadUsageStatistics(thread.id);
+          return await threadsService.getThreadUsageStatistics(
+            contextDataStorage,
+            thread.id,
+          );
         } catch {
           return null;
         }

@@ -3,7 +3,7 @@ import {
   InternalException,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
@@ -40,7 +40,10 @@ describe('AiSuggestionsService', () => {
     'get' | 'filterNodesByType' | 'getNode'
   >;
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
-  let authContext: Pick<AuthContextService, 'checkSub'>;
+  const mockCtx = {
+    checkSub: vi.fn().mockReturnValue('user-1'),
+  } as unknown as AuthContextStorage;
+
   let openaiService: {
     response: OpenaiService['response'];
     complete: OpenaiService['complete'];
@@ -63,9 +66,6 @@ describe('AiSuggestionsService', () => {
       getNode: vi.fn(),
     };
     templateRegistry = { getTemplate: vi.fn() };
-    authContext = {
-      checkSub: vi.fn().mockReturnValue('user-1'),
-    };
     responseMock = vi.fn(async () => ({
       content: 'Updated instructions',
       conversationId: 'thread-1',
@@ -96,7 +96,6 @@ describe('AiSuggestionsService', () => {
       graphDao as GraphDao,
       graphRegistry as GraphRegistry,
       templateRegistry as TemplateRegistry,
-      authContext as AuthContextService,
       openaiService as OpenaiService,
       llmModelsService as LlmModelsService,
       litellmService as LitellmService,
@@ -222,7 +221,7 @@ describe('AiSuggestionsService', () => {
     it('returns updated instructions from LLM response', async () => {
       configureSuggestionHappyPath();
 
-      const result = await service.suggest('graph-1', 'agent-1', {
+      const result = await service.suggest(mockCtx, 'graph-1', 'agent-1', {
         userRequest: 'Make it concise',
         threadId: 'thread-1',
       } as SuggestAgentInstructionsDto);
@@ -243,7 +242,7 @@ describe('AiSuggestionsService', () => {
     it('uses requested model when provided', async () => {
       configureSuggestionHappyPath();
 
-      await service.suggest('graph-1', 'agent-1', {
+      await service.suggest(mockCtx, 'graph-1', 'agent-1', {
         userRequest: 'Make it concise',
         model: 'openai/custom-model',
       } as SuggestAgentInstructionsDto);
@@ -262,7 +261,7 @@ describe('AiSuggestionsService', () => {
         conversationId: 'thread-1',
       });
 
-      const result = await service.suggest('graph-1', 'agent-1', {
+      const result = await service.suggest(mockCtx, 'graph-1', 'agent-1', {
         userRequest: 'Keep as is',
       } as SuggestAgentInstructionsDto);
 
@@ -283,7 +282,7 @@ describe('AiSuggestionsService', () => {
     it('includes instruction best practices in system message', async () => {
       configureSuggestionHappyPath();
 
-      await service.suggest('graph-1', 'agent-1', {
+      await service.suggest(mockCtx, 'graph-1', 'agent-1', {
         userRequest: 'Improve structure',
       } as SuggestAgentInstructionsDto);
 
@@ -303,7 +302,7 @@ describe('AiSuggestionsService', () => {
     it('generates threadId when not provided', async () => {
       configureSuggestionHappyPath();
 
-      const result = await service.suggest('graph-1', 'agent-1', {
+      const result = await service.suggest(mockCtx, 'graph-1', 'agent-1', {
         userRequest: 'Generate id',
       } as SuggestAgentInstructionsDto);
 
@@ -314,7 +313,7 @@ describe('AiSuggestionsService', () => {
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
       await expect(
-        service.suggest('missing', 'agent-1', {
+        service.suggest(mockCtx, 'missing', 'agent-1', {
           userRequest: 'anything',
         } as SuggestAgentInstructionsDto),
       ).rejects.toBeInstanceOf(NotFoundException);
@@ -326,7 +325,7 @@ describe('AiSuggestionsService', () => {
       (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(graph);
 
       await expect(
-        service.suggest('graph-1', 'agent-1', {
+        service.suggest(mockCtx, 'graph-1', 'agent-1', {
           userRequest: 'anything',
         } as SuggestAgentInstructionsDto),
       ).rejects.toBeInstanceOf(NotFoundException);
@@ -342,7 +341,7 @@ describe('AiSuggestionsService', () => {
       });
 
       await expect(
-        service.suggest('graph-1', 'agent-1', {
+        service.suggest(mockCtx, 'graph-1', 'agent-1', {
           userRequest: 'anything',
         } as SuggestAgentInstructionsDto),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -361,7 +360,7 @@ describe('AiSuggestionsService', () => {
       );
 
       await expect(
-        service.suggest('graph-1', 'agent-1', {
+        service.suggest(mockCtx, 'graph-1', 'agent-1', {
           userRequest: 'anything',
         } as SuggestAgentInstructionsDto),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -372,7 +371,7 @@ describe('AiSuggestionsService', () => {
       responseMock.mockRejectedValueOnce(new Error('Connection timeout'));
 
       await expect(
-        service.suggest('graph-1', 'agent-1', {
+        service.suggest(mockCtx, 'graph-1', 'agent-1', {
           userRequest: 'Improve structure',
         } as SuggestAgentInstructionsDto),
       ).rejects.toSatisfy((error: InternalException) => {
@@ -402,7 +401,7 @@ describe('AiSuggestionsService', () => {
       (threadsDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
       await expect(
-        service.analyzeThread('missing', {} as never),
+        service.analyzeThread(mockCtx, 'missing', {} as never),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -418,7 +417,7 @@ describe('AiSuggestionsService', () => {
       );
 
       await expect(
-        service.analyzeThread('thread-1', {} as never),
+        service.analyzeThread(mockCtx, 'thread-1', {} as never),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -512,7 +511,7 @@ describe('AiSuggestionsService', () => {
         conversationId: 'conv-1',
       });
 
-      const result = await service.analyzeThread('thread-1', {
+      const result = await service.analyzeThread(mockCtx, 'thread-1', {
         userInput: 'Focus on tooling issues',
         threadId: 'prev-thread',
       });
@@ -546,7 +545,7 @@ describe('AiSuggestionsService', () => {
       );
       (messagesDao.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-      await service.analyzeThread('thread-1', {
+      await service.analyzeThread(mockCtx, 'thread-1', {
         model: 'openai/custom-model',
       } as never);
 
@@ -573,7 +572,7 @@ describe('AiSuggestionsService', () => {
         conversationId: 'graph-1',
       });
 
-      await service.suggestGraphInstructions('graph-1', {
+      await service.suggestGraphInstructions(mockCtx, 'graph-1', {
         userRequest: 'Update instructions',
         model: 'openai/custom-model',
       });
@@ -596,7 +595,7 @@ describe('AiSuggestionsService', () => {
         conversationId: 'knowledge-1',
       });
 
-      const result = await service.suggestKnowledgeContent({
+      const result = await service.suggestKnowledgeContent(mockCtx, {
         userRequest: 'Create a knowledge doc',
         currentTitle: 'Old title',
         currentContent: 'Old content',
@@ -629,7 +628,7 @@ describe('AiSuggestionsService', () => {
         conversationId: 'knowledge-2',
       });
 
-      const result = await service.suggestKnowledgeContent({
+      const result = await service.suggestKnowledgeContent(mockCtx, {
         userRequest: 'Add a troubleshooting section',
         threadId: 'prev-knowledge',
       } as KnowledgeContentSuggestionRequest);
@@ -655,7 +654,7 @@ describe('AiSuggestionsService', () => {
         conversationId: 'knowledge-4',
       });
 
-      await service.suggestKnowledgeContent({
+      await service.suggestKnowledgeContent(mockCtx, {
         userRequest: 'Add a section',
         model: 'openai/custom-model',
       } as KnowledgeContentSuggestionRequest);
@@ -674,7 +673,7 @@ describe('AiSuggestionsService', () => {
       });
 
       await expect(
-        service.suggestKnowledgeContent({
+        service.suggestKnowledgeContent(mockCtx, {
           userRequest: 'Make improvements',
           currentContent: 'Existing content',
         } as KnowledgeContentSuggestionRequest),

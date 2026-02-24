@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger, NotFoundException } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import Decimal from 'decimal.js';
 
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
@@ -30,15 +30,17 @@ export class ThreadsService {
   constructor(
     private readonly threadDao: ThreadsDao,
     private readonly messagesDao: MessagesDao,
-    private readonly authContext: AuthContextService,
     private readonly notificationsService: NotificationsService,
     private readonly graphsService: GraphsService,
     private readonly logger: DefaultLogger,
     private readonly checkpointStateService: CheckpointStateService,
   ) {}
 
-  async getThreads(query: GetThreadsQueryDto): Promise<ThreadDto[]> {
-    const userId = this.authContext.checkSub();
+  async getThreads(
+    ctx: AuthContextStorage,
+    query: GetThreadsQueryDto,
+  ): Promise<ThreadDto[]> {
+    const userId = ctx.checkSub();
 
     const threads = await this.threadDao.getAll({
       createdBy: userId,
@@ -49,8 +51,11 @@ export class ThreadsService {
     return this.prepareThreadsResponse(threads);
   }
 
-  async getThreadById(threadId: string): Promise<ThreadDto> {
-    const userId = this.authContext.checkSub();
+  async getThreadById(
+    ctx: AuthContextStorage,
+    threadId: string,
+  ): Promise<ThreadDto> {
+    const userId = ctx.checkSub();
 
     const thread = await this.threadDao.getOne({
       id: threadId,
@@ -64,8 +69,11 @@ export class ThreadsService {
     return this.prepareThreadsResponse([thread])[0]!;
   }
 
-  async getThreadByExternalId(externalThreadId: string): Promise<ThreadDto> {
-    const userId = this.authContext.checkSub();
+  async getThreadByExternalId(
+    ctx: AuthContextStorage,
+    externalThreadId: string,
+  ): Promise<ThreadDto> {
+    const userId = ctx.checkSub();
 
     const thread = await this.threadDao.getOne({
       externalThreadId,
@@ -80,10 +88,11 @@ export class ThreadsService {
   }
 
   async getThreadMessages(
+    ctx: AuthContextStorage,
     threadId: string,
     query?: GetMessagesQueryDto,
   ): Promise<ThreadMessageDto[]> {
-    const userId = this.authContext.checkSub();
+    const userId = ctx.checkSub();
 
     // First verify the thread exists and belongs to the user
     const thread = await this.threadDao.getOne({
@@ -104,8 +113,8 @@ export class ThreadsService {
     return messages.map((msg) => this.prepareMessageResponse(msg));
   }
 
-  async deleteThread(threadId: string): Promise<void> {
-    const userId = this.authContext.checkSub();
+  async deleteThread(ctx: AuthContextStorage, threadId: string): Promise<void> {
+    const userId = ctx.checkSub();
 
     // First verify the thread exists and belongs to the user
     const thread = await this.threadDao.getOne({
@@ -133,8 +142,11 @@ export class ThreadsService {
     await this.threadDao.deleteById(threadId);
   }
 
-  async stopThread(threadId: string): Promise<ThreadDto> {
-    const userId = this.authContext.checkSub();
+  async stopThread(
+    ctx: AuthContextStorage,
+    threadId: string,
+  ): Promise<ThreadDto> {
+    const userId = ctx.checkSub();
 
     const thread = await this.threadDao.getOne({
       id: threadId,
@@ -164,8 +176,11 @@ export class ThreadsService {
     return this.prepareThreadsResponse([thread])[0]!;
   }
 
-  async stopThreadByExternalId(externalThreadId: string): Promise<ThreadDto> {
-    const userId = this.authContext.checkSub();
+  async stopThreadByExternalId(
+    ctx: AuthContextStorage,
+    externalThreadId: string,
+  ): Promise<ThreadDto> {
+    const userId = ctx.checkSub();
 
     const thread = await this.threadDao.getOne({
       externalThreadId,
@@ -176,14 +191,15 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    return this.stopThread(thread.id);
+    return this.stopThread(ctx, thread.id);
   }
 
   async setMetadata(
+    ctx: AuthContextStorage,
     threadId: string,
     dto: SetThreadMetadataDto,
   ): Promise<ThreadDto> {
-    const userId = this.authContext.checkSub();
+    const userId = ctx.checkSub();
 
     const thread = await this.threadDao.getOne({
       id: threadId,
@@ -202,10 +218,11 @@ export class ThreadsService {
   }
 
   async setMetadataByExternalId(
+    ctx: AuthContextStorage,
     externalThreadId: string,
     dto: SetThreadMetadataDto,
   ): Promise<ThreadDto> {
-    const userId = this.authContext.checkSub();
+    const userId = ctx.checkSub();
 
     const thread = await this.threadDao.getOne({
       externalThreadId,
@@ -251,9 +268,10 @@ export class ThreadsService {
   }
 
   async getThreadUsageStatistics(
+    ctx: AuthContextStorage,
     threadId: string,
   ): Promise<ThreadUsageStatisticsDto> {
-    const userId = this.authContext.checkSub();
+    const userId = ctx.checkSub();
 
     // First verify the thread exists and belongs to the user
     const thread = await this.threadDao.getOne({

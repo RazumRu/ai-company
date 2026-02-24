@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
@@ -20,13 +20,16 @@ describe('ThreadsService', () => {
   let service: ThreadsService;
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
-  let authContext: AuthContextService;
   let notificationsService: NotificationsService;
   let checkpointStateService: CheckpointStateService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
   const mockThreadId = 'thread-789';
+
+  const mockCtx = {
+    checkSub: vi.fn().mockReturnValue(mockUserId),
+  } as unknown as AuthContextStorage;
 
   const createMockThreadEntity = (
     overrides: Partial<ThreadEntity> = {},
@@ -101,12 +104,6 @@ describe('ThreadsService', () => {
           },
         },
         {
-          provide: AuthContextService,
-          useValue: {
-            checkSub: vi.fn().mockReturnValue(mockUserId),
-          },
-        },
-        {
           provide: NotificationsService,
           useValue: {
             emit: vi.fn(),
@@ -124,7 +121,6 @@ describe('ThreadsService', () => {
     service = module.get<ThreadsService>(ThreadsService);
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     messagesDao = module.get<MessagesDao>(MessagesDao);
-    authContext = module.get<AuthContextService>(AuthContextService);
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
     checkpointStateService = module.get<CheckpointStateService>(
@@ -147,9 +143,9 @@ describe('ThreadsService', () => {
         offset: 0,
       };
 
-      const result = await service.getThreads(query);
+      const result = await service.getThreads(mockCtx, query);
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         createdBy: mockUserId,
         graphId: mockGraphId,
@@ -182,7 +178,7 @@ describe('ThreadsService', () => {
         offset: 0,
       };
 
-      await service.getThreads(query);
+      await service.getThreads(mockCtx, query);
 
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         createdBy: mockUserId,
@@ -207,9 +203,9 @@ describe('ThreadsService', () => {
         offset: 5,
       };
 
-      const result = await service.getThreads(query);
+      const result = await service.getThreads(mockCtx, query);
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         createdBy: mockUserId,
         limit: 25,
@@ -226,9 +222,9 @@ describe('ThreadsService', () => {
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
 
-      const result = await service.getThreadById(mockThreadId);
+      const result = await service.getThreadById(mockCtx, mockThreadId);
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         id: mockThreadId,
         createdBy: mockUserId,
@@ -244,9 +240,9 @@ describe('ThreadsService', () => {
     it('should throw error if thread not found or belongs to different user', async () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
-      await expect(service.getThreadById(mockThreadId)).rejects.toThrow(
-        '[THREAD_NOT_FOUND] An exception has occurred',
-      );
+      await expect(
+        service.getThreadById(mockCtx, mockThreadId),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
     });
   });
 
@@ -257,9 +253,12 @@ describe('ThreadsService', () => {
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
 
-      const result = await service.getThreadByExternalId(externalThreadId);
+      const result = await service.getThreadByExternalId(
+        mockCtx,
+        externalThreadId,
+      );
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         externalThreadId,
         createdBy: mockUserId,
@@ -276,7 +275,7 @@ describe('ThreadsService', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
       await expect(
-        service.getThreadByExternalId('non-existent-external-id'),
+        service.getThreadByExternalId(mockCtx, 'non-existent-external-id'),
       ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
     });
 
@@ -286,7 +285,10 @@ describe('ThreadsService', () => {
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
 
-      const result = await service.getThreadByExternalId(externalThreadId);
+      const result = await service.getThreadByExternalId(
+        mockCtx,
+        externalThreadId,
+      );
 
       expect(result.metadata).toEqual({});
     });
@@ -301,7 +303,7 @@ describe('ThreadsService', () => {
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
 
-      const result = await service.getThreadById(mockThreadId);
+      const result = await service.getThreadById(mockCtx, mockThreadId);
 
       // tokenUsage is no longer included in thread response
       // Use GET /threads/:threadId/usage-statistics instead
@@ -316,7 +318,7 @@ describe('ThreadsService', () => {
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
 
-      const result = await service.getThreadById(mockThreadId);
+      const result = await service.getThreadById(mockCtx, mockThreadId);
 
       expect(result).not.toHaveProperty('tokenUsage');
     });
@@ -341,9 +343,13 @@ describe('ThreadsService', () => {
         offset: 0,
       };
 
-      const result = await service.getThreadMessages(mockThreadId, query);
+      const result = await service.getThreadMessages(
+        mockCtx,
+        mockThreadId,
+        query,
+      );
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         id: mockThreadId,
         createdBy: mockUserId,
@@ -375,7 +381,7 @@ describe('ThreadsService', () => {
         offset: 0,
       };
 
-      await service.getThreadMessages(mockThreadId, query);
+      await service.getThreadMessages(mockCtx, mockThreadId, query);
 
       expect(messagesDao.getAll).toHaveBeenCalledWith({
         threadId: mockThreadId,
@@ -395,7 +401,7 @@ describe('ThreadsService', () => {
       };
 
       await expect(
-        service.getThreadMessages(mockThreadId, query),
+        service.getThreadMessages(mockCtx, mockThreadId, query),
       ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
     });
   });
@@ -408,9 +414,9 @@ describe('ThreadsService', () => {
       vi.spyOn(messagesDao, 'delete').mockResolvedValue(undefined);
       vi.spyOn(threadsDao, 'deleteById').mockResolvedValue(undefined);
 
-      await service.deleteThread(mockThreadId);
+      await service.deleteThread(mockCtx, mockThreadId);
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         id: mockThreadId,
         createdBy: mockUserId,
@@ -431,11 +437,11 @@ describe('ThreadsService', () => {
     it('should throw error if thread not found or belongs to different user', async () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
-      await expect(service.deleteThread(mockThreadId)).rejects.toThrow(
+      await expect(service.deleteThread(mockCtx, mockThreadId)).rejects.toThrow(
         '[THREAD_NOT_FOUND] An exception has occurred',
       );
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         id: mockThreadId,
         createdBy: mockUserId,
@@ -456,11 +462,11 @@ describe('ThreadsService', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
       vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
 
-      const result = await service.setMetadata(mockThreadId, {
+      const result = await service.setMetadata(mockCtx, mockThreadId, {
         metadata: { key: 'value', count: 42 },
       });
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         id: mockThreadId,
         createdBy: mockUserId,
@@ -475,7 +481,9 @@ describe('ThreadsService', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
       await expect(
-        service.setMetadata(mockThreadId, { metadata: { key: 'value' } }),
+        service.setMetadata(mockCtx, mockThreadId, {
+          metadata: { key: 'value' },
+        }),
       ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
 
       expect(threadsDao.updateById).not.toHaveBeenCalled();
@@ -488,7 +496,9 @@ describe('ThreadsService', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
       vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
 
-      const result = await service.setMetadata(mockThreadId, { metadata: {} });
+      const result = await service.setMetadata(mockCtx, mockThreadId, {
+        metadata: {},
+      });
 
       expect(threadsDao.updateById).toHaveBeenCalledWith(mockThreadId, {
         metadata: {},
@@ -509,11 +519,15 @@ describe('ThreadsService', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
       vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
 
-      const result = await service.setMetadataByExternalId(externalThreadId, {
-        metadata: { env: 'production', version: 2 },
-      });
+      const result = await service.setMetadataByExternalId(
+        mockCtx,
+        externalThreadId,
+        {
+          metadata: { env: 'production', version: 2 },
+        },
+      );
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         externalThreadId,
         createdBy: mockUserId,
@@ -528,7 +542,7 @@ describe('ThreadsService', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
       await expect(
-        service.setMetadataByExternalId('non-existent-external-id', {
+        service.setMetadataByExternalId(mockCtx, 'non-existent-external-id', {
           metadata: { key: 'value' },
         }),
       ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
@@ -653,9 +667,12 @@ describe('ThreadsService', () => {
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
 
-      const result = await service.getThreadUsageStatistics(mockThreadId);
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         id: mockThreadId,
         createdBy: mockUserId,
@@ -841,7 +858,10 @@ describe('ThreadsService', () => {
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
 
-      const result = await service.getThreadUsageStatistics(mockThreadId);
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
 
       // byTool should aggregate all tool-related usage (calling + answering)
       expect(result.byTool).toHaveLength(1);
@@ -857,10 +877,10 @@ describe('ThreadsService', () => {
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
 
       await expect(
-        service.getThreadUsageStatistics(mockThreadId),
+        service.getThreadUsageStatistics(mockCtx, mockThreadId),
       ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         id: mockThreadId,
         createdBy: mockUserId,
@@ -997,7 +1017,10 @@ describe('ThreadsService', () => {
         mockTokenUsageFromCheckpoint,
       );
 
-      const result = await service.getThreadUsageStatistics(mockThreadId);
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
 
       // subagents_run_task should appear in byTool with subCalls
       const subagentEntry = result.byTool.find(
@@ -1104,7 +1127,10 @@ describe('ThreadsService', () => {
         mockTokenUsageFromCheckpoint,
       );
 
-      const result = await service.getThreadUsageStatistics(mockThreadId);
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
 
       // Should log a warning about unresolved parentToolCallId
       expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -1212,7 +1238,10 @@ describe('ThreadsService', () => {
         mockTokenUsageFromCheckpoint,
       );
 
-      const result = await service.getThreadUsageStatistics(mockThreadId);
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
 
       // Message-based total: parent(60+40+100+0.005) + sub1(3000+2000+5000+0.003) + sub2(4000+1500+5500+0.004)
       // = {7060, 3540, 10600, 0.012}
@@ -1283,7 +1312,10 @@ describe('ThreadsService', () => {
 
       // Mock graph registry to not find agent in memory (force checkpoint lookup)
 
-      const result = await service.getThreadUsageStatistics(mockThreadId);
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
 
       expect(result.total).toMatchObject({
         inputTokens: 10,
