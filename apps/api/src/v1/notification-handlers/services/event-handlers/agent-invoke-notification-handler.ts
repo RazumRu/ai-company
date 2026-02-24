@@ -9,7 +9,6 @@ import {
 } from '../../../notifications/notifications.types';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
-import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadNameGeneratorService } from '../../../threads/services/thread-name-generator.service';
 import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
@@ -42,118 +41,76 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     const { threadId, graphId, parentThreadId, source, runId, threadMetadata } =
       event;
 
-    // Get graph to extract createdBy
     const graph = await this.graphDao.getOne({ id: graphId });
     if (!graph) {
       return [];
     }
 
-    // Determine external thread key: prefer parentThreadId, fallback to current threadId
     const externalThreadKey = parentThreadId ?? threadId;
     const isRootThreadExecution = threadId === externalThreadKey;
 
-    // Check if internal thread already exists
-    const existingInternalThread = await this.threadDao.getOne({
+    // Upsert: INSERT or ON CONFLICT(externalThreadId) UPDATE status/source/lastRunId.
+    // This eliminates the race condition between executeTrigger (eager thread creation)
+    // and this handler — both can safely write without 23505 unique violations.
+    await this.threadDao.upsertByExternalThreadId({
+      graphId,
+      createdBy: graph.createdBy,
+      externalThreadId: externalThreadKey,
+      status: ThreadStatus.Running,
+      ...(source ? { source } : {}),
+      ...(runId ? { lastRunId: runId } : {}),
+      ...(threadMetadata ? { metadata: threadMetadata } : {}),
+    });
+
+    // Fetch the full entity after upsert to get all fields (including name, metadata
+    // that are not overwritten on conflict).
+    const thread = await this.threadDao.getOne({
       externalThreadId: externalThreadKey,
       graphId,
     });
 
-    if (!existingInternalThread) {
-      const createdThread = await this.threadDao.create({
-        graphId,
-        createdBy: graph.createdBy,
-        externalThreadId: externalThreadKey,
-        source,
-        status: ThreadStatus.Running,
-        ...(runId ? { lastRunId: runId } : {}),
-        ...(threadMetadata ? { metadata: threadMetadata } : {}),
-      });
+    if (!thread) {
+      this.logger.error(
+        new Error('Thread missing after upsert'),
+        `Thread not found after upsert for externalThreadId=${externalThreadKey}, graphId=${graphId}`,
+      );
+      return [];
+    }
 
-      // Emit ThreadCreate notification
+    // A thread without a name was just created (either by this upsert or by the
+    // eager path in executeTrigger). Emit ThreadCreate so the frontend picks it up.
+    // A thread with a name already existed — emit ThreadUpdate with current state.
+    if (!thread.name) {
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadCreate,
         graphId,
         threadId: externalThreadKey,
-        internalThreadId: createdThread.id,
-        data: createdThread,
+        internalThreadId: thread.id,
+        data: thread,
       });
-
-      // Generate thread name asynchronously (must not block thread creation notifications)
-      if (isRootThreadExecution) {
-        void this.generateAndEmitThreadName(event, externalThreadKey).catch(
-          (err: unknown) => {
-            const normalizedMessage =
-              err instanceof Error ? err.message : String(err);
-            this.logger.error(
-              err instanceof Error ? err : new Error(normalizedMessage),
-              `thread-name-generation.error: ${normalizedMessage}`,
-            );
-          },
-        );
-      }
     } else {
-      const updates: Partial<
-        Pick<ThreadEntity, 'status' | 'source' | 'lastRunId'>
-      > = {};
+      const threadDto = this.threadsService.prepareThreadResponse(thread);
+      await this.notificationsService.emit({
+        type: NotificationEvent.ThreadUpdate,
+        graphId,
+        threadId: externalThreadKey,
+        parentThreadId,
+        data: threadDto,
+      });
+    }
 
-      if (existingInternalThread.status !== ThreadStatus.Running) {
-        updates.status = ThreadStatus.Running;
-      }
-
-      if (source && !existingInternalThread.source) {
-        updates.source = source;
-      }
-
-      if (runId && existingInternalThread.lastRunId !== runId) {
-        updates.lastRunId = runId;
-      }
-
-      const hasUpdates = Object.keys(updates).length > 0;
-
-      if (hasUpdates) {
-        await this.threadDao.updateById(existingInternalThread.id, updates);
-      } else {
-        await this.threadDao.touchById(existingInternalThread.id);
-      }
-
-      if (hasUpdates) {
-        const refreshedThread = await this.threadDao.getOne({
-          id: existingInternalThread.id,
-          graphId,
-        });
-
-        if (refreshedThread) {
-          const threadDto =
-            this.threadsService.prepareThreadResponse(refreshedThread);
-
-          await this.notificationsService.emit({
-            type: NotificationEvent.ThreadUpdate,
-            graphId,
-            threadId: externalThreadKey,
-            parentThreadId,
-            data: threadDto,
-          });
-        }
-      }
-
-      // Best-effort: if a root thread exists but still has no name, try generating it once.
-      // This avoids expensive LLM calls for nested (child) agent executions.
-      if (
-        isRootThreadExecution &&
-        !existingInternalThread.name &&
-        !hasUpdates // keep this path lightweight when we're already doing DB work
-      ) {
-        void this.generateAndEmitThreadName(event, externalThreadKey).catch(
-          (err: unknown) => {
-            const normalizedMessage =
-              err instanceof Error ? err.message : String(err);
-            this.logger.error(
-              err instanceof Error ? err : new Error(normalizedMessage),
-              `thread-name-generation.error: ${normalizedMessage}`,
-            );
-          },
-        );
-      }
+    // Generate thread name for root thread executions that don't have one yet.
+    if (isRootThreadExecution && !thread.name) {
+      void this.generateAndEmitThreadName(event, externalThreadKey).catch(
+        (err: unknown) => {
+          const normalizedMessage =
+            err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            err instanceof Error ? err : new Error(normalizedMessage),
+            `thread-name-generation.error: ${normalizedMessage}`,
+          );
+        },
+      );
     }
 
     return [];

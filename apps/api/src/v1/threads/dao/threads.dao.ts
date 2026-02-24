@@ -112,6 +112,36 @@ export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms> {
     return result;
   }
 
+  /**
+   * Inserts a thread or updates it on externalThreadId conflict.
+   * On conflict, only updates: status, lastRunId, updatedAt.
+   * Source is only set on first insert — never overwritten on conflict.
+   * Returns the upserted row.
+   */
+  async upsertByExternalThreadId(
+    data: Pick<
+      ThreadEntity,
+      'graphId' | 'createdBy' | 'externalThreadId' | 'status'
+    > &
+      Partial<Pick<ThreadEntity, 'source' | 'lastRunId' | 'metadata'>>,
+  ): Promise<ThreadEntity> {
+    const CONFLICT_COLUMN = 'externalThreadId';
+    const UPDATE_ON_CONFLICT = ['status', 'lastRunId', 'updatedAt'];
+
+    const result = await this.getQueryBuilder()
+      .insert()
+      .values(data as QueryDeepPartialEntity<ThreadEntity>)
+      .orUpdate(UPDATE_ON_CONFLICT, [CONFLICT_COLUMN])
+      .returning('*')
+      .execute();
+
+    return (
+      Array.isArray(result.raw) && result.raw.length
+        ? result.raw[0]
+        : result.generatedMaps[0]
+    ) as ThreadEntity;
+  }
+
   async touchById(id: string): Promise<void> {
     await this.getQueryBuilder()
       .update()
