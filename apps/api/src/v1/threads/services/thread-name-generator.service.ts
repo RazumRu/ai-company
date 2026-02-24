@@ -42,6 +42,7 @@ export class ThreadNameGeneratorService {
           ].join(' '),
           message: `Generate a concise title for this conversation based on the first user message:\n\n${normalized}`,
           jsonSchema: ThreadTitleSchema,
+          maxOutputTokens: 1024,
         })
         .then((r) => {
           const parsed = ThreadTitleSchema.safeParse(r.content);
