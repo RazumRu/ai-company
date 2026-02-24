@@ -17,7 +17,7 @@ import { DaytonaRuntime } from '../../../v1/runtime/services/daytona-runtime';
  * rather than relying on a pre-pulled Daytona snapshot. This avoids
  * depending on the snapshot pull state which is asynchronous.
  */
-const SANDBOX_IMAGE = 'ubuntu:22.04';
+const SANDBOX_IMAGE = 'daytonaio/sandbox:0.5.0-slim';
 
 describe('DaytonaRuntime Timeout Recovery Integration', () => {
   let runtime: DaytonaRuntime;
@@ -39,7 +39,7 @@ describe('DaytonaRuntime Timeout Recovery Integration', () => {
         target: environment.daytonaTarget || undefined,
       },
       {
-        snapshot: environment.daytonaDefaultSnapshot || undefined,
+        snapshot: environment.dockerRuntimeImage || undefined,
       },
     );
 

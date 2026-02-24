@@ -667,7 +667,7 @@ export class FilesystemMcp extends BaseMcp<FilesystemMcpConfig> {
     ### Filesystem MCP (@modelcontextprotocol/server-filesystem)
 
     Provides filesystem access inside allowed “root” directories.
-    This MCP server runs inside the connected Docker runtime (not on the API host machine), so it can only see files that exist in that runtime’s filesystem.
+    This MCP server runs inside the connected runtime (Docker type, not on the API host machine), so it can only see files that exist in that runtime’s filesystem.
     Paths are expected to be absolute. If you try to read outside allowed roots, you’ll get denied.
 
     ### First Move (always)

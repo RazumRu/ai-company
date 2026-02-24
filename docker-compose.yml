@@ -89,23 +89,12 @@ services:
     restart: unless-stopped
     networks:
       - ai
+      - daytona
     ports:
       - "5009:5000"
     volumes:
       - registry:/var/lib/registry
       - ./.docker/registry/config.yml:/etc/docker/registry/config.yml:ro
-
-  daytona-registry:
-    image: registry:2
-    profiles:
-      - daytona
-    restart: unless-stopped
-    networks:
-      - daytona
-    environment:
-      - REGISTRY_STORAGE_DELETE_ENABLED=true
-    volumes:
-      - daytona-registry:/var/lib/registry
 
   daytona-proxy:
     image: nginx:alpine
@@ -127,8 +116,6 @@ services:
     networks:
       - daytona
       - geniro-infra
-    depends_on:
-      - daytona-registry
     environment:
       - PORT=3986
       # Database (shared geniro_ai network — access via container name)
@@ -160,22 +147,13 @@ services:
       - SSH_GATEWAY_PUBLIC_KEY=dummy
       - SSH_GATEWAY_COMMAND=dummy
       # Default snapshot (must include tag)
-      - DEFAULT_SNAPSHOT=ubuntu:22.04
+      - DEFAULT_SNAPSHOT=razumru/geniro:latest
       # Proxy config (dummy for dev)
       - PROXY_API_KEY=geniro-dev-proxy-key
       - PROXY_DOMAIN=localhost
       - PROXY_PROTOCOL=http
       - PROXY_TEMPLATE_URL=http://localhost
       - PROXY_TOOLBOX_BASE_URL=http://localhost:3987
-      # Registry (daytona network — dedicated writable registry)
-      - TRANSIENT_REGISTRY_URL=http://daytona-registry:5000
-      - TRANSIENT_REGISTRY_ADMIN=admin
-      - TRANSIENT_REGISTRY_PASSWORD=password
-      - TRANSIENT_REGISTRY_PROJECT_ID=daytona
-      - INTERNAL_REGISTRY_URL=http://daytona-registry:5000
-      - INTERNAL_REGISTRY_ADMIN=admin
-      - INTERNAL_REGISTRY_PASSWORD=password
-      - INTERNAL_REGISTRY_PROJECT_ID=daytona
       # Default runner config — v2 runner (runner registers itself via polling)
       - DEFAULT_RUNNER_API_KEY=geniro-dev-runner-key
       - DEFAULT_RUNNER_NAME=local
@@ -234,7 +212,6 @@ networks:
 volumes:
   postgres:
   redis:
-  registry:
   qdrant:
   cliproxy-auth:
-  daytona-registry:
+  registry:

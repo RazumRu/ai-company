@@ -45,7 +45,8 @@ export class FilesystemMcpTemplate extends McpNodeBaseTemplate<
 > {
   readonly id = 'filesystem-mcp';
   readonly name = 'Filesystem MCP';
-  readonly description = 'File system access via MCP running in Docker runtime';
+  readonly description =
+    'File system access via MCP (requires Docker runtime type)';
   readonly schema = FilesystemMcpTemplateSchema;
 
   readonly inputs = [
@@ -84,7 +85,7 @@ export class FilesystemMcpTemplate extends McpNodeBaseTemplate<
 
         if (!runtimeNodeId) {
           throw new Error(
-            'Filesystem MCP requires a Docker Runtime connection',
+            'Filesystem MCP requires a Runtime node with Docker type',
           );
         }
 

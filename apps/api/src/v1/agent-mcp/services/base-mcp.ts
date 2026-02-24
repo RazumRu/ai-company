@@ -135,7 +135,7 @@ export abstract class BaseMcp<TConfig = unknown> {
 
   /**
    * Setup: Initialize SDK client with DockerExecTransport
-   * Runs MCP server command inside the connected Docker runtime
+   * Runs MCP server command inside the connected Runtime (Docker type)
    */
   public async setup(config: TConfig, runtime: BaseRuntime): Promise<Client> {
     this.config = config;

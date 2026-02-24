@@ -19,6 +19,7 @@
     "test:e2e": "turbo run test:e2e --concurrency=1",
     "test:e2e:local": "turbo run test:e2e:local",
     "commit": "pnpm cz",
+    "build:runtime": "./scripts/build-runtime.sh",
     "deps:up": "podman compose up -d",
     "deps:down": "podman compose down",
     "local-llm:install": "./scripts/install-local-models.sh",

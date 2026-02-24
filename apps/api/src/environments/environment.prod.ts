@@ -97,7 +97,10 @@ export const environment = () =>
 
     // LLM model defaults for tools (do not override per-call)
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),
-    dockerRuntimeImage: getEnv('DOCKER_RUNTIME_IMAGE', 'geniro-runtime:latest'),
+    dockerRuntimeImage: getEnv(
+      'DOCKER_RUNTIME_IMAGE',
+      'razumru/geniro-runtime:latest',
+    ),
     dockerRegistryMirror: getEnv('DOCKER_REGISTRY_MIRROR'),
     dockerInsecureRegistry: getEnv('DOCKER_INSECURE_REGISTRY'),
 
@@ -108,7 +111,6 @@ export const environment = () =>
     daytonaApiKey: getEnv('DAYTONA_API_KEY', ''),
     daytonaApiUrl: getEnv('DAYTONA_API_URL', ''),
     daytonaTarget: getEnv('DAYTONA_TARGET', ''),
-    daytonaDefaultSnapshot: getEnv('DAYTONA_DEFAULT_SNAPSHOT', ''),
 
     restoreGraphs: getEnv('RESTORE_GRAPHS', true),
     runtimeCleanupIntervalMs: +getEnv('RUNTIME_CLEANUP_INTERVAL_MS', '300000'),

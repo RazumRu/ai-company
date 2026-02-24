@@ -9,7 +9,7 @@ import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { RuntimeNodeBaseTemplate } from '../base-node.template';
 
-const CommonFieldsSchema = z.object({
+const CommonFieldsShape = {
   env: z
     .record(z.string(), z.string())
     .optional()
@@ -25,7 +25,7 @@ const CommonFieldsSchema = z.object({
     .default(600_000)
     .optional()
     .describe(`Timeout in milliseconds for initialization script execution`),
-});
+};
 
 const DockerBranchSchema = z
   .object({
@@ -38,7 +38,7 @@ const DockerBranchSchema = z
       .optional()
       .describe('Docker labels'),
   })
-  .merge(CommonFieldsSchema)
+  .extend(CommonFieldsShape)
   .strip();
 
 const DaytonaBranchSchema = z
@@ -52,7 +52,7 @@ const DaytonaBranchSchema = z
       .optional()
       .describe('Sandbox labels'),
   })
-  .merge(CommonFieldsSchema)
+  .extend(CommonFieldsShape)
   .strip();
 
 export const RuntimeTemplateSchema = z.discriminatedUnion('runtimeType', [
@@ -61,11 +61,6 @@ export const RuntimeTemplateSchema = z.discriminatedUnion('runtimeType', [
 ]);
 
 export type RuntimeTemplateSchemaType = z.infer<typeof RuntimeTemplateSchema>;
-
-/** @deprecated Use `RuntimeTemplateSchema` instead. */
-export const DockerRuntimeTemplateSchema = RuntimeTemplateSchema;
-/** @deprecated Use `RuntimeTemplateSchemaType` instead. */
-export type DockerRuntimeTemplateSchemaType = RuntimeTemplateSchemaType;
 
 @Injectable()
 @RegisterTemplate()
@@ -139,6 +134,3 @@ export class RuntimeTemplate extends RuntimeNodeBaseTemplate<
     };
   }
 }
-
-/** @deprecated Use `RuntimeTemplate` instead. */
-export const DockerRuntimeTemplate = RuntimeTemplate;

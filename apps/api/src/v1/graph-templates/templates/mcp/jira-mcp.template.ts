@@ -39,7 +39,7 @@ export class JiraMcpTemplate extends McpNodeBaseTemplate<
   readonly id = 'jira-mcp';
   readonly name = 'Jira MCP';
   readonly description =
-    'Jira integration via remote MCP running in Docker runtime';
+    'Jira integration via remote MCP (requires Docker runtime type)';
   readonly schema = JiraMcpTemplateSchema;
 
   readonly inputs = [
@@ -76,7 +76,7 @@ export class JiraMcpTemplate extends McpNodeBaseTemplate<
         });
 
         if (!runtimeNodeId) {
-          throw new Error('Jira MCP requires a Docker Runtime connection');
+          throw new Error('Jira MCP requires a Runtime node with Docker type');
         }
 
         // Validate that runtime exists immediately during configuration

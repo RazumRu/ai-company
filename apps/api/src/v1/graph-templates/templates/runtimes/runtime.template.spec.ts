@@ -8,7 +8,31 @@ import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-
 import {
   RuntimeTemplate,
   RuntimeTemplateSchema,
-} from './docker-runtime.template';
+  type RuntimeTemplateSchemaType,
+} from './runtime.template';
+
+// Zod 4 discriminatedUnion's z.infer exposes internal metadata fields
+// (~standard, shape, etc.) that prevent plain objects from satisfying the
+// generic constraint in GraphNode<RuntimeTemplateSchemaType>. We define a
+// plain-object mirror of the schema output and cast where the Zod internal
+// type leaks into test call-sites.
+interface DockerRuntimeConfig {
+  runtimeType: RuntimeType.Docker;
+  labels?: Record<string, string>;
+  env?: Record<string, string>;
+  initScript?: string | string[];
+  initScriptTimeoutMs?: number;
+}
+
+interface DaytonaRuntimeConfig {
+  runtimeType: RuntimeType.Daytona;
+  labels?: Record<string, string>;
+  env?: Record<string, string>;
+  initScript?: string | string[];
+  initScriptTimeoutMs?: number;
+}
+
+type TestRuntimeConfig = DockerRuntimeConfig | DaytonaRuntimeConfig;
 
 describe('RuntimeTemplate', () => {
   let template: RuntimeTemplate;
@@ -45,7 +69,7 @@ describe('RuntimeTemplate', () => {
         unexpected: 'value',
       };
 
-      const parsed = RuntimeTemplateSchema.parse(config);
+      const parsed = RuntimeTemplateSchema.parse(config) as TestRuntimeConfig;
       expect(parsed.runtimeType).toBe(RuntimeType.Docker);
       expect(parsed).not.toHaveProperty('unexpected');
     });
@@ -57,7 +81,7 @@ describe('RuntimeTemplate', () => {
         env: { NODE_ENV: 'production' },
       };
 
-      const parsed = RuntimeTemplateSchema.parse(config);
+      const parsed = RuntimeTemplateSchema.parse(config) as TestRuntimeConfig;
       expect(parsed.runtimeType).toBe(RuntimeType.Daytona);
       expect(parsed.labels).toEqual({ team: 'backend' });
       expect(parsed.env).toEqual({ NODE_ENV: 'production' });
@@ -87,8 +111,12 @@ describe('RuntimeTemplate', () => {
         initScriptTimeoutMs: 60000,
       };
 
-      const parsedDocker = RuntimeTemplateSchema.parse(dockerConfig);
-      const parsedDaytona = RuntimeTemplateSchema.parse(daytonaConfig);
+      const parsedDocker = RuntimeTemplateSchema.parse(
+        dockerConfig,
+      ) as TestRuntimeConfig;
+      const parsedDaytona = RuntimeTemplateSchema.parse(
+        daytonaConfig,
+      ) as TestRuntimeConfig;
 
       expect(parsedDocker.env).toEqual({ FOO: 'bar' });
       expect(parsedDocker.initScript).toBe('echo hello');
@@ -99,8 +127,8 @@ describe('RuntimeTemplate', () => {
 
   describe('create', () => {
     it('should provide runtime thread provider with Docker type', async () => {
-      const config = {
-        runtimeType: RuntimeType.Docker as const,
+      const config: DockerRuntimeConfig = {
+        runtimeType: RuntimeType.Docker,
         initScriptTimeoutMs: 60_000,
       };
 
@@ -113,25 +141,30 @@ describe('RuntimeTemplate', () => {
       };
 
       const handle = await template.create();
-      const init: GraphNode<typeof config> = {
+      const init: GraphNode<TestRuntimeConfig> = {
         config,
         inputNodeIds: new Set(),
         outputNodeIds: new Set(),
         metadata,
       };
 
-      const instance = await handle.provide(init);
+      const instance = await handle.provide(
+        init as GraphNode<RuntimeTemplateSchemaType>,
+      );
       expect(instance).toBeInstanceOf(RuntimeThreadProvider);
       const providerParams = (instance as RuntimeThreadProvider).getParams();
       expect(providerParams.type).toBe(RuntimeType.Docker);
       expect(runtimeProvider.provide).not.toHaveBeenCalled();
 
-      await handle.configure(init, instance);
+      await handle.configure(
+        init as GraphNode<RuntimeTemplateSchemaType>,
+        instance,
+      );
     });
 
     it('should pass correct RuntimeType for Daytona config', async () => {
-      const config = {
-        runtimeType: RuntimeType.Daytona as const,
+      const config: DaytonaRuntimeConfig = {
+        runtimeType: RuntimeType.Daytona,
       };
 
       const metadata = {
@@ -143,14 +176,16 @@ describe('RuntimeTemplate', () => {
       };
 
       const handle = await template.create();
-      const init: GraphNode<typeof config> = {
+      const init: GraphNode<TestRuntimeConfig> = {
         config,
         inputNodeIds: new Set(),
         outputNodeIds: new Set(),
         metadata,
       };
 
-      const instance = await handle.provide(init);
+      const instance = await handle.provide(
+        init as GraphNode<RuntimeTemplateSchemaType>,
+      );
       expect(instance).toBeInstanceOf(RuntimeThreadProvider);
       const providerParams = (instance as RuntimeThreadProvider).getParams();
       expect(providerParams.type).toBe(RuntimeType.Daytona);

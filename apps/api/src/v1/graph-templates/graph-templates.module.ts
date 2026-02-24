@@ -21,7 +21,7 @@ import { FilesystemMcpTemplate } from './templates/mcp/filesystem-mcp.template';
 import { JiraMcpTemplate } from './templates/mcp/jira-mcp.template';
 import { PlaywrightMcpTemplate } from './templates/mcp/playwright-mcp.template';
 import { GithubResourceTemplate } from './templates/resources/github-resource.template';
-import { RuntimeTemplate } from './templates/runtimes/docker-runtime.template';
+import { RuntimeTemplate } from './templates/runtimes/runtime.template';
 import { AgentCommunicationToolTemplate } from './templates/tools/agent-communication-tool.template';
 import { FilesToolTemplate } from './templates/tools/files-tool.template';
 import { GhToolTemplate } from './templates/tools/gh-tool.template';

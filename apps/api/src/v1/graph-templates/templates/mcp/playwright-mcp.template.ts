@@ -35,7 +35,7 @@ export class PlaywrightMcpTemplate extends McpNodeBaseTemplate<
   readonly id = 'playwright-mcp';
   readonly name = 'Playwright MCP';
   readonly description =
-    'Browser automation via Playwright MCP running in Docker runtime';
+    'Browser automation via Playwright MCP (requires Docker runtime type)';
   readonly schema = PlaywrightMcpTemplateSchema;
 
   readonly inputs = [
@@ -74,7 +74,7 @@ export class PlaywrightMcpTemplate extends McpNodeBaseTemplate<
 
         if (!runtimeNodeId) {
           throw new Error(
-            'Playwright MCP requires a Docker Runtime connection',
+            'Playwright MCP requires a Runtime node with Docker type',
           );
         }
 

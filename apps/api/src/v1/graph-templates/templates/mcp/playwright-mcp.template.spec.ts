@@ -241,7 +241,9 @@ describe('PlaywrightMcpTemplate', () => {
 
       await expect(
         handle.configure(init, instance as PlaywrightMcp),
-      ).rejects.toThrow('Playwright MCP requires a Docker Runtime connection');
+      ).rejects.toThrow(
+        'Playwright MCP requires a Runtime node with Docker type',
+      );
     });
 
     it('should throw error when runtime instance is not found', async () => {

@@ -1,3 +1,4 @@
 {
-  "insecure-registries": ["daytona-registry:5000"]
+  "insecure-registries": ["registry-mirror:5000"],
+  "registry-mirrors": ["http://registry-mirror:5000"]
 }

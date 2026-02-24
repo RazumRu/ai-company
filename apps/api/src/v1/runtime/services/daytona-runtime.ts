@@ -51,8 +51,7 @@ export class DaytonaRuntime extends BaseRuntime {
       apiKey: '',
       apiUrl: '',
     };
-    this.snapshot =
-      params?.snapshot || environment.daytonaDefaultSnapshot || '';
+    this.snapshot = params?.snapshot || environment.dockerRuntimeImage || '';
     this.logger = params?.logger;
   }
 
