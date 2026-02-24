@@ -79,12 +79,12 @@ describe('Graphs E2E', () => {
           nodes: [
             {
               id: 'duplicate-id',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
             {
               id: 'duplicate-id',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
           ],
@@ -130,7 +130,7 @@ describe('Graphs E2E', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
           ],
@@ -160,7 +160,7 @@ describe('Graphs E2E', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
           ],
@@ -190,7 +190,7 @@ describe('Graphs E2E', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { invalidConfig: 'invalid' },
             },
           ],

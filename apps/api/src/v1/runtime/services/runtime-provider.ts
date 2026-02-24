@@ -16,6 +16,7 @@ import {
   RuntimeType,
 } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
+import { DaytonaRuntime, DaytonaRuntimeConfig } from './daytona-runtime';
 import { DockerRuntime } from './docker-runtime';
 
 export type ProvideRuntimeResult<T extends BaseRuntime> = {
@@ -38,16 +39,45 @@ export class RuntimeProvider {
     switch (type) {
       case RuntimeType.Docker:
         return { socketPath: environment.dockerSocket };
+      case RuntimeType.Daytona:
+        return {
+          apiKey: environment.daytonaApiKey,
+          apiUrl: environment.daytonaApiUrl,
+          target: environment.daytonaTarget,
+        };
     }
   }
 
-  protected resolveRuntimeByType(type: RuntimeType): BaseRuntime | undefined {
-    const config = this.resolveRuntimeConfigByType(type);
+  private resolveDaytonaConfig(): DaytonaRuntimeConfig {
+    return {
+      apiKey: environment.daytonaApiKey as string,
+      apiUrl: environment.daytonaApiUrl as string,
+      target: environment.daytonaTarget as string,
+    };
+  }
 
+  protected resolveRuntimeByType(type: RuntimeType): BaseRuntime | undefined {
     switch (type) {
       case RuntimeType.Docker:
-        return new DockerRuntime(config, { logger: this.logger });
+        return new DockerRuntime(this.resolveRuntimeConfigByType(type), {
+          logger: this.logger,
+        });
+      case RuntimeType.Daytona:
+        return new DaytonaRuntime(this.resolveDaytonaConfig(), {
+          logger: this.logger,
+        });
     }
+  }
+
+  public getDefaultRuntimeType(): RuntimeType {
+    const configured = environment.defaultRuntimeType;
+    if (
+      Boolean(configured) &&
+      Object.values(RuntimeType).includes(configured as RuntimeType)
+    ) {
+      return configured as RuntimeType;
+    }
+    return RuntimeType.Docker;
   }
 
   async provide<T extends BaseRuntime>(
@@ -129,6 +159,13 @@ export class RuntimeProvider {
           await DockerRuntime.stopByName(instance.containerName, config).catch(
             () => undefined,
           );
+          break;
+        case RuntimeType.Daytona:
+          await DaytonaRuntime.stopByName(
+            instance.containerName,
+            this.resolveDaytonaConfig(),
+          ).catch(() => undefined);
+          break;
       }
     }
 

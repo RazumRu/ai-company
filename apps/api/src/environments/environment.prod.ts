@@ -100,6 +100,16 @@ export const environment = () =>
     dockerRuntimeImage: getEnv('DOCKER_RUNTIME_IMAGE', 'geniro-runtime:latest'),
     dockerRegistryMirror: getEnv('DOCKER_REGISTRY_MIRROR'),
     dockerInsecureRegistry: getEnv('DOCKER_INSECURE_REGISTRY'),
+
+    // --- Runtime provider ---
+    defaultRuntimeType: getEnv('DEFAULT_RUNTIME_TYPE', 'Docker'),
+
+    // --- Daytona runtime ---
+    daytonaApiKey: getEnv('DAYTONA_API_KEY', ''),
+    daytonaApiUrl: getEnv('DAYTONA_API_URL', ''),
+    daytonaTarget: getEnv('DAYTONA_TARGET', ''),
+    daytonaDefaultSnapshot: getEnv('DAYTONA_DEFAULT_SNAPSHOT', ''),
+
     restoreGraphs: getEnv('RESTORE_GRAPHS', true),
     runtimeCleanupIntervalMs: +getEnv('RUNTIME_CLEANUP_INTERVAL_MS', '300000'),
     runtimeIdleThresholdMs: +getEnv('RUNTIME_IDLE_THRESHOLD_MS', '1800000'),

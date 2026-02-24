@@ -1319,7 +1319,7 @@ describe('Graph Revisions Integration Tests', () => {
               },
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: environment.dockerRuntimeImage,
@@ -1461,7 +1461,7 @@ describe('Graph Revisions Integration Tests', () => {
               },
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: environment.dockerRuntimeImage,
@@ -1606,7 +1606,7 @@ describe('Graph Revisions Integration Tests', () => {
               },
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: environment.dockerRuntimeImage,
@@ -1771,7 +1771,7 @@ describe('Graph Revisions Integration Tests', () => {
         });
         updatedSchema.nodes.push({
           id: 'runtime-1',
-          template: 'docker-runtime',
+          template: 'runtime',
           config: {
             runtimeType: 'Docker',
             image: environment.dockerRuntimeImage,
@@ -1897,7 +1897,7 @@ describe('Graph Revisions Integration Tests', () => {
               },
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: environment.dockerRuntimeImage,
@@ -2012,7 +2012,7 @@ describe('Graph Revisions Integration Tests', () => {
             nodes: [
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: environment.dockerRuntimeImage,
@@ -2161,7 +2161,7 @@ describe('Graph Revisions Integration Tests', () => {
               },
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: environment.dockerRuntimeImage,
@@ -2363,7 +2363,7 @@ describe('Graph Revisions Integration Tests', () => {
               },
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: environment.dockerRuntimeImage,

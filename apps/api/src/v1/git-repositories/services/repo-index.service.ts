@@ -9,7 +9,6 @@ import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
-import { RuntimeType } from '../../runtime/runtime.types';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { shQuote } from '../../utils/shell.utils';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
@@ -786,7 +785,7 @@ export class RepoIndexService implements OnModuleInit {
         graphId,
         runtimeNodeId,
         threadId,
-        type: RuntimeType.Docker,
+        type: this.runtimeProvider.getDefaultRuntimeType(),
         temporary: true,
         runtimeStartParams: {},
       });
@@ -963,7 +962,7 @@ export class RepoIndexService implements OnModuleInit {
             graphId,
             runtimeNodeId,
             threadId,
-            type: RuntimeType.Docker,
+            type: this.runtimeProvider.getDefaultRuntimeType(),
           })
           .catch((err: unknown) => {
             this.logger.warn(

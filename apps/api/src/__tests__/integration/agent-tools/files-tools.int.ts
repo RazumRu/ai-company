@@ -1633,7 +1633,7 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
           },
           {
             id: 'runtime-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: {
               runtimeType: 'Docker',
               image: environment.dockerRuntimeImage,

@@ -186,7 +186,7 @@ describe('Graph Resources Integration Tests', () => {
       },
       {
         id: RUNTIME_NODE_ID,
-        template: 'docker-runtime',
+        template: 'runtime',
         config: {
           runtimeType: 'Docker',
           image: 'node:20',

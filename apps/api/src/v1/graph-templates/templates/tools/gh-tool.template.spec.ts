@@ -224,7 +224,7 @@ describe('GhToolTemplate', () => {
           return buildMockNode({
             id: mockRuntimeId,
             type: NodeKind.Runtime,
-            template: 'docker-runtime',
+            template: 'runtime',
             instance: mockRuntimeThreadProvider,
             config: { runtimeType: RuntimeType.Docker },
           });

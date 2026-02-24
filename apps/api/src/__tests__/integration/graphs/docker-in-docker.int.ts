@@ -189,7 +189,7 @@ describe('Docker Runtime Integration', () => {
         },
         {
           id: DOCKER_RUNTIME_NODE_ID,
-          template: 'docker-runtime',
+          template: 'runtime',
           config: {
             runtimeType: 'Docker',
             image: DOCKER_DIND_IMAGE,
@@ -268,7 +268,7 @@ describe('Docker Runtime Integration', () => {
         (node: GraphNodeSchemaType) => node.id === DOCKER_RUNTIME_NODE_ID,
       );
       expect(runtimeNode).toBeDefined();
-      expect(runtimeNode?.template).toBe('docker-runtime');
+      expect(runtimeNode?.template).toBe('runtime');
       expect(runtimeNode?.config.image).toBe(DOCKER_DIND_IMAGE);
 
       const runResponse = await graphsService.run(contextDataStorage, graphId);
