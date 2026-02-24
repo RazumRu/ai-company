@@ -9,7 +9,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { OnlyForAuthorized } from '@packages/http-server';
+import {
+  AuthContextStorage,
+  CtxStorage,
+  OnlyForAuthorized,
+} from '@packages/http-server';
 
 import {
   GetMessagesQueryDto,
@@ -29,67 +33,89 @@ export class ThreadsController {
   constructor(private readonly threadsService: ThreadsService) {}
 
   @Get()
-  async getThreads(@Query() query: GetThreadsQueryDto): Promise<ThreadDto[]> {
-    return this.threadsService.getThreads(query);
+  async getThreads(
+    @Query() query: GetThreadsQueryDto,
+    @CtxStorage() ctx: AuthContextStorage,
+  ): Promise<ThreadDto[]> {
+    return this.threadsService.getThreads(ctx, query);
   }
 
   @Get(':threadId')
-  async getThreadById(@Param('threadId') threadId: string): Promise<ThreadDto> {
-    return this.threadsService.getThreadById(threadId);
+  async getThreadById(
+    @Param('threadId') threadId: string,
+    @CtxStorage() ctx: AuthContextStorage,
+  ): Promise<ThreadDto> {
+    return this.threadsService.getThreadById(ctx, threadId);
   }
 
   @Get('external/:externalThreadId')
   async getThreadByExternalId(
     @Param('externalThreadId') externalThreadId: string,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<ThreadDto> {
-    return this.threadsService.getThreadByExternalId(externalThreadId);
+    return this.threadsService.getThreadByExternalId(ctx, externalThreadId);
   }
 
   @Get(':threadId/messages')
   async getThreadMessages(
     @Param('threadId') threadId: string,
     @Query() query: GetMessagesQueryDto,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<ThreadMessageDto[]> {
-    return this.threadsService.getThreadMessages(threadId, query);
+    return this.threadsService.getThreadMessages(ctx, threadId, query);
   }
 
   @Get(':threadId/usage-statistics')
   async getThreadUsageStatistics(
     @Param('threadId') threadId: string,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<ThreadUsageStatisticsDto> {
-    return this.threadsService.getThreadUsageStatistics(threadId);
+    return this.threadsService.getThreadUsageStatistics(ctx, threadId);
   }
 
   @Put(':threadId/metadata')
   async setThreadMetadata(
     @Param('threadId') threadId: string,
     @Body() dto: SetThreadMetadataDto,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<ThreadDto> {
-    return this.threadsService.setMetadata(threadId, dto);
+    return this.threadsService.setMetadata(ctx, threadId, dto);
   }
 
   @Put('external/:externalThreadId/metadata')
   async setThreadMetadataByExternalId(
     @Param('externalThreadId') externalThreadId: string,
     @Body() dto: SetThreadMetadataDto,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<ThreadDto> {
-    return this.threadsService.setMetadataByExternalId(externalThreadId, dto);
+    return this.threadsService.setMetadataByExternalId(
+      ctx,
+      externalThreadId,
+      dto,
+    );
   }
 
   @Delete(':threadId')
-  async deleteThread(@Param('threadId') threadId: string): Promise<void> {
-    return this.threadsService.deleteThread(threadId);
+  async deleteThread(
+    @Param('threadId') threadId: string,
+    @CtxStorage() ctx: AuthContextStorage,
+  ): Promise<void> {
+    return this.threadsService.deleteThread(ctx, threadId);
   }
 
   @Post(':threadId/stop')
-  async stopThread(@Param('threadId') threadId: string): Promise<ThreadDto> {
-    return this.threadsService.stopThread(threadId);
+  async stopThread(
+    @Param('threadId') threadId: string,
+    @CtxStorage() ctx: AuthContextStorage,
+  ): Promise<ThreadDto> {
+    return this.threadsService.stopThread(ctx, threadId);
   }
 
   @Post('external/:externalThreadId/stop')
   async stopThreadByExternalId(
     @Param('externalThreadId') externalThreadId: string,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<ThreadDto> {
-    return this.threadsService.stopThreadByExternalId(externalThreadId);
+    return this.threadsService.stopThreadByExternalId(ctx, externalThreadId);
   }
 }

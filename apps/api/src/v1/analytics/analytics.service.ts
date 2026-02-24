@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AuthContextService } from '@packages/http-server';
+import { AuthContextStorage } from '@packages/http-server';
 
 import { AnalyticsDao } from './analytics.dao';
 import type {
@@ -12,13 +12,13 @@ import type {
 
 @Injectable()
 export class AnalyticsService {
-  constructor(
-    private readonly analyticsDao: AnalyticsDao,
-    private readonly authContext: AuthContextService,
-  ) {}
+  constructor(private readonly analyticsDao: AnalyticsDao) {}
 
-  async getOverview(query: AnalyticsQueryDto): Promise<AnalyticsOverviewDto> {
-    const userId = this.authContext.checkSub();
+  async getOverview(
+    ctx: AuthContextStorage,
+    query: AnalyticsQueryDto,
+  ): Promise<AnalyticsOverviewDto> {
+    const userId = ctx.checkSub();
 
     const params = {
       createdBy: userId,
@@ -38,9 +38,10 @@ export class AnalyticsService {
   }
 
   async getByGraph(
+    ctx: AuthContextStorage,
     query: AnalyticsByGraphQueryDto,
   ): Promise<AnalyticsByGraphResponseDto> {
-    const userId = this.authContext.checkSub();
+    const userId = ctx.checkSub();
 
     const rows = await this.analyticsDao.getByGraph({
       createdBy: userId,

@@ -101,7 +101,11 @@ describe('Graph Nodes Integration Tests', () => {
     timeoutMs = 120_000,
   ) => {
     return waitForCondition(
-      () => threadsService.getThreadByExternalId(externalThreadId),
+      () =>
+        threadsService.getThreadByExternalId(
+          contextDataStorage,
+          externalThreadId,
+        ),
       (thread) =>
         [
           ThreadStatus.Done,
@@ -115,8 +119,11 @@ describe('Graph Nodes Integration Tests', () => {
   const getThreadMessages = async (
     externalThreadId: string,
   ): Promise<ThreadMessageDto[]> => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-    return threadsService.getThreadMessages(thread.id);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
+    return threadsService.getThreadMessages(contextDataStorage, thread.id);
   };
 
   const extractRunId = (messages: ThreadMessageDto[]): string | undefined => {

@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import {
+  AgentEventType,
   AgentInvokeEvent,
   AgentMessageEvent,
   AgentNodeAdditionalMetadataUpdateEvent,
@@ -273,54 +274,72 @@ export class GraphStateManager {
     }
   }
 
+  /**
+   * Wraps an async callback so invocations are processed one at a time, in order.
+   * This restores the sequential processing guarantee that BullMQ provided:
+   * each agent event's notification pipeline completes before the next starts.
+   */
+  private createSequentialHandler<T>(
+    fn: (event: T) => Promise<void>,
+  ): (event: T) => Promise<void> {
+    let chain: Promise<void> = Promise.resolve();
+    return (event: T): Promise<void> => {
+      chain = chain.catch(() => {}).then(() => fn(event));
+      return chain;
+    };
+  }
+
   private attachAgentListeners(
     state: NodeState,
     node: CompiledGraphNode<SimpleAgent>,
   ) {
     const agent = node.instance;
 
-    const unsub = agent.subscribe(async (event) => {
-      try {
-        if (event.type === 'invoke') {
-          await this.handleAgentInvoke(state, event.data);
-          return;
-        }
-
-        if (event.type === 'message') {
-          await this.handleAgentMessage(event.data);
-          return;
-        }
-
-        if (event.type === 'stateUpdate') {
-          await this.handleAgentStateUpdate(event.data);
-          return;
-        }
-
-        if (event.type === 'run') {
-          await this.handleAgentRun(state, event.data);
-          return;
-        }
-
-        if (event.type === 'stop') {
-          await this.handleAgentStop(state, event.data);
-          return;
-        }
-
-        if (event.type === 'nodeAdditionalMetadataUpdate') {
-          const changed = this.handleMetadataUpdate(state, event.data);
-          if (!changed) {
+    const handler = this.createSequentialHandler(
+      async (event: AgentEventType) => {
+        try {
+          if (event.type === 'invoke') {
+            await this.handleAgentInvoke(state, event.data);
             return;
           }
-          this.emitNodeUpdate(
-            state,
-            event.data.metadata.threadId ?? undefined,
-            event.data.metadata.runId,
-          );
+
+          if (event.type === 'message') {
+            await this.handleAgentMessage(event.data);
+            return;
+          }
+
+          if (event.type === 'stateUpdate') {
+            await this.handleAgentStateUpdate(event.data);
+            return;
+          }
+
+          if (event.type === 'run') {
+            await this.handleAgentRun(state, event.data);
+            return;
+          }
+
+          if (event.type === 'stop') {
+            await this.handleAgentStop(state, event.data);
+            return;
+          }
+
+          if (event.type === 'nodeAdditionalMetadataUpdate') {
+            const changed = this.handleMetadataUpdate(state, event.data);
+            if (!changed) {
+              return;
+            }
+            this.emitNodeUpdate(
+              state,
+              event.data.metadata.threadId ?? undefined,
+              event.data.metadata.runId,
+            );
+          }
+        } catch (error) {
+          this.logger.error(error as Error, 'Error handling agent event');
         }
-      } catch (error) {
-        this.logger.error(error as Error, 'Error handling agent event');
-      }
-    });
+      },
+    );
+    const unsub = agent.subscribe(handler);
 
     this.addUnsubscriber(state.nodeId, unsub);
   }

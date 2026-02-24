@@ -534,7 +534,10 @@ describe('Socket Notifications Integration Tests', () => {
 
         await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(execution.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              execution.externalThreadId,
+            ),
           (thread) => thread.status === ThreadStatus.Running,
           { timeout: 60000, interval: 1000 },
         );
@@ -1057,7 +1060,7 @@ describe('Socket Notifications Integration Tests', () => {
         const persistedThread = await waitForCondition(
           () =>
             threadsService
-              .getThreadByExternalId(threadId)
+              .getThreadByExternalId(contextDataStorage, threadId)
               .catch(() => undefined),
           (thread): thread is ThreadDto => !!thread,
           { timeout: 60000, interval: 250 },
@@ -1249,6 +1252,7 @@ describe('Socket Notifications Integration Tests', () => {
           });
 
           const storedMessages = await threadsService.getThreadMessages(
+            contextDataStorage,
             persistedThread.id,
           );
 
@@ -1946,7 +1950,7 @@ describe('Socket Notifications Integration Tests', () => {
         await waitForCondition(
           () =>
             threadsService
-              .getThreadByExternalId(externalThreadId)
+              .getThreadByExternalId(contextDataStorage, externalThreadId)
               .catch(() => undefined),
           (thread) =>
             !!thread &&
@@ -2004,7 +2008,7 @@ describe('Socket Notifications Integration Tests', () => {
         await waitForCondition(
           () =>
             threadsService
-              .getThreadByExternalId(externalThreadId)
+              .getThreadByExternalId(contextDataStorage, externalThreadId)
               .catch(() => undefined),
           (thread) =>
             !!thread &&

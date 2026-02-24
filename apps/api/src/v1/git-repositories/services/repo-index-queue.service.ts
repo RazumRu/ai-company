@@ -45,6 +45,10 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
       maxRetriesPerRequest: null,
     });
 
+    this.redis.on('error', (err) => {
+      this.logger.error(err, 'Redis connection error');
+    });
+
     this.queue = new Queue<RepoIndexJobData>(this.queueName, {
       connection: this.redis,
       defaultJobOptions: {

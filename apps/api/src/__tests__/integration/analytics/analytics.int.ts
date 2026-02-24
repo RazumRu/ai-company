@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AnalyticsService } from '../../../v1/analytics/analytics.service';
@@ -9,6 +10,8 @@ import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Analytics (integration)', () => {
   let app: INestApplication;
@@ -98,7 +101,7 @@ describe('Analytics (integration)', () => {
 
   describe('getOverview', () => {
     it('returns zero totals when user has no data', async () => {
-      const result = await analyticsService.getOverview({});
+      const result = await analyticsService.getOverview(contextDataStorage, {});
 
       expect(result.totalThreads).toBe(0);
       expect(result.totalTokens).toBe(0);
@@ -132,7 +135,7 @@ describe('Analytics (integration)', () => {
         totalPrice: 0.05,
       });
 
-      const result = await analyticsService.getOverview({});
+      const result = await analyticsService.getOverview(contextDataStorage, {});
 
       // totalThreads includes ALL threads for the user (separate count)
       expect(result.totalThreads).toBeGreaterThanOrEqual(2);
@@ -162,7 +165,7 @@ describe('Analytics (integration)', () => {
         Date.now() + 730 * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      const result = await analyticsService.getOverview({
+      const result = await analyticsService.getOverview(contextDataStorage, {
         dateFrom: futureDate,
         dateTo: farFutureDate,
       });
@@ -174,7 +177,7 @@ describe('Analytics (integration)', () => {
 
   describe('getByGraph', () => {
     it('returns empty array when user has no data', async () => {
-      const result = await analyticsService.getByGraph({});
+      const result = await analyticsService.getByGraph(contextDataStorage, {});
       // Could have data from other tests, so just verify shape
       expect(result.graphs).toBeDefined();
       expect(Array.isArray(result.graphs)).toBe(true);
@@ -200,7 +203,7 @@ describe('Analytics (integration)', () => {
         totalPrice: 0.05,
       });
 
-      const result = await analyticsService.getByGraph({});
+      const result = await analyticsService.getByGraph(contextDataStorage, {});
 
       const entryA = result.graphs.find((g) => g.graphId === graphA.id);
       const entryB = result.graphs.find((g) => g.graphId === graphB.id);
@@ -242,7 +245,7 @@ describe('Analytics (integration)', () => {
         totalPrice: 0.05,
       });
 
-      const result = await analyticsService.getByGraph({
+      const result = await analyticsService.getByGraph(contextDataStorage, {
         graphId: graphA.id,
       });
 
@@ -267,7 +270,7 @@ describe('Analytics (integration)', () => {
         Date.now() + 365 * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      const result = await analyticsService.getByGraph({
+      const result = await analyticsService.getByGraph(contextDataStorage, {
         dateFrom: futureDate,
       });
 

@@ -1,6 +1,10 @@
 import { Body, Controller, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { OnlyForAuthorized } from '@packages/http-server';
+import {
+  AuthContextStorage,
+  CtxStorage,
+  OnlyForAuthorized,
+} from '@packages/http-server';
 
 import {
   KnowledgeContentSuggestionRequestDto,
@@ -26,16 +30,19 @@ export class AiSuggestionsController {
     @Param('graphId') graphId: string,
     @Param('nodeId') nodeId: string,
     @Body() dto: SuggestAgentInstructionsDto,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<SuggestAgentInstructionsResponseDto> {
-    return await this.aiSuggestionsService.suggest(graphId, nodeId, dto);
+    return await this.aiSuggestionsService.suggest(ctx, graphId, nodeId, dto);
   }
 
   @Post('graphs/:graphId/suggest-instructions')
   async suggestGraphInstructions(
     @Param('graphId') graphId: string,
     @Body() dto: SuggestGraphInstructionsDto,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<SuggestGraphInstructionsResponseDto> {
     return await this.aiSuggestionsService.suggestGraphInstructions(
+      ctx,
       graphId,
       dto,
     );
@@ -45,14 +52,16 @@ export class AiSuggestionsController {
   async analyzeThread(
     @Param('threadId') threadId: string,
     @Body() payload: ThreadAnalysisRequestDto,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<ThreadAnalysisResponseDto> {
-    return this.aiSuggestionsService.analyzeThread(threadId, payload);
+    return this.aiSuggestionsService.analyzeThread(ctx, threadId, payload);
   }
 
   @Post('knowledge-docs/suggest')
   async suggestKnowledgeContent(
     @Body() payload: KnowledgeContentSuggestionRequestDto,
+    @CtxStorage() ctx: AuthContextStorage,
   ): Promise<KnowledgeContentSuggestionResponseDto> {
-    return this.aiSuggestionsService.suggestKnowledgeContent(payload);
+    return this.aiSuggestionsService.suggestKnowledgeContent(ctx, payload);
   }
 }

@@ -62,10 +62,13 @@ describe('Finish Tool Integration Tests', () => {
     externalThreadId: string,
     timeoutMs = 120_000,
   ) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
 
     return waitForCondition(
-      () => threadsService.getThreadById(thread.id),
+      () => threadsService.getThreadById(contextDataStorage, thread.id),
       (t) =>
         [
           ThreadStatus.Done,
@@ -79,8 +82,14 @@ describe('Finish Tool Integration Tests', () => {
   const getThreadMessages = async (
     externalThreadId: string,
   ): Promise<ThreadMessageDto[]> => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-    const messages = await threadsService.getThreadMessages(thread.id);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
+    const messages = await threadsService.getThreadMessages(
+      contextDataStorage,
+      thread.id,
+    );
 
     return messages.sort(
       (a, b) =>

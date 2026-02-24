@@ -28,6 +28,10 @@ export class GraphRevisionQueueService
       maxRetriesPerRequest: null,
     });
 
+    this.redis.on('error', (err) => {
+      this.logger.error(err, 'Redis connection error');
+    });
+
     this.queue = new Queue<GraphRevisionJobData>(this.queueName, {
       connection: this.redis,
       defaultJobOptions: {

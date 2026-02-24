@@ -447,6 +447,33 @@ describe('AgentInvokeNotificationHandler', () => {
       });
     });
 
+    it('should not generate thread name when existing thread already has a name', async () => {
+      const mockGraph = createMockGraphEntity();
+      const existingThread = createMockThreadEntity({
+        name: 'Existing Thread Name',
+        externalThreadId: mockThreadId,
+      });
+      // Root thread execution: threadId === parentThreadId === externalThreadKey
+      const notification = createMockNotification({
+        threadId: mockThreadId,
+        parentThreadId: mockThreadId,
+        runId: existingThread.lastRunId,
+      });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(existingThread);
+      vi.spyOn(threadsDao, 'updateById');
+
+      await handler.handle(notification);
+
+      // Allow any fire-and-forget tasks to run
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(
+        threadNameGenerator.generateFromFirstUserMessage,
+      ).not.toHaveBeenCalled();
+    });
+
     it('should handle multiple agents in same execution with same parent thread', async () => {
       const mockGraph = createMockGraphEntity();
       const mockParentThread = createMockThreadEntity({

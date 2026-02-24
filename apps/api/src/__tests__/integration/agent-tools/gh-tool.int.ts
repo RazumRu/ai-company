@@ -74,10 +74,13 @@ describe('GitHub Tool Integration Tests', () => {
   };
 
   const waitForThreadCompletion = async (externalThreadId: string) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
 
     return waitForCondition(
-      () => threadsService.getThreadById(thread.id),
+      () => threadsService.getThreadById(contextDataStorage, thread.id),
       (currentThread) =>
         THREAD_COMPLETION_STATUSES.includes(currentThread.status),
       { timeout: 120_000, interval: 1_000 },
@@ -85,8 +88,11 @@ describe('GitHub Tool Integration Tests', () => {
   };
 
   const getThreadMessages = async (externalThreadId: string) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-    return threadsService.getThreadMessages(thread.id);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
+    return threadsService.getThreadMessages(contextDataStorage, thread.id);
   };
 
   type GhCloneThreadMessage = Extract<

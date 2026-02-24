@@ -112,7 +112,6 @@ export const createTestModule = async (
   const adapter = new FastifyAdapter();
 
   const app = moduleRef.createNestApplication(adapter);
-  app.enableShutdownHooks();
   await app.init();
 
   return app;

@@ -65,10 +65,13 @@ describe('Docker Runtime Integration', () => {
     externalThreadId: string,
     timeoutMs = 120000,
   ) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
 
     return waitForCondition(
-      () => threadsService.getThreadById(thread.id),
+      () => threadsService.getThreadById(contextDataStorage, thread.id),
       (t) =>
         [
           ThreadStatus.Done,
@@ -97,8 +100,11 @@ describe('Docker Runtime Integration', () => {
   const getThreadMessages = async (
     externalThreadId: string,
   ): Promise<ThreadMessageDto[]> => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-    return threadsService.getThreadMessages(thread.id);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
+    return threadsService.getThreadMessages(contextDataStorage, thread.id);
   };
 
   const findShellExecution = (messages: ThreadMessageDto[]) => {

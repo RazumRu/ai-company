@@ -1,5 +1,5 @@
-import { AuthContextService } from '@packages/http-server';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { AuthContextStorage } from '@packages/http-server';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mock } from 'vitest-mock-extended';
 
 import { AnalyticsDao } from './analytics.dao';
@@ -11,14 +11,15 @@ describe('AnalyticsService', () => {
 
   let service: AnalyticsService;
   let dao: ReturnType<typeof mock<AnalyticsDao>>;
-  let authContext: ReturnType<typeof mock<AuthContextService>>;
+
+  const mockCtx = {
+    checkSub: vi.fn().mockReturnValue(userId),
+  } as unknown as AuthContextStorage;
 
   beforeEach(() => {
     dao = mock<AnalyticsDao>();
-    authContext = mock<AuthContextService>();
-    authContext.checkSub.mockReturnValue(userId);
 
-    service = new AnalyticsService(dao, authContext);
+    service = new AnalyticsService(dao);
   });
 
   describe('getOverview', () => {
@@ -36,9 +37,9 @@ describe('AnalyticsService', () => {
       dao.countThreads.mockResolvedValue(42);
       dao.getTokenAggregates.mockResolvedValue(rawRow);
 
-      const result = await service.getOverview({});
+      const result = await service.getOverview(mockCtx, {});
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(dao.countThreads).toHaveBeenCalledWith({
         createdBy: userId,
         dateFrom: undefined,
@@ -68,7 +69,7 @@ describe('AnalyticsService', () => {
       const dateFrom = '2025-01-01T00:00:00Z';
       const dateTo = '2025-06-01T00:00:00Z';
 
-      await service.getOverview({ dateFrom, dateTo });
+      await service.getOverview(mockCtx, { dateFrom, dateTo });
 
       expect(dao.countThreads).toHaveBeenCalledWith({
         createdBy: userId,
@@ -96,7 +97,7 @@ describe('AnalyticsService', () => {
       dao.countThreads.mockResolvedValue(0);
       dao.getTokenAggregates.mockResolvedValue(zeroRow);
 
-      const result = await service.getOverview({});
+      const result = await service.getOverview(mockCtx, {});
 
       expect(result).toEqual({
         totalThreads: 0,
@@ -139,9 +140,9 @@ describe('AnalyticsService', () => {
 
       dao.getByGraph.mockResolvedValue(rows);
 
-      const result = await service.getByGraph({});
+      const result = await service.getByGraph(mockCtx, {});
 
-      expect(authContext.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkSub).toHaveBeenCalled();
       expect(dao.getByGraph).toHaveBeenCalledWith({
         createdBy: userId,
         dateFrom: undefined,
@@ -167,7 +168,7 @@ describe('AnalyticsService', () => {
       dao.getByGraph.mockResolvedValue([]);
 
       const graphId = 'graph-abc';
-      await service.getByGraph({ graphId });
+      await service.getByGraph(mockCtx, { graphId });
 
       expect(dao.getByGraph).toHaveBeenCalledWith({
         createdBy: userId,
@@ -180,7 +181,7 @@ describe('AnalyticsService', () => {
     it('should return empty array when no graphs have data', async () => {
       dao.getByGraph.mockResolvedValue([]);
 
-      const result = await service.getByGraph({});
+      const result = await service.getByGraph(mockCtx, {});
 
       expect(result.graphs).toEqual([]);
     });

@@ -202,8 +202,11 @@ describe('Thread Stop Execution Integration Tests', () => {
   };
 
   const getThreadMessagesByExternalId = async (externalThreadId: string) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-    return threadsService.getThreadMessages(thread.id, {
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
+    return threadsService.getThreadMessages(contextDataStorage, thread.id, {
       limit: 200,
       offset: 0,
     });
@@ -222,7 +225,11 @@ describe('Thread Stop Execution Integration Tests', () => {
     );
 
     const runningThread = await waitForCondition(
-      () => threadsService.getThreadByExternalId(execution.externalThreadId),
+      () =>
+        threadsService.getThreadByExternalId(
+          contextDataStorage,
+          execution.externalThreadId,
+        ),
       (t) => t.status === ThreadStatus.Running,
       { timeout: 30_000, interval: 1_000 },
     );
@@ -253,11 +260,15 @@ describe('Thread Stop Execution Integration Tests', () => {
     {
       label: 'stopThreadByExternalId',
       stop: async (threadId: string, externalThreadId: string) =>
-        threadsService.stopThreadByExternalId(externalThreadId),
+        threadsService.stopThreadByExternalId(
+          contextDataStorage,
+          externalThreadId,
+        ),
     },
     {
       label: 'stopThread (by internal id)',
-      stop: async (threadId: string) => threadsService.stopThread(threadId),
+      stop: async (threadId: string) =>
+        threadsService.stopThread(contextDataStorage, threadId),
     },
   ])(
     '$label aborts a running execution (ThreadUpdate stopped emitted by GraphStateManager)',
@@ -272,7 +283,8 @@ describe('Thread Stop Execution Integration Tests', () => {
       await stop(runningThread.id, execution.externalThreadId);
 
       const stoppedThread = await waitForCondition(
-        () => threadsService.getThreadById(runningThread.id),
+        () =>
+          threadsService.getThreadById(contextDataStorage, runningThread.id),
         (t) => t.status === ThreadStatus.Stopped,
         { timeout: 60_000, interval: 1_000 },
       );
@@ -312,7 +324,11 @@ describe('Thread Stop Execution Integration Tests', () => {
       );
 
       const runningThread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(execution1.externalThreadId),
+        () =>
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            execution1.externalThreadId,
+          ),
         (t) => t.status === ThreadStatus.Running,
         { timeout: 30_000, interval: 1_000 },
       );
@@ -323,10 +339,14 @@ describe('Thread Stop Execution Integration Tests', () => {
         { timeout: 30_000, interval: 1_000 },
       );
 
-      await threadsService.stopThreadByExternalId(execution1.externalThreadId);
+      await threadsService.stopThreadByExternalId(
+        contextDataStorage,
+        execution1.externalThreadId,
+      );
 
       await waitForCondition(
-        () => threadsService.getThreadById(runningThread.id),
+        () =>
+          threadsService.getThreadById(contextDataStorage, runningThread.id),
         (t) => t.status === ThreadStatus.Stopped,
         { timeout: 60_000, interval: 1_000 },
       );
@@ -354,17 +374,25 @@ describe('Thread Stop Execution Integration Tests', () => {
       expect(execution2.externalThreadId).toBe(execution1.externalThreadId);
 
       const completedThread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(execution2.externalThreadId),
+        () =>
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            execution2.externalThreadId,
+          ),
         (t) => t.status === ThreadStatus.Done,
         { timeout: 60_000, interval: 1_000 },
       );
 
       const messages = await waitForCondition(
         () =>
-          threadsService.getThreadMessages(completedThread.id, {
-            limit: 500,
-            offset: 0,
-          }),
+          threadsService.getThreadMessages(
+            contextDataStorage,
+            completedThread.id,
+            {
+              limit: 500,
+              offset: 0,
+            },
+          ),
         (msgs) => {
           const humanContents = msgs
             .filter((m) => m.message.role === 'human')

@@ -1,4 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { DefaultLogger } from '@packages/common';
 import { Job, Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 
@@ -12,11 +13,18 @@ export class RuntimeCleanupService implements OnModuleInit, OnModuleDestroy {
   private redis!: IORedis;
   private readonly queueName = `runtime-cleanup-${environment.env}`;
 
-  constructor(private readonly runtimeProvider: RuntimeProvider) {}
+  constructor(
+    private readonly runtimeProvider: RuntimeProvider,
+    private readonly logger: DefaultLogger,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     this.redis = new IORedis(environment.redisUrl, {
       maxRetriesPerRequest: null,
+    });
+
+    this.redis.on('error', (err) => {
+      this.logger.error(err, 'Redis connection error');
     });
 
     this.queue = new Queue(this.queueName, {

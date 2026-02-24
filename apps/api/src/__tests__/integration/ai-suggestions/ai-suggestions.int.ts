@@ -99,6 +99,7 @@ describe('AiSuggestionsController (integration)', () => {
         {
           userRequest: 'Shorten the instructions',
         } as SuggestAgentInstructionsDto,
+        contextDataStorage,
       );
 
       expect(response.instructions.length).toBeGreaterThan(0);
@@ -107,10 +108,15 @@ describe('AiSuggestionsController (integration)', () => {
 
     it('returns error for a non-running graph', async () => {
       await expect(
-        controller.suggestAgentInstructions(stoppedGraphId, 'agent-1', {
-          userRequest: 'Add safety notes',
-          threadId: 'thread-stopped',
-        } as SuggestAgentInstructionsDto),
+        controller.suggestAgentInstructions(
+          stoppedGraphId,
+          'agent-1',
+          {
+            userRequest: 'Add safety notes',
+            threadId: 'thread-stopped',
+          } as SuggestAgentInstructionsDto,
+          contextDataStorage,
+        ),
       ).rejects.toThrowError();
     });
 
@@ -124,6 +130,7 @@ describe('AiSuggestionsController (integration)', () => {
           runningGraphId,
           'agent-1',
           { userRequest: 'No thread provided' } as SuggestAgentInstructionsDto,
+          contextDataStorage,
         );
 
         expect(response.instructions.length).toBeGreaterThan(0);
@@ -292,9 +299,13 @@ describe('AiSuggestionsService (integration)', () => {
         },
       });
 
-      const result = await aiSuggestionsService.analyzeThread(thread.id, {
-        userInput: 'Please check tools',
-      });
+      const result = await aiSuggestionsService.analyzeThread(
+        contextDataStorage,
+        thread.id,
+        {
+          userInput: 'Please check tools',
+        },
+      );
 
       expect(result.analysis.length).toBeGreaterThan(0);
       expect(result.conversationId).toBeDefined();

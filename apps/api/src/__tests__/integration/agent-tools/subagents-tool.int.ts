@@ -106,10 +106,13 @@ describe('Subagents Tool Integration Tests', () => {
     externalThreadId: string,
     timeoutMs = 240_000,
   ) => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
 
     return waitForCondition(
-      () => threadsService.getThreadById(thread.id),
+      () => threadsService.getThreadById(contextDataStorage, thread.id),
       (currentThread) =>
         THREAD_COMPLETION_STATUSES.includes(currentThread.status),
       { timeout: timeoutMs, interval: 1_000 },
@@ -119,8 +122,11 @@ describe('Subagents Tool Integration Tests', () => {
   const getThreadMessages = async (
     externalThreadId: string,
   ): Promise<ThreadMessageDto[]> => {
-    const thread = await threadsService.getThreadByExternalId(externalThreadId);
-    return threadsService.getThreadMessages(thread.id);
+    const thread = await threadsService.getThreadByExternalId(
+      contextDataStorage,
+      externalThreadId,
+    );
+    return threadsService.getThreadMessages(contextDataStorage, thread.id);
   };
 
   const ensureGraphRunning = async (id: string) => {

@@ -192,17 +192,31 @@ export class OpenaiService {
   /**
    * Convenience wrapper that picks the right API (Responses vs Chat Completions)
    * for a JSON-schema-constrained request based on model capabilities.
+   *
+   * @param maxOutputTokens — upper limit on output tokens (including reasoning
+   *   tokens for reasoning models). Maps to `max_output_tokens` for the Responses
+   *   API and `max_tokens` for Chat Completions.
    */
   async jsonRequest<T>(
-    data: Omit<ResponseJsonData, 'json'>,
+    data: Omit<ResponseJsonData, 'json'> & { maxOutputTokens?: number },
   ): Promise<GenerateResult<T>> {
     const supportsResponsesApi = await this.litellmService.supportsResponsesApi(
       data.model,
     );
-    const payload: ResponseJsonData = { ...data, json: true as const };
-    return supportsResponsesApi
-      ? this.response<T>(payload)
-      : this.complete<T>(payload);
+    const { maxOutputTokens, ...rest } = data;
+    const payload: ResponseJsonData = { ...rest, json: true as const };
+
+    if (supportsResponsesApi) {
+      return this.response<T>(
+        payload,
+        maxOutputTokens ? { max_output_tokens: maxOutputTokens } : undefined,
+      );
+    }
+
+    return this.complete<T>(
+      payload,
+      maxOutputTokens ? { max_tokens: maxOutputTokens } : undefined,
+    );
   }
 
   async embeddings(args: EmbeddingsInput): Promise<EmbeddingsResult> {

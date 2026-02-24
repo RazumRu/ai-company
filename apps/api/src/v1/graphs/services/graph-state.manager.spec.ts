@@ -155,6 +155,73 @@ describe('GraphStateManager', () => {
     });
   });
 
+  describe('Sequential event processing', () => {
+    it('should process agent events sequentially (invoke completes before message starts)', async () => {
+      const agent: any = {
+        subscribe: vi.fn(),
+        getGraphNodeMetadata: vi.fn(),
+      };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
+
+      const node: CompiledGraphNode = {
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        config: {},
+        instance: agent,
+        handle: makeHandle(agent),
+      };
+
+      manager.registerNode('agent-1');
+      manager.attachGraphNode('agent-1', node);
+
+      const executionOrder: string[] = [];
+
+      // Make the invoke notification slow so we can detect if message waits for it
+      vi.mocked(notifications.emit).mockImplementation(async (event: any) => {
+        executionOrder.push(event.type);
+        if (event.type === NotificationEvent.AgentInvoke) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          executionOrder.push('invoke-done');
+        }
+        if (event.type === NotificationEvent.AgentMessage) {
+          executionOrder.push('message-done');
+        }
+      });
+
+      const commonConfig = {
+        configurable: {
+          graph_id: 'graph-1',
+          node_id: 'agent-1',
+          parent_thread_id: 'p1',
+        },
+      };
+
+      // Fire both events without awaiting — simulates synchronous EventEmitter.emit
+      const invokePromise = agentHandler({
+        type: 'invoke',
+        data: { threadId: 't1', messages: [], config: commonConfig },
+      });
+      const messagePromise = agentHandler({
+        type: 'message',
+        data: { threadId: 't1', messages: [], config: commonConfig },
+      });
+
+      await Promise.all([invokePromise, messagePromise]);
+
+      // Invoke must fully complete before message starts
+      const invokeDoneIdx = executionOrder.indexOf('invoke-done');
+      const messageStartIdx = executionOrder.indexOf(
+        NotificationEvent.AgentMessage,
+      );
+      expect(invokeDoneIdx).toBeLessThan(messageStartIdx);
+    });
+  });
+
   describe('Agent events', () => {
     it('should emit ThreadUpdate notification only for active threads on agent stop', async () => {
       const agent: any = {

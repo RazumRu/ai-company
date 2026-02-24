@@ -254,14 +254,18 @@ describe('Thread Management Integration Tests', () => {
     expectedCount: number,
   ) => {
     const thread = await waitForCondition(
-      () => threadsService.getThreadByExternalId(externalThreadId),
+      () =>
+        threadsService.getThreadByExternalId(
+          contextDataStorage,
+          externalThreadId,
+        ),
       (thread) => !!thread,
       { timeout: 60000 },
     );
 
     const messages = await waitForCondition(
       () =>
-        threadsService.getThreadMessages(thread.id, {
+        threadsService.getThreadMessages(contextDataStorage, thread.id, {
           limit: 100,
           offset: 0,
         }),
@@ -313,7 +317,7 @@ describe('Thread Management Integration Tests', () => {
         // Wait for both threads to be created in the database (may be more from other tests).
         const threads = await waitForCondition(
           () =>
-            threadsService.getThreads({
+            threadsService.getThreads(contextDataStorage, {
               graphId: basicGraphId,
               limit: 200,
               offset: 0,
@@ -382,7 +386,7 @@ describe('Thread Management Integration Tests', () => {
           ]),
         );
 
-        const threads = await threadsService.getThreads({
+        const threads = await threadsService.getThreads(contextDataStorage, {
           graphId: basicGraphId,
           limit: 500,
           offset: 0,
@@ -419,7 +423,7 @@ describe('Thread Management Integration Tests', () => {
 
         const threads = await waitForCondition(
           () =>
-            threadsService.getThreads({
+            threadsService.getThreads(contextDataStorage, {
               limit: 100,
               offset: 0,
             }),
@@ -455,7 +459,10 @@ describe('Thread Management Integration Tests', () => {
       const nonExistentThreadId = 'non-existent-graph-id:thread-id';
 
       await expect(
-        threadsService.getThreadByExternalId(nonExistentThreadId),
+        threadsService.getThreadByExternalId(
+          contextDataStorage,
+          nonExistentThreadId,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -499,7 +506,7 @@ describe('Thread Management Integration Tests', () => {
 
         const threads = await waitForCondition(
           () =>
-            threadsService.getThreads({
+            threadsService.getThreads(contextDataStorage, {
               graphId: multiAgentGraphId,
               limit: 200,
               offset: 0,
@@ -546,6 +553,7 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (thread) => !!thread,
@@ -557,7 +565,7 @@ describe('Thread Management Integration Tests', () => {
         // Wait for messages to be persisted (at least user message)
         const messages = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread.id, {
               limit: 100,
               offset: 0,
             }),
@@ -604,6 +612,7 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (thread) => !!thread,
@@ -613,7 +622,7 @@ describe('Thread Management Integration Tests', () => {
         // Wait for messages to exist
         await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread.id, {
               limit: 100,
               offset: 0,
             }),
@@ -622,6 +631,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const limitedMessages = await threadsService.getThreadMessages(
+          contextDataStorage,
           thread.id,
           {
             limit: 2,
@@ -687,6 +697,7 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (t) =>
@@ -700,7 +711,7 @@ describe('Thread Management Integration Tests', () => {
 
         const messages = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread.id, {
               limit: 200,
               offset: 0,
             }),
@@ -767,6 +778,7 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (thread) => !!thread,
@@ -776,7 +788,7 @@ describe('Thread Management Integration Tests', () => {
         // Wait for messages to be persisted
         await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread.id, {
               limit: 100,
               offset: 0,
             }),
@@ -792,10 +804,14 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(graphId);
 
         // Messages should still be retrievable after restart
-        const messages = await threadsService.getThreadMessages(thread.id, {
-          limit: 100,
-          offset: 0,
-        });
+        const messages = await threadsService.getThreadMessages(
+          contextDataStorage,
+          thread.id,
+          {
+            limit: 100,
+            offset: 0,
+          },
+        );
 
         expect(messages.length).toBeGreaterThanOrEqual(1);
 
@@ -847,6 +863,7 @@ describe('Thread Management Integration Tests', () => {
         const thread1 = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               thread1Result.externalThreadId,
             ),
           (thread) => !!thread,
@@ -856,6 +873,7 @@ describe('Thread Management Integration Tests', () => {
         const thread2 = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               thread2Result.externalThreadId,
             ),
           (thread) => !!thread,
@@ -865,7 +883,7 @@ describe('Thread Management Integration Tests', () => {
         // Wait for messages in both threads
         const thread1Messages = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread1.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread1.id, {
               limit: 100,
               offset: 0,
             }),
@@ -875,7 +893,7 @@ describe('Thread Management Integration Tests', () => {
 
         const thread2Messages = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread2.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread2.id, {
               limit: 100,
               offset: 0,
             }),
@@ -948,7 +966,10 @@ describe('Thread Management Integration Tests', () => {
 
         await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(secondResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              secondResult.externalThreadId,
+            ),
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
@@ -1042,7 +1063,10 @@ describe('Thread Management Integration Tests', () => {
 
         const thread = await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(secondResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              secondResult.externalThreadId,
+            ),
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
@@ -1050,6 +1074,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const threadMessages = await threadsService.getThreadMessages(
+          contextDataStorage,
           thread.id,
         );
 
@@ -1092,7 +1117,10 @@ describe('Thread Management Integration Tests', () => {
 
         const thread = await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(secondResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              secondResult.externalThreadId,
+            ),
           (entry) =>
             entry.status === ThreadStatus.Done ||
             entry.status === ThreadStatus.NeedMoreInfo,
@@ -1127,6 +1155,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const threadMessages = await threadsService.getThreadMessages(
+          contextDataStorage,
           thread.id,
         );
         expect(threadMessages[0]?.message.role).to.be.not.eq('human');
@@ -1171,7 +1200,10 @@ describe('Thread Management Integration Tests', () => {
 
         const completedThread = await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(secondResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              secondResult.externalThreadId,
+            ),
           (thread) =>
             thread.status === ThreadStatus.Done ||
             thread.status === ThreadStatus.NeedMoreInfo,
@@ -1201,6 +1233,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const threadMessages = await threadsService.getThreadMessages(
+          contextDataStorage,
           completedThread.id,
         );
         expect(threadMessages[0]?.message.role).to.be.not.eq('human');
@@ -1250,7 +1283,10 @@ describe('Thread Management Integration Tests', () => {
 
         const runningThread = await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(firstResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              firstResult.externalThreadId,
+            ),
           (thread) => thread.status === ThreadStatus.Running,
           { timeout: 30000 },
         );
@@ -1297,6 +1333,7 @@ describe('Thread Management Integration Tests', () => {
         const completedThread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               runningThread.externalThreadId,
             ),
           (entry) =>
@@ -1344,6 +1381,7 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (thread) => !!thread,
@@ -1351,11 +1389,14 @@ describe('Thread Management Integration Tests', () => {
         );
 
         // Delete the thread
-        await threadsService.deleteThread(thread.id);
+        await threadsService.deleteThread(contextDataStorage, thread.id);
 
         // Thread should no longer exist
         await expect(
-          threadsService.getThreadByExternalId(triggerResult.externalThreadId),
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            triggerResult.externalThreadId,
+          ),
         ).rejects.toThrow(NotFoundException);
       },
     );
@@ -1364,13 +1405,13 @@ describe('Thread Management Integration Tests', () => {
       const nonExistentThreadId = '00000000-0000-0000-0000-000000000000';
 
       await expect(
-        threadsService.deleteThread(nonExistentThreadId),
+        threadsService.deleteThread(contextDataStorage, nonExistentThreadId),
       ).rejects.toThrow(NotFoundException);
     });
 
     it(
       'should delete thread and all its messages in multi-agent scenario',
-      { timeout: 60000 },
+      { timeout: 120000 },
       async () => {
         await ensureGraphRunning(multiAgentGraphId);
         const threadSubId = uniqueThreadSubId('multi-agent-delete-test');
@@ -1382,6 +1423,7 @@ describe('Thread Management Integration Tests', () => {
           {
             messages: ['Multi-agent deletion test'],
             threadSubId,
+            async: true,
           },
         );
 
@@ -1389,31 +1431,35 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (thread) => !!thread,
-          { timeout: 10000 },
+          { timeout: 30000 },
         );
 
         // Wait for messages to be persisted
         const messagesBefore = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread.id, {
               limit: 100,
               offset: 0,
             }),
           (messages) => messages.length >= 1,
-          { timeout: 10000 },
+          { timeout: 30000 },
         );
 
         expect(messagesBefore.length).toBeGreaterThanOrEqual(1);
 
         // Delete the thread
-        await threadsService.deleteThread(thread.id);
+        await threadsService.deleteThread(contextDataStorage, thread.id);
 
         // Thread and all messages should be deleted
         await expect(
-          threadsService.getThreadByExternalId(triggerResult.externalThreadId),
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            triggerResult.externalThreadId,
+          ),
         ).rejects.toThrow(NotFoundException);
       },
     );
@@ -1437,7 +1483,10 @@ describe('Thread Management Integration Tests', () => {
       // Wait for thread to be created
       const thread = await waitForCondition(
         () =>
-          threadsService.getThreadByExternalId(triggerResult.externalThreadId),
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            triggerResult.externalThreadId,
+          ),
         (thread) => !!thread,
         { timeout: 10000 },
       );
@@ -1445,7 +1494,7 @@ describe('Thread Management Integration Tests', () => {
       // Wait for messages to be available
       await waitForCondition(
         () =>
-          threadsService.getThreadMessages(thread.id, {
+          threadsService.getThreadMessages(contextDataStorage, thread.id, {
             limit: 100,
             offset: 0,
           }),
@@ -1454,11 +1503,15 @@ describe('Thread Management Integration Tests', () => {
       );
 
       // Filter by specific nodeId
-      const agent1Messages = await threadsService.getThreadMessages(thread.id, {
-        limit: 100,
-        offset: 0,
-        nodeId: 'agent-1',
-      });
+      const agent1Messages = await threadsService.getThreadMessages(
+        contextDataStorage,
+        thread.id,
+        {
+          limit: 100,
+          offset: 0,
+          nodeId: 'agent-1',
+        },
+      );
 
       expect(agent1Messages.length).toBeGreaterThanOrEqual(0);
 
@@ -1489,6 +1542,7 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (thread) => !!thread,
@@ -1498,7 +1552,7 @@ describe('Thread Management Integration Tests', () => {
         // Wait for messages to be available
         const messages = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread.id, {
               limit: 100,
               offset: 0,
             }),
@@ -1539,6 +1593,7 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (thread) => {
@@ -1575,7 +1630,10 @@ describe('Thread Management Integration Tests', () => {
         // Wait for thread to be created and name to be generated
         const threadAfterFirst = await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(firstResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              firstResult.externalThreadId,
+            ),
           (thread) => {
             const name = (thread as { name?: string }).name;
             return !!thread && !!name && name !== '';
@@ -1599,12 +1657,16 @@ describe('Thread Management Integration Tests', () => {
         // Wait a bit for potential name update (which shouldn't happen)
         await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(firstResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              firstResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 5000 },
         );
 
         const threadAfterSecond = await threadsService.getThreadByExternalId(
+          contextDataStorage,
           firstResult.externalThreadId,
         );
         const secondName = (threadAfterSecond as { name?: string }).name;
@@ -1637,6 +1699,7 @@ describe('Thread Management Integration Tests', () => {
         const thread = await waitForCondition(
           () =>
             threadsService.getThreadByExternalId(
+              contextDataStorage,
               triggerResult.externalThreadId,
             ),
           (thread) => {
@@ -1693,7 +1756,10 @@ describe('Thread Management Integration Tests', () => {
         // Wait for thread to be created
         await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(execResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              execResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 5000 },
         );
@@ -1704,12 +1770,16 @@ describe('Thread Management Integration Tests', () => {
         // Wait for status update
         await waitForCondition(
           () =>
-            threadsService.getThreadByExternalId(execResult.externalThreadId),
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              execResult.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 5000 },
         );
 
         const thread = await threadsService.getThreadByExternalId(
+          contextDataStorage,
           execResult.externalThreadId,
         );
 
@@ -1790,7 +1860,7 @@ describe('Thread Management Integration Tests', () => {
         // Wait for both threads to be persisted (there may be more threads for this graph in the DB).
         const threads = await waitForCondition(
           () =>
-            threadsService.getThreads({
+            threadsService.getThreads(contextDataStorage, {
               graphId,
               limit: 200,
               offset: 0,
@@ -1880,7 +1950,11 @@ describe('Thread Management Integration Tests', () => {
         expect(exec2.externalThreadId).toBe(exec1.externalThreadId);
 
         const thread = await waitForCondition(
-          () => threadsService.getThreadByExternalId(exec2.externalThreadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              exec2.externalThreadId,
+            ),
           (t) => Boolean(t),
           { timeout: 15_000, interval: 500 },
         );
@@ -1888,7 +1962,7 @@ describe('Thread Management Integration Tests', () => {
         // Wait for messages to be available
         const messages = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread.id, {
               limit: 100,
               offset: 0,
             }),
@@ -1941,13 +2015,21 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for both threads to be created in the database
         const thread1 = await waitForCondition(
-          () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              exec1.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 15000 },
         );
 
         const thread2 = await waitForCondition(
-          () => threadsService.getThreadByExternalId(exec2.externalThreadId),
+          () =>
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              exec2.externalThreadId,
+            ),
           (thread) => !!thread,
           { timeout: 15000 },
         );
@@ -1964,7 +2046,7 @@ describe('Thread Management Integration Tests', () => {
 
         // Wait for both threads to complete
         const completedThread1 = await waitForCondition(
-          () => threadsService.getThreadById(thread1.id),
+          () => threadsService.getThreadById(contextDataStorage, thread1.id),
           (t) =>
             t.status === ThreadStatus.Done ||
             t.status === ThreadStatus.NeedMoreInfo,
@@ -1972,7 +2054,7 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const completedThread2 = await waitForCondition(
-          () => threadsService.getThreadById(thread2.id),
+          () => threadsService.getThreadById(contextDataStorage, thread2.id),
           (t) =>
             t.status === ThreadStatus.Done ||
             t.status === ThreadStatus.NeedMoreInfo,
@@ -1990,7 +2072,7 @@ describe('Thread Management Integration Tests', () => {
         // Get messages for both threads
         const messages1 = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread1.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread1.id, {
               limit: 100,
               offset: 0,
             }),
@@ -2000,7 +2082,7 @@ describe('Thread Management Integration Tests', () => {
 
         const messages2 = await waitForCondition(
           () =>
-            threadsService.getThreadMessages(thread2.id, {
+            threadsService.getThreadMessages(contextDataStorage, thread2.id, {
               limit: 100,
               offset: 0,
             }),
@@ -2039,8 +2121,14 @@ describe('Thread Management Integration Tests', () => {
         expect(content2).not.toContain('cats');
 
         // Verify thread names are set independently (if generated)
-        const finalThread1 = await threadsService.getThreadById(thread1.id);
-        const finalThread2 = await threadsService.getThreadById(thread2.id);
+        const finalThread1 = await threadsService.getThreadById(
+          contextDataStorage,
+          thread1.id,
+        );
+        const finalThread2 = await threadsService.getThreadById(
+          contextDataStorage,
+          thread2.id,
+        );
 
         // If names were generated, they should be different
         if (finalThread1.name && finalThread2.name) {

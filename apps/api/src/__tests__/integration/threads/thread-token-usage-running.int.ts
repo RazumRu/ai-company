@@ -21,7 +21,10 @@ describe('Thread token usage + cost from running graph state (integration)', () 
 
   // Helper function to get usage statistics for a thread
   const getUsageStatistics = async (threadId: string) => {
-    return await threadsService.getThreadUsageStatistics(threadId);
+    return await threadsService.getThreadUsageStatistics(
+      contextDataStorage,
+      threadId,
+    );
   };
 
   beforeAll(async () => {
@@ -117,7 +120,11 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       );
 
       const createdThread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(execution.externalThreadId),
+        () =>
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            execution.externalThreadId,
+          ),
         (t) => Boolean(t),
         { timeout: 30_000, interval: 1_000 },
       );
@@ -143,10 +150,14 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       // Message DTOs should include per-message tokenUsage (AI messages must not be null).
       const messagesWhileRunning = await waitForCondition(
         () =>
-          threadsService.getThreadMessages(createdThread.id, {
-            limit: 200,
-            offset: 0,
-          }),
+          threadsService.getThreadMessages(
+            contextDataStorage,
+            createdThread.id,
+            {
+              limit: 200,
+              offset: 0,
+            },
+          ),
         (msgs) =>
           msgs.some(
             (m) => m.message.role === 'ai' && m.requestTokenUsage !== null,
@@ -165,7 +176,8 @@ describe('Thread token usage + cost from running graph state (integration)', () 
 
       // Wait until execution reaches a terminal status so checkpoint state is persisted.
       await waitForCondition(
-        () => threadsService.getThreadById(createdThread.id),
+        () =>
+          threadsService.getThreadById(contextDataStorage, createdThread.id),
         (t) =>
           t.status === ThreadStatus.Done ||
           t.status === ThreadStatus.NeedMoreInfo,
@@ -199,10 +211,14 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       // Messages should still carry per-message tokenUsage after stop.
       const messagesAfterStop = await waitForCondition(
         () =>
-          threadsService.getThreadMessages(createdThread.id, {
-            limit: 200,
-            offset: 0,
-          }),
+          threadsService.getThreadMessages(
+            contextDataStorage,
+            createdThread.id,
+            {
+              limit: 200,
+              offset: 0,
+            },
+          ),
         (msgs) =>
           msgs.some(
             (m) => m.message.role === 'ai' && m.requestTokenUsage !== null,
@@ -273,7 +289,11 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       );
 
       const createdThread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        () =>
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            exec1.externalThreadId,
+          ),
         (t) => Boolean(t),
         { timeout: 30_000, interval: 1_000 },
       );
@@ -346,7 +366,8 @@ describe('Thread token usage + cost from running graph state (integration)', () 
 
       // Wait until the thread is terminal so checkpoint is persisted, then stop graph and re-check.
       await waitForCondition(
-        () => threadsService.getThreadById(createdThread.id),
+        () =>
+          threadsService.getThreadById(contextDataStorage, createdThread.id),
         (t) =>
           t.status === ThreadStatus.Done ||
           t.status === ThreadStatus.NeedMoreInfo,
@@ -454,7 +475,11 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       );
 
       const thread1 = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        () =>
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            exec1.externalThreadId,
+          ),
         (t) => Boolean(t),
         { timeout: 30_000, interval: 1_000 },
       );
@@ -462,7 +487,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       // Ensure the communication tool actually ran (so we hit the "nested agent" path).
       await waitForCondition(
         () =>
-          threadsService.getThreadMessages(thread1.id, {
+          threadsService.getThreadMessages(contextDataStorage, thread1.id, {
             limit: 300,
             offset: 0,
           }),
@@ -629,7 +654,11 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       );
 
       const thread = await waitForCondition(
-        () => threadsService.getThreadByExternalId(exec1.externalThreadId),
+        () =>
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            exec1.externalThreadId,
+          ),
         (t) => Boolean(t),
         { timeout: 30_000, interval: 1_000 },
       );
@@ -637,7 +666,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       // Wait for communication tool to execute
       await waitForCondition(
         () =>
-          threadsService.getThreadMessages(thread.id, {
+          threadsService.getThreadMessages(contextDataStorage, thread.id, {
             limit: 300,
             offset: 0,
           }),
@@ -679,7 +708,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
 
       // Wait for first run to complete
       await waitForCondition(
-        () => threadsService.getThreadById(thread.id),
+        () => threadsService.getThreadById(contextDataStorage, thread.id),
         (t) =>
           t.status === ThreadStatus.Done ||
           t.status === ThreadStatus.NeedMoreInfo,
@@ -709,7 +738,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
       // Wait for second communication tool execution
       await waitForCondition(
         () =>
-          threadsService.getThreadMessages(thread.id, {
+          threadsService.getThreadMessages(contextDataStorage, thread.id, {
             limit: 300,
             offset: 0,
           }),
@@ -773,7 +802,7 @@ describe('Thread token usage + cost from running graph state (integration)', () 
 
       // Wait for second run to complete
       await waitForCondition(
-        () => threadsService.getThreadById(thread.id),
+        () => threadsService.getThreadById(contextDataStorage, thread.id),
         (t) =>
           t.status === ThreadStatus.Done ||
           t.status === ThreadStatus.NeedMoreInfo,

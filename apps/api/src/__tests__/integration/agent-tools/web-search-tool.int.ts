@@ -1,4 +1,5 @@
 import { ToolMessage } from '@langchain/core/messages';
+import { AuthContextStorage } from '@packages/http-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
@@ -10,6 +11,8 @@ import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
+
+const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('Web search tool integration', () => {
   let messageTransformer: MessageTransformerService;
@@ -87,7 +90,10 @@ describe('Web search tool integration', () => {
       message: dto,
     });
 
-    const messages = await threadsService.getThreadMessages(createdThreadId);
+    const messages = await threadsService.getThreadMessages(
+      contextDataStorage,
+      createdThreadId,
+    );
     const storedTool = messages.find(
       (m: ThreadMessageDto) =>
         m.message.role === 'tool' && m.message.name === 'web_search',
