@@ -9,53 +9,73 @@ import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { RuntimeNodeBaseTemplate } from '../base-node.template';
 
-export const DockerRuntimeTemplateSchema = z
+const CommonFieldsSchema = z.object({
+  env: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe('Environment variables'),
+  initScript: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .describe('Initialization commands')
+    .meta({ 'x-ui:textarea': true }),
+  initScriptTimeoutMs: z
+    .number()
+    .positive()
+    .default(600_000)
+    .optional()
+    .describe(`Timeout in milliseconds for initialization script execution`),
+});
+
+const DockerBranchSchema = z
   .object({
     runtimeType: z
       .literal(RuntimeType.Docker)
       .meta({ 'x-ui:show-on-node': true })
       .meta({ 'x-ui:label': 'Runtime' }),
-    image: z
-      .string()
-      .optional()
-      .describe('Docker image to use. If not set - will use default image')
-      .meta({ 'x-ui:show-on-node': true })
-      .meta({ 'x-ui:label': 'Image' }),
-    env: z
-      .record(z.string(), z.string())
-      .optional()
-      .describe('Environment variables'),
     labels: z
       .record(z.string(), z.string())
       .optional()
       .describe('Docker labels'),
-    initScript: z
-      .union([z.string(), z.array(z.string())])
-      .optional()
-      .describe('Initialization commands')
-      .meta({ 'x-ui:textarea': true }),
-    initScriptTimeoutMs: z
-      .number()
-      .positive()
-      .default(600_000)
-      .optional()
-      .describe(`Timeout in milliseconds for initialization script execution`),
   })
+  .merge(CommonFieldsSchema)
   .strip();
 
-export type DockerRuntimeTemplateSchemaType = z.infer<
-  typeof DockerRuntimeTemplateSchema
->;
+const DaytonaBranchSchema = z
+  .object({
+    runtimeType: z
+      .literal(RuntimeType.Daytona)
+      .meta({ 'x-ui:show-on-node': true })
+      .meta({ 'x-ui:label': 'Runtime' }),
+    labels: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('Sandbox labels'),
+  })
+  .merge(CommonFieldsSchema)
+  .strip();
+
+export const RuntimeTemplateSchema = z.discriminatedUnion('runtimeType', [
+  DockerBranchSchema,
+  DaytonaBranchSchema,
+]);
+
+export type RuntimeTemplateSchemaType = z.infer<typeof RuntimeTemplateSchema>;
+
+/** @deprecated Use `RuntimeTemplateSchema` instead. */
+export const DockerRuntimeTemplateSchema = RuntimeTemplateSchema;
+/** @deprecated Use `RuntimeTemplateSchemaType` instead. */
+export type DockerRuntimeTemplateSchemaType = RuntimeTemplateSchemaType;
 
 @Injectable()
 @RegisterTemplate()
-export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
-  typeof DockerRuntimeTemplateSchema
+export class RuntimeTemplate extends RuntimeNodeBaseTemplate<
+  typeof RuntimeTemplateSchema
 > {
-  readonly id = 'docker-runtime';
-  readonly name = 'Docker';
-  readonly description = 'Docker runtime environment for executing code';
-  readonly schema = DockerRuntimeTemplateSchema;
+  readonly id = 'runtime';
+  readonly name = 'Runtime';
+  readonly description = 'Runtime environment for executing code';
+  readonly schema = RuntimeTemplateSchema;
 
   readonly inputs = [
     {
@@ -92,24 +112,24 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
 
   public async create() {
     return {
-      provide: async (params: GraphNode<DockerRuntimeTemplateSchemaType>) => {
+      provide: async (params: GraphNode<RuntimeTemplateSchemaType>) => {
         return new RuntimeThreadProvider(this.runtimeProvider, {
           graphId: params.metadata.graphId,
           runtimeNodeId: params.metadata.nodeId,
           runtimeStartParams: params.config,
-          type: RuntimeType.Docker,
+          type: params.config.runtimeType,
           temporary: params.metadata.temporary ?? false,
         });
       },
       configure: async (
-        params: GraphNode<DockerRuntimeTemplateSchemaType>,
+        params: GraphNode<RuntimeTemplateSchemaType>,
         instance: RuntimeThreadProvider,
       ) => {
         instance.setParams({
           graphId: params.metadata.graphId,
           runtimeNodeId: params.metadata.nodeId,
           runtimeStartParams: params.config,
-          type: RuntimeType.Docker,
+          type: params.config.runtimeType,
           temporary: params.metadata.temporary ?? false,
         });
       },
@@ -119,3 +139,6 @@ export class DockerRuntimeTemplate extends RuntimeNodeBaseTemplate<
     };
   }
 }
+
+/** @deprecated Use `RuntimeTemplate` instead. */
+export const DockerRuntimeTemplate = RuntimeTemplate;

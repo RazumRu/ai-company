@@ -51,6 +51,7 @@ export interface RuntimeExecResult {
 
 export enum RuntimeType {
   Docker = 'Docker',
+  Daytona = 'Daytona',
 }
 
 export enum RuntimeInstanceStatus {

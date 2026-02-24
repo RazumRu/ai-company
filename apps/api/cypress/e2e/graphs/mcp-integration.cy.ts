@@ -24,7 +24,7 @@ describe('MCP Integration E2E', () => {
           nodes: [
             {
               id: 'runtime-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: {
                 runtimeType: 'Docker',
               },

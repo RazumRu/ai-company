@@ -194,7 +194,7 @@ describe('ShellToolTemplate', () => {
           ? buildMockNode({
               id: mockRuntimeNodeId,
               type: NodeKind.Runtime,
-              template: 'docker-runtime',
+              template: 'runtime',
               instance: mockRuntimeThreadProvider,
               config: {
                 runtimeType: RuntimeType.Docker,
@@ -296,7 +296,7 @@ describe('ShellToolTemplate', () => {
           ? buildMockNode({
               id: customRuntimeId,
               type: NodeKind.Runtime,
-              template: 'docker-runtime',
+              template: 'runtime',
               instance: mockRuntimeThreadProvider,
               config: { runtimeType: RuntimeType.Docker },
             })
@@ -365,7 +365,7 @@ describe('ShellToolTemplate', () => {
             return buildMockNode({
               id: mockRuntimeNodeId,
               type: NodeKind.Runtime,
-              template: 'docker-runtime',
+              template: 'runtime',
               instance: mockRuntimeThreadProvider,
               config: { runtimeType: RuntimeType.Docker },
             });
@@ -414,7 +414,7 @@ describe('ShellToolTemplate', () => {
             return buildMockNode({
               id: mockRuntimeNodeId,
               type: NodeKind.Runtime,
-              template: 'docker-runtime',
+              template: 'runtime',
               instance: mockRuntimeThreadProvider,
               config: { runtimeType: RuntimeType.Docker },
             });
@@ -468,7 +468,7 @@ describe('ShellToolTemplate', () => {
             return buildMockNode({
               id: mockRuntimeNodeId,
               type: NodeKind.Runtime,
-              template: 'docker-runtime',
+              template: 'runtime',
               instance: mockRuntimeThreadProvider,
               config: { runtimeType: RuntimeType.Docker },
             });
@@ -543,7 +543,7 @@ describe('ShellToolTemplate', () => {
             return buildMockNode({
               id: mockRuntimeNodeId,
               type: NodeKind.Runtime,
-              template: 'docker-runtime',
+              template: 'runtime',
               instance: mockRuntimeThreadProvider,
               config: { runtimeType: RuntimeType.Docker },
             });

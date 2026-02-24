@@ -151,7 +151,7 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'runtime-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: { image: 'node:18' },
           },
         ],
@@ -186,7 +186,7 @@ describe('GraphCompiler', () => {
         nodes: [
           {
             id: 'runtime-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: {},
           },
           {
@@ -209,7 +209,7 @@ describe('GraphCompiler', () => {
 
       vi.mocked(templateRegistry.getTemplate).mockImplementation(
         (templateId) => {
-          if (templateId === 'docker-runtime') return runtimeTemplate;
+          if (templateId === 'runtime') return runtimeTemplate;
           if (templateId === 'shell-tool') return toolTemplate;
           return undefined;
         },
