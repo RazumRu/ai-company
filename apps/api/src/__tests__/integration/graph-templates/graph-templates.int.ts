@@ -41,7 +41,24 @@ describe('Graph Templates Integration Tests', () => {
   });
 
   afterAll(async () => {
+    // Suppress BullMQ Redis duplicate connection close errors during teardown.
+    // BullMQ internally duplicates the shared IORedis connection for Queue/Worker.
+    // These duplicates may reject pending commands during app shutdown, producing
+    // unhandled rejections that don't affect test correctness.
+    const suppressRedisClose = (reason: unknown) => {
+      if (
+        reason instanceof Error &&
+        reason.message === 'Connection is closed.'
+      ) {
+        return;
+      }
+      throw reason;
+    };
+    process.on('unhandledRejection', suppressRedisClose);
+
     await app.close();
+
+    process.removeListener('unhandledRejection', suppressRedisClose);
   });
 
   it('returns all registered templates sorted by kind and matching the public DTO schema', async () => {

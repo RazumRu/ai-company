@@ -20,6 +20,7 @@ const mockWorker = {
 
 const mockRedis = {
   quit: vi.fn().mockResolvedValue(undefined),
+  on: vi.fn(),
 };
 
 const mockLogger = {
