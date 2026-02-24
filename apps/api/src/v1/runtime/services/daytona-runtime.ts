@@ -305,6 +305,9 @@ export class DaytonaRuntime extends BaseRuntime {
 
       const exitCode = response.exitCode;
       const stdout = response.result ?? '';
+      // executeCommand returns a single `result` string with stdout and stderr
+      // interleaved. The SDK's ExecuteResponse type has no separate stderr field.
+      // Session-based execution (executeSessionCommand) does demux stdout/stderr.
       const stderr = '';
 
       const result: RuntimeExecResult = {
