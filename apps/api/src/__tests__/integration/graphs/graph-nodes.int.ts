@@ -219,7 +219,7 @@ describe('Graph Nodes Integration Tests', () => {
           nodes: [
             {
               id: 'runtime-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { runtimeType: 'Docker' },
             },
             {

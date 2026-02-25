@@ -139,7 +139,7 @@ describe('GraphStateManager', () => {
       const node: CompiledGraphNode<TestRuntime> = {
         id: 'runtime-1',
         type: NodeKind.Runtime,
-        template: 'docker-runtime',
+        template: 'runtime',
         config: {},
         instance: runtime,
         handle: makeHandle(runtime),
@@ -592,7 +592,7 @@ describe('GraphStateManager', () => {
       const node: CompiledGraphNode<TestRuntime> = {
         id: 'runtime-1',
         type: NodeKind.Runtime,
-        template: 'docker-runtime',
+        template: 'runtime',
         config: { c: 1 },
         instance: runtime,
         handle: makeHandle(runtime),
@@ -618,7 +618,7 @@ describe('GraphStateManager', () => {
       const node: CompiledGraphNode<TestRuntime> = {
         id: 'runtime-1',
         type: NodeKind.Runtime,
-        template: 'docker-runtime',
+        template: 'runtime',
         config: {},
         instance: runtime,
         handle: makeHandle(runtime),

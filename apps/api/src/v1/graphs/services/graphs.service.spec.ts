@@ -71,7 +71,7 @@ describe('GraphsService', () => {
       nodes: [
         {
           id: 'node-1',
-          template: 'docker-runtime',
+          template: 'runtime',
           config: { image: 'python:3.11' },
         },
       ],
@@ -96,7 +96,7 @@ describe('GraphsService', () => {
       nodes: [
         {
           id: 'node-1',
-          template: 'docker-runtime',
+          template: 'runtime',
           config: { image: 'python:3.11' },
         },
       ],
@@ -402,7 +402,7 @@ describe('GraphsService', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
           ],
@@ -476,7 +476,7 @@ describe('GraphsService', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
           ],
@@ -544,12 +544,12 @@ describe('GraphsService', () => {
           nodes: [
             {
               id: 'duplicate-id',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
             {
               id: 'duplicate-id',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
           ],
@@ -581,7 +581,7 @@ describe('GraphsService', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
           ],
@@ -887,7 +887,7 @@ describe('GraphsService', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.12' },
             },
           ],
@@ -977,7 +977,7 @@ describe('GraphsService', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.12' },
             },
           ],
@@ -1024,7 +1024,7 @@ describe('GraphsService', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.12' },
             },
           ],
@@ -2024,7 +2024,7 @@ describe('GraphsService', () => {
           nodes: [
             {
               id: 'node-1',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
             },
           ],

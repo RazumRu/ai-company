@@ -3,6 +3,7 @@ import {
   BaseMessage,
   HumanMessage,
   SystemMessage,
+  ToolMessage,
 } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
@@ -100,16 +101,34 @@ export class InvokeLlmNode extends BaseNode<
 
     // Note: runner.invoke() is always non-streaming.
     // If the model doesn't support streaming, we still use invoke() which is correct.
-    const invokeLlm = () =>
-      runner.invoke(messages, {
-        tags: [
-          cfg.configurable?.parent_thread_id ||
-            cfg.configurable?.thread_id ||
-            'unknown-thread',
-        ],
-      });
+    const invokeTags = [
+      cfg.configurable?.parent_thread_id ||
+        cfg.configurable?.thread_id ||
+        'unknown-thread',
+    ];
+    const invokeLlm = () => runner.invoke(messages, { tags: invokeTags });
     const invokeStartMs = performance.now();
-    const res = await this.invokeWithRetry(invokeLlm);
+    let res: Awaited<ReturnType<typeof invokeLlm>>;
+
+    try {
+      res = await this.invokeWithRetry(invokeLlm);
+    } catch (error: unknown) {
+      if (!this.isPromptTooLongError(error)) {
+        throw error;
+      }
+
+      // Emergency recovery: the prompt exceeded the model's context limit.
+      // Aggressively trim older messages (keep system messages + recent tail)
+      // and retry once. The returned state will carry a high currentContext
+      // value so the summarize node triggers proper compaction next cycle.
+      this.logger?.warn(
+        `Prompt too long error detected. Performing emergency message trimming and retrying.`,
+      );
+      const trimmedMessages = this.emergencyTrimMessages(messages);
+      const retryInvoke = () =>
+        runner.invoke(trimmedMessages, { tags: invokeTags });
+      res = await retryInvoke();
+    }
     const durationMs = Math.round(performance.now() - invokeStartMs);
 
     const preparedRes = convertChunkToMessage(res);
@@ -487,5 +506,77 @@ export class InvokeLlmNode extends BaseNode<
     }
 
     return this.tools.some((tool) => tool.name === FinishTool.TOOL_NAME);
+  }
+
+  /**
+   * Detect "prompt is too long" errors from LLM providers.
+   * These are typically 400 Bad Request responses with a message about
+   * the prompt exceeding the model's context window.
+   */
+  private isPromptTooLongError(error: unknown): boolean {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof (error as { message?: unknown })?.message === 'string'
+          ? (error as { message: string }).message
+          : '';
+    const status =
+      (error as { status?: unknown })?.status ??
+      (error as { statusCode?: unknown })?.statusCode;
+
+    if (typeof message === 'string') {
+      const lower = message.toLowerCase();
+      if (
+        lower.includes('prompt is too long') ||
+        lower.includes('maximum context length') ||
+        lower.includes('context_length_exceeded') ||
+        (lower.includes('too many tokens') && status === 400)
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Emergency message trimming for prompt-too-long recovery.
+   *
+   * Keeps all system messages (instructions, memory) and approximately the
+   * last third of non-system messages. This is a rough heuristic — the goal
+   * is to get under the limit so the model can respond. The returned state
+   * will carry a high currentContext value to trigger proper summarization
+   * on the next cycle.
+   *
+   * Respects tool-call atomicity: if the trim point falls inside a
+   * tool-call roundtrip (AIMessage with tool_calls + their ToolMessages),
+   * the entire block is kept or dropped.
+   */
+  private emergencyTrimMessages(messages: BaseMessage[]): BaseMessage[] {
+    const systemMessages = messages.filter((m) => m instanceof SystemMessage);
+    const nonSystem = messages.filter((m) => !(m instanceof SystemMessage));
+
+    if (nonSystem.length <= 2) {
+      // Nothing meaningful to trim
+      return messages;
+    }
+
+    // Keep approximately the last third of non-system messages.
+    // Walk backwards to find a clean cut point (not inside a tool-roundtrip).
+    const keepCount = Math.max(2, Math.ceil(nonSystem.length / 3));
+    let cutIndex = nonSystem.length - keepCount;
+
+    // Ensure we don't cut inside a tool-call roundtrip.
+    // If the message at cutIndex is a ToolMessage, move forward until we
+    // exit the tool block (i.e. reach a non-ToolMessage).
+    while (
+      cutIndex < nonSystem.length &&
+      nonSystem[cutIndex] instanceof ToolMessage
+    ) {
+      cutIndex++;
+    }
+
+    const kept = nonSystem.slice(cutIndex);
+    return [...systemMessages, ...kept];
   }
 }

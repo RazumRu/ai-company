@@ -25,6 +25,7 @@ export enum NotificationEvent {
   GraphRevisionApplied = 'graph.revision.applied',
   GraphRevisionFailed = 'graph.revision.failed',
   GraphRevisionProgress = 'graph.revision.progress',
+  RuntimeStatus = 'runtime.status',
 }
 
 export interface INotification<T> {
@@ -151,6 +152,19 @@ export interface IGraphRevisionProgressNotification extends INotification<IGraph
   type: NotificationEvent.GraphRevisionProgress;
 }
 
+export interface IRuntimeStatusData {
+  runtimeId: string;
+  threadId: string;
+  nodeId: string;
+  status: 'Starting' | 'Running' | 'Stopping' | 'Stopped' | 'Failed';
+  runtimeType: string;
+  message?: string;
+}
+
+export interface IRuntimeStatusNotification extends INotification<IRuntimeStatusData> {
+  type: NotificationEvent.RuntimeStatus;
+}
+
 export type Notification =
   | IGraphNotification
   | IAgentMessageNotification
@@ -161,4 +175,5 @@ export type Notification =
   | IThreadDeleteNotification
   | IGraphNodeUpdateNotification
   | IGraphRevisionNotification
-  | IGraphRevisionProgressNotification;
+  | IGraphRevisionProgressNotification
+  | IRuntimeStatusNotification;

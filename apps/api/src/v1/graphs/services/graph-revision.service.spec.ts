@@ -65,7 +65,7 @@ describe('GraphRevisionService', () => {
       nodes: [
         {
           id: 'node-1',
-          template: 'docker-runtime',
+          template: 'runtime',
           config: { image: 'python:3.11' },
         },
       ],
@@ -93,7 +93,7 @@ describe('GraphRevisionService', () => {
         nodes: [
           {
             id: 'node-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: { image: 'python:3.12' },
           },
         ],
@@ -108,7 +108,7 @@ describe('GraphRevisionService', () => {
         nodes: [
           {
             id: 'node-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: { image: 'python:3.12' },
           },
         ],
@@ -250,7 +250,7 @@ describe('GraphRevisionService', () => {
         nodes: [
           {
             id: 'node-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: { image: 'python:3.12' },
           },
         ],
@@ -604,7 +604,7 @@ describe('GraphRevisionService', () => {
         nodes: [
           {
             id: 'node-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: { image: 'python:3.11' },
           },
         ],
@@ -615,7 +615,7 @@ describe('GraphRevisionService', () => {
         nodes: [
           {
             id: 'node-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: { image: 'python:3.12' },
           },
         ],
@@ -626,7 +626,7 @@ describe('GraphRevisionService', () => {
         nodes: [
           {
             id: 'node-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: { image: 'python:3.13' },
           },
         ],
@@ -637,7 +637,7 @@ describe('GraphRevisionService', () => {
         nodes: [
           {
             id: 'node-1',
-            template: 'docker-runtime',
+            template: 'runtime',
             config: { image: 'python:3.13', restartPolicy: 'always' },
           },
         ],
@@ -780,7 +780,7 @@ describe('GraphRevisionService', () => {
             {
               id: 'node-1',
               type: 'runtime',
-              template: 'docker-runtime',
+              template: 'runtime',
               config: { image: 'python:3.11' },
               instance: {},
               handle: {

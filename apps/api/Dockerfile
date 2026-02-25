@@ -32,7 +32,6 @@ COPY --from=build $WORKDIR/node_modules ./node_modules/
 COPY --from=build $WORKDIR/packages ./packages/
 COPY --from=build $WORKDIR/apps/$APP_NAME/package.json ./apps/$APP_NAME/
 COPY --from=build $WORKDIR/apps/$APP_NAME/dist ./apps/$APP_NAME/dist/
-COPY --from=build $WORKDIR/apps/$APP_NAME/assets ./apps/$APP_NAME/assets/
 COPY --from=build $WORKDIR/apps/$APP_NAME/node_modules ./apps/$APP_NAME/node_modules/
 
 # For seeds

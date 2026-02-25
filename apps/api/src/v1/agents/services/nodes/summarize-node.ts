@@ -56,13 +56,18 @@ export class SummarizeNode extends BaseNode<
       return {};
     }
 
-    // IMPORTANT:
-    // Do not locally count tokens here. We rely on `state.currentContext`, which is
-    // sourced from the provider's usage metadata on the last LLM invocation.
+    // Estimate the effective context size for the NEXT LLM call.
     //
-    // If we haven't invoked the model yet for this thread (currentContext=0),
-    // we skip summarization and let the next invoke determine real prompt size.
-    if (!state.currentContext || state.currentContext <= maxTokens) {
+    // `state.currentContext` is the provider-reported input token count from the
+    // last LLM invocation. However, new messages may have been added since then
+    // (tool results, inter-agent communication messages, injected pending messages).
+    // These aren't reflected in `currentContext` and can push the actual prompt
+    // over the limit, causing a 400 "prompt too long" error.
+    //
+    // We estimate the token cost of messages added after the last LLM response
+    // and add them to `currentContext` for a more accurate threshold check.
+    const estimatedContext = await this.estimateEffectiveContext(state);
+    if (estimatedContext <= maxTokens) {
       return {};
     }
 
@@ -225,6 +230,55 @@ export class SummarizeNode extends BaseNode<
     }
 
     return false;
+  }
+
+  /**
+   * Estimate the effective context size for the next LLM invocation.
+   *
+   * `state.currentContext` captures the prompt size at the last LLM call, but
+   * messages added afterwards (tool results, inter-agent messages, injected
+   * pending messages) aren't reflected. This method estimates the token cost
+   * of those newer messages and projects the total context for the next call.
+   */
+  private async estimateEffectiveContext(
+    state: BaseAgentState,
+  ): Promise<number> {
+    const { currentContext, messages } = state;
+
+    // First invocation for this thread — no provider-reported context yet.
+    // Estimate from all non-system messages so we can still trigger
+    // summarization if the conversation was seeded with a large payload.
+    if (!currentContext || currentContext <= 0) {
+      const candidates = messages.filter((m) => !(m instanceof SystemMessage));
+      if (candidates.length === 0) return 0;
+      return this.estimateBlockTokens(candidates);
+    }
+
+    // Find the last AI message with __requestUsage — this is the response from
+    // the most recent LLM invocation. All messages after it are "new" and their
+    // token cost isn't captured by currentContext.
+    let lastInvokeIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (
+        msg instanceof AIMessage &&
+        (msg.additional_kwargs as Record<string, unknown>)?.__requestUsage
+      ) {
+        lastInvokeIndex = i;
+        break;
+      }
+    }
+
+    // No AI response found or it's the last message — currentContext is accurate
+    if (lastInvokeIndex === -1 || lastInvokeIndex >= messages.length - 1) {
+      return currentContext;
+    }
+
+    // Estimate tokens for messages added after the last LLM response
+    const newMessages = messages.slice(lastInvokeIndex + 1);
+    const newTokens = await this.estimateBlockTokens(newMessages);
+
+    return currentContext + newTokens;
   }
 
   private async safeGetNumTokens(text: string): Promise<number> {

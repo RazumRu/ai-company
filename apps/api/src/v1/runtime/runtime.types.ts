@@ -51,6 +51,7 @@ export interface RuntimeExecResult {
 
 export enum RuntimeType {
   Docker = 'Docker',
+  Daytona = 'Daytona',
 }
 
 export enum RuntimeInstanceStatus {
@@ -58,6 +59,7 @@ export enum RuntimeInstanceStatus {
   Running = 'Running',
   Stopping = 'Stopping',
   Stopped = 'Stopped',
+  Failed = 'Failed',
 }
 
 export interface ProvideRuntimeInstanceParams {

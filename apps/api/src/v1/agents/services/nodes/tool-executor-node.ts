@@ -1,4 +1,9 @@
-import { AIMessage, BaseMessage, ToolMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  BaseMessage,
+  SystemMessage,
+  ToolMessage,
+} from '@langchain/core/messages';
 import {
   DynamicStructuredTool,
   ToolRunnableConfig,
@@ -21,11 +26,21 @@ import {
 } from '../../agents.utils';
 import { BaseAgentConfigurable, BaseNode } from './base-node';
 
+/**
+ * Number of consecutive all-error tool batches with the same error message
+ * before the circuit breaker injects a stop message.
+ */
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+
 export class ToolExecutorNode extends BaseNode<
   BaseAgentState,
   BaseAgentStateChange
 > {
   private maxOutputChars: number;
+
+  /** Tracks consecutive identical tool-error batches for circuit breaking. */
+  private consecutiveErrorMessage: string | null = null;
+  private consecutiveErrorCount = 0;
 
   constructor(
     private tools: DynamicStructuredTool[],
@@ -271,6 +286,24 @@ export class ToolExecutorNode extends BaseNode<
       }
     }
 
+    // --- Circuit breaker: detect repeated identical tool errors ---
+    this.updateCircuitBreaker(results);
+
+    if (this.consecutiveErrorCount >= CIRCUIT_BREAKER_THRESHOLD) {
+      const stopMessage = new SystemMessage({
+        content:
+          `CRITICAL: The same tool error has occurred ${this.consecutiveErrorCount} times consecutively: "${this.consecutiveErrorMessage}". ` +
+          'This appears to be an infrastructure or configuration issue that cannot be resolved by retrying the same tool call. ' +
+          'Stop attempting tool calls and report this error to the user using the finish tool.',
+      });
+      stopMessage.additional_kwargs = {
+        ...(stopMessage.additional_kwargs ?? {}),
+        __hideForUi: true,
+        __hideForSummary: true,
+      };
+      interleavedMessages.push(stopMessage);
+    }
+
     const toolsMetadataUpdate = results.reduce(
       (acc, r) => {
         if (r.stateChange !== undefined) {
@@ -300,6 +333,76 @@ export class ToolExecutorNode extends BaseNode<
       // Spread aggregated tool usage into state (will be added by reducers)
       ...(aggregatedToolUsage ?? {}),
     };
+  }
+
+  /**
+   * Extracts the error string from a ToolMessage produced by `makeErrorMsg`.
+   * Error messages are serialised as `{"error":"..."}`. Returns `null` if the
+   * message does not represent an error.
+   */
+  private extractErrorFromToolMessage(msg: ToolMessage): string | null {
+    const content = typeof msg.content === 'string' ? msg.content : null;
+    if (!content) return null;
+
+    try {
+      const parsed = JSON.parse(content) as Record<string, unknown>;
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        'error' in parsed &&
+        typeof parsed.error === 'string'
+      ) {
+        return parsed.error;
+      }
+    } catch {
+      // Not JSON — not an error message
+    }
+    return null;
+  }
+
+  /**
+   * Updates the circuit breaker counters after a batch of tool results.
+   *
+   * If every tool result in the batch is an error AND all share the same
+   * error message AND that message matches the previous batch, the counter
+   * increments. Otherwise it resets.
+   */
+  private updateCircuitBreaker(
+    results: { toolMessage?: ToolMessage }[],
+  ): void {
+    const toolMessages = results
+      .map((r) => r.toolMessage)
+      .filter((m): m is ToolMessage => m instanceof ToolMessage);
+
+    if (toolMessages.length === 0) {
+      this.consecutiveErrorMessage = null;
+      this.consecutiveErrorCount = 0;
+      return;
+    }
+
+    const errorMessages = toolMessages.map((m) =>
+      this.extractErrorFromToolMessage(m),
+    );
+
+    // Check if ALL results in this batch are errors with the same message
+    const allErrors = errorMessages.every((e) => e !== null);
+    const uniqueErrors = new Set(errorMessages);
+    const sameError = allErrors && uniqueErrors.size === 1;
+
+    if (!sameError) {
+      this.consecutiveErrorMessage = null;
+      this.consecutiveErrorCount = 0;
+      return;
+    }
+
+    const batchErrorMessage = errorMessages[0]!;
+
+    if (batchErrorMessage === this.consecutiveErrorMessage) {
+      this.consecutiveErrorCount++;
+    } else {
+      this.consecutiveErrorMessage = batchErrorMessage;
+      this.consecutiveErrorCount = 1;
+    }
   }
 
   private formatToolOutputForLlm(output: unknown): string {

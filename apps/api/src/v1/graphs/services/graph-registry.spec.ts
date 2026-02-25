@@ -25,7 +25,7 @@ describe('GraphRegistry', () => {
       nodes.set(`node-${i}`, {
         id: `node-${i}`,
         type: i % 2 === 0 ? NodeKind.Runtime : NodeKind.Tool,
-        template: i % 2 === 0 ? 'docker-runtime' : 'web-search-tool',
+        template: i % 2 === 0 ? 'runtime' : 'web-search-tool',
         instance,
         config: {},
         handle: {
@@ -217,7 +217,7 @@ describe('GraphRegistry', () => {
       expect(result).toEqual({
         id: 'node-2',
         type: NodeKind.Runtime,
-        template: 'docker-runtime',
+        template: 'runtime',
         config: {},
         instance: { mockInstance: 'instance-2' },
         handle: expect.any(Object),
@@ -453,7 +453,7 @@ describe('GraphRegistry', () => {
             {
               id: 'runtime-node',
               type: NodeKind.Runtime,
-              template: 'docker-runtime',
+              template: 'runtime',
               instance: runtimeInstance,
               config: {},
               handle: {
@@ -696,7 +696,7 @@ describe('GraphRegistry', () => {
       const result = registry.filterNodesByTemplate(
         graphId,
         nodeIds,
-        'docker-runtime',
+        'runtime',
       );
 
       expect(result).toEqual(['node-2', 'node-4']);
@@ -870,12 +870,10 @@ describe('GraphRegistry', () => {
 
       registry.register(graphId, compiledGraph);
 
-      const result = registry.getNodesByTemplate(graphId, 'docker-runtime');
+      const result = registry.getNodesByTemplate(graphId, 'runtime');
 
       expect(result.length).toBe(3); // node-2, node-4, node-6
-      expect(result.every((node) => node.template === 'docker-runtime')).toBe(
-        true,
-      );
+      expect(result.every((node) => node.template === 'runtime')).toBe(true);
     });
 
     it('should return all web-search-tool nodes', () => {
