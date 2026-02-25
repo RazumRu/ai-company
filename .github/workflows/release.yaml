@@ -10,6 +10,11 @@ on:
       - 'main'
       - 'develop'
   workflow_dispatch:
+    inputs:
+      build_runtime:
+        description: 'Force build and push runtime image (skip change detection)'
+        type: boolean
+        default: false
 
 env:
   APP_NAME: api
@@ -130,7 +135,7 @@ jobs:
     runs-on: ubuntu-22.04
     name: Build And Push Runtime
     needs: [version]
-    if: ${{ !contains(needs.version.result, 'failure') && needs.version.outputs.release_created == 'true' }}
+    if: ${{ inputs.build_runtime == true || (!contains(needs.version.result, 'failure') && needs.version.outputs.release_created == 'true') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
@@ -140,6 +145,11 @@ jobs:
       - name: Check runtime changes
         id: changes
         run: |
+          if [[ "${{ inputs.build_runtime }}" == "true" ]]; then
+            echo "runtime_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           git fetch --tags --force --prune
 
           PATTERN="@${{ env.TAG_PREFIX }}/${{ env.APP_NAME }}@*"
@@ -157,6 +167,8 @@ jobs:
         if: steps.changes.outputs.runtime_changed == 'true'
         id: version
         run: |
+          git fetch --tags --force --prune
+
           PATTERN="@${{ env.TAG_PREFIX }}/${{ env.APP_NAME }}@*"
           LAST_TAG="$(git tag --merged HEAD --list "$PATTERN" | sort -V | tail -n 1)"
           TAG="${LAST_TAG##*@}"
