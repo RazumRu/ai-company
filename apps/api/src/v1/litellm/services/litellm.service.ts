@@ -148,7 +148,8 @@ export class LitellmService {
       outputTokensDetails?.reasoning ??
       0;
 
-    const totalTokens = usageMetadata?.total_tokens ?? 0;
+    const totalTokens =
+      inputTokens + cachedInputTokens + outputTokens + reasoningTokens;
 
     // Prefer the provider-reported cost when available — it represents the
     // actual upstream charge (e.g. OpenRouter includes markup, tiered pricing,
