@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RuntimeType } from '../runtime.types';
+import { NotificationEvent } from '../../notifications/notifications.types';
+import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
+import { RuntimeInstanceStatus, RuntimeType } from '../runtime.types';
 import { DaytonaRuntime } from './daytona-runtime';
 import { DockerRuntime } from './docker-runtime';
 import { RuntimeProvider } from './runtime-provider';
@@ -344,6 +346,7 @@ describe('RuntimeProvider type resolution', () => {
     const provider = new TestableRuntimeProvider(
       {} as never,
       { log: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      { emit: vi.fn().mockResolvedValue(undefined) } as never,
     );
 
     const runtime = provider.testResolveRuntimeByType(RuntimeType.Daytona);
@@ -360,9 +363,310 @@ describe('RuntimeProvider type resolution', () => {
     const provider = new TestableRuntimeProvider(
       {} as never,
       { log: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      { emit: vi.fn().mockResolvedValue(undefined) } as never,
     );
 
     const runtime = provider.testResolveRuntimeByType(RuntimeType.Docker);
     expect(runtime).toBeInstanceOf(DockerRuntime);
+  });
+});
+
+describe('RuntimeProvider failure handling', () => {
+  const mockDao = {
+    getOne: vi.fn(),
+    getAll: vi.fn(),
+    create: vi.fn(),
+    updateById: vi.fn(),
+    deleteById: vi.fn(),
+    hardDeleteById: vi.fn(),
+  };
+
+  const mockLogger = {
+    log: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  };
+
+  const mockNotificationsService = {
+    emit: vi.fn().mockResolvedValue(undefined),
+  };
+
+  const baseParams = {
+    graphId: 'graph-1',
+    runtimeNodeId: 'node-1',
+    threadId: 'thread-1',
+    type: RuntimeType.Daytona,
+    runtimeStartParams: { image: 'node:20' },
+  };
+
+  function buildRecord(
+    overrides: Partial<RuntimeInstanceEntity> = {},
+  ): RuntimeInstanceEntity {
+    return {
+      id: 'instance-1',
+      graphId: 'graph-1',
+      nodeId: 'node-1',
+      threadId: 'thread-1',
+      type: RuntimeType.Daytona,
+      containerName: 'test-container-123',
+      status: RuntimeInstanceStatus.Running,
+      config: { image: 'node:20' },
+      temporary: false,
+      lastUsedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    } as RuntimeInstanceEntity;
+  }
+
+  let provider: RuntimeProvider;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    provider = new RuntimeProvider(
+      mockDao as never,
+      mockLogger as never,
+      mockNotificationsService as never,
+    );
+  });
+
+  describe('provide() — marks record as Failed on ensureRuntimeForRecord failure', () => {
+    it('sets status to Failed when new record creation fails', async () => {
+      mockDao.getOne.mockResolvedValue(null);
+      const createdRecord = buildRecord({
+        status: RuntimeInstanceStatus.Starting,
+      });
+      mockDao.create.mockResolvedValue(createdRecord);
+      mockDao.updateById.mockResolvedValue(undefined);
+
+      // Make ensureRuntimeForRecord fail by mocking resolveRuntimeByType to throw
+      // The provider creates a runtime and calls start() — start will throw via mock
+      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.create.mockRejectedValue(
+        new Error('Sandbox creation timed out after 300s'),
+      );
+
+      await expect(provider.provide(baseParams)).rejects.toThrow(
+        'Sandbox creation timed out after 300s',
+      );
+
+      expect(mockDao.updateById).toHaveBeenCalledWith(createdRecord.id, {
+        status: RuntimeInstanceStatus.Failed,
+      });
+    });
+
+    it('sets status to Failed when existing record re-start fails', async () => {
+      const existingRecord = buildRecord({
+        status: RuntimeInstanceStatus.Starting,
+      });
+      mockDao.getOne.mockResolvedValue(existingRecord);
+      mockDao.updateById.mockResolvedValue(undefined);
+
+      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.create.mockRejectedValue(
+        new Error('Sandbox creation timed out after 300s'),
+      );
+
+      await expect(provider.provide(baseParams)).rejects.toThrow(
+        'Sandbox creation timed out after 300s',
+      );
+
+      expect(mockDao.updateById).toHaveBeenCalledWith(existingRecord.id, {
+        status: RuntimeInstanceStatus.Failed,
+      });
+    });
+  });
+
+  describe('provide() — handles existing Failed record', () => {
+    it('cleans up Failed record and creates a fresh instance', async () => {
+      const failedRecord = buildRecord({
+        status: RuntimeInstanceStatus.Failed,
+      });
+      mockDao.getOne.mockResolvedValue(failedRecord);
+      mockDao.hardDeleteById.mockResolvedValue(undefined);
+      mockDao.updateById.mockResolvedValue(undefined);
+
+      const freshRecord = buildRecord({
+        id: 'instance-2',
+        status: RuntimeInstanceStatus.Starting,
+      });
+      mockDao.create.mockResolvedValue(freshRecord);
+
+      // Make the new creation succeed
+      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
+
+      const result = await provider.provide(baseParams);
+
+      // Should have called stopRuntime on the failed record
+      expect(mockDao.updateById).toHaveBeenCalledWith(failedRecord.id, {
+        status: RuntimeInstanceStatus.Stopping,
+      });
+      // Should have hard-deleted the failed record
+      expect(mockDao.hardDeleteById).toHaveBeenCalledWith(failedRecord.id);
+      // Should have created a new record
+      expect(mockDao.create).toHaveBeenCalled();
+      // Result should be a fresh (non-cached) runtime
+      expect(result.cached).toBe(false);
+    });
+  });
+
+  describe('cleanupIdleRuntimes() — includes Failed records', () => {
+    it('queries for Failed status alongside Running and Starting', async () => {
+      mockDao.getAll.mockResolvedValue([]);
+
+      await provider.cleanupIdleRuntimes(60_000);
+
+      expect(mockDao.getAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statuses: expect.arrayContaining([
+            RuntimeInstanceStatus.Running,
+            RuntimeInstanceStatus.Starting,
+            RuntimeInstanceStatus.Failed,
+          ]),
+        }),
+      );
+    });
+  });
+
+  describe('provide() — emits runtime status notifications', () => {
+    it('emits "creating" before and "ready" after successful new runtime creation', async () => {
+      mockDao.getOne.mockResolvedValue(null);
+      const createdRecord = buildRecord({
+        status: RuntimeInstanceStatus.Starting,
+      });
+      mockDao.create.mockResolvedValue(createdRecord);
+      mockDao.updateById.mockResolvedValue(undefined);
+
+      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
+
+      await provider.provide(baseParams);
+
+      const emitCalls = mockNotificationsService.emit.mock.calls;
+      expect(emitCalls).toHaveLength(2);
+
+      const creatingCall = emitCalls[0]!;
+      expect(creatingCall[0]).toEqual(
+        expect.objectContaining({
+          type: NotificationEvent.RuntimeStatus,
+          graphId: 'graph-1',
+          data: expect.objectContaining({
+            status: 'creating',
+            nodeId: 'node-1',
+            threadId: 'thread-1',
+            runtimeType: RuntimeType.Daytona,
+          }),
+        }),
+      );
+
+      const readyCall = emitCalls[1]!;
+      expect(readyCall[0]).toEqual(
+        expect.objectContaining({
+          type: NotificationEvent.RuntimeStatus,
+          graphId: 'graph-1',
+          data: expect.objectContaining({
+            status: 'ready',
+            nodeId: 'node-1',
+            threadId: 'thread-1',
+            runtimeType: RuntimeType.Daytona,
+          }),
+        }),
+      );
+    });
+
+    it('emits "creating" then "failed" with error message when creation fails', async () => {
+      mockDao.getOne.mockResolvedValue(null);
+      const createdRecord = buildRecord({
+        status: RuntimeInstanceStatus.Starting,
+      });
+      mockDao.create.mockResolvedValue(createdRecord);
+      mockDao.updateById.mockResolvedValue(undefined);
+
+      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.create.mockRejectedValue(
+        new Error('Sandbox creation timed out after 300s'),
+      );
+
+      await expect(provider.provide(baseParams)).rejects.toThrow(
+        'Sandbox creation timed out after 300s',
+      );
+
+      const emitCalls = mockNotificationsService.emit.mock.calls;
+      expect(emitCalls).toHaveLength(2);
+
+      const creatingCall = emitCalls[0]!;
+      expect(creatingCall[0]).toEqual(
+        expect.objectContaining({
+          type: NotificationEvent.RuntimeStatus,
+          data: expect.objectContaining({ status: 'creating' }),
+        }),
+      );
+
+      const failedCall = emitCalls[1]!;
+      expect(failedCall[0]).toEqual(
+        expect.objectContaining({
+          type: NotificationEvent.RuntimeStatus,
+          data: expect.objectContaining({
+            status: 'failed',
+            message: 'Sandbox creation timed out after 300s',
+          }),
+        }),
+      );
+    });
+
+    it('emits notifications for existing record re-start path', async () => {
+      const existingRecord = buildRecord({
+        status: RuntimeInstanceStatus.Starting,
+      });
+      mockDao.getOne.mockResolvedValue(existingRecord);
+      mockDao.updateById.mockResolvedValue(undefined);
+
+      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
+
+      await provider.provide(baseParams);
+
+      const emitCalls = mockNotificationsService.emit.mock.calls;
+      expect(emitCalls).toHaveLength(2);
+
+      const creatingCall = emitCalls[0]!;
+      expect(creatingCall[0]).toEqual(
+        expect.objectContaining({
+          type: NotificationEvent.RuntimeStatus,
+          data: expect.objectContaining({ status: 'creating' }),
+        }),
+      );
+
+      const readyCall = emitCalls[1]!;
+      expect(readyCall[0]).toEqual(
+        expect.objectContaining({
+          type: NotificationEvent.RuntimeStatus,
+          data: expect.objectContaining({ status: 'ready' }),
+        }),
+      );
+    });
+
+    it('does not propagate notification emit failures', async () => {
+      mockDao.getOne.mockResolvedValue(null);
+      const createdRecord = buildRecord({
+        status: RuntimeInstanceStatus.Starting,
+      });
+      mockDao.create.mockResolvedValue(createdRecord);
+      mockDao.updateById.mockResolvedValue(undefined);
+
+      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
+
+      // Make emit reject — should not affect provide()
+      mockNotificationsService.emit.mockRejectedValue(
+        new Error('WebSocket failure'),
+      );
+
+      const result = await provider.provide(baseParams);
+
+      expect(result.cached).toBe(false);
+      expect(result.runtime).toBeDefined();
+    });
   });
 });

@@ -19,6 +19,8 @@ import { DaytonaRuntime } from '../../../v1/runtime/services/daytona-runtime';
  */
 const SANDBOX_IMAGE = 'daytonaio/sandbox:0.5.0-slim';
 
+let sandboxCreationElapsedMs: number;
+
 describe('DaytonaRuntime Timeout Recovery Integration', () => {
   let runtime: DaytonaRuntime;
 
@@ -43,12 +45,18 @@ describe('DaytonaRuntime Timeout Recovery Integration', () => {
       },
     );
 
+    const startTime = Date.now();
     await runtime.start({
       containerName: `test-daytona-recovery-${Date.now()}`,
       image: SANDBOX_IMAGE,
       recreate: true,
     });
+    sandboxCreationElapsedMs = Date.now() - startTime;
   }, 300_000);
+
+  it('sandbox creation completes within 300s', { timeout: 5_000 }, () => {
+    expect(sandboxCreationElapsedMs).toBeLessThan(300_000);
+  });
 
   afterAll(async () => {
     if (runtime) {
@@ -177,4 +185,43 @@ describe('DaytonaRuntime Timeout Recovery Integration', () => {
       expect(result.stdout).toContain('fast');
     },
   );
+
+  it('exec returns correct exit code and stdout', { timeout: 30_000 }, async () => {
+    const result = await runtime.exec({ cmd: 'echo "hello-daytona"' });
+    expect(result.fail).toBe(false);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('hello-daytona');
+  });
+
+  it('exec returns non-zero exit code on failure', { timeout: 30_000 }, async () => {
+    const result = await runtime.exec({ cmd: 'bash -c "exit 42"', timeoutMs: 15_000 });
+    expect(result.exitCode).toBe(42);
+    expect(result.fail).toBe(true);
+  });
+
+  it('creates and reads a file in the sandbox', { timeout: 30_000 }, async () => {
+    const writeResult = await runtime.exec({
+      cmd: 'echo "hello from daytona" > /tmp/int-test.txt',
+    });
+    expect(writeResult.fail).toBe(false);
+    expect(writeResult.exitCode).toBe(0);
+
+    const readResult = await runtime.exec({ cmd: 'cat /tmp/int-test.txt' });
+    expect(readResult.fail).toBe(false);
+    expect(readResult.stdout).toContain('hello from daytona');
+  });
+
+  it('edits an existing file in the sandbox', { timeout: 30_000 }, async () => {
+    await runtime.exec({ cmd: 'echo "original" > /tmp/edit-test.txt' });
+
+    const editResult = await runtime.exec({
+      cmd: 'sed -i "s/original/edited/" /tmp/edit-test.txt',
+    });
+    expect(editResult.fail).toBe(false);
+    expect(editResult.exitCode).toBe(0);
+
+    const verifyResult = await runtime.exec({ cmd: 'cat /tmp/edit-test.txt' });
+    expect(verifyResult.stdout).toContain('edited');
+    expect(verifyResult.stdout).not.toContain('original');
+  });
 });

@@ -2131,8 +2131,22 @@ export const SetupInfoResponseDtoSchema = {
     configured: {
       type: 'boolean',
     },
+    callbackPath: {
+      type: 'string',
+    },
   },
-  required: ['installUrl', 'configured'],
+  required: ['installUrl', 'configured', 'callbackPath'],
+} as const;
+
+export const OAuthLinkRequestDtoSchema = {
+  type: 'object',
+  properties: {
+    code: {
+      type: 'string',
+      minLength: 1,
+    },
+  },
+  required: ['code'],
 } as const;
 
 export const LinkInstallationResponseDtoSchema = {

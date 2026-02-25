@@ -1,4 +1,9 @@
-import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
@@ -1098,6 +1103,202 @@ describe('ToolExecutorNode', () => {
       expect(result.messages?.items?.[0]).toBeInstanceOf(ToolMessage);
       expect(result.messages?.items?.[1]?.content).toBe('Streamed');
       expect(result.messages?.items?.[2]?.content).toBe('Tool additional');
+    });
+  });
+
+  describe('circuit breaker for repeated tool errors', () => {
+    let mockState: BaseAgentState;
+    let mockConfig: Record<string, unknown>;
+
+    beforeEach(() => {
+      mockState = {
+        messages: [],
+        summary: '',
+        toolUsageGuardActivated: false,
+        toolsMetadata: {},
+        toolUsageGuardActivatedCount: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+        totalPrice: 0,
+        currentContext: 0,
+      };
+
+      mockConfig = {
+        configurable: {
+          thread_id: 'test-thread',
+        },
+      };
+    });
+
+    /** Helper: invoke node with a single tool call that returns the given error. */
+    async function invokeWithError(
+      errorNode: ToolExecutorNode,
+      state: BaseAgentState,
+      cfg: Record<string, unknown>,
+      errorMessage: string,
+    ) {
+      const toolCall = {
+        id: `call-${Math.random().toString(36).slice(2)}`,
+        name: 'test-tool-1',
+        args: { input: 'test' },
+      };
+      const aiMessage = new AIMessage({
+        content: 'Using tool',
+        tool_calls: [toolCall],
+      });
+      state.messages = [aiMessage];
+      mockTool1.invoke = vi.fn().mockRejectedValue(new Error(errorMessage));
+      return errorNode.invoke(state, cfg);
+    }
+
+    /** Helper: invoke node with a single tool call that succeeds. */
+    async function invokeWithSuccess(
+      successNode: ToolExecutorNode,
+      state: BaseAgentState,
+      cfg: Record<string, unknown>,
+    ) {
+      const toolCall = {
+        id: `call-${Math.random().toString(36).slice(2)}`,
+        name: 'test-tool-1',
+        args: { input: 'test' },
+      };
+      const aiMessage = new AIMessage({
+        content: 'Using tool',
+        tool_calls: [toolCall],
+      });
+      state.messages = [aiMessage];
+      mockTool1.invoke = vi.fn().mockResolvedValue({ output: 'Success' });
+      return successNode.invoke(state, cfg);
+    }
+
+    it('should not inject SystemMessage when results are mixed (error + success)', async () => {
+      // Batch with 2 tool calls: one error, one success
+      const toolCall1 = {
+        id: 'call-1',
+        name: 'test-tool-1',
+        args: { input: 'test' },
+      };
+      const toolCall2 = {
+        id: 'call-2',
+        name: 'test-tool-2',
+        args: { input: 'test' },
+      };
+      const aiMessage = new AIMessage({
+        content: 'Using tools',
+        tool_calls: [toolCall1, toolCall2],
+      });
+      mockState.messages = [aiMessage];
+
+      mockTool1.invoke = vi.fn().mockRejectedValue(new Error('Connection refused'));
+      mockTool2.invoke = vi.fn().mockResolvedValue({ output: 'OK' });
+
+      const result = await node.invoke(mockState, mockConfig);
+
+      const systemMessages = result.messages?.items?.filter(
+        (m) => m instanceof SystemMessage,
+      );
+      expect(systemMessages).toHaveLength(0);
+    });
+
+    it('should not inject SystemMessage when errors have different messages across batches', async () => {
+      // 3 consecutive batches with different error messages each time
+      await invokeWithError(node, mockState, mockConfig, 'Error A');
+      await invokeWithError(node, mockState, mockConfig, 'Error B');
+      const result = await invokeWithError(node, mockState, mockConfig, 'Error C');
+
+      const systemMessages = result.messages?.items?.filter(
+        (m) => m instanceof SystemMessage,
+      );
+      expect(systemMessages).toHaveLength(0);
+    });
+
+    it('should inject SystemMessage after 3 consecutive identical error batches', async () => {
+      const errorMsg = 'Connection refused';
+
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+
+      const systemMessages = result.messages?.items?.filter(
+        (m) => m instanceof SystemMessage,
+      );
+      expect(systemMessages).toHaveLength(1);
+
+      const stopMessage = systemMessages![0]!;
+      expect(stopMessage.content).toContain('CRITICAL');
+      expect(stopMessage.content).toContain('3 times consecutively');
+      expect(stopMessage.content).toContain('finish tool');
+    });
+
+    it('should include the error text in the SystemMessage', async () => {
+      const errorMsg = 'ENOENT: file not found';
+
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+
+      const systemMessages = result.messages?.items?.filter(
+        (m) => m instanceof SystemMessage,
+      );
+      expect(systemMessages).toHaveLength(1);
+      // The error text wraps the original message with makeErrorMsg format:
+      // "Error executing tool 'test-tool-1': ENOENT: file not found"
+      expect(systemMessages![0]!.content).toContain('ENOENT: file not found');
+    });
+
+    it('should reset circuit breaker count on success between error batches', async () => {
+      const errorMsg = 'Connection refused';
+
+      // 2 identical errors
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+
+      // Success resets the counter
+      await invokeWithSuccess(node, mockState, mockConfig);
+
+      // 2 more identical errors (count should be 2, not 4)
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+
+      const systemMessages = result.messages?.items?.filter(
+        (m) => m instanceof SystemMessage,
+      );
+      expect(systemMessages).toHaveLength(0);
+    });
+
+    it('should mark the SystemMessage with __hideForUi and __hideForSummary', async () => {
+      const errorMsg = 'Timeout';
+
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+
+      const systemMessages = result.messages?.items?.filter(
+        (m) => m instanceof SystemMessage,
+      );
+      expect(systemMessages).toHaveLength(1);
+      expect(systemMessages![0]!.additional_kwargs?.__hideForUi).toBe(true);
+      expect(systemMessages![0]!.additional_kwargs?.__hideForSummary).toBe(true);
+    });
+
+    it('should continue injecting SystemMessage on subsequent error batches after threshold', async () => {
+      const errorMsg = 'Connection refused';
+
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      await invokeWithError(node, mockState, mockConfig, errorMsg);
+      await invokeWithError(node, mockState, mockConfig, errorMsg); // triggers at 3
+
+      // 4th error batch should also trigger (count is now 4 >= 3)
+      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+
+      const systemMessages = result.messages?.items?.filter(
+        (m) => m instanceof SystemMessage,
+      );
+      expect(systemMessages).toHaveLength(1);
+      expect(systemMessages![0]!.content).toContain('4 times consecutively');
     });
   });
 });

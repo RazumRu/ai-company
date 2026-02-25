@@ -1211,6 +1211,17 @@ export type SetupInfoResponseDto = {
    * Whether the GitHub App is fully configured
    */
   configured: boolean;
+  /**
+   * Path the user must set as "Setup URL" in their GitHub App settings (append to their domain)
+   */
+  callbackPath: string;
+};
+
+export type OAuthLinkRequestDto = {
+  /**
+   * GitHub OAuth authorization code
+   */
+  code: string;
 };
 
 export type LinkInstallationResponseDto = {
@@ -2304,6 +2315,20 @@ export type GetSetupInfoResponses = {
 
 export type GetSetupInfoResponse =
   GetSetupInfoResponses[keyof GetSetupInfoResponses];
+
+export type LinkViaOAuthCodeData = {
+  body: OAuthLinkRequestDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/github-app/oauth/link';
+};
+
+export type LinkViaOAuthCodeResponses = {
+  201: LinkInstallationResponseDto;
+};
+
+export type LinkViaOAuthCodeResponse =
+  LinkViaOAuthCodeResponses[keyof LinkViaOAuthCodeResponses];
 
 export type LinkInstallationData = {
   body?: never;

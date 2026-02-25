@@ -59,6 +59,7 @@ export enum RuntimeInstanceStatus {
   Running = 'Running',
   Stopping = 'Stopping',
   Stopped = 'Stopped',
+  Failed = 'Failed',
 }
 
 export interface ProvideRuntimeInstanceParams {
