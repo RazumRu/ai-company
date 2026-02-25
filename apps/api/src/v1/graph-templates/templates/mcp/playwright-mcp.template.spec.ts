@@ -9,6 +9,7 @@ import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RuntimeType } from '../../../runtime/runtime.types';
 import { BaseRuntime } from '../../../runtime/services/base-runtime';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
+import type { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import {
   PlaywrightMcpTemplate,
   PlaywrightMcpTemplateSchema,
@@ -23,6 +24,7 @@ describe('PlaywrightMcpTemplate', () => {
   let mockRuntimeProvider: {
     provide: ReturnType<typeof vi.fn>;
     cleanupRuntimeInstance: ReturnType<typeof vi.fn>;
+    getDefaultRuntimeType: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -43,7 +45,7 @@ describe('PlaywrightMcpTemplate', () => {
     } as unknown as PlaywrightMcp;
 
     // Create mock GraphRegistry
-    const mockRuntimeThreadProvider = {
+    const mockRuntimeThreadProvider: Partial<RuntimeThreadProvider> = {
       getParams: vi.fn().mockReturnValue({
         graphId: 'test-graph-id',
         runtimeNodeId: 'runtime-1',
@@ -56,7 +58,7 @@ describe('PlaywrightMcpTemplate', () => {
       getNode: vi.fn().mockReturnValue({
         type: NodeKind.Runtime,
         id: 'runtime-1',
-        config: { runtimeType: RuntimeType.Docker },
+        config: {},
         instance: mockRuntimeThreadProvider,
       }),
       getNodeInstance: vi.fn().mockReturnValue(mockRuntime),
@@ -75,6 +77,7 @@ describe('PlaywrightMcpTemplate', () => {
         cached: false,
       }),
       cleanupRuntimeInstance: vi.fn().mockResolvedValue(undefined),
+      getDefaultRuntimeType: vi.fn().mockReturnValue(RuntimeType.Docker),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -172,7 +175,7 @@ describe('PlaywrightMcpTemplate', () => {
         runtimeProvider: mockRuntimeProvider,
         graphId: metadata.graphId,
         runtimeNodeId: 'runtime-1',
-        runtimeConfig: { runtimeType: RuntimeType.Docker },
+        runtimeConfig: {},
       });
       expect(mockMcpInstance.initialize).toHaveBeenCalledWith(
         config,
@@ -264,7 +267,7 @@ describe('PlaywrightMcpTemplate', () => {
         .mockReturnValueOnce({
           type: NodeKind.Runtime,
           id: 'runtime-1',
-          config: { runtimeType: RuntimeType.Docker },
+          config: {},
         } as any)
         .mockReturnValueOnce(undefined as any);
 

@@ -255,10 +255,7 @@ export class CommunicationExecTool extends BaseTool<
 
     let output: unknown;
     try {
-      output = await targetAgent.invokeAgent(
-        [args.message],
-        runnableConfig,
-      );
+      output = await targetAgent.invokeAgent([args.message], runnableConfig);
     } catch (error: unknown) {
       if (this.isPromptTooLongError(error)) {
         return {

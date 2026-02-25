@@ -11,10 +11,7 @@ import {
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import {
-  RuntimeStartParams,
-  RuntimeType,
-} from '../../../runtime/runtime.types';
+import type { RuntimeStartParams } from '../../../runtime/runtime.types';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
@@ -103,9 +100,7 @@ export class FilesystemMcpTemplate extends McpNodeBaseTemplate<
           );
         }
 
-        const runtimeConfig = runtimeNode.config as RuntimeStartParams & {
-          runtimeType: RuntimeType;
-        };
+        const runtimeConfig = runtimeNode.config as RuntimeStartParams;
         const mcpThreadId = `mcp-init-${graphId}-${runtimeNodeId}`;
         const runtime = await instance.provideTemporaryRuntime({
           runtimeProvider: this.runtimeProvider,
@@ -125,7 +120,7 @@ export class FilesystemMcpTemplate extends McpNodeBaseTemplate<
             graphId,
             runtimeNodeId,
             threadId: mcpThreadId,
-            type: runtimeConfig.runtimeType,
+            type: this.runtimeProvider.getDefaultRuntimeType(),
           });
         }
       },

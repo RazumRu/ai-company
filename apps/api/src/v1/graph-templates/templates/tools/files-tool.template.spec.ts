@@ -188,7 +188,7 @@ describe('FilesToolTemplate', () => {
               type: NodeKind.Runtime,
               template: 'runtime',
               instance: mockRuntimeThreadProvider,
-              config: { runtimeType: RuntimeType.Docker },
+              config: {},
             })
           : undefined,
       );

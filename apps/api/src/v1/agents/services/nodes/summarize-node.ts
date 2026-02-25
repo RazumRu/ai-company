@@ -249,9 +249,7 @@ export class SummarizeNode extends BaseNode<
     // Estimate from all non-system messages so we can still trigger
     // summarization if the conversation was seeded with a large payload.
     if (!currentContext || currentContext <= 0) {
-      const candidates = messages.filter(
-        (m) => !(m instanceof SystemMessage),
-      );
+      const candidates = messages.filter((m) => !(m instanceof SystemMessage));
       if (candidates.length === 0) return 0;
       return this.estimateBlockTokens(candidates);
     }

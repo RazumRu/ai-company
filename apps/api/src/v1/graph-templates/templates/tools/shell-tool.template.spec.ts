@@ -196,9 +196,7 @@ describe('ShellToolTemplate', () => {
               type: NodeKind.Runtime,
               template: 'runtime',
               instance: mockRuntimeThreadProvider,
-              config: {
-                runtimeType: RuntimeType.Docker,
-              },
+              config: {},
             })
           : undefined,
       );
@@ -298,7 +296,7 @@ describe('ShellToolTemplate', () => {
               type: NodeKind.Runtime,
               template: 'runtime',
               instance: mockRuntimeThreadProvider,
-              config: { runtimeType: RuntimeType.Docker },
+              config: {},
             })
           : undefined,
       );
@@ -367,7 +365,7 @@ describe('ShellToolTemplate', () => {
               type: NodeKind.Runtime,
               template: 'runtime',
               instance: mockRuntimeThreadProvider,
-              config: { runtimeType: RuntimeType.Docker },
+              config: {},
             });
           }
 
@@ -416,7 +414,7 @@ describe('ShellToolTemplate', () => {
               type: NodeKind.Runtime,
               template: 'runtime',
               instance: mockRuntimeThreadProvider,
-              config: { runtimeType: RuntimeType.Docker },
+              config: {},
             });
           }
 
@@ -470,7 +468,7 @@ describe('ShellToolTemplate', () => {
               type: NodeKind.Runtime,
               template: 'runtime',
               instance: mockRuntimeThreadProvider,
-              config: { runtimeType: RuntimeType.Docker },
+              config: {},
             });
           }
 
@@ -545,7 +543,7 @@ describe('ShellToolTemplate', () => {
               type: NodeKind.Runtime,
               template: 'runtime',
               instance: mockRuntimeThreadProvider,
-              config: { runtimeType: RuntimeType.Docker },
+              config: {},
             });
           }
 

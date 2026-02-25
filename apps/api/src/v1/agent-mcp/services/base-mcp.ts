@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import type { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
-import { RuntimeStartParams, RuntimeType } from '../../runtime/runtime.types';
+import { RuntimeStartParams } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
@@ -343,15 +343,14 @@ export abstract class BaseMcp<TConfig = unknown> {
     runtimeProvider: RuntimeProvider;
     graphId: string;
     runtimeNodeId: string;
-    runtimeConfig: RuntimeStartParams & { runtimeType: RuntimeType };
+    runtimeConfig: RuntimeStartParams;
   }): Promise<BaseRuntime> {
-    const { runtimeType, ...runtimeStartParams } = params.runtimeConfig;
     const { runtime } = await params.runtimeProvider.provide({
       graphId: params.graphId,
       runtimeNodeId: params.runtimeNodeId,
       threadId: `mcp-init-${params.graphId}-${params.runtimeNodeId}`,
-      type: runtimeType,
-      runtimeStartParams,
+      type: params.runtimeProvider.getDefaultRuntimeType(),
+      runtimeStartParams: params.runtimeConfig,
       temporary: true,
     });
 

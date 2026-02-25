@@ -3,62 +3,31 @@ import { z } from 'zod';
 
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
-import { RuntimeType } from '../../../runtime/runtime.types';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { RuntimeNodeBaseTemplate } from '../base-node.template';
 
-const CommonFieldsShape = {
-  env: z
-    .record(z.string(), z.string())
-    .optional()
-    .describe('Environment variables'),
-  initScript: z
-    .union([z.string(), z.array(z.string())])
-    .optional()
-    .describe('Initialization commands')
-    .meta({ 'x-ui:textarea': true }),
-  initScriptTimeoutMs: z
-    .number()
-    .positive()
-    .default(600_000)
-    .optional()
-    .describe(`Timeout in milliseconds for initialization script execution`),
-};
-
-const DockerBranchSchema = z
+export const RuntimeTemplateSchema = z
   .object({
-    runtimeType: z
-      .literal(RuntimeType.Docker)
-      .meta({ 'x-ui:show-on-node': true })
-      .meta({ 'x-ui:label': 'Runtime' }),
-    labels: z
+    labels: z.record(z.string(), z.string()).optional().describe('Labels'),
+    env: z
       .record(z.string(), z.string())
       .optional()
-      .describe('Docker labels'),
-  })
-  .extend(CommonFieldsShape)
-  .strip();
-
-const DaytonaBranchSchema = z
-  .object({
-    runtimeType: z
-      .literal(RuntimeType.Daytona)
-      .meta({ 'x-ui:show-on-node': true })
-      .meta({ 'x-ui:label': 'Runtime' }),
-    labels: z
-      .record(z.string(), z.string())
+      .describe('Environment variables'),
+    initScript: z
+      .union([z.string(), z.array(z.string())])
       .optional()
-      .describe('Sandbox labels'),
+      .describe('Initialization commands')
+      .meta({ 'x-ui:textarea': true }),
+    initScriptTimeoutMs: z
+      .number()
+      .positive()
+      .default(600_000)
+      .optional()
+      .describe('Timeout in milliseconds for initialization script execution'),
   })
-  .extend(CommonFieldsShape)
   .strip();
-
-export const RuntimeTemplateSchema = z.discriminatedUnion('runtimeType', [
-  DockerBranchSchema,
-  DaytonaBranchSchema,
-]);
 
 export type RuntimeTemplateSchemaType = z.infer<typeof RuntimeTemplateSchema>;
 
@@ -112,7 +81,7 @@ export class RuntimeTemplate extends RuntimeNodeBaseTemplate<
           graphId: params.metadata.graphId,
           runtimeNodeId: params.metadata.nodeId,
           runtimeStartParams: params.config,
-          type: params.config.runtimeType,
+          type: this.runtimeProvider.getDefaultRuntimeType(),
           temporary: params.metadata.temporary ?? false,
         });
       },
@@ -124,7 +93,7 @@ export class RuntimeTemplate extends RuntimeNodeBaseTemplate<
           graphId: params.metadata.graphId,
           runtimeNodeId: params.metadata.nodeId,
           runtimeStartParams: params.config,
-          type: params.config.runtimeType,
+          type: this.runtimeProvider.getDefaultRuntimeType(),
           temporary: params.metadata.temporary ?? false,
         });
       },
