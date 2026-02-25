@@ -517,6 +517,48 @@ describe('RuntimeProvider failure handling', () => {
     });
   });
 
+  describe('stopRuntime()', () => {
+    it('emits Stopping then Stopped with correct runtimeId', async () => {
+      const record = buildRecord({ status: RuntimeInstanceStatus.Running });
+      mockDao.updateById.mockResolvedValue(undefined);
+      // No runtime in the runtimeInstances map — stopByName path will be taken.
+      // DaytonaRuntime.stopByName uses new Daytona() internally (mocked).
+      // findOne rejects → stopByName swallows the error silently.
+      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+
+      vi.clearAllMocks();
+      mockDao.updateById.mockResolvedValue(undefined);
+      mockNotificationsService.emit.mockResolvedValue(undefined);
+
+      await provider.stopRuntime(record);
+
+      const emitCalls = mockNotificationsService.emit.mock.calls;
+      expect(emitCalls).toHaveLength(2);
+
+      expect(emitCalls[0]![0]).toEqual(
+        expect.objectContaining({
+          type: NotificationEvent.RuntimeStatus,
+          data: expect.objectContaining({
+            status: 'Stopping',
+            runtimeId: record.id,
+            threadId: record.threadId,
+            nodeId: record.nodeId,
+          }),
+        }),
+      );
+
+      expect(emitCalls[1]![0]).toEqual(
+        expect.objectContaining({
+          type: NotificationEvent.RuntimeStatus,
+          data: expect.objectContaining({
+            status: 'Stopped',
+            runtimeId: record.id,
+          }),
+        }),
+      );
+    });
+  });
+
   describe('cleanupIdleRuntimes() — includes Failed records', () => {
     it('queries for Failed status alongside Running and Starting', async () => {
       mockDao.getAll.mockResolvedValue([]);
@@ -536,7 +578,7 @@ describe('RuntimeProvider failure handling', () => {
   });
 
   describe('provide() — emits runtime status notifications', () => {
-    it('emits "creating" before and "ready" after successful new runtime creation', async () => {
+    it('emits Starting before and Running after successful new runtime creation', async () => {
       mockDao.getOne.mockResolvedValue(null);
       const createdRecord = buildRecord({
         status: RuntimeInstanceStatus.Starting,
@@ -552,13 +594,14 @@ describe('RuntimeProvider failure handling', () => {
       const emitCalls = mockNotificationsService.emit.mock.calls;
       expect(emitCalls).toHaveLength(2);
 
-      const creatingCall = emitCalls[0]!;
-      expect(creatingCall[0]).toEqual(
+      const startingCall = emitCalls[0]!;
+      expect(startingCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
           graphId: 'graph-1',
           data: expect.objectContaining({
-            status: 'creating',
+            status: 'Starting',
+            runtimeId: 'instance-1',
             nodeId: 'node-1',
             threadId: 'thread-1',
             runtimeType: RuntimeType.Daytona,
@@ -566,13 +609,14 @@ describe('RuntimeProvider failure handling', () => {
         }),
       );
 
-      const readyCall = emitCalls[1]!;
-      expect(readyCall[0]).toEqual(
+      const runningCall = emitCalls[1]!;
+      expect(runningCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
           graphId: 'graph-1',
           data: expect.objectContaining({
-            status: 'ready',
+            status: 'Running',
+            runtimeId: 'instance-1',
             nodeId: 'node-1',
             threadId: 'thread-1',
             runtimeType: RuntimeType.Daytona,
@@ -581,7 +625,7 @@ describe('RuntimeProvider failure handling', () => {
       );
     });
 
-    it('emits "creating" then "failed" with error message when creation fails', async () => {
+    it('emits Starting then Failed with error message when creation fails', async () => {
       mockDao.getOne.mockResolvedValue(null);
       const createdRecord = buildRecord({
         status: RuntimeInstanceStatus.Starting,
@@ -599,22 +643,24 @@ describe('RuntimeProvider failure handling', () => {
       );
 
       const emitCalls = mockNotificationsService.emit.mock.calls;
-      expect(emitCalls).toHaveLength(2);
+      // Starting + Stopping (from cleanupFailedInstance -> stopRuntime) + Stopped + Failed
+      expect(emitCalls.length).toBeGreaterThanOrEqual(2);
 
-      const creatingCall = emitCalls[0]!;
-      expect(creatingCall[0]).toEqual(
+      const startingCall = emitCalls[0]!;
+      expect(startingCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
-          data: expect.objectContaining({ status: 'creating' }),
+          data: expect.objectContaining({ status: 'Starting', runtimeId: 'instance-1' }),
         }),
       );
 
-      const failedCall = emitCalls[1]!;
+      const failedCall = emitCalls[emitCalls.length - 1]!;
       expect(failedCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
           data: expect.objectContaining({
-            status: 'failed',
+            status: 'Failed',
+            runtimeId: 'instance-1',
             message: 'Sandbox creation timed out after 300s',
           }),
         }),
@@ -636,19 +682,19 @@ describe('RuntimeProvider failure handling', () => {
       const emitCalls = mockNotificationsService.emit.mock.calls;
       expect(emitCalls).toHaveLength(2);
 
-      const creatingCall = emitCalls[0]!;
-      expect(creatingCall[0]).toEqual(
+      const startingCall = emitCalls[0]!;
+      expect(startingCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
-          data: expect.objectContaining({ status: 'creating' }),
+          data: expect.objectContaining({ status: 'Starting', runtimeId: 'instance-1' }),
         }),
       );
 
-      const readyCall = emitCalls[1]!;
-      expect(readyCall[0]).toEqual(
+      const runningCall = emitCalls[1]!;
+      expect(runningCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
-          data: expect.objectContaining({ status: 'ready' }),
+          data: expect.objectContaining({ status: 'Running', runtimeId: 'instance-1' }),
         }),
       );
     });

@@ -153,9 +153,10 @@ export interface IGraphRevisionProgressNotification extends INotification<IGraph
 }
 
 export interface IRuntimeStatusData {
+  runtimeId: string;
   threadId: string;
   nodeId: string;
-  status: 'creating' | 'ready' | 'failed';
+  status: 'Starting' | 'Running' | 'Stopping' | 'Stopped' | 'Failed';
   runtimeType: string;
   message?: string;
 }
