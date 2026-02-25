@@ -430,17 +430,16 @@ describe('RuntimeProvider failure handling', () => {
     );
   });
 
-  describe('provide() — marks record as Failed on ensureRuntimeForRecord failure', () => {
-    it('sets status to Failed when new record creation fails', async () => {
+  describe('provide() — cleans up failed runtime on ensureRuntimeForRecord failure', () => {
+    it('stops container and hard-deletes record when new record creation fails', async () => {
       mockDao.getOne.mockResolvedValue(null);
       const createdRecord = buildRecord({
         status: RuntimeInstanceStatus.Starting,
       });
       mockDao.create.mockResolvedValue(createdRecord);
       mockDao.updateById.mockResolvedValue(undefined);
+      mockDao.hardDeleteById.mockResolvedValue(undefined);
 
-      // Make ensureRuntimeForRecord fail by mocking resolveRuntimeByType to throw
-      // The provider creates a runtime and calls start() — start will throw via mock
       mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockRejectedValue(
         new Error('Sandbox creation timed out after 300s'),
@@ -450,17 +449,21 @@ describe('RuntimeProvider failure handling', () => {
         'Sandbox creation timed out after 300s',
       );
 
+      // Should attempt to stop the container
       expect(mockDao.updateById).toHaveBeenCalledWith(createdRecord.id, {
-        status: RuntimeInstanceStatus.Failed,
+        status: RuntimeInstanceStatus.Stopping,
       });
+      // Should hard-delete the record
+      expect(mockDao.hardDeleteById).toHaveBeenCalledWith(createdRecord.id);
     });
 
-    it('sets status to Failed when existing record re-start fails', async () => {
+    it('stops container and hard-deletes record when existing record re-start fails', async () => {
       const existingRecord = buildRecord({
         status: RuntimeInstanceStatus.Starting,
       });
       mockDao.getOne.mockResolvedValue(existingRecord);
       mockDao.updateById.mockResolvedValue(undefined);
+      mockDao.hardDeleteById.mockResolvedValue(undefined);
 
       mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockRejectedValue(
@@ -471,9 +474,12 @@ describe('RuntimeProvider failure handling', () => {
         'Sandbox creation timed out after 300s',
       );
 
+      // Should attempt to stop the container
       expect(mockDao.updateById).toHaveBeenCalledWith(existingRecord.id, {
-        status: RuntimeInstanceStatus.Failed,
+        status: RuntimeInstanceStatus.Stopping,
       });
+      // Should hard-delete the record
+      expect(mockDao.hardDeleteById).toHaveBeenCalledWith(existingRecord.id);
     });
   });
 

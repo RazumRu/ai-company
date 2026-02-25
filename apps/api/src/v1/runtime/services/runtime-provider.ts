@@ -156,9 +156,7 @@ export class RuntimeProvider {
             this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, 'ready', type);
             return { runtime, cached: true };
           } catch (error) {
-            await this.runtimeInstanceDao.updateById(existing.id, {
-              status: RuntimeInstanceStatus.Failed,
-            });
+            await this.cleanupFailedInstance(existing);
             this.emitRuntimeStatus(
               graphId, threadId, runtimeNodeId, 'failed', type,
               error instanceof Error ? error.message : String(error),
@@ -189,9 +187,7 @@ export class RuntimeProvider {
     try {
       runtime = await this.ensureRuntimeForRecord<T>(created);
     } catch (error) {
-      await this.runtimeInstanceDao.updateById(created.id, {
-        status: RuntimeInstanceStatus.Failed,
-      });
+      await this.cleanupFailedInstance(created);
       this.emitRuntimeStatus(
         graphId, threadId, runtimeNodeId, 'failed', type,
         error instanceof Error ? error.message : String(error),
@@ -312,6 +308,19 @@ export class RuntimeProvider {
     }
 
     await this.stopRuntime(instance);
+    await this.runtimeInstanceDao.hardDeleteById(instance.id);
+  }
+
+  private async cleanupFailedInstance(
+    instance: RuntimeInstanceEntity,
+  ): Promise<void> {
+    try {
+      await this.stopRuntime(instance);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to stop errored runtime ${instance.id} (${instance.containerName}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     await this.runtimeInstanceDao.hardDeleteById(instance.id);
   }
 
