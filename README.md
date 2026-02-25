@@ -9,7 +9,7 @@ Open-source platform for building, running, and managing AI agent workflows. Des
 - **Visual graph-based workflows** — Compose triggers, agents, tools, and runtimes into directed graphs with a pluggable node template system
 - **LLM-powered agents** — Built on [LangGraph](https://github.com/langchain-ai/langgraph) with summarization, tool calling, checkpointing, and configurable iteration limits
 - **Built-in tools** — Web search (Tavily), shell execution, file operations, GitHub integration, codebase search, knowledge base, and agent-to-agent communication
-- **Sandboxed execution** — Tools run inside Docker containers with configurable resource limits
+- **Sandboxed execution** — Tools run inside Docker containers with configurable resource limits and built-in Nix package manager support for on-demand dependencies
 - **Multi-model support** — Route to OpenAI, Anthropic, Google, MiniMax, Z.ai, and local models via [OpenRouter](https://openrouter.ai/) + [LiteLLM](https://github.com/BerriAI/litellm) proxy
 - **Knowledge base** — Embed documents into [Qdrant](https://qdrant.tech/) for semantic search and retrieval-augmented generation
 - **Real-time notifications** — Track agent progress via Socket.IO WebSocket events
@@ -54,6 +54,24 @@ cd apps/api && pnpm start:dev
 ```
 
 The API is now running at `http://localhost:5000`. Swagger docs are available at `/swagger-api`.
+
+### Runtime Dependencies (Nix)
+
+The runtime image used by shell/tools supports the Nix package manager. This lets agents install missing dependencies at runtime without mutating the system package manager.
+
+```bash
+# Check Nix availability
+nix --version
+
+# Use packages for one command (ephemeral)
+nix shell nixpkgs#nodejs_24 nixpkgs#pnpm -c pnpm install
+
+# Install packages into current runtime instance (persists while runtime is alive)
+nix profile install nixpkgs#ripgrep nixpkgs#fd
+
+# If repository provides a flake
+nix develop -c <command>
+```
 
 ### Minimal Example
 
@@ -283,6 +301,7 @@ The API is configured through environment variables. Create a `.env` file in the
 | `OPENROUTER_API_KEY` | OpenRouter API key | — |
 | `LLM_USE_OFFLINE_MODEL` | Use local Ollama models | `false` |
 | `AUTH_DEV_MODE` | Skip Keycloak auth in dev | `true` |
+| `DOCKER_RUNTIME_IMAGE` | Runtime image for tool execution containers (includes Nix support) | `razumru/geniro-runtime:latest` |
 | `CREDENTIAL_ENCRYPTION_KEY` | 64-char hex for AES-256-GCM | dev default provided |
 
 See `apps/api/src/environments/environment.prod.ts` for the full list.

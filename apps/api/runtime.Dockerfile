@@ -37,6 +37,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
   libxml2-dev \
   libxslt1-dev \
   zlib1g-dev \
+  xz-utils \
   && ln -s /usr/bin/python3 /usr/bin/python \
   && ln -s /usr/bin/fdfind /usr/local/bin/fd \
   && git clone https://github.com/universal-ctags/ctags.git /tmp/ctags \
@@ -58,6 +59,13 @@ RUN python3 -m venv /opt/py \
     openpyxl
 
 ENV PATH="/opt/py/bin:${PATH}"
+
+RUN NIX_INSTALLER_NO_MODIFY_PROFILE=1 \
+  curl --proto '=https' --tlsv1.2 -fsSL https://nixos.org/nix/install \
+  | sh -s -- --no-daemon --yes
+
+ENV PATH="/nix/var/nix/profiles/default/bin:/root/.nix-profile/bin:${PATH}"
+ENV NIX_CONFIG="experimental-features = nix-command flakes\nsandbox = false"
 
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
   && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \

@@ -129,6 +129,16 @@ export class RuntimeThreadProvider {
     return dedent`
       Runtime type: ${this.params.type}
       ${runtimeImage ? `Runtime image: ${runtimeImage}` : ''}
+
+      Nix package manager:
+      - Use Nix when a required dependency is missing from the base runtime.
+      - Quick check: \`nix --version\`
+      - Ephemeral tools for one command:
+        \`nix shell nixpkgs#nodejs_24 nixpkgs#pnpm -c pnpm install\`
+      - Install tools into current runtime instance (persists while runtime is alive):
+        \`nix profile install nixpkgs#nodejs_24 nixpkgs#pnpm\`
+      - If repo has \`flake.nix\`, run project environment:
+        \`nix develop -c <command>\`
     `;
   }
 }
