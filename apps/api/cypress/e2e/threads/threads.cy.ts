@@ -784,7 +784,7 @@ describe('Threads E2E', () => {
               },
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: 'python:3.11-slim',
@@ -865,7 +865,7 @@ describe('Threads E2E', () => {
               { id: 'shell-1', template: 'shell-tool', config: {} },
               {
                 id: 'runtime-1',
-                template: 'docker-runtime',
+                template: 'runtime',
                 config: {
                   runtimeType: 'Docker',
                   image: 'python:3.11-slim',

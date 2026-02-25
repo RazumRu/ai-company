@@ -139,7 +139,7 @@ describe('Graphs Integration Tests', () => {
         },
         {
           id: RUNTIME_NODE_ID,
-          template: 'docker-runtime',
+          template: 'runtime',
           config: {
             runtimeType: 'Docker',
             image: 'python:3.11-slim',

@@ -11,10 +11,7 @@ import {
 import type { GraphNode } from '../../../graphs/graphs.types';
 import { NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
-import {
-  RuntimeStartParams,
-  RuntimeType,
-} from '../../../runtime/runtime.types';
+import type { RuntimeStartParams } from '../../../runtime/runtime.types';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
@@ -35,7 +32,7 @@ export class PlaywrightMcpTemplate extends McpNodeBaseTemplate<
   readonly id = 'playwright-mcp';
   readonly name = 'Playwright MCP';
   readonly description =
-    'Browser automation via Playwright MCP running in Docker runtime';
+    'Browser automation via Playwright MCP (requires Docker runtime type)';
   readonly schema = PlaywrightMcpTemplateSchema;
 
   readonly inputs = [
@@ -74,7 +71,7 @@ export class PlaywrightMcpTemplate extends McpNodeBaseTemplate<
 
         if (!runtimeNodeId) {
           throw new Error(
-            'Playwright MCP requires a Docker Runtime connection',
+            'Playwright MCP requires a Runtime node with Docker type',
           );
         }
 
@@ -92,9 +89,7 @@ export class PlaywrightMcpTemplate extends McpNodeBaseTemplate<
           );
         }
 
-        const runtimeConfig = runtimeNode.config as RuntimeStartParams & {
-          runtimeType: RuntimeType;
-        };
+        const runtimeConfig = runtimeNode.config as RuntimeStartParams;
         const mcpThreadId = `mcp-init-${graphId}-${runtimeNodeId}`;
         const runtime = await instance.provideTemporaryRuntime({
           runtimeProvider: this.runtimeProvider,
@@ -114,7 +109,7 @@ export class PlaywrightMcpTemplate extends McpNodeBaseTemplate<
             graphId,
             runtimeNodeId,
             threadId: mcpThreadId,
-            type: runtimeConfig.runtimeType,
+            type: this.runtimeProvider.getDefaultRuntimeType(),
           });
         }
       },

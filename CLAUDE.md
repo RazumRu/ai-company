@@ -19,7 +19,9 @@ All commands run from the **repo root** unless noted otherwise.
 ### Daily development
 ```bash
 pnpm install                          # Install dependencies
-pnpm deps:up                          # Start local services (Podman: Postgres, Redis, Qdrant, Keycloak, LiteLLM)
+pnpm deps:up                          # Start core services (Postgres, Redis, Qdrant, Keycloak, LiteLLM)
+pnpm deps:up:full                     # Start all services including Daytona (sandbox runtime)
+pnpm deps:down                        # Stop all services (including Daytona)
 cd apps/api && pnpm start:dev         # Dev server with hot-reload (port 5000)
 ```
 

@@ -8,6 +8,11 @@ import {
 } from 'unique-username-generator';
 
 import { environment } from '../../../environments';
+import {
+  IRuntimeStatusData,
+  NotificationEvent,
+} from '../../notifications/notifications.types';
+import { NotificationsService } from '../../notifications/services/notifications.service';
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
 import {
@@ -16,6 +21,7 @@ import {
   RuntimeType,
 } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
+import { DaytonaRuntime, DaytonaRuntimeConfig } from './daytona-runtime';
 import { DockerRuntime } from './docker-runtime';
 
 export type ProvideRuntimeResult<T extends BaseRuntime> = {
@@ -30,7 +36,33 @@ export class RuntimeProvider {
   constructor(
     private readonly runtimeInstanceDao: RuntimeInstanceDao,
     private readonly logger: DefaultLogger,
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  private emitRuntimeStatus(
+    graphId: string,
+    threadId: string,
+    nodeId: string,
+    status: IRuntimeStatusData['status'],
+    runtimeType: string,
+    message?: string,
+  ): void {
+    this.notificationsService
+      .emit({
+        type: NotificationEvent.RuntimeStatus,
+        graphId,
+        threadId,
+        nodeId,
+        data: { threadId, nodeId, status, runtimeType, message },
+      })
+      .catch((error) => {
+        this.logger.error(
+          <Error>error,
+          'Failed to emit runtime status notification',
+          { graphId, threadId, nodeId, status },
+        );
+      });
+  }
 
   protected resolveRuntimeConfigByType(
     type: RuntimeType,
@@ -38,16 +70,45 @@ export class RuntimeProvider {
     switch (type) {
       case RuntimeType.Docker:
         return { socketPath: environment.dockerSocket };
+      case RuntimeType.Daytona:
+        return {
+          apiKey: environment.daytonaApiKey,
+          apiUrl: environment.daytonaApiUrl,
+          target: environment.daytonaTarget,
+        };
     }
   }
 
-  protected resolveRuntimeByType(type: RuntimeType): BaseRuntime | undefined {
-    const config = this.resolveRuntimeConfigByType(type);
+  private resolveDaytonaConfig(): DaytonaRuntimeConfig {
+    return {
+      apiKey: environment.daytonaApiKey as string,
+      apiUrl: environment.daytonaApiUrl as string,
+      target: environment.daytonaTarget as string,
+    };
+  }
 
+  protected resolveRuntimeByType(type: RuntimeType): BaseRuntime | undefined {
     switch (type) {
       case RuntimeType.Docker:
-        return new DockerRuntime(config, { logger: this.logger });
+        return new DockerRuntime(this.resolveRuntimeConfigByType(type), {
+          logger: this.logger,
+        });
+      case RuntimeType.Daytona:
+        return new DaytonaRuntime(this.resolveDaytonaConfig(), {
+          logger: this.logger,
+        });
     }
+  }
+
+  public getDefaultRuntimeType(): RuntimeType {
+    const configured = environment.defaultRuntimeType;
+    if (
+      Boolean(configured) &&
+      Object.values(RuntimeType).includes(configured as RuntimeType)
+    ) {
+      return configured as RuntimeType;
+    }
+    return RuntimeType.Docker;
   }
 
   async provide<T extends BaseRuntime>(
@@ -63,27 +124,48 @@ export class RuntimeProvider {
     });
 
     if (existing) {
-      const runtimeConfig = params.runtimeStartParams;
-      const configChanged = !isEqual(existing.config, runtimeConfig);
-
-      if (configChanged) {
+      if (existing.status === RuntimeInstanceStatus.Failed) {
+        this.logger.warn(
+          `Runtime instance ${existing.id} is in Failed status — cleaning up and recreating`,
+        );
         await this.stopRuntime(existing);
-        await this.runtimeInstanceDao.deleteById(existing.id);
+        await this.runtimeInstanceDao.hardDeleteById(existing.id);
       } else {
-        await this.runtimeInstanceDao.updateById(existing.id, {
-          lastUsedAt: new Date(),
-          config: runtimeConfig,
-          temporary: params.temporary,
-        });
+        const runtimeConfig = params.runtimeStartParams;
+        const configChanged = !isEqual(existing.config, runtimeConfig);
 
-        const runtime = await this.ensureRuntimeForRecord<T>(existing);
-        if (existing.status !== RuntimeInstanceStatus.Running) {
+        if (configChanged) {
+          await this.stopRuntime(existing);
+          await this.runtimeInstanceDao.deleteById(existing.id);
+        } else {
           await this.runtimeInstanceDao.updateById(existing.id, {
-            status: RuntimeInstanceStatus.Running,
+            lastUsedAt: new Date(),
+            config: runtimeConfig,
+            temporary: params.temporary,
           });
-        }
 
-        return { runtime, cached: true };
+          try {
+            this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, 'creating', type);
+            const runtime = await this.ensureRuntimeForRecord<T>(existing);
+            if (existing.status !== RuntimeInstanceStatus.Running) {
+              await this.runtimeInstanceDao.updateById(existing.id, {
+                status: RuntimeInstanceStatus.Running,
+              });
+            }
+
+            this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, 'ready', type);
+            return { runtime, cached: true };
+          } catch (error) {
+            await this.runtimeInstanceDao.updateById(existing.id, {
+              status: RuntimeInstanceStatus.Failed,
+            });
+            this.emitRuntimeStatus(
+              graphId, threadId, runtimeNodeId, 'failed', type,
+              error instanceof Error ? error.message : String(error),
+            );
+            throw error;
+          }
+        }
       }
     }
 
@@ -101,13 +183,28 @@ export class RuntimeProvider {
       lastUsedAt: new Date(),
     });
 
-    const runtime = await this.ensureRuntimeForRecord<T>(created);
+    this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, 'creating', type);
+
+    let runtime: T;
+    try {
+      runtime = await this.ensureRuntimeForRecord<T>(created);
+    } catch (error) {
+      await this.runtimeInstanceDao.updateById(created.id, {
+        status: RuntimeInstanceStatus.Failed,
+      });
+      this.emitRuntimeStatus(
+        graphId, threadId, runtimeNodeId, 'failed', type,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
 
     await this.runtimeInstanceDao.updateById(created.id, {
       status: RuntimeInstanceStatus.Running,
       lastUsedAt: new Date(),
     });
 
+    this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, 'ready', type);
     return { runtime, cached: false };
   }
 
@@ -129,6 +226,13 @@ export class RuntimeProvider {
           await DockerRuntime.stopByName(instance.containerName, config).catch(
             () => undefined,
           );
+          break;
+        case RuntimeType.Daytona:
+          await DaytonaRuntime.stopByName(
+            instance.containerName,
+            this.resolveDaytonaConfig(),
+          ).catch(() => undefined);
+          break;
       }
     }
 
@@ -141,7 +245,11 @@ export class RuntimeProvider {
     const lastUsedBefore = new Date(Date.now() - idleThresholdMs);
     const instances = await this.runtimeInstanceDao.getAll({
       lastUsedBefore,
-      statuses: [RuntimeInstanceStatus.Running, RuntimeInstanceStatus.Starting],
+      statuses: [
+        RuntimeInstanceStatus.Running,
+        RuntimeInstanceStatus.Starting,
+        RuntimeInstanceStatus.Failed,
+      ],
     });
 
     return this.stopAndDeleteInstances(instances);

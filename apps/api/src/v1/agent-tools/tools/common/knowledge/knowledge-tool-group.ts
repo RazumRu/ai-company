@@ -65,6 +65,11 @@ export class KnowledgeToolGroup extends BaseToolGroup<KnowledgeToolGroupConfig> 
       '',
       'Example flow: knowledge_search_docs returns empty -> inspect project files/structure to learn stack -> rephrase the query -> run knowledge_search_docs again to locate docs.',
       'Then write a short note describing how you searched (queries/filters/tags) and what you found.',
+      '',
+      'Avoid redundant searches:',
+      '- If you already searched the knowledge base earlier in this conversation and received results, do NOT search again unless the knowledge base may have changed (e.g., you were told new documents were added).',
+      '- On follow-up tasks within the same conversation session: reuse the knowledge context you already have. Re-searching with the same or similar queries wastes tokens and time without providing new information.',
+      '- Only re-search if you are working on a significantly different topic that your previous search would not have covered.',
     ].join('\n');
   }
 }

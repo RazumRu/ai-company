@@ -439,8 +439,8 @@ describe('POST /v1/graphs', () => {
     const invalidGraphData = createMockGraphData({
       schema: {
         nodes: [
-          { id: 'duplicate-id', template: 'docker-runtime', config: { image: 'python:3.11' } },
-          { id: 'duplicate-id', template: 'docker-runtime', config: { image: 'python:3.11' } },
+          { id: 'duplicate-id', template: 'runtime', config: { image: 'python:3.11' } },
+          { id: 'duplicate-id', template: 'runtime', config: { image: 'python:3.11' } },
         ],
         edges: [],
       },

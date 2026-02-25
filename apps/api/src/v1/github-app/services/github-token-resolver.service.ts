@@ -50,7 +50,7 @@ export class GitHubTokenResolverService {
 
       // 2. Fallback: try any active installation for the user.
       // The user may have a personal installation that also has access to
-      // org repos (e.g. RazumRu's installation accessing geniro-io repos).
+      // org repos.
       // GitHub's API will enforce actual repo access permissions.
       if (!installation) {
         const fallbackInstallation = await this.gitHubAppInstallationDao.getOne(

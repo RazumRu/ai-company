@@ -69,6 +69,8 @@ import type {
   GetThreadUsageStatisticsResponses,
   LinkInstallationData,
   LinkInstallationResponses,
+  LinkViaOAuthCodeData,
+  LinkViaOAuthCodeResponses,
   ListDocsData,
   ListDocsResponses,
   ListInstallationsData,
@@ -556,6 +558,24 @@ export const getSetupInfo = <ThrowOnError extends boolean = false>(
       ...options,
     },
   );
+
+export const linkViaOAuthCode = <ThrowOnError extends boolean = false>(
+  options: Options<LinkViaOAuthCodeData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    LinkViaOAuthCodeResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/github-app/oauth/link',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
 
 export const linkInstallation = <ThrowOnError extends boolean = false>(
   options: Options<LinkInstallationData, ThrowOnError>,

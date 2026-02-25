@@ -2,7 +2,7 @@
 
 Open-source platform for building, running, and managing AI agent workflows. Design agents as visual graphs, connect them to tools, and execute them in isolated environments — all through a REST API with real-time updates.
 
-> **This repository contains the backend API.** The web UI lives at [geniro-web](https://github.com/RazumRu/geniro-web).
+> **This repository contains the backend API.** The web UI lives at [geniro-web](https://github.com/geniro-io/geniro-web).
 
 ## Features
 
@@ -36,15 +36,18 @@ Open-source platform for building, running, and managing AI agent workflows. Des
 
 ```bash
 # Clone and install
-git clone https://github.com/RazumRu/geniro.git
+git clone https://github.com/geniro-io/geniro.git
 cd geniro
 pnpm install
 
 # Configure API keys (see "API Keys" section below)
 cp .env.example .env   # then fill in your keys
 
-# Start infrastructure (Postgres, Redis, Qdrant, Keycloak, LiteLLM)
+# Start core infrastructure (Postgres, Redis, Qdrant, Keycloak, LiteLLM)
 pnpm deps:up
+
+# Or start everything including Daytona (sandbox runtime)
+pnpm deps:up:full
 
 # Start the API server (port 5000, hot-reload)
 cd apps/api && pnpm start:dev
