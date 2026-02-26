@@ -154,6 +154,7 @@ describe('PlaywrightMcpTemplate', () => {
         name: 'test-node',
         version: '1.0.0',
         graph_created_by: 'user-1',
+        graph_project_id: '11111111-1111-1111-1111-111111111111',
       };
 
       const outputNodeIds = new Set(['runtime-1']);
@@ -200,6 +201,7 @@ describe('PlaywrightMcpTemplate', () => {
         name: 'test-node',
         version: '1.0.0',
         graph_created_by: 'user-1',
+        graph_project_id: '11111111-1111-1111-1111-111111111111',
       };
 
       const outputNodeIds = new Set(['runtime-1']);
@@ -228,6 +230,7 @@ describe('PlaywrightMcpTemplate', () => {
         name: 'test-node',
         version: '1.0.0',
         graph_created_by: 'user-1',
+        graph_project_id: '11111111-1111-1111-1111-111111111111',
       };
 
       const outputNodeIds = new Set<string>();
@@ -258,6 +261,7 @@ describe('PlaywrightMcpTemplate', () => {
         name: 'test-node',
         version: '1.0.0',
         graph_created_by: 'user-1',
+        graph_project_id: '11111111-1111-1111-1111-111111111111',
       };
 
       const outputNodeIds = new Set(['runtime-1']);

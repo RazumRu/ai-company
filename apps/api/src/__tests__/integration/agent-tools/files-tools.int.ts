@@ -2,7 +2,8 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BaseException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
@@ -77,7 +78,7 @@ const hasTextMatch = (result: SearchTextResult, snippet: string) =>
       typeof match?.lineText === 'string' && match.lineText.includes(snippet),
   );
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('Files tools integration', () => {
   let moduleRef: TestingModule;

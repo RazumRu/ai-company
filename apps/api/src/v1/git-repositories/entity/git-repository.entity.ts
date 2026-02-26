@@ -1,11 +1,11 @@
-import { TimestampsEntity } from '@packages/typeorm';
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
+import { AuditEntity } from '../../../auth/audit.entity';
 import { GitRepositoryProvider } from '../git-repositories.types';
 
 @Entity('git_repositories')
-@Index(['owner', 'repo', 'createdBy', 'provider'], { unique: true })
-export class GitRepositoryEntity extends TimestampsEntity {
+@Index(['owner', 'repo', 'createdBy', 'provider', 'projectId'], { unique: true })
+export class GitRepositoryEntity extends AuditEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -25,10 +25,6 @@ export class GitRepositoryEntity extends TimestampsEntity {
     enum: GitRepositoryProvider,
   })
   provider!: GitRepositoryProvider;
-
-  @Column({ type: 'uuid' })
-  @Index()
-  createdBy!: string;
 
   @Column({ type: 'varchar', default: 'main' })
   defaultBranch!: string;

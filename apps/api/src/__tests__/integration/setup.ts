@@ -22,6 +22,7 @@ import { GitHubAppInstallationEntity } from '../../v1/github-app/entity/github-a
 import { GraphEntity } from '../../v1/graphs/entity/graph.entity';
 import { GraphRevisionEntity } from '../../v1/graphs/entity/graph-revision.entity';
 import { KnowledgeDocEntity } from '../../v1/knowledge/entity/knowledge-doc.entity';
+import { ProjectEntity } from '../../v1/projects/entity/project.entity';
 import { RuntimeInstanceEntity } from '../../v1/runtime/entity/runtime-instance.entity';
 import { MessageEntity } from '../../v1/threads/entity/message.entity';
 import { ThreadEntity } from '../../v1/threads/entity/thread.entity';
@@ -82,6 +83,7 @@ export const createTestModule = async (
           MessageEntity,
           GraphRevisionEntity,
           KnowledgeDocEntity,
+          ProjectEntity,
           RuntimeInstanceEntity,
           GitRepositoryEntity,
           GitHubAppInstallationEntity,

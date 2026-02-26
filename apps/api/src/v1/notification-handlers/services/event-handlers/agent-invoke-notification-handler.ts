@@ -84,6 +84,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadCreate,
         graphId,
+        projectId: graph.projectId ?? undefined,
         threadId: externalThreadKey,
         internalThreadId: thread.id,
         data: thread,
@@ -93,6 +94,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadUpdate,
         graphId,
+        projectId: graph.projectId ?? undefined,
         threadId: externalThreadKey,
         parentThreadId,
         data: threadDto,

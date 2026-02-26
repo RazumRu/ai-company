@@ -33,6 +33,7 @@ describe('AgentInvokeNotificationHandler', () => {
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
+  const mockProjectId = 'project-abc';
   const mockNodeId = 'node-789';
   const mockThreadId = 'thread-abc';
   const mockParentThreadId = 'parent-thread-def';
@@ -51,6 +52,7 @@ describe('AgentInvokeNotificationHandler', () => {
     },
     status: GraphStatus.Running,
     createdBy: mockUserId,
+    projectId: mockProjectId,
     temporary: false,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
@@ -194,6 +196,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadCreate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         threadId: 'parent-thread-123',
         internalThreadId: upsertedThread.id,
         data: upsertedThread,
@@ -229,6 +232,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadCreate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         threadId: 'parent-thread-123',
         internalThreadId: upsertedThread.id,
         data: upsertedThread,
@@ -276,6 +280,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadCreate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         threadId: mockParentThreadId,
         internalThreadId: upsertedThread.id,
         data: upsertedThread,
@@ -308,6 +313,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadUpdate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         threadId: 'parent-thread-123',
         parentThreadId: 'parent-thread-123',
         data: expectedThreadDto,
@@ -354,6 +360,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadCreate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         threadId: 'parent-thread-123',
         internalThreadId: upsertedThread.id,
         data: upsertedThread,
@@ -506,6 +513,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadCreate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         threadId: mockParentThreadId,
         internalThreadId: upsertedThread.id,
         data: upsertedThread,

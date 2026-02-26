@@ -1,10 +1,11 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { environment } from '../../environments';
 import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
+import { ProjectsModule } from '../projects/projects.module';
 import { QdrantModule } from '../qdrant/qdrant.module';
 import { KnowledgeController } from './controllers/knowledge.controller';
 import { KnowledgeDocDao } from './dao/knowledge-doc.dao';
@@ -19,6 +20,7 @@ import { KnowledgeReindexService } from './services/knowledge-reindex.service';
     OpenaiModule,
     LitellmModule,
     QdrantModule,
+    forwardRef(() => ProjectsModule),
   ],
   controllers: [KnowledgeController],
   providers: [

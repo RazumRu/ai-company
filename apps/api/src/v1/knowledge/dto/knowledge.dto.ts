@@ -12,6 +12,7 @@ export const KnowledgeDocSchema = z.object({
   politic: z.string().nullable().optional(),
   embeddingModel: z.string().nullable().optional(),
   tags: z.array(z.string()),
+  projectId: z.uuid().nullable().describe('Project this knowledge doc belongs to'),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

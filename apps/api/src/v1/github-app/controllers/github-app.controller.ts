@@ -1,11 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BadRequestException } from '@packages/common';
-import {
-  AuthContextStorage,
-  CtxStorage,
-  OnlyForAuthorized,
-} from '@packages/http-server';
+import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { environment } from '../../../environments';
 import { GitHubAppInstallationDao } from '../dao/github-app-installation.dao';
@@ -48,7 +46,7 @@ export class GitHubAppController {
   @OnlyForAuthorized()
   async linkViaOAuthCode(
     @Body() body: OAuthLinkRequestDto,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<LinkInstallationResponseDto> {
     const userId = ctx.checkSub();
 
@@ -107,7 +105,7 @@ export class GitHubAppController {
   @OnlyForAuthorized()
   async linkInstallation(
     @Param('installationId') installationIdParam: string,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<LinkInstallationResponseDto> {
     const userId = ctx.checkSub();
     const installationId = Number(installationIdParam);
@@ -156,7 +154,7 @@ export class GitHubAppController {
   @ApiBearerAuth()
   @OnlyForAuthorized()
   async listInstallations(
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ListInstallationsResponseDto> {
     const userId = ctx.checkSub();
 
@@ -183,7 +181,7 @@ export class GitHubAppController {
   @OnlyForAuthorized()
   async unlinkInstallation(
     @Param('installationId') installationIdParam: string,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<UnlinkInstallationResponseDto> {
     const userId = ctx.checkSub();
     const installationId = Number(installationIdParam);

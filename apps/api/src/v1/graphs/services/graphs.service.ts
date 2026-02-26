@@ -5,15 +5,16 @@ import {
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { isEqual } from 'lodash';
 import { EntityManager } from 'typeorm';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
@@ -48,6 +49,7 @@ export class GraphsService {
     private readonly threadsDao: ThreadsDao,
     private readonly messagesDao: MessagesDao,
     private readonly logger: DefaultLogger,
+    private readonly projectsDao: ProjectsDao,
   ) {}
 
   private prepareResponse(
@@ -64,18 +66,29 @@ export class GraphsService {
   }
 
   async create(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     data: CreateGraphDto,
   ): Promise<GraphDto> {
     // Validate schema before creating the graph
     this.graphCompiler.validateSchema(data.schema);
 
+    const userId = ctx.checkSub();
+    const projectId = ctx.checkProjectId();
+
+    const project = await this.projectsDao.getOne({
+      id: projectId,
+      createdBy: userId,
+    });
+    if (!project) {
+      throw new NotFoundException('PROJECT_NOT_FOUND');
+    }
+
     return this.typeorm.trx(async (entityManager: EntityManager) => {
       const initialVersion = '1.0.0';
-      const userId = ctx.checkSub();
       const row = await this.graphDao.create(
         {
           ...data,
+          projectId,
           status: GraphStatus.Created,
           createdBy: userId,
           temporary: data.temporary ?? false,
@@ -89,7 +102,7 @@ export class GraphsService {
     });
   }
 
-  async findById(ctx: AuthContextStorage, id: string): Promise<GraphDto> {
+  async findById(ctx: AppContextStorage, id: string): Promise<GraphDto> {
     const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id,
@@ -104,13 +117,14 @@ export class GraphsService {
   }
 
   async getAll(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     query?: GetAllGraphsQueryDto,
   ): Promise<GraphDto[]> {
     const userId = ctx.checkSub();
     const rows = await this.graphDao.getAll({
       createdBy: userId,
-      ...query,
+      ids: query?.ids,
+      projectId: ctx.checkProjectId(),
       order: {
         updatedAt: 'DESC',
       },
@@ -125,7 +139,7 @@ export class GraphsService {
   }
 
   async getCompiledNodes(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     id: string,
     data: GraphNodesQueryDto,
   ): Promise<GraphNodeWithStatusDto[]> {
@@ -151,7 +165,7 @@ export class GraphsService {
   }
 
   async update(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     id: string,
     data: UpdateGraphDto,
   ): Promise<UpdateGraphResponseDto> {
@@ -307,7 +321,7 @@ export class GraphsService {
     return response;
   }
 
-  async delete(ctx: AuthContextStorage, id: string): Promise<void> {
+  async delete(ctx: AppContextStorage, id: string): Promise<void> {
     const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id,
@@ -333,7 +347,7 @@ export class GraphsService {
     await this.graphDao.deleteById(id);
   }
 
-  async run(ctx: AuthContextStorage, id: string): Promise<GraphDto> {
+  async run(ctx: AppContextStorage, id: string): Promise<GraphDto> {
     const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id,
@@ -487,7 +501,7 @@ export class GraphsService {
     return results.some((r) => r.status === 'fulfilled' && r.value === true);
   }
 
-  async destroy(ctx: AuthContextStorage, id: string): Promise<GraphDto> {
+  async destroy(ctx: AppContextStorage, id: string): Promise<GraphDto> {
     const userId = ctx.checkSub();
     const graph = await this.graphDao.getOne({
       id,
@@ -525,7 +539,7 @@ export class GraphsService {
   }
 
   async executeTrigger(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     graphId: string,
     triggerId: string,
     dto: ExecuteTriggerDto,

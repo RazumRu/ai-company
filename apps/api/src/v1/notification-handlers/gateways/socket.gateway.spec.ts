@@ -23,6 +23,7 @@ describe('SocketGateway', () => {
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
+  const mockProjectId = 'project-abc';
   const mockToken = 'valid-token';
 
   beforeEach(async () => {
@@ -79,6 +80,7 @@ describe('SocketGateway', () => {
       const mockEnrichedNotification: IEnrichedNotification<unknown> = {
         type: 'graph.update' as any,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockUserId,
         data: { status: GraphStatus.Running },
         scope: [NotificationScope.Graph],
@@ -107,6 +109,7 @@ describe('SocketGateway', () => {
       const mockAgentStateUpdateNotification: IEnrichedNotification<unknown> = {
         type: 'agent.state.update' as any,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockUserId,
         data: {
           summary: 'Test summary',
@@ -144,6 +147,7 @@ describe('SocketGateway', () => {
       const mockThreadUpdateNotification: IEnrichedNotification<unknown> = {
         type: 'thread.update' as any,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockUserId,
         data: {
           status: 'stopped',
@@ -177,6 +181,7 @@ describe('SocketGateway', () => {
       const mockNotification: IEnrichedNotification<unknown> = {
         type: 'graph.update' as any,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockUserId,
         data: { status: GraphStatus.Running },
         scope: [NotificationScope.Graph],
@@ -204,6 +209,7 @@ describe('SocketGateway', () => {
       const mockDualScopeNotification: IEnrichedNotification<unknown> = {
         type: 'graph.revision.create' as any,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockUserId,
         data: { revisionId: 'rev-1' },
         scope: [NotificationScope.Graph, NotificationScope.User],
@@ -373,6 +379,7 @@ describe('SocketGateway', () => {
       graphDao.getOne.mockResolvedValue({
         id: mockGraphId,
         createdBy: mockUserId,
+        projectId: mockProjectId,
         name: 'Test Graph',
         description: 'Test Description',
         version: '1.0.0',
@@ -459,6 +466,7 @@ describe('SocketGateway', () => {
       const threadStateUpdate: IEnrichedNotification<unknown> = {
         type: 'agent.state.update' as any,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockUserId,
         data: {
           summary: 'Updated summary',

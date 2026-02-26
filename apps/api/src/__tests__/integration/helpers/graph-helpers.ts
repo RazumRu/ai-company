@@ -12,6 +12,10 @@ const baseSimpleAgentConfig: SimpleAgentSchemaType = {
   summarizeKeepTokens: 30000,
 };
 
+// Placeholder project ID used in unit tests that mock the ProjectsDao.
+// In integration tests, omit projectId or insert a real project first.
+export const TEST_PROJECT_ID = '00000000-0000-0000-0000-000000000002';
+
 // Helper to create mock graph data for tests
 export const createMockGraphData = (
   overrides?: Partial<CreateGraphDto>,

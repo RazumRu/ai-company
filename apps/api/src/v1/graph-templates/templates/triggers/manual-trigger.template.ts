@@ -108,6 +108,7 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
                 parent_thread_id: parentThreadId,
                 source: `${this.name} (${this.kind})`,
                 graph_created_by: metadata.graph_created_by,
+                graph_project_id: metadata.graph_project_id,
               },
             };
 

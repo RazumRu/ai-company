@@ -32,6 +32,7 @@ export interface INotification<T> {
   type: NotificationEvent;
   data: T;
   graphId: string;
+  projectId?: string;
   nodeId?: string;
   threadId?: string;
   parentThreadId?: string;

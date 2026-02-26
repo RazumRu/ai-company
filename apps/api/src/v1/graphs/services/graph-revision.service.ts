@@ -4,8 +4,9 @@ import {
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { AdditionalParams, TypeormService } from '@packages/typeorm';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { UnrecoverableError } from 'bullmq';
 import { compare, type Operation } from 'fast-json-patch';
 import { isEqual } from 'lodash';
@@ -68,7 +69,7 @@ export class GraphRevisionService {
   }
 
   async queueRevision(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     graph: GraphEntity,
     baseVersion: string,
     clientConfig: GraphRevisionConfig,
@@ -785,6 +786,7 @@ export class GraphRevisionService {
       version: revision.toVersion,
       temporary: graph.temporary,
       graph_created_by: graph.createdBy,
+      graph_project_id: graph.projectId,
     };
 
     const oldNodeIds = new Set(compiledGraph.nodes.keys());
@@ -922,6 +924,7 @@ export class GraphRevisionService {
       version: string;
       temporary: boolean;
       graph_created_by: string;
+      graph_project_id: string;
     },
     edges: GraphEdgeSchemaType[],
     revisionContext?: { revisionId: string; toVersion: string },
@@ -1147,7 +1150,7 @@ export class GraphRevisionService {
   }
 
   async getRevisions(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     graphId: string,
     query: GraphRevisionQueryDto,
   ): Promise<GraphRevisionDto[]> {
@@ -1177,7 +1180,7 @@ export class GraphRevisionService {
   }
 
   async getRevisionById(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     graphId: string,
     revisionId: string,
   ): Promise<GraphRevisionDto> {

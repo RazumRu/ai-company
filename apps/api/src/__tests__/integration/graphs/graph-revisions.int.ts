@@ -1,7 +1,8 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -41,7 +42,7 @@ const TEST_AGENT_NODE_ID = 'agent-1';
 const COMMAND_AGENT_INSTRUCTIONS =
   'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, call the finish tool with the stdout (and stderr if present). If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('Graph Revisions Integration Tests', () => {
   let app: INestApplication;

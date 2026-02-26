@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -22,7 +23,7 @@ const RUNTIME_NODE_ID = 'runtime-1';
 const COMMAND_AGENT_INSTRUCTIONS =
   'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands. After running the shell tool, call the finish tool with the stdout (and stderr if present).';
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('Thread Stop Execution Integration Tests', () => {
   let app: INestApplication;

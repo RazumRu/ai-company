@@ -66,6 +66,7 @@ export const GraphSchema = z.object({
     .describe(
       'If true, graph will be deleted instead of restored after server restart',
     ),
+  projectId: z.uuid().nullable().optional().describe('Project this graph belongs to'),
 });
 
 export const GraphEditableSchema = GraphSchema.omit({
@@ -78,6 +79,7 @@ export const GraphEditableSchema = GraphSchema.omit({
   updatedAt: true,
   version: true,
   targetVersion: true,
+  projectId: true,
 });
 
 export const ExecuteTriggerSchema = z.object({

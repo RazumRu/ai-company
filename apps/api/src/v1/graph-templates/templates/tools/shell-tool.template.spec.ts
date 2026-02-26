@@ -153,6 +153,7 @@ describe('ShellToolTemplate', () => {
       nodeId: 'tool-1',
       version: '1',
       graph_created_by: 'user-1',
+        graph_project_id: '11111111-1111-1111-1111-111111111111',
     };
 
     let mockRuntime: { exec: ReturnType<typeof vi.fn> };

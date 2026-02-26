@@ -11,6 +11,7 @@ export interface IEnrichedNotification<T> {
   type: NotificationEvent;
   data: T;
   graphId: string;
+  projectId: string;
   ownerId: string;
   nodeId?: string;
   threadId?: string;

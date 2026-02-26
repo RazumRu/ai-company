@@ -11,6 +11,7 @@ import { GraphsModule } from './v1/graphs/graphs.module';
 import { KnowledgeModule } from './v1/knowledge/knowledge.module';
 import { LitellmModule } from './v1/litellm/litellm.module';
 import { NotificationHandlersModule } from './v1/notification-handlers/notification-handlers.module';
+import { ProjectsModule } from './v1/projects/projects.module';
 import { RuntimeModule } from './v1/runtime/runtime.module';
 import { SystemModule } from './v1/system/system.module';
 import { ThreadsModule } from './v1/threads/threads.module';
@@ -29,6 +30,7 @@ import { ThreadsModule } from './v1/threads/threads.module';
     GitHubAppModule,
     GitRepositoriesModule,
     NotificationHandlersModule,
+    ProjectsModule,
     SystemModule,
     ThreadsModule,
   ],

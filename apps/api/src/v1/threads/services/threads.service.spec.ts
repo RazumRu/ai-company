@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { MessageRole } from '../../graphs/graphs.types';
@@ -29,7 +30,7 @@ describe('ThreadsService', () => {
 
   const mockCtx = {
     checkSub: vi.fn().mockReturnValue(mockUserId),
-  } as unknown as AuthContextStorage;
+  } as unknown as AppContextStorage;
 
   const createMockThreadEntity = (
     overrides: Partial<ThreadEntity> = {},

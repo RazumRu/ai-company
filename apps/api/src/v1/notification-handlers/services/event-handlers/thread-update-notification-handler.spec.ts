@@ -30,6 +30,7 @@ describe('ThreadUpdateNotificationHandler', () => {
 
   const mockGraphId = '22222222-2222-4222-8aaa-222222222222';
   const mockOwnerId = 'user-123';
+  const mockProjectId = 'project-abc';
   const mockThreadId = 'external-thread-123';
 
   const createMockThreadEntity = (
@@ -64,6 +65,7 @@ describe('ThreadUpdateNotificationHandler', () => {
     const mockGraph: GraphEntity = {
       id: mockGraphId,
       createdBy: mockOwnerId,
+      projectId: mockProjectId,
       name: 'Graph',
       description: 'Desc',
       version: '1.0.0',
@@ -140,6 +142,7 @@ describe('ThreadUpdateNotificationHandler', () => {
       {
         type: NotificationEvent.ThreadUpdate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         threadId: mockThreadId,
         internalThreadId: thread.id,

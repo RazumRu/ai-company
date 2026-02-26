@@ -12,6 +12,7 @@ export type SearchTerms = Partial<{
   repo: string;
   provider: GitRepositoryProvider;
   createdBy: string;
+  projectId: string;
 }>;
 
 @Injectable()
@@ -68,6 +69,12 @@ export class GitRepositoriesDao extends BaseDao<
     if (params?.createdBy) {
       builder.andWhere({
         createdBy: params.createdBy,
+      });
+    }
+
+    if (params?.projectId) {
+      builder.andWhere({
+        projectId: params.projectId,
       });
     }
   }

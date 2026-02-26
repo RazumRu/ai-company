@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
@@ -10,7 +11,7 @@ import { KnowledgeChunksService } from '../../../v1/knowledge/services/knowledge
 import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('KnowledgeService (integration)', () => {
   let app: INestApplication;

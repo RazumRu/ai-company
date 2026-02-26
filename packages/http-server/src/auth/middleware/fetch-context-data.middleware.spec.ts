@@ -1,10 +1,13 @@
 import { BaseLogger } from '@packages/common';
+import type { FastifyRequest } from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IContextData } from '../auth.types';
 import { AuthContextService } from '../auth-context.service';
 import { AuthContextStorage } from '../auth-context-storage';
 import { FetchContextDataMiddleware } from './fetch-context-data.middleware';
+
+const EMPTY_REQUEST = { headers: {} } as FastifyRequest;
 
 describe('FetchContextDataMiddleware', () => {
   let middleware: FetchContextDataMiddleware;
@@ -26,7 +29,7 @@ describe('FetchContextDataMiddleware', () => {
 
   it('should set context data and storage on successful init', async () => {
     const mockContextData: IContextData = { sub: 'user-123' };
-    const mockStorage = new AuthContextStorage(mockContextData);
+    const mockStorage = new AuthContextStorage(mockContextData, EMPTY_REQUEST);
 
     vi.mocked(mockContextService.init).mockResolvedValue(mockContextData);
     vi.mocked(mockContextService.contextStorage).mockReturnValue(mockStorage);
@@ -49,7 +52,7 @@ describe('FetchContextDataMiddleware', () => {
 
   it('should set storage to empty context on error and still call next', async () => {
     const error = new Error('Token verification failed');
-    const mockStorage = new AuthContextStorage(undefined);
+    const mockStorage = new AuthContextStorage(undefined, EMPTY_REQUEST);
 
     vi.mocked(mockContextService.init).mockRejectedValue(error);
     vi.mocked(mockContextService.contextStorage).mockReturnValue(mockStorage);
@@ -75,7 +78,7 @@ describe('FetchContextDataMiddleware', () => {
 
   it('should allow contextStorage to be called even when undefined', async () => {
     const error = new Error('No auth context');
-    const mockStorage = new AuthContextStorage(undefined);
+    const mockStorage = new AuthContextStorage(undefined, EMPTY_REQUEST);
 
     vi.mocked(mockContextService.init).mockRejectedValue(error);
     vi.mocked(mockContextService.contextStorage).mockReturnValue(mockStorage);

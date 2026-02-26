@@ -1,7 +1,8 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException, DefaultLogger } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
@@ -74,7 +75,7 @@ class TestRuntimeThreadProvider {
   }
 }
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('MCP Integration Tests', () => {
   let runtime: DockerRuntime;

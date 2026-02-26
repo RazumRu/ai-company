@@ -35,9 +35,9 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
   imports: [
     RuntimeModule,
     GitHubAppModule,
-    AgentToolsModule,
+    forwardRef(() => AgentToolsModule),
     AgentMcpModule,
-    AgentsModule,
+    forwardRef(() => AgentsModule),
     AgentTriggersModule,
     GraphResourcesModule,
     SubagentsModule,

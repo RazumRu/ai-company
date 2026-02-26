@@ -1,7 +1,8 @@
 import { AIMessageChunk } from '@langchain/core/messages';
 import { INestApplication } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { io, Socket } from 'socket.io-client';
 import {
   afterAll,
@@ -63,7 +64,7 @@ type ThreadUpdateNotification = IEnrichedNotification<ThreadDto>;
 type AgentStateUpdateNotification =
   IEnrichedNotification<IAgentStateUpdateData>;
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('Socket Notifications Integration Tests', () => {
   let app: INestApplication;

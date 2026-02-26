@@ -66,7 +66,12 @@ describe('AuthContextService', () => {
   describe('getToken', () => {
     it('uses authProvider.getToken when provided', () => {
       const provider = new MockAuthProvider({ token: 'prov-token' });
-      const service = new AuthContextService(mockBuilder, req, provider);
+      const service = new AuthContextService(
+        mockBuilder,
+        req,
+        undefined,
+        provider,
+      );
 
       expect(service.getToken()).toBe('prov-token');
     });
@@ -78,13 +83,19 @@ describe('AuthContextService', () => {
           headers: { authorization: 'Bearer abc.def' },
         } as unknown as FastifyRequest,
         undefined,
+        undefined,
       );
 
       expect(service.getToken()).toBe('abc.def');
     });
 
     it('returns undefined when no token present', () => {
-      const service = new AuthContextService(mockBuilder, req, undefined);
+      const service = new AuthContextService(
+        mockBuilder,
+        req,
+        undefined,
+        undefined,
+      );
       expect(service.getToken()).toBeUndefined();
     });
   });
@@ -99,7 +110,12 @@ describe('AuthContextService', () => {
         devMode: true,
         devUserResult: { sub: 'dev-user' },
       });
-      const service = new AuthContextService(builder, req, undefined);
+      const service = new AuthContextService(
+        builder,
+        req,
+        undefined,
+        undefined,
+      );
 
       await expect(service.init()).resolves.toEqual({
         sub: 'dev-user',
@@ -115,7 +131,7 @@ describe('AuthContextService', () => {
         devMode: false,
         buildResult: { sub: 'verified' },
       });
-      const service = new AuthContextService(builder, req, provider);
+      const service = new AuthContextService(builder, req, undefined, provider);
 
       await expect(service.init()).resolves.toEqual({
         sub: 'verified',
@@ -123,7 +139,12 @@ describe('AuthContextService', () => {
     });
 
     it('returns undefined when no token present', async () => {
-      const service = new AuthContextService(mockBuilder, req, undefined);
+      const service = new AuthContextService(
+        mockBuilder,
+        req,
+        undefined,
+        undefined,
+      );
       await expect(service.init()).resolves.toBeUndefined();
     });
   });
@@ -137,7 +158,7 @@ describe('AuthContextService', () => {
       const builder = new MockAuthContextDataBuilder({
         buildResult: { sub: 'u-1', name: 'John' },
       });
-      const service = new AuthContextService(builder, req, provider);
+      const service = new AuthContextService(builder, req, undefined, provider);
 
       const ctx = await service.init();
       expect(ctx).toEqual({ sub: 'u-1', name: 'John' });
@@ -152,7 +173,7 @@ describe('AuthContextService', () => {
       const builder = new MockAuthContextDataBuilder({
         buildResult: {},
       });
-      const service = new AuthContextService(builder, req, provider);
+      const service = new AuthContextService(builder, req, undefined, provider);
       await service.init();
 
       expect(() => service.checkSub()).toThrowError(UnauthorizedException);

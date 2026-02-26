@@ -1,10 +1,8 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  AuthContextStorage,
-  CtxStorage,
-  OnlyForAuthorized,
-} from '@packages/http-server';
+import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { EntityUUIDDto } from '../../../utils/dto/misc.dto';
 import {
@@ -24,7 +22,7 @@ export class GraphRevisionsController {
   async getGraphRevisions(
     @Param('graphId') graphId: string,
     @Query() query: GraphRevisionQueryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphRevisionDto[]> {
     return await this.graphRevisionService.getRevisions(
       contextDataStorage,
@@ -37,7 +35,7 @@ export class GraphRevisionsController {
   async getGraphRevision(
     @Param('graphId') graphId: string,
     @Param() params: EntityUUIDDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphRevisionDto> {
     return await this.graphRevisionService.getRevisionById(
       contextDataStorage,

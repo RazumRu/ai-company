@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger, NotFoundException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import Decimal from 'decimal.js';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { MessageRole } from '../../graphs/graphs.types';
@@ -37,7 +38,7 @@ export class ThreadsService {
   ) {}
 
   async getThreads(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     query: GetThreadsQueryDto,
   ): Promise<ThreadDto[]> {
     const userId = ctx.checkSub();
@@ -52,7 +53,7 @@ export class ThreadsService {
   }
 
   async getThreadById(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     threadId: string,
   ): Promise<ThreadDto> {
     const userId = ctx.checkSub();
@@ -70,7 +71,7 @@ export class ThreadsService {
   }
 
   async getThreadByExternalId(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     externalThreadId: string,
   ): Promise<ThreadDto> {
     const userId = ctx.checkSub();
@@ -88,7 +89,7 @@ export class ThreadsService {
   }
 
   async getThreadMessages(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     threadId: string,
     query?: GetMessagesQueryDto,
   ): Promise<ThreadMessageDto[]> {
@@ -113,7 +114,7 @@ export class ThreadsService {
     return messages.map((msg) => this.prepareMessageResponse(msg));
   }
 
-  async deleteThread(ctx: AuthContextStorage, threadId: string): Promise<void> {
+  async deleteThread(ctx: AppContextStorage, threadId: string): Promise<void> {
     const userId = ctx.checkSub();
 
     // First verify the thread exists and belongs to the user
@@ -143,7 +144,7 @@ export class ThreadsService {
   }
 
   async stopThread(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     threadId: string,
   ): Promise<ThreadDto> {
     const userId = ctx.checkSub();
@@ -177,7 +178,7 @@ export class ThreadsService {
   }
 
   async stopThreadByExternalId(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     externalThreadId: string,
   ): Promise<ThreadDto> {
     const userId = ctx.checkSub();
@@ -195,7 +196,7 @@ export class ThreadsService {
   }
 
   async setMetadata(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     threadId: string,
     dto: SetThreadMetadataDto,
   ): Promise<ThreadDto> {
@@ -218,7 +219,7 @@ export class ThreadsService {
   }
 
   async setMetadataByExternalId(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     externalThreadId: string,
     dto: SetThreadMetadataDto,
   ): Promise<ThreadDto> {
@@ -268,7 +269,7 @@ export class ThreadsService {
   }
 
   async getThreadUsageStatistics(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     threadId: string,
   ): Promise<ThreadUsageStatisticsDto> {
     const userId = ctx.checkSub();

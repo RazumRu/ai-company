@@ -3,8 +3,9 @@ import {
   InternalException,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { GraphDao } from '../../graphs/dao/graph.dao';
@@ -42,7 +43,7 @@ describe('AiSuggestionsService', () => {
   let templateRegistry: Pick<TemplateRegistry, 'getTemplate'>;
   const mockCtx = {
     checkSub: vi.fn().mockReturnValue('user-1'),
-  } as unknown as AuthContextStorage;
+  } as unknown as AppContextStorage;
 
   let openaiService: {
     response: OpenaiService['response'];

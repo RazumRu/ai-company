@@ -70,6 +70,7 @@ describe('GraphRestorationService', () => {
     },
     status: GraphStatus.Running,
     createdBy: 'test-user',
+    projectId: 'project-123',
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null,

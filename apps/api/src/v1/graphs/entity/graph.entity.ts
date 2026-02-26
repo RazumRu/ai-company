@@ -1,4 +1,3 @@
-import { TimestampsEntity } from '@packages/typeorm';
 import {
   Column,
   Entity,
@@ -7,11 +6,12 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+import { AuditEntity } from '../../../auth/audit.entity';
 import type { ThreadEntity } from '../../threads/entity/thread.entity';
 import { type GraphSchemaType, GraphStatus } from '../graphs.types';
 
 @Entity('graphs')
-export class GraphEntity extends TimestampsEntity {
+export class GraphEntity extends AuditEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -46,12 +46,6 @@ export class GraphEntity extends TimestampsEntity {
 
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, unknown> | null;
-
-  @Column({
-    type: 'uuid',
-  })
-  @Index()
-  createdBy!: string;
 
   @Column({ type: 'boolean', default: false })
   temporary!: boolean;

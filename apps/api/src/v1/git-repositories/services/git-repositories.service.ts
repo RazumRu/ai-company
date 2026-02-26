@@ -7,9 +7,10 @@ import {
   InternalException,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
@@ -42,13 +43,23 @@ export class GitRepositoriesService {
     private readonly repoIndexerService: RepoIndexerService,
     private readonly qdrantService: QdrantService,
     private readonly logger: DefaultLogger,
+    private readonly projectsDao: ProjectsDao,
   ) {}
 
   async createRepository(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     data: CreateRepository,
   ): Promise<GitRepositoryDto> {
     const userId = ctx.checkSub();
+    const projectId = ctx.checkProjectId();
+
+    const project = await this.projectsDao.getOne({
+      id: projectId,
+      createdBy: userId,
+    });
+    if (!project) {
+      throw new NotFoundException('PROJECT_NOT_FOUND');
+    }
 
     const created = await this.gitRepositoriesDao.create({
       owner: data.owner,
@@ -57,6 +68,7 @@ export class GitRepositoriesService {
       provider: data.provider,
       defaultBranch: data.defaultBranch ?? 'main',
       createdBy: userId,
+      projectId,
       encryptedToken: data.token ? this.encryptCredential(data.token) : null,
     });
 
@@ -64,7 +76,7 @@ export class GitRepositoriesService {
   }
 
   async updateRepository(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     id: string,
     data: UpdateRepository,
   ): Promise<GitRepositoryDto> {
@@ -101,7 +113,7 @@ export class GitRepositoriesService {
   }
 
   async getRepositories(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     query: GetRepositoriesQueryDto,
   ): Promise<GitRepositoryDto[]> {
     const userId = ctx.checkSub();
@@ -111,6 +123,7 @@ export class GitRepositoriesService {
       owner: query.owner,
       repo: query.repo,
       provider: query.provider,
+      projectId: ctx.checkProjectId(),
       limit: query.limit,
       offset: query.offset,
       order: { createdAt: 'DESC' },
@@ -120,7 +133,7 @@ export class GitRepositoriesService {
   }
 
   async getRepositoryById(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     id: string,
   ): Promise<GitRepositoryDto> {
     const userId = ctx.checkSub();
@@ -137,7 +150,7 @@ export class GitRepositoriesService {
     return this.prepareRepositoryResponse(repository);
   }
 
-  async deleteRepository(ctx: AuthContextStorage, id: string): Promise<void> {
+  async deleteRepository(ctx: AppContextStorage, id: string): Promise<void> {
     const userId = ctx.checkSub();
 
     // Verify repository exists and belongs to user
@@ -181,7 +194,7 @@ export class GitRepositoriesService {
   }
 
   async getRepoIndexes(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     query: GetRepoIndexesQueryDto,
   ): Promise<RepoIndexDto[]> {
     const userId = ctx.checkSub();
@@ -240,7 +253,7 @@ export class GitRepositoriesService {
   }
 
   async getRepoIndexByRepositoryId(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     repositoryId: string,
     branch?: string,
   ): Promise<RepoIndexDto | null> {
@@ -280,7 +293,7 @@ export class GitRepositoriesService {
   }
 
   async triggerReindex(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     data: TriggerReindex,
   ): Promise<TriggerReindexResponse> {
     const userId = ctx.checkSub();
@@ -393,6 +406,7 @@ export class GitRepositoriesService {
       provider: entity.provider,
       defaultBranch: entity.defaultBranch,
       createdBy: entity.createdBy,
+      projectId: entity.projectId,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
     };

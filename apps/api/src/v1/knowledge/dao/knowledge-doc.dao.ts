@@ -17,6 +17,7 @@ export type KnowledgeDocSearchTerms = Partial<{
   createdBy: string;
   tags: string[];
   search: string;
+  projectId: string;
 }>;
 
 type KnowledgeDocEntityInput = EntityAttributesOmit<
@@ -70,6 +71,10 @@ export class KnowledgeDocDao extends BaseDao<
       builder.andWhere(`${this.alias}.tags ?| array[:...tags]`, {
         tags: params.tags,
       });
+    }
+
+    if (params?.projectId) {
+      builder.andWhere({ projectId: params.projectId });
     }
 
     if (params?.search && params.search.trim().length > 0) {

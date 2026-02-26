@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -29,7 +30,7 @@ const TERMINAL_THREAD_STATUSES = [
   ThreadStatus.NeedMoreInfo,
 ];
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('Graph Resources Integration Tests', () => {
   let app: INestApplication;

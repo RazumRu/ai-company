@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -30,7 +31,7 @@ const DOCKER_DIND_INIT_SCRIPT = [
   "sh -c 'i=0; while [ $i -lt 120 ]; do docker info >/dev/null 2>&1 && exit 0; i=$((i+1)); sleep 1; done; exit 1'",
 ];
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('Docker Runtime Integration', () => {
   let app: INestApplication;

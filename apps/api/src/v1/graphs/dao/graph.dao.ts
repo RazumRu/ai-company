@@ -13,6 +13,7 @@ export type SearchTerms = Partial<{
   status: GraphStatus;
   statuses: GraphStatus[];
   temporary: boolean;
+  projectId: string;
 }>;
 
 @Injectable()
@@ -64,6 +65,12 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
     if (params?.createdBy) {
       builder.andWhere({
         createdBy: params.createdBy,
+      });
+    }
+
+    if (params?.projectId) {
+      builder.andWhere({
+        projectId: params.projectId,
       });
     }
   }

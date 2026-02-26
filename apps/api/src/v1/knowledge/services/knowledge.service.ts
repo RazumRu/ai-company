@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { isUndefined, pickBy } from 'lodash';
 import { EntityManager } from 'typeorm';
 import { z } from 'zod';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { KnowledgeDocDao } from '../dao/knowledge-doc.dao';
 import {
   KnowledgeDocCreateDto,
@@ -46,17 +47,27 @@ export class KnowledgeService {
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
     private readonly knowledgeChunksService: KnowledgeChunksService,
+    private readonly projectsDao: ProjectsDao,
   ) {}
 
   async createDoc(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     dto: KnowledgeDocCreateDto,
   ): Promise<KnowledgeDocDto> {
     const userId = ctx.checkSub();
+    const projectId = ctx.checkProjectId();
 
     const content = dto.content.trim();
     if (!content) {
       throw new BadRequestException('CONTENT_REQUIRED');
+    }
+
+    const project = await this.projectsDao.getOne({
+      id: projectId,
+      createdBy: userId,
+    });
+    if (!project) {
+      throw new NotFoundException('PROJECT_NOT_FOUND');
     }
 
     const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
@@ -80,6 +91,7 @@ export class KnowledgeService {
           embeddingModel,
           tags,
           createdBy: userId,
+          projectId,
         },
         entityManager,
       );
@@ -97,7 +109,7 @@ export class KnowledgeService {
   }
 
   async updateDoc(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     id: string,
     dto: KnowledgeDocUpdateDto,
   ): Promise<KnowledgeDocDto> {
@@ -162,7 +174,7 @@ export class KnowledgeService {
     return this.prepareDocResponse(updated);
   }
 
-  async deleteDoc(ctx: AuthContextStorage, id: string): Promise<void> {
+  async deleteDoc(ctx: AppContextStorage, id: string): Promise<void> {
     const userId = ctx.checkSub();
 
     const existing = await this.docDao.getOne({ id, createdBy: userId });
@@ -181,7 +193,7 @@ export class KnowledgeService {
   }
 
   async listDocs(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     query: KnowledgeDocListQuery,
   ): Promise<KnowledgeDocListResult> {
     const userId = ctx.checkSub();
@@ -192,6 +204,7 @@ export class KnowledgeService {
       createdBy: userId,
       tags,
       search: query.search,
+      projectId: ctx.checkProjectId(),
       order: { updatedAt: 'DESC' as const },
     };
 
@@ -210,7 +223,7 @@ export class KnowledgeService {
     };
   }
 
-  async getDoc(ctx: AuthContextStorage, id: string): Promise<KnowledgeDocDto> {
+  async getDoc(ctx: AppContextStorage, id: string): Promise<KnowledgeDocDto> {
     const userId = ctx.checkSub();
 
     const doc = await this.docDao.getOne({ id, createdBy: userId });
@@ -229,6 +242,7 @@ export class KnowledgeService {
       summary: entity.summary ?? null,
       politic: entity.politic ?? null,
       embeddingModel: entity.embeddingModel ?? null,
+      projectId: entity.projectId,
     };
   }
 

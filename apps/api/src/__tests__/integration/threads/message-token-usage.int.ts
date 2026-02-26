@@ -9,6 +9,7 @@ import {
   IAgentMessageNotification,
   NotificationEvent,
 } from '../../../v1/notifications/notifications.types';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
@@ -17,9 +18,11 @@ import { createTestModule, TEST_USER_ID } from '../setup';
 describe('Message token usage (integration)', () => {
   let app: INestApplication;
   let graphDao: GraphDao;
+  let projectsDao: ProjectsDao;
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
   let handler: AgentMessageNotificationHandler;
+  let testProjectId: string;
 
   const createdGraphs: string[] = [];
   const createdThreads: string[] = [];
@@ -27,9 +30,17 @@ describe('Message token usage (integration)', () => {
   beforeAll(async () => {
     app = await createTestModule();
     graphDao = app.get(GraphDao);
+    projectsDao = app.get(ProjectsDao);
     threadsDao = app.get(ThreadsDao);
     messagesDao = app.get(MessagesDao);
     handler = app.get(AgentMessageNotificationHandler);
+
+    const project = await projectsDao.create({
+      name: 'Token Usage Test Project',
+      createdBy: TEST_USER_ID,
+      settings: {},
+    });
+    testProjectId = project.id;
   });
 
   afterEach(async () => {
@@ -46,6 +57,7 @@ describe('Message token usage (integration)', () => {
   });
 
   afterAll(async () => {
+    await projectsDao.deleteById(testProjectId);
     await app.close();
   });
 
@@ -60,6 +72,7 @@ describe('Message token usage (integration)', () => {
       status: GraphStatus.Running,
       metadata: {},
       createdBy: TEST_USER_ID,
+      projectId: testProjectId,
       temporary: true,
     });
     createdGraphs.push(graph.id);

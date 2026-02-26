@@ -9,12 +9,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  AuthContextStorage,
-  CtxStorage,
-  OnlyForAuthorized,
-} from '@packages/http-server';
+import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import {
   CreateRepositoryDto,
   GetRepoIndexesQueryDto,
@@ -39,7 +36,7 @@ export class GitRepositoriesController {
   @Post()
   async createRepository(
     @Body() dto: CreateRepositoryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GitRepositoryDto> {
     return this.gitRepositoriesService.createRepository(
       contextDataStorage,
@@ -50,7 +47,7 @@ export class GitRepositoriesController {
   @Get()
   async getRepositories(
     @Query() query: GetRepositoriesQueryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GitRepositoryDto[]> {
     return this.gitRepositoriesService.getRepositories(
       contextDataStorage,
@@ -63,7 +60,7 @@ export class GitRepositoriesController {
   @Get('indexes')
   async getRepoIndexes(
     @Query() query: GetRepoIndexesQueryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<RepoIndexDto[]> {
     return this.gitRepositoriesService.getRepoIndexes(
       contextDataStorage,
@@ -74,7 +71,7 @@ export class GitRepositoriesController {
   @Get(':id')
   async getRepositoryById(
     @Param('id') id: string,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GitRepositoryDto> {
     return this.gitRepositoriesService.getRepositoryById(
       contextDataStorage,
@@ -86,7 +83,7 @@ export class GitRepositoriesController {
   async getRepoIndexByRepositoryId(
     @Param('id') id: string,
     @Query('branch') branch: string | undefined,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<RepoIndexDto | null> {
     return this.gitRepositoriesService.getRepoIndexByRepositoryId(
       contextDataStorage,
@@ -99,7 +96,7 @@ export class GitRepositoriesController {
   async updateRepository(
     @Param('id') id: string,
     @Body() dto: UpdateRepositoryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GitRepositoryDto> {
     return this.gitRepositoriesService.updateRepository(
       contextDataStorage,
@@ -111,7 +108,7 @@ export class GitRepositoriesController {
   @Delete(':id')
   async deleteRepository(
     @Param('id') id: string,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<void> {
     return this.gitRepositoriesService.deleteRepository(contextDataStorage, id);
   }
@@ -119,7 +116,7 @@ export class GitRepositoriesController {
   @Post('reindex')
   async triggerReindex(
     @Body() dto: TriggerReindexDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<TriggerReindexResponseDto> {
     return this.gitRepositoriesService.triggerReindex(contextDataStorage, dto);
   }

@@ -59,10 +59,13 @@ describe('ThreadLifecycleNotificationHandler', () => {
     ...overrides,
   });
 
+  const mockProjectId = 'project-abc';
+
   beforeEach(async () => {
     const mockGraph: GraphEntity = {
       id: mockGraphId,
       createdBy: mockOwnerId,
+      projectId: mockProjectId,
       name: 'Graph',
       description: 'Desc',
       version: '1.0.0',
@@ -134,6 +137,7 @@ describe('ThreadLifecycleNotificationHandler', () => {
       expect(result[0]).toEqual({
         type: NotificationEvent.ThreadCreate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         threadId: mockThreadId,
         internalThreadId: mockInternalThreadId,
@@ -213,6 +217,7 @@ describe('ThreadLifecycleNotificationHandler', () => {
       expect(result[0]).toEqual({
         type: NotificationEvent.ThreadDelete,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         threadId: mockThreadId,
         internalThreadId: mockInternalThreadId,

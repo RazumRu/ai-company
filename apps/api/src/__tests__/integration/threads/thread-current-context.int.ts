@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
@@ -16,7 +17,7 @@ import { createTestModule, TEST_USER_ID } from '../setup';
  * - currentContext must represent the request context size the provider counted.
  */
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('Thread currentContext from invoke_llm input_tokens (integration)', () => {
   let app: INestApplication;

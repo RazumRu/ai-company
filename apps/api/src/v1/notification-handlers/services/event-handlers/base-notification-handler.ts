@@ -12,21 +12,19 @@ export abstract class BaseNotificationHandler<
 
   abstract handle(event: Notification): Promise<T[]>;
 
-  private readonly graphOwnerCache = new Map<string, string>();
+  private readonly graphInfoCache = new Map<string, { ownerId: string; projectId: string }>();
 
   /**
-   * Resolves the owner (createdBy) of a graph, caching results for the
+   * Resolves the owner (createdBy) and projectId of a graph, caching results for the
    * lifetime of the handler instance to avoid repeated DB lookups during
    * high-frequency notification bursts for the same graph.
    */
-  protected async getGraphOwner(
+  protected async getGraphInfo(
     graphDao: GraphDao,
     graphId: string,
-  ): Promise<string> {
-    const cached = this.graphOwnerCache.get(graphId);
-    if (cached) {
-      return cached;
-    }
+  ): Promise<{ ownerId: string; projectId: string }> {
+    const cached = this.graphInfoCache.get(graphId);
+    if (cached) return cached;
 
     const graph = await graphDao.getOne({ id: graphId });
 
@@ -34,8 +32,16 @@ export abstract class BaseNotificationHandler<
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    this.graphOwnerCache.set(graphId, graph.createdBy);
+    if (!graph.projectId) {
+      throw new NotFoundException('GRAPH_PROJECT_NOT_SET');
+    }
 
-    return graph.createdBy;
+    const info = { ownerId: graph.createdBy, projectId: graph.projectId };
+    this.graphInfoCache.set(graphId, info);
+    return info;
+  }
+
+  protected async getGraphOwner(graphDao: GraphDao, graphId: string): Promise<string> {
+    return (await this.getGraphInfo(graphDao, graphId)).ownerId;
   }
 }

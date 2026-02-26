@@ -43,7 +43,7 @@ export class ThreadLifecycleNotificationHandler extends BaseNotificationHandler<
   ): Promise<IThreadLifecycleEnrichedNotification[]> {
     const { graphId, threadId, data } = event;
 
-    const ownerId = await this.getGraphOwner(this.graphDao, graphId);
+    const { ownerId, projectId } = await this.getGraphInfo(this.graphDao, graphId);
 
     const threadDto = this.threadsService.prepareThreadResponse(data);
 
@@ -51,6 +51,7 @@ export class ThreadLifecycleNotificationHandler extends BaseNotificationHandler<
       {
         type: event.type,
         graphId,
+        projectId,
         ownerId,
         threadId,
         internalThreadId: threadDto.id,
