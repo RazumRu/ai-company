@@ -1,6 +1,18 @@
+<div align="center">
+
 # Geniro
 
-Open-source platform for building, running, and managing AI agent workflows. Design agents as visual graphs, connect them to tools, and execute them in isolated environments — all through a REST API with real-time updates.
+**Open-source platform for building, running, and managing AI agent workflows.**
+
+[![License: MIT + Commons Clause](https://img.shields.io/badge/License-MIT%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A524-339933.svg)](https://nodejs.org/)
+[![NestJS](https://img.shields.io/badge/NestJS-11-e0234e.svg)](https://nestjs.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
+[![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A510-f69220.svg)](https://pnpm.io/)
+
+</div>
+
+Design agents as visual graphs, connect them to tools, and execute them in isolated environments — all through a REST API with real-time updates.
 
 > **This repository contains the backend API.** The web UI lives at [geniro-web](https://github.com/geniro-io/geniro-web).
 
@@ -120,6 +132,47 @@ pnpm local-llm:start     # Start Ollama server
 ```
 
 Then set `LLM_USE_OFFLINE_MODEL=true` in your `.env` file.
+
+## Helm Deployment (Kubernetes)
+
+Deploy the full Geniro stack to any Kubernetes cluster (1.27+).
+
+### Prerequisites
+
+- [Helm 3.12+](https://helm.sh/docs/intro/install/)
+- Kubernetes 1.27+
+
+### Quick Deploy
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add qdrant https://qdrant.github.io/qdrant-helm
+helm repo update
+
+helm dependency update ./geniro-dist/helm/geniro
+
+helm install geniro ./geniro-dist/helm/geniro \
+  --set secrets.credentialEncryptionKey=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
+  --set secrets.openrouterApiKey=sk-or-v1-...
+```
+
+After install, follow the NOTES.txt output for port-forward commands to access the Web UI and API.
+
+### External Services
+
+Disable any bundled dependency and point to an existing service:
+
+```bash
+helm install geniro ./geniro-dist/helm/geniro \
+  --set postgresql.enabled=false \
+  --set externalPostgresql.host=my-pg.example.com \
+  --set externalPostgresql.password=mypassword \
+  --set secrets.credentialEncryptionKey=<64-char-hex>
+```
+
+### Web Frontend Note
+
+The Web UI image has `API_URL` compiled at build time in `geniro-web/src/config/production.ts`. For custom domains, edit that file and rebuild the image before deploying.
 
 ## Tech Stack
 
