@@ -8,6 +8,7 @@ import { GitRepositoriesDao } from '../../git-repositories/dao/git-repositories.
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import { KnowledgeDocDao } from '../../knowledge/dao/knowledge-doc.dao';
 import { ProjectsDao } from '../dao/projects.dao';
+import { ProjectsStatsDao } from '../dao/projects-stats.dao';
 import {
   CreateProjectDto,
   ProjectDto,
@@ -19,13 +20,20 @@ import { ProjectEntity } from '../entity/project.entity';
 export class ProjectsService {
   constructor(
     private readonly projectsDao: ProjectsDao,
+    private readonly projectsStatsDao: ProjectsStatsDao,
     private readonly typeorm: TypeormService,
     private readonly graphDao: GraphDao,
     private readonly knowledgeDocDao: KnowledgeDocDao,
     private readonly gitRepositoriesDao: GitRepositoriesDao,
   ) {}
 
-  private prepareResponse(entity: ProjectEntity): ProjectDto {
+  private prepareResponse(
+    entity: ProjectEntity,
+    stats: { graphCount: number; threadCount: number } = {
+      graphCount: 0,
+      threadCount: 0,
+    },
+  ): ProjectDto {
     return {
       ...entity,
       description: entity.description ?? null,
@@ -33,6 +41,8 @@ export class ProjectsService {
       color: entity.color ?? null,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
+      graphCount: stats.graphCount,
+      threadCount: stats.threadCount,
     };
   }
 
@@ -64,7 +74,23 @@ export class ProjectsService {
       createdBy: userId,
       order: { updatedAt: 'DESC' },
     });
-    return rows.map((row) => this.prepareResponse(row));
+
+    if (rows.length === 0) return [];
+
+    const projectIds = rows.map((r) => r.id);
+    const statsRows =
+      await this.projectsStatsDao.countStatsByProjectIds(projectIds);
+    const statsMap = new Map(
+      statsRows.map((r) => [
+        r.projectId,
+        {
+          graphCount: parseInt(r.graphCount, 10),
+          threadCount: parseInt(r.threadCount, 10),
+        },
+      ]),
+    );
+
+    return rows.map((row) => this.prepareResponse(row, statsMap.get(row.id)));
   }
 
   async findById(ctx: AppContextStorage, id: string): Promise<ProjectDto> {

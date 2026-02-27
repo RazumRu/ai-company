@@ -15,6 +15,8 @@ export const ProjectSchema = z.object({
   createdBy: z.uuid(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  graphCount: z.number().int().min(0),
+  threadCount: z.number().int().min(0),
 });
 
 export const CreateProjectSchema = z.object({

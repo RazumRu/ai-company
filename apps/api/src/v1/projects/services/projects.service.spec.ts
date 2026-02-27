@@ -9,6 +9,7 @@ import { GitRepositoriesDao } from '../../git-repositories/dao/git-repositories.
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import { KnowledgeDocDao } from '../../knowledge/dao/knowledge-doc.dao';
 import { ProjectsDao } from '../dao/projects.dao';
+import { ProjectsStatsDao } from '../dao/projects-stats.dao';
 import { CreateProjectDto, UpdateProjectDto } from '../dto/projects.dto';
 import { ProjectEntity } from '../entity/project.entity';
 import { ProjectsService } from './projects.service';
@@ -16,6 +17,7 @@ import { ProjectsService } from './projects.service';
 describe('ProjectsService', () => {
   let service: ProjectsService;
   let projectsDao: ProjectsDao;
+  let projectsStatsDao: ProjectsStatsDao;
   let typeorm: TypeormService;
   let graphDao: GraphDao;
   let knowledgeDocDao: KnowledgeDocDao;
@@ -59,6 +61,12 @@ describe('ProjectsService', () => {
           },
         },
         {
+          provide: ProjectsStatsDao,
+          useValue: {
+            countStatsByProjectIds: vi.fn().mockResolvedValue([]),
+          },
+        },
+        {
           provide: TypeormService,
           useValue: {
             trx: vi.fn(),
@@ -87,6 +95,7 @@ describe('ProjectsService', () => {
 
     service = module.get<ProjectsService>(ProjectsService);
     projectsDao = module.get<ProjectsDao>(ProjectsDao);
+    projectsStatsDao = module.get<ProjectsStatsDao>(ProjectsStatsDao);
     typeorm = module.get<TypeormService>(TypeormService);
     graphDao = module.get<GraphDao>(GraphDao);
     knowledgeDocDao = module.get<KnowledgeDocDao>(KnowledgeDocDao);
@@ -173,6 +182,8 @@ describe('ProjectsService', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0]?.name).toBe('Alpha');
+      expect(result[0]?.graphCount).toBe(0);
+      expect(result[0]?.threadCount).toBe(0);
       expect(projectsDao.getAll).toHaveBeenCalledWith(
         expect.objectContaining({ createdBy: mockUserId }),
       );
@@ -184,6 +195,49 @@ describe('ProjectsService', () => {
       const result = await service.getAll(mockCtx);
 
       expect(result).toEqual([]);
+    });
+
+    it('should enrich projects with graph and thread counts', async () => {
+      const entities = [
+        createMockProjectEntity({ id: 'p1', name: 'Alpha' }),
+        createMockProjectEntity({ id: 'p2', name: 'Beta' }),
+      ];
+      vi.mocked(projectsDao.getAll).mockResolvedValue(entities);
+      vi.mocked(projectsStatsDao.countStatsByProjectIds).mockResolvedValue([
+        { projectId: 'p1', graphCount: '3', threadCount: '10' },
+        { projectId: 'p2', graphCount: '1', threadCount: '5' },
+      ]);
+
+      const result = await service.getAll(mockCtx);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual(
+        expect.objectContaining({ id: 'p1', graphCount: 3, threadCount: 10 }),
+      );
+      expect(result[1]).toEqual(
+        expect.objectContaining({ id: 'p2', graphCount: 1, threadCount: 5 }),
+      );
+      expect(projectsStatsDao.countStatsByProjectIds).toHaveBeenCalledWith([
+        'p1',
+        'p2',
+      ]);
+    });
+
+    it('should return zero counts when stats map has no entry for a project', async () => {
+      const entities = [
+        createMockProjectEntity({ id: 'p1', name: 'Alpha' }),
+        createMockProjectEntity({ id: 'p2', name: 'Beta' }),
+      ];
+      vi.mocked(projectsDao.getAll).mockResolvedValue(entities);
+      vi.mocked(projectsStatsDao.countStatsByProjectIds).mockResolvedValue([]);
+
+      const result = await service.getAll(mockCtx);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]?.graphCount).toBe(0);
+      expect(result[0]?.threadCount).toBe(0);
+      expect(result[1]?.graphCount).toBe(0);
+      expect(result[1]?.threadCount).toBe(0);
     });
   });
 

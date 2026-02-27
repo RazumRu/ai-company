@@ -9,6 +9,8 @@ import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { ProjectsService } from '../../../v1/projects/services/projects.service';
+import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
+import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 const EMPTY_REQUEST = { headers: {} } as unknown as FastifyRequest;
@@ -21,13 +23,17 @@ describe('ProjectsService (integration)', () => {
   let projectsService: ProjectsService;
   let projectsDao: ProjectsDao;
   let graphDao: GraphDao;
+  let threadsDao: ThreadsDao;
   const createdProjectIds: string[] = [];
+  const createdGraphIds: string[] = [];
+  const createdThreadIds: string[] = [];
 
   beforeAll(async () => {
     app = await createTestModule();
     projectsService = app.get(ProjectsService);
     projectsDao = app.get(ProjectsDao);
     graphDao = app.get(GraphDao);
+    threadsDao = app.get(ThreadsDao);
     const dataSource = app.get(DataSource);
 
     // Backfill NULL projectId rows before synchronize() attempts SET NOT NULL.
@@ -63,6 +69,24 @@ describe('ProjectsService (integration)', () => {
   }, 120_000);
 
   afterEach(async () => {
+    for (const id of createdThreadIds) {
+      try {
+        await threadsDao.hardDeleteById(id);
+      } catch {
+        // Already deleted — ignore
+      }
+    }
+    createdThreadIds.length = 0;
+
+    for (const id of createdGraphIds) {
+      try {
+        await graphDao.hardDeleteById(id);
+      } catch {
+        // Already deleted — ignore
+      }
+    }
+    createdGraphIds.length = 0;
+
     for (const id of createdProjectIds) {
       try {
         await projectsDao.deleteById(id);
@@ -136,6 +160,154 @@ describe('ProjectsService (integration)', () => {
       const emptyCtx = new AppContextStorage({ sub: '00000000-0000-0000-0000-000000000098' }, EMPTY_REQUEST);
       const results = await projectsService.getAll(emptyCtx);
       expect(results).toEqual([]);
+    });
+
+    it('should return enriched stats (graphCount, threadCount)', async () => {
+      const project = await projectsService.create(ctx, {
+        name: 'Stats Project',
+        settings: {},
+      });
+      registerProject(project.id);
+
+      const graph1 = await graphDao.create({
+        name: 'Graph 1',
+        version: '1.0.0',
+        targetVersion: '1.0.0',
+        schema: { nodes: [], edges: [] },
+        status: GraphStatus.Created,
+        createdBy: TEST_USER_ID,
+        projectId: project.id,
+        temporary: false,
+      });
+      createdGraphIds.push(graph1.id);
+
+      const graph2 = await graphDao.create({
+        name: 'Graph 2',
+        version: '1.0.0',
+        targetVersion: '1.0.0',
+        schema: { nodes: [], edges: [] },
+        status: GraphStatus.Created,
+        createdBy: TEST_USER_ID,
+        projectId: project.id,
+        temporary: false,
+      });
+      createdGraphIds.push(graph2.id);
+
+      const thread = await threadsDao.create({
+        graphId: graph1.id,
+        createdBy: TEST_USER_ID,
+        externalThreadId: `stats-test-${Date.now()}`,
+        status: ThreadStatus.Done,
+      });
+      createdThreadIds.push(thread.id);
+
+      const results = await projectsService.getAll(ctx);
+      const statsProject = results.find((p) => p.id === project.id);
+
+      expect(statsProject).toBeDefined();
+      expect(statsProject!.graphCount).toBe(2);
+      expect(statsProject!.threadCount).toBe(1);
+    });
+
+    it('should exclude soft-deleted graphs from graphCount', async () => {
+      const project = await projectsService.create(ctx, {
+        name: 'Soft Delete Stats Project',
+        settings: {},
+      });
+      registerProject(project.id);
+
+      const graph = await graphDao.create({
+        name: 'Deletable Graph',
+        version: '1.0.0',
+        targetVersion: '1.0.0',
+        schema: { nodes: [], edges: [] },
+        status: GraphStatus.Created,
+        createdBy: TEST_USER_ID,
+        projectId: project.id,
+        temporary: false,
+      });
+      createdGraphIds.push(graph.id);
+
+      // Soft-delete the graph
+      await graphDao.deleteById(graph.id);
+
+      const results = await projectsService.getAll(ctx);
+      const statsProject = results.find((p) => p.id === project.id);
+
+      expect(statsProject).toBeDefined();
+      expect(statsProject!.graphCount).toBe(0);
+    });
+
+    it('should exclude soft-deleted threads from threadCount', async () => {
+      const project = await projectsService.create(ctx, {
+        name: 'Soft Delete Threads Project',
+        settings: {},
+      });
+      registerProject(project.id);
+
+      const graph = await graphDao.create({
+        name: 'Graph For Thread Deletion Test',
+        version: '1.0.0',
+        targetVersion: '1.0.0',
+        schema: { nodes: [], edges: [] },
+        status: GraphStatus.Created,
+        createdBy: TEST_USER_ID,
+        projectId: project.id,
+        temporary: false,
+      });
+      createdGraphIds.push(graph.id);
+
+      const liveThread = await threadsDao.create({
+        graphId: graph.id,
+        createdBy: TEST_USER_ID,
+        externalThreadId: `live-thread-${Date.now()}`,
+        status: ThreadStatus.Done,
+      });
+      createdThreadIds.push(liveThread.id);
+
+      const deletedThread = await threadsDao.create({
+        graphId: graph.id,
+        createdBy: TEST_USER_ID,
+        externalThreadId: `deleted-thread-${Date.now()}`,
+        status: ThreadStatus.Done,
+      });
+      createdThreadIds.push(deletedThread.id);
+
+      // Soft-delete one thread
+      await threadsDao.deleteById(deletedThread.id);
+
+      const results = await projectsService.getAll(ctx);
+      const statsProject = results.find((p) => p.id === project.id);
+
+      expect(statsProject).toBeDefined();
+      expect(statsProject!.graphCount).toBe(1);
+      expect(statsProject!.threadCount).toBe(1);
+    });
+
+    it('should exclude temporary graphs from graphCount', async () => {
+      const project = await projectsService.create(ctx, {
+        name: 'Temporary Stats Project',
+        settings: {},
+      });
+      registerProject(project.id);
+
+      const graph = await graphDao.create({
+        name: 'Temporary Graph',
+        version: '1.0.0',
+        targetVersion: '1.0.0',
+        schema: { nodes: [], edges: [] },
+        status: GraphStatus.Created,
+        createdBy: TEST_USER_ID,
+        projectId: project.id,
+        temporary: true,
+      });
+      createdGraphIds.push(graph.id);
+
+      const results = await projectsService.getAll(ctx);
+      const statsProject = results.find((p) => p.id === project.id);
+
+      expect(statsProject).toBeDefined();
+      expect(statsProject!.graphCount).toBe(0);
     });
   });
 

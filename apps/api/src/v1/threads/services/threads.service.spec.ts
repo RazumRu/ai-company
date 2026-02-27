@@ -3,7 +3,6 @@ import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { MessageRole } from '../../graphs/graphs.types';
 import { GraphsService } from '../../graphs/services/graphs.service';

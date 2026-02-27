@@ -6,6 +6,7 @@ import { GraphsModule } from '../graphs/graphs.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { ProjectsController } from './controllers/projects.controller';
 import { ProjectsDao } from './dao/projects.dao';
+import { ProjectsStatsDao } from './dao/projects-stats.dao';
 import { ProjectEntity } from './entity/project.entity';
 import { ProjectsService } from './services/projects.service';
 
@@ -17,7 +18,7 @@ import { ProjectsService } from './services/projects.service';
     forwardRef(() => GitRepositoriesModule),
   ],
   controllers: [ProjectsController],
-  providers: [ProjectsDao, ProjectsService],
-  exports: [ProjectsDao, ProjectsService],
+  providers: [ProjectsDao, ProjectsStatsDao, ProjectsService],
+  exports: [ProjectsDao, ProjectsStatsDao, ProjectsService],
 })
 export class ProjectsModule {}
