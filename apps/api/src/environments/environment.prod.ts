@@ -22,6 +22,8 @@ export const environment = () =>
     keycloakRealm: getEnv('KEYCLOAK_REALM', 'geniro'),
     zitadelUrl: getEnv('ZITADEL_URL'),
     zitadelIssuer: getEnv('ZITADEL_ISSUER'),
+    keycloakClientId: getEnv('KEYCLOAK_CLIENT_ID', 'geniro'),
+    zitadelClientId: getEnv('ZITADEL_CLIENT_ID', 'geniro'),
 
     // connections
     postgresUrl: getEnv('POSTGRES_URL'),

@@ -35,6 +35,8 @@ export const environment = () =>
     keycloakRealm: getEnv('KEYCLOAK_REALM', 'geniro'),
     zitadelUrl: getEnv('ZITADEL_URL', 'http://localhost:8085'),
     zitadelIssuer: getEnv('ZITADEL_ISSUER', 'http://localhost:8085'),
+    keycloakClientId: getEnv('KEYCLOAK_CLIENT_ID', 'geniro'),
+    zitadelClientId: getEnv('ZITADEL_CLIENT_ID', 'geniro'),
 
     // docker registry mirror (for DinD)
     dockerRegistryMirror: getEnv(

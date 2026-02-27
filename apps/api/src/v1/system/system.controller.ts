@@ -34,6 +34,9 @@ export class SystemController {
       issuer: isZitadel
         ? environment.zitadelIssuer
         : `${environment.keycloakUrl}/realms/${environment.keycloakRealm}`,
+      clientId: isZitadel
+        ? environment.zitadelClientId
+        : environment.keycloakClientId,
     };
   }
 }

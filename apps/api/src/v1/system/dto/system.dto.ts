@@ -23,6 +23,7 @@ export enum AuthProviderType {
 export const AuthConfigResponseSchema = z.object({
   provider: z.nativeEnum(AuthProviderType).describe('Active auth provider'),
   issuer: z.string().describe('Token issuer URL'),
+  clientId: z.string().describe('OAuth client ID for the auth provider'),
 });
 
 export type AuthConfigResponse = z.infer<typeof AuthConfigResponseSchema>;
