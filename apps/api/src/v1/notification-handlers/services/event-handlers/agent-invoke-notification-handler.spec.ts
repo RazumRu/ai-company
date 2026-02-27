@@ -66,6 +66,7 @@ describe('AgentInvokeNotificationHandler', () => {
     id: 'thread-internal-123',
     graphId: mockGraphId,
     createdBy: mockUserId,
+    projectId: mockProjectId,
     externalThreadId: mockThreadId,
     metadata: {},
     lastRunId: undefined,
@@ -185,6 +186,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
         graphId: mockGraphId,
         createdBy: mockUserId,
+        projectId: mockProjectId,
         externalThreadId: 'parent-thread-123',
         status: ThreadStatus.Running,
         lastRunId: '11111111-1111-4111-8aaa-111111111111',
@@ -269,6 +271,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
         graphId: mockGraphId,
         createdBy: mockUserId,
+        projectId: mockProjectId,
         externalThreadId: mockParentThreadId,
         status: ThreadStatus.Running,
         lastRunId: '22222222-2222-4222-8aaa-222222222222',
@@ -353,6 +356,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
         graphId: mockGraphId,
         createdBy: mockUserId,
+        projectId: mockProjectId,
         externalThreadId: 'parent-thread-123',
         source,
         status: ThreadStatus.Running,
@@ -388,6 +392,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
         graphId: mockGraphId,
         createdBy: mockUserId,
+        projectId: mockProjectId,
         externalThreadId: 'parent-thread-123',
         status: ThreadStatus.Running,
         metadata: threadMetadata,
@@ -412,6 +417,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
         graphId: mockGraphId,
         createdBy: mockUserId,
+        projectId: mockProjectId,
         externalThreadId: 'parent-thread-123',
         status: ThreadStatus.Running,
       });
@@ -504,6 +510,7 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
         graphId: mockGraphId,
         createdBy: mockUserId,
+        projectId: mockProjectId,
         externalThreadId: mockParentThreadId,
         status: ThreadStatus.Running,
         lastRunId: '44444444-4444-4444-8aaa-444444444444',

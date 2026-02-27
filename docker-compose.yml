@@ -22,7 +22,7 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - DATABASES=geniro,keycloak,litellm,infisical,daytona
+      - DATABASES=geniro,keycloak,litellm,infisical,daytona,zitadel
     networks:
       - ai
     ports:
@@ -30,6 +30,11 @@ services:
     volumes:
       - postgres:/var/lib/postgresql/data
       - ./.docker/postgres:/docker-entrypoint-initdb.d/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   keycloak:
     image: keycloak/keycloak:24.0.5
@@ -199,6 +204,52 @@ services:
       - ./.docker/daytona-runner/daemon.json:/etc/docker/daemon.json:ro
       - ./.docker/daytona-runner/entrypoint-wrapper.sh:/opt/entrypoint-wrapper.sh:ro
       - ./.docker/daytona-runner/docker-socket-proxy.bin:/opt/docker-socket-proxy:ro
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:latest
+    profiles: ["zitadel"]
+    command: start-from-init --masterkeyFromEnv --tlsMode disabled
+    environment:
+      ZITADEL_MASTERKEY: "MasterkeyNeedsToHave32Characters"
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_EXTERNALPORT: 8085
+      ZITADEL_EXTERNALDOMAIN: "localhost"
+      ZITADEL_DATABASE_POSTGRES_HOST: postgres
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: "Geniro"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: "zitadel-admin@geniro.localhost"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "Password1!"
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ai
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/debug/healthz/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  zitadel-init:
+    image: alpine/curl:latest
+    profiles: ["zitadel"]
+    depends_on:
+      zitadel:
+        condition: service_healthy
+    networks:
+      - ai
+    volumes:
+      - ./.docker/zitadel:/scripts:ro
+    entrypoint: ["sh", "/scripts/init.sh"]
+    restart: "no"
 
 networks:
   ai:

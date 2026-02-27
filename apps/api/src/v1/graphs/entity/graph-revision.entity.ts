@@ -48,7 +48,7 @@ export class GraphRevisionEntity extends TimestampsEntity {
   @Column({ type: 'text', nullable: true })
   error?: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar' })
   @Index()
   createdBy!: string;
 }

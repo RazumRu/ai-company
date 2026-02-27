@@ -1,4 +1,3 @@
-import { TimestampsEntity } from '@packages/typeorm';
 import {
   Column,
   Entity,
@@ -9,12 +8,13 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+import { AuditEntity } from '../../../auth/audit.entity';
 import type { GraphEntity } from '../../graphs/entity/graph.entity';
 import { ThreadStatus } from '../threads.types';
 import type { MessageEntity } from './message.entity';
 
 @Entity('threads')
-export class ThreadEntity extends TimestampsEntity {
+export class ThreadEntity extends AuditEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -28,10 +28,6 @@ export class ThreadEntity extends TimestampsEntity {
 
   @OneToMany('MessageEntity', 'thread')
   messages?: MessageEntity[];
-
-  @Column({ type: 'uuid' })
-  @Index()
-  createdBy!: string;
 
   @Column({ type: 'varchar' })
   @Index({

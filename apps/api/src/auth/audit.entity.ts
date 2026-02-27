@@ -2,7 +2,7 @@ import { TimestampsEntity } from '@packages/typeorm';
 import { Column, Index } from 'typeorm';
 
 export class AuditEntity extends TimestampsEntity {
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar' })
   @Index()
   createdBy!: string;
 

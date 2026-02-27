@@ -121,7 +121,7 @@ export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms> {
   async upsertByExternalThreadId(
     data: Pick<
       ThreadEntity,
-      'graphId' | 'createdBy' | 'externalThreadId' | 'status'
+      'graphId' | 'createdBy' | 'projectId' | 'externalThreadId' | 'status'
     > &
       Partial<Pick<ThreadEntity, 'source' | 'lastRunId' | 'metadata'>>,
   ): Promise<ThreadEntity> {

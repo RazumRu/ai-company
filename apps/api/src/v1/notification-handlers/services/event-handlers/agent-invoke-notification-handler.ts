@@ -55,6 +55,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     await this.threadDao.upsertByExternalThreadId({
       graphId,
       createdBy: graph.createdBy,
+      projectId: graph.projectId,
       externalThreadId: externalThreadKey,
       status: ThreadStatus.Running,
       ...(source ? { source } : {}),
@@ -84,7 +85,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadCreate,
         graphId,
-        projectId: graph.projectId ?? undefined,
+        projectId: graph.projectId,
         threadId: externalThreadKey,
         internalThreadId: thread.id,
         data: thread,
@@ -94,7 +95,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadUpdate,
         graphId,
-        projectId: graph.projectId ?? undefined,
+        projectId: graph.projectId,
         threadId: externalThreadKey,
         parentThreadId,
         data: threadDto,

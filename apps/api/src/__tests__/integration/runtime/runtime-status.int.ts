@@ -96,6 +96,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
     const thread = await threadsDao.create({
       graphId,
       createdBy: userId,
+      projectId: testProjectId,
       externalThreadId: `runtime-status-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       metadata: {},
       source: null,

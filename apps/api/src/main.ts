@@ -4,6 +4,7 @@ import {
   buildAuthExtension,
   buildHttpServerExtension,
   KeycloakProvider,
+  ZitadelProvider,
 } from '@packages/http-server';
 import { buildMetricExtension } from '@packages/metrics';
 import { buildTypeormExtension } from '@packages/typeorm';
@@ -52,13 +53,21 @@ bootstrapper.addExtension(
   ),
 );
 
+const authProviderInstance =
+  environment.authProvider === 'zitadel'
+    ? new ZitadelProvider({
+        url: environment.zitadelUrl,
+        issuer: environment.zitadelIssuer,
+      })
+    : new KeycloakProvider({
+        url: environment.keycloakUrl,
+        realms: [environment.keycloakRealm],
+      });
+
 bootstrapper.addExtension(
   buildAuthExtension({
     devMode: environment.authDevMode,
-    provider: new KeycloakProvider({
-      url: environment.keycloakUrl,
-      realms: [environment.keycloakRealm],
-    }),
+    provider: authProviderInstance,
     storage: AppContextStorage,
   }),
 );

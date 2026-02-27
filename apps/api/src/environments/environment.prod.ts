@@ -16,9 +16,12 @@ export const environment = () =>
     port: +getEnv('HTTP_PORT', '5000'),
 
     // auth
+    authProvider: getEnv('AUTH_PROVIDER', 'keycloak'),
     authDevMode: getEnv('AUTH_DEV_MODE', false),
     keycloakUrl: getEnv('KEYCLOAK_URL'),
     keycloakRealm: getEnv('KEYCLOAK_REALM', 'geniro'),
+    zitadelUrl: getEnv('ZITADEL_URL'),
+    zitadelIssuer: getEnv('ZITADEL_ISSUER'),
 
     // connections
     postgresUrl: getEnv('POSTGRES_URL'),

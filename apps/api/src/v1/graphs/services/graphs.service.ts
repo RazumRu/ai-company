@@ -620,6 +620,7 @@ export class GraphsService {
         await this.threadsDao.create({
           graphId,
           createdBy: userId,
+          projectId: graph.projectId,
           externalThreadId,
           status: ThreadStatus.Running,
           ...(dto.metadata ? { metadata: dto.metadata } : {}),

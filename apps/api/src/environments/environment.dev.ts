@@ -29,9 +29,12 @@ export const environment = () =>
     llmRequestTimeoutMs: +getEnv('LLM_REQUEST_TIMEOUT_MS', '600000'),
 
     // auth
+    authProvider: getEnv('AUTH_PROVIDER', 'keycloak'),
     authDevMode: getEnv('AUTH_DEV_MODE', true),
     keycloakUrl: getEnv('KEYCLOAK_URL', 'http://localhost:8082'),
     keycloakRealm: getEnv('KEYCLOAK_REALM', 'geniro'),
+    zitadelUrl: getEnv('ZITADEL_URL', 'http://localhost:8085'),
+    zitadelIssuer: getEnv('ZITADEL_ISSUER', 'http://localhost:8085'),
 
     // docker registry mirror (for DinD)
     dockerRegistryMirror: getEnv(

@@ -82,6 +82,7 @@ describe('Message token usage (integration)', () => {
     const thread = await threadsDao.create({
       graphId: graph.id,
       createdBy: TEST_USER_ID,
+      projectId: testProjectId,
       externalThreadId: internalThreadExternalId,
       metadata: {},
       source: null,

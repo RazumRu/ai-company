@@ -66,6 +66,7 @@ describe('Web search tool integration', () => {
     const thread = await threadsDao.create({
       graphId: createdGraphId,
       createdBy: TEST_USER_ID,
+      projectId: testProjectId,
       externalThreadId: `ext-${Date.now()}`,
       status: ThreadStatus.Running,
       metadata: {},

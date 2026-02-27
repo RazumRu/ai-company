@@ -267,6 +267,7 @@ describe('AiSuggestionsService (integration)', () => {
       const thread = await threadsDao.create({
         graphId: graph.id,
         createdBy: TEST_USER_ID,
+        projectId: serviceTestProjectId,
         externalThreadId: `ext-thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         metadata: {},
         source: null,

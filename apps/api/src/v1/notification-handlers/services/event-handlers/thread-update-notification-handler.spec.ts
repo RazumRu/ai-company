@@ -39,6 +39,7 @@ describe('ThreadUpdateNotificationHandler', () => {
     id: '11111111-1111-4111-8aaa-111111111111',
     graphId: mockGraphId,
     createdBy: mockOwnerId,
+    projectId: 'project-abc',
     externalThreadId: mockThreadId,
     metadata: {},
     source: undefined,

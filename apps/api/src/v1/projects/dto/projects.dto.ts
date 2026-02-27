@@ -12,7 +12,7 @@ export const ProjectSchema = z.object({
     .nullable()
     .optional(),
   settings: z.record(z.string(), z.unknown()),
-  createdBy: z.uuid(),
+  createdBy: z.string(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   graphCount: z.number().int().min(0),

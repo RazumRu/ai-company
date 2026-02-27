@@ -196,6 +196,7 @@ describe('ProjectsService (integration)', () => {
       const thread = await threadsDao.create({
         graphId: graph1.id,
         createdBy: TEST_USER_ID,
+        projectId: project.id,
         externalThreadId: `stats-test-${Date.now()}`,
         status: ThreadStatus.Done,
       });
@@ -260,6 +261,7 @@ describe('ProjectsService (integration)', () => {
       const liveThread = await threadsDao.create({
         graphId: graph.id,
         createdBy: TEST_USER_ID,
+        projectId: project.id,
         externalThreadId: `live-thread-${Date.now()}`,
         status: ThreadStatus.Done,
       });
@@ -268,6 +270,7 @@ describe('ProjectsService (integration)', () => {
       const deletedThread = await threadsDao.create({
         graphId: graph.id,
         createdBy: TEST_USER_ID,
+        projectId: project.id,
         externalThreadId: `deleted-thread-${Date.now()}`,
         status: ThreadStatus.Done,
       });

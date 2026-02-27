@@ -37,6 +37,7 @@ describe('ThreadsService', () => {
     id: mockThreadId,
     graphId: mockGraphId,
     createdBy: mockUserId,
+    projectId: 'project-abc',
     externalThreadId: 'external-thread-123',
     metadata: { nodeId: 'node-1' },
     createdAt: new Date('2024-01-01T00:00:00Z'),

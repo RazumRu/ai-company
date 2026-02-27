@@ -86,6 +86,7 @@ describe('Analytics (integration)', () => {
     const thread = await threadsDao.create({
       graphId,
       createdBy: TEST_USER_ID,
+      projectId: testProjectId,
       externalThreadId: `analytics-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       metadata: {},
       source: null,

@@ -47,6 +47,7 @@ describe('ThreadLifecycleNotificationHandler', () => {
     id: mockInternalThreadId,
     graphId: mockGraphId,
     createdBy: mockOwnerId,
+    projectId: 'project-abc',
     externalThreadId: mockThreadId,
     lastRunId: undefined,
     createdAt: new Date('2024-01-01T00:00:00Z'),

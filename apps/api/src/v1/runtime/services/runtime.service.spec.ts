@@ -29,6 +29,7 @@ describe('RuntimeService', () => {
     id: threadId,
     graphId,
     createdBy: userId,
+    projectId: 'project-abc',
     externalThreadId,
   } as ThreadEntity;
 

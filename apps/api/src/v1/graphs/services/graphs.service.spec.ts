@@ -2032,6 +2032,7 @@ describe('GraphsService', () => {
         expect(threadsDao.create).toHaveBeenCalledWith({
           graphId: mockGraphId,
           createdBy: mockUserId,
+          projectId: 'project-123',
           externalThreadId: expectedThreadId,
           status: ThreadStatus.Running,
           metadata: { key: 'value' },

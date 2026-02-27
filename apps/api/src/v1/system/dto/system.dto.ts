@@ -14,3 +14,19 @@ export type SystemSettingsResponse = z.infer<
 export class SystemSettingsResponseDto extends createZodDto(
   SystemSettingsResponseSchema,
 ) {}
+
+export enum AuthProviderType {
+  Keycloak = 'keycloak',
+  Zitadel = 'zitadel',
+}
+
+export const AuthConfigResponseSchema = z.object({
+  provider: z.nativeEnum(AuthProviderType).describe('Active auth provider'),
+  issuer: z.string().describe('Token issuer URL'),
+});
+
+export type AuthConfigResponse = z.infer<typeof AuthConfigResponseSchema>;
+
+export class AuthConfigResponseDto extends createZodDto(
+  AuthConfigResponseSchema,
+) {}

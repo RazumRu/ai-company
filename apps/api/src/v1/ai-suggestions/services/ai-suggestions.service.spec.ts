@@ -389,6 +389,7 @@ describe('AiSuggestionsService', () => {
         id: 'thread-1',
         graphId: 'graph-1',
         createdBy: 'user-1',
+        projectId: 'project-abc',
         externalThreadId: 'ext-thread',
         status: ThreadStatus.Running,
         createdAt: new Date(),

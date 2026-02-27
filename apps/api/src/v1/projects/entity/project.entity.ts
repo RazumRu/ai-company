@@ -21,7 +21,7 @@ export class ProjectEntity extends TimestampsEntity {
   @Column({ type: 'jsonb', default: () => "'{}'" })
   settings!: Record<string, unknown>;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar' })
   @Index()
   createdBy!: string;
 }
