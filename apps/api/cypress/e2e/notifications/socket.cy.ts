@@ -1,6 +1,10 @@
 import { Socket } from 'socket.io-client';
 
-import { mockUserId, reqHeaders } from '../common.helper';
+import {
+  buildAuthHeadersWithProject,
+  mockUserId,
+  reqHeaders,
+} from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
@@ -8,6 +12,7 @@ import {
   executeTrigger,
   runGraph,
 } from '../graphs/graphs.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import {
   createSocketConnection,
   disconnectSocket,
@@ -19,10 +24,22 @@ describe('Socket Gateway E2E', () => {
   let socket: Socket;
   let baseUrl: string;
   let createdGraphId: string;
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
 
   before(() => {
     // Get base URL from Cypress config
     baseUrl = Cypress.config('baseUrl') || 'http://localhost:5000';
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
+
+  after(() => {
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   afterEach(() => {
@@ -139,7 +156,7 @@ describe('Socket Gateway E2E', () => {
     before(() => {
       // Create a test graph
       const graphData = createMockGraphData();
-      return createGraph(graphData, reqHeaders).then((response) => {
+      return createGraph(graphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(201);
         createdGraphId = response.body.id;
       });
@@ -153,7 +170,7 @@ describe('Socket Gateway E2E', () => {
     it('should subscribe to graph updates when user is owner', () => {
       const graphData = createMockGraphData();
 
-      return createGraph(graphData, reqHeaders).then((response) => {
+      return createGraph(graphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(201);
         const freshGraphId = response.body.id;
 
@@ -251,7 +268,7 @@ describe('Socket Gateway E2E', () => {
       // Create a test graph if not already created
       if (!createdGraphId) {
         const graphData = createMockGraphData();
-        return createGraph(graphData, reqHeaders).then((response) => {
+        return createGraph(graphData, projectHeaders).then((response) => {
           expect(response.status).to.equal(201);
           createdGraphId = response.body.id;
         });
@@ -268,7 +285,7 @@ describe('Socket Gateway E2E', () => {
       // Create a fresh graph for this test to avoid "already running" issues
       const graphData = createMockGraphData();
 
-      return createGraph(graphData, reqHeaders).then((response) => {
+      return createGraph(graphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(201);
         const freshGraphId = response.body.id;
 
@@ -350,7 +367,7 @@ describe('Socket Gateway E2E', () => {
         });
 
       // Chain Cypress commands properly
-      return createGraph(graphData, reqHeaders)
+      return createGraph(graphData, projectHeaders)
         .then((response) => {
           expect(response.status).to.equal(201);
           freshGraphId = response.body.id;
@@ -456,7 +473,7 @@ describe('Socket Gateway E2E', () => {
 
           // Create a new graph to trigger notification
           const graphData = createMockGraphData();
-          return createGraph(graphData, reqHeaders).then(
+          return createGraph(graphData, projectHeaders).then(
             (response: { status: number; body: { id: string } }) => {
               expect(response.status).to.equal(201);
               const newGraphId = response.body.id;

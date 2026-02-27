@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import type { FastifyRequest } from 'fastify';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
@@ -9,14 +9,17 @@ import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Thread token usage + cost from running graph state (integration)', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
+  let testProjectId: string;
 
   const createdGraphIds: string[] = [];
 
@@ -32,6 +35,10 @@ describe('Thread token usage + cost from running graph state (integration)', () 
     app = await createTestModule();
     graphsService = app.get(GraphsService);
     threadsService = app.get(ThreadsService);
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
   });
 
   afterEach(async () => {
@@ -65,6 +72,14 @@ describe('Thread token usage + cost from running graph state (integration)', () 
   }, 180_000);
 
   afterAll(async () => {
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
+
     await app.close();
   });
 

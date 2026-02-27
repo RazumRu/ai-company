@@ -2,6 +2,8 @@ import type {
   GraphNodeWithStatusDto,
   ThreadMessageDto,
 } from '../../api-definitions';
+import { buildAuthHeadersWithProject } from '../common.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import {
   getThreadByExternalId,
   getThreadMessages,
@@ -40,14 +42,27 @@ const extractRunId = (messages: ThreadMessageDto[]): string | undefined => {
 };
 
 describe('Graph Nodes API E2E', () => {
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
+
   after(() => {
     graphCleanup.cleanupAllGraphs();
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   it('should return 400 when requesting nodes for a graph that is not running', () => {
     const graphData = createMockGraphData();
 
-    return createGraph(graphData).then((createResponse) => {
+    return createGraph(graphData, projectHeaders).then((createResponse) => {
       expect(createResponse.status).to.equal(201);
       const graphId = createResponse.body.id;
 
@@ -65,7 +80,7 @@ describe('Graph Nodes API E2E', () => {
     const graphData = createMockGraphData();
     let graphId: string;
 
-    return createGraph(graphData)
+    return createGraph(graphData, projectHeaders)
       .then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         graphId = createResponse.body.id;
@@ -115,7 +130,7 @@ describe('Graph Nodes API E2E', () => {
     let runId: string;
     let extractedRunId: string | undefined;
 
-    return createGraph(graphData)
+    return createGraph(graphData, projectHeaders)
       .then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         graphId = createResponse.body.id;

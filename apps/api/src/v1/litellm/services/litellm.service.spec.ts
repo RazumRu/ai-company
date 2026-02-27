@@ -65,7 +65,7 @@ describe('LitellmService', () => {
       expect(result).toBeDefined();
       expect(result!.inputTokens).toBe(10);
       expect(result!.outputTokens).toBe(5);
-      expect(result!.totalTokens).toBe(20); // 10 input + 3 cached + 5 output + 2 reasoning
+      expect(result!.totalTokens).toBe(15); // 10 input + 5 output (cached and reasoning are subsets, not additive)
       expect(result!.cachedInputTokens).toBe(3);
       expect(result!.reasoningTokens).toBe(2);
     });
@@ -141,7 +141,7 @@ describe('LitellmService', () => {
       expect(result).toBeDefined();
       expect(result!.inputTokens).toBe(3612);
       expect(result!.outputTokens).toBe(272);
-      expect(result!.totalTokens).toBe(7483); // 3612 + 3493 + 272 + 106
+      expect(result!.totalTokens).toBe(3884); // 3612 input + 272 output (cached/reasoning are subsets, not additive)
       expect(result!.cachedInputTokens).toBe(3493);
       expect(result!.reasoningTokens).toBe(106);
       expect(result!.totalPrice).toBe(0.00046689);
@@ -206,7 +206,7 @@ describe('LitellmService', () => {
       expect(result).toBeDefined();
       expect(result!.inputTokens).toBe(3612);
       expect(result!.outputTokens).toBe(272);
-      expect(result!.totalTokens).toBe(7483); // 3612 + 3493 + 272 + 106
+      expect(result!.totalTokens).toBe(3884); // 3612 input + 272 output (cached/reasoning are subsets, not additive)
       expect(result!.cachedInputTokens).toBe(3493);
       expect(result!.reasoningTokens).toBe(106);
       expect(result!.totalPrice).toBe(0.00046689);

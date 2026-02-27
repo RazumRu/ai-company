@@ -2,7 +2,7 @@ import { AIMessageChunk } from '@langchain/core/messages';
 import { INestApplication } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import type { FastifyRequest } from 'fastify';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { io, Socket } from 'socket.io-client';
 import {
   afterAll,
@@ -55,6 +55,7 @@ import {
   waitForCondition,
 } from '../helpers/graph-helpers';
 import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 // Type aliases for socket notifications (using business logic interfaces)
 type MessageNotification = IEnrichedNotification<ThreadMessageDto>;
@@ -64,7 +65,8 @@ type ThreadUpdateNotification = IEnrichedNotification<ThreadDto>;
 type AgentStateUpdateNotification =
   IEnrichedNotification<IAgentStateUpdateData>;
 
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Socket Notifications Integration Tests', () => {
   let app: INestApplication;
@@ -80,6 +82,7 @@ describe('Socket Notifications Integration Tests', () => {
   const createdGraphIds: string[] = [];
   let baseGraphId: string;
   let commandGraphId: string;
+  let testProjectId: string;
   const STOP_TRIGGER_NODE_ID = 'trigger-1';
   const STOP_AGENT_NODE_ID = 'agent-1';
   const STOP_SHELL_NODE_ID = 'shell-1';
@@ -153,6 +156,10 @@ describe('Socket Notifications Integration Tests', () => {
     );
     baseUrl = 'http://localhost:5050';
 
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
+
     const baseGraph = await graphsService.create(
       contextDataStorage,
       createMockGraphData({
@@ -200,6 +207,15 @@ describe('Socket Notifications Integration Tests', () => {
         console.warn(`afterAll: delete failed for graph ${graphId}:`, error);
       }
     }
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
+
     await app.close();
   }, 180_000);
 
@@ -440,7 +456,9 @@ describe('Socket Notifications Integration Tests', () => {
           expect(msg.type).toBe('agent.message');
           expect(msg.data.message).toBeDefined();
           expect(msg.data.message.content).toBeDefined(); // Content can be empty string
-          expect(['human', 'ai', 'tool']).toContain(msg.data.message.role);
+          expect(['human', 'ai', 'tool', 'reasoning']).toContain(
+            msg.data.message.role,
+          );
         });
       },
     );

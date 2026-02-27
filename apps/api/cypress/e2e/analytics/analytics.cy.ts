@@ -1,4 +1,4 @@
-import { buildAuthHeaders, generateRandomUUID } from '../common.helper';
+import { buildAuthHeaders, buildAuthHeadersWithProject, generateRandomUUID } from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
@@ -7,12 +7,26 @@ import {
   runGraph,
   waitForGraphToBeRunning,
 } from '../graphs/graphs.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import { waitForThreadStatus } from '../threads/threads.helper';
 import { getAnalyticsByGraph, getAnalyticsOverview } from './analytics.helper';
 
 describe('Analytics E2E', () => {
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
+
   after(() => {
     graphCleanup.cleanupAllGraphs();
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   describe('GET /v1/analytics/overview', () => {
@@ -132,7 +146,7 @@ describe('Analytics E2E', () => {
         name: `Analytics E2E ${Math.random().toString(36).slice(0, 8)}`,
       });
 
-      createGraph(graphData)
+      createGraph(graphData, projectHeaders)
         .then((response) => {
           expect(response.status).to.equal(201);
           testGraphId = response.body.id;

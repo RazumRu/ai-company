@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import type { FastifyRequest } from 'fastify';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -25,7 +25,8 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 const TEST_AGENT_NODE_ID = 'agent-1';
 const TEST_TRIGGER_NODE_ID = 'trigger-1';
@@ -36,7 +37,8 @@ const NON_EXISTENT_GRAPH_ID = '00000000-0000-0000-0000-000000000000';
 const COMMAND_AGENT_INSTRUCTIONS =
   'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, describe what happened. If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
 
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Graphs Integration Tests', () => {
   let app: INestApplication;
@@ -45,6 +47,7 @@ describe('Graphs Integration Tests', () => {
   let graphRegistry: GraphRegistry;
   const createdGraphIds: string[] = [];
   let commandGraphId: string;
+  let testProjectId: string;
 
   const registerGraph = (graphId: string) => {
     if (!createdGraphIds.includes(graphId)) {
@@ -161,6 +164,9 @@ describe('Graphs Integration Tests', () => {
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
     graphRegistry = app.get<GraphRegistry>(GraphRegistry);
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
   });
 
   afterAll(async () => {
@@ -168,6 +174,14 @@ describe('Graphs Integration Tests', () => {
       const graphId = createdGraphIds.pop();
       if (graphId) {
         await cleanupGraph(graphId);
+      }
+    }
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
       }
     }
 

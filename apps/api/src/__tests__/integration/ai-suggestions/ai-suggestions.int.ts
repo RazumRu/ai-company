@@ -1,6 +1,5 @@
 import { INestApplication } from '@nestjs/common';
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import type { FastifyRequest } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AiSuggestionsController } from '../../../v1/ai-suggestions/controllers/ai-suggestions.controller';
@@ -20,6 +19,7 @@ import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createMockGraphData } from '../helpers/graph-helpers';
 import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 let app: INestApplication;
 let controller: AiSuggestionsController;
@@ -30,6 +30,9 @@ let graphDao: GraphDao;
 let projectsDao: ProjectsDao;
 let threadsDao: ThreadsDao;
 let messagesDao: MessagesDao;
+let testProjectId: string;
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 beforeAll(async () => {
   app = await createTestModule();
@@ -41,13 +44,22 @@ beforeAll(async () => {
   projectsDao = app.get(ProjectsDao);
   threadsDao = app.get(ThreadsDao);
   messagesDao = app.get(MessagesDao);
+
+  const projectResult = await createTestProject(app);
+  testProjectId = projectResult.projectId;
+  contextDataStorage = projectResult.ctx;
 }, 180_000);
 
 afterAll(async () => {
+  if (testProjectId) {
+    try {
+      await projectsDao.deleteById(testProjectId);
+    } catch {
+      // best effort cleanup
+    }
+  }
   await app?.close();
 }, 180_000);
-
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
 
 describe('AiSuggestionsController (integration)', () => {
   let runningGraphId: string;

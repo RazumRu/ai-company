@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import type { FastifyRequest } from 'fastify';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
@@ -9,9 +9,11 @@ import { KnowledgeDocDao } from '../../../v1/knowledge/dao/knowledge-doc.dao';
 import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.service';
 import { KnowledgeChunksService } from '../../../v1/knowledge/services/knowledge-chunks.service';
 import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('KnowledgeService (integration)', () => {
   let app: INestApplication;
@@ -20,6 +22,7 @@ describe('KnowledgeService (integration)', () => {
   let docDao: KnowledgeDocDao;
   let qdrantService: QdrantService;
   const createdDocIds: string[] = [];
+  let testProjectId: string;
 
   beforeAll(async () => {
     app = await createTestModule();
@@ -29,6 +32,10 @@ describe('KnowledgeService (integration)', () => {
     qdrantService = app.get(QdrantService);
     const dataSource = app.get(DataSource);
     await dataSource.synchronize();
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
   }, 120_000);
 
   afterEach(async () => {
@@ -41,13 +48,26 @@ describe('KnowledgeService (integration)', () => {
   afterAll(async () => {
     const collectionName =
       environment.knowledgeChunksCollection ?? 'knowledge_chunks';
-    const collections = await qdrantService.raw.getCollections();
-    const exists = collections.collections.some(
-      (collection) => collection.name === collectionName,
-    );
-    if (exists) {
-      await qdrantService.raw.deleteCollection(collectionName);
+    try {
+      const collections = await qdrantService.raw.getCollections();
+      const exists = collections.collections.some(
+        (collection) => collection.name === collectionName,
+      );
+      if (exists) {
+        await qdrantService.raw.deleteCollection(collectionName);
+      }
+    } catch {
+      // Qdrant may not be available
     }
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
+
     await app?.close();
   });
 

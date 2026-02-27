@@ -148,8 +148,9 @@ export class LitellmService {
       outputTokensDetails?.reasoning ??
       0;
 
-    const totalTokens =
-      inputTokens + cachedInputTokens + outputTokens + reasoningTokens;
+    // cachedInputTokens is a subset of inputTokens, and reasoningTokens is a subset
+    // of outputTokens — do not add them again or the total will be inflated.
+    const totalTokens = inputTokens + outputTokens;
 
     // Prefer the provider-reported cost when available — it represents the
     // actual upstream charge (e.g. OpenRouter includes markup, tiered pricing,

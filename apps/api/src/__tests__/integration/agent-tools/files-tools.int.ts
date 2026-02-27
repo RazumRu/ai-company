@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BaseException } from '@packages/common';
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import type { FastifyRequest } from 'fastify';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
@@ -32,7 +32,8 @@ import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 const THREAD_ID = `files-tools-int-${Date.now()}`;
 const WORKSPACE_DIR = `/runtime-workspace/${THREAD_ID}`;
@@ -78,7 +79,8 @@ const hasTextMatch = (result: SearchTextResult, snippet: string) =>
       typeof match?.lineText === 'string' && match.lineText.includes(snippet),
   );
 
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
+// Assigned in beforeAll of the graph execution describe block once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Files tools integration', () => {
   let moduleRef: TestingModule;
@@ -1497,6 +1499,7 @@ describe('Files tools graph execution', () => {
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
   const createdGraphIds: string[] = [];
+  let testProjectId: string;
 
   const THREAD_STATUSES: ThreadStatus[] = [
     ThreadStatus.Done,
@@ -1665,6 +1668,10 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
   });
 
   afterEach(async () => {
@@ -1677,6 +1684,14 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
   }, 180_000);
 
   afterAll(async () => {
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
+
     await app.close();
   });
 

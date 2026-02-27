@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import type { FastifyRequest } from 'fastify';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -13,7 +13,8 @@ import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 const TRIGGER_NODE_ID = 'trigger-1';
 const AGENT_NODE_ID = 'agent-1';
@@ -29,7 +30,8 @@ const THREAD_COMPLETION_STATUSES: ThreadStatus[] = [
   ThreadStatus.Stopped,
 ];
 
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, { headers: {} } as unknown as FastifyRequest);
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Shell Execution Integration Tests', () => {
   let app: INestApplication;
@@ -38,11 +40,17 @@ describe('Shell Execution Integration Tests', () => {
   let defaultGraphId: string;
   let envGraphId: string;
   let alpineGraphId: string;
+  let testProjectId: string;
 
   beforeAll(async () => {
     app = await createTestModule();
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
+
     const defaultGraph = await graphsService.create(
       contextDataStorage,
       createShellExecutionGraphData(),
@@ -78,6 +86,15 @@ describe('Shell Execution Integration Tests', () => {
     if (defaultGraphId) await cleanupGraph(defaultGraphId);
     if (envGraphId) await cleanupGraph(envGraphId);
     if (alpineGraphId) await cleanupGraph(alpineGraphId);
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
+
     await app.close();
   }, 300_000);
 

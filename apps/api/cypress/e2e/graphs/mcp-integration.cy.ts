@@ -1,4 +1,8 @@
-import { reqHeaders } from '../common.helper';
+import {
+  buildAuthHeadersWithProject,
+  reqHeaders,
+} from '../common.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {
   createGraph,
@@ -10,11 +14,23 @@ import {
 
 describe('MCP Integration E2E', () => {
   let createdGraphId: string;
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
 
   // Cleanup after all tests in this describe block
   after(() => {
     cy.log('Running cleanup for MCP Integration E2E tests...');
     graphCleanup.cleanupAllGraphs();
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   describe('Graph with Filesystem MCP', () => {
@@ -61,7 +77,7 @@ describe('MCP Integration E2E', () => {
         },
       });
 
-      createGraph(graphData).then((response) => {
+      createGraph(graphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(201);
         expect(response.body).to.have.property('id');
         createdGraphId = response.body.id;

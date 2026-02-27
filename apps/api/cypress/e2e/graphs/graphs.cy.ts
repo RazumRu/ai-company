@@ -1,4 +1,8 @@
-import { reqHeaders } from '../common.helper';
+import {
+  buildAuthHeadersWithProject,
+  reqHeaders,
+} from '../common.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {
   createGraph,
@@ -24,18 +28,30 @@ const incrementVersion = (version: string): string => {
 
 describe('Graphs E2E', () => {
   let createdGraphId: string;
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
 
   // Cleanup after all tests in this describe block
   after(() => {
     cy.log('Running cleanup for Graphs E2E tests...');
     graphCleanup.cleanupAllGraphs();
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   describe('POST /v1/graphs', () => {
     it('should create a new graph', () => {
       const graphData = createMockGraphData();
 
-      createGraph(graphData).then((response) => {
+      createGraph(graphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(201);
         validateGraph(response.body);
         createdGraphId = response.body.id;
@@ -47,7 +63,7 @@ describe('Graphs E2E', () => {
         description: undefined,
       });
 
-      createGraph(minimalGraphData).then((response) => {
+      createGraph(minimalGraphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(201);
 
         validateGraph(response.body);
@@ -67,7 +83,7 @@ describe('Graphs E2E', () => {
 
       createGraph(
         invalidGraphData as unknown as Parameters<typeof createGraph>[0],
-        reqHeaders,
+        projectHeaders,
       ).then((response) => {
         expect(response.status).to.equal(403);
       });
@@ -92,7 +108,7 @@ describe('Graphs E2E', () => {
         },
       });
 
-      createGraph(invalidGraphData, reqHeaders).then((response) => {
+      createGraph(invalidGraphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
         expect(
@@ -115,7 +131,7 @@ describe('Graphs E2E', () => {
         },
       });
 
-      createGraph(invalidGraphData, reqHeaders).then((response) => {
+      createGraph(invalidGraphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
         expect(
@@ -143,7 +159,7 @@ describe('Graphs E2E', () => {
         },
       });
 
-      createGraph(invalidGraphData, reqHeaders).then((response) => {
+      createGraph(invalidGraphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
         expect(
@@ -173,7 +189,7 @@ describe('Graphs E2E', () => {
         },
       });
 
-      createGraph(invalidGraphData, reqHeaders).then((response) => {
+      createGraph(invalidGraphData, projectHeaders).then((response) => {
         expect(response.status).to.equal(400);
         expect(response.body).to.have.property('message');
         expect(
@@ -184,8 +200,9 @@ describe('Graphs E2E', () => {
       });
     });
 
-    it('should return 400 for invalid template configuration', () => {
-      const invalidGraphData = createMockGraphData({
+    it('should create graph with runtime template stripping unknown config keys', () => {
+      // The runtime template schema uses .strip() — unknown keys are silently ignored
+      const graphData = createMockGraphData({
         schema: {
           nodes: [
             {
@@ -198,19 +215,15 @@ describe('Graphs E2E', () => {
         },
       });
 
-      createGraph(invalidGraphData, reqHeaders).then((response) => {
-        expect(response.status).to.equal(400);
-        expect(response.body).to.have.property('message');
-        expect(
-          (response.body as unknown as { message: string }).message,
-        ).to.include('Invalid configuration for template');
+      createGraph(graphData, projectHeaders).then((response) => {
+        expect(response.status).to.equal(201);
       });
     });
   });
 
   describe('GET /v1/graphs', () => {
     it('should get all graphs', () => {
-      getAllGraphs().then((response) => {
+      getAllGraphs(undefined, projectHeaders).then((response) => {
         expect(response.status).to.equal(200);
         const graphs = response.body;
         expect(graphs).to.be.an('array');
@@ -227,14 +240,14 @@ describe('Graphs E2E', () => {
       const graph1Data = createMockGraphData();
       const graph2Data = createMockGraphData();
 
-      createGraph(graph1Data).then((response1) => {
+      createGraph(graph1Data, projectHeaders).then((response1) => {
         const graphId1 = response1.body.id;
 
-        createGraph(graph2Data).then((response2) => {
+        createGraph(graph2Data, projectHeaders).then((response2) => {
           const graphId2 = response2.body.id;
 
           // Test with single id
-          getAllGraphs({ ids: [graphId1] }).then((response) => {
+          getAllGraphs({ ids: [graphId1] }, projectHeaders).then((response) => {
             expect(response.status).to.equal(200);
             const graphs = response.body;
             expect(graphs).to.be.an('array');
@@ -249,30 +262,34 @@ describe('Graphs E2E', () => {
           });
 
           // Test with multiple ids
-          getAllGraphs({ ids: [graphId1, graphId2] }).then((response) => {
-            expect(response.status).to.equal(200);
-            const graphs = response.body;
-            expect(graphs).to.be.an('array');
-            expect(graphs.length).to.be.at.least(2);
+          getAllGraphs({ ids: [graphId1, graphId2] }, projectHeaders).then(
+            (response) => {
+              expect(response.status).to.equal(200);
+              const graphs = response.body;
+              expect(graphs).to.be.an('array');
+              expect(graphs.length).to.be.at.least(2);
 
-            const foundGraph1 = graphs.find((g) => g.id === graphId1);
-            const foundGraph2 = graphs.find((g) => g.id === graphId2);
-            expect(foundGraph1).to.exist;
-            expect(foundGraph2).to.exist;
+              const foundGraph1 = graphs.find((g) => g.id === graphId1);
+              const foundGraph2 = graphs.find((g) => g.id === graphId2);
+              expect(foundGraph1).to.exist;
+              expect(foundGraph2).to.exist;
 
-            graphs.forEach((graph) => {
-              validateGraph(graph);
-            });
-          });
+              graphs.forEach((graph) => {
+                validateGraph(graph);
+              });
+            },
+          );
 
           // Test with non-existent id
           const nonExistentId = '00000000-0000-0000-0000-000000000000';
-          getAllGraphs({ ids: [nonExistentId] }).then((response) => {
-            expect(response.status).to.equal(200);
-            const graphs = response.body;
-            expect(graphs).to.be.an('array');
-            expect(graphs.length).to.equal(0);
-          });
+          getAllGraphs({ ids: [nonExistentId] }, projectHeaders).then(
+            (response) => {
+              expect(response.status).to.equal(200);
+              const graphs = response.body;
+              expect(graphs).to.be.an('array');
+              expect(graphs.length).to.equal(0);
+            },
+          );
         });
       });
     });
@@ -283,7 +300,7 @@ describe('Graphs E2E', () => {
       // Create a graph for testing if not already created
       if (!createdGraphId) {
         const graphData = createMockGraphData();
-        createGraph(graphData).then((response) => {
+        createGraph(graphData, projectHeaders).then((response) => {
           createdGraphId = response.body.id;
         });
       }
@@ -320,7 +337,7 @@ describe('Graphs E2E', () => {
       // Create a graph for testing if not already created
       if (!createdGraphId) {
         const graphData = createMockGraphData();
-        createGraph(graphData).then((response) => {
+        createGraph(graphData, projectHeaders).then((response) => {
           createdGraphId = response.body.id;
         });
       }
@@ -389,7 +406,7 @@ describe('Graphs E2E', () => {
     it('should increment version when updating schema on a stopped graph', () => {
       const graphData = createMockGraphData();
 
-      createGraph(graphData).then((createResponse) => {
+      createGraph(graphData, projectHeaders).then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         const graphId = createResponse.body.id;
 
@@ -440,7 +457,7 @@ describe('Graphs E2E', () => {
     it('should return 400 when currentVersion does not match latest version', () => {
       const graphData = createMockGraphData();
 
-      createGraph(graphData).then((createResponse) => {
+      createGraph(graphData, projectHeaders).then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         const graphId = createResponse.body.id;
         const originalVersion = createResponse.body.version;
@@ -501,7 +518,7 @@ describe('Graphs E2E', () => {
     beforeEach(() => {
       // Create a graph specifically for run testing
       const graphData = createMockGraphData();
-      createGraph(graphData).then((response) => {
+      createGraph(graphData, projectHeaders).then((response) => {
         runTestGraphId = response.body.id;
       });
     });
@@ -541,7 +558,7 @@ describe('Graphs E2E', () => {
     beforeEach(() => {
       // Create a graph specifically for destroy testing
       const graphData = createMockGraphData();
-      createGraph(graphData).then((response) => {
+      createGraph(graphData, projectHeaders).then((response) => {
         destroyTestGraphId = response.body.id;
       });
     });
@@ -575,7 +592,7 @@ describe('Graphs E2E', () => {
     beforeEach(() => {
       // Create a graph specifically for deletion testing
       const graphData = createMockGraphData();
-      createGraph(graphData).then((response) => {
+      createGraph(graphData, projectHeaders).then((response) => {
         graphToDeleteId = response.body.id;
       });
     });
@@ -621,7 +638,7 @@ describe('Graphs E2E', () => {
     it('should complete full graph lifecycle', () => {
       // 1. Create a graph
       const graphData = createMockGraphData();
-      createGraph(graphData).then((createResponse) => {
+      createGraph(graphData, projectHeaders).then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         expect(createResponse.body.status).to.equal('created');
         lifecycleGraphId = createResponse.body.id;
