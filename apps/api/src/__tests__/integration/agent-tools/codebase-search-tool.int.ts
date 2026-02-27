@@ -19,7 +19,9 @@ import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeProvider } from '../../../v1/runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 const THREAD_ID = `codebase-search-int-${Date.now()}`;
 const RUNNABLE_CONFIG: ToolRunnableConfig<BaseAgentConfigurable> = {
@@ -53,6 +55,7 @@ describe('Codebase search tool (integration)', () => {
   let runtime: BaseRuntime;
   let runtimeThreadProvider: RuntimeThreadProvider;
   let collectionName: string | null = null;
+  let testProjectId: string;
 
   const execInRuntime = async (cmd: string) => {
     const res = await runtime.exec({ cmd, cwd: '/runtime-workspace' });
@@ -100,6 +103,9 @@ describe('Codebase search tool (integration)', () => {
     repoIndexerService = app.get(RepoIndexerService);
     repoIndexDao = app.get(RepoIndexDao);
 
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+
     // Ensure a git_repositories row exists so repo_indexes FK is satisfied.
     // Hard-delete any stale rows (including soft-deleted) first, then upsert.
     const dataSource = app.get(DataSource);
@@ -111,8 +117,8 @@ describe('Codebase search tool (integration)', () => {
       REPOSITORY_ID,
     ]);
     await dataSource.query(
-      `INSERT INTO "git_repositories" ("id", "owner", "repo", "url", "provider", "createdBy", "defaultBranch")
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO "git_repositories" ("id", "owner", "repo", "url", "provider", "createdBy", "defaultBranch", "projectId")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         REPOSITORY_ID,
         'local',
@@ -121,6 +127,7 @@ describe('Codebase search tool (integration)', () => {
         GitRepositoryProvider.GITHUB,
         randomUUID(),
         'main',
+        testProjectId,
       ],
     );
 
@@ -180,6 +187,14 @@ describe('Codebase search tool (integration)', () => {
 
     if (runtime) {
       await runtime.stop().catch(() => undefined);
+    }
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
     }
 
     await app?.close();

@@ -190,12 +190,14 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     // Track the cloned repository with GitHub token and detected default branch
     // Only store PAT tokens (App tokens are short-lived and should not be persisted)
     const userId = cfg.configurable?.graph_created_by as string | undefined;
-    if (userId) {
+    const projectId = cfg.configurable?.graph_project_id as string | undefined;
+    if (userId && projectId) {
       await this.upsertGitRepository(
         args,
         userId,
         config.patToken,
         detectedDefaultBranch,
+        projectId,
       );
     }
 
@@ -220,6 +222,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     userId: string,
     patToken: string | undefined,
     detectedDefaultBranch?: string,
+    projectId?: string,
   ): Promise<void> {
     try {
       const existing = await this.gitRepositoriesDao.getOne({
@@ -249,6 +252,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
         }
         await this.gitRepositoriesDao.updateById(existing.id, updatePayload);
       } else {
+        // projectId is always defined here — caller guards with `userId && projectId`
         await this.gitRepositoriesDao.create({
           owner: args.owner,
           repo: args.repo,
@@ -257,6 +261,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
           defaultBranch: detectedDefaultBranch ?? 'main',
           createdBy: userId,
           encryptedToken,
+          projectId: projectId!,
         });
       }
     } catch (error) {

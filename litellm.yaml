@@ -144,6 +144,16 @@ model_list:
       supports_response_schema: false
       supports_assistant_prefill: false
 
+  - model_name: codex-5.3-oauth
+    litellm_params:
+      model: openai/codex-5.3
+      api_base: http://cli-proxy-api:8317/v1/
+      api_key: cliproxy-local-key
+      drop_params: true
+    model_info:
+      supports_response_schema: false
+      supports_assistant_prefill: false
+
   # Ollama local models
   - model_name: qwen3-coder:30b
     litellm_params:

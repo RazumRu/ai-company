@@ -5,11 +5,11 @@ import {
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
 import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { NotificationEvent } from '../../notifications/notifications.types';
@@ -17,6 +17,7 @@ import { NotificationsService } from '../../notifications/services/notifications
 import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
@@ -41,6 +42,7 @@ import { GraphsService } from './graphs.service';
 import { MessageTransformerService } from './message-transformer.service';
 
 describe('GraphsService', () => {
+  let module: TestingModule;
   let service: GraphsService;
   let graphDao: GraphDao;
   let graphCompiler: GraphCompiler;
@@ -54,10 +56,21 @@ describe('GraphsService', () => {
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
   let logger: DefaultLogger;
+  let projectsDao: ProjectsDao;
 
   const mockUserId = 'user-123';
-  const mockCtx = new AuthContextStorage({ sub: mockUserId });
+  const mockProjectId = '11111111-1111-1111-1111-111111111111';
+  const mockCtx = new AppContextStorage(
+    { sub: mockUserId },
+    { headers: { 'x-project-id': mockProjectId } } as unknown as import('fastify').FastifyRequest,
+  );
   const mockGraphId = 'graph-456';
+
+  const makeCtxWithProject = (projectId: string) =>
+    new AppContextStorage(
+      { sub: mockUserId },
+      { headers: { 'x-project-id': projectId } } as unknown as import('fastify').FastifyRequest,
+    );
 
   const createMockGraphEntity = (
     overrides: Partial<GraphEntity> = {},
@@ -79,6 +92,7 @@ describe('GraphsService', () => {
     },
     status: GraphStatus.Created,
     createdBy: mockUserId,
+    projectId: 'project-123',
     temporary: true,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
@@ -155,7 +169,7 @@ describe('GraphsService', () => {
   };
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         GraphsService,
         {
@@ -257,6 +271,12 @@ describe('GraphsService', () => {
             error: vi.fn(),
           },
         },
+        {
+          provide: ProjectsDao,
+          useValue: {
+            getOne: vi.fn().mockResolvedValue({ id: 'project-1', createdBy: mockUserId }),
+          },
+        },
       ],
     }).compile();
 
@@ -277,6 +297,7 @@ describe('GraphsService', () => {
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
     messagesDao = module.get<MessagesDao>(MessagesDao);
     logger = module.get<DefaultLogger>(DefaultLogger);
+    projectsDao = module.get<ProjectsDao>(ProjectsDao);
     vi.mocked(threadsDao.getOne).mockResolvedValue(null);
     vi.mocked(threadsDao.create).mockResolvedValue({} as any);
     vi.mocked(threadsDao.getAll).mockResolvedValue([]);
@@ -438,6 +459,7 @@ describe('GraphsService', () => {
       expect(graphDao.create).toHaveBeenCalledWith(
         {
           ...createData,
+          projectId: mockProjectId,
           status: GraphStatus.Created,
           createdBy: mockUserId,
           temporary: false,
@@ -574,6 +596,50 @@ describe('GraphsService', () => {
       expect(graphDao.create).not.toHaveBeenCalled();
     });
 
+    it('should create graph with projectId when valid project provided in ctx', async () => {
+      const projectUuid = '11111111-1111-1111-1111-111111111111';
+      const ctxWithProject = makeCtxWithProject(projectUuid);
+
+      const createData: CreateGraphDto = {
+        name: 'Project Graph',
+        schema: { nodes: [], edges: [] },
+        metadata: { graphId: 'project-graph', version: '1.0.0' },
+      };
+
+      const expectedEntity = createMockGraphEntity({
+        id: 'project-graph-id',
+        name: 'Project Graph',
+        status: GraphStatus.Created,
+        createdBy: mockUserId,
+      });
+
+      vi.mocked(projectsDao.getOne).mockResolvedValue({ id: projectUuid, createdBy: mockUserId } as any);
+      vi.mocked(graphDao.create).mockResolvedValue(expectedEntity);
+
+      await service.create(ctxWithProject, createData);
+
+      expect(projectsDao.getOne).toHaveBeenCalledWith({ id: projectUuid, createdBy: mockUserId });
+      expect(graphDao.create).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: projectUuid }),
+        expect.any(Object),
+      );
+    });
+
+    it('should throw NotFoundException when ctx.projectId does not belong to user', async () => {
+      const ctxWithProject = makeCtxWithProject('22222222-2222-2222-2222-222222222222');
+
+      const createData: CreateGraphDto = {
+        name: 'Unauthorized Graph',
+        schema: { nodes: [], edges: [] },
+        metadata: { graphId: 'unauthorized-graph', version: '1.0.0' },
+      };
+
+      vi.mocked(projectsDao.getOne).mockResolvedValue(null);
+
+      await expect(service.create(ctxWithProject, createData)).rejects.toThrow(NotFoundException);
+      expect(graphDao.create).not.toHaveBeenCalled();
+    });
+
     it('should throw BadRequestException for invalid edge references', async () => {
       const createData: CreateGraphDto = {
         name: 'New Graph',
@@ -664,6 +730,18 @@ describe('GraphsService', () => {
       const result = await service.getAll(mockCtx);
 
       expect(result).toEqual([]);
+    });
+
+    it('should filter graphs by projectId when set in ctx', async () => {
+      const ctxWithProject = makeCtxWithProject('42424242-4242-4242-4242-424242424242');
+
+      vi.mocked(graphDao.getAll).mockResolvedValue([]);
+
+      await service.getAll(ctxWithProject);
+
+      expect(graphDao.getAll).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: '42424242-4242-4242-4242-424242424242' }),
+      );
     });
   });
 

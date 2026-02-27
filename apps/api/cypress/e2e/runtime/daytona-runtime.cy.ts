@@ -8,6 +8,7 @@
  */
 
 import type { ThreadMessageDto } from '../../api-definitions/types.gen';
+import { buildAuthHeadersWithProject } from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
@@ -15,6 +16,7 @@ import {
   runGraph,
   waitForGraphToBeRunning,
 } from '../graphs/graphs.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import {
   getThreadByExternalId,
   getThreadMessages,
@@ -72,13 +74,25 @@ const getShellToolMessages = (messages: ThreadMessageDto[]) =>
 
 describe('Daytona Runtime E2E', () => {
   let graphId: string;
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
 
   after(() => {
     graphCleanup.cleanupAllGraphs();
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   it('creates a file in the Daytona sandbox via shell tool', () => {
-    createGraph(GRAPH_DATA)
+    createGraph(GRAPH_DATA, projectHeaders)
       .then((response) => {
         expect(response.status).to.equal(201);
         graphId = response.body.id;

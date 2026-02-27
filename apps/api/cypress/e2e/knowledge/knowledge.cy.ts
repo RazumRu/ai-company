@@ -1,3 +1,5 @@
+import { buildAuthHeadersWithProject } from '../common.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import {
   createKnowledgeDoc,
   deleteKnowledgeDoc,
@@ -8,14 +10,33 @@ import {
 } from './knowledge.helper';
 
 describe('Knowledge docs API', () => {
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
+
+  after(() => {
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
+  });
+
   it('creates, updates, lists, and deletes a doc', () => {
     const initialContent = 'Cypress knowledge content';
     const updatedContent = 'Updated Cypress knowledge content';
 
-    createKnowledgeDoc({
-      title: 'Cypress Doc',
-      content: initialContent,
-    }).then((createResponse) => {
+    createKnowledgeDoc(
+      {
+        title: 'Cypress Doc',
+        content: initialContent,
+      },
+      projectHeaders,
+    ).then((createResponse) => {
       expect(createResponse.status).to.eq(201);
       expect(createResponse.body).to.have.property('id');
       expect(createResponse.body).to.have.property('title');
@@ -28,7 +49,7 @@ describe('Knowledge docs API', () => {
         expect(getResponse.body.id).to.eq(docId);
       });
 
-      listKnowledgeDocs({ search: 'Cypress' }).then((listResponse) => {
+      listKnowledgeDocs({ search: 'Cypress' }, projectHeaders).then((listResponse) => {
         expect(listResponse.status).to.eq(200);
         const items = (
           listResponse.body as unknown as { items: { id: string }[] }

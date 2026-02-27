@@ -43,6 +43,9 @@ Thumbs.db
 
 .env
 
+# CLIProxyAPI OAuth tokens (local bind mount)
+.cliproxy-auth/
+
 .npmrc
 *.log
 .yarnrc.yml

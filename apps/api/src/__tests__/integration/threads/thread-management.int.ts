@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException, NotFoundException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -17,9 +18,11 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Thread Management Integration Tests', () => {
   let app: INestApplication;
@@ -32,6 +35,7 @@ describe('Thread Management Integration Tests', () => {
   let injectModeGraphId: string;
   let waitModeGraphId: string;
   let thinkingGraphId: string;
+  let testProjectId: string;
 
   beforeAll(async () => {
     app = await createTestModule();
@@ -39,6 +43,10 @@ describe('Thread Management Integration Tests', () => {
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
     graphRegistry = app.get<GraphRegistry>(GraphRegistry);
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
 
     const registerGraph = (graphId: string) => {
       if (!createdGraphIds.includes(graphId)) createdGraphIds.push(graphId);
@@ -232,6 +240,15 @@ describe('Thread Management Integration Tests', () => {
         }
       }),
     );
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
+
     await app.close();
   }, 180_000);
 

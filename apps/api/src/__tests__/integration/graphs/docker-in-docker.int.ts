@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -16,7 +17,8 @@ import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { wait } from '../../test-utils';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 const DOCKER_RUNTIME_NODE_ID = 'runtime-1';
 const SHELL_TOOL_NODE_ID = 'shell-tool-1';
@@ -30,13 +32,15 @@ const DOCKER_DIND_INIT_SCRIPT = [
   "sh -c 'i=0; while [ $i -lt 120 ]; do docker info >/dev/null 2>&1 && exit 0; i=$((i+1)); sleep 1; done; exit 1'",
 ];
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Docker Runtime Integration', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
   const createdGraphIds: string[] = [];
+  let testProjectId: string;
 
   const waitForGraphToBeRunning = async (
     graphId: string,
@@ -217,6 +221,10 @@ describe('Docker Runtime Integration', () => {
 
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
   });
 
   afterAll(async () => {
@@ -251,6 +259,14 @@ describe('Docker Runtime Integration', () => {
         }
       }),
     );
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
 
     await app.close();
   }, 180000);

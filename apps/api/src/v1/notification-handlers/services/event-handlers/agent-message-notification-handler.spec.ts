@@ -50,6 +50,7 @@ describe('AgentMessageNotificationHandler', () => {
             getOne: vi.fn().mockResolvedValue({
               id: mockGraphId,
               createdBy: mockOwnerId,
+              projectId: 'project-abc',
             }),
           },
         },

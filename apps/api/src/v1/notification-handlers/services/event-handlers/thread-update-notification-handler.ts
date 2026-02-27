@@ -38,7 +38,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
   ): Promise<IThreadUpdateEnrichedNotification[]> {
     const { graphId, threadId, parentThreadId, data } = event;
 
-    const ownerId = await this.getGraphOwner(this.graphDao, graphId);
+    const { ownerId, projectId } = await this.getGraphInfo(this.graphDao, graphId);
 
     const externalThreadKey = parentThreadId ?? threadId;
 
@@ -83,6 +83,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       {
         type: NotificationEvent.ThreadUpdate,
         graphId,
+        projectId,
         ownerId,
         threadId: externalThreadKey,
         internalThreadId: updatedThread.id,

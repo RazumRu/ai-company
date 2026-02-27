@@ -123,6 +123,7 @@ describe('RuntimeTemplate', () => {
         name: 'test-node',
         version: '1.0.0',
         graph_created_by: 'user-1',
+        graph_project_id: '11111111-1111-1111-1111-111111111111',
       };
 
       const handle = await template.create();
@@ -161,6 +162,7 @@ describe('RuntimeTemplate', () => {
         name: 'daytona-test',
         version: '1.0.0',
         graph_created_by: 'user-1',
+        graph_project_id: '11111111-1111-1111-1111-111111111111',
       };
 
       const handle = await template.create();

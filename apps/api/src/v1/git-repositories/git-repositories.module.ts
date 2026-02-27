@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
+import { ProjectsModule } from '../projects/projects.module';
 import { QdrantModule } from '../qdrant/qdrant.module';
 import { RuntimeModule } from '../runtime/runtime.module';
 import { GitRepositoriesController } from './controllers/git-repositories.controller';
@@ -22,6 +23,7 @@ import { RepoIndexerService } from './services/repo-indexer.service';
     QdrantModule,
     LitellmModule,
     OpenaiModule,
+    forwardRef(() => ProjectsModule),
   ],
   controllers: [GitRepositoriesController],
   providers: [

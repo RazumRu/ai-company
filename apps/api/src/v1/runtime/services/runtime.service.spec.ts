@@ -1,5 +1,6 @@
-import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { mock } from 'vitest-mock-extended';
 
 import { ThreadsDao } from '../../threads/dao/threads.dao';
@@ -18,7 +19,7 @@ describe('RuntimeService', () => {
 
   const mockCtx = {
     checkSub: vi.fn().mockReturnValue(userId),
-  } as unknown as AuthContextStorage;
+  } as unknown as AppContextStorage;
 
   const threadId = '00000000-0000-0000-0000-000000000010';
   const graphId = '00000000-0000-0000-0000-000000000020';

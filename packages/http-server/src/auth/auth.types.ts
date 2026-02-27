@@ -1,3 +1,4 @@
+import { AuthContextStorage } from './auth-context-storage';
 import { AuthProvider } from './providers/auth.provider';
 
 export interface IContextData {
@@ -7,5 +8,6 @@ export interface IContextData {
 
 export interface IAuthModuleParams {
   provider?: AuthProvider;
+  storage?: typeof AuthContextStorage;
   devMode?: boolean;
 }

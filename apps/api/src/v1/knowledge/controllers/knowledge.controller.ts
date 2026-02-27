@@ -10,12 +10,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  AuthContextStorage,
-  CtxStorage,
-  OnlyForAuthorized,
-} from '@packages/http-server';
+import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { EntityUUIDDto } from '../../../utils/dto/misc.dto';
 import {
   KnowledgeDocCreateDto,
@@ -38,7 +35,7 @@ export class KnowledgeController {
   @Post()
   async createDoc(
     @Body() dto: KnowledgeDocCreateDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<KnowledgeDocDto> {
     return this.knowledgeService.createDoc(contextDataStorage, dto);
   }
@@ -47,7 +44,7 @@ export class KnowledgeController {
   async updateDoc(
     @Param() params: EntityUUIDDto,
     @Body() dto: KnowledgeDocUpdateDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<KnowledgeDocDto> {
     return this.knowledgeService.updateDoc(contextDataStorage, params.id, dto);
   }
@@ -56,7 +53,7 @@ export class KnowledgeController {
   @HttpCode(204)
   async deleteDoc(
     @Param() params: EntityUUIDDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<void> {
     await this.knowledgeService.deleteDoc(contextDataStorage, params.id);
   }
@@ -64,7 +61,7 @@ export class KnowledgeController {
   @Get()
   async listDocs(
     @Query() query: KnowledgeDocListQueryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<KnowledgeDocListResult> {
     return this.knowledgeService.listDocs(contextDataStorage, query);
   }
@@ -72,7 +69,7 @@ export class KnowledgeController {
   @Get(':id')
   async getDoc(
     @Param() params: EntityUUIDDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<KnowledgeDocDto> {
     return this.knowledgeService.getDoc(contextDataStorage, params.id);
   }

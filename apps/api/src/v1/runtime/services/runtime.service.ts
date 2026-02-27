@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
 import {
@@ -18,7 +18,7 @@ export class RuntimeService {
   ) {}
 
   async getRuntimesForThread(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     query: GetRuntimesQueryDto,
   ): Promise<RuntimeInstanceDto[]> {
     const userId = ctx.checkSub();

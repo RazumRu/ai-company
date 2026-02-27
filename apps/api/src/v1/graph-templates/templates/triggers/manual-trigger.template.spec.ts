@@ -161,6 +161,7 @@ describe('ManualTriggerTemplate', () => {
       nodeId: 'trigger-1',
       version: '1',
       graph_created_by: 'user-1',
+      graph_project_id: '11111111-1111-1111-1111-111111111111',
     };
 
     it('should throw NotFoundException when no agent nodes found in output connections', async () => {

@@ -1,4 +1,8 @@
-import { buildAuthHeaders, generateRandomUUID } from '../common.helper';
+import {
+  buildAuthHeaders,
+  buildAuthHeadersWithProject,
+  generateRandomUUID,
+} from '../common.helper';
 import { graphCleanup } from '../graphs/graph-cleanup.helper';
 import {
   createGraph,
@@ -9,6 +13,7 @@ import {
   runGraph,
   waitForGraphToBeRunning,
 } from '../graphs/graphs.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import {
   deleteThread,
   getThreadByExternalId,
@@ -22,9 +27,22 @@ import {
 } from './threads.helper';
 
 describe('Threads E2E', () => {
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
+
   // Cleanup after all tests in this describe block
   after(() => {
     graphCleanup.cleanupAllGraphs();
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   describe('Multi-Agent Thread Management', () => {
@@ -59,7 +77,7 @@ describe('Threads E2E', () => {
         },
       };
 
-      createGraph(graphData)
+      createGraph(graphData, projectHeaders)
         .then((response) => {
           expect(response.status).to.equal(201);
           testGraphId = response.body.id;
@@ -128,7 +146,7 @@ describe('Threads E2E', () => {
         },
       };
 
-      createGraph(graphData)
+      createGraph(graphData, projectHeaders)
         .then((response) => {
           expect(response.status).to.equal(201);
           testGraphId = response.body.id;
@@ -171,7 +189,7 @@ describe('Threads E2E', () => {
 
       const graphData = createMockGraphData();
 
-      createGraph(graphData)
+      createGraph(graphData, projectHeaders)
         .then((response) => {
           expect(response.status).to.equal(201);
           testGraphId = response.body.id;
@@ -258,7 +276,7 @@ describe('Threads E2E', () => {
         },
       };
 
-      createGraph(graphData)
+      createGraph(graphData, projectHeaders)
         .then((response) => {
           expect(response.status).to.equal(201);
           testGraphId = response.body.id;
@@ -324,7 +342,7 @@ describe('Threads E2E', () => {
 
         // Create and run a test graph
         const graphData = createMockGraphData();
-        createGraph(graphData)
+        createGraph(graphData, projectHeaders)
           .then((response) => {
             testGraphId = response.body.id;
             return runGraph(testGraphId);
@@ -384,7 +402,7 @@ describe('Threads E2E', () => {
 
         // Create and run a test graph
         const graphData = createMockGraphData();
-        createGraph(graphData)
+        createGraph(graphData, projectHeaders)
           .then((response) => {
             testGraphId = response.body.id;
             return runGraph(testGraphId);
@@ -431,7 +449,7 @@ describe('Threads E2E', () => {
 
         const graphData = createMockGraphData();
 
-        createGraph(graphData)
+        createGraph(graphData, projectHeaders)
           .then((response) => {
             expect(response.status).to.equal(201);
             testGraphId = response.body.id;
@@ -491,7 +509,7 @@ describe('Threads E2E', () => {
           },
         };
 
-        createGraph(graphData)
+        createGraph(graphData, projectHeaders)
           .then((response) => {
             expect(response.status).to.equal(201);
             testGraphId = response.body.id;
@@ -595,7 +613,7 @@ describe('Threads E2E', () => {
           },
         };
 
-        createGraph(graphData)
+        createGraph(graphData, projectHeaders)
           .then((response) => {
             expect(response.status).to.equal(201);
             testGraphId = response.body.id;
@@ -677,7 +695,7 @@ describe('Threads E2E', () => {
           },
         };
 
-        createGraph(graphData)
+        createGraph(graphData, projectHeaders)
           .then((response) => {
             expect(response.status).to.equal(201);
             testGraphId = response.body.id;
@@ -800,7 +818,7 @@ describe('Threads E2E', () => {
           },
         };
 
-        createGraph(graphData)
+        createGraph(graphData, projectHeaders)
           .then((response) => {
             expect(response.status).to.equal(201);
             testGraphId = response.body.id;
@@ -881,7 +899,7 @@ describe('Threads E2E', () => {
           },
         };
 
-        createGraph(graphData)
+        createGraph(graphData, projectHeaders)
           .then((response) => {
             expect(response.status).to.equal(201);
             testGraphId = response.body.id;

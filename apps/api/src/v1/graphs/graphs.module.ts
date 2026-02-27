@@ -7,6 +7,7 @@ import { environment } from '../../environments';
 import { AgentsModule } from '../agents/agents.module';
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ProjectsModule } from '../projects/projects.module';
 import { ThreadsModule } from '../threads/threads.module';
 import { GraphRevisionsController } from './controllers/graph-revisions.controller';
 import { GraphsController } from './controllers/graphs.controller';
@@ -30,8 +31,9 @@ import { MessageTransformerService } from './services/message-transformer.servic
     registerEntities([GraphEntity, GraphRevisionEntity]),
     forwardRef(() => GraphTemplatesModule),
     NotificationsModule,
-    AgentsModule,
+    forwardRef(() => AgentsModule),
     ThreadsModule,
+    forwardRef(() => ProjectsModule),
   ],
   controllers: [GraphsController, GraphRevisionsController],
   providers: [

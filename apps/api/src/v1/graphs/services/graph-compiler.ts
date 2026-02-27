@@ -196,6 +196,7 @@ export class GraphCompiler {
       graphId: entity.id,
       temporary: entity.temporary,
       graph_created_by: entity.createdBy,
+      graph_project_id: entity.projectId,
       ...(additionalMetadata || {}),
     };
 

@@ -1,7 +1,8 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException, DefaultLogger } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
@@ -22,7 +23,8 @@ import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
 import { wait } from '../../test-utils';
 import { createMockGraphData } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 const FULL_AGENT_NODE_ID = 'agent-1';
 const FULL_TRIGGER_NODE_ID = 'trigger-1';
@@ -74,7 +76,8 @@ class TestRuntimeThreadProvider {
   }
 }
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('MCP Integration Tests', () => {
   let runtime: DockerRuntime;
@@ -83,6 +86,7 @@ describe('MCP Integration Tests', () => {
   let graphsService: GraphsService;
   let graphRegistry: GraphRegistry;
   let fullAgentGraphId: string;
+  let testProjectId: string;
 
   const cleanupGraph = async (graphId: string) => {
     try {
@@ -146,6 +150,10 @@ describe('MCP Integration Tests', () => {
     app = await createTestModule();
     graphsService = app.get(GraphsService);
     graphRegistry = app.get(GraphRegistry);
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
   }, 120_000);
 
   afterAll(async () => {
@@ -153,6 +161,15 @@ describe('MCP Integration Tests', () => {
       await cleanupGraph(fullAgentGraphId);
     }
     await runtime.stop();
+
+    if (testProjectId && app) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
+
     if (app) {
       await app.close();
     }

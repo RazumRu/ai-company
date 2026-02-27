@@ -1,10 +1,8 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  AuthContextStorage,
-  CtxStorage,
-  OnlyForAuthorized,
-} from '@packages/http-server';
+import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import {
   GetRuntimesQueryDto,
@@ -22,7 +20,7 @@ export class RuntimeController {
   @Get()
   async getRuntimes(
     @Query() query: GetRuntimesQueryDto,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<RuntimeInstanceDto[]> {
     return this.runtimeService.getRuntimesForThread(ctx, query);
   }

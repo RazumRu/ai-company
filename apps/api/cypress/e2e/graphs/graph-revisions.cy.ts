@@ -1,6 +1,8 @@
 import { inc as semverInc } from 'semver';
 
 import { GraphDto } from '../../api-definitions';
+import { buildAuthHeadersWithProject } from '../common.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {
   getGraphRevisions,
@@ -49,9 +51,22 @@ const incrementVersion = (version: string): string => {
 };
 
 describe('Graph Revisions E2E', () => {
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
+
   after(() => {
     cy.log('Running cleanup for Graph Revisions E2E tests...');
     graphCleanup.cleanupAllGraphs();
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   it('applies a revision to a running graph', () => {
@@ -64,7 +79,7 @@ describe('Graph Revisions E2E', () => {
     let expectedVersion: string;
     let revisionId: string;
 
-    createGraph(graphData)
+    createGraph(graphData, projectHeaders)
       .then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         graphId = createResponse.body.id;

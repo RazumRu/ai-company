@@ -4,8 +4,10 @@ import {
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { TypeormService } from '@packages/typeorm';
+import type { FastifyRequest } from 'fastify';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { compare } from 'fast-json-patch';
 import * as timers from 'timers/promises';
 import { EntityManager } from 'typeorm';
@@ -47,11 +49,14 @@ describe('GraphRevisionService', () => {
   const mockGraphId = 'graph-456';
   const mockUpdateId = 'update-789';
 
-  const mockCtx = new AuthContextStorage({
-    userId: mockUserId,
-    sub: mockUserId,
-    email: 'test@example.com',
-  });
+  const mockCtx = new AppContextStorage(
+    {
+      userId: mockUserId,
+      sub: mockUserId,
+      email: 'test@example.com',
+    },
+    { headers: {} } as FastifyRequest,
+  );
 
   const createMockGraphEntity = (
     overrides: Partial<GraphEntity> = {},
@@ -73,6 +78,7 @@ describe('GraphRevisionService', () => {
     },
     status: GraphStatus.Running,
     createdBy: mockUserId,
+    projectId: 'project-123',
     temporary: false,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),

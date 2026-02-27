@@ -22,6 +22,7 @@ export const GitRepositorySchema = z.object({
     .string()
     .describe('Default branch of the repository (e.g. main, master)'),
   createdBy: z.uuid().describe('User ID who cloned the repository'),
+  projectId: z.uuid().nullable().describe('Project this repository belongs to'),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

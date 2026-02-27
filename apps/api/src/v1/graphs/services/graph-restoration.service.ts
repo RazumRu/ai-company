@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import type { FastifyRequest } from 'fastify';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
@@ -61,9 +62,10 @@ export class GraphRestorationService {
         return;
       }
 
-      const contextDataStorage = new AuthContextStorage({
-        sub: graph.createdBy,
-      });
+      const contextDataStorage = new AppContextStorage(
+        { sub: graph.createdBy },
+        { headers: {} } as unknown as FastifyRequest,
+      );
       await this.graphsService.run(contextDataStorage, id);
 
       // Stop interrupted threads instead of resuming them

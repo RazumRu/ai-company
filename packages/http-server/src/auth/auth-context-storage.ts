@@ -1,9 +1,13 @@
 import { UnauthorizedException } from '@packages/common';
+import type { FastifyRequest } from 'fastify';
 
 import type { IContextData } from './auth.types';
 
 export class AuthContextStorage<T extends IContextData = IContextData> {
-  constructor(private readonly contextData: T | undefined) {}
+  constructor(
+    protected readonly contextData: T | undefined,
+    protected readonly request: FastifyRequest,
+  ) {}
 
   public get sub(): string | undefined {
     return this.contextData?.sub;

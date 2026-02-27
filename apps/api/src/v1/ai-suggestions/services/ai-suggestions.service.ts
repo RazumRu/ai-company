@@ -5,8 +5,9 @@ import {
   InternalException,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { isPlainObject, isString } from 'lodash';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import type { UnknownRecord } from 'type-fest';
 import { z } from 'zod';
 
@@ -160,7 +161,7 @@ export class AiSuggestionsService {
   }
 
   async analyzeThread(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     threadId: string,
     payload: ThreadAnalysisRequestDto,
   ): Promise<ThreadAnalysisResponse> {
@@ -264,7 +265,7 @@ export class AiSuggestionsService {
   }
 
   async suggest(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     graphId: string,
     nodeId: string,
     payload: SuggestAgentInstructionsDto,
@@ -360,7 +361,7 @@ export class AiSuggestionsService {
   }
 
   async suggestGraphInstructions(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     graphId: string,
     payload: SuggestGraphInstructionsRequest,
   ): Promise<SuggestGraphInstructionsResponse> {
@@ -506,7 +507,7 @@ export class AiSuggestionsService {
   }
 
   async suggestKnowledgeContent(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     payload: KnowledgeContentSuggestionRequest,
   ): Promise<KnowledgeContentSuggestionResponse> {
     ctx.checkSub();

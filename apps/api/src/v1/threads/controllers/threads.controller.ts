@@ -9,11 +9,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  AuthContextStorage,
-  CtxStorage,
-  OnlyForAuthorized,
-} from '@packages/http-server';
+import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import {
   GetMessagesQueryDto,
@@ -35,7 +33,7 @@ export class ThreadsController {
   @Get()
   async getThreads(
     @Query() query: GetThreadsQueryDto,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadDto[]> {
     return this.threadsService.getThreads(ctx, query);
   }
@@ -43,7 +41,7 @@ export class ThreadsController {
   @Get(':threadId')
   async getThreadById(
     @Param('threadId') threadId: string,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadDto> {
     return this.threadsService.getThreadById(ctx, threadId);
   }
@@ -51,7 +49,7 @@ export class ThreadsController {
   @Get('external/:externalThreadId')
   async getThreadByExternalId(
     @Param('externalThreadId') externalThreadId: string,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadDto> {
     return this.threadsService.getThreadByExternalId(ctx, externalThreadId);
   }
@@ -60,7 +58,7 @@ export class ThreadsController {
   async getThreadMessages(
     @Param('threadId') threadId: string,
     @Query() query: GetMessagesQueryDto,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadMessageDto[]> {
     return this.threadsService.getThreadMessages(ctx, threadId, query);
   }
@@ -68,7 +66,7 @@ export class ThreadsController {
   @Get(':threadId/usage-statistics')
   async getThreadUsageStatistics(
     @Param('threadId') threadId: string,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadUsageStatisticsDto> {
     return this.threadsService.getThreadUsageStatistics(ctx, threadId);
   }
@@ -77,7 +75,7 @@ export class ThreadsController {
   async setThreadMetadata(
     @Param('threadId') threadId: string,
     @Body() dto: SetThreadMetadataDto,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadDto> {
     return this.threadsService.setMetadata(ctx, threadId, dto);
   }
@@ -86,7 +84,7 @@ export class ThreadsController {
   async setThreadMetadataByExternalId(
     @Param('externalThreadId') externalThreadId: string,
     @Body() dto: SetThreadMetadataDto,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadDto> {
     return this.threadsService.setMetadataByExternalId(
       ctx,
@@ -98,7 +96,7 @@ export class ThreadsController {
   @Delete(':threadId')
   async deleteThread(
     @Param('threadId') threadId: string,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<void> {
     return this.threadsService.deleteThread(ctx, threadId);
   }
@@ -106,7 +104,7 @@ export class ThreadsController {
   @Post(':threadId/stop')
   async stopThread(
     @Param('threadId') threadId: string,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadDto> {
     return this.threadsService.stopThread(ctx, threadId);
   }
@@ -114,7 +112,7 @@ export class ThreadsController {
   @Post('external/:externalThreadId/stop')
   async stopThreadByExternalId(
     @Param('externalThreadId') externalThreadId: string,
-    @CtxStorage() ctx: AuthContextStorage,
+    @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadDto> {
     return this.threadsService.stopThreadByExternalId(ctx, externalThreadId);
   }

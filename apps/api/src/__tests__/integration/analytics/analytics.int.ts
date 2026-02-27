@@ -1,34 +1,49 @@
 import { INestApplication } from '@nestjs/common';
-import { AuthContextStorage } from '@packages/http-server';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { AnalyticsService } from '../../../v1/analytics/analytics.service';
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { MessageRole } from '../../../v1/graphs/graphs.types';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const EMPTY_REQUEST = { headers: {} } as FastifyRequest;
+
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
 
 describe('Analytics (integration)', () => {
   let app: INestApplication;
   let analyticsService: AnalyticsService;
   let graphDao: GraphDao;
+  let projectsDao: ProjectsDao;
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
 
   const createdGraphIds: string[] = [];
   const createdThreadIds: string[] = [];
+  let testProjectId: string;
 
   beforeAll(async () => {
     app = await createTestModule();
     analyticsService = app.get(AnalyticsService);
     graphDao = app.get(GraphDao);
+    projectsDao = app.get(ProjectsDao);
     threadsDao = app.get(ThreadsDao);
     messagesDao = app.get(MessagesDao);
+
+    const project = await projectsDao.create({
+      name: 'Analytics Test Project',
+      createdBy: TEST_USER_ID,
+      settings: {},
+    });
+    testProjectId = project.id;
   }, 180_000);
 
   afterEach(async () => {
@@ -45,6 +60,7 @@ describe('Analytics (integration)', () => {
   });
 
   afterAll(async () => {
+    await projectsDao.deleteById(testProjectId);
     await app?.close();
   }, 180_000);
 
@@ -59,6 +75,7 @@ describe('Analytics (integration)', () => {
       status: GraphStatus.Running,
       metadata: {},
       createdBy: TEST_USER_ID,
+      projectId: testProjectId,
       temporary: true,
     });
     createdGraphIds.push(graph.id);
@@ -101,7 +118,11 @@ describe('Analytics (integration)', () => {
 
   describe('getOverview', () => {
     it('returns zero totals when user has no data', async () => {
-      const result = await analyticsService.getOverview(contextDataStorage, {});
+      const emptyCtx = new AppContextStorage(
+        { sub: '00000000-0000-0000-0000-000000000097' },
+        EMPTY_REQUEST,
+      );
+      const result = await analyticsService.getOverview(emptyCtx, {});
 
       expect(result.totalThreads).toBe(0);
       expect(result.totalTokens).toBe(0);

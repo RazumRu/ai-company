@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AiSuggestionsController } from '../../../v1/ai-suggestions/controllers/ai-suggestions.controller';
@@ -13,11 +13,13 @@ import {
 } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createMockGraphData } from '../helpers/graph-helpers';
 import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 let app: INestApplication;
 let controller: AiSuggestionsController;
@@ -25,8 +27,12 @@ let graphsService: GraphsService;
 let graphRegistry: GraphRegistry;
 let aiSuggestionsService: AiSuggestionsService;
 let graphDao: GraphDao;
+let projectsDao: ProjectsDao;
 let threadsDao: ThreadsDao;
 let messagesDao: MessagesDao;
+let testProjectId: string;
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 beforeAll(async () => {
   app = await createTestModule();
@@ -35,15 +41,25 @@ beforeAll(async () => {
   graphRegistry = app.get(GraphRegistry);
   aiSuggestionsService = app.get(AiSuggestionsService);
   graphDao = app.get(GraphDao);
+  projectsDao = app.get(ProjectsDao);
   threadsDao = app.get(ThreadsDao);
   messagesDao = app.get(MessagesDao);
+
+  const projectResult = await createTestProject(app);
+  testProjectId = projectResult.projectId;
+  contextDataStorage = projectResult.ctx;
 }, 180_000);
 
 afterAll(async () => {
+  if (testProjectId) {
+    try {
+      await projectsDao.deleteById(testProjectId);
+    } catch {
+      // best effort cleanup
+    }
+  }
   await app?.close();
 }, 180_000);
-
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
 
 describe('AiSuggestionsController (integration)', () => {
   let runningGraphId: string;
@@ -143,6 +159,16 @@ describe('AiSuggestionsController (integration)', () => {
 describe('AiSuggestionsService (integration)', () => {
   const createdGraphs: string[] = [];
   const createdThreads: string[] = [];
+  let serviceTestProjectId: string;
+
+  beforeAll(async () => {
+    const project = await projectsDao.create({
+      name: 'AI Suggestions Service Test Project',
+      createdBy: TEST_USER_ID,
+      settings: {},
+    });
+    serviceTestProjectId = project.id;
+  });
 
   afterEach(async () => {
     for (const threadId of createdThreads) {
@@ -159,6 +185,7 @@ describe('AiSuggestionsService (integration)', () => {
   });
 
   afterAll(async () => {
+    await projectsDao.deleteById(serviceTestProjectId);
     // app closed at file-level afterAll
   });
 
@@ -186,6 +213,7 @@ describe('AiSuggestionsService (integration)', () => {
         status: GraphStatus.Running,
         metadata: {},
         createdBy: TEST_USER_ID,
+        projectId: serviceTestProjectId,
         temporary: false,
       });
       createdGraphs.push(graph.id);

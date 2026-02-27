@@ -9,12 +9,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import {
-  AuthContextStorage,
-  CtxStorage,
-  OnlyForAuthorized,
-} from '@packages/http-server';
+import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { EntityUUIDDto } from '../../../utils/dto/misc.dto';
 import {
   CreateGraphDto,
@@ -39,7 +36,7 @@ export class GraphsController {
   @Post()
   async createGraph(
     @Body() dto: CreateGraphDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphDto> {
     return await this.graphsService.create(contextDataStorage, dto);
   }
@@ -47,7 +44,7 @@ export class GraphsController {
   @Get()
   async getAllGraphs(
     @Query() query: GetAllGraphsQueryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphDto[]> {
     return await this.graphsService.getAll(contextDataStorage, query);
   }
@@ -55,7 +52,7 @@ export class GraphsController {
   @Get(':id')
   async findGraphById(
     @Param() params: EntityUUIDDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphDto> {
     return await this.graphsService.findById(contextDataStorage, params.id);
   }
@@ -64,7 +61,7 @@ export class GraphsController {
   async getCompiledNodes(
     @Param() params: EntityUUIDDto,
     @Query() query: GraphNodesQueryDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphNodeWithStatusDto[]> {
     return this.graphsService.getCompiledNodes(
       contextDataStorage,
@@ -77,7 +74,7 @@ export class GraphsController {
   async updateGraph(
     @Param() params: EntityUUIDDto,
     @Body() dto: UpdateGraphDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<UpdateGraphResponseDto> {
     return await this.graphsService.update(contextDataStorage, params.id, dto);
   }
@@ -85,7 +82,7 @@ export class GraphsController {
   @Delete(':id')
   async deleteGraph(
     @Param() params: EntityUUIDDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<void> {
     await this.graphsService.delete(contextDataStorage, params.id);
   }
@@ -93,7 +90,7 @@ export class GraphsController {
   @Post(':id/run')
   async runGraph(
     @Param() params: EntityUUIDDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphDto> {
     return await this.graphsService.run(contextDataStorage, params.id);
   }
@@ -101,7 +98,7 @@ export class GraphsController {
   @Post(':id/destroy')
   async destroyGraph(
     @Param() params: EntityUUIDDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphDto> {
     return await this.graphsService.destroy(contextDataStorage, params.id);
   }
@@ -111,7 +108,7 @@ export class GraphsController {
     @Param('graphId') graphId: string,
     @Param('triggerId') triggerId: string,
     @Body() payload: ExecuteTriggerDto,
-    @CtxStorage() contextDataStorage: AuthContextStorage,
+    @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<ExecuteTriggerResponseDto> {
     return await this.graphsService.executeTrigger(
       contextDataStorage,

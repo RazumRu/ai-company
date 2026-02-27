@@ -31,6 +31,7 @@ describe('NotificationHandler', () => {
 
   const mockGraphId = 'graph-123';
   const mockOwnerId = 'user-456';
+  const mockProjectId = 'project-abc';
   const mockNodeId = 'node-789';
   const mockThreadId = 'thread-abc';
 
@@ -135,6 +136,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
@@ -168,6 +170,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
@@ -221,6 +224,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
@@ -294,6 +298,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
@@ -316,6 +321,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
@@ -372,6 +378,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.AgentMessage,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         nodeId: mockNodeId,
         threadId: mockThreadId,
@@ -442,6 +449,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
@@ -505,6 +513,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };
@@ -535,6 +544,7 @@ describe('NotificationHandler', () => {
         type: NotificationEvent.Graph,
         scope: [NotificationScope.Graph],
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         data: { status: GraphStatus.Running, schema: mockGraphSchema },
       };

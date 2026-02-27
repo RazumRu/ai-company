@@ -1,5 +1,6 @@
-import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { AppContextStorage } from '../../auth/app-context-storage';
 import { mock } from 'vitest-mock-extended';
 
 import { AnalyticsDao } from './analytics.dao';
@@ -14,7 +15,7 @@ describe('AnalyticsService', () => {
 
   const mockCtx = {
     checkSub: vi.fn().mockReturnValue(userId),
-  } as unknown as AuthContextStorage;
+  } as unknown as AppContextStorage;
 
   beforeEach(() => {
     dao = mock<AnalyticsDao>();

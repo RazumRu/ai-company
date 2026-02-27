@@ -4,7 +4,8 @@ import { UnauthorizedException } from '@packages/common';
 import type { FastifyRequest } from 'fastify';
 import { UnknownRecord } from 'type-fest';
 
-import type { IContextData } from './auth.types';
+import { HttpServerAuthParams } from '../http-server.types';
+import type { IAuthModuleParams, IContextData } from './auth.types';
 import { AuthContextDataBuilder } from './auth-context-data-builder';
 import { AuthContextStorage } from './auth-context-storage';
 import { AuthProvider } from './providers/auth.provider';
@@ -17,6 +18,8 @@ export class AuthContextService {
     private readonly authContextDataBuilder: AuthContextDataBuilder,
     @Inject(REQUEST)
     protected readonly request: FastifyRequest,
+    @Inject(HttpServerAuthParams)
+    protected readonly params?: IAuthModuleParams,
     @Inject(AuthProvider)
     @Optional()
     private readonly authProvider?: AuthProvider,
@@ -65,7 +68,9 @@ export class AuthContextService {
   }
 
   public contextStorage<T extends IContextData>(): AuthContextStorage<T> {
-    return new AuthContextStorage<T>(this.contextData as T);
+    const instance = this.params?.storage || AuthContextStorage;
+
+    return new instance<T>(this.contextData as T, this.request);
   }
 
   public get isAuthorized() {

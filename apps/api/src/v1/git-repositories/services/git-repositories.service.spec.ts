@@ -5,9 +5,10 @@ import {
   InternalException,
   NotFoundException,
 } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
@@ -31,8 +32,12 @@ describe('GitRepositoriesService', () => {
   let qdrantService: QdrantService;
 
   const mockUserId = 'user-123';
+  const mockProjectId = '11111111-1111-1111-1111-111111111111';
   const mockRepositoryId = 'repo-456';
-  const mockCtx = new AuthContextStorage({ sub: mockUserId });
+  const mockCtx = new AppContextStorage(
+    { sub: mockUserId },
+    { headers: { 'x-project-id': mockProjectId } } as unknown as import('fastify').FastifyRequest,
+  );
 
   const createMockRepositoryEntity = (
     overrides: Partial<GitRepositoryEntity> = {},
@@ -113,6 +118,12 @@ describe('GitRepositoriesService', () => {
             error: vi.fn(),
           },
         },
+        {
+          provide: ProjectsDao,
+          useValue: {
+            getOne: vi.fn().mockResolvedValue({ id: 'project-1', createdBy: mockUserId }),
+          },
+        },
       ],
     }).compile();
 
@@ -147,6 +158,7 @@ describe('GitRepositoriesService', () => {
         provider: GitRepositoryProvider.GITHUB,
         defaultBranch: 'main',
         createdBy: mockUserId,
+        projectId: mockProjectId,
         encryptedToken: null,
       });
       expect(result).toMatchObject({
@@ -217,6 +229,7 @@ describe('GitRepositoriesService', () => {
         owner: undefined,
         repo: undefined,
         provider: undefined,
+        projectId: mockProjectId,
         limit: 50,
         offset: 0,
         order: { createdAt: 'DESC' },

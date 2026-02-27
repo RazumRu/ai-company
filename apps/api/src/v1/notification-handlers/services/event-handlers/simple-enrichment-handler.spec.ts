@@ -19,6 +19,7 @@ describe('SimpleEnrichmentHandler', () => {
 
   const mockGraphId = 'graph-123';
   const mockOwnerId = 'user-456';
+  const mockProjectId = 'project-abc';
 
   beforeEach(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -30,6 +31,7 @@ describe('SimpleEnrichmentHandler', () => {
             getOne: vi.fn().mockResolvedValue({
               id: mockGraphId,
               createdBy: mockOwnerId,
+              projectId: mockProjectId,
               status: GraphStatus.Running,
             }),
           },
@@ -66,6 +68,7 @@ describe('SimpleEnrichmentHandler', () => {
       expect(result[0]).toEqual({
         type: NotificationEvent.Graph,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         nodeId: undefined,
         threadId: undefined,
@@ -92,6 +95,7 @@ describe('SimpleEnrichmentHandler', () => {
       expect(result[0]).toEqual({
         type: NotificationEvent.GraphNodeUpdate,
         graphId: mockGraphId,
+        projectId: mockProjectId,
         ownerId: mockOwnerId,
         nodeId: 'node-1',
         threadId: 'thread-1',
@@ -151,6 +155,7 @@ describe('SimpleEnrichmentHandler', () => {
         {
           type: NotificationEvent.AgentStateUpdate,
           graphId: mockGraphId,
+          projectId: mockProjectId,
           ownerId: mockOwnerId,
           nodeId: 'node-789',
           threadId: 'parent-thread-def',

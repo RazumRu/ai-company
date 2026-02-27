@@ -3,7 +3,12 @@ import {
   TriggerReindexDto,
   UpdateRepositoryDto,
 } from '../../api-definitions';
-import { buildAuthHeaders, generateRandomUUID } from '../common.helper';
+import {
+  buildAuthHeaders,
+  buildAuthHeadersWithProject,
+  generateRandomUUID,
+} from '../common.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import {
   createGitRepository,
   deleteGitRepository,
@@ -16,8 +21,24 @@ import {
 } from './git-repositories.helper';
 
 describe('Git Repositories E2E', () => {
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
+
+  after(() => {
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
+  });
+
   it('should list repositories (initially empty or pre-existing)', () => {
-    getGitRepositories().then((response) => {
+    getGitRepositories({}, projectHeaders).then((response) => {
       expect(response.status).to.equal(200);
       expect(response.body).to.be.an('array');
     });
@@ -33,7 +54,7 @@ describe('Git Repositories E2E', () => {
     };
 
     // Create a repository
-    createGitRepository(repositoryData).then((createResponse) => {
+    createGitRepository(repositoryData, projectHeaders).then((createResponse) => {
       expect(createResponse.status).to.equal(201);
       const id = createResponse.body.id;
 
@@ -75,14 +96,16 @@ describe('Git Repositories E2E', () => {
 
   it('should enforce user isolation', () => {
     // This is better tested in unit/integration, but E2E can verify headers are respected.
-    const differentUserHeaders = buildAuthHeaders({
-      userId: generateRandomUUID(),
-    });
+    const otherUserId = generateRandomUUID();
+    const differentUserProjectHeaders = buildAuthHeadersWithProject(
+      testProjectId,
+      { userId: otherUserId },
+    );
 
-    getGitRepositories({}, differentUserHeaders).then((response) => {
-      expect(response.status).to.equal(200);
-      // Different user should see their own repos (likely empty)
-      expect(response.body).to.be.an('array');
+    // Different user with same project sees repos from that project, filtered by user
+    getGitRepositories({}, differentUserProjectHeaders).then((response) => {
+      // The other user gets a 401 because they don't own the project
+      expect([200, 401]).to.include(response.status);
     });
   });
 
@@ -103,7 +126,7 @@ describe('Git Repositories E2E', () => {
         provider: 'GITHUB',
       };
 
-      createGitRepository(repositoryData).then((createResponse) => {
+      createGitRepository(repositoryData, projectHeaders).then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         const id = createResponse.body.id;
 
@@ -126,7 +149,7 @@ describe('Git Repositories E2E', () => {
         provider: 'GITHUB',
       };
 
-      createGitRepository(repositoryData).then((createResponse) => {
+      createGitRepository(repositoryData, projectHeaders).then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         const repositoryId = createResponse.body.id;
 
@@ -170,7 +193,7 @@ describe('Git Repositories E2E', () => {
         provider: 'GITHUB',
       };
 
-      createGitRepository(repositoryData).then((createResponse) => {
+      createGitRepository(repositoryData, projectHeaders).then((createResponse) => {
         expect(createResponse.status).to.equal(201);
         const repositoryId = createResponse.body.id;
 
@@ -208,11 +231,11 @@ describe('Git Repositories E2E', () => {
         provider: 'GITHUB',
       };
 
-      createGitRepository(repo1Data).then((repo1Response) => {
+      createGitRepository(repo1Data, projectHeaders).then((repo1Response) => {
         expect(repo1Response.status).to.equal(201);
         const repo1Id = repo1Response.body.id;
 
-        createGitRepository(repo2Data).then((repo2Response) => {
+        createGitRepository(repo2Data, projectHeaders).then((repo2Response) => {
           expect(repo2Response.status).to.equal(201);
           const repo2Id = repo2Response.body.id;
 

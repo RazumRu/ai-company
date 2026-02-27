@@ -40,7 +40,7 @@ export class SimpleEnrichmentHandler extends BaseNotificationHandler<SimpleEnric
   async handle(
     event: SimpleNotification,
   ): Promise<SimpleEnrichedNotification[]> {
-    const ownerId = await this.getGraphOwner(this.graphDao, event.graphId);
+    const { ownerId, projectId } = await this.getGraphInfo(this.graphDao, event.graphId);
 
     const threadId = this.resolveThreadId(event);
 
@@ -48,6 +48,7 @@ export class SimpleEnrichmentHandler extends BaseNotificationHandler<SimpleEnric
       {
         type: event.type,
         graphId: event.graphId,
+        projectId,
         ownerId,
         nodeId: event.nodeId,
         threadId,

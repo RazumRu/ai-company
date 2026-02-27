@@ -9,6 +9,7 @@ import { buildMetricExtension } from '@packages/metrics';
 import { buildTypeormExtension } from '@packages/typeorm';
 
 import { AppModule } from './app.module';
+import { AppContextStorage } from './auth/app-context-storage';
 import typeormconfig from './db/typeormconfig';
 import { environment } from './environments';
 import { RedisIoAdapter } from './v1/notification-handlers/gateways/redis-io.adapter';
@@ -58,6 +59,7 @@ bootstrapper.addExtension(
       url: environment.keycloakUrl,
       realms: [environment.keycloakRealm],
     }),
+    storage: AppContextStorage,
   }),
 );
 

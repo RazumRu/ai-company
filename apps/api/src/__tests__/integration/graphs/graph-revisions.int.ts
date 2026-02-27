@@ -1,7 +1,8 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -34,14 +35,16 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 const TEST_AGENT_NODE_ID = 'agent-1';
 
 const COMMAND_AGENT_INSTRUCTIONS =
   'You are a command runner. When the user message contains `Run this command: <cmd>` or `Execute shell command: <cmd>`, extract `<cmd>` and execute it exactly using the shell tool. Do not run any other commands, inspections, or tests unless the user explicitly requests them. After running the shell tool, call the finish tool with the stdout (and stderr if present). If the runtime is not yet started, wait briefly and retry once before reporting the failure.';
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Graph Revisions Integration Tests', () => {
   let app: INestApplication;
@@ -52,6 +55,7 @@ describe('Graph Revisions Integration Tests', () => {
   let graphCompiler: GraphCompiler;
   const createdGraphIds: string[] = [];
   let coreGraphId: string;
+  let testProjectId: string;
 
   const waitForGraphToBeRunning = async (id: string, timeoutMs = 60000) => {
     const startedAt = Date.now();
@@ -339,6 +343,11 @@ describe('Graph Revisions Integration Tests', () => {
     threadsService = app.get<ThreadsService>(ThreadsService);
     graphRegistry = app.get<GraphRegistry>(GraphRegistry);
     graphCompiler = app.get<GraphCompiler>(GraphCompiler);
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
+
     // Shared graph for revision/merge/conflict semantics. These tests do not require
     // a clean 1.0.0 baseline; they validate relative behavior using the current version.
     const coreGraph = await graphsService.create(
@@ -385,6 +394,14 @@ describe('Graph Revisions Integration Tests', () => {
         }
       }),
     );
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
 
     await app.close();
   }, 180000);

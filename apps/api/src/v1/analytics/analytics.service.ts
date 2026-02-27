@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { AuthContextStorage } from '@packages/http-server';
 
+import { AppContextStorage } from '../../auth/app-context-storage';
 import { AnalyticsDao } from './analytics.dao';
 import type {
   AnalyticsByGraphQueryDto,
@@ -15,7 +15,7 @@ export class AnalyticsService {
   constructor(private readonly analyticsDao: AnalyticsDao) {}
 
   async getOverview(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     query: AnalyticsQueryDto,
   ): Promise<AnalyticsOverviewDto> {
     const userId = ctx.checkSub();
@@ -38,7 +38,7 @@ export class AnalyticsService {
   }
 
   async getByGraph(
-    ctx: AuthContextStorage,
+    ctx: AppContextStorage,
     query: AnalyticsByGraphQueryDto,
   ): Promise<AnalyticsByGraphResponseDto> {
     const userId = ctx.checkSub();

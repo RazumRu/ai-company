@@ -125,6 +125,7 @@ export const GraphMetadataSchema = z.object({
   version: z.string(),
   temporary: z.boolean().optional(),
   graph_created_by: z.string(),
+  graph_project_id: z.string(),
 });
 
 // Complete graph schema

@@ -1,10 +1,13 @@
 import { ToolMessage } from '@langchain/core/messages';
-import { AuthContextStorage } from '@packages/http-server';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { MessageTransformerService } from '../../../v1/graphs/services/message-transformer.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
@@ -12,7 +15,9 @@ import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const EMPTY_REQUEST = { headers: {} } as FastifyRequest;
+
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
 
 describe('Web search tool integration', () => {
   let messageTransformer: MessageTransformerService;
@@ -20,8 +25,10 @@ describe('Web search tool integration', () => {
   let messagesDao: MessagesDao;
   let threadsService: ThreadsService;
   let graphDao: GraphDao;
+  let projectsDao: ProjectsDao;
   let createdThreadId: string;
   let createdGraphId: string;
+  let testProjectId: string;
 
   beforeAll(async () => {
     const app = await createTestModule();
@@ -32,6 +39,14 @@ describe('Web search tool integration', () => {
     messagesDao = app.get<MessagesDao>(MessagesDao);
     threadsService = app.get<ThreadsService>(ThreadsService);
     graphDao = app.get<GraphDao>(GraphDao);
+    projectsDao = app.get<ProjectsDao>(ProjectsDao);
+
+    const project = await projectsDao.create({
+      name: 'Web Search Tool Test Project',
+      createdBy: TEST_USER_ID,
+      settings: {},
+    });
+    testProjectId = project.id;
 
     const graph = await graphDao.create({
       name: 'web-search-tool-test-graph',
@@ -43,6 +58,7 @@ describe('Web search tool integration', () => {
       status: GraphStatus.Created,
       metadata: {},
       createdBy: TEST_USER_ID,
+      projectId: testProjectId,
       temporary: true,
     });
     createdGraphId = graph.id;
@@ -65,6 +81,9 @@ describe('Web search tool integration', () => {
     }
     if (createdGraphId) {
       await graphDao.deleteById(createdGraphId);
+    }
+    if (testProjectId) {
+      await projectsDao.deleteById(testProjectId);
     }
   });
 

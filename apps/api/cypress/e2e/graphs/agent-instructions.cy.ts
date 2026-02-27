@@ -1,3 +1,5 @@
+import { buildAuthHeadersWithProject } from '../common.helper';
+import { createTestProject, deleteProject } from '../projects/projects.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {
   createGraph,
@@ -8,14 +10,27 @@ import {
 } from './graphs.helper';
 
 describe('Graph agent instructions suggestion (E2E)', () => {
+  let testProjectId: string;
+  let projectHeaders: ReturnType<typeof buildAuthHeadersWithProject>;
+
+  before(() => {
+    createTestProject().then((id) => {
+      testProjectId = id;
+      projectHeaders = buildAuthHeadersWithProject(testProjectId);
+    });
+  });
+
   after(() => {
     graphCleanup.cleanupAllGraphs();
+    if (testProjectId) {
+      deleteProject(testProjectId);
+    }
   });
 
   it('suggests instructions for a non-running graph', () => {
     const graphData = createMockGraphData();
 
-    createGraph(graphData).then((response) => {
+    createGraph(graphData, projectHeaders).then((response) => {
       expect(response.status).to.equal(201);
       const graphId = response.body.id;
 
@@ -30,7 +45,7 @@ describe('Graph agent instructions suggestion (E2E)', () => {
   it('suggests instructions for a running graph', () => {
     const graphData = createMockGraphData();
 
-    createGraph(graphData).then((createResponse) => {
+    createGraph(graphData, projectHeaders).then((createResponse) => {
       expect(createResponse.status).to.equal(201);
       const graphId = createResponse.body.id;
 

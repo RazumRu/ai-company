@@ -1,9 +1,12 @@
 import { INestApplication } from '@nestjs/common';
-import { AuthContextStorage } from '@packages/http-server';
+import type { FastifyRequest } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+
+import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { RuntimeInstanceDao } from '../../../v1/runtime/dao/runtime-instance.dao';
 import {
   RuntimeInstanceStatus,
@@ -14,9 +17,11 @@ import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+const EMPTY_REQUEST = { headers: {} } as FastifyRequest;
+
+const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000099';
-const otherUserCtx = new AuthContextStorage({ sub: OTHER_USER_ID });
+const otherUserCtx = new AppContextStorage({ sub: OTHER_USER_ID }, EMPTY_REQUEST);
 
 describe('RuntimeService - getRuntimesForThread (integration)', () => {
   let app: INestApplication;
@@ -24,6 +29,8 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
   let runtimeInstanceDao: RuntimeInstanceDao;
   let threadsDao: ThreadsDao;
   let graphDao: GraphDao;
+  let projectsDao: ProjectsDao;
+  let testProjectId: string;
 
   const createdGraphIds: string[] = [];
   const createdThreadIds: string[] = [];
@@ -35,6 +42,14 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
     runtimeInstanceDao = app.get(RuntimeInstanceDao);
     threadsDao = app.get(ThreadsDao);
     graphDao = app.get(GraphDao);
+    projectsDao = app.get(ProjectsDao);
+
+    const project = await projectsDao.create({
+      name: 'Runtime Status Test Project',
+      createdBy: TEST_USER_ID,
+      settings: {},
+    });
+    testProjectId = project.id;
   }, 180_000);
 
   afterEach(async () => {
@@ -55,6 +70,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
   });
 
   afterAll(async () => {
+    await projectsDao.deleteById(testProjectId);
     await app?.close();
   }, 180_000);
 
@@ -69,6 +85,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
       status: GraphStatus.Running,
       metadata: {},
       createdBy: TEST_USER_ID,
+      projectId: testProjectId,
       temporary: true,
     });
     createdGraphIds.push(graph.id);
@@ -91,7 +108,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
 
   const createRuntimeInstance = async (
     graphId: string,
-    threadId: string,
+    externalThreadId: string,
     nodeId: string,
     overrides: Partial<{
       type: RuntimeType;
@@ -101,7 +118,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
   ) => {
     const instance = await runtimeInstanceDao.create({
       graphId,
-      threadId,
+      threadId: externalThreadId,
       nodeId,
       type: overrides.type ?? RuntimeType.Docker,
       status: overrides.status ?? RuntimeInstanceStatus.Running,
@@ -121,7 +138,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
     const thread = await createThread(graph.id);
     const instance = await createRuntimeInstance(
       graph.id,
-      thread.id,
+      thread.externalThreadId,
       'node-1',
     );
 
@@ -135,7 +152,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
       expect.objectContaining({
         id: instance.id,
         graphId: graph.id,
-        threadId: thread.id,
+        externalThreadId: thread.externalThreadId,
         nodeId: 'node-1',
         type: RuntimeType.Docker,
         status: RuntimeInstanceStatus.Running,
@@ -161,10 +178,10 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
     const graph = await createGraph('runtime-status-filter');
     const thread = await createThread(graph.id);
 
-    await createRuntimeInstance(graph.id, thread.id, 'node-running', {
+    await createRuntimeInstance(graph.id, thread.externalThreadId, 'node-running', {
       status: RuntimeInstanceStatus.Running,
     });
-    await createRuntimeInstance(graph.id, thread.id, 'node-stopped', {
+    await createRuntimeInstance(graph.id, thread.externalThreadId, 'node-stopped', {
       status: RuntimeInstanceStatus.Stopped,
     });
 

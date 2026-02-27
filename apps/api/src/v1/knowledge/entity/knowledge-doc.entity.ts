@@ -1,4 +1,3 @@
-import { TimestampsEntity } from '@packages/typeorm';
 import {
   Column,
   Entity,
@@ -7,8 +6,10 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+import { AuditEntity } from '../../../auth/audit.entity';
+
 @Entity('knowledge_docs')
-export class KnowledgeDocEntity extends TimestampsEntity {
+export class KnowledgeDocEntity extends AuditEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -16,10 +17,6 @@ export class KnowledgeDocEntity extends TimestampsEntity {
   @Generated('increment')
   @Index({ unique: true })
   publicId!: number;
-
-  @Column({ type: 'uuid' })
-  @Index()
-  createdBy!: string;
 
   @Column({ type: 'text' })
   content!: string;

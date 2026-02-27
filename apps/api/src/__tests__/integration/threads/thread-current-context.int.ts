@@ -1,12 +1,14 @@
 import { INestApplication } from '@nestjs/common';
-import { AuthContextStorage } from '@packages/http-server';
+import { AppContextStorage } from '../../../auth/app-context-storage';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
+import { createTestModule } from '../setup';
+import { createTestProject } from '../helpers/test-context';
 
 /**
  * Integration coverage for `tokenUsage.currentContext`.
@@ -16,7 +18,8 @@ import { createTestModule, TEST_USER_ID } from '../setup';
  * - currentContext must represent the request context size the provider counted.
  */
 
-const contextDataStorage = new AuthContextStorage({ sub: TEST_USER_ID });
+// Assigned in beforeAll once the test project is created.
+let contextDataStorage: AppContextStorage;
 
 describe('Thread currentContext from invoke_llm input_tokens (integration)', () => {
   let app: INestApplication;
@@ -25,11 +28,16 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
 
   let noSummarizeGraphId: string;
   let summarizeGraphId: string;
+  let testProjectId: string;
 
   beforeAll(async () => {
     app = await createTestModule();
     graphsService = app.get(GraphsService);
     threadsService = app.get(ThreadsService);
+
+    const projectResult = await createTestProject(app);
+    testProjectId = projectResult.projectId;
+    contextDataStorage = projectResult.ctx;
 
     const waitForRunning = async (graphId: string) => {
       await waitForCondition(
@@ -116,6 +124,15 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
 
     if (noSummarizeGraphId) await cleanup(noSummarizeGraphId);
     if (summarizeGraphId) await cleanup(summarizeGraphId);
+
+    if (testProjectId) {
+      try {
+        await app.get(ProjectsDao).deleteById(testProjectId);
+      } catch {
+        // best effort cleanup
+      }
+    }
+
     await app.close();
   }, 180_000);
 

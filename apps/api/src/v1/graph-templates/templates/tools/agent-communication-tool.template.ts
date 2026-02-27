@@ -161,6 +161,9 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
                 graph_created_by:
                   runnableConfig.configurable?.graph_created_by ??
                   metadata.graph_created_by,
+                graph_project_id:
+                  runnableConfig.configurable?.graph_project_id ??
+                  metadata.graph_project_id,
                 // Inter-agent communication metadata to propagate to all messages
                 __interAgentCommunication: true,
                 __sourceAgentNodeId: runnableConfig.configurable?.node_id,

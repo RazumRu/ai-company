@@ -25,4 +25,18 @@ export const buildAuthHeaders = (params?: {
   };
 };
 
+export const buildAuthHeadersWithProject = (
+  projectId: string,
+  params?: {
+    userId?: string;
+    appId?: string;
+    permissions?: string[];
+  },
+) => {
+  return {
+    ...buildAuthHeaders(params),
+    ['x-project-id']: projectId,
+  };
+};
+
 export const reqHeaders = buildAuthHeaders();
