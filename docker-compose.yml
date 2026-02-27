@@ -206,11 +206,12 @@ services:
       - ./.docker/daytona-runner/docker-socket-proxy.bin:/opt/docker-socket-proxy:ro
 
   zitadel:
-    image: ghcr.io/zitadel/zitadel:latest
+    image: ghcr.io/zitadel/zitadel:v3.4.7
     profiles: ["zitadel"]
     command: start-from-init --masterkeyFromEnv --tlsMode disabled
     environment:
       ZITADEL_MASTERKEY: "MasterkeyNeedsToHave32Characters"
+      ZITADEL_TLS_ENABLED: "false"
       ZITADEL_EXTERNALSECURE: "false"
       ZITADEL_EXTERNALPORT: 8085
       ZITADEL_EXTERNALDOMAIN: "localhost"
@@ -219,11 +220,20 @@ services:
       ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
       ZITADEL_DATABASE_POSTGRES_USER_USERNAME: postgres
       ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
       ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
       ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
       ZITADEL_FIRSTINSTANCE_ORG_NAME: "Geniro"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: "zitadel-admin@geniro.localhost"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "Password1!"
+      # Machine user + PAT for automated init script
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: "geniro-init-sa"
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: "Geniro Init Service Account"
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2030-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_PATPATH: "/zitadel-init/pat.txt"
+    volumes:
+      - zitadel-init-data:/zitadel-init:rw
     ports:
       - "8085:8080"
     depends_on:
@@ -232,10 +242,10 @@ services:
     networks:
       - ai
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/debug/healthz/ready || exit 1"]
+      test: ["CMD", "/app/zitadel", "ready"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 15
       start_period: 30s
 
   zitadel-init:
@@ -248,6 +258,8 @@ services:
       - ai
     volumes:
       - ./.docker/zitadel:/scripts:ro
+      - zitadel-init-data:/zitadel-init:ro
+      - ./.docker/zitadel/data:/zitadel-output:rw
     entrypoint: ["sh", "/scripts/init.sh"]
     restart: "no"
 
@@ -265,3 +277,4 @@ volumes:
   redis:
   qdrant:
   registry:
+  zitadel-init-data:

@@ -46,6 +46,9 @@ Thumbs.db
 # CLIProxyAPI OAuth tokens (local bind mount)
 .cliproxy-auth/
 
+# Zitadel init output (instance-specific client ID, PAT)
+.docker/zitadel/data/
+
 .npmrc
 *.log
 .yarnrc.yml
