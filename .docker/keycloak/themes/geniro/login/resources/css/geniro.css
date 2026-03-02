@@ -1,0 +1,139 @@
+/* Geniro branded Keycloak login theme */
+
+/* Page background */
+body {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f0 100%) !important;
+  min-height: 100vh;
+}
+
+/* Header area — show Geniro logo instead of realm name text */
+#kc-header {
+  text-align: center;
+  padding: 40px 0 20px;
+}
+
+#kc-header-wrapper {
+  font-size: 0 !important;
+  color: transparent !important;
+  background-image: url('http://localhost:5174/logo.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  height: 48px;
+  display: block !important;
+}
+
+/* Login card */
+.login-pf-page .card-pf {
+  max-width: 420px;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  padding: 32px;
+  margin: 0 auto;
+  border-top: none !important;
+}
+
+/* Primary buttons */
+input[type="submit"],
+button[type="submit"],
+.btn-primary {
+  background-color: #3B8DD4 !important;
+  border-color: #3B8DD4 !important;
+  border-radius: 8px !important;
+  height: 44px !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  transition: background-color 0.2s ease;
+}
+
+input[type="submit"]:hover,
+button[type="submit"]:hover,
+.btn-primary:hover {
+  background-color: #2e7bc0 !important;
+  border-color: #2e7bc0 !important;
+}
+
+/* Input fields */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+.login-pf-page .form-control {
+  border-radius: 8px !important;
+  height: 42px !important;
+  font-size: 14px !important;
+  border: 1px solid #d9d9d9 !important;
+  transition: border-color 0.2s ease;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+.login-pf-page .form-control:focus {
+  border-color: #3B8DD4 !important;
+  box-shadow: 0 0 0 2px rgba(59, 141, 212, 0.15) !important;
+}
+
+/* Password input group — merge input + eye toggle into one rounded box */
+.pf-c-input-group {
+  display: flex !important;
+  border: 1px solid #d9d9d9 !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  background: #fff !important;
+  transition: border-color 0.2s ease;
+}
+
+.pf-c-input-group:focus-within {
+  border-color: #3B8DD4 !important;
+  box-shadow: 0 0 0 2px rgba(59, 141, 212, 0.15) !important;
+}
+
+.pf-c-input-group .pf-c-form-control {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  flex: 1 !important;
+  outline: none !important;
+}
+
+.pf-c-input-group .pf-c-button.pf-m-control {
+  border: none !important;
+  background: inherit !important;
+  background-color: inherit !important;
+  color: #999 !important;
+  padding: 0 12px !important;
+  height: auto !important;
+  font-size: 14px !important;
+  box-shadow: none !important;
+  outline: none !important;
+  min-width: auto !important;
+}
+
+.pf-c-input-group .pf-c-button.pf-m-control:hover {
+  color: #666 !important;
+  background: inherit !important;
+  background-color: inherit !important;
+}
+
+.pf-c-input-group .pf-c-button.pf-m-control::before,
+.pf-c-input-group .pf-c-button.pf-m-control::after {
+  display: none !important;
+}
+
+/* Ensure consistent background across input group when browser autofills */
+.pf-c-input-group .pf-c-form-control:-webkit-autofill,
+.pf-c-input-group .pf-c-form-control:-webkit-autofill ~ .pf-c-button.pf-m-control {
+  background-color: #fff !important;
+  -webkit-box-shadow: 0 0 0 30px #fff inset !important;
+}
+
+/* Links */
+a,
+.login-pf-page a {
+  color: #3B8DD4 !important;
+}
+
+a:hover,
+.login-pf-page a:hover {
+  color: #2e7bc0 !important;
+}

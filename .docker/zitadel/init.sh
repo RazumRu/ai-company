@@ -167,6 +167,62 @@ else
   echo "[init] WARNING: Could not determine client ID."
 fi
 
+# --- Configure branding / label policy ---
+echo "[init] Configuring Geniro branding..."
+
+LABEL_BODY=$(jq -n '{
+  "primaryColor": "#3B8DD4",
+  "primaryColorDark": "#5BA3E0",
+  "backgroundColor": "#f5f7fa",
+  "backgroundColorDark": "#1a1a2e",
+  "fontColor": "#111827",
+  "fontColorDark": "#e5e7eb",
+  "warnColor": "#ff4d4f",
+  "warnColorDark": "#ff7875",
+  "hideLoginNameSuffix": true,
+  "disableWatermark": true,
+  "themeMode": "THEME_MODE_AUTO"
+}')
+
+# Try to create label policy; if exists, update it
+LABEL_RESPONSE=$(zcurl -s -X POST "${ZITADEL_URL}/management/v1/policies/label" \
+  -H "${AUTH_HEADER}" \
+  -H "Content-Type: application/json" \
+  -d "${LABEL_BODY}")
+
+if echo "${LABEL_RESPONSE}" | grep -q '"alreadyExists"\|"code":6'; then
+  echo "[init] Label policy exists, updating..."
+  zcurl -s -X PUT "${ZITADEL_URL}/management/v1/policies/label" \
+    -H "${AUTH_HEADER}" \
+    -H "Content-Type: application/json" \
+    -d "${LABEL_BODY}" > /dev/null
+fi
+
+# Download logo from web app and upload to Zitadel
+LOGO_URL="http://host.docker.internal:5174/logo.png"
+LOGO_TMP="/tmp/logo.png"
+if curl -sf -o "${LOGO_TMP}" "${LOGO_URL}" 2>/dev/null || curl -sf -o "${LOGO_TMP}" "http://localhost:5174/logo.png" 2>/dev/null; then
+  echo "[init] Uploading logo..."
+  zcurl -s -X POST "${ZITADEL_URL}/management/v1/policies/label/logo" \
+    -H "${AUTH_HEADER}" \
+    -F "file=@${LOGO_TMP}" > /dev/null 2>&1 || true
+  zcurl -s -X POST "${ZITADEL_URL}/management/v1/policies/label/logo_dark" \
+    -H "${AUTH_HEADER}" \
+    -F "file=@${LOGO_TMP}" > /dev/null 2>&1 || true
+  rm -f "${LOGO_TMP}"
+else
+  echo "[init] Warning: Could not download logo from web app, skipping logo upload"
+fi
+
+# Activate the label policy
+echo "[init] Activating label policy..."
+zcurl -s -X POST "${ZITADEL_URL}/management/v1/policies/label/_activate" \
+  -H "${AUTH_HEADER}" \
+  -H "Content-Type: application/json" \
+  -d '{}' > /dev/null
+
+echo "[init] Branding configured."
+
 # --- Helper: create human user (idempotent) ---
 create_user() {
   local username="$1"
