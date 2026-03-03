@@ -10,6 +10,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
+import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { UsageMetadata } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
@@ -76,12 +77,18 @@ export class InvokeLlmNode extends BaseNode<
 
     const preparedMessages = prepareMessagesForLlm(state.messages);
 
+    const toolInstructions = this.tools
+      .map((t) => (t as BuiltAgentTool).__instructions)
+      .filter((i): i is string => typeof i === 'string' && i.length > 0);
+
+    const dynamicInstructions = toolInstructions.length > 0 ? [`\n<tool_instructions>\n${toolInstructions.join('\n\n')}\n</tool_instructions>`] : [];
+
     // Messages sent to the LLM should be sanitized without internal metadata.
     // DO NOT call updateMessagesListWithMetadata here as it adds back internal tracking data
     // (__runId, __createdAt) that the LLM doesn't need and might interfere with the request.
     let messages: BaseMessage[] = [
       new SystemMessage(
-        this.opts?.systemPrompt || 'You are a helpful AI assistant.',
+        [this.opts?.systemPrompt || 'You are a helpful AI assistant.', ...dynamicInstructions].join('\n\n'),
       ),
       ...(summaryMemoryMessage ? [summaryMemoryMessage] : []),
       ...preparedMessages,

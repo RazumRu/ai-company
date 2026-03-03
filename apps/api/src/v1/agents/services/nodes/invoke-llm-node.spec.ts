@@ -102,10 +102,53 @@ describe('InvokeLlmNode', () => {
       expect.objectContaining(llmRes.usage_metadata as any),
     );
 
-    expect(res.currentContext).toBe(usage.inputTokens);
-  });
+      expect(res.currentContext).toBe(usage.inputTokens);
+    });
 
-  it('attaches durationMs to requestUsage on the AI message', async () => {
+    it('injects tool instructions into the system prompt dynamicially', async () => {
+      node = new InvokeLlmNode(
+        mockLitellm as unknown as LitellmService,
+        mockLlm,
+        [
+          {
+            name: 'tool1',
+            description: 'desc1',
+            __instructions: 'inst1',
+          } as any,
+          {
+            name: 'tool2',
+            description: 'desc2',
+            __instructions: 'inst2',
+          } as any,
+        ],
+        { systemPrompt: 'Base prompt' },
+      );
+
+      const llmRes: AIMessageChunk = {
+        id: 'msg-1',
+        content: 'ok',
+        contentBlocks: [],
+        response_metadata: {},
+        usage_metadata: { input_tokens: 10, output_tokens: 1, total_tokens: 11 },
+        tool_calls: [],
+      } as unknown as AIMessageChunk;
+
+      const invokeSpy = vi.fn().mockResolvedValue(llmRes);
+      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
+
+      await node.invoke(createState(), {
+        configurable: { run_id: 'run-1', thread_id: 'thread-1' },
+      } as any);
+
+      const messages = invokeSpy.mock.calls[0]?.[0] as BaseMessage[];
+      const systemMsg = messages[0] as SystemMessage;
+      expect(systemMsg.content).toContain('Base prompt');
+      expect(systemMsg.content).toContain('<tool_instructions>');
+      expect(systemMsg.content).toContain('inst1');
+      expect(systemMsg.content).toContain('inst2');
+    });
+
+    it('attaches durationMs to requestUsage on the AI message', async () => {
     const usage: RequestTokenUsage = {
       inputTokens: 50,
       outputTokens: 10,

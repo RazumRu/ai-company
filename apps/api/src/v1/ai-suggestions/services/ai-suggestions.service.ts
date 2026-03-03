@@ -842,11 +842,9 @@ export class AiSuggestionsService {
         }
       )?.currentConfig?.instructions;
 
-      const instructions = (
-        instanceInstructions ??
-        config.instructions ??
-        ''
-      ).trim();
+      const instructions = this.stripInstructionExtras(
+        (instanceInstructions ?? config.instructions ?? '').trim(),
+      );
 
       return {
         nodeId: node.id,

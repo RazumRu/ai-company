@@ -188,32 +188,11 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
         const mcpInstructions = this.collectMcpInstructions(mcpOutputs);
 
-        instance.setConfig(config);
-        instance.setMcpServices(mcpOutputs);
-        await instance.initTools(config);
-
-        const toolInstructions = this.collectToolInstructions(
-          instance.getTools() as BuiltAgentTool[],
-        );
-        const toolGroupInstructionsText = this.collectToolGroupInstructions(
-          toolGroupInstructions,
-        );
-
-        const finalConfig = {
-          ...config,
-          instructions: [
-            config.instructions,
-            toolGroupInstructionsText,
-            toolInstructions,
-            mcpInstructions,
-          ]
-            .filter(Boolean)
-            .join('\n\n'),
-        };
-
-        instance.setConfig(finalConfig);
-      },
-      destroy: async (instance: SimpleAgent) => {
+          instance.setConfig(config);
+          instance.setMcpServices(mcpOutputs);
+          await instance.initTools(config);
+        },
+        destroy: async (instance: SimpleAgent) => {
         await instance.stop();
       },
     };
