@@ -164,18 +164,37 @@ export class ThreadsService {
       return (await this.prepareThreadsResponse([thread]))[0]!;
     }
 
-    // Best effort: stop execution in the running graph (if present in registry)
+    // Try to stop the active agent run via the graph registry event chain.
+    // If the agent is actively running, GraphStateManager will emit ThreadUpdate with Stopped
+    // when the agent run terminates due to abort — no direct DB update needed.
+    let stoppedViaEventChain = false;
     try {
-      await this.graphsService.stopThreadExecution(
+      stoppedViaEventChain = await this.graphsService.stopThreadExecution(
         thread.graphId,
         thread.externalThreadId,
         'Graph execution was stopped',
       );
     } catch {
-      // best effort
+      // Fall through to direct DB update
     }
-    // Do not emit ThreadUpdate here; GraphStateManager will emit ThreadUpdate with Stopped
-    // when the agent run terminates due to abort.
+
+    if (!stoppedViaEventChain) {
+      // Graph not in registry or no active agent run — update DB directly
+      const updated = await this.threadDao.updateById(thread.id, {
+        status: ThreadStatus.Stopped,
+      });
+      const responseThread = updated ?? thread;
+
+      await this.notificationsService.emit({
+        type: NotificationEvent.ThreadUpdate,
+        graphId: thread.graphId,
+        threadId: thread.externalThreadId,
+        data: { status: ThreadStatus.Stopped },
+      });
+
+      return (await this.prepareThreadsResponse([responseThread]))[0]!;
+    }
+
     return (await this.prepareThreadsResponse([thread]))[0]!;
   }
 

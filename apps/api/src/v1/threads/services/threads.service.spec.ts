@@ -24,6 +24,7 @@ describe('ThreadsService', () => {
   let notificationsService: NotificationsService;
   let checkpointStateService: CheckpointStateService;
   let graphDao: GraphDao;
+  let graphsService: GraphsService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -136,6 +137,7 @@ describe('ThreadsService', () => {
       CheckpointStateService,
     );
     graphDao = module.get<GraphDao>(GraphDao);
+    graphsService = module.get<GraphsService>(GraphsService);
   });
 
   describe('getThreads', () => {
@@ -1377,6 +1379,112 @@ describe('ThreadsService', () => {
         totalPrice: 0.002,
         currentContext: 100,
       });
+    });
+  });
+
+  describe('stopThread', () => {
+    it('should stop thread via agent event chain when stopThreadExecution returns true', async () => {
+      const thread = createMockThreadEntity({ status: ThreadStatus.Running });
+
+      vi.mocked(threadsDao.getOne).mockResolvedValue(thread);
+      vi.mocked(graphsService.stopThreadExecution).mockResolvedValue(true);
+
+      const result = await service.stopThread(mockCtx, mockThreadId);
+
+      expect(graphsService.stopThreadExecution).toHaveBeenCalledWith(
+        thread.graphId,
+        thread.externalThreadId,
+        'Graph execution was stopped',
+      );
+      // When stopped via event chain, no direct DB update or notification emit
+      expect(threadsDao.updateById).not.toHaveBeenCalled();
+      expect(notificationsService.emit).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        id: mockThreadId,
+        status: ThreadStatus.Running,
+      });
+    });
+
+    it('should fall back to direct DB update when stopThreadExecution returns false', async () => {
+      const thread = createMockThreadEntity({ status: ThreadStatus.Running });
+      const updatedThread = createMockThreadEntity({
+        status: ThreadStatus.Stopped,
+      });
+
+      vi.mocked(threadsDao.getOne).mockResolvedValue(thread);
+      vi.mocked(graphsService.stopThreadExecution).mockResolvedValue(false);
+      vi.mocked(threadsDao.updateById).mockResolvedValue(updatedThread);
+
+      const result = await service.stopThread(mockCtx, mockThreadId);
+
+      expect(threadsDao.updateById).toHaveBeenCalledWith(mockThreadId, {
+        status: ThreadStatus.Stopped,
+      });
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadUpdate,
+        graphId: thread.graphId,
+        threadId: thread.externalThreadId,
+        data: { status: ThreadStatus.Stopped },
+      });
+      expect(result).toMatchObject({
+        id: mockThreadId,
+        status: ThreadStatus.Stopped,
+      });
+    });
+
+    it('should fall back to direct DB update when stopThreadExecution throws', async () => {
+      const thread = createMockThreadEntity({ status: ThreadStatus.Running });
+      const updatedThread = createMockThreadEntity({
+        status: ThreadStatus.Stopped,
+      });
+
+      vi.mocked(threadsDao.getOne).mockResolvedValue(thread);
+      vi.mocked(graphsService.stopThreadExecution).mockRejectedValue(
+        new Error('Graph runtime error'),
+      );
+      vi.mocked(threadsDao.updateById).mockResolvedValue(updatedThread);
+
+      const result = await service.stopThread(mockCtx, mockThreadId);
+
+      expect(threadsDao.updateById).toHaveBeenCalledWith(mockThreadId, {
+        status: ThreadStatus.Stopped,
+      });
+      expect(notificationsService.emit).toHaveBeenCalledWith({
+        type: NotificationEvent.ThreadUpdate,
+        graphId: thread.graphId,
+        threadId: thread.externalThreadId,
+        data: { status: ThreadStatus.Stopped },
+      });
+      expect(result).toMatchObject({
+        id: mockThreadId,
+        status: ThreadStatus.Stopped,
+      });
+    });
+
+    it('should return early if thread is not running', async () => {
+      const thread = createMockThreadEntity({ status: ThreadStatus.Done });
+
+      vi.mocked(threadsDao.getOne).mockResolvedValue(thread);
+
+      const result = await service.stopThread(mockCtx, mockThreadId);
+
+      expect(graphsService.stopThreadExecution).not.toHaveBeenCalled();
+      expect(threadsDao.updateById).not.toHaveBeenCalled();
+      expect(notificationsService.emit).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        id: mockThreadId,
+        status: ThreadStatus.Done,
+      });
+    });
+
+    it('should throw NotFoundException when thread not found', async () => {
+      vi.mocked(threadsDao.getOne).mockResolvedValue(null);
+
+      await expect(
+        service.stopThread(mockCtx, mockThreadId),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+
+      expect(graphsService.stopThreadExecution).not.toHaveBeenCalled();
     });
   });
 });

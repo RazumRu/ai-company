@@ -1582,12 +1582,17 @@ describe('GraphsService', () => {
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
+      vi.mocked(threadsDao.getAll).mockResolvedValue([]);
       vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       const result = await service.destroy(mockCtx, mockGraphId);
 
       expect(result).toMatchObject(updatedGraph);
       expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
+      expect(threadsDao.getAll).toHaveBeenCalledWith({
+        graphId: mockGraphId,
+        status: ThreadStatus.Running,
+      });
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
         status: GraphStatus.Stopped,
         error: null,
@@ -1597,6 +1602,63 @@ describe('GraphsService', () => {
           data: expect.objectContaining({ status: GraphStatus.Stopped }),
         }),
       );
+    });
+
+    it('should stop running threads in DB during destroy', async () => {
+      const graph = createMockGraphEntity({ status: GraphStatus.Running });
+      const compiledGraph = createMockCompiledGraph();
+      const updatedEntity = createMockGraphEntity({
+        status: GraphStatus.Stopped,
+      });
+      const runningThread = {
+        id: 'thread-1',
+        graphId: mockGraphId,
+        status: ThreadStatus.Running,
+        externalThreadId: 'ext-thread-1',
+      };
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
+      vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
+      vi.mocked(threadsDao.getAll).mockResolvedValue([runningThread as never]);
+      vi.mocked(threadsDao.updateById).mockResolvedValue(undefined as never);
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
+
+      await service.destroy(mockCtx, mockGraphId);
+
+      expect(threadsDao.getAll).toHaveBeenCalledWith({
+        graphId: mockGraphId,
+        status: ThreadStatus.Running,
+      });
+      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-1', {
+        status: ThreadStatus.Stopped,
+      });
+    });
+
+    it('should continue destroy even when thread cleanup fails', async () => {
+      const graph = createMockGraphEntity({ status: GraphStatus.Running });
+      const compiledGraph = createMockCompiledGraph();
+      const updatedEntity = createMockGraphEntity({
+        status: GraphStatus.Stopped,
+      });
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(graph);
+      vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
+      vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
+      // Simulate thread cleanup throwing
+      vi.mocked(threadsDao.getAll).mockRejectedValue(
+        new Error('DB connection lost'),
+      );
+      vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
+
+      // Destroy must succeed despite thread cleanup failure
+      const result = await service.destroy(mockCtx, mockGraphId);
+
+      expect(result).toMatchObject({ status: GraphStatus.Stopped });
+      expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
+        status: GraphStatus.Stopped,
+        error: null,
+      });
     });
 
     it('should handle destroying non-running graph', async () => {
@@ -1610,12 +1672,17 @@ describe('GraphsService', () => {
 
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
+      vi.mocked(threadsDao.getAll).mockResolvedValue([]);
       vi.mocked(graphDao.updateById).mockResolvedValue(updatedEntity);
 
       const result = await service.destroy(mockCtx, mockGraphId);
 
       expect(result).toMatchObject(updatedGraph);
       expect(graphRegistry.destroy).not.toHaveBeenCalled();
+      expect(threadsDao.getAll).toHaveBeenCalledWith({
+        graphId: mockGraphId,
+        status: ThreadStatus.Running,
+      });
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
         status: GraphStatus.Stopped,
         error: null,
@@ -1642,6 +1709,7 @@ describe('GraphsService', () => {
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
+      vi.mocked(threadsDao.getAll).mockResolvedValue([]);
       vi.mocked(graphDao.updateById).mockResolvedValue(null);
 
       await expect(service.destroy(mockCtx, mockGraphId)).rejects.toThrow(

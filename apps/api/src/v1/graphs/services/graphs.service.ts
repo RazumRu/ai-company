@@ -521,6 +521,13 @@ export class GraphsService {
       await this.graphRegistry.destroy(id);
     }
 
+    // Safety net: stop any threads still marked as running in the database.
+    try {
+      await this.stopRunningThreads(id);
+    } catch {
+      // Best effort: keep destroy flowing even if thread cleanup fails
+    }
+
     // Update status to stopped
     const updated = await this.graphDao.updateById(id, {
       status: GraphStatus.Stopped,
