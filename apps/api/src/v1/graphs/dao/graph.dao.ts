@@ -4,7 +4,7 @@ import { isBoolean } from 'lodash';
 import { DataSource, In } from 'typeorm';
 
 import { GraphEntity } from '../entity/graph.entity';
-import { GraphStatus } from '../graphs.types';
+import { type GraphAgentInfo, GraphStatus } from '../graphs.types';
 
 export type SearchTerms = Partial<{
   id: string;
@@ -73,5 +73,20 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
         projectId: params.projectId,
       });
     }
+  }
+
+  async getAgentsByGraphIds(
+    graphIds: string[],
+  ): Promise<Map<string, GraphAgentInfo[]>> {
+    const result = new Map<string, GraphAgentInfo[]>();
+    if (graphIds.length === 0) return result;
+    const rows = await this.getQueryBuilder()
+      .select([`${this.alias}.id`, `${this.alias}.agents`])
+      .where(`${this.alias}.id IN (:...graphIds)`, { graphIds })
+      .getMany();
+    for (const row of rows) {
+      result.set(row.id, row.agents ?? []);
+    }
+    return result;
   }
 }

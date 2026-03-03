@@ -107,7 +107,7 @@ describe('AgentInvokeNotificationHandler', () => {
 
   beforeEach(async () => {
     threadsServiceMock = {
-      prepareThreadResponse: vi.fn(buildThreadResponseDto),
+      prepareThreadResponse: vi.fn(async (thread: ThreadEntity) => buildThreadResponseDto(thread)),
     };
 
     threadNameGenerator = {

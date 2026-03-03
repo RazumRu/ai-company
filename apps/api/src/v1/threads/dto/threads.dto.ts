@@ -96,6 +96,12 @@ export const ThreadUsageStatisticsSchema = z.object({
     .describe('Number of user (human) messages in the thread'),
 });
 
+export const ThreadAgentSchema = z.object({
+  nodeId: z.string().describe('Graph node ID of the agent'),
+  name: z.string().describe('Agent display name'),
+  description: z.string().optional().describe('Agent description'),
+});
+
 // Thread schema
 export const ThreadSchema = z.object({
   id: z.uuid().describe('Thread ID'),
@@ -124,6 +130,11 @@ export const ThreadSchema = z.object({
     .nullable()
     .describe('Thread name (auto-generated from first user message)'),
   status: z.enum(ThreadStatus).describe('Thread execution status'),
+  agents: z
+    .array(ThreadAgentSchema)
+    .optional()
+    .nullable()
+    .describe('Agents in the graph this thread belongs to'),
 });
 
 export const ThreadMessageSchema = z.object({

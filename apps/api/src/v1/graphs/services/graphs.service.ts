@@ -12,6 +12,7 @@ import { EntityManager } from 'typeorm';
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
+import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
@@ -33,6 +34,7 @@ import {
 import { GraphEntity } from '../entity/graph.entity';
 import type { GraphRevisionConfig } from '../entity/graph-revision.entity';
 import { GraphStatus, NodeKind } from '../graphs.types';
+import { extractAgentsFromSchema } from '../graphs.utils';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -50,6 +52,7 @@ export class GraphsService {
     private readonly messagesDao: MessagesDao,
     private readonly logger: DefaultLogger,
     private readonly projectsDao: ProjectsDao,
+    private readonly templateRegistry: TemplateRegistry,
   ) {}
 
   private prepareResponse(
@@ -85,6 +88,7 @@ export class GraphsService {
 
     return this.typeorm.trx(async (entityManager: EntityManager) => {
       const initialVersion = '1.0.0';
+      const agents = extractAgentsFromSchema(data.schema, this.templateRegistry);
       const row = await this.graphDao.create(
         {
           ...data,
@@ -94,6 +98,7 @@ export class GraphsService {
           temporary: data.temporary ?? false,
           version: initialVersion,
           targetVersion: initialVersion,
+          agents,
         },
         entityManager,
       );

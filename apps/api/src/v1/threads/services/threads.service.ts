@@ -5,6 +5,7 @@ import Decimal from 'decimal.js';
 import { AppContextStorage } from '../../../auth/app-context-storage';
 
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
+import { GraphDao } from '../../graphs/dao/graph.dao';
 import { MessageRole } from '../../graphs/graphs.types';
 import { GraphsService } from '../../graphs/services/graphs.service';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
@@ -35,6 +36,7 @@ export class ThreadsService {
     private readonly graphsService: GraphsService,
     private readonly logger: DefaultLogger,
     private readonly checkpointStateService: CheckpointStateService,
+    private readonly graphDao: GraphDao,
   ) {}
 
   async getThreads(
@@ -49,7 +51,7 @@ export class ThreadsService {
       order: { updatedAt: 'DESC' },
     });
 
-    return this.prepareThreadsResponse(threads);
+    return await this.prepareThreadsResponse(threads);
   }
 
   async getThreadById(
@@ -67,7 +69,7 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    return this.prepareThreadsResponse([thread])[0]!;
+    return (await this.prepareThreadsResponse([thread]))[0]!;
   }
 
   async getThreadByExternalId(
@@ -85,7 +87,7 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    return this.prepareThreadsResponse([thread])[0]!;
+    return (await this.prepareThreadsResponse([thread]))[0]!;
   }
 
   async getThreadMessages(
@@ -159,7 +161,7 @@ export class ThreadsService {
     }
 
     if (thread.status !== ThreadStatus.Running) {
-      return this.prepareThreadsResponse([thread])[0]!;
+      return (await this.prepareThreadsResponse([thread]))[0]!;
     }
 
     // Best effort: stop execution in the running graph (if present in registry)
@@ -174,7 +176,7 @@ export class ThreadsService {
     }
     // Do not emit ThreadUpdate here; GraphStateManager will emit ThreadUpdate with Stopped
     // when the agent run terminates due to abort.
-    return this.prepareThreadsResponse([thread])[0]!;
+    return (await this.prepareThreadsResponse([thread]))[0]!;
   }
 
   async stopThreadByExternalId(
@@ -215,7 +217,7 @@ export class ThreadsService {
       metadata: dto.metadata,
     });
 
-    return this.prepareThreadsResponse([updated!])[0]!;
+    return (await this.prepareThreadsResponse([updated!]))[0]!;
   }
 
   async setMetadataByExternalId(
@@ -238,11 +240,15 @@ export class ThreadsService {
       metadata: dto.metadata,
     });
 
-    return this.prepareThreadsResponse([updated!])[0]!;
+    return (await this.prepareThreadsResponse([updated!]))[0]!;
   }
 
-  public prepareThreadsResponse(entities: ThreadEntity[]): ThreadDto[] {
-    // Token usage is fetched separately via GET /threads/:threadId/usage-statistics
+  public async prepareThreadsResponse(
+    entities: ThreadEntity[],
+  ): Promise<ThreadDto[]> {
+    if (entities.length === 0) return [];
+    const graphIds = [...new Set(entities.map((e) => e.graphId))];
+    const agentsByGraphId = await this.graphDao.getAgentsByGraphIds(graphIds);
     return entities.map((entity) => {
       const { deletedAt: _deletedAt, ...entityWithoutExcludedFields } = entity;
       return {
@@ -250,12 +256,15 @@ export class ThreadsService {
         createdAt: new Date(entity.createdAt).toISOString(),
         updatedAt: new Date(entity.updatedAt).toISOString(),
         metadata: entity.metadata || {},
+        agents: agentsByGraphId.get(entity.graphId) ?? null,
       };
     });
   }
 
-  public prepareThreadResponse(entity: ThreadEntity): ThreadDto {
-    return this.prepareThreadsResponse([entity])[0]!;
+  public async prepareThreadResponse(
+    entity: ThreadEntity,
+  ): Promise<ThreadDto> {
+    return (await this.prepareThreadsResponse([entity]))[0]!;
   }
 
   public prepareMessageResponse(entity: MessageEntity): ThreadMessageDto {

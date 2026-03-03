@@ -45,7 +45,7 @@ export class ThreadLifecycleNotificationHandler extends BaseNotificationHandler<
 
     const { ownerId, projectId } = await this.getGraphInfo(this.graphDao, graphId);
 
-    const threadDto = this.threadsService.prepareThreadResponse(data);
+    const threadDto = await this.threadsService.prepareThreadResponse(data);
 
     return [
       {

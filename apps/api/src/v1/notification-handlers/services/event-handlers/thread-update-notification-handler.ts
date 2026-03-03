@@ -77,7 +77,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       return [];
     }
 
-    const threadDto = this.threadsService.prepareThreadResponse(updatedThread);
+    const threadDto = await this.threadsService.prepareThreadResponse(updatedThread);
 
     return [
       {

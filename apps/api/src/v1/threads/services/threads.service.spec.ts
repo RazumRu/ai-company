@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
+import { GraphDao } from '../../graphs/dao/graph.dao';
 import { MessageRole } from '../../graphs/graphs.types';
 import { GraphsService } from '../../graphs/services/graphs.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
@@ -22,6 +23,7 @@ describe('ThreadsService', () => {
   let messagesDao: MessagesDao;
   let notificationsService: NotificationsService;
   let checkpointStateService: CheckpointStateService;
+  let graphDao: GraphDao;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -116,6 +118,12 @@ describe('ThreadsService', () => {
             stopThreadExecution: vi.fn(),
           },
         },
+        {
+          provide: GraphDao,
+          useValue: {
+            getAgentsByGraphIds: vi.fn().mockResolvedValue(new Map()),
+          },
+        },
       ],
     }).compile();
 
@@ -127,6 +135,7 @@ describe('ThreadsService', () => {
     checkpointStateService = module.get<CheckpointStateService>(
       CheckpointStateService,
     );
+    graphDao = module.get<GraphDao>(GraphDao);
   });
 
   describe('getThreads', () => {
@@ -214,6 +223,47 @@ describe('ThreadsService', () => {
         order: { updatedAt: 'DESC' },
       });
       expect(result).toHaveLength(2);
+    });
+
+    it('should include agents when getAgentsByGraphIds returns populated map', async () => {
+      const mockThreads = [createMockThreadEntity()];
+      vi.spyOn(threadsDao, 'getAll').mockResolvedValue(mockThreads);
+
+      const expectedAgents = [
+        { nodeId: 'agent-1', name: 'Test Agent', description: 'A test agent' },
+      ];
+      vi.mocked(graphDao.getAgentsByGraphIds).mockResolvedValue(
+        new Map([[mockGraphId, expectedAgents]]),
+      );
+
+      const query: GetThreadsQueryDto = {
+        graphId: mockGraphId,
+        limit: 50,
+        offset: 0,
+      };
+
+      const result = await service.getThreads(mockCtx, query);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.agents).toEqual(expectedAgents);
+    });
+
+    it('should set agents to null when graph has no entry in agents map', async () => {
+      const mockThreads = [createMockThreadEntity()];
+      vi.spyOn(threadsDao, 'getAll').mockResolvedValue(mockThreads);
+
+      vi.mocked(graphDao.getAgentsByGraphIds).mockResolvedValue(new Map());
+
+      const query: GetThreadsQueryDto = {
+        graphId: mockGraphId,
+        limit: 50,
+        offset: 0,
+      };
+
+      const result = await service.getThreads(mockCtx, query);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.agents).toBeNull();
     });
   });
 

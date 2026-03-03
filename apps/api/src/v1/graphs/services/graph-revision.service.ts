@@ -16,6 +16,7 @@ import { EntityManager } from 'typeorm';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
+import { extractAgentsFromSchema } from '../graphs.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphRevisionDao, SearchTerms } from '../dao/graph-revision.dao';
@@ -517,6 +518,10 @@ export class GraphRevisionService {
       schema: revision.newConfig.schema,
       version: revision.toVersion,
       targetVersion,
+      agents: extractAgentsFromSchema(
+        revision.newConfig.schema,
+        this.templateRegistry,
+      ),
     };
 
     await this.graphDao.updateById(

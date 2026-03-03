@@ -103,6 +103,12 @@ export interface CompiledGraph {
   destroy: () => Promise<void>;
 }
 
+export interface GraphAgentInfo {
+  nodeId: string;
+  name: string;
+  description?: string;
+}
+
 // Node configuration schema
 export const GraphNodeSchema = z.object({
   id: z.string().describe('Unique identifier for this node'),

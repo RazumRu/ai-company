@@ -35,6 +35,7 @@ import {
   MessageRole,
   NodeKind,
 } from '../graphs.types';
+import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -277,6 +278,12 @@ describe('GraphsService', () => {
             getOne: vi.fn().mockResolvedValue({ id: 'project-1', createdBy: mockUserId }),
           },
         },
+        {
+          provide: TemplateRegistry,
+          useValue: {
+            getTemplate: vi.fn().mockReturnValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -465,8 +472,65 @@ describe('GraphsService', () => {
           temporary: false,
           version: '1.0.0',
           targetVersion: '1.0.0',
+          agents: [],
         },
         expect.any(Object), // EntityManager
+      );
+    });
+
+    it('should extract agents from schema when template is a SimpleAgent', async () => {
+      const templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
+      vi.mocked(templateRegistry.getTemplate).mockImplementation((id: string) => {
+        if (id === 'simple-agent') {
+          return { kind: NodeKind.SimpleAgent } as ReturnType<TemplateRegistry['getTemplate']>;
+        }
+        return undefined;
+      });
+
+      const createData: CreateGraphDto = {
+        name: 'Agent Graph',
+        schema: {
+          nodes: [
+            {
+              id: 'agent-node-1',
+              template: 'simple-agent',
+              config: { name: 'My Agent', description: 'Test desc' },
+            },
+            {
+              id: 'trigger-1',
+              template: 'manual-trigger',
+              config: {},
+            },
+          ],
+          edges: [],
+        },
+        metadata: {
+          graphId: 'agent-graph',
+          version: '1.0.0',
+        },
+      };
+
+      const expectedEntity = createMockGraphEntity({
+        id: 'agent-graph-id',
+        name: 'Agent Graph',
+        status: GraphStatus.Created,
+        createdBy: mockUserId,
+        agents: [
+          { nodeId: 'agent-node-1', name: 'My Agent', description: 'Test desc' },
+        ],
+      });
+
+      vi.mocked(graphDao.create).mockResolvedValue(expectedEntity);
+
+      await service.create(mockCtx, createData);
+
+      expect(graphDao.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agents: [
+            { nodeId: 'agent-node-1', name: 'My Agent', description: 'Test desc' },
+          ],
+        }),
+        expect.any(Object),
       );
     });
 

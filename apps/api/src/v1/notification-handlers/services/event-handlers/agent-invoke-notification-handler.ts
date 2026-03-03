@@ -91,7 +91,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         data: thread,
       });
     } else {
-      const threadDto = this.threadsService.prepareThreadResponse(thread);
+      const threadDto = await this.threadsService.prepareThreadResponse(thread);
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadUpdate,
         graphId,

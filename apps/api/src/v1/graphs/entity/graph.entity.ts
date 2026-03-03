@@ -8,7 +8,7 @@ import {
 
 import { AuditEntity } from '../../../auth/audit.entity';
 import type { ThreadEntity } from '../../threads/entity/thread.entity';
-import { type GraphSchemaType, GraphStatus } from '../graphs.types';
+import { type GraphAgentInfo, type GraphSchemaType, GraphStatus } from '../graphs.types';
 
 @Entity('graphs')
 export class GraphEntity extends AuditEntity {
@@ -46,6 +46,9 @@ export class GraphEntity extends AuditEntity {
 
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, unknown> | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  agents?: GraphAgentInfo[] | null;
 
   @Column({ type: 'boolean', default: false })
   temporary!: boolean;
