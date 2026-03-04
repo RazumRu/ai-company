@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  DefaultLogger,
   InternalException,
   NotFoundException,
 } from '@packages/common';
@@ -91,6 +92,8 @@ describe('AiSuggestionsService', () => {
       supportsResponsesApi: vi.fn().mockResolvedValue(true),
     };
 
+    const loggerMock = { log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() } as unknown as DefaultLogger;
+
     service = new AiSuggestionsService(
       threadsDao as ThreadsDao,
       messagesDao as MessagesDao,
@@ -100,6 +103,7 @@ describe('AiSuggestionsService', () => {
       openaiService as OpenaiService,
       llmModelsService as LlmModelsService,
       litellmService as LitellmService,
+      loggerMock,
     );
   });
 
@@ -583,6 +587,119 @@ describe('AiSuggestionsService', () => {
         { systemMessage?: string; message: string; model: string },
       ];
       expect(payload.model).toBe('openai/custom-model');
+    });
+
+    it('strips tool/MCP blocks from agent instructions before prompt assembly', async () => {
+      const compiled = buildCompiledGraph();
+      const agentNode = compiled.nodes.get('agent-1')!;
+      (agentNode.config as Record<string, unknown>)['instructions'] =
+        'Core behavior.\n<tool_description>\nsome tool info\n</tool_description>\nEnd.';
+
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(buildGraph());
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(compiled);
+      (graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>).mockReturnValue([]);
+      jsonRequestMock.mockResolvedValueOnce({
+        content: { updates: [] },
+        conversationId: 'graph-1',
+      });
+
+      await service.suggestGraphInstructions(mockCtx, 'graph-1', {
+        userRequest: 'Improve agents',
+      });
+
+      const [payload] = jsonRequestMock.mock.calls[0] as [{ message: string }];
+      expect(payload.message).toContain('Core behavior.');
+      expect(payload.message).toContain('End.');
+      expect(payload.message).not.toContain('<tool_description>');
+      expect(payload.message).not.toContain('some tool info');
+      expect(payload.message).toContain(
+        'tool and MCP instructions are provided separately in the reference blocks below',
+      );
+    });
+
+    it('shows fallback text when agent instructions are empty after stripping', async () => {
+      const compiled = buildCompiledGraph();
+      const agentNode = compiled.nodes.get('agent-1')!;
+      (agentNode.config as Record<string, unknown>)['instructions'] =
+        '<tool_description>\nOnly tool info here\n</tool_description>';
+
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(buildGraph());
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(compiled);
+      (graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>).mockReturnValue([]);
+      jsonRequestMock.mockResolvedValueOnce({
+        content: { updates: [] },
+        conversationId: 'graph-1',
+      });
+
+      await service.suggestGraphInstructions(mockCtx, 'graph-1', {
+        userRequest: 'Improve agents',
+      });
+
+      const [payload] = jsonRequestMock.mock.calls[0] as [{ message: string }];
+      expect(payload.message).toContain('No custom instructions configured.');
+      expect(payload.message).not.toContain('Only tool info here');
+    });
+
+    it('passes instructions through unchanged when no tool/MCP tags are present', async () => {
+      const compiled = buildCompiledGraph();
+      const agentNode = compiled.nodes.get('agent-1')!;
+      (agentNode.config as Record<string, unknown>)['instructions'] =
+        'Pure custom instructions with no tool tags.';
+
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(buildGraph());
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(compiled);
+      (graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>).mockReturnValue([]);
+      jsonRequestMock.mockResolvedValueOnce({
+        content: { updates: [] },
+        conversationId: 'graph-1',
+      });
+
+      await service.suggestGraphInstructions(mockCtx, 'graph-1', {
+        userRequest: 'Improve agents',
+      });
+
+      const [payload] = jsonRequestMock.mock.calls[0] as [{ message: string }];
+      expect(payload.message).toContain(
+        'Pure custom instructions with no tool tags.',
+      );
+    });
+
+    it('includes per-agent note that tool and MCP instructions are provided separately', async () => {
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(buildGraph());
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(buildCompiledGraph());
+      (graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>).mockReturnValue([]);
+      jsonRequestMock.mockResolvedValueOnce({
+        content: { updates: [] },
+        conversationId: 'graph-1',
+      });
+
+      await service.suggestGraphInstructions(mockCtx, 'graph-1', {
+        userRequest: 'Improve instructions',
+      });
+
+      const [payload] = jsonRequestMock.mock.calls[0] as [{ systemMessage?: string; message: string }];
+      expect(payload.message).toContain(
+        'tool and MCP instructions are provided separately',
+      );
+    });
+
+    it('includes strengthened system rules prohibiting tool block repetition', async () => {
+      (graphDao.getOne as ReturnType<typeof vi.fn>).mockResolvedValue(buildGraph());
+      (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue(buildCompiledGraph());
+      (graphRegistry.filterNodesByType as ReturnType<typeof vi.fn>).mockReturnValue([]);
+      jsonRequestMock.mockResolvedValueOnce({
+        content: { updates: [] },
+        conversationId: 'graph-1',
+      });
+
+      await service.suggestGraphInstructions(mockCtx, 'graph-1', {
+        userRequest: 'Improve instructions',
+      });
+
+      const [payload] = jsonRequestMock.mock.calls[0] as [{ systemMessage?: string; message: string }];
+      expect(payload.systemMessage).toContain('<<<REFERENCE_ONLY_ALL_TOOLS>>>');
+      expect(payload.systemMessage).toContain('<<<REFERENCE_ONLY_ALL_MCP>>>');
+      expect(payload.systemMessage).toContain('must not copy or paraphrase');
     });
   });
 

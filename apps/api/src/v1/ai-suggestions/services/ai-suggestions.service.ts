@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   BadRequestException,
   BaseException,
+  DefaultLogger,
   InternalException,
   NotFoundException,
 } from '@packages/common';
@@ -138,6 +139,7 @@ export class AiSuggestionsService {
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
     private readonly litellmService: LitellmService,
+    private readonly logger: DefaultLogger,
   ) {}
 
   private async callLlm<T>(
@@ -433,6 +435,10 @@ export class AiSuggestionsService {
       agentConnections,
       Array.from(allToolsMap.values()),
       Array.from(allMcpMap.values()),
+    );
+
+    this.logger.debug(
+      `suggestGraphInstructions: agents=${agents.length}, tools=${allToolsMap.size}, mcps=${allMcpMap.size}`,
     );
 
     const schema = z.object({
@@ -1079,8 +1085,9 @@ export class AiSuggestionsService {
       'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
       'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
       'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
-      "You can analyze connected tool capabilities and their usage guidelines. But don't duplicate Connected tools and MCP servers information in your response. You can only refer to it if needed.",
-      'Never include tool descriptions, tool lists, or MCP instructions in the output.',
+      'Tool and MCP instructions are provided ONLY in the <<<REFERENCE_ONLY_ALL_TOOLS>>> and <<<REFERENCE_ONLY_ALL_MCP>>> reference blocks. Agent <current_instructions> blocks contain only the agent\'s custom behavioral instructions.',
+      'Never include tool descriptions, tool usage guidelines, MCP instructions, or any content from the reference blocks in your output instructions.',
+      'You may analyze reference block content to understand agent capabilities, but must not copy or paraphrase it into the updated instructions.',
       'Only modify content inside <current_instructions> tags. Do not add or remove anything outside these tags.',
       'Do NOT include the <current_instructions> tags in your output.',
       'IMPORTANT: Any content between <<<REFERENCE_ONLY_*>>> and <<<END_REFERENCE_ONLY_*>>> tags is for your reference only - NEVER include this information in your response. You can analyze it and refer to it, but do not duplicate it in your output.',
@@ -1277,10 +1284,15 @@ export class AiSuggestionsService {
         const toolNames = connection?.toolNames ?? [];
         const mcpNames = connection?.mcpNames ?? [];
 
+        const strippedInstructions = this.stripInstructionExtras(agent.instructions);
+        const instructionsBlock = strippedInstructions
+          ? `<current_instructions>\n${strippedInstructions}\n</current_instructions>`
+          : `<current_instructions>\nNo custom instructions configured.\n</current_instructions>`;
+
         return [
           `Agent: ${name} (${agent.nodeId})`,
           description ? `Description: ${description}` : undefined,
-          `Current instructions:\n<current_instructions>\n${agent.instructions}\n</current_instructions>`,
+          `Current instructions (tool and MCP instructions are provided separately in the reference blocks below):\n${instructionsBlock}`,
           toolNames.length
             ? `Connected tools: ${toolNames.join(', ')}`
             : 'Connected tools: none',
