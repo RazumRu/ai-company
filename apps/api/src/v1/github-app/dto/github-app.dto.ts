@@ -72,6 +72,9 @@ export const SetupInfoResponseSchema = z.object({
   installUrl: z
     .string()
     .describe('URL to redirect the user to for GitHub App installation'),
+  newInstallationUrl: z
+    .string()
+    .describe('URL to install the GitHub App on a new organization'),
   configured: z
     .boolean()
     .describe('Whether the GitHub App is fully configured'),

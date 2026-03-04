@@ -19,6 +19,7 @@ describe('GitHubAppController', () => {
   let controller: GitHubAppController;
   let mockGitHubAppService: {
     isConfigured: ReturnType<typeof vi.fn>;
+    getAppSlug: ReturnType<typeof vi.fn>;
     getInstallation: ReturnType<typeof vi.fn>;
     getInstallationToken: ReturnType<typeof vi.fn>;
   };
@@ -33,6 +34,7 @@ describe('GitHubAppController', () => {
   beforeEach(() => {
     mockGitHubAppService = {
       isConfigured: vi.fn().mockReturnValue(true),
+      getAppSlug: vi.fn().mockResolvedValue('my-github-app'),
       getInstallation: vi.fn().mockResolvedValue({
         id: 12345,
         account: { login: 'my-org', type: 'Organization' },
@@ -59,22 +61,35 @@ describe('GitHubAppController', () => {
   });
 
   describe('getSetupInfo', () => {
-    it('should return OAuth install URL when clientId and app are configured', () => {
-      const result = controller.getSetupInfo();
+    it('should return OAuth install URL and newInstallationUrl when configured', async () => {
+      const result = await controller.getSetupInfo();
 
       expect(result).toEqual({
         installUrl:
           'https://github.com/login/oauth/authorize?client_id=Iv1.test-client-id',
+        newInstallationUrl:
+          'https://github.com/apps/my-github-app/installations/new',
         configured: true,
         callbackPath: '/github-app/callback',
       });
+      expect(mockGitHubAppService.getAppSlug).toHaveBeenCalled();
     });
 
-    it('should return configured:false when isConfigured returns false', () => {
+    it('should return configured:false and empty newInstallationUrl when isConfigured returns false', async () => {
       mockGitHubAppService.isConfigured.mockReturnValue(false);
-      const result = controller.getSetupInfo();
+      const result = await controller.getSetupInfo();
 
       expect(result.configured).toBe(false);
+      expect(result.newInstallationUrl).toBe('');
+      expect(mockGitHubAppService.getAppSlug).not.toHaveBeenCalled();
+    });
+
+    it('should return empty newInstallationUrl when getAppSlug returns null', async () => {
+      mockGitHubAppService.getAppSlug.mockResolvedValue(null);
+      const result = await controller.getSetupInfo();
+
+      expect(result.configured).toBe(true);
+      expect(result.newInstallationUrl).toBe('');
     });
   });
 

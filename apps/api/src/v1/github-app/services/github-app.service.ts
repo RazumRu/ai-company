@@ -16,6 +16,7 @@ interface CachedToken {
 @Injectable()
 export class GitHubAppService {
   private readonly tokenCache = new Map<number, CachedToken>();
+  private appSlug: string | null = null;
 
   constructor(private readonly logger: DefaultLogger) {}
 
@@ -185,6 +186,21 @@ export class GitHubAppService {
         `Failed to list user installations: ${error instanceof Error ? error.message : String(error)}`,
       );
       throw new BadRequestException('GITHUB_APP_LIST_INSTALLATIONS_FAILED');
+    }
+  }
+
+  async getAppSlug(): Promise<string | null> {
+    if (this.appSlug) return this.appSlug;
+
+    try {
+      const appJwt = this.generateJwt();
+      const octokit = new Octokit({ auth: appJwt });
+      const { data } = await octokit.apps.getAuthenticated();
+      this.appSlug = data?.slug ?? null;
+      return this.appSlug;
+    } catch (e) {
+      this.logger.debug('Failed to fetch GitHub App slug', e);
+      return null;
     }
   }
 

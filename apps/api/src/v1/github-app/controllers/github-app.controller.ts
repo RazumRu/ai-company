@@ -27,15 +27,24 @@ export class GitHubAppController {
   @Get('setup')
   @ApiBearerAuth()
   @OnlyForAuthorized()
-  getSetupInfo(): SetupInfoResponseDto {
+  async getSetupInfo(): Promise<SetupInfoResponseDto> {
     const clientId = environment.githubAppClientId;
     const configured =
       Boolean(clientId) && this.gitHubAppService.isConfigured();
+
+    let newInstallationUrl = '';
+    if (configured) {
+      const slug = await this.gitHubAppService.getAppSlug();
+      if (slug) {
+        newInstallationUrl = `https://github.com/apps/${slug}/installations/new`;
+      }
+    }
 
     return {
       installUrl: clientId
         ? `https://github.com/login/oauth/authorize?client_id=${clientId}`
         : '',
+      newInstallationUrl,
       configured,
       callbackPath: '/github-app/callback',
     };

@@ -27,12 +27,14 @@ vi.mock('../../../environments', () => ({
 // Mock Octokit
 const mockCreateInstallationAccessToken = vi.fn();
 const mockGetInstallation = vi.fn();
+const mockGetAuthenticated = vi.fn();
 
 vi.mock('@octokit/rest', () => {
   class MockOctokit {
     apps = {
       createInstallationAccessToken: mockCreateInstallationAccessToken,
       getInstallation: mockGetInstallation,
+      getAuthenticated: mockGetAuthenticated,
     };
   }
   return { Octokit: MockOctokit };
@@ -144,6 +146,38 @@ describe('GitHubAppService', () => {
       await expect(service.getInstallation(12345)).rejects.toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('getAppSlug', () => {
+    it('should fetch and return the app slug from GitHub API', async () => {
+      mockGetAuthenticated.mockResolvedValue({
+        data: { slug: 'my-github-app' },
+      });
+
+      const slug = await service.getAppSlug();
+      expect(slug).toBe('my-github-app');
+      expect(mockGetAuthenticated).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return cached slug on subsequent calls', async () => {
+      mockGetAuthenticated.mockResolvedValue({
+        data: { slug: 'my-github-app' },
+      });
+
+      const slug1 = await service.getAppSlug();
+      const slug2 = await service.getAppSlug();
+
+      expect(slug1).toBe('my-github-app');
+      expect(slug2).toBe('my-github-app');
+      expect(mockGetAuthenticated).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return null when GitHub API call fails', async () => {
+      mockGetAuthenticated.mockRejectedValue(new Error('API error'));
+
+      const slug = await service.getAppSlug();
+      expect(slug).toBeNull();
     });
   });
 
