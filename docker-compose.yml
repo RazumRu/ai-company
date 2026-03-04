@@ -88,7 +88,7 @@ services:
       - "8317:8317"
     volumes:
       - ./cliproxy.yaml:/CLIProxyAPI/config.yaml
-      - ./.cliproxy-auth:/root/.cli-proxy-api
+      - cliproxy-auth:/root/.cli-proxy-api
 
   registry-mirror:
     image: registry:2
@@ -278,4 +278,5 @@ volumes:
   redis:
   qdrant:
   registry:
+  cliproxy-auth:
   zitadel-init-data:
