@@ -5,6 +5,7 @@ import type { ByGraphRawRow, TokenAggregateRawRow } from './dto/analytics.dto';
 
 type DateRangeParams = {
   createdBy: string;
+  projectId: string;
   dateFrom?: string;
   dateTo?: string;
 };
@@ -27,6 +28,7 @@ export class AnalyticsDao {
     const sql = `
       SELECT COUNT(*)::text AS cnt
       FROM threads t
+      INNER JOIN graphs g ON g.id = t."graphId"
       WHERE ${where}
     `;
 
@@ -51,6 +53,7 @@ export class AnalyticsDao {
         ${this.tokenSumSelects()}
       FROM messages m
       INNER JOIN threads t ON t.id = m."threadId"
+      INNER JOIN graphs g ON g.id = t."graphId"
       WHERE ${where}
     `;
 
@@ -66,10 +69,11 @@ export class AnalyticsDao {
    * by date range and/or a specific graph.
    */
   async getByGraph(params: ByGraphParams): Promise<ByGraphRawRow[]> {
-    const ctx = this.createParamContext(params.createdBy);
+    const ctx = this.createParamContext(params.createdBy, params.projectId);
 
     ctx.addCondition('t."deletedAt" IS NULL');
     ctx.addCondition('m."deletedAt" IS NULL');
+    ctx.addCondition('g."deletedAt" IS NULL');
     ctx.addCondition('m."requestTokenUsage" IS NOT NULL');
     if (params.dateFrom) ctx.addParam('t."createdAt" >=', params.dateFrom);
     if (params.dateTo) ctx.addParam('t."createdAt" <', params.dateTo);
@@ -95,8 +99,9 @@ export class AnalyticsDao {
   // ── Private helpers ──────────────────────────────────────────
 
   private buildThreadConditions(params: DateRangeParams) {
-    const ctx = this.createParamContext(params.createdBy);
+    const ctx = this.createParamContext(params.createdBy, params.projectId);
     ctx.addCondition('t."deletedAt" IS NULL');
+    ctx.addCondition('g."deletedAt" IS NULL');
     if (params.dateFrom) ctx.addParam('t."createdAt" >=', params.dateFrom);
     if (params.dateTo) ctx.addParam('t."createdAt" <', params.dateTo);
 
@@ -104,9 +109,10 @@ export class AnalyticsDao {
   }
 
   private buildMessageJoinConditions(params: DateRangeParams) {
-    const ctx = this.createParamContext(params.createdBy);
+    const ctx = this.createParamContext(params.createdBy, params.projectId);
     ctx.addCondition('t."deletedAt" IS NULL');
     ctx.addCondition('m."deletedAt" IS NULL');
+    ctx.addCondition('g."deletedAt" IS NULL');
     ctx.addCondition('m."requestTokenUsage" IS NOT NULL');
     if (params.dateFrom) ctx.addParam('t."createdAt" >=', params.dateFrom);
     if (params.dateTo) ctx.addParam('t."createdAt" <', params.dateTo);
@@ -114,14 +120,17 @@ export class AnalyticsDao {
     return { where: ctx.where(), queryParams: ctx.params };
   }
 
-  private createParamContext(createdBy: string) {
+  private createParamContext(createdBy: string, projectId: string) {
     const conditions: string[] = [];
     const params: string[] = [];
     let idx = 1;
 
-    // Always add the createdBy condition first
     conditions.push(`t."createdBy" = $${idx}`);
     params.push(createdBy);
+    idx++;
+
+    conditions.push(`g."projectId" = $${idx}`);
+    params.push(projectId);
     idx++;
 
     return {

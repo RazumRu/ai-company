@@ -57,8 +57,7 @@ export class AnalyticsByGraphResponseDto extends createZodDto(
 
 // ── Internal raw row types (from SQL) ──────────────────────────
 
-export type TokenAggregateRawRow = {
-  totalThreads: string;
+export type TokenSumsRawRow = {
   inputTokens: string;
   cachedInputTokens: string;
   outputTokens: string;
@@ -67,7 +66,10 @@ export type TokenAggregateRawRow = {
   totalPrice: string;
 };
 
-export type ByGraphRawRow = TokenAggregateRawRow & {
+export type TokenAggregateRawRow = TokenSumsRawRow;
+
+export type ByGraphRawRow = TokenSumsRawRow & {
   graphId: string;
   graphName: string;
+  totalThreads: string;
 };

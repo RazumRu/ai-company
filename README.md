@@ -4,7 +4,7 @@
 
 **Open-source platform for building, running, and managing AI agent workflows.**
 
-[![License: MIT + Commons Clause](https://img.shields.io/badge/License-MIT%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A524-339933.svg)](https://nodejs.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-11-e0234e.svg)](https://nestjs.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
@@ -282,13 +282,12 @@ OAuth tokens are persisted in a Docker volume (`cliproxy-auth`) and survive cont
 
 #### Available models
 
-Pre-configured Claude OAuth models (in `litellm.yaml`):
+Pre-configured OAuth models (in `litellm.yaml`):
 
 | Model name | Upstream model | Notes |
 |---|---|---|
-| `claude-sonnet-4.6-oauth` | `claude-sonnet-4-6` | Uses Claude subscription |
-| `claude-opus-4.6-oauth` | `claude-opus-4-6` | Uses Claude subscription |
-| `claude-haiku-4.5-oauth` | `claude-haiku-4-5-20251001` | Uses Claude subscription |
+| `codex-5.3-oauth` | `codex-5.3` | Uses Codex subscription |
+| `codex-5.2-oauth` | `codex-5.2` | Uses Codex subscription |
 
 To see all models available from your OAuth session, run:
 
@@ -394,4 +393,4 @@ Contributions are welcome! If you're planning a significant change, please open 
 
 ## License
 
-MIT License with [Commons Clause](https://commonsclause.com/). You can use, modify, and redistribute the software freely, but you may not sell it as a commercial product or service. See [LICENSE](LICENSE) for details.
+Licensed under the [Apache License 2.0](LICENSE) with additional conditions. You can use, modify, and redistribute the software freely, including for commercial purposes. A commercial license is required for operating a multi-tenant SaaS. See [LICENSE](LICENSE) for details.

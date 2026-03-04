@@ -1,5 +1,4 @@
 import { INestApplication } from '@nestjs/common';
-import type { FastifyRequest } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -12,11 +11,10 @@ import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
+import { createTestProject } from '../helpers/test-context';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
-const EMPTY_REQUEST = { headers: {} } as FastifyRequest;
-
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
+let projectCtx: AppContextStorage;
 
 describe('Analytics (integration)', () => {
   let app: INestApplication;
@@ -38,12 +36,9 @@ describe('Analytics (integration)', () => {
     threadsDao = app.get(ThreadsDao);
     messagesDao = app.get(MessagesDao);
 
-    const project = await projectsDao.create({
-      name: 'Analytics Test Project',
-      createdBy: TEST_USER_ID,
-      settings: {},
-    });
-    testProjectId = project.id;
+    const testProject = await createTestProject(app);
+    testProjectId = testProject.projectId;
+    projectCtx = testProject.ctx;
   }, 180_000);
 
   afterEach(async () => {
@@ -119,17 +114,19 @@ describe('Analytics (integration)', () => {
 
   describe('getOverview', () => {
     it('returns zero totals when user has no data', async () => {
-      const emptyCtx = new AppContextStorage(
-        { sub: '00000000-0000-0000-0000-000000000097' },
-        EMPTY_REQUEST,
-      );
-      const result = await analyticsService.getOverview(emptyCtx, {});
+      const isolatedUserId = '00000000-0000-0000-0000-000000000097';
+      const { projectId: isolatedProjectId, ctx: emptyCtx } = await createTestProject(app, isolatedUserId);
+      try {
+        const result = await analyticsService.getOverview(emptyCtx, {});
 
-      expect(result.totalThreads).toBe(0);
-      expect(result.totalTokens).toBe(0);
-      expect(result.totalPrice).toBe(0);
-      expect(result.inputTokens).toBe(0);
-      expect(result.outputTokens).toBe(0);
+        expect(result.totalThreads).toBe(0);
+        expect(result.totalTokens).toBe(0);
+        expect(result.totalPrice).toBe(0);
+        expect(result.inputTokens).toBe(0);
+        expect(result.outputTokens).toBe(0);
+      } finally {
+        await projectsDao.deleteById(isolatedProjectId);
+      }
     });
 
     it('returns correct aggregate totals across threads', async () => {
@@ -157,7 +154,7 @@ describe('Analytics (integration)', () => {
         totalPrice: 0.05,
       });
 
-      const result = await analyticsService.getOverview(contextDataStorage, {});
+      const result = await analyticsService.getOverview(projectCtx, {});
 
       // totalThreads includes ALL threads for the user (separate count)
       expect(result.totalThreads).toBeGreaterThanOrEqual(2);
@@ -187,7 +184,7 @@ describe('Analytics (integration)', () => {
         Date.now() + 730 * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      const result = await analyticsService.getOverview(contextDataStorage, {
+      const result = await analyticsService.getOverview(projectCtx, {
         dateFrom: futureDate,
         dateTo: farFutureDate,
       });
@@ -199,7 +196,7 @@ describe('Analytics (integration)', () => {
 
   describe('getByGraph', () => {
     it('returns empty array when user has no data', async () => {
-      const result = await analyticsService.getByGraph(contextDataStorage, {});
+      const result = await analyticsService.getByGraph(projectCtx, {});
       // Could have data from other tests, so just verify shape
       expect(result.graphs).toBeDefined();
       expect(Array.isArray(result.graphs)).toBe(true);
@@ -225,7 +222,7 @@ describe('Analytics (integration)', () => {
         totalPrice: 0.05,
       });
 
-      const result = await analyticsService.getByGraph(contextDataStorage, {});
+      const result = await analyticsService.getByGraph(projectCtx, {});
 
       const entryA = result.graphs.find((g) => g.graphId === graphA.id);
       const entryB = result.graphs.find((g) => g.graphId === graphB.id);
@@ -267,7 +264,7 @@ describe('Analytics (integration)', () => {
         totalPrice: 0.05,
       });
 
-      const result = await analyticsService.getByGraph(contextDataStorage, {
+      const result = await analyticsService.getByGraph(projectCtx, {
         graphId: graphA.id,
       });
 
@@ -292,12 +289,119 @@ describe('Analytics (integration)', () => {
         Date.now() + 365 * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      const result = await analyticsService.getByGraph(contextDataStorage, {
+      const result = await analyticsService.getByGraph(projectCtx, {
         dateFrom: futureDate,
       });
 
       const entry = result.graphs.find((g) => g.graphId === graph.id);
       expect(entry).toBeUndefined();
+    });
+  });
+
+  describe('project isolation', () => {
+    let otherProjectId: string;
+    let otherProjectCtx: AppContextStorage;
+    const otherProjectGraphIds: string[] = [];
+    const otherProjectThreadIds: string[] = [];
+
+    beforeAll(async () => {
+      const otherProject = await createTestProject(app);
+      otherProjectId = otherProject.projectId;
+      otherProjectCtx = otherProject.ctx;
+    });
+
+    afterEach(async () => {
+      for (const threadId of otherProjectThreadIds) {
+        await messagesDao.delete({ threadId });
+        await threadsDao.deleteById(threadId);
+      }
+      otherProjectThreadIds.length = 0;
+
+      for (const graphId of otherProjectGraphIds) {
+        await graphDao.deleteById(graphId);
+      }
+      otherProjectGraphIds.length = 0;
+    });
+
+    afterAll(async () => {
+      await projectsDao.deleteById(otherProjectId);
+    });
+
+    const createGraphInProject = async (name: string, projectId: string) => {
+      const graph = await graphDao.create({
+        name,
+        description: 'analytics isolation test',
+        error: null,
+        version: '1.0.0',
+        targetVersion: '1.0.0',
+        schema: { nodes: [], edges: [] },
+        status: GraphStatus.Running,
+        metadata: {},
+        createdBy: TEST_USER_ID,
+        projectId,
+        temporary: true,
+      });
+      if (projectId === otherProjectId) {
+        otherProjectGraphIds.push(graph.id);
+      } else {
+        createdGraphIds.push(graph.id);
+      }
+      return graph;
+    };
+
+    const createThreadInProject = async (graphId: string, projectId: string) => {
+      const thread = await threadsDao.create({
+        graphId,
+        createdBy: TEST_USER_ID,
+        projectId,
+        externalThreadId: `isolation-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        metadata: {},
+        source: null,
+        name: null,
+        status: ThreadStatus.Done,
+      });
+      if (projectId === otherProjectId) {
+        otherProjectThreadIds.push(thread.id);
+      } else {
+        createdThreadIds.push(thread.id);
+      }
+      return thread;
+    };
+
+    it('getOverview does not leak data across projects', async () => {
+      const graphA = await createGraphInProject('isolation-proj-A', testProjectId);
+      const threadA = await createThreadInProject(graphA.id, testProjectId);
+      await createMessageWithUsage(threadA.id, threadA.externalThreadId, {
+        inputTokens: 500,
+        outputTokens: 250,
+        totalTokens: 750,
+        totalPrice: 0.05,
+      });
+
+      // Query from the other project (same user) — should see zero data
+      const result = await analyticsService.getOverview(otherProjectCtx, {});
+
+      expect(result.totalThreads).toBe(0);
+      expect(result.totalTokens).toBe(0);
+      expect(result.totalPrice).toBe(0);
+    });
+
+    it('getByGraph does not return graphs from other projects', async () => {
+      const graphA = await createGraphInProject('isolation-bygraph-A', testProjectId);
+      const threadA = await createThreadInProject(graphA.id, testProjectId);
+      await createMessageWithUsage(threadA.id, threadA.externalThreadId, {
+        inputTokens: 300,
+        outputTokens: 150,
+        totalTokens: 450,
+        totalPrice: 0.03,
+      });
+
+      // Query from the other project — should not see graph A
+      const result = await analyticsService.getByGraph(otherProjectCtx, {});
+
+      const leaked = result.graphs.find((g) => g.graphId === graphA.id);
+      expect(leaked).toBeUndefined();
+      expect(result.graphs).toHaveLength(0);
     });
   });
 });

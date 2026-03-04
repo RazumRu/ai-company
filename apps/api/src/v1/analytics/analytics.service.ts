@@ -19,9 +19,11 @@ export class AnalyticsService {
     query: AnalyticsQueryDto,
   ): Promise<AnalyticsOverviewDto> {
     const userId = ctx.checkSub();
+    const projectId = ctx.checkProjectId();
 
     const params = {
       createdBy: userId,
+      projectId,
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
     };
@@ -42,9 +44,11 @@ export class AnalyticsService {
     query: AnalyticsByGraphQueryDto,
   ): Promise<AnalyticsByGraphResponseDto> {
     const userId = ctx.checkSub();
+    const projectId = ctx.checkProjectId();
 
     const rows = await this.analyticsDao.getByGraph({
       createdBy: userId,
+      projectId,
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
       graphId: query.graphId,

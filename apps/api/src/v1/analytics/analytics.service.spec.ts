@@ -9,12 +9,14 @@ import type { ByGraphRawRow, TokenAggregateRawRow } from './dto/analytics.dto';
 
 describe('AnalyticsService', () => {
   const userId = 'user-123';
+  const projectId = 'project-abc';
 
   let service: AnalyticsService;
   let dao: ReturnType<typeof mock<AnalyticsDao>>;
 
   const mockCtx = {
     checkSub: vi.fn().mockReturnValue(userId),
+    checkProjectId: vi.fn().mockReturnValue(projectId),
   } as unknown as AppContextStorage;
 
   beforeEach(() => {
@@ -25,7 +27,6 @@ describe('AnalyticsService', () => {
 
   describe('getOverview', () => {
     const rawRow: TokenAggregateRawRow = {
-      totalThreads: '0',
       inputTokens: '800000',
       cachedInputTokens: '50000',
       outputTokens: '400000',
@@ -41,13 +42,16 @@ describe('AnalyticsService', () => {
       const result = await service.getOverview(mockCtx, {});
 
       expect(mockCtx.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkProjectId).toHaveBeenCalled();
       expect(dao.countThreads).toHaveBeenCalledWith({
         createdBy: userId,
+        projectId,
         dateFrom: undefined,
         dateTo: undefined,
       });
       expect(dao.getTokenAggregates).toHaveBeenCalledWith({
         createdBy: userId,
+        projectId,
         dateFrom: undefined,
         dateTo: undefined,
       });
@@ -74,19 +78,35 @@ describe('AnalyticsService', () => {
 
       expect(dao.countThreads).toHaveBeenCalledWith({
         createdBy: userId,
+        projectId,
         dateFrom,
         dateTo,
       });
       expect(dao.getTokenAggregates).toHaveBeenCalledWith({
         createdBy: userId,
+        projectId,
         dateFrom,
         dateTo,
       });
     });
 
+    it('should call checkProjectId and forward projectId to DAO', async () => {
+      dao.countThreads.mockResolvedValue(0);
+      dao.getTokenAggregates.mockResolvedValue(rawRow);
+
+      await service.getOverview(mockCtx, {});
+
+      expect(mockCtx.checkProjectId).toHaveBeenCalled();
+      expect(dao.countThreads).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId }),
+      );
+      expect(dao.getTokenAggregates).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId }),
+      );
+    });
+
     it('should handle zero results', async () => {
       const zeroRow: TokenAggregateRawRow = {
-        totalThreads: '0',
         inputTokens: '0',
         cachedInputTokens: '0',
         outputTokens: '0',
@@ -144,8 +164,10 @@ describe('AnalyticsService', () => {
       const result = await service.getByGraph(mockCtx, {});
 
       expect(mockCtx.checkSub).toHaveBeenCalled();
+      expect(mockCtx.checkProjectId).toHaveBeenCalled();
       expect(dao.getByGraph).toHaveBeenCalledWith({
         createdBy: userId,
+        projectId,
         dateFrom: undefined,
         dateTo: undefined,
         graphId: undefined,
@@ -173,10 +195,22 @@ describe('AnalyticsService', () => {
 
       expect(dao.getByGraph).toHaveBeenCalledWith({
         createdBy: userId,
+        projectId,
         dateFrom: undefined,
         dateTo: undefined,
         graphId,
       });
+    });
+
+    it('should call checkProjectId and forward projectId to DAO', async () => {
+      dao.getByGraph.mockResolvedValue([]);
+
+      await service.getByGraph(mockCtx, {});
+
+      expect(mockCtx.checkProjectId).toHaveBeenCalled();
+      expect(dao.getByGraph).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId }),
+      );
     });
 
     it('should return empty array when no graphs have data', async () => {
