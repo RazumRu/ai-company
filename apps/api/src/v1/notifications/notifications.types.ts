@@ -1,5 +1,6 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
+import type { TriggerNodeInfoType } from '../graphs/dto/graphs.dto';
 import { GraphRevisionEntity } from '../graphs/entity/graph-revision.entity';
 import {
   GraphExecutionMetadata,
@@ -26,6 +27,7 @@ export enum NotificationEvent {
   GraphRevisionFailed = 'graph.revision.failed',
   GraphRevisionProgress = 'graph.revision.progress',
   RuntimeStatus = 'runtime.status',
+  GraphPreview = 'graph.preview',
 }
 
 export interface INotification<T> {
@@ -166,6 +168,23 @@ export interface IRuntimeStatusNotification extends INotification<IRuntimeStatus
   type: NotificationEvent.RuntimeStatus;
 }
 
+export interface GraphPreviewPayload {
+  id: string;
+  status: string;
+  triggerNodes: TriggerNodeInfoType[];
+  nodeDisplayNames: Record<string, string>;
+  nodeCount: number;
+  edgeCount: number;
+  agents: { nodeId: string; name: string; description?: string }[];
+  version: string;
+  targetVersion: string;
+  error?: string | null;
+}
+
+export interface IGraphPreviewNotification extends INotification<GraphPreviewPayload> {
+  type: NotificationEvent.GraphPreview;
+}
+
 export type Notification =
   | IGraphNotification
   | IAgentMessageNotification
@@ -177,4 +196,5 @@ export type Notification =
   | IGraphNodeUpdateNotification
   | IGraphRevisionNotification
   | IGraphRevisionProgressNotification
-  | IRuntimeStatusNotification;
+  | IRuntimeStatusNotification
+  | IGraphPreviewNotification;

@@ -2,13 +2,21 @@ import { describe, expect, it } from 'vitest';
 
 import { TemplateRegistry } from '../graph-templates/services/template-registry';
 import { type GraphSchemaType, NodeKind } from './graphs.types';
-import { extractAgentsFromSchema } from './graphs.utils';
+import {
+  extractAgentsFromSchema,
+  extractNodeDisplayNamesFromMetadata,
+  extractTriggerNodesFromSchema,
+} from './graphs.utils';
 
 const createMockTemplateRegistry = (
-  templateMap: Record<string, { kind: NodeKind } | undefined>,
+  templateMap: Record<string, { kind: NodeKind; name?: string } | undefined>,
 ): TemplateRegistry => {
   return {
     getTemplate: (id: string) => templateMap[id],
+    getTemplatesByKind: (kind: NodeKind) =>
+      Object.entries(templateMap)
+        .filter(([, t]) => t?.kind === kind)
+        .map(([id, t]) => ({ id, kind: t!.kind, name: t!.name ?? id })),
   } as unknown as TemplateRegistry;
 };
 
@@ -180,6 +188,164 @@ describe('extractAgentsFromSchema', () => {
       nodeId: 'agent-2',
       name: 'Agent Beta',
       description: undefined,
+    });
+  });
+});
+
+describe('extractTriggerNodesFromSchema', () => {
+  it('should extract trigger nodes from schema', () => {
+    const schema: GraphSchemaType = {
+      nodes: [
+        { id: 'trigger-1', template: 'manual-trigger', config: {} },
+        { id: 'agent-1', template: 'simple-agent', config: {} },
+      ],
+      edges: [],
+    };
+    const registry = createMockTemplateRegistry({
+      'manual-trigger': { kind: NodeKind.Trigger, name: 'Manual Trigger' },
+      'simple-agent': { kind: NodeKind.SimpleAgent },
+    });
+
+    const triggers = extractTriggerNodesFromSchema(schema, null, registry);
+
+    expect(triggers).toEqual([
+      { id: 'trigger-1', name: 'Manual Trigger', template: 'manual-trigger' },
+    ]);
+  });
+
+  it('should use metadata display name when available', () => {
+    const schema: GraphSchemaType = {
+      nodes: [
+        { id: 'trigger-1', template: 'manual-trigger', config: {} },
+      ],
+      edges: [],
+    };
+    const metadata = {
+      nodes: [{ id: 'trigger-1', name: 'My Custom Trigger' }],
+    };
+    const registry = createMockTemplateRegistry({
+      'manual-trigger': { kind: NodeKind.Trigger, name: 'Manual Trigger' },
+    });
+
+    const triggers = extractTriggerNodesFromSchema(schema, metadata, registry);
+
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0]!.name).toBe('My Custom Trigger');
+  });
+
+  it('should fall back to template name when metadata has no name', () => {
+    const schema: GraphSchemaType = {
+      nodes: [
+        { id: 'trigger-1', template: 'manual-trigger', config: {} },
+      ],
+      edges: [],
+    };
+    const metadata = {
+      nodes: [{ id: 'trigger-1' }],
+    };
+    const registry = createMockTemplateRegistry({
+      'manual-trigger': { kind: NodeKind.Trigger, name: 'Manual Trigger' },
+    });
+
+    const triggers = extractTriggerNodesFromSchema(schema, metadata, registry);
+
+    expect(triggers[0]!.name).toBe('Manual Trigger');
+  });
+
+  it('should return empty array when no trigger nodes exist', () => {
+    const schema: GraphSchemaType = {
+      nodes: [
+        { id: 'agent-1', template: 'simple-agent', config: {} },
+      ],
+      edges: [],
+    };
+    const registry = createMockTemplateRegistry({
+      'simple-agent': { kind: NodeKind.SimpleAgent },
+    });
+
+    const triggers = extractTriggerNodesFromSchema(schema, null, registry);
+
+    expect(triggers).toEqual([]);
+  });
+
+  it('should handle multiple trigger nodes', () => {
+    const schema: GraphSchemaType = {
+      nodes: [
+        { id: 'trigger-1', template: 'manual-trigger', config: {} },
+        { id: 'trigger-2', template: 'webhook-trigger', config: {} },
+      ],
+      edges: [],
+    };
+    const registry = createMockTemplateRegistry({
+      'manual-trigger': { kind: NodeKind.Trigger, name: 'Manual Trigger' },
+      'webhook-trigger': { kind: NodeKind.Trigger, name: 'Webhook Trigger' },
+    });
+
+    const triggers = extractTriggerNodesFromSchema(schema, null, registry);
+
+    expect(triggers).toHaveLength(2);
+    expect(triggers[0]!.template).toBe('manual-trigger');
+    expect(triggers[1]!.template).toBe('webhook-trigger');
+  });
+});
+
+describe('extractNodeDisplayNamesFromMetadata', () => {
+  it('should extract display names from metadata nodes', () => {
+    const metadata = {
+      nodes: [
+        { id: 'node-1', name: 'My Node' },
+        { id: 'node-2', name: 'Another Node' },
+      ],
+    };
+
+    const names = extractNodeDisplayNamesFromMetadata(metadata);
+
+    expect(names).toEqual({
+      'node-1': 'My Node',
+      'node-2': 'Another Node',
+    });
+  });
+
+  it('should skip nodes without names', () => {
+    const metadata = {
+      nodes: [
+        { id: 'node-1', name: 'Named Node' },
+        { id: 'node-2' },
+        { id: 'node-3', name: '' },
+      ],
+    };
+
+    const names = extractNodeDisplayNamesFromMetadata(metadata);
+
+    expect(names).toEqual({
+      'node-1': 'Named Node',
+    });
+  });
+
+  it('should return empty object for null metadata', () => {
+    expect(extractNodeDisplayNamesFromMetadata(null)).toEqual({});
+  });
+
+  it('should return empty object for undefined metadata', () => {
+    expect(extractNodeDisplayNamesFromMetadata(undefined)).toEqual({});
+  });
+
+  it('should return empty object when metadata has no nodes array', () => {
+    expect(extractNodeDisplayNamesFromMetadata({ zoom: 1 })).toEqual({});
+  });
+
+  it('should trim whitespace from names and skip whitespace-only names', () => {
+    const metadata = {
+      nodes: [
+        { id: 'node-1', name: '  Trimmed  ' },
+        { id: 'node-2', name: '   ' },
+      ],
+    };
+
+    const names = extractNodeDisplayNamesFromMetadata(metadata);
+
+    expect(names).toEqual({
+      'node-1': 'Trimmed',
     });
   });
 });

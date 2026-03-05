@@ -2,6 +2,7 @@ import { isObject } from 'lodash';
 import { parse as parseYaml } from 'yaml';
 
 import { TemplateRegistry } from '../graph-templates/services/template-registry';
+import type { TriggerNodeInfoType } from './dto/graphs.dto';
 import { type GraphAgentInfo, type GraphSchemaType, NodeKind } from './graphs.types';
 
 export const parseStructuredContent = (input: unknown): unknown => {
@@ -59,4 +60,60 @@ export function extractAgentsFromSchema(
     }
   }
   return agents;
+}
+
+export function extractTriggerNodesFromSchema(
+  schema: GraphSchemaType,
+  metadata: Record<string, unknown> | null | undefined,
+  templateRegistry: TemplateRegistry,
+): TriggerNodeInfoType[] {
+  const triggerTemplates = templateRegistry.getTemplatesByKind(NodeKind.Trigger);
+  const triggerTemplateIds = new Set(triggerTemplates.map((t) => t.id));
+
+  const metadataNodes = extractMetadataNodes(metadata);
+
+  const triggerNodes: TriggerNodeInfoType[] = [];
+  for (const node of schema.nodes) {
+    if (!triggerTemplateIds.has(node.template)) continue;
+
+    const metaNode = metadataNodes.get(node.id);
+    const template = templateRegistry.getTemplate(node.template);
+    const displayName = metaNode?.name || template?.name || node.template;
+
+    triggerNodes.push({
+      id: node.id,
+      name: displayName,
+      template: node.template,
+    });
+  }
+  return triggerNodes;
+}
+
+export function extractNodeDisplayNamesFromMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  const metadataNodes = extractMetadataNodes(metadata);
+  for (const [nodeId, node] of metadataNodes) {
+    if (node.name) {
+      result[nodeId] = node.name;
+    }
+  }
+  return result;
+}
+
+function extractMetadataNodes(
+  metadata: Record<string, unknown> | null | undefined,
+): Map<string, { name?: string }> {
+  const result = new Map<string, { name?: string }>();
+  if (!metadata || !Array.isArray(metadata.nodes)) return result;
+
+  for (const node of metadata.nodes) {
+    if (!isObject(node) || typeof (node as Record<string, unknown>).id !== 'string') continue;
+    const nodeObj = node as Record<string, unknown>;
+    const id = nodeObj.id as string;
+    const rawName = typeof nodeObj.name === 'string' ? nodeObj.name.trim() : undefined;
+    result.set(id, { name: rawName || undefined });
+  }
+  return result;
 }

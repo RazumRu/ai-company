@@ -25,16 +25,22 @@ import {
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
   GetAllGraphsQueryDto,
+  GetGraphsPreviewQueryDto,
   GraphDto,
   GraphNodesQueryDto,
   GraphNodeWithStatusDto,
+  GraphPreviewDto,
   UpdateGraphDto,
   UpdateGraphResponseDto,
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
 import type { GraphRevisionConfig } from '../entity/graph-revision.entity';
 import { GraphStatus, NodeKind } from '../graphs.types';
-import { extractAgentsFromSchema } from '../graphs.utils';
+import {
+  extractAgentsFromSchema,
+  extractNodeDisplayNamesFromMetadata,
+  extractTriggerNodesFromSchema,
+} from '../graphs.utils';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -141,6 +147,60 @@ export class GraphsService {
     return rows.map((entity) =>
       this.prepareResponse(entity, threadCounts.get(entity.id)),
     );
+  }
+
+  async getGraphsPreview(
+    ctx: AppContextStorage,
+    query?: GetGraphsPreviewQueryDto,
+  ): Promise<GraphPreviewDto[]> {
+    const userId = ctx.checkSub();
+    const rows = await this.graphDao.getPreview({
+      createdBy: userId,
+      ids: query?.ids,
+      projectId: ctx.checkProjectId(),
+      order: { updatedAt: 'DESC' },
+    });
+
+    if (rows.length === 0) return [];
+
+    const graphIds = rows.map((r) => r.id);
+    const [schemaMetadataMap, threadCounts] = await Promise.all([
+      this.graphDao.getSchemaAndMetadata(graphIds),
+      this.threadsDao.countByGraphIds(graphIds),
+    ]);
+
+    return rows.map((entity) => {
+      const schemaData = schemaMetadataMap.get(entity.id);
+      const schema = schemaData?.schema ?? { nodes: [], edges: [] };
+      const metadata = schemaData?.metadata ?? null;
+      const agents = schemaData?.agents ?? [];
+      const counts = threadCounts.get(entity.id);
+
+      return {
+        id: entity.id,
+        name: entity.name,
+        description: entity.description ?? null,
+        error: entity.error ?? null,
+        version: entity.version,
+        targetVersion: entity.targetVersion,
+        status: entity.status,
+        runningThreads: counts?.running ?? 0,
+        totalThreads: counts?.total ?? 0,
+        nodeCount: schema.nodes.length,
+        edgeCount: schema.edges?.length ?? 0,
+        agents,
+        triggerNodes: extractTriggerNodesFromSchema(
+          schema,
+          metadata,
+          this.templateRegistry,
+        ),
+        nodeDisplayNames: extractNodeDisplayNamesFromMetadata(metadata),
+        createdAt: new Date(entity.createdAt).toISOString(),
+        updatedAt: new Date(entity.updatedAt).toISOString(),
+        temporary: entity.temporary,
+        projectId: entity.projectId,
+      };
+    });
   }
 
   async getCompiledNodes(
@@ -392,6 +452,8 @@ export class GraphsService {
       },
     });
 
+    await this.emitGraphPreview(id, GraphStatus.Compiling, graph);
+
     try {
       // Compile the graph (it will be registered automatically during compilation)
       await this.graphCompiler.compile(graph, {
@@ -423,6 +485,8 @@ export class GraphsService {
         },
       });
 
+      await this.emitGraphPreview(id, GraphStatus.Running, graph);
+
       return this.prepareResponse(updated);
     } catch (error) {
       // Cleanup registry if it was registered
@@ -450,6 +514,8 @@ export class GraphsService {
         },
       });
 
+      await this.emitGraphPreview(id, GraphStatus.Error, graph);
+
       throw error;
     }
   }
@@ -471,6 +537,34 @@ export class GraphsService {
         }),
       ),
     );
+  }
+
+  private async emitGraphPreview(
+    id: string,
+    status: GraphStatus,
+    graph: GraphEntity,
+  ): Promise<void> {
+    const schema = graph.schema;
+    await this.notificationsService.emit({
+      type: NotificationEvent.GraphPreview,
+      graphId: id,
+      data: {
+        id,
+        status,
+        triggerNodes: extractTriggerNodesFromSchema(
+          schema,
+          graph.metadata,
+          this.templateRegistry,
+        ),
+        nodeDisplayNames: extractNodeDisplayNamesFromMetadata(graph.metadata),
+        nodeCount: schema.nodes.length,
+        edgeCount: schema.edges?.length ?? 0,
+        agents: graph.agents ?? [],
+        version: graph.version,
+        targetVersion: graph.targetVersion,
+        error: graph.error ?? null,
+      },
+    });
   }
 
   /**
@@ -546,6 +640,8 @@ export class GraphsService {
         schema: graph.schema,
       },
     });
+
+    await this.emitGraphPreview(id, GraphStatus.Stopped, graph);
 
     return this.prepareResponse(updated);
   }

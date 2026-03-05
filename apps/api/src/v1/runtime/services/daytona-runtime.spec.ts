@@ -186,8 +186,9 @@ describe('DaytonaRuntime', () => {
       await p2;
 
       expect(mockSandbox.process.createSession).toHaveBeenCalledTimes(1);
+      // init (once on first creation) + echo 1 + echo 2 = 3
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledTimes(
-        2,
+        3,
       );
     });
 
@@ -210,6 +211,101 @@ describe('DaytonaRuntime', () => {
           runAsync: true,
         }),
       );
+    });
+
+    describe('session workdir initialisation', () => {
+      it('runs mkdir + cd to /runtime-workspace synchronously when session is created', async () => {
+        setupAsyncSessionMocks();
+
+        const execPromise = runtime.exec({
+          cmd: 'echo test',
+          sessionId: 'sess-init-cwd',
+        });
+
+        await vi.advanceTimersByTimeAsync(2500);
+        await execPromise;
+
+        // First executeSessionCommand call must be the workdir init (runAsync: false)
+        expect(mockSandbox.process.executeSessionCommand).toHaveBeenNthCalledWith(
+          1,
+          'sess-init-cwd',
+          {
+            command: 'mkdir -p /runtime-workspace && cd /runtime-workspace',
+            runAsync: false,
+          },
+        );
+        // Second call is the actual user command (runAsync: true)
+        expect(mockSandbox.process.executeSessionCommand).toHaveBeenNthCalledWith(
+          2,
+          'sess-init-cwd',
+          expect.objectContaining({
+            command: 'echo test',
+            runAsync: true,
+          }),
+        );
+      });
+
+      it('does not re-initialise CWD on session reuse', async () => {
+        setupAsyncSessionMocks();
+
+        const p1 = runtime.exec({ cmd: 'cmd1', sessionId: 'sess-init-reuse' });
+        await vi.advanceTimersByTimeAsync(2500);
+        await p1;
+
+        setupAsyncSessionMocks();
+
+        const p2 = runtime.exec({ cmd: 'cmd2', sessionId: 'sess-init-reuse' });
+        await vi.advanceTimersByTimeAsync(2500);
+        await p2;
+
+        // createSession called only once — session reused
+        expect(mockSandbox.process.createSession).toHaveBeenCalledTimes(1);
+        // init (1) + cmd1 (1) + cmd2 (1) = 3 total
+        expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledTimes(3);
+        // The init command was only sent once (the very first call)
+        const initCalls = mockSandbox.process.executeSessionCommand.mock.calls.filter(
+          (args: unknown[]) => {
+            const opts = args[1] as { command: string };
+            return opts.command.includes('mkdir -p /runtime-workspace');
+          },
+        );
+        expect(initCalls).toHaveLength(1);
+      });
+
+      it('swallows workdir init failure and still executes the command', async () => {
+        let callCount = 0;
+        mockSandbox.process.createSession.mockResolvedValue(undefined);
+        mockSandbox.process.executeSessionCommand.mockImplementation(
+          (_sessionId: string, opts: { runAsync: boolean }) => {
+            callCount++;
+            if (callCount === 1 && !opts.runAsync) {
+              // Init call fails
+              return Promise.reject(new Error('init mkdir failed'));
+            }
+            return Promise.resolve({ cmdId: 'cmd-fallback' });
+          },
+        );
+        mockSandbox.process.getSessionCommandLogs.mockResolvedValue(undefined);
+        mockSandbox.process.getSessionCommand.mockResolvedValue({
+          exitCode: 0,
+          id: 'cmd-fallback',
+          command: 'test',
+        });
+
+        const execPromise = runtime.exec({
+          cmd: 'test',
+          sessionId: 'sess-init-fail',
+        });
+
+        await vi.advanceTimersByTimeAsync(2500);
+        const result = await execPromise;
+
+        // Command succeeds despite init failure
+        expect(result.fail).toBe(false);
+        expect(result.exitCode).toBe(0);
+        // Both init (failed) and real command were attempted
+        expect(callCount).toBe(2);
+      });
     });
   });
 

@@ -282,6 +282,7 @@ describe('GraphsService', () => {
           provide: TemplateRegistry,
           useValue: {
             getTemplate: vi.fn().mockReturnValue(undefined),
+            getTemplatesByKind: vi.fn().mockReturnValue([]),
           },
         },
       ],
@@ -1353,7 +1354,27 @@ describe('GraphsService', () => {
       expect(notificationsService.emit).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
+          type: NotificationEvent.GraphPreview,
+          graphId: mockGraphId,
+          data: expect.objectContaining({
+            status: GraphStatus.Compiling,
+          }),
+        }),
+      );
+      expect(notificationsService.emit).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
           type: NotificationEvent.Graph,
+          graphId: mockGraphId,
+          data: expect.objectContaining({
+            status: GraphStatus.Running,
+          }),
+        }),
+      );
+      expect(notificationsService.emit).toHaveBeenNthCalledWith(
+        4,
+        expect.objectContaining({
+          type: NotificationEvent.GraphPreview,
           graphId: mockGraphId,
           data: expect.objectContaining({
             status: GraphStatus.Running,
@@ -1420,6 +1441,7 @@ describe('GraphsService', () => {
       expect(notificationsService.emit).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({
+          type: NotificationEvent.Graph,
           data: expect.objectContaining({
             status: GraphStatus.Compiling,
           }),
@@ -1428,6 +1450,25 @@ describe('GraphsService', () => {
       expect(notificationsService.emit).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
+          type: NotificationEvent.GraphPreview,
+          data: expect.objectContaining({
+            status: GraphStatus.Compiling,
+          }),
+        }),
+      );
+      expect(notificationsService.emit).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          type: NotificationEvent.Graph,
+          data: expect.objectContaining({
+            status: GraphStatus.Error,
+          }),
+        }),
+      );
+      expect(notificationsService.emit).toHaveBeenNthCalledWith(
+        4,
+        expect.objectContaining({
+          type: NotificationEvent.GraphPreview,
           data: expect.objectContaining({
             status: GraphStatus.Error,
           }),
@@ -1552,6 +1593,7 @@ describe('GraphsService', () => {
       expect(notificationsService.emit).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({
+          type: NotificationEvent.Graph,
           data: expect.objectContaining({
             status: GraphStatus.Compiling,
           }),
@@ -1560,6 +1602,25 @@ describe('GraphsService', () => {
       expect(notificationsService.emit).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
+          type: NotificationEvent.GraphPreview,
+          data: expect.objectContaining({
+            status: GraphStatus.Compiling,
+          }),
+        }),
+      );
+      expect(notificationsService.emit).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          type: NotificationEvent.Graph,
+          data: expect.objectContaining({
+            status: GraphStatus.Error,
+          }),
+        }),
+      );
+      expect(notificationsService.emit).toHaveBeenNthCalledWith(
+        4,
+        expect.objectContaining({
+          type: NotificationEvent.GraphPreview,
           data: expect.objectContaining({
             status: GraphStatus.Error,
           }),

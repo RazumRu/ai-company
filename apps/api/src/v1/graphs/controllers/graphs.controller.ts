@@ -18,9 +18,11 @@ import {
   ExecuteTriggerDto,
   ExecuteTriggerResponseDto,
   GetAllGraphsQueryDto,
+  GetGraphsPreviewQueryDto,
   GraphDto,
   GraphNodesQueryDto,
   GraphNodeWithStatusDto,
+  GraphPreviewDto,
   UpdateGraphDto,
   UpdateGraphResponseDto,
 } from '../dto/graphs.dto';
@@ -47,6 +49,14 @@ export class GraphsController {
     @CtxStorage() contextDataStorage: AppContextStorage,
   ): Promise<GraphDto[]> {
     return await this.graphsService.getAll(contextDataStorage, query);
+  }
+
+  @Get('preview')
+  async getGraphsPreview(
+    @Query() query: GetGraphsPreviewQueryDto,
+    @CtxStorage() contextDataStorage: AppContextStorage,
+  ): Promise<GraphPreviewDto[]> {
+    return await this.graphsService.getGraphsPreview(contextDataStorage, query);
   }
 
   @Get(':id')

@@ -359,6 +359,21 @@ export class DaytonaRuntime extends BaseRuntime {
     if (!this.activeSessions.has(sessionId)) {
       await this.sandbox!.process.createSession(sessionId);
       this.activeSessions.add(sessionId);
+      // Initialize session CWD to this.workdir, mirroring Docker's WorkingDir behaviour.
+      // Daytona sessions start in the sandbox default (e.g. /home/daytona) which does not
+      // match this.workdir (/runtime-workspace).  Without this, cloned repos land in the
+      // wrong directory while execPath still reports /runtime-workspace, causing tools
+      // (explorer, shell) to look for files that don't exist at the reported path.
+      try {
+        await this.sandbox!.process.executeSessionCommand(sessionId, {
+          command: `mkdir -p ${this.workdir} && cd ${this.workdir}`,
+          runAsync: false,
+        });
+      } catch {
+        this.logger?.warn(
+          `[DaytonaRuntime] Failed to initialise session "${sessionId}" workdir "${this.workdir}" — commands may run from the sandbox default directory`,
+        );
+      }
     }
 
     // Build env prefix same as Docker runtime

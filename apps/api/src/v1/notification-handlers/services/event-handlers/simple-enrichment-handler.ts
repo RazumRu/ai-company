@@ -5,6 +5,7 @@ import {
   IAgentStateUpdateNotification,
   IGraphNodeUpdateNotification,
   IGraphNotification,
+  IGraphPreviewNotification,
   IRuntimeStatusNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
@@ -18,7 +19,8 @@ export type SimpleNotification =
   | IGraphNotification
   | IGraphNodeUpdateNotification
   | IAgentStateUpdateNotification
-  | IRuntimeStatusNotification;
+  | IRuntimeStatusNotification
+  | IGraphPreviewNotification;
 
 export type SimpleEnrichedNotification = IEnrichedNotification<
   SimpleNotification['data']
@@ -31,6 +33,7 @@ export class SimpleEnrichmentHandler extends BaseNotificationHandler<SimpleEnric
     NotificationEvent.GraphNodeUpdate,
     NotificationEvent.AgentStateUpdate,
     NotificationEvent.RuntimeStatus,
+    NotificationEvent.GraphPreview,
   ];
 
   constructor(private readonly graphDao: GraphDao) {

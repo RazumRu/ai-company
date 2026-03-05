@@ -89,4 +89,87 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
     }
     return result;
   }
+
+  async getPreview(
+    params?: SearchTerms & { order?: Record<string, 'ASC' | 'DESC'> },
+  ): Promise<
+    Pick<
+      GraphEntity,
+      | 'id'
+      | 'name'
+      | 'description'
+      | 'error'
+      | 'version'
+      | 'targetVersion'
+      | 'status'
+      | 'temporary'
+      | 'createdBy'
+      | 'projectId'
+      | 'createdAt'
+      | 'updatedAt'
+    >[]
+  > {
+    const builder = this.getQueryBuilder().select([
+      `${this.alias}.id`,
+      `${this.alias}.name`,
+      `${this.alias}.description`,
+      `${this.alias}.error`,
+      `${this.alias}.version`,
+      `${this.alias}.targetVersion`,
+      `${this.alias}.status`,
+      `${this.alias}.temporary`,
+      `${this.alias}.createdBy`,
+      `${this.alias}.projectId`,
+      `${this.alias}.createdAt`,
+      `${this.alias}.updatedAt`,
+    ]);
+
+    this.applySearchParams(builder, params);
+
+    if (params?.order) {
+      const entries = Object.entries(params.order);
+      for (let i = 0; i < entries.length; i++) {
+        const [field, dir] = entries[i]!;
+        if (i === 0) {
+          builder.orderBy(`${this.alias}.${field}`, dir);
+        } else {
+          builder.addOrderBy(`${this.alias}.${field}`, dir);
+        }
+      }
+    }
+
+    return builder.getMany();
+  }
+
+  async getSchemaAndMetadata(
+    graphIds: string[],
+  ): Promise<
+    Map<
+      string,
+      Pick<GraphEntity, 'schema' | 'metadata' | 'agents'>
+    >
+  > {
+    const result = new Map<
+      string,
+      Pick<GraphEntity, 'schema' | 'metadata' | 'agents'>
+    >();
+    if (graphIds.length === 0) return result;
+    const rows = await this.getQueryBuilder()
+      .select([
+        `${this.alias}.id`,
+        `${this.alias}.schema`,
+        `${this.alias}.metadata`,
+        `${this.alias}.agents`,
+      ])
+      .where(`${this.alias}.id IN (:...graphIds)`, { graphIds })
+      .getMany();
+    for (const row of rows) {
+      result.set(row.id, {
+        schema: row.schema,
+        metadata: row.metadata,
+        agents: row.agents,
+      });
+    }
+    return result;
+  }
 }

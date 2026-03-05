@@ -44,12 +44,13 @@ describe('SimpleEnrichmentHandler', () => {
   });
 
   describe('pattern', () => {
-    it('should handle Graph, GraphNodeUpdate, AgentStateUpdate, and RuntimeStatus events', () => {
+    it('should handle Graph, GraphNodeUpdate, AgentStateUpdate, RuntimeStatus, and GraphPreview events', () => {
       expect(handler.pattern).toEqual([
         NotificationEvent.Graph,
         NotificationEvent.GraphNodeUpdate,
         NotificationEvent.AgentStateUpdate,
         NotificationEvent.RuntimeStatus,
+        NotificationEvent.GraphPreview,
       ]);
     });
   });

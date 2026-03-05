@@ -69,6 +69,70 @@ export const GraphSchema = z.object({
   projectId: z.uuid().nullable().optional().describe('Project this graph belongs to'),
 });
 
+export const TriggerNodeInfoSchema = z.object({
+  id: z.string().describe('Node ID'),
+  name: z.string().describe('Display name (from metadata or template name)'),
+  template: z.string().describe('Template identifier'),
+});
+
+export const GraphPreviewSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
+  version: z.string(),
+  targetVersion: z
+    .string()
+    .describe('Target version after all queued revisions are applied'),
+  status: z.enum(GraphStatus),
+  runningThreads: z.number().int().nonnegative().default(0),
+  totalThreads: z.number().int().nonnegative().default(0),
+  nodeCount: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(0)
+    .describe('Number of nodes in the graph schema'),
+  edgeCount: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(0)
+    .describe('Number of edges in the graph schema'),
+  agents: z
+    .array(
+      z.object({
+        nodeId: z.string(),
+        name: z.string(),
+        description: z.string().optional(),
+      }),
+    )
+    .default([])
+    .describe('Agent nodes present in the graph'),
+  triggerNodes: z
+    .array(TriggerNodeInfoSchema)
+    .describe('Pre-computed trigger nodes from schema'),
+  nodeDisplayNames: z
+    .record(z.string(), z.string())
+    .describe('Pre-computed node display names from metadata'),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  temporary: z.boolean().default(false).optional().nullable(),
+  projectId: z.uuid().nullable().optional(),
+});
+
+export const GetGraphsPreviewQuerySchema = z.object({
+  ids: zodQueryArray(z.uuid())
+    .optional()
+    .describe('Filter graphs by IDs (comma-separated or repeated params)'),
+});
+
+export class GraphPreviewDto extends createZodDto(GraphPreviewSchema) {}
+export class GetGraphsPreviewQueryDto extends createZodDto(
+  GetGraphsPreviewQuerySchema,
+) {}
+export type TriggerNodeInfoType = z.infer<typeof TriggerNodeInfoSchema>;
+
 export const GraphEditableSchema = GraphSchema.omit({
   id: true,
   status: true,
