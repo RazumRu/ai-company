@@ -35,6 +35,6 @@ export class AuthModule {
   }
 
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(FetchContextDataMiddleware).forRoutes('*');
+    consumer.apply(FetchContextDataMiddleware).forRoutes('*path');
   }
 }

@@ -64,7 +64,6 @@ export const environment = () =>
     ),
     llmOfflineMiniModel: getEnv('LLM_OFFLINE_MINI_MODEL', 'phi3.5:latest'),
     llmEmbeddingModel: getEnv('LLM_EMBEDDING_MODEL', 'text-embedding-3-small'),
-    llmNoReasoningModels: getEnv('LLM_NO_REASONING_MODELS', 'qwen3-coder:30b'),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),
     knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', true),
@@ -72,11 +71,6 @@ export const environment = () =>
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks',
     ),
-    // --- Credential encryption ---
-    // Required: 64-char hex string (32 bytes) for AES-256-GCM encryption
-    // Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-    credentialEncryptionKey: getEnv('CREDENTIAL_ENCRYPTION_KEY'),
-
     // --- Codebase indexing ---
     codebaseIndexTokenThreshold: +getEnv(
       'CODEBASE_INDEX_TOKEN_THRESHOLD',

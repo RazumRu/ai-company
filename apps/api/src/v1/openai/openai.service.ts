@@ -215,14 +215,20 @@ export class OpenaiService {
 
     return this.complete<T>(
       payload,
-      maxOutputTokens ? { max_tokens: maxOutputTokens } : undefined,
+      maxOutputTokens ? { max_completion_tokens: maxOutputTokens } : undefined,
     );
   }
 
   async embeddings(args: EmbeddingsInput): Promise<EmbeddingsResult> {
+    // toWellFormed() replaces lone surrogates with U+FFFD — they are invalid UTF-8
+    // and cause embedding API failures when input comes from binary or mojibake files.
+    const wellFormedInput = Array.isArray(args.input)
+      ? args.input.map((text) => text.toWellFormed())
+      : args.input.toWellFormed();
+
     const response = await this.client.embeddings.create({
       model: args.model,
-      input: args.input,
+      input: wellFormedInput,
     });
     const usage = response.usage
       ? (await this.litellmService.extractTokenUsageFromResponse(args.model, {

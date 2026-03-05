@@ -12,7 +12,10 @@ export abstract class BaseNotificationHandler<
 
   abstract handle(event: Notification): Promise<T[]>;
 
-  private readonly graphInfoCache = new Map<string, { ownerId: string; projectId: string }>();
+  private readonly graphInfoCache = new Map<
+    string,
+    { ownerId: string; projectId: string }
+  >();
 
   /**
    * Resolves the owner (createdBy) and projectId of a graph, caching results for the
@@ -29,7 +32,10 @@ export abstract class BaseNotificationHandler<
     const graph = await graphDao.getOne({ id: graphId });
 
     if (!graph) {
-      throw new NotFoundException('GRAPH_NOT_FOUND');
+      throw new NotFoundException(
+        'GRAPH_NOT_FOUND',
+        `Graph ${graphId} not found`,
+      );
     }
 
     if (!graph.projectId) {
@@ -41,7 +47,10 @@ export abstract class BaseNotificationHandler<
     return info;
   }
 
-  protected async getGraphOwner(graphDao: GraphDao, graphId: string): Promise<string> {
+  protected async getGraphOwner(
+    graphDao: GraphDao,
+    graphId: string,
+  ): Promise<string> {
     return (await this.getGraphInfo(graphDao, graphId)).ownerId;
   }
 }

@@ -71,6 +71,6 @@ export class MetricsModule implements OnModuleInit {
   }
 
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(FastifyMetricsMiddleware).forRoutes('*');
+    consumer.apply(FastifyMetricsMiddleware).forRoutes('*path');
   }
 }

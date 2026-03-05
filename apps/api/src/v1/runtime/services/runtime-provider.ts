@@ -40,7 +40,7 @@ export class RuntimeProvider {
   ) {}
 
   private emitRuntimeStatus(
-    graphId: string,
+    graphId: string | null | undefined,
     threadId: string,
     nodeId: string,
     runtimeId: string,
@@ -48,6 +48,9 @@ export class RuntimeProvider {
     runtimeType: string,
     message?: string,
   ): void {
+    // System operations (e.g. repo indexing) have no graph — skip notifications.
+    if (!graphId) return;
+
     this.notificationsService
       .emit({
         type: NotificationEvent.RuntimeStatus,
@@ -115,7 +118,7 @@ export class RuntimeProvider {
   async provide<T extends BaseRuntime>(
     params: ProvideRuntimeInstanceParams,
   ): Promise<ProvideRuntimeResult<T>> {
-    const { graphId, runtimeNodeId, threadId, type } = params;
+    const { graphId = null, runtimeNodeId, threadId, type } = params;
 
     const existing = await this.runtimeInstanceDao.getOne({
       graphId,
@@ -302,13 +305,13 @@ export class RuntimeProvider {
   }
 
   async cleanupRuntimeInstance(params: {
-    graphId: string;
+    graphId?: string | null;
     runtimeNodeId: string;
     threadId: string;
     type: RuntimeType;
   }): Promise<void> {
     const instance = await this.runtimeInstanceDao.getOne({
-      graphId: params.graphId,
+      graphId: params.graphId ?? null,
       nodeId: params.runtimeNodeId,
       threadId: params.threadId,
       type: params.type,
@@ -357,7 +360,7 @@ export class RuntimeProvider {
     const baseLabels = record.config.labels ?? {};
     const labels: Record<string, string> = {
       ...baseLabels,
-      'geniro/graph_id': record.graphId,
+      ...(record.graphId ? { 'geniro/graph_id': record.graphId } : {}),
       'geniro/node_id': record.nodeId,
       'geniro/thread_id': record.threadId,
       'geniro/instance_id': record.id,
@@ -369,7 +372,7 @@ export class RuntimeProvider {
 
     await runtime.start({
       ...(record.config || {}),
-      network: `geniro-${record.graphId}`,
+      network: record.graphId ? `geniro-${record.graphId}` : undefined,
       registryMirrors,
       insecureRegistries,
       containerName: record.containerName,

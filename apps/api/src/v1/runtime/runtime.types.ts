@@ -63,7 +63,7 @@ export enum RuntimeInstanceStatus {
 }
 
 export interface ProvideRuntimeInstanceParams {
-  graphId: string;
+  graphId?: string | null;
   runtimeNodeId: string;
   threadId: string;
   type: RuntimeType;

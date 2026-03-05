@@ -157,5 +157,17 @@ describe('RuntimeService', () => {
       expect(result).toHaveLength(1);
       expect(result[0]!.status).toBe(RuntimeInstanceStatus.Stopped);
     });
+
+    it('maps graphId: null through toDto correctly', async () => {
+      threadsDao.getOne.mockResolvedValue(mockThread);
+
+      const nullGraphIdInstance = createMockInstance({ graphId: null });
+      runtimeInstanceDao.getAll.mockResolvedValue([nullGraphIdInstance]);
+
+      const result = await service.getRuntimesForThread(mockCtx, { threadId });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.graphId).toBeNull();
+    });
   });
 });

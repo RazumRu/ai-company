@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
-import { GitRepositoriesService } from '../../../../git-repositories/services/git-repositories.service';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { GhBaseToolConfig } from './gh-base.tool';
 import { GhCloneTool, GhCloneToolSchemaType } from './gh-clone.tool';
@@ -39,15 +38,6 @@ describe('GhCloneTool', () => {
             getOne: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockResolvedValue({}),
             updateById: vi.fn().mockResolvedValue({}),
-          },
-        },
-        {
-          provide: GitRepositoriesService,
-          useValue: {
-            encryptCredential: vi.fn((text: string) => `encrypted:${text}`),
-            decryptCredential: vi.fn((text: string) =>
-              text.replace('encrypted:', ''),
-            ),
           },
         },
         {
@@ -106,7 +96,6 @@ describe('GhCloneTool', () => {
           owner: 'octocat',
           repo: 'Hello-World',
           url: 'https://github.com/octocat/Hello-World.git',
-          encryptedToken: 'encrypted:ghp_test_token',
         }),
       );
     });
@@ -134,7 +123,6 @@ describe('GhCloneTool', () => {
         'existing-id',
         expect.objectContaining({
           url: 'https://github.com/octocat/Hello-World.git',
-          encryptedToken: 'encrypted:ghp_test_token',
         }),
       );
     });

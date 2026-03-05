@@ -25,6 +25,8 @@ export const GitRepositorySchema = z.object({
   projectId: z.uuid().nullable().describe('Project this repository belongs to'),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  installationId: z.number().int().nullable().optional(),
+  syncedAt: z.string().datetime().nullable().optional(),
 });
 
 export const GetRepositoriesQuerySchema = z.object({
@@ -60,10 +62,6 @@ export const CreateRepositorySchema = z.object({
     .optional()
     .default('main')
     .describe('Default branch of the repository (defaults to main)'),
-  token: z
-    .string()
-    .optional()
-    .describe('GitHub personal access token (encrypted at rest, write-only)'),
 });
 
 export const UpdateRepositorySchema = z.object({
@@ -72,10 +70,6 @@ export const UpdateRepositorySchema = z.object({
     .string()
     .optional()
     .describe('Default branch of the repository'),
-  token: z
-    .string()
-    .optional()
-    .describe('GitHub personal access token (encrypted at rest, write-only)'),
 });
 
 // Repo index schemas
@@ -146,6 +140,14 @@ export const TriggerReindexResponseSchema = z.object({
   repoIndex: RepoIndexSchema,
   message: z.string().describe('Human-readable status message'),
 });
+
+export const SyncRepositoriesResponseSchema = z.object({
+  synced: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+export type SyncRepositoriesResponse = z.infer<typeof SyncRepositoriesResponseSchema>;
+export class SyncRepositoriesResponseDto extends createZodDto(SyncRepositoriesResponseSchema) {}
 
 // Type exports
 export type GitRepository = z.infer<typeof GitRepositorySchema>;

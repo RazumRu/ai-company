@@ -2,15 +2,16 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   DefaultLogger,
-  InternalException,
   NotFoundException,
 } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
+import { GitHubAppInstallationDao } from '../../github-app/dao/github-app-installation.dao';
+import { GitHubAppService } from '../../github-app/services/github-app.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
-import { GitRepositoriesDao } from '../dao/git-repositories.dao';
+import { GitRepositoriesDao, GithubSyncRepo } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { GetRepositoriesQueryDto } from '../dto/git-repositories.dto';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
@@ -30,6 +31,8 @@ describe('GitRepositoriesService', () => {
   let repoIndexQueueService: RepoIndexQueueService;
   let repoIndexerService: RepoIndexerService;
   let qdrantService: QdrantService;
+  let gitHubAppService: GitHubAppService;
+  let gitHubAppInstallationDao: GitHubAppInstallationDao;
 
   const mockUserId = 'user-123';
   const mockProjectId = '11111111-1111-1111-1111-111111111111';
@@ -68,6 +71,10 @@ describe('GitRepositoriesService', () => {
             create: vi.fn(),
             updateById: vi.fn(),
             deleteById: vi.fn(),
+            upsertMany: vi.fn(),
+            upsertGithubSyncRepos: vi.fn(),
+            restoreSoftDeleted: vi.fn(),
+            count: vi.fn(),
           },
         },
         {
@@ -124,6 +131,19 @@ describe('GitRepositoriesService', () => {
             getOne: vi.fn().mockResolvedValue({ id: 'project-1', createdBy: mockUserId }),
           },
         },
+        {
+          provide: GitHubAppService,
+          useValue: {
+            isConfigured: vi.fn().mockReturnValue(true),
+            getInstallationToken: vi.fn(),
+          },
+        },
+        {
+          provide: GitHubAppInstallationDao,
+          useValue: {
+            getAll: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -135,6 +155,8 @@ describe('GitRepositoriesService', () => {
     );
     repoIndexerService = module.get<RepoIndexerService>(RepoIndexerService);
     qdrantService = module.get<QdrantService>(QdrantService);
+    gitHubAppService = module.get<GitHubAppService>(GitHubAppService);
+    gitHubAppInstallationDao = module.get<GitHubAppInstallationDao>(GitHubAppInstallationDao);
   });
 
   describe('createRepository', () => {
@@ -159,7 +181,8 @@ describe('GitRepositoriesService', () => {
         defaultBranch: 'main',
         createdBy: mockUserId,
         projectId: mockProjectId,
-        encryptedToken: null,
+        installationId: null,
+        syncedAt: null,
       });
       expect(result).toMatchObject({
         owner: 'octocat',
@@ -416,44 +439,179 @@ describe('GitRepositoriesService', () => {
     });
   });
 
-  describe('credential encryption', () => {
-    describe('encryptCredential', () => {
-      it('produces a string with three colon-separated base64 segments', () => {
-        const result = service.encryptCredential('hello');
-        const parts = result.split(':');
-        expect(parts).toHaveLength(3);
-        parts.forEach((part) => {
-          expect(() => Buffer.from(part, 'base64')).not.toThrow();
-        });
-      });
+  describe('syncRepositories', () => {
+    const mockInstallation = {
+      id: 'install-uuid-1',
+      installationId: 12345,
+      userId: mockUserId,
+      isActive: true,
+      accountLogin: 'octocat',
+      accountType: 'User',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      updatedAt: new Date('2024-01-01T00:00:00Z'),
+      deletedAt: null,
+    };
 
-      it('produces different ciphertexts for the same plaintext (IV randomness)', () => {
-        const a = service.encryptCredential('secret');
-        const b = service.encryptCredential('secret');
-        expect(a).not.toBe(b);
-      });
+    const mockGithubRepo = {
+      owner: { login: 'octocat' },
+      name: 'Hello-World',
+      html_url: 'https://github.com/octocat/Hello-World',
+      default_branch: 'main',
+    };
+
+    it('returns zeros when no active installations exist', async () => {
+      vi.spyOn(gitHubAppInstallationDao, 'getAll').mockResolvedValue([]);
+
+      const result = await service.syncRepositories(mockCtx);
+
+      expect(result).toEqual({ synced: 0, removed: 0, total: 0 });
+      expect(dao.upsertMany).not.toHaveBeenCalled();
     });
 
-    describe('decryptCredential', () => {
-      it('round-trips: decrypt(encrypt(x)) === x', () => {
-        const original = 'ghp_abc123XYZ';
-        const encrypted = service.encryptCredential(original);
-        const decrypted = service.decryptCredential(encrypted);
-        expect(decrypted).toBe(original);
+    it('throws BadRequestException when GitHub App is not configured', async () => {
+      vi.spyOn(gitHubAppService, 'isConfigured').mockReturnValue(false);
+
+      await expect(service.syncRepositories(mockCtx)).rejects.toThrow('GITHUB_APP_NOT_CONFIGURED');
+    });
+
+    it('throws BadRequestException when sync is already in progress for the same user', async () => {
+      // Access private field via type assertion to simulate in-progress sync
+      (service as unknown as { syncInProgress: Set<string> }).syncInProgress.add(mockUserId);
+
+      try {
+        await expect(service.syncRepositories(mockCtx)).rejects.toThrow('SYNC_ALREADY_IN_PROGRESS');
+      } finally {
+        (service as unknown as { syncInProgress: Set<string> }).syncInProgress.delete(mockUserId);
+      }
+    });
+
+    it('soft-deletes repos with installationId that are no longer returned by GitHub', async () => {
+      const revokedRepo = createMockRepositoryEntity({
+        id: 'revoked-repo-id',
+        owner: 'octocat',
+        repo: 'OldRepo',
+        installationId: 12345,
+      } as Partial<GitRepositoryEntity>);
+
+      vi.spyOn(gitHubAppInstallationDao, 'getAll').mockResolvedValue([mockInstallation as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ total_count: 0, repositories: [] }),
+        headers: { get: () => null },
+      } as unknown as Response);
+      vi.spyOn(dao, 'getAll').mockResolvedValue([revokedRepo]);
+      vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'count').mockResolvedValue(0);
+
+      const result = await service.syncRepositories(mockCtx);
+
+      expect(dao.deleteById).toHaveBeenCalledWith('revoked-repo-id');
+      expect(result).toEqual({ synced: 0, removed: 1, total: 0 });
+    });
+
+    it('does not soft-delete repos with installationId = null (PAT repos)', async () => {
+      const patRepo = createMockRepositoryEntity({
+        id: 'pat-repo-id',
+        owner: 'octocat',
+        repo: 'PatRepo',
+        installationId: null,
+      } as Partial<GitRepositoryEntity>);
+
+      vi.spyOn(gitHubAppInstallationDao, 'getAll').mockResolvedValue([mockInstallation as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ total_count: 0, repositories: [] }),
+        headers: { get: () => null },
+      } as unknown as Response);
+      // getAll with hasInstallationId: true returns only repos with installationId — PAT repo is excluded
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(dao, 'count').mockResolvedValue(1);
+
+      await service.syncRepositories(mockCtx);
+
+      expect(dao.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('does not trigger indexing after successful sync', async () => {
+      vi.spyOn(gitHubAppInstallationDao, 'getAll').mockResolvedValue([mockInstallation as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ total_count: 1, repositories: [mockGithubRepo] }),
+        headers: { get: () => null },
+      } as unknown as Response);
+      vi.spyOn(dao, 'upsertGithubSyncRepos').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'restoreSoftDeleted').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(dao, 'count').mockResolvedValue(1);
+
+      await service.syncRepositories(mockCtx);
+
+      expect(repoIndexQueueService.addIndexJob).not.toHaveBeenCalled();
+    });
+
+    it('aggregates repos from multiple installations into a single upsertMany call', async () => {
+      const installation1 = { ...mockInstallation, id: 'install-uuid-1', installationId: 11111 };
+      const installation2 = { ...mockInstallation, id: 'install-uuid-2', installationId: 22222 };
+
+      const reposForInstallation1 = [
+        { owner: { login: 'org-a' }, name: 'repo-1', html_url: 'https://github.com/org-a/repo-1', default_branch: 'main' },
+        { owner: { login: 'org-a' }, name: 'repo-2', html_url: 'https://github.com/org-a/repo-2', default_branch: 'main' },
+        { owner: { login: 'org-a' }, name: 'repo-3', html_url: 'https://github.com/org-a/repo-3', default_branch: 'main' },
+      ];
+      const reposForInstallation2 = [
+        { owner: { login: 'org-b' }, name: 'repo-4', html_url: 'https://github.com/org-b/repo-4', default_branch: 'develop' },
+        { owner: { login: 'org-b' }, name: 'repo-5', html_url: 'https://github.com/org-b/repo-5', default_branch: 'develop' },
+        { owner: { login: 'org-b' }, name: 'repo-6', html_url: 'https://github.com/org-b/repo-6', default_branch: 'develop' },
+      ];
+
+      vi.spyOn(gitHubAppInstallationDao, 'getAll').mockResolvedValue([installation1 as any, installation2 as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+
+      let fetchCallCount = 0;
+      vi.spyOn(global, 'fetch').mockImplementation(async () => {
+        fetchCallCount++;
+        const repos = fetchCallCount === 1 ? reposForInstallation1 : reposForInstallation2;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ total_count: repos.length, repositories: repos }),
+          headers: { get: () => null },
+        } as unknown as Response;
       });
 
-      it('round-trips with unicode content', () => {
-        const original = 'token_with_spëcîal_çhàrs_🔐';
-        const encrypted = service.encryptCredential(original);
-        const decrypted = service.decryptCredential(encrypted);
-        expect(decrypted).toBe(original);
-      });
+      vi.spyOn(dao, 'upsertGithubSyncRepos').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'restoreSoftDeleted').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(dao, 'count').mockResolvedValue(6);
 
-      it('throws DECRYPTION_FAILED with malformed ciphertext', () => {
-        expect(() => service.decryptCredential('not-valid')).toThrow(
-          InternalException,
-        );
-      });
+      const result = await service.syncRepositories(mockCtx);
+
+      expect(dao.upsertGithubSyncRepos).toHaveBeenCalledTimes(1);
+
+      const upsertArgs = vi.mocked(dao.upsertGithubSyncRepos).mock.calls[0]![0];
+      expect(upsertArgs).toHaveLength(6);
+
+      const installationIds = upsertArgs.map((r) => r.installationId);
+      expect(installationIds.filter((id) => id === 11111)).toHaveLength(3);
+      expect(installationIds.filter((id) => id === 22222)).toHaveLength(3);
+
+      for (const entry of upsertArgs) {
+        expect(entry.owner).toBeDefined();
+        expect(entry.repo).toBeDefined();
+        expect(entry.installationId).toBeDefined();
+        expect(entry.provider).toBe(GitRepositoryProvider.GITHUB);
+        expect(entry.createdBy).toBe(mockUserId);
+        expect(entry.projectId).toBe(mockProjectId);
+      }
+
+      expect(result).toEqual({ synced: 6, removed: 0, total: 6 });
     });
   });
+
 });

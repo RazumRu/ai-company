@@ -34,23 +34,30 @@ export interface RepoIndexQueueCallbacks {
 export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   private queue!: Queue<RepoIndexJobData>;
   private worker!: Worker<RepoIndexJobData>;
-  private redis!: IORedis;
+  private redisQueue!: IORedis;
+  private redisWorker!: IORedis;
   private callbacks?: RepoIndexQueueCallbacks;
   private readonly queueName = `repo-index-${environment.env}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 
   async onModuleInit(): Promise<void> {
-    this.redis = new IORedis(environment.redisUrl, {
+    this.redisQueue = new IORedis(environment.redisUrl, {
+      maxRetriesPerRequest: null,
+    });
+    this.redisWorker = new IORedis(environment.redisUrl, {
       maxRetriesPerRequest: null,
     });
 
-    this.redis.on('error', (err) => {
-      this.logger.error(err, 'Redis connection error');
+    this.redisQueue.on('error', (err) => {
+      this.logger.error(err, 'Redis queue connection error');
+    });
+    this.redisWorker.on('error', (err) => {
+      this.logger.error(err, 'Redis worker connection error');
     });
 
     this.queue = new Queue<RepoIndexJobData>(this.queueName, {
-      connection: this.redis,
+      connection: this.redisQueue,
       defaultJobOptions: {
         removeOnComplete: 100,
         removeOnFail: 50,
@@ -76,7 +83,7 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
       this.queueName,
       this.processJob.bind(this),
       {
-        connection: this.redis,
+        connection: this.redisWorker,
         concurrency: 2,
         // Repository indexing can take several minutes for large repos
         lockDuration: 10 * 60 * 1000, // 10 minutes
@@ -254,12 +261,17 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    try {
-      await this.redis?.quit();
-    } catch (err) {
-      this.logger.warn('Failed to close Redis connection', {
-        error: err instanceof Error ? err.message : String(err),
-      });
+    for (const [name, conn] of [
+      ['queue', this.redisQueue],
+      ['worker', this.redisWorker],
+    ] as const) {
+      try {
+        await conn?.quit();
+      } catch (err) {
+        this.logger.warn(`Failed to close Redis ${name} connection`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 }

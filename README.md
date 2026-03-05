@@ -356,7 +356,6 @@ The API is configured through environment variables. Create a `.env` file in the
 | `LLM_USE_OFFLINE_MODEL` | Use local Ollama models | `false` |
 | `AUTH_DEV_MODE` | Skip Keycloak auth in dev | `true` |
 | `DOCKER_RUNTIME_IMAGE` | Runtime image for tool execution containers (includes Nix support) | `razumru/geniro-runtime:latest` |
-| `CREDENTIAL_ENCRYPTION_KEY` | 64-char hex for AES-256-GCM | dev default provided |
 
 See `apps/api/src/environments/environment.prod.ts` for the full list.
 

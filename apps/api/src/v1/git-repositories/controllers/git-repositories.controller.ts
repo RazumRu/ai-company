@@ -18,6 +18,7 @@ import {
   GetRepositoriesQueryDto,
   GitRepositoryDto,
   RepoIndexDto,
+  SyncRepositoriesResponseDto,
   TriggerReindexDto,
   TriggerReindexResponseDto,
   UpdateRepositoryDto,
@@ -66,6 +67,13 @@ export class GitRepositoriesController {
       contextDataStorage,
       query,
     );
+  }
+
+  @Post('sync')
+  async syncRepositories(
+    @CtxStorage() ctx: AppContextStorage,
+  ): Promise<SyncRepositoriesResponseDto> {
+    return this.gitRepositoriesService.syncRepositories(ctx);
   }
 
   @Get(':id')

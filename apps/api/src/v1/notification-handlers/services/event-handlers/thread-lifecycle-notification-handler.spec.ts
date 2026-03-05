@@ -191,7 +191,7 @@ describe('ThreadLifecycleNotificationHandler', () => {
       };
 
       await expect(handler.handle(notification)).rejects.toThrow(
-        'GRAPH_NOT_FOUND',
+        `Graph ${mockGraphId} not found`,
       );
       expect(threadsServiceMock.prepareThreadResponse).not.toHaveBeenCalled();
     });
@@ -239,7 +239,7 @@ describe('ThreadLifecycleNotificationHandler', () => {
       };
 
       await expect(handler.handle(notification)).rejects.toThrow(
-        'GRAPH_NOT_FOUND',
+        `Graph ${mockGraphId} not found`,
       );
       expect(threadsServiceMock.prepareThreadResponse).not.toHaveBeenCalled();
     });

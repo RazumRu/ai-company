@@ -8,7 +8,7 @@ import { RuntimeInstanceStatus, RuntimeType } from '../runtime.types';
 export type RuntimeInstanceSearchTerms = Partial<{
   id: string;
   ids: string[];
-  graphId: string;
+  graphId: string | null;
   nodeId: string;
   threadId: string;
   type: RuntimeType;
@@ -49,8 +49,12 @@ export class RuntimeInstanceDao extends BaseDao<
       builder.andWhere({ id: params.id });
     }
 
-    if (params.graphId) {
-      builder.andWhere({ graphId: params.graphId });
+    if (params.graphId !== undefined) {
+      if (params.graphId === null) {
+        builder.andWhere('ri.graphId IS NULL');
+      } else {
+        builder.andWhere({ graphId: params.graphId });
+      }
     }
 
     if (params.nodeId) {

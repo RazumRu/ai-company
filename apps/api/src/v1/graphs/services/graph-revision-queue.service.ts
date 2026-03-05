@@ -17,23 +17,30 @@ export class GraphRevisionQueueService
 {
   private queue!: Queue<GraphRevisionJobData>;
   private worker!: Worker<GraphRevisionJobData>;
-  private redis!: IORedis;
+  private redisQueue!: IORedis;
+  private redisWorker!: IORedis;
   private processor?: (job: GraphRevisionJobData) => Promise<void>;
   private readonly queueName = `graph-revisions-${environment.env}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 
   async onModuleInit(): Promise<void> {
-    this.redis = new IORedis(environment.redisUrl, {
+    this.redisQueue = new IORedis(environment.redisUrl, {
+      maxRetriesPerRequest: null,
+    });
+    this.redisWorker = new IORedis(environment.redisUrl, {
       maxRetriesPerRequest: null,
     });
 
-    this.redis.on('error', (err) => {
-      this.logger.error(err, 'Redis connection error');
+    this.redisQueue.on('error', (err) => {
+      this.logger.error(err, 'Redis queue connection error');
+    });
+    this.redisWorker.on('error', (err) => {
+      this.logger.error(err, 'Redis worker connection error');
     });
 
     this.queue = new Queue<GraphRevisionJobData>(this.queueName, {
-      connection: this.redis,
+      connection: this.redisQueue,
       defaultJobOptions: {
         removeOnComplete: 100,
         removeOnFail: 50,
@@ -46,7 +53,7 @@ export class GraphRevisionQueueService
       this.queueName,
       this.processJob.bind(this),
       {
-        connection: this.redis,
+        connection: this.redisWorker,
         concurrency: 5,
         // Graph revision processing can take time for complex graphs
         // Set lock duration to 5 minutes to prevent premature stall detection
@@ -57,6 +64,13 @@ export class GraphRevisionQueueService
     this.worker.on('failed', this.handleJobFailure.bind(this));
   }
 
+  /**
+   * Register the processor callback for revision jobs.
+   * The Worker is already running by the time this is called (NestJS constructs
+   * all providers before invoking onModuleInit hooks), so the processor must be
+   * set before any job can be dequeued and handed off.
+   * Must be called exactly once during module initialization.
+   */
   setProcessor(processor: (job: GraphRevisionJobData) => Promise<void>): void {
     this.processor = processor;
   }
@@ -128,15 +142,31 @@ export class GraphRevisionQueueService
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.worker.close();
-    await this.queue.close();
-
     try {
-      if (this.redis.status === 'ready') {
-        await this.redis.quit();
+      await this.worker.close();
+    } catch (err) {
+      this.logger.warn('Failed to close BullMQ worker', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    try {
+      await this.queue.close();
+    } catch (err) {
+      this.logger.warn('Failed to close BullMQ queue', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    for (const [name, conn] of [
+      ['queue', this.redisQueue],
+      ['worker', this.redisWorker],
+    ] as const) {
+      try {
+        await conn?.quit();
+      } catch (err) {
+        this.logger.warn(`Failed to close Redis ${name} connection`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-    } catch {
-      // Redis connection may already be closed by worker/queue teardown
     }
   }
 }

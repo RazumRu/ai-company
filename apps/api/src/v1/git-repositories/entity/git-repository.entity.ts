@@ -29,6 +29,9 @@ export class GitRepositoryEntity extends AuditEntity {
   @Column({ type: 'varchar', default: 'main' })
   defaultBranch!: string;
 
-  @Column({ type: 'text', nullable: true })
-  encryptedToken!: string | null;
+  @Column({ type: 'int', nullable: true })
+  installationId!: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  syncedAt!: Date | null;
 }

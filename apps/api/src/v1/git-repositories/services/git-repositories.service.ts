@@ -1,5 +1,3 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-
 import { Injectable } from '@nestjs/common';
 import {
   BadRequestException,
@@ -9,7 +7,8 @@ import {
 } from '@packages/common';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { environment } from '../../../environments';
+import { GitHubAppInstallationDao } from '../../github-app/dao/github-app-installation.dao';
+import { GitHubAppService } from '../../github-app/services/github-app.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
@@ -20,22 +19,21 @@ import {
   GetRepositoriesQueryDto,
   GitRepositoryDto,
   RepoIndexDto,
+  SyncRepositoriesResponse,
   TriggerReindex,
   TriggerReindexResponse,
   UpdateRepository,
 } from '../dto/git-repositories.dto';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
-import { RepoIndexStatus } from '../git-repositories.types';
+import { GitRepositoryProvider, RepoIndexStatus } from '../git-repositories.types';
 import { RepoIndexQueueService } from './repo-index-queue.service';
 import { RepoIndexerService } from './repo-indexer.service';
 
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 12;
-const KEY_HEX_LENGTH = 64; // 32 bytes = 256 bits
-
 @Injectable()
 export class GitRepositoriesService {
+  private readonly syncInProgress = new Set<string>();
+
   constructor(
     private readonly gitRepositoriesDao: GitRepositoriesDao,
     private readonly repoIndexDao: RepoIndexDao,
@@ -44,6 +42,8 @@ export class GitRepositoriesService {
     private readonly qdrantService: QdrantService,
     private readonly logger: DefaultLogger,
     private readonly projectsDao: ProjectsDao,
+    private readonly gitHubAppService: GitHubAppService,
+    private readonly gitHubAppInstallationDao: GitHubAppInstallationDao,
   ) {}
 
   async createRepository(
@@ -69,7 +69,8 @@ export class GitRepositoriesService {
       defaultBranch: data.defaultBranch ?? 'main',
       createdBy: userId,
       projectId,
-      encryptedToken: data.token ? this.encryptCredential(data.token) : null,
+      installationId: null,
+      syncedAt: null,
     });
 
     return this.prepareRepositoryResponse(created);
@@ -97,9 +98,6 @@ export class GitRepositoriesService {
     }
     if (data.defaultBranch) {
       updatePayload.defaultBranch = data.defaultBranch;
-    }
-    if (data.token) {
-      updatePayload.encryptedToken = this.encryptCredential(data.token);
     }
 
     // If nothing changed, return existing entity without a DB write
@@ -395,6 +393,147 @@ export class GitRepositoriesService {
     };
   }
 
+  async syncRepositories(ctx: AppContextStorage): Promise<SyncRepositoriesResponse> {
+    const userId = ctx.checkSub();
+    const projectId = ctx.checkProjectId();
+
+    if (!this.gitHubAppService.isConfigured()) {
+      throw new BadRequestException('GITHUB_APP_NOT_CONFIGURED');
+    }
+
+    if (this.syncInProgress.has(userId)) {
+      throw new BadRequestException('SYNC_ALREADY_IN_PROGRESS');
+    }
+
+    this.syncInProgress.add(userId);
+    try {
+      return await this.performSync(userId, projectId);
+    } finally {
+      this.syncInProgress.delete(userId);
+    }
+  }
+
+  private async performSync(userId: string, projectId: string): Promise<SyncRepositoriesResponse> {
+    const installations = await this.gitHubAppInstallationDao.getAll({ userId, isActive: true });
+
+    if (installations.length === 0) {
+      return { synced: 0, removed: 0, total: 0 };
+    }
+
+    const syncedAt = new Date();
+    const allGithubRepos: Array<{
+      owner: string;
+      repo: string;
+      url: string;
+      defaultBranch: string;
+      installationId: number;
+    }> = [];
+
+    for (const installation of installations) {
+      let token: string;
+      try {
+        token = await this.gitHubAppService.getInstallationToken(installation.installationId);
+      } catch (err) {
+        this.logger.warn(
+          `Skipping installation ${installation.installationId}: failed to get token: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        continue;
+      }
+
+      let page = 1;
+      let totalCount = 0;
+
+      do {
+        const response = await fetch(
+          `https://api.github.com/installation/repositories?per_page=100&page=${page}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+          },
+        );
+
+        if (response.status === 403) {
+          throw new InternalException('GITHUB_RATE_LIMITED');
+        }
+
+        if (!response.ok) {
+          throw new InternalException('GITHUB_SYNC_FAILED');
+        }
+
+        const data = (await response.json()) as {
+          total_count: number;
+          repositories: Array<{
+            owner: { login: string };
+            name: string;
+            html_url: string;
+            default_branch: string | null;
+          }>;
+        };
+
+        totalCount = data.total_count;
+
+        for (const ghRepo of data.repositories) {
+          allGithubRepos.push({
+            owner: ghRepo.owner.login,
+            repo: ghRepo.name,
+            url: ghRepo.html_url,
+            defaultBranch: ghRepo.default_branch ?? 'main',
+            installationId: installation.installationId,
+          });
+        }
+
+        if (data.repositories.length < 100) break;
+        page++;
+      } while (allGithubRepos.length < totalCount);
+    }
+
+    if (allGithubRepos.length > 0) {
+      const upsertData = allGithubRepos.map((r) => ({
+        owner: r.owner,
+        repo: r.repo,
+        url: r.url,
+        provider: GitRepositoryProvider.GITHUB,
+        defaultBranch: r.defaultBranch,
+        createdBy: userId,
+        projectId,
+        installationId: r.installationId,
+        syncedAt,
+      }));
+
+      await this.gitRepositoriesDao.upsertGithubSyncRepos(upsertData);
+
+      await this.gitRepositoriesDao.restoreSoftDeleted(
+        userId,
+        projectId,
+        allGithubRepos.map((r) => ({ owner: r.owner, repo: r.repo })),
+      );
+    }
+
+    const existingRepos = await this.gitRepositoriesDao.getAll({
+      createdBy: userId,
+      projectId,
+      hasInstallationId: true,
+    });
+
+    const syncedKeys = new Set(allGithubRepos.map((r) => `${r.owner}/${r.repo}`));
+    const toRemove = existingRepos.filter((r) => !syncedKeys.has(`${r.owner}/${r.repo}`));
+
+    for (const repo of toRemove) {
+      await this.gitRepositoriesDao.deleteById(repo.id);
+    }
+
+    const total = await this.gitRepositoriesDao.count({ createdBy: userId, projectId });
+
+    return {
+      synced: allGithubRepos.length,
+      removed: toRemove.length,
+      total,
+    };
+  }
+
   private prepareRepositoryResponse(
     entity: GitRepositoryEntity,
   ): GitRepositoryDto {
@@ -432,53 +571,4 @@ export class GitRepositoriesService {
     };
   }
 
-  // ---------------------------------------------------------------------------
-  // Credential encryption
-  // ---------------------------------------------------------------------------
-
-  private parseKey(key: string | undefined): Buffer {
-    if (!key || key.length !== KEY_HEX_LENGTH) {
-      throw new InternalException('CREDENTIAL_ENCRYPTION_KEY_MISSING');
-    }
-    return Buffer.from(key, 'hex');
-  }
-
-  encryptCredential(plaintext: string): string {
-    const keyBuffer = this.parseKey(environment.credentialEncryptionKey);
-    const iv = randomBytes(IV_LENGTH);
-    const cipher = createCipheriv(ALGORITHM, keyBuffer, iv);
-
-    let encrypted = cipher.update(plaintext, 'utf8', 'base64');
-    encrypted += cipher.final('base64');
-
-    const authTag = cipher.getAuthTag().toString('base64');
-    const ivBase64 = iv.toString('base64');
-
-    return `${ivBase64}:${authTag}:${encrypted}`;
-  }
-
-  decryptCredential(ciphertext: string): string {
-    const keyBuffer = this.parseKey(environment.credentialEncryptionKey);
-
-    const parts = ciphertext.split(':');
-    if (parts.length !== 3) {
-      throw new InternalException('DECRYPTION_FAILED');
-    }
-
-    const [ivBase64, authTagBase64, encrypted] = parts;
-
-    try {
-      const iv = Buffer.from(ivBase64!, 'base64');
-      const authTag = Buffer.from(authTagBase64!, 'base64');
-      const decipher = createDecipheriv(ALGORITHM, keyBuffer, iv);
-      decipher.setAuthTag(authTag);
-
-      let decrypted = decipher.update(encrypted!, 'base64', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      return decrypted;
-    } catch {
-      throw new InternalException('DECRYPTION_FAILED');
-    }
-  }
 }

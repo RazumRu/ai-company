@@ -53,12 +53,6 @@ export const environment = () =>
     ),
     knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', true),
 
-    // credential encryption (dev default key - DO NOT use in production)
-    credentialEncryptionKey: getEnv(
-      'CREDENTIAL_ENCRYPTION_KEY',
-      '7851424f98bd5e2a8941af9c4a43aea5e547790176d9689554ddbbfcf94bd8fa',
-    ),
-
     // Daytona runtime (local docker-compose instance)
     daytonaApiUrl: getEnv('DAYTONA_API_URL', 'http://localhost:3986/api'),
     daytonaApiKey: getEnv('DAYTONA_API_KEY', 'geniro-dev-admin-key'),

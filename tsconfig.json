@@ -12,7 +12,7 @@
     "importHelpers": false,
     "isolatedModules": true,
     "allowJs": true,
-    "target": "ES2022",
+    "target": "ES2024",
     "module": "NodeNext",
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,

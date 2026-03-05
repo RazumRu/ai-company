@@ -13,7 +13,7 @@ export const GetRuntimesQuerySchema = z.object({
 
 export const RuntimeInstanceSchema = z.object({
   id: z.string().uuid().describe('Runtime instance ID'),
-  graphId: z.string().uuid().describe('Graph ID'),
+  graphId: z.string().uuid().nullable().describe('Graph ID (null for system operations)'),
   nodeId: z.string().describe('Node ID'),
   externalThreadId: z.string().describe('External thread ID (graphId:threadUUID)'),
   type: z.nativeEnum(RuntimeType).describe('Runtime type'),

@@ -11,12 +11,12 @@ import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { shQuote } from '../../utils/shell.utils';
+import { GitHubTokenResolverService } from '../../github-app/services/github-token-resolver.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
 import { RepoIndexStatus } from '../git-repositories.types';
-import { GitRepositoriesService } from './git-repositories.service';
 import {
   GetOrInitIndexParams,
   GetOrInitIndexResult,
@@ -35,8 +35,6 @@ import {
 
 const REPO_CLONE_DIR = '/workspace/repo';
 
-/** UUID used for system-level runtime operations (no real graph). */
-const SYSTEM_GRAPH_ID = '00000000-0000-0000-0000-000000000001';
 const SYSTEM_RUNTIME_NODE_ID = 'repo-indexer';
 
 /** Timeout for git commands inside the ephemeral container. */
@@ -81,7 +79,7 @@ export class RepoIndexService implements OnModuleInit {
   constructor(
     private readonly repoIndexDao: RepoIndexDao,
     private readonly gitRepositoriesDao: GitRepositoriesDao,
-    private readonly gitRepositoriesService: GitRepositoriesService,
+    private readonly gitHubTokenResolverService: GitHubTokenResolverService,
     private readonly repoIndexerService: RepoIndexerService,
     private readonly repoIndexQueueService: RepoIndexQueueService,
     private readonly llmModelsService: LlmModelsService,
@@ -767,7 +765,6 @@ export class RepoIndexService implements OnModuleInit {
       estimatedTokens: entity.estimatedTokens,
     });
 
-    const graphId = SYSTEM_GRAPH_ID;
     const runtimeNodeId = SYSTEM_RUNTIME_NODE_ID;
     const threadId = repoIndexId;
 
@@ -780,9 +777,8 @@ export class RepoIndexService implements OnModuleInit {
         repoIndexId,
       });
 
-      // Spin up ephemeral container
+      // Spin up ephemeral container (no graphId — repo indexing is a system operation)
       runtimeInstance = await this.runtimeProvider.provide({
-        graphId,
         runtimeNodeId,
         threadId,
         type: this.runtimeProvider.getDefaultRuntimeType(),
@@ -811,11 +807,11 @@ export class RepoIndexService implements OnModuleInit {
         };
       };
 
-      // Build authenticated clone URL using the repository entity's token
+      // Build authenticated clone URL using GitHub App token resolution
       const gitRepo = await this.gitRepositoriesDao.getOne({
         id: entity.repositoryId,
       });
-      const cloneUrl = this.buildCloneUrlFromEntity(repoUrl, gitRepo);
+      const cloneUrl = await this.buildCloneUrlFromEntity(repoUrl, gitRepo);
 
       // Clean up any existing repo directory from previous runs
       await execFn({
@@ -910,7 +906,7 @@ export class RepoIndexService implements OnModuleInit {
 
       // Create a callback to update runtime activity (keeps container alive during indexing)
       const updateRuntimeActivity = async () => {
-        await this.updateRuntimeLastUsedAt(graphId, runtimeNodeId, threadId);
+        await this.updateRuntimeLastUsedAt(runtimeNodeId, threadId);
       };
 
       // Create a callback to update indexed token progress using atomic increment
@@ -959,7 +955,6 @@ export class RepoIndexService implements OnModuleInit {
       if (runtimeInstance) {
         await this.runtimeProvider
           .cleanupRuntimeInstance({
-            graphId,
             runtimeNodeId,
             threadId,
             type: this.runtimeProvider.getDefaultRuntimeType(),
@@ -968,7 +963,6 @@ export class RepoIndexService implements OnModuleInit {
             this.logger.warn(
               'Failed to cleanup runtime instance after indexing',
               {
-                graphId,
                 runtimeNodeId,
                 threadId,
                 error: err instanceof Error ? err.message : String(err),
@@ -1023,13 +1017,11 @@ export class RepoIndexService implements OnModuleInit {
    * during long-running indexing operations
    */
   private async updateRuntimeLastUsedAt(
-    graphId: string,
     nodeId: string,
     threadId: string,
   ): Promise<void> {
     try {
       const instance = await this.runtimeInstanceDao.getOne({
-        graphId,
         nodeId,
         threadId,
       });
@@ -1042,7 +1034,6 @@ export class RepoIndexService implements OnModuleInit {
     } catch (error) {
       // Don't fail indexing if we can't update lastUsedAt
       this.logger.warn('Failed to update runtime lastUsedAt', {
-        graphId,
         nodeId,
         threadId,
         error: error instanceof Error ? error.message : String(error),
@@ -1217,31 +1208,28 @@ export class RepoIndexService implements OnModuleInit {
   }
 
   /**
-   * Build an authenticated clone URL when the git repository entity is
-   * already available. Avoids an extra DB lookup.
+   * Build an authenticated clone URL using GitHub App token resolution.
+   * Falls back to the unauthenticated URL for public repos when no token is available.
    */
-  private buildCloneUrlFromEntity(
+  private async buildCloneUrlFromEntity(
     repoUrl: string,
     gitRepo: GitRepositoryEntity | null,
-  ): string {
-    if (!gitRepo?.encryptedToken) return repoUrl;
-
+  ): Promise<string> {
     const parsed = RepoIndexService.parseOwnerRepo(repoUrl);
     if (!parsed) return repoUrl;
 
-    try {
-      const token = this.gitRepositoriesService.decryptCredential(
-        gitRepo.encryptedToken,
-      );
-      parsed.url.username = token;
-      return parsed.url.toString();
-    } catch (error) {
-      this.logger.debug('Failed to build authenticated clone URL', {
-        repoUrl,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    const resolved = gitRepo
+      ? await this.gitHubTokenResolverService.resolveTokenForOwner(
+          gitRepo.owner,
+          gitRepo.createdBy,
+        )
+      : null;
+
+    if (!resolved) {
+      return `https://github.com/${parsed.owner}/${parsed.repo}.git`;
     }
-    return repoUrl;
+
+    return `https://x-access-token:${resolved.token}@github.com/${parsed.owner}/${parsed.repo}.git`;
   }
 
   /**

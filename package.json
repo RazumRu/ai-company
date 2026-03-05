@@ -32,28 +32,28 @@
     "node": ">=24"
   },
   "dependencies": {
-    "turbo": "^2.8.10"
+    "turbo": "^2.8.13"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.4.2",
-    "@commitlint/config-conventional": "^20.4.2",
+    "@commitlint/cli": "^20.4.3",
+    "@commitlint/config-conventional": "^20.4.3",
     "@eslint/js": "^10.0.1",
     "@semantic-release/commit-analyzer": "^13.0.1",
-    "@swc/core": "^1.15.13",
-    "@types/node": "^25.3.0",
+    "@swc/core": "^1.15.18",
+    "@types/node": "^25.3.3",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
     "commitizen": "^4.3.1",
-    "conventional-changelog-angular": "^8.1.0",
+    "conventional-changelog-angular": "^8.3.0",
     "cz-conventional-changelog": "^3.3.0",
     "eslint": "^10.0.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-simple-import-sort": "^12.1.1",
-    "globals": "^17.3.0",
+    "globals": "^17.4.0",
     "husky": "^9.1.7",
     "jira-prepare-commit-msg": "^1.7.2",
-    "npm-check-updates": "^19.5.0",
+    "npm-check-updates": "^19.6.3",
     "prettier": "^3.8.1",
     "semantic-release": "^25.0.3",
     "ts-node": "^10.9.2",
@@ -65,7 +65,8 @@
   },
   "pnpm": {
     "overrides": {
-      "ioredis": "5.9.3"
+      "ioredis": "5.9.3",
+      "class-validator": "0.15.1"
     }
   },
   "resolutions": {

@@ -10,7 +10,7 @@ import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
 import { RepoIndexStatus } from '../git-repositories.types';
-import { GitRepositoriesService } from './git-repositories.service';
+import { GitHubTokenResolverService } from '../../github-app/services/github-token-resolver.service';
 import { RepoIndexService } from './repo-index.service';
 import { RepoIndexQueueService } from './repo-index-queue.service';
 import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
@@ -19,7 +19,6 @@ vi.mock('../../../environments', () => ({
   environment: {
     codebaseIndexTokenThreshold: 30000,
     codebaseUuidNamespace: '6ba7b811-9dad-11d1-80b4-00c04fd430c8',
-    credentialEncryptionKey: 'a'.repeat(64),
     codebaseIndexMaxAgeDays: 30,
   },
 }));
@@ -42,9 +41,8 @@ const mockGitRepositoriesDao = {
   getOne: vi.fn(),
 };
 
-const mockGitRepositoriesService = {
-  encryptCredential: vi.fn((text: string) => `encrypted:${text}`),
-  decryptCredential: vi.fn((text: string) => text.replace('encrypted:', '')),
+const mockGitHubTokenResolverService = {
+  resolveTokenForOwner: vi.fn().mockResolvedValue(null),
 };
 
 const mockRepoIndexerService = {
@@ -159,16 +157,11 @@ describe('RepoIndexService', () => {
     mockLlmModelsService.getKnowledgeEmbeddingModel.mockReturnValue(
       'text-embedding-3-small',
     );
-    mockGitRepositoriesService.encryptCredential.mockImplementation(
-      (text: string) => `encrypted:${text}`,
-    );
-    mockGitRepositoriesService.decryptCredential.mockImplementation(
-      (text: string) => text.replace('encrypted:', ''),
-    );
+    mockGitHubTokenResolverService.resolveTokenForOwner.mockResolvedValue(null);
     service = new RepoIndexService(
       mockRepoIndexDao as unknown as RepoIndexDao,
       mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-      mockGitRepositoriesService as unknown as GitRepositoriesService,
+      mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
       mockRepoIndexerService as unknown as RepoIndexerService,
       mockRepoIndexQueueService as unknown as RepoIndexQueueService,
       mockLlmModelsService as unknown as LlmModelsService,
@@ -791,7 +784,7 @@ describe('RepoIndexService', () => {
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
         mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-        mockGitRepositoriesService as unknown as GitRepositoriesService,
+        mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
         mockLlmModelsService as unknown as LlmModelsService,
@@ -854,7 +847,7 @@ describe('RepoIndexService', () => {
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
         mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-        mockGitRepositoriesService as unknown as GitRepositoriesService,
+        mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
         mockLlmModelsService as unknown as LlmModelsService,
@@ -900,7 +893,7 @@ describe('RepoIndexService', () => {
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
         mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-        mockGitRepositoriesService as unknown as GitRepositoriesService,
+        mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
         mockLlmModelsService as unknown as LlmModelsService,
@@ -1047,7 +1040,7 @@ describe('RepoIndexService', () => {
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
         mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-        mockGitRepositoriesService as unknown as GitRepositoriesService,
+        mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
         mockLlmModelsService as unknown as LlmModelsService,

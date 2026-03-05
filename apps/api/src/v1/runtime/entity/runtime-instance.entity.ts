@@ -10,9 +10,9 @@ export class RuntimeInstanceEntity extends TimestampsEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', nullable: true })
   @Index()
-  graphId!: string;
+  graphId!: string | null;
 
   @Column({ type: 'varchar' })
   nodeId!: string;

@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
+import { GitHubAppModule } from '../github-app/github-app.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { OpenaiModule } from '../openai/openai.module';
 import { ProjectsModule } from '../projects/projects.module';
@@ -24,6 +25,7 @@ import { RepoIndexerService } from './services/repo-indexer.service';
     LitellmModule,
     OpenaiModule,
     forwardRef(() => ProjectsModule),
+    GitHubAppModule,
   ],
   controllers: [GitRepositoriesController],
   providers: [

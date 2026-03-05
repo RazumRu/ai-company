@@ -15,6 +15,6 @@ import { GitHubTokenResolverService } from './services/github-token-resolver.ser
     GitHubAppService,
     GitHubTokenResolverService,
   ],
-  exports: [GitHubTokenResolverService, GitHubAppService],
+  exports: [GitHubTokenResolverService, GitHubAppService, GitHubAppInstallationDao],
 })
 export class GitHubAppModule {}

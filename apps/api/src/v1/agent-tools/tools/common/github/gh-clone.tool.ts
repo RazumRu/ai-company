@@ -10,7 +10,6 @@ import { environment } from '../../../../../environments';
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
 import { GitRepositoryProvider } from '../../../../git-repositories/git-repositories.types';
-import { GitRepositoriesService } from '../../../../git-repositories/services/git-repositories.service';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import {
   ExtendedLangGraphRunnableConfig,
@@ -60,7 +59,6 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
 
   constructor(
     private readonly gitRepositoriesDao: GitRepositoriesDao,
-    private readonly gitRepositoriesService: GitRepositoriesService,
     private readonly logger: DefaultLogger,
   ) {
     super();
@@ -195,7 +193,6 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       await this.upsertGitRepository(
         args,
         userId,
-        config.patToken,
         detectedDefaultBranch,
         projectId,
       );
@@ -220,7 +217,6 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
   private async upsertGitRepository(
     args: GhCloneToolSchemaType,
     userId: string,
-    patToken: string | undefined,
     detectedDefaultBranch?: string,
     projectId?: string,
   ): Promise<void> {
@@ -233,16 +229,9 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       });
 
       const url = `https://github.com/${args.owner}/${args.repo}.git`;
-      const encryptedToken = patToken
-        ? this.gitRepositoriesService.encryptCredential(patToken)
-        : null;
 
       if (existing) {
         const updatePayload: Record<string, unknown> = { url };
-        // Only update the stored token if a PAT was provided
-        if (encryptedToken) {
-          updatePayload.encryptedToken = encryptedToken;
-        }
         // Update defaultBranch if detected and changed
         if (
           detectedDefaultBranch &&
@@ -260,8 +249,9 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
           provider: GitRepositoryProvider.GITHUB,
           defaultBranch: detectedDefaultBranch ?? 'main',
           createdBy: userId,
-          encryptedToken,
           projectId: projectId!,
+          installationId: null,
+          syncedAt: null,
         });
       }
     } catch (error) {
