@@ -2,6 +2,8 @@ version: 0.1
 log:
   fields:
     service: registry
+http:
+  addr: :5000
 storage:
   cache:
     blobdescriptor: inmemory
@@ -12,5 +14,3 @@ health:
     enabled: true
     interval: 10s
     threshold: 3
-proxy:
-  remoteurl: https://registry-1.docker.io

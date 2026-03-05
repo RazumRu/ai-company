@@ -28,6 +28,12 @@ export interface DaytonaRuntimeLogger {
 
 const SANDBOX_CREATE_TIMEOUT_SECONDS = 300;
 
+/** No new stdout/stderr output for this duration → command is considered stuck. */
+const IDLE_TIMEOUT_MS = 60_000;
+
+/** Absolute wall-clock limit; overridden by params.timeoutMs when provided. */
+const HARD_TIMEOUT_MS = 3_600_000;
+
 /**
  * DaytonaRuntime using the @daytonaio/sdk
  *
@@ -130,20 +136,16 @@ export class DaytonaRuntime extends BaseRuntime {
 
       let sandbox: Sandbox;
       if (snapshotOrImage) {
-        // Determine if this looks like a Docker image (contains : or /) or a snapshot name
-        const isDockerImage =
-          snapshotOrImage.includes(':') || snapshotOrImage.includes('/');
-        if (isDockerImage) {
-          sandbox = await this.daytona.create(
-            { ...commonParams, image: snapshotOrImage },
-            { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
-          );
-        } else {
-          sandbox = await this.daytona.create(
-            { ...commonParams, snapshot: snapshotOrImage },
-            { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
-          );
-        }
+        // Use `image` — Daytona automatically builds a snapshot from the
+        // Docker image on first use and caches it in the transient registry.
+        // Subsequent sandbox creations reuse the cached snapshot.
+        // Note: we intentionally omit `onSnapshotCreateLogs` because the
+        // build-logs URL requires a correctly configured PROXY_TEMPLATE_URL.
+        // The SDK still waits for the sandbox to reach `started` state.
+        sandbox = await this.daytona.create(
+          { ...commonParams, image: snapshotOrImage },
+          { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
+        );
       } else {
         sandbox = await this.daytona.create(commonParams, {
           timeout: SANDBOX_CREATE_TIMEOUT_SECONDS,
@@ -334,12 +336,24 @@ export class DaytonaRuntime extends BaseRuntime {
     }
   }
 
+  /**
+   * Pending session recreation promise. Callers must await this before using
+   * the session to avoid racing against a background delete+create.
+   */
+  private sessionRecreatePromise: Promise<void> | null = null;
+
   private async execInSession(
     params: RuntimeExecParams,
     cmdString: string,
   ): Promise<RuntimeExecResult> {
     const sessionId = params.sessionId as string;
     const fullWorkdir = this.getWorkdir(params.cwd) || this.workdir;
+
+    // Wait for any pending session recreation to finish before proceeding
+    if (this.sessionRecreatePromise) {
+      await this.sessionRecreatePromise;
+      this.sessionRecreatePromise = null;
+    }
 
     // Ensure session exists
     if (!this.activeSessions.has(sessionId)) {
@@ -351,42 +365,131 @@ export class DaytonaRuntime extends BaseRuntime {
     const envPrefix = this.buildEnvPrefix(params.env);
     const script = `${envPrefix}${cmdString || ':'}`;
 
-    const timeoutSeconds = params.timeoutMs
-      ? Math.ceil(params.timeoutMs / 1000)
-      : 0;
-
-    const execPromise = this.sandbox!.process.executeSessionCommand(
+    // Launch command asynchronously so we can detect hangs
+    const { cmdId } = await this.sandbox!.process.executeSessionCommand(
       sessionId,
-      { command: script },
-      timeoutSeconds || undefined,
+      { command: script, runAsync: true },
     );
 
-    // Race against abort signal if provided
-    const response = await this.raceWithAbort(execPromise, params.signal);
+    const hardMs = Math.min(params.timeoutMs ?? HARD_TIMEOUT_MS, HARD_TIMEOUT_MS);
+    const startAt = Date.now();
+    let lastOutputAt = Date.now();
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+    let streamActive = true;
 
-    if (response === 'aborted') {
-      // Session is likely corrupted after abort — recreate it
-      await this.recreateSession(sessionId);
-      return {
-        exitCode: 124,
-        stdout: '',
-        stderr: 'Aborted',
-        fail: true,
-        execPath: fullWorkdir,
+    // Stream logs — callbacks update lastOutputAt and collect output.
+    // Fire-and-forget: stream errors on early session kill are expected and intentionally silent.
+    void this.sandbox!.process.getSessionCommandLogs(
+      sessionId,
+      cmdId,
+      (chunk: string) => {
+        if (!streamActive) return;
+        stdoutChunks.push(chunk);
+        lastOutputAt = Date.now();
+      },
+      (chunk: string) => {
+        if (!streamActive) return;
+        stderrChunks.push(chunk);
+        lastOutputAt = Date.now();
+      },
+    ).catch(() => {});
+
+    return new Promise<RuntimeExecResult>((resolve) => {
+      let settled = false;
+
+      const settle = (result: RuntimeExecResult) => {
+        if (settled) return;
+        settled = true;
+        streamActive = false;
+        clearInterval(check);
+        resolve(result);
       };
-    }
 
-    const exitCode = response.exitCode ?? 1;
-    const stdout = response.stdout ?? response.output ?? '';
-    const stderr = response.stderr ?? '';
+      const settleWithRecreate = (result: RuntimeExecResult) => {
+        if (settled) return;
+        // Start session recreation and store the promise so the next
+        // execInSession call can await it before using the session.
+        this.sessionRecreatePromise = this.recreateSession(sessionId);
+        settle(result);
+      };
 
-    return {
-      exitCode,
-      stdout,
-      stderr,
-      fail: exitCode !== 0,
-      execPath: fullWorkdir,
-    };
+      const check = setInterval(() => {
+        // Abort signal — synchronous check at the top of each tick
+        if (params.signal?.aborted) {
+          settleWithRecreate({
+            exitCode: 124,
+            stdout: stdoutChunks.join(''),
+            stderr: 'Aborted',
+            fail: true,
+            execPath: fullWorkdir,
+          });
+          return;
+        }
+
+        const now = Date.now();
+
+        // Idle timeout — no output for IDLE_TIMEOUT_MS
+        if (now - lastOutputAt >= IDLE_TIMEOUT_MS) {
+          settleWithRecreate({
+            exitCode: 124,
+            stdout: stdoutChunks.join(''),
+            stderr: `Idle timeout: no output for ${IDLE_TIMEOUT_MS / 1000}s`,
+            fail: true,
+            execPath: fullWorkdir,
+          });
+          return;
+        }
+
+        // Hard timeout — wall-clock limit exceeded
+        if (now - startAt >= hardMs) {
+          settleWithRecreate({
+            exitCode: 124,
+            stdout: stdoutChunks.join(''),
+            stderr: `Hard timeout: command exceeded ${hardMs / 1000}s`,
+            fail: true,
+            execPath: fullWorkdir,
+          });
+          return;
+        }
+
+        // Poll command status — async, errors caught silently
+        this.sandbox!.process.getSessionCommand(sessionId, cmdId)
+          .then(async (cmd) => {
+            if (typeof cmd.exitCode === 'number') {
+              const finalExitCode = cmd.exitCode;
+              clearInterval(check);
+              streamActive = false;
+
+              // Fetch complete logs synchronously to avoid race with streaming callbacks.
+              // The streaming getSessionCommandLogs may not have delivered all chunks yet.
+              let stdout = stdoutChunks.join('');
+              let stderr = stderrChunks.join('');
+              try {
+                const logs = await this.sandbox!.process.getSessionCommandLogs(
+                  sessionId,
+                  cmdId,
+                ) as { stdout?: string; stderr?: string };
+                if (logs.stdout) stdout = logs.stdout;
+                if (logs.stderr) stderr = logs.stderr;
+              } catch {
+                // Fallback to whatever the stream collected
+              }
+
+              settle({
+                exitCode: finalExitCode,
+                stdout,
+                stderr,
+                fail: finalExitCode !== 0,
+                execPath: fullWorkdir,
+              });
+            }
+          })
+          .catch(() => {
+            // Transient poll failures should not crash the loop — polling continues.
+          });
+      }, 2000);
+    });
   }
 
   private async recreateSession(sessionId: string): Promise<void> {

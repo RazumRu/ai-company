@@ -56,13 +56,13 @@ export abstract class GhBaseTool<
       const runtime = await config.runtimeProvider.provide(cfg);
 
       // Resolve a token for GH_TOKEN injection.
-      let env: Record<string, string> | undefined;
+      const env: Record<string, string> = { GIT_TERMINAL_PROMPT: '0' };
       try {
         const token = await this.resolveToken(config, params.owner);
-        env = { GH_TOKEN: token };
+        env.GH_TOKEN = token;
       } catch {
-        // No token available — proceed without GH_TOKEN.
-        // Commands that don't require auth (local git operations) will still work.
+        // No token available — GIT_TERMINAL_PROMPT=0 ensures git fails immediately
+        // rather than waiting for an interactive credential prompt.
       }
 
       const res = await execRuntimeWithContext(

@@ -94,8 +94,10 @@ services:
     image: registry:2
     restart: unless-stopped
     networks:
-      - ai
-      - daytona
+      ai:
+      daytona:
+        aliases:
+          - daytona-registry
     ports:
       - "5009:5000"
     volumes:
@@ -144,7 +146,7 @@ services:
       - RUN_MIGRATIONS=true
       - NODE_ENV=development
       - DASHBOARD_URL=http://localhost:3986
-      - DISABLE_CRON_JOBS=true
+      - DISABLE_CRON_JOBS=false
       # Admin API key for bootstrapping (value used as the literal API key)
       - ADMIN_API_KEY=geniro-dev-admin-key
       # SSH Gateway (dummy values for dev)
@@ -173,6 +175,11 @@ services:
       - ADMIN_TOTAL_CPU_QUOTA=100
       - ADMIN_TOTAL_MEMORY_QUOTA=100
       - ADMIN_TOTAL_DISK_QUOTA=200
+      # Transient registry (uses the local registry-mirror for snapshot storage)
+      - TRANSIENT_REGISTRY_URL=http://geniro-registry-mirror-1:5000
+      - TRANSIENT_REGISTRY_ADMIN=admin
+      - TRANSIENT_REGISTRY_PASSWORD=admin
+      - TRANSIENT_REGISTRY_PROJECT_ID=geniro
       # Logging
       - LOG_LEVEL=debug
     ports:
