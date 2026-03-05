@@ -1,3 +1,4 @@
+import { StreamableFile } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -123,6 +124,8 @@ describe('ThreadsService', () => {
           provide: GraphDao,
           useValue: {
             getAgentsByGraphIds: vi.fn().mockResolvedValue(new Map()),
+            getSchemaAndMetadata: vi.fn().mockResolvedValue(new Map()),
+            getAll: vi.fn().mockResolvedValue([]),
           },
         },
       ],
@@ -1485,6 +1488,261 @@ describe('ThreadsService', () => {
       ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
 
       expect(graphsService.stopThreadExecution).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('streamThreadExport', () => {
+    function collectStream(
+      stream: import('stream').PassThrough,
+    ): Promise<string> {
+      return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        stream.on('error', reject);
+      });
+    }
+
+    const mockGraphRow = {
+      id: mockGraphId,
+      name: 'Test Graph',
+      description: 'A test graph',
+    };
+
+    const mockGraphSchema = {
+      schema: {
+        nodes: [
+          { id: 'node-1', template: 'simple-agent', config: {} },
+          { id: 'node-2', template: 'manual-trigger', config: {} },
+        ],
+        edges: [{ from: 'node-2', to: 'node-1' }],
+      },
+      metadata: {},
+      agents: [],
+    };
+
+    it('happy path — stopped thread produces valid JSON export', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+      });
+      const mockMessages = [
+        createMockMessageEntity({ id: 'msg-1' }),
+        createMockMessageEntity({ id: 'msg-2' }),
+        createMockMessageEntity({ id: 'msg-3' }),
+      ];
+
+      // getThreadUsageStatistics internally calls threadsDao.getOne — must mock it
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll')
+        .mockResolvedValueOnce(mockMessages) // usage stats call
+        .mockResolvedValueOnce(mockMessages) // first export page
+        .mockResolvedValueOnce([]); // second page (end)
+      vi.spyOn(graphDao, 'getSchemaAndMetadata').mockResolvedValue(
+        new Map([[mockGraphId, mockGraphSchema]]),
+      );
+      vi.spyOn(graphDao, 'getAll').mockResolvedValue([mockGraphRow as never]);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const stream = new (await import('stream')).PassThrough();
+      const outputPromise = collectStream(stream);
+      await (service as any).streamThreadExport(mockCtx, mockThread, stream);
+      const output = await outputPromise;
+
+      const parsed = JSON.parse(output);
+      expect(parsed.version).toBe('1');
+      expect(parsed.isRunning).toBe(false);
+      expect(parsed.messages).toHaveLength(3);
+      expect(parsed.graph).not.toBeNull();
+      expect(parsed.graph.id).toBe(mockGraphId);
+      expect(parsed.usageStatistics).toMatchObject({
+        requests: expect.any(Number),
+        total: expect.objectContaining({ totalTokens: expect.any(Number) }),
+      });
+      expect(parsed.exportedAt).toBeDefined();
+      expect(parsed.thread).toMatchObject({ id: mockThreadId });
+    });
+
+    it('sets isRunning: true for a running thread', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+      });
+
+      // getThreadUsageStatistics internally calls threadsDao.getOne — must mock it
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(graphDao, 'getSchemaAndMetadata').mockResolvedValue(new Map());
+      vi.spyOn(graphDao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const stream = new (await import('stream')).PassThrough();
+      const outputPromise = collectStream(stream);
+      await (service as any).streamThreadExport(mockCtx, mockThread, stream);
+      const output = await outputPromise;
+
+      const parsed = JSON.parse(output);
+      expect(parsed.isRunning).toBe(true);
+    });
+
+    it('sets graph: null when graph has been deleted', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+      });
+
+      // getThreadUsageStatistics internally calls threadsDao.getOne — must mock it
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(graphDao, 'getSchemaAndMetadata').mockResolvedValue(new Map());
+      vi.spyOn(graphDao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const stream = new (await import('stream')).PassThrough();
+      const outputPromise = collectStream(stream);
+      await (service as any).streamThreadExport(mockCtx, mockThread, stream);
+      const output = await outputPromise;
+
+      const parsed = JSON.parse(output);
+      expect(parsed.graph).toBeNull();
+    });
+
+    it('paginates messages — fetches multiple pages until exhausted (700 messages)', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+      });
+
+      const page1 = Array.from({ length: 500 }, (_, i) =>
+        createMockMessageEntity({ id: `msg-${i}` }),
+      );
+      const page2 = Array.from({ length: 200 }, (_, i) =>
+        createMockMessageEntity({ id: `msg-${500 + i}` }),
+      );
+
+      // getThreadUsageStatistics internally calls threadsDao.getOne — must mock it
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      // getAll is called by: getThreadUsageStatistics (projection call), then pagination.
+      // page2 has 200 items < PAGE_SIZE (500), so pagination stops after page2 (no 3rd fetch).
+      vi.spyOn(messagesDao, 'getAll')
+        .mockResolvedValueOnce([]) // usage statistics messages fetch
+        .mockResolvedValueOnce(page1) // export page 1 (500 messages → full page, continue)
+        .mockResolvedValueOnce(page2); // export page 2 (200 messages < PAGE_SIZE → stop)
+      vi.spyOn(graphDao, 'getSchemaAndMetadata').mockResolvedValue(new Map());
+      vi.spyOn(graphDao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const stream = new (await import('stream')).PassThrough();
+      const outputPromise = collectStream(stream);
+      await (service as any).streamThreadExport(mockCtx, mockThread, stream);
+      const output = await outputPromise;
+
+      const parsed = JSON.parse(output);
+      expect(parsed.messages).toHaveLength(700);
+      // Called 3 times total: 1 for usage stats + 2 for pagination (page2 < PAGE_SIZE → no 3rd page)
+      expect(messagesDao.getAll).toHaveBeenCalledTimes(3);
+    });
+
+    it('scrubs secret-like keys from node configs in the graph snapshot', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+      });
+
+      const schemaWithSecrets = {
+        schema: {
+          nodes: [
+            {
+              id: 'node-1',
+              template: 'simple-agent',
+              config: {
+                name: 'My Agent',
+                apiKey: 'sk-secret',
+                githubToken: 'ghp_abc',
+                systemPrompt: 'You are helpful',
+              },
+            },
+          ],
+          edges: [],
+        },
+        metadata: {},
+        agents: [],
+      };
+
+      // getThreadUsageStatistics internally calls threadsDao.getOne — must mock it
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(graphDao, 'getSchemaAndMetadata').mockResolvedValue(
+        new Map([[mockGraphId, schemaWithSecrets]]),
+      );
+      vi.spyOn(graphDao, 'getAll').mockResolvedValue([mockGraphRow as never]);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const stream = new (await import('stream')).PassThrough();
+      const outputPromise = collectStream(stream);
+      await (service as any).streamThreadExport(mockCtx, mockThread, stream);
+      const output = await outputPromise;
+
+      const parsed = JSON.parse(output);
+      const nodeConfig = parsed.graph.nodes[0].config;
+
+      expect(nodeConfig).not.toHaveProperty('apiKey');
+      expect(nodeConfig).not.toHaveProperty('githubToken');
+      expect(nodeConfig).toMatchObject({
+        name: 'My Agent',
+        systemPrompt: 'You are helpful',
+      });
+    });
+  });
+
+  describe('getThreadExportFile', () => {
+    it('throws NotFoundException when thread not found', async () => {
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(
+        service.getThreadExportFile(mockCtx, mockThreadId),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+    });
+
+    it('throws NotFoundException for another user thread (wrong createdBy filter)', async () => {
+      // DAO returns null when createdBy filter does not match
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      const otherCtx = {
+        checkSub: vi.fn().mockReturnValue('other-user-id'),
+      } as unknown as AppContextStorage;
+
+      await expect(
+        service.getThreadExportFile(otherCtx, mockThreadId),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+
+      expect(threadsDao.getOne).toHaveBeenCalledWith({
+        id: mockThreadId,
+        createdBy: 'other-user-id',
+      });
+    });
+
+    it('returns a StreamableFile for a valid thread', async () => {
+      const mockThread = createMockThreadEntity({ status: ThreadStatus.Done });
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(graphDao, 'getSchemaAndMetadata').mockResolvedValue(new Map());
+      vi.spyOn(graphDao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const result = await service.getThreadExportFile(mockCtx, mockThreadId);
+      expect(result).toBeInstanceOf(StreamableFile);
+      expect(result.getHeaders()).toMatchObject({
+        type: 'application/json',
+        disposition: expect.stringMatching(/^attachment; filename="thread-export-\d{4}-\d{2}-\d{2}\.json"$/),
+      });
     });
   });
 });

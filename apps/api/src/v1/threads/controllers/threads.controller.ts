@@ -7,6 +7,7 @@ import {
   Post,
   Put,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
@@ -69,6 +70,14 @@ export class ThreadsController {
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadUsageStatisticsDto> {
     return this.threadsService.getThreadUsageStatistics(ctx, threadId);
+  }
+
+  @Get(':threadId/export')
+  async exportThread(
+    @Param('threadId') threadId: string,
+    @CtxStorage() ctx: AppContextStorage,
+  ): Promise<StreamableFile> {
+    return this.threadsService.getThreadExportFile(ctx, threadId);
   }
 
   @Put(':threadId/metadata')

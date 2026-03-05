@@ -3,6 +3,7 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import { MessageSchema } from '../../graphs/dto/graphs.dto';
+import { GraphEdgeSchema, GraphNodeSchema } from '../../graphs/graphs.types';
 import { ThreadStatus } from '../threads.types';
 
 const ThreadStatusesQuerySchema = zodQueryArray(z.enum(ThreadStatus));
@@ -218,6 +219,28 @@ export type UsageStatisticsAggregate = z.infer<
   typeof UsageStatisticsAggregateSchema
 >;
 export type ThreadUsageStatistics = z.infer<typeof ThreadUsageStatisticsSchema>;
+
+// Graph snapshot for export (excludes volatile runtime fields like runningThreads)
+export const GraphSnapshotSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  nodes: z.array(GraphNodeSchema),
+  edges: z.array(GraphEdgeSchema).optional().default([]),
+});
+
+export const ThreadExportSchema = z.object({
+  version: z.literal('1'),
+  exportedAt: z.string().datetime(),
+  isRunning: z.boolean(),
+  thread: ThreadSchema,
+  messages: z.array(ThreadMessageSchema),
+  usageStatistics: ThreadUsageStatisticsSchema,
+  graph: GraphSnapshotSchema.nullable(),
+});
+
+export type GraphSnapshot = z.infer<typeof GraphSnapshotSchema>;
+export type ThreadExport = z.infer<typeof ThreadExportSchema>;
 
 // DTOs
 export class ThreadDto extends createZodDto(ThreadSchema) {}

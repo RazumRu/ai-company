@@ -74,6 +74,7 @@
     "ignore": "^7.0.5",
     "ioredis": "5.9.3",
     "js-tiktoken": "^1.0.21",
+    "json-stream-stringify": "^3.1.6",
     "jsonwebtoken": "^9.0.3",
     "langchain": "^1.2.27",
     "lodash": "^4.17.23",

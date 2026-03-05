@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { PassThrough, Readable } from 'stream';
+
+import { Injectable, StreamableFile } from '@nestjs/common';
+import { JsonStreamStringify } from 'json-stream-stringify';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 import Decimal from 'decimal.js';
 
@@ -672,5 +675,111 @@ export class ThreadsService {
       toolsAggregate,
       userMessageCount,
     };
+  }
+
+  async getThreadExportFile(
+    ctx: AppContextStorage,
+    threadId: string,
+  ): Promise<StreamableFile> {
+    const userId = ctx.checkSub();
+    const thread = await this.threadDao.getOne({
+      id: threadId,
+      createdBy: userId,
+    });
+    if (!thread) {
+      throw new NotFoundException('THREAD_NOT_FOUND');
+    }
+
+    const stream = new PassThrough();
+    this.streamThreadExport(ctx, thread, stream).catch((err: unknown) => {
+      stream.destroy(err instanceof Error ? err : new Error(String(err)));
+    });
+
+    const date = new Date().toISOString().slice(0, 10);
+    return new StreamableFile(stream, {
+      type: 'application/json',
+      disposition: `attachment; filename="thread-export-${date}.json"`,
+    });
+  }
+
+  private async streamThreadExport(
+    ctx: AppContextStorage,
+    thread: ThreadEntity,
+    outputStream: PassThrough,
+  ): Promise<void> {
+    const [usageStatistics, graphDataMap, graphRows] = await Promise.all([
+      this.getThreadUsageStatistics(ctx, thread.id),
+      this.graphDao.getSchemaAndMetadata([thread.graphId]),
+      this.graphDao.getAll({ ids: [thread.graphId], limit: 1 }),
+    ]);
+
+    const graphData = graphDataMap.get(thread.graphId) ?? null;
+    const graphRow = graphRows[0] ?? null;
+    const graphSnapshot =
+      graphData && graphRow
+        ? {
+            id: thread.graphId,
+            name: graphRow.name,
+            description: graphRow.description ?? null,
+            nodes: graphData.schema.nodes.map((node) => ({
+              ...node,
+              config: node.config
+                ? Object.fromEntries(
+                    Object.entries(
+                      node.config as Record<string, unknown>,
+                    ).filter(
+                      ([k]) =>
+                        !/token|key|secret|password|credential|pat/i.test(k),
+                    ),
+                  )
+                : node.config,
+            })),
+            edges: graphData.schema.edges ?? [],
+          }
+        : null;
+
+    const [threadDto] = await this.prepareThreadsResponse([thread]);
+
+    const messagesDao = this.messagesDao;
+    const prepareMessageResponse = this.prepareMessageResponse.bind(this);
+
+    async function* streamMessages() {
+      const PAGE_SIZE = 500;
+      let offset = 0;
+      while (true) {
+        const page = await messagesDao.getAll({
+          threadId: thread.id,
+          limit: PAGE_SIZE,
+          offset,
+          order: { createdAt: 'ASC' },
+        });
+        for (const msg of page) {
+          yield prepareMessageResponse(msg);
+        }
+        if (page.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
+
+    const exportPayload = {
+      version: '1',
+      exportedAt: new Date().toISOString(),
+      isRunning: thread.status === ThreadStatus.Running,
+      thread: threadDto,
+      graph: graphSnapshot,
+      usageStatistics,
+      // Readable.from converts the async generator to an object-mode Readable stream,
+      // which json-stream-stringify serializes as a JSON array lazily.
+      messages: Readable.from(streamMessages(), { objectMode: true }),
+    };
+
+    await new Promise<void>((resolve, reject) => {
+      const jsonStream = new JsonStreamStringify(exportPayload);
+      jsonStream.pipe(outputStream, { end: true });
+      jsonStream.on('error', reject);
+      outputStream.on('finish', resolve);
+      outputStream.on('error', reject);
+    });
   }
 }
