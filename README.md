@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo.png" alt="Geniro" width="400" />
+
 # Geniro
 
 **Open-source platform for building, running, and managing AI agent workflows.**
