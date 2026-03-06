@@ -4,11 +4,13 @@ import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
+import { GitProviderConnectionDao } from '../../../v1/git-auth/dao/git-provider-connection.dao';
+import { GitHubAppProviderService } from '../../../v1/git-auth/services/github-app-provider.service';
+import { GitHubAppService } from '../../../v1/git-auth/services/github-app.service';
+import { GitProvider } from '../../../v1/git-auth/types/git-provider.enum';
 import { GitRepositoriesDao } from '../../../v1/git-repositories/dao/git-repositories.dao';
 import { GitRepositoryProvider } from '../../../v1/git-repositories/git-repositories.types';
 import { GitRepositoriesService } from '../../../v1/git-repositories/services/git-repositories.service';
-import { GitHubAppInstallationDao } from '../../../v1/github-app/dao/github-app-installation.dao';
-import { GitHubAppInstallationService } from '../../../v1/github-app/services/github-app-installation.service';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
@@ -42,8 +44,9 @@ describe('GitRepositoriesService sync (integration)', () => {
   let app: INestApplication;
   let gitRepositoriesService: GitRepositoriesService;
   let gitRepositoriesDao: GitRepositoriesDao;
-  let gitHubAppInstallationDao: GitHubAppInstallationDao;
-  let gitHubAppInstallationService: GitHubAppInstallationService;
+  let gitProviderConnectionDao: GitProviderConnectionDao;
+  let gitHubAppProviderService: GitHubAppProviderService;
+  let gitHubAppService: GitHubAppService;
   let projectsDao: ProjectsDao;
 
   const createdRepoIds: string[] = [];
@@ -54,8 +57,9 @@ describe('GitRepositoriesService sync (integration)', () => {
     app = await createTestModule();
     gitRepositoriesService = app.get(GitRepositoriesService);
     gitRepositoriesDao = app.get(GitRepositoriesDao);
-    gitHubAppInstallationDao = app.get(GitHubAppInstallationDao);
-    gitHubAppInstallationService = app.get(GitHubAppInstallationService);
+    gitProviderConnectionDao = app.get(GitProviderConnectionDao);
+    gitHubAppProviderService = app.get(GitHubAppProviderService);
+    gitHubAppService = app.get(GitHubAppService);
     projectsDao = app.get(ProjectsDao);
 
     // Create a test project with a deterministic ID so ctx.checkProjectId() resolves correctly.
@@ -77,8 +81,8 @@ describe('GitRepositoriesService sync (integration)', () => {
 
   beforeEach(() => {
     // Always mock isConfigured to return true so tests don't depend on env vars
-    vi.spyOn(gitHubAppInstallationService, 'isConfigured').mockReturnValue(true);
-    vi.spyOn(gitHubAppInstallationService, 'getInstallationToken').mockResolvedValue('ghs_mock_token');
+    vi.spyOn(gitHubAppProviderService, 'isConfigured').mockReturnValue(true);
+    vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_mock_token');
   });
 
   afterEach(async () => {
@@ -95,7 +99,7 @@ describe('GitRepositoriesService sync (integration)', () => {
 
     for (const id of [...createdInstallationIds]) {
       try {
-        await gitHubAppInstallationDao.hardDeleteById(id);
+        await gitProviderConnectionDao.hardDeleteById(id);
       } catch {
         // Already deleted — ignore
       }
@@ -116,15 +120,15 @@ describe('GitRepositoriesService sync (integration)', () => {
   }, 360_000);
 
   const createInstallation = async (installationId: number, accountLogin: string) => {
-    const inst = await gitHubAppInstallationDao.create({
+    const conn = await gitProviderConnectionDao.create({
       userId: TEST_USER_ID,
-      installationId,
+      provider: GitProvider.GitHub,
       accountLogin,
-      accountType: 'Organization',
+      metadata: { installationId, accountType: 'Organization' },
       isActive: true,
     });
-    createdInstallationIds.push(inst.id);
-    return inst;
+    createdInstallationIds.push(conn.id);
+    return conn;
   };
 
   const trackRepo = (id: string) => {
@@ -137,7 +141,7 @@ describe('GitRepositoriesService sync (integration)', () => {
     it('syncs repos from one installation and verifies DB records', async () => {
       const installation = await createInstallation(88001, 'sync-org');
 
-      vi.spyOn(gitHubAppInstallationService, 'getActiveInstallations').mockResolvedValue([installation]);
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([installation]);
       vi.spyOn(global, 'fetch').mockResolvedValue(
         makeGithubResponse([
           { owner: 'sync-org', name: 'api-service', html_url: 'https://github.com/sync-org/api-service', default_branch: 'main' },
@@ -164,7 +168,7 @@ describe('GitRepositoriesService sync (integration)', () => {
       expect(apiService).toBeDefined();
       expect(apiService!.owner).toBe('sync-org');
       expect(apiService!.provider).toBe(GitRepositoryProvider.GITHUB);
-      expect(apiService!.installationId).toBe(installation.installationId);
+      expect(apiService!.installationId).toBe(installation.metadata['installationId']);
       expect(apiService!.createdBy).toBe(TEST_USER_ID);
       expect(apiService!.projectId).toBe(TEST_PROJECT_ID);
 
@@ -197,7 +201,7 @@ describe('GitRepositoriesService sync (integration)', () => {
       });
       trackRepo(existingRepo.id);
 
-      vi.spyOn(gitHubAppInstallationService, 'getActiveInstallations').mockResolvedValue([installation]);
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([installation]);
       // GitHub returns empty — the existing repo has been revoked
       vi.spyOn(global, 'fetch').mockResolvedValue(makeGithubResponse([]));
 
@@ -237,7 +241,7 @@ describe('GitRepositoriesService sync (integration)', () => {
       });
       trackRepo(patRepo.id);
 
-      vi.spyOn(gitHubAppInstallationService, 'getActiveInstallations').mockResolvedValue([installation]);
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([installation]);
       // GitHub returns zero repos for the installation
       vi.spyOn(global, 'fetch').mockResolvedValue(makeGithubResponse([]));
 

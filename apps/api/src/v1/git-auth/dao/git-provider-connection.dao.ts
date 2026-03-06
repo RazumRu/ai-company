@@ -2,27 +2,27 @@ import { Injectable } from '@nestjs/common';
 import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
 import { DataSource } from 'typeorm';
 
-import { GitHubAppInstallationEntity } from '../entity/github-app-installation.entity';
+import { GitProviderConnectionEntity } from '../entity/git-provider-connection.entity';
 
-export type GitHubAppInstallationSearchTerms = Partial<{
+export type GitProviderConnectionSearchTerms = Partial<{
   id: string;
   userId: string;
-  installationId: number;
+  provider: string;
   accountLogin: string;
   isActive: boolean;
 }>;
 
 @Injectable()
-export class GitHubAppInstallationDao extends BaseDao<
-  GitHubAppInstallationEntity,
-  GitHubAppInstallationSearchTerms
+export class GitProviderConnectionDao extends BaseDao<
+  GitProviderConnectionEntity,
+  GitProviderConnectionSearchTerms
 > {
   public get alias() {
-    return 'gai';
+    return 'gpc';
   }
 
   protected get entity() {
-    return GitHubAppInstallationEntity;
+    return GitProviderConnectionEntity;
   }
 
   constructor(dataSource: DataSource) {
@@ -30,8 +30,8 @@ export class GitHubAppInstallationDao extends BaseDao<
   }
 
   protected applySearchParams(
-    builder: BaseQueryBuilder<GitHubAppInstallationEntity>,
-    params?: GitHubAppInstallationSearchTerms,
+    builder: BaseQueryBuilder<GitProviderConnectionEntity>,
+    params?: GitProviderConnectionSearchTerms,
   ) {
     if (params?.id) {
       builder.andWhere({ id: params.id });
@@ -41,8 +41,8 @@ export class GitHubAppInstallationDao extends BaseDao<
       builder.andWhere({ userId: params.userId });
     }
 
-    if (params?.installationId !== undefined) {
-      builder.andWhere({ installationId: params.installationId });
+    if (params?.provider) {
+      builder.andWhere({ provider: params.provider });
     }
 
     if (params?.accountLogin) {

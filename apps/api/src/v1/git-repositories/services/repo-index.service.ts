@@ -11,7 +11,8 @@ import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { shQuote } from '../../utils/shell.utils';
-import { GitHubTokenResolverService } from '../../github-app/services/github-token-resolver.service';
+import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
+import { GitProvider } from '../../git-auth/types/git-provider.enum';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
@@ -80,7 +81,7 @@ export class RepoIndexService implements OnModuleInit {
   constructor(
     private readonly repoIndexDao: RepoIndexDao,
     private readonly gitRepositoriesDao: GitRepositoriesDao,
-    private readonly gitHubTokenResolverService: GitHubTokenResolverService,
+    private readonly gitTokenResolverService: GitTokenResolverService,
     private readonly repoIndexerService: RepoIndexerService,
     private readonly repoIndexQueueService: RepoIndexQueueService,
     private readonly llmModelsService: LlmModelsService,
@@ -1265,8 +1266,10 @@ export class RepoIndexService implements OnModuleInit {
     const parsed = RepoIndexService.parseOwnerRepo(repoUrl);
     if (!parsed) return repoUrl;
 
+    // gitRepo.createdBy is trusted — it originates from a DB record, not user input.
     const resolved = gitRepo
-      ? await this.gitHubTokenResolverService.resolveTokenForOwner(
+      ? await this.gitTokenResolverService.resolveToken(
+          GitProvider.GitHub,
           gitRepo.owner,
           gitRepo.createdBy,
         )

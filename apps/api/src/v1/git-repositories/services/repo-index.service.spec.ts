@@ -10,7 +10,7 @@ import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
 import { RepoIndexStatus } from '../git-repositories.types';
-import { GitHubTokenResolverService } from '../../github-app/services/github-token-resolver.service';
+import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
 import { RepoIndexService } from './repo-index.service';
 import { RepoIndexQueueService } from './repo-index-queue.service';
 import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
@@ -41,8 +41,8 @@ const mockGitRepositoriesDao = {
   getOne: vi.fn(),
 };
 
-const mockGitHubTokenResolverService = {
-  resolveTokenForOwner: vi.fn().mockResolvedValue(null),
+const mockGitTokenResolverService = {
+  resolveToken: vi.fn().mockResolvedValue(null),
 };
 
 const mockRepoIndexerService = {
@@ -159,11 +159,11 @@ describe('RepoIndexService', () => {
     mockLlmModelsService.getKnowledgeEmbeddingModel.mockReturnValue(
       'text-embedding-3-small',
     );
-    mockGitHubTokenResolverService.resolveTokenForOwner.mockResolvedValue(null);
+    mockGitTokenResolverService.resolveToken.mockResolvedValue(null);
     service = new RepoIndexService(
       mockRepoIndexDao as unknown as RepoIndexDao,
       mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-      mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
+      mockGitTokenResolverService as unknown as GitTokenResolverService,
       mockRepoIndexerService as unknown as RepoIndexerService,
       mockRepoIndexQueueService as unknown as RepoIndexQueueService,
       mockLlmModelsService as unknown as LlmModelsService,
@@ -809,7 +809,7 @@ describe('RepoIndexService', () => {
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
         mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-        mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
+        mockGitTokenResolverService as unknown as GitTokenResolverService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
         mockLlmModelsService as unknown as LlmModelsService,
@@ -872,7 +872,7 @@ describe('RepoIndexService', () => {
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
         mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-        mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
+        mockGitTokenResolverService as unknown as GitTokenResolverService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
         mockLlmModelsService as unknown as LlmModelsService,
@@ -918,7 +918,7 @@ describe('RepoIndexService', () => {
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
         mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-        mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
+        mockGitTokenResolverService as unknown as GitTokenResolverService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
         mockLlmModelsService as unknown as LlmModelsService,
@@ -1065,7 +1065,7 @@ describe('RepoIndexService', () => {
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
         mockGitRepositoriesDao as unknown as GitRepositoriesDao,
-        mockGitHubTokenResolverService as unknown as GitHubTokenResolverService,
+        mockGitTokenResolverService as unknown as GitTokenResolverService,
         mockRepoIndexerService as unknown as RepoIndexerService,
         mockRepoIndexQueueService as unknown as RepoIndexQueueService,
         mockLlmModelsService as unknown as LlmModelsService,

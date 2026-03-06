@@ -161,31 +161,66 @@ export class GitHubAppService {
     }
 
     // Get user's installations for this app
-    const octokit = new Octokit({ auth: tokenData.access_token });
+    const userOctokit = new Octokit({ auth: tokenData.access_token });
+
+    let userInstallations: {
+      id: number;
+      account: { login: string; type: string };
+    }[] = [];
 
     try {
       const response =
-        await octokit.apps.listInstallationsForAuthenticatedUser();
-      return response.data.installations.map((inst) => ({
-        id: inst.id,
-        account: {
-          login: inst.account
-            ? 'login' in inst.account
-              ? (inst.account.login ?? '')
-              : ''
-            : '',
-          type: inst.account
-            ? 'type' in inst.account
-              ? (inst.account.type ?? '')
-              : ''
-            : '',
-        },
-      }));
+        await userOctokit.apps.listInstallationsForAuthenticatedUser();
+      userInstallations = response.data.installations.map((inst) =>
+        this.mapInstallation(inst),
+      );
     } catch (error) {
       this.logger.error(
-        `Failed to list user installations: ${error instanceof Error ? error.message : String(error)}`,
+        `User-scoped listInstallationsForAuthenticatedUser failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       throw new BadRequestException('GITHUB_APP_LIST_INSTALLATIONS_FAILED');
+    }
+
+    if (userInstallations.length > 0) {
+      return userInstallations;
+    }
+
+    // Fallback: use app-level JWT to list all installations of the app,
+    // filtered to only those belonging to the authenticated user's orgs or personal account.
+    // This handles the case where the user installed the app via a new tab
+    // without completing the OAuth user-authorization flow.
+    this.logger.warn(
+      'User-scoped installation list was empty, falling back to app-level listInstallations',
+    );
+
+    try {
+      const [userOrgsResponse, authenticatedUserResponse] = await Promise.all([
+        userOctokit.orgs.listForAuthenticatedUser(),
+        userOctokit.users.getAuthenticated(),
+      ]);
+
+      const allowedLogins = new Set(
+        userOrgsResponse.data.map((org) => org.login.toLowerCase()),
+      );
+      allowedLogins.add(authenticatedUserResponse.data.login.toLowerCase());
+
+      const appJwt = this.generateJwt();
+      const appOctokit = new Octokit({ auth: appJwt });
+      const response = await appOctokit.apps.listInstallations();
+
+      return response.data
+        .filter((inst) => {
+          const login = inst.account && 'login' in inst.account
+            ? String(inst.account.login)
+            : '';
+          return login !== '' && allowedLogins.has(login.toLowerCase());
+        })
+        .map((inst) => this.mapInstallation(inst));
+    } catch (error) {
+      this.logger.error(
+        `App-level listInstallations fallback failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
     }
   }
 
@@ -231,6 +266,26 @@ export class GitHubAppService {
   /** Invalidate a cached token (e.g. when an installation is deleted). */
   invalidateCachedToken(installationId: number): void {
     this.tokenCache.delete(installationId);
+  }
+
+  private mapInstallation(inst: {
+    id: number;
+    account?: Record<string, unknown> | null;
+  }): { id: number; account: { login: string; type: string } } {
+    const account = inst.account;
+    return {
+      id: inst.id,
+      account: {
+        login:
+          account && 'login' in account && typeof account.login === 'string'
+            ? account.login
+            : '',
+        type:
+          account && 'type' in account && typeof account.type === 'string'
+            ? account.type
+            : '',
+      },
+    };
   }
 
   private assertConfigured(): void {

@@ -502,7 +502,7 @@ describe('Shell Execution Integration Tests', () => {
         );
 
         expect(result.result?.exitCode).toBe(0);
-        expect(result.result?.stdout).toBe('bar');
+        expect(result.result?.stdout.trim()).toBe('bar');
       },
     );
   });

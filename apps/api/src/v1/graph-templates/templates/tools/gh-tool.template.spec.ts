@@ -4,7 +4,7 @@ import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GhToolGroup } from '../../../agent-tools/tools/common/github/gh-tool-group';
-import { GitHubTokenResolverService } from '../../../github-app/services/github-token-resolver.service';
+import { GitTokenResolverService } from '../../../git-auth/services/git-token-resolver.service';
 import { IGithubResourceOutput } from '../../../graph-resources/services/github-resource';
 import {
   CompiledGraphNode,
@@ -75,9 +75,9 @@ describe('GhToolTemplate', () => {
           useValue: mockGraphRegistry,
         },
         {
-          provide: GitHubTokenResolverService,
+          provide: GitTokenResolverService,
           useValue: {
-            resolveTokenForOwner: vi.fn().mockResolvedValue(null),
+            resolveToken: vi.fn().mockResolvedValue(null),
             resolveDefaultToken: vi.fn().mockResolvedValue(null),
           },
         },

@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 
-import { GitHubAppModule } from '../github-app/github-app.module';
+import { GitAuthModule } from '../git-auth/git-auth.module';
 import { SystemController } from './system.controller';
 
 @Module({
-  imports: [GitHubAppModule],
+  imports: [GitAuthModule],
   controllers: [SystemController],
 })
 export class SystemModule {}

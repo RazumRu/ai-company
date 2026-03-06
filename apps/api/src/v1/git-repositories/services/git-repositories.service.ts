@@ -1,4 +1,5 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import {
   BadRequestException,
   DefaultLogger,
@@ -7,7 +8,10 @@ import {
 } from '@packages/common';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { GitHubAppInstallationService } from '../../github-app/services/github-app-installation.service';
+import { GitHubAppProviderService } from '../../git-auth/services/github-app-provider.service';
+import { GitHubAppService } from '../../git-auth/services/github-app.service';
+import type { InstallationUnlinkedEvent } from '../../git-auth/types/installation-unlinked.event';
+import { INSTALLATION_UNLINKED_EVENT } from '../../git-auth/types/installation-unlinked.event';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
@@ -41,9 +45,19 @@ export class GitRepositoriesService {
     private readonly qdrantService: QdrantService,
     private readonly logger: DefaultLogger,
     private readonly projectsDao: ProjectsDao,
-    @Inject(forwardRef(() => GitHubAppInstallationService))
-    private readonly gitHubAppInstallationService: GitHubAppInstallationService,
+    private readonly gitHubAppProviderService: GitHubAppProviderService,
+    private readonly gitHubAppService: GitHubAppService,
   ) {}
+
+  // Internal event only — emitted by GitHubAppProviderService after verifying ownership.
+  // The userId filter in deleteRepositoriesByInstallationIds is defense-in-depth.
+  @OnEvent(INSTALLATION_UNLINKED_EVENT)
+  async onInstallationUnlinked(event: InstallationUnlinkedEvent): Promise<void> {
+    await this.deleteRepositoriesByInstallationIds(
+      event.userId,
+      event.githubInstallationIds,
+    );
+  }
 
   async createRepository(
     ctx: AppContextStorage,
@@ -385,7 +399,7 @@ export class GitRepositoriesService {
     const userId = ctx.checkSub();
     const projectId = ctx.checkProjectId();
 
-    if (!this.gitHubAppInstallationService.isConfigured()) {
+    if (!this.gitHubAppProviderService.isConfigured()) {
       throw new BadRequestException('GITHUB_APP_NOT_CONFIGURED');
     }
 
@@ -402,7 +416,7 @@ export class GitRepositoriesService {
   }
 
   private async performSync(userId: string, projectId: string): Promise<SyncRepositoriesResponse> {
-    const installations = await this.gitHubAppInstallationService.getActiveInstallations(userId);
+    const installations = await this.gitHubAppProviderService.getActiveInstallations(userId);
 
     if (installations.length === 0) {
       return { synced: 0, removed: 0, total: 0 };
@@ -418,12 +432,13 @@ export class GitRepositoriesService {
     }> = [];
 
     for (const installation of installations) {
+      const ghInstallationId = installation.metadata['installationId'] as number;
       let token: string;
       try {
-        token = await this.gitHubAppInstallationService.getInstallationToken(installation.installationId);
+        token = await this.gitHubAppService.getInstallationToken(ghInstallationId);
       } catch (err) {
         this.logger.warn(
-          `Skipping installation ${installation.installationId}: failed to get token: ${err instanceof Error ? err.message : String(err)}`,
+          `Skipping installation ${ghInstallationId}: failed to get token: ${err instanceof Error ? err.message : String(err)}`,
         );
         continue;
       }
@@ -469,7 +484,7 @@ export class GitRepositoriesService {
             repo: ghRepo.name,
             url: ghRepo.html_url,
             defaultBranch: ghRepo.default_branch ?? 'main',
-            installationId: installation.installationId,
+            installationId: ghInstallationId,
           });
         }
 

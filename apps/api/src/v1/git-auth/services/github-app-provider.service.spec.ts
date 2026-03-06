@@ -1,10 +1,12 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BadRequestException, DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { GitRepositoriesService } from '../../git-repositories/services/git-repositories.service';
-import { GitHubAppInstallationDao } from '../dao/github-app-installation.dao';
-import { GitHubAppInstallationEntity } from '../entity/github-app-installation.entity';
-import { GitHubAppInstallationService } from './github-app-installation.service';
+import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
+import { GitProviderConnectionEntity } from '../entity/git-provider-connection.entity';
+import { GitProvider } from '../types/git-provider.enum';
+import { INSTALLATION_UNLINKED_EVENT } from '../types/installation-unlinked.event';
+import { GitHubAppProviderService } from './github-app-provider.service';
 import { GitHubAppService } from './github-app.service';
 
 vi.mock('../../../environments', () => ({
@@ -16,8 +18,8 @@ vi.mock('../../../environments', () => ({
   },
 }));
 
-describe('GitHubAppInstallationService', () => {
-  let service: GitHubAppInstallationService;
+describe('GitHubAppProviderService', () => {
+  let service: GitHubAppProviderService;
   let mockGitHubAppService: {
     isConfigured: ReturnType<typeof vi.fn>;
     getAppSlug: ReturnType<typeof vi.fn>;
@@ -26,15 +28,15 @@ describe('GitHubAppInstallationService', () => {
     exchangeCodeAndGetInstallations: ReturnType<typeof vi.fn>;
     deleteInstallation: ReturnType<typeof vi.fn>;
   };
-  let mockInstallationDao: {
+  let mockConnectionDao: {
     getOne: ReturnType<typeof vi.fn>;
     getAll: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     updateById: ReturnType<typeof vi.fn>;
   };
   let mockLogger: { warn: ReturnType<typeof vi.fn> };
-  let mockGitRepositoriesService: {
-    deleteRepositoriesByInstallationIds: ReturnType<typeof vi.fn>;
+  let mockEventEmitter: {
+    emit: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -50,7 +52,7 @@ describe('GitHubAppInstallationService', () => {
       deleteInstallation: vi.fn().mockResolvedValue(undefined),
     };
 
-    mockInstallationDao = {
+    mockConnectionDao = {
       getOne: vi.fn().mockResolvedValue(null),
       getAll: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue({}),
@@ -59,15 +61,15 @@ describe('GitHubAppInstallationService', () => {
 
     mockLogger = { warn: vi.fn() };
 
-    mockGitRepositoriesService = {
-      deleteRepositoriesByInstallationIds: vi.fn().mockResolvedValue(0),
+    mockEventEmitter = {
+      emit: vi.fn(),
     };
 
-    service = new GitHubAppInstallationService(
+    service = new GitHubAppProviderService(
       mockGitHubAppService as unknown as GitHubAppService,
-      mockInstallationDao as unknown as GitHubAppInstallationDao,
+      mockConnectionDao as unknown as GitProviderConnectionDao,
       mockLogger as unknown as DefaultLogger,
-      mockGitRepositoriesService as unknown as GitRepositoriesService,
+      mockEventEmitter as unknown as EventEmitter2,
     );
   });
 
@@ -104,58 +106,6 @@ describe('GitHubAppInstallationService', () => {
     });
   });
 
-  describe('linkInstallation', () => {
-    it('should verify installation and create a new link record', async () => {
-      const result = await service.linkInstallation('user-123', 12345);
-
-      expect(mockGitHubAppService.getInstallation).toHaveBeenCalledWith(12345);
-      expect(mockGitHubAppService.getInstallationToken).toHaveBeenCalledWith(
-        12345,
-      );
-      expect(mockInstallationDao.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'user-123',
-          installationId: 12345,
-          accountLogin: 'my-org',
-          accountType: 'Organization',
-          isActive: true,
-        }),
-      );
-      expect(result).toEqual({
-        linked: true,
-        accountLogin: 'my-org',
-        accountType: 'Organization',
-      });
-    });
-
-    it('should update existing record if already linked', async () => {
-      mockInstallationDao.getOne.mockResolvedValue({
-        id: 'existing-record',
-        userId: 'user-123',
-        installationId: 12345,
-      } as GitHubAppInstallationEntity);
-
-      const result = await service.linkInstallation('user-123', 12345);
-
-      expect(mockInstallationDao.updateById).toHaveBeenCalledWith(
-        'existing-record',
-        expect.objectContaining({
-          accountLogin: 'my-org',
-          accountType: 'Organization',
-          isActive: true,
-        }),
-      );
-      expect(mockInstallationDao.create).not.toHaveBeenCalled();
-      expect(result.linked).toBe(true);
-    });
-
-    it('should reject invalid installation ID', async () => {
-      await expect(
-        service.linkInstallation('user-123', -1),
-      ).rejects.toThrow(BadRequestException);
-    });
-  });
-
   describe('linkViaOAuthCode', () => {
     it('should throw when no installations found', async () => {
       mockGitHubAppService.exchangeCodeAndGetInstallations.mockResolvedValue(
@@ -184,7 +134,7 @@ describe('GitHubAppInstallationService', () => {
       expect(mockGitHubAppService.getInstallationToken).toHaveBeenCalledWith(
         200,
       );
-      expect(mockInstallationDao.create).toHaveBeenCalledTimes(2);
+      expect(mockConnectionDao.create).toHaveBeenCalledTimes(2);
       expect(result).toEqual({
         linked: true,
         accountLogin: 'org-a',
@@ -204,7 +154,7 @@ describe('GitHubAppInstallationService', () => {
 
       const result = await service.linkViaOAuthCode('user-123', 'code');
 
-      expect(mockInstallationDao.create).toHaveBeenCalledTimes(1);
+      expect(mockConnectionDao.create).toHaveBeenCalledTimes(1);
       expect(result).toEqual({
         linked: true,
         accountLogin: 'good-org',
@@ -225,31 +175,34 @@ describe('GitHubAppInstallationService', () => {
         service.linkViaOAuthCode('user-123', 'code'),
       ).rejects.toThrow(BadRequestException);
 
-      expect(mockInstallationDao.create).not.toHaveBeenCalled();
+      expect(mockConnectionDao.create).not.toHaveBeenCalled();
     });
   });
 
   describe('listInstallations', () => {
-    it('should return user installations', async () => {
+    it('should return user installations with metadata extracted', async () => {
       const now = new Date();
-      mockInstallationDao.getAll.mockResolvedValue([
+      mockConnectionDao.getAll.mockResolvedValue([
         {
           id: 'record-1',
-          installationId: 12345,
+          provider: GitProvider.GitHub,
           accountLogin: 'my-org',
-          accountType: 'Organization',
+          metadata: { installationId: 12345, accountType: 'Organization' },
           isActive: true,
           createdAt: now,
-        } as GitHubAppInstallationEntity,
+        } as unknown as GitProviderConnectionEntity,
       ]);
 
       const result = await service.listInstallations('user-123');
 
       expect(result.installations).toHaveLength(1);
       expect(result.installations[0]!.accountLogin).toBe('my-org');
-      expect(mockInstallationDao.getAll).toHaveBeenCalledWith(
+      expect(result.installations[0]!.installationId).toBe(12345);
+      expect(result.installations[0]!.accountType).toBe('Organization');
+      expect(mockConnectionDao.getAll).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-123',
+          provider: GitProvider.GitHub,
           isActive: true,
         }),
       );
@@ -257,58 +210,35 @@ describe('GitHubAppInstallationService', () => {
   });
 
   describe('getActiveInstallations', () => {
-    it('should call DAO with userId and isActive: true', async () => {
-      const mockInstallations = [
+    it('should call DAO with userId, provider, and isActive: true', async () => {
+      const mockConnections = [
         {
-          id: 'inst-1',
+          id: 'conn-1',
           userId: 'user-123',
-          installationId: 100,
+          provider: GitProvider.GitHub,
+          metadata: { installationId: 100 },
           isActive: true,
         },
-      ] as GitHubAppInstallationEntity[];
+      ] as unknown as GitProviderConnectionEntity[];
 
-      mockInstallationDao.getAll.mockResolvedValue(mockInstallations);
+      mockConnectionDao.getAll.mockResolvedValue(mockConnections);
 
       const result = await service.getActiveInstallations('user-123');
 
-      expect(mockInstallationDao.getAll).toHaveBeenCalledWith({
+      expect(mockConnectionDao.getAll).toHaveBeenCalledWith({
         userId: 'user-123',
+        provider: GitProvider.GitHub,
         isActive: true,
       });
-      expect(result).toBe(mockInstallations);
+      expect(result).toBe(mockConnections);
     });
 
-    it('should return empty array when no active installations exist', async () => {
-      mockInstallationDao.getAll.mockResolvedValue([]);
+    it('should return empty array when no active connections exist', async () => {
+      mockConnectionDao.getAll.mockResolvedValue([]);
 
       const result = await service.getActiveInstallations('user-no-installs');
 
       expect(result).toEqual([]);
-    });
-  });
-
-  describe('getInstallationToken', () => {
-    it('should delegate to gitHubAppService.getInstallationToken', async () => {
-      mockGitHubAppService.getInstallationToken.mockResolvedValue(
-        'ghs_delegated_token',
-      );
-
-      const result = await service.getInstallationToken(12345);
-
-      expect(mockGitHubAppService.getInstallationToken).toHaveBeenCalledWith(
-        12345,
-      );
-      expect(result).toBe('ghs_delegated_token');
-    });
-
-    it('should propagate errors from gitHubAppService', async () => {
-      mockGitHubAppService.getInstallationToken.mockRejectedValue(
-        new Error('Token generation failed'),
-      );
-
-      await expect(service.getInstallationToken(99999)).rejects.toThrow(
-        'Token generation failed',
-      );
     });
   });
 
@@ -328,56 +258,74 @@ describe('GitHubAppInstallationService', () => {
   });
 
   describe('unlinkInstallation', () => {
-    it('should delete from GitHub and deactivate locally', async () => {
-      mockInstallationDao.getOne.mockResolvedValue({
-        id: 'record-1',
-        userId: 'user-123',
-        installationId: 12345,
-      } as GitHubAppInstallationEntity);
+    it('should delete from GitHub, deactivate locally, and emit event', async () => {
+      mockConnectionDao.getAll.mockResolvedValue([
+        {
+          id: 'record-1',
+          userId: 'user-123',
+          provider: GitProvider.GitHub,
+          accountLogin: 'my-org',
+          metadata: { installationId: 12345 },
+        } as unknown as GitProviderConnectionEntity,
+      ]);
 
       const result = await service.unlinkInstallation('user-123', 12345);
 
       expect(mockGitHubAppService.deleteInstallation).toHaveBeenCalledWith(
         12345,
       );
-      expect(mockInstallationDao.updateById).toHaveBeenCalledWith('record-1', {
+      expect(mockConnectionDao.updateById).toHaveBeenCalledWith('record-1', {
         isActive: false,
       });
-      expect(mockGitRepositoriesService.deleteRepositoriesByInstallationIds).toHaveBeenCalledWith(
-        'user-123',
-        [12345],
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        INSTALLATION_UNLINKED_EVENT,
+        expect.objectContaining({
+          userId: 'user-123',
+          provider: GitProvider.GitHub,
+          connectionIds: ['record-1'],
+          accountLogins: ['my-org'],
+          githubInstallationIds: [12345],
+        }),
       );
       expect(result).toEqual({ unlinked: true });
     });
 
-    it('should still deactivate locally if GitHub deletion fails', async () => {
-      mockInstallationDao.getOne.mockResolvedValue({
-        id: 'record-1',
-        userId: 'user-123',
-        installationId: 12345,
-      } as GitHubAppInstallationEntity);
+    it('should still deactivate locally and emit event if GitHub deletion fails', async () => {
+      mockConnectionDao.getAll.mockResolvedValue([
+        {
+          id: 'record-1',
+          userId: 'user-123',
+          provider: GitProvider.GitHub,
+          accountLogin: 'my-org',
+          metadata: { installationId: 12345 },
+        } as unknown as GitProviderConnectionEntity,
+      ]);
       mockGitHubAppService.deleteInstallation.mockRejectedValue(
         new Error('GitHub API error'),
       );
 
       const result = await service.unlinkInstallation('user-123', 12345);
 
-      expect(mockInstallationDao.updateById).toHaveBeenCalledWith('record-1', {
+      expect(mockConnectionDao.updateById).toHaveBeenCalledWith('record-1', {
         isActive: false,
       });
-      expect(mockGitRepositoriesService.deleteRepositoriesByInstallationIds).toHaveBeenCalledWith(
-        'user-123',
-        [12345],
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        INSTALLATION_UNLINKED_EVENT,
+        expect.objectContaining({
+          githubInstallationIds: [12345],
+        }),
       );
       expect(result).toEqual({ unlinked: true });
     });
 
     it('should return unlinked: true even when no record found', async () => {
+      mockConnectionDao.getAll.mockResolvedValue([]);
+
       const result = await service.unlinkInstallation('user-123', 12345);
 
       expect(result).toEqual({ unlinked: true });
-      expect(mockInstallationDao.updateById).not.toHaveBeenCalled();
-      expect(mockGitRepositoriesService.deleteRepositoriesByInstallationIds).not.toHaveBeenCalled();
+      expect(mockConnectionDao.updateById).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
     });
 
     it('should reject invalid installation ID', async () => {
@@ -385,30 +333,48 @@ describe('GitHubAppInstallationService', () => {
         service.unlinkInstallation('user-123', -1),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('should not unlink an installation belonging to a different user', async () => {
+      // The DAO is called with user-A's userId, so it returns empty (no connections for user-A)
+      mockConnectionDao.getAll.mockResolvedValue([]);
+
+      const result = await service.unlinkInstallation('user-A', 99999);
+
+      // Since getAll returns empty for user-A, no connection matches installationId 99999
+      expect(mockConnectionDao.updateById).not.toHaveBeenCalled();
+      expect(mockGitHubAppService.deleteInstallation).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
   });
 
   describe('disconnectAll', () => {
-    it('should delete all installations from GitHub and deactivate locally', async () => {
-      mockInstallationDao.getAll.mockResolvedValue([
-        { id: 'r1', installationId: 100 },
-        { id: 'r2', installationId: 200 },
+    it('should delete all installations from GitHub, deactivate locally, and emit event', async () => {
+      mockConnectionDao.getAll.mockResolvedValue([
+        { id: 'r1', accountLogin: 'org-a', metadata: { installationId: 100 } },
+        { id: 'r2', accountLogin: 'org-b', metadata: { installationId: 200 } },
       ]);
 
       const result = await service.disconnectAll('user-123');
 
       expect(mockGitHubAppService.deleteInstallation).toHaveBeenCalledTimes(2);
-      expect(mockInstallationDao.updateById).toHaveBeenCalledTimes(2);
-      expect(mockGitRepositoriesService.deleteRepositoriesByInstallationIds).toHaveBeenCalledWith(
-        'user-123',
-        [100, 200],
+      expect(mockConnectionDao.updateById).toHaveBeenCalledTimes(2);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        INSTALLATION_UNLINKED_EVENT,
+        expect.objectContaining({
+          userId: 'user-123',
+          provider: GitProvider.GitHub,
+          connectionIds: ['r1', 'r2'],
+          accountLogins: ['org-a', 'org-b'],
+          githubInstallationIds: [100, 200],
+        }),
       );
       expect(result).toEqual({ unlinked: true });
     });
 
     it('should continue even if some GitHub deletions fail', async () => {
-      mockInstallationDao.getAll.mockResolvedValue([
-        { id: 'r1', installationId: 100 },
-        { id: 'r2', installationId: 200 },
+      mockConnectionDao.getAll.mockResolvedValue([
+        { id: 'r1', accountLogin: 'org-a', metadata: { installationId: 100 } },
+        { id: 'r2', accountLogin: 'org-b', metadata: { installationId: 200 } },
       ]);
       mockGitHubAppService.deleteInstallation
         .mockRejectedValueOnce(new Error('fail'))
@@ -416,22 +382,28 @@ describe('GitHubAppInstallationService', () => {
 
       const result = await service.disconnectAll('user-123');
 
-      expect(mockInstallationDao.updateById).toHaveBeenCalledTimes(2);
-      expect(mockGitRepositoriesService.deleteRepositoriesByInstallationIds).toHaveBeenCalledWith(
-        'user-123',
-        [100, 200],
+      expect(mockConnectionDao.updateById).toHaveBeenCalledTimes(2);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        INSTALLATION_UNLINKED_EVENT,
+        expect.objectContaining({
+          githubInstallationIds: [100, 200],
+        }),
       );
       expect(result).toEqual({ unlinked: true });
     });
 
-    it('should not call repo cleanup when no active installations exist', async () => {
-      mockInstallationDao.getAll.mockResolvedValue([]);
+    it('should emit event with empty arrays when no active connections exist', async () => {
+      mockConnectionDao.getAll.mockResolvedValue([]);
 
       const result = await service.disconnectAll('user-123');
 
-      expect(mockGitRepositoriesService.deleteRepositoriesByInstallationIds).toHaveBeenCalledWith(
-        'user-123',
-        [],
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        INSTALLATION_UNLINKED_EVENT,
+        expect.objectContaining({
+          connectionIds: [],
+          accountLogins: [],
+          githubInstallationIds: [],
+        }),
       );
       expect(result).toEqual({ unlinked: true });
     });

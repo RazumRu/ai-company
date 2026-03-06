@@ -29,6 +29,10 @@ const mockCreateInstallationAccessToken = vi.fn();
 const mockGetInstallation = vi.fn();
 const mockGetAuthenticated = vi.fn();
 const mockDeleteInstallation = vi.fn();
+const mockListInstallationsForAuthenticatedUser = vi.fn();
+const mockListInstallations = vi.fn();
+const mockListForAuthenticatedUser = vi.fn();
+const mockGetAuthenticatedUser = vi.fn();
 
 vi.mock('@octokit/rest', () => {
   class MockOctokit {
@@ -37,6 +41,17 @@ vi.mock('@octokit/rest', () => {
       getInstallation: mockGetInstallation,
       getAuthenticated: mockGetAuthenticated,
       deleteInstallation: mockDeleteInstallation,
+      listInstallationsForAuthenticatedUser:
+        mockListInstallationsForAuthenticatedUser,
+      listInstallations: mockListInstallations,
+    };
+
+    orgs = {
+      listForAuthenticatedUser: mockListForAuthenticatedUser,
+    };
+
+    users = {
+      getAuthenticated: mockGetAuthenticatedUser,
     };
   }
   return { Octokit: MockOctokit };
@@ -148,6 +163,140 @@ describe('GitHubAppService', () => {
       await expect(service.getInstallation(12345)).rejects.toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('exchangeCodeAndGetInstallations', () => {
+    const mockFetch = vi.fn();
+
+    beforeEach(() => {
+      vi.stubGlobal('fetch', mockFetch);
+      mockFetch.mockResolvedValue({
+        json: () =>
+          Promise.resolve({ access_token: 'ghu_test_user_token_123' }),
+      });
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('should return installations from user-scoped endpoint when available', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: {
+          installations: [
+            {
+              id: 100,
+              account: { login: 'org-one', type: 'Organization' },
+            },
+            { id: 200, account: { login: 'user-two', type: 'User' } },
+          ],
+        },
+      });
+
+      const result =
+        await service.exchangeCodeAndGetInstallations('test-code');
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 100,
+        account: { login: 'org-one', type: 'Organization' },
+      });
+      expect(result[1]).toEqual({
+        id: 200,
+        account: { login: 'user-two', type: 'User' },
+      });
+      expect(mockListInstallations).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to app-level listInstallations filtered by user orgs when user-scoped returns empty', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockListForAuthenticatedUser.mockResolvedValue({
+        data: [{ login: 'org-three' }],
+      });
+      mockGetAuthenticatedUser.mockResolvedValue({
+        data: { login: 'my-user' },
+      });
+      mockListInstallations.mockResolvedValue({
+        data: [
+          { id: 300, account: { login: 'org-three', type: 'Organization' } },
+          { id: 301, account: { login: 'other-org', type: 'Organization' } },
+          { id: 302, account: { login: 'my-user', type: 'User' } },
+        ],
+      });
+
+      const result =
+        await service.exchangeCodeAndGetInstallations('test-code');
+
+      expect(mockListInstallationsForAuthenticatedUser).toHaveBeenCalledTimes(1);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 300,
+        account: { login: 'org-three', type: 'Organization' },
+      });
+      expect(result[1]).toEqual({
+        id: 302,
+        account: { login: 'my-user', type: 'User' },
+      });
+      expect(mockListInstallations).toHaveBeenCalled();
+    });
+
+    it('should return empty array when both endpoints return empty', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockListForAuthenticatedUser.mockResolvedValue({ data: [] });
+      mockGetAuthenticatedUser.mockResolvedValue({
+        data: { login: 'my-user' },
+      });
+      mockListInstallations.mockResolvedValue({ data: [] });
+
+      const result =
+        await service.exchangeCodeAndGetInstallations('test-code');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when user-scoped is empty and app-level throws', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockListForAuthenticatedUser.mockResolvedValue({ data: [] });
+      mockGetAuthenticatedUser.mockResolvedValue({
+        data: { login: 'my-user' },
+      });
+      mockListInstallations.mockRejectedValue(
+        new Error('App JWT auth failed'),
+      );
+
+      const result =
+        await service.exchangeCodeAndGetInstallations('test-code');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should throw GITHUB_APP_LIST_INSTALLATIONS_FAILED when user-scoped throws an error', async () => {
+      mockListInstallationsForAuthenticatedUser.mockRejectedValue(
+        new Error('OAuth scope insufficient'),
+      );
+
+      await expect(
+        service.exchangeCodeAndGetInstallations('test-code'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockListInstallations).not.toHaveBeenCalled();
+    });
+
+    it('should throw GITHUB_OAUTH_TOKEN_EXCHANGE_FAILED when token exchange returns error', async () => {
+      mockFetch.mockResolvedValue({
+        json: () => Promise.resolve({ error: 'bad_verification_code' }),
+      });
+
+      await expect(
+        service.exchangeCodeAndGetInstallations('bad-code'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

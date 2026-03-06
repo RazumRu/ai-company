@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
 
 import { environment } from '../../environments';
-import { GitHubAppService } from '../github-app/services/github-app.service';
+import { GitHubAppService } from '../git-auth/services/github-app.service';
 import {
   AuthConfigResponseDto,
   AuthProviderType,

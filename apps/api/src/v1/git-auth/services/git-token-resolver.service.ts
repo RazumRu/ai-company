@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 
 import { GitHubAuthMethod } from '../../graph-resources/graph-resources.types';
-import { GitHubAppInstallationDao } from '../dao/github-app-installation.dao';
+import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
+import { GitProvider } from '../types/git-provider.enum';
 import { GitHubAppService } from './github-app.service';
 
 export interface ResolvedToken {
@@ -11,34 +12,42 @@ export interface ResolvedToken {
 }
 
 @Injectable()
-export class GitHubTokenResolverService {
+export class GitTokenResolverService {
   constructor(
     private readonly gitHubAppService: GitHubAppService,
-    private readonly gitHubAppInstallationDao: GitHubAppInstallationDao,
+    private readonly gitProviderConnectionDao: GitProviderConnectionDao,
     private readonly logger: DefaultLogger,
   ) {}
 
   /**
-   * Resolves a GitHub token for a specific owner (org/user)
-   * using GitHub App installation tokens.
+   * Resolves a Git token for a specific owner (org/user)
+   * using the appropriate provider's authentication method.
    */
-  async resolveTokenForOwner(
+  async resolveToken(
+    provider: GitProvider,
     owner: string,
     userId: string,
   ): Promise<ResolvedToken | null> {
+    if (provider !== GitProvider.GitHub) {
+      return null;
+    }
+
     if (this.gitHubAppService.isConfigured()) {
       // 1. Try exact match by owner (org/user that owns the repo)
-      const installation = await this.gitHubAppInstallationDao.getOne({
+      const connection = await this.gitProviderConnectionDao.getOne({
         userId,
+        provider,
         accountLogin: owner,
         isActive: true,
       });
 
-      if (installation) {
+      if (connection) {
         try {
-          const token = await this.gitHubAppService.getInstallationToken(
-            installation.installationId,
-          );
+          const installationId = connection.metadata[
+            'installationId'
+          ] as number;
+          const token =
+            await this.gitHubAppService.getInstallationToken(installationId);
           return { token, source: GitHubAuthMethod.GithubApp };
         } catch (error) {
           this.logger.warn(
@@ -51,21 +60,22 @@ export class GitHubTokenResolverService {
       // The user may have a personal installation that also has access to
       // org repos.
       // GitHub's API will enforce actual repo access permissions.
-      if (!installation) {
-        const fallbackInstallation = await this.gitHubAppInstallationDao.getOne(
-          {
-            userId,
-            isActive: true,
-          },
-        );
+      if (!connection) {
+        const fallbackConnection = await this.gitProviderConnectionDao.getOne({
+          userId,
+          provider,
+          isActive: true,
+        });
 
-        if (fallbackInstallation) {
+        if (fallbackConnection) {
           try {
-            const token = await this.gitHubAppService.getInstallationToken(
-              fallbackInstallation.installationId,
-            );
+            const installationId = fallbackConnection.metadata[
+              'installationId'
+            ] as number;
+            const token =
+              await this.gitHubAppService.getInstallationToken(installationId);
             this.logger.log(
-              `No GitHub App installation for owner ${owner}, using fallback installation ${fallbackInstallation.accountLogin}`,
+              `No GitHub App installation for owner ${owner}, using fallback installation ${fallbackConnection.accountLogin}`,
             );
             return { token, source: GitHubAuthMethod.GithubApp };
           } catch (error) {
@@ -89,19 +99,20 @@ export class GitHubTokenResolverService {
       return null;
     }
 
-    const installation = await this.gitHubAppInstallationDao.getOne({
+    const connection = await this.gitProviderConnectionDao.getOne({
       userId,
+      provider: GitProvider.GitHub,
       isActive: true,
     });
 
-    if (!installation) {
+    if (!connection) {
       return null;
     }
 
     try {
-      const token = await this.gitHubAppService.getInstallationToken(
-        installation.installationId,
-      );
+      const installationId = connection.metadata['installationId'] as number;
+      const token =
+        await this.gitHubAppService.getInstallationToken(installationId);
       return { token, source: GitHubAuthMethod.GithubApp };
     } catch (error) {
       this.logger.warn(

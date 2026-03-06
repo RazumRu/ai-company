@@ -9,21 +9,21 @@ import {
   OAuthLinkRequestDto,
   SetupInfoResponseDto,
   UnlinkInstallationResponseDto,
-} from '../dto/github-app.dto';
-import { GitHubAppInstallationService } from '../services/github-app-installation.service';
+} from '../dto/git-auth.dto';
+import { GitHubAppProviderService } from '../services/github-app-provider.service';
 
-@ApiTags('github-app')
-@Controller('github-app')
-export class GitHubAppController {
+@ApiTags('git-auth')
+@Controller('git-auth/github')
+export class GitHubAuthController {
   constructor(
-    private readonly gitHubAppInstallationService: GitHubAppInstallationService,
+    private readonly gitHubAppProviderService: GitHubAppProviderService,
   ) {}
 
   @Get('setup')
   @ApiBearerAuth()
   @OnlyForAuthorized()
   async getSetupInfo(): Promise<SetupInfoResponseDto> {
-    return this.gitHubAppInstallationService.getSetupInfo();
+    return this.gitHubAppProviderService.getSetupInfo();
   }
 
   @Post('oauth/link')
@@ -34,25 +34,7 @@ export class GitHubAppController {
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<LinkInstallationResponseDto> {
     const userId = ctx.checkSub();
-    return this.gitHubAppInstallationService.linkViaOAuthCode(
-      userId,
-      body.code,
-    );
-  }
-
-  @Post('installations/:installationId/link')
-  @ApiBearerAuth()
-  @OnlyForAuthorized()
-  async linkInstallation(
-    @Param('installationId') installationIdParam: string,
-    @CtxStorage() ctx: AppContextStorage,
-  ): Promise<LinkInstallationResponseDto> {
-    const userId = ctx.checkSub();
-    const installationId = Number(installationIdParam);
-    return this.gitHubAppInstallationService.linkInstallation(
-      userId,
-      installationId,
-    );
+    return this.gitHubAppProviderService.linkViaOAuthCode(userId, body.code);
   }
 
   @Get('installations')
@@ -62,7 +44,7 @@ export class GitHubAppController {
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<ListInstallationsResponseDto> {
     const userId = ctx.checkSub();
-    return this.gitHubAppInstallationService.listInstallations(userId);
+    return this.gitHubAppProviderService.listInstallations(userId);
   }
 
   @Delete('installations/:installationId')
@@ -74,7 +56,7 @@ export class GitHubAppController {
   ): Promise<UnlinkInstallationResponseDto> {
     const userId = ctx.checkSub();
     const installationId = Number(installationIdParam);
-    return this.gitHubAppInstallationService.unlinkInstallation(
+    return this.gitHubAppProviderService.unlinkInstallation(
       userId,
       installationId,
     );
@@ -87,6 +69,6 @@ export class GitHubAppController {
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<UnlinkInstallationResponseDto> {
     const userId = ctx.checkSub();
-    return this.gitHubAppInstallationService.disconnectAll(userId);
+    return this.gitHubAppProviderService.disconnectAll(userId);
   }
 }

@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { GitHubAppInstallationService } from '../services/github-app-installation.service';
-import { GitHubAppController } from './github-app.controller';
+import { GitHubAppProviderService } from '../services/github-app-provider.service';
+import { GitHubAuthController } from './github-auth.controller';
 
-describe('GitHubAppController', () => {
-  let controller: GitHubAppController;
-  let mockInstallationService: {
+describe('GitHubAuthController', () => {
+  let controller: GitHubAuthController;
+  let mockProviderService: {
     getSetupInfo: ReturnType<typeof vi.fn>;
     linkViaOAuthCode: ReturnType<typeof vi.fn>;
-    linkInstallation: ReturnType<typeof vi.fn>;
     listInstallations: ReturnType<typeof vi.fn>;
     unlinkInstallation: ReturnType<typeof vi.fn>;
     disconnectAll: ReturnType<typeof vi.fn>;
@@ -16,7 +15,7 @@ describe('GitHubAppController', () => {
   let mockCtx: { checkSub: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    mockInstallationService = {
+    mockProviderService = {
       getSetupInfo: vi.fn().mockResolvedValue({
         installUrl: 'https://github.com/login/oauth/authorize?client_id=test',
         newInstallationUrl: '',
@@ -24,11 +23,6 @@ describe('GitHubAppController', () => {
         callbackPath: '/github-app/callback',
       }),
       linkViaOAuthCode: vi.fn().mockResolvedValue({
-        linked: true,
-        accountLogin: 'my-org',
-        accountType: 'Organization',
-      }),
-      linkInstallation: vi.fn().mockResolvedValue({
         linked: true,
         accountLogin: 'my-org',
         accountType: 'Organization',
@@ -42,29 +36,29 @@ describe('GitHubAppController', () => {
       checkSub: vi.fn().mockReturnValue('user-123'),
     };
 
-    controller = new GitHubAppController(
-      mockInstallationService as unknown as GitHubAppInstallationService,
+    controller = new GitHubAuthController(
+      mockProviderService as unknown as GitHubAppProviderService,
     );
   });
 
   describe('getSetupInfo', () => {
-    it('should delegate to the installation service', async () => {
+    it('should delegate to the provider service', async () => {
       const result = await controller.getSetupInfo();
 
-      expect(mockInstallationService.getSetupInfo).toHaveBeenCalled();
+      expect(mockProviderService.getSetupInfo).toHaveBeenCalled();
       expect(result.configured).toBe(true);
     });
   });
 
   describe('linkViaOAuthCode', () => {
-    it('should extract userId and delegate to the installation service', async () => {
+    it('should extract userId and delegate to the provider service', async () => {
       const result = await controller.linkViaOAuthCode(
         { code: 'auth-code' } as any,
         mockCtx as any,
       );
 
       expect(mockCtx.checkSub).toHaveBeenCalled();
-      expect(mockInstallationService.linkViaOAuthCode).toHaveBeenCalledWith(
+      expect(mockProviderService.linkViaOAuthCode).toHaveBeenCalledWith(
         'user-123',
         'auth-code',
       );
@@ -72,26 +66,11 @@ describe('GitHubAppController', () => {
     });
   });
 
-  describe('linkInstallation', () => {
-    it('should parse installationId and delegate to the installation service', async () => {
-      const result = await controller.linkInstallation(
-        '12345',
-        mockCtx as any,
-      );
-
-      expect(mockInstallationService.linkInstallation).toHaveBeenCalledWith(
-        'user-123',
-        12345,
-      );
-      expect(result.linked).toBe(true);
-    });
-  });
-
   describe('listInstallations', () => {
-    it('should extract userId and delegate to the installation service', async () => {
+    it('should extract userId and delegate to the provider service', async () => {
       const result = await controller.listInstallations(mockCtx as any);
 
-      expect(mockInstallationService.listInstallations).toHaveBeenCalledWith(
+      expect(mockProviderService.listInstallations).toHaveBeenCalledWith(
         'user-123',
       );
       expect(result.installations).toEqual([]);
@@ -99,13 +78,13 @@ describe('GitHubAppController', () => {
   });
 
   describe('unlinkInstallation', () => {
-    it('should parse installationId and delegate to the installation service', async () => {
+    it('should parse installationId and delegate to the provider service', async () => {
       const result = await controller.unlinkInstallation(
         '12345',
         mockCtx as any,
       );
 
-      expect(mockInstallationService.unlinkInstallation).toHaveBeenCalledWith(
+      expect(mockProviderService.unlinkInstallation).toHaveBeenCalledWith(
         'user-123',
         12345,
       );
@@ -114,10 +93,10 @@ describe('GitHubAppController', () => {
   });
 
   describe('disconnectAll', () => {
-    it('should extract userId and delegate to the installation service', async () => {
+    it('should extract userId and delegate to the provider service', async () => {
       const result = await controller.disconnectAll(mockCtx as any);
 
-      expect(mockInstallationService.disconnectAll).toHaveBeenCalledWith(
+      expect(mockProviderService.disconnectAll).toHaveBeenCalledWith(
         'user-123',
       );
       expect(result.unlinked).toBe(true);

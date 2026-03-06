@@ -8,7 +8,8 @@ import {
   GhToolGroup,
   GhToolType,
 } from '../../../agent-tools/tools/common/github/gh-tool-group';
-import { GitHubTokenResolverService } from '../../../github-app/services/github-token-resolver.service';
+import { GitTokenResolverService } from '../../../git-auth/services/git-token-resolver.service';
+import { GitProvider } from '../../../git-auth/types/git-provider.enum';
 import { IGithubResourceOutput } from '../../../graph-resources/services/github-resource';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
@@ -70,7 +71,7 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
   constructor(
     private readonly ghToolGroup: GhToolGroup,
     private readonly graphRegistry: GraphRegistry,
-    private readonly gitHubTokenResolverService: GitHubTokenResolverService,
+    private readonly gitTokenResolverService: GitTokenResolverService,
   ) {
     super();
   }
@@ -196,7 +197,8 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         const resolveTokenForOwner = userId
           ? async (owner: string): Promise<string | null> => {
               const resolved =
-                await this.gitHubTokenResolverService.resolveTokenForOwner(
+                await this.gitTokenResolverService.resolveToken(
+                  GitProvider.GitHub,
                   owner,
                   userId,
                 );

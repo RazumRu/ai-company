@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { GitHubAppService } from '../github-app/services/github-app.service';
+import { GitHubAppService } from '../git-auth/services/github-app.service';
 import { AuthProviderType } from './dto/system.dto';
 import { SystemController } from './system.controller';
 

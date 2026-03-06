@@ -83,6 +83,9 @@ describe('Graph Agents Column Integration Tests', () => {
   }, 60_000);
 
   afterAll(async () => {
+    // Allow in-flight async operations (e.g. checkpoint writes from async trigger
+    // executions) to settle before closing the DB connection pool.
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
     if (app) {
       await app.close();
     }
@@ -185,12 +188,15 @@ describe('Graph Agents Column Integration Tests', () => {
       const agentNames = entity!.agents!.map((a) => a.name).sort();
       expect(agentNames).toEqual(['Agent Alpha', 'Agent Beta']);
 
-      // Agent without description should have undefined description
+      // Agent Beta has no explicit description, but createMockGraphData merges
+      // the base config which includes a default description.
       const agentBeta = entity!.agents!.find((a) => a.name === 'Agent Beta');
-      expect(agentBeta!.description).toBeUndefined();
+      expect(agentBeta!.description).toBe('Test agent description');
     });
 
-    it('should set agents to empty array when no agent nodes exist', async () => {
+    it('should reject graph creation when manual-trigger has no agent connection', async () => {
+      // A manual-trigger requires at least one connection to a simpleAgent kind node.
+      // Creating a graph without that connection should fail validation.
       const graphData: CreateGraphDto = {
         name: `No-Agent Graph ${Date.now()}`,
         description: 'Graph without any agent nodes',
@@ -207,12 +213,9 @@ describe('Graph Agents Column Integration Tests', () => {
         },
       };
 
-      const graph = await graphsService.create(contextDataStorage, graphData);
-      registerGraph(graph.id);
-
-      const entity = await graphDao.getOne({ id: graph.id });
-      expect(entity).toBeDefined();
-      expect(entity!.agents).toEqual([]);
+      await expect(
+        graphsService.create(contextDataStorage, graphData),
+      ).rejects.toThrow(/requires at least one connection/);
     });
   });
 
@@ -233,12 +236,25 @@ describe('Graph Agents Column Integration Tests', () => {
           schema: {
             nodes: [
               {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Graph2 Agent',
+                  description: 'Agent in second graph',
+                  instructions: 'You are an agent in graph 2',
+                  invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
+                  summarizeMaxTokens: 272000,
+                  summarizeKeepTokens: 30000,
+                },
+              },
+              {
                 id: 'trigger-1',
                 template: 'manual-trigger',
                 config: {},
               },
             ],
-            edges: [],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
           },
         }),
       );
@@ -250,10 +266,10 @@ describe('Graph Agents Column Integration Tests', () => {
       ]);
 
       expect(agentsMap.size).toBe(2);
-      // graph1 has a simple-agent node from createMockGraphData defaults
+      // Both graphs have a simple-agent node
       expect(agentsMap.get(graph1.id)!.length).toBeGreaterThanOrEqual(1);
-      // graph2 has no agent nodes
-      expect(agentsMap.get(graph2.id)).toEqual([]);
+      expect(agentsMap.get(graph2.id)!.length).toBe(1);
+      expect(agentsMap.get(graph2.id)![0]!.name).toBe('Graph2 Agent');
     });
 
     it('should return empty map for empty input', async () => {
@@ -383,6 +399,19 @@ describe('Graph Agents Column Integration Tests', () => {
       expect(thread!.agents!.length).toBeGreaterThanOrEqual(1);
       expect(thread!.agents![0]!.nodeId).toBe('agent-1');
       expect(thread!.agents![0]!.name).toBe('Test Agent');
-    });
+
+      // Wait for the async agent execution to finish (any non-running state)
+      // before cleanup tears down the DB connection pool.
+      await waitForCondition(
+        async () => {
+          const t = await threadsDao.getOne({
+            externalThreadId: triggerResult.externalThreadId,
+          });
+          return t!;
+        },
+        (t) => t.status !== ThreadStatus.Running,
+        { timeout: 90_000, interval: 1_000 },
+      );
+    }, 120_000);
   });
 });
