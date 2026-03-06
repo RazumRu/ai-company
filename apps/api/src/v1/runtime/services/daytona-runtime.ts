@@ -393,23 +393,6 @@ export class DaytonaRuntime extends BaseRuntime {
     const stderrChunks: string[] = [];
     let streamActive = true;
 
-    // Stream logs — callbacks update lastOutputAt and collect output.
-    // Fire-and-forget: stream errors on early session kill are expected and intentionally silent.
-    void this.sandbox!.process.getSessionCommandLogs(
-      sessionId,
-      cmdId,
-      (chunk: string) => {
-        if (!streamActive) return;
-        stdoutChunks.push(chunk);
-        lastOutputAt = Date.now();
-      },
-      (chunk: string) => {
-        if (!streamActive) return;
-        stderrChunks.push(chunk);
-        lastOutputAt = Date.now();
-      },
-    ).catch(() => {});
-
     return new Promise<RuntimeExecResult>((resolve) => {
       let settled = false;
 
@@ -428,6 +411,78 @@ export class DaytonaRuntime extends BaseRuntime {
         this.sessionRecreatePromise = this.recreateSession(sessionId);
         settle(result);
       };
+
+      // Stream logs — callbacks update lastOutputAt and collect output.
+      // Placed inside the promise so the .then() handler can call settle() directly.
+      // This provides a fast-path for commands that exit before the first 2-second poll:
+      // when Daytona cleans up a fast-exiting cmdId, getSessionCommand() throws a 404 that
+      // the polling catch block silently swallows, causing the loop to spin until hard timeout.
+      // Resolving via stream completion avoids that race condition entirely.
+      void this.sandbox!.process
+        .getSessionCommandLogs(
+          sessionId,
+          cmdId,
+          (chunk: string) => {
+            if (!streamActive) return;
+            stdoutChunks.push(chunk);
+            lastOutputAt = Date.now();
+          },
+          (chunk: string) => {
+            if (!streamActive) return;
+            stderrChunks.push(chunk);
+            lastOutputAt = Date.now();
+          },
+        )
+        .then(async () => {
+          // Stream resolved → command finished. Do one final exit-code fetch.
+          if (settled) return;
+          try {
+            const cmd = await this.sandbox!.process.getSessionCommand(
+              sessionId,
+              cmdId,
+            );
+            if (typeof cmd.exitCode === 'number') {
+              const finalExitCode = cmd.exitCode;
+              let stdout = stdoutChunks.join('');
+              let stderr = stderrChunks.join('');
+              try {
+                // Safety net: fetch complete logs one more time in case any chunks
+                // were not yet delivered to the streaming callbacks by the time the
+                // stream promise resolved (mirrors the same fetch in the polling path).
+                const logs = (await this.sandbox!.process.getSessionCommandLogs(
+                  sessionId,
+                  cmdId,
+                )) as { stdout?: string; stderr?: string };
+                if (logs.stdout) stdout = logs.stdout;
+                if (logs.stderr) stderr = logs.stderr;
+              } catch {
+                // Fallback to whatever the stream collected
+              }
+              settle({
+                exitCode: finalExitCode,
+                stdout,
+                stderr,
+                fail: finalExitCode !== 0,
+                execPath: fullWorkdir,
+              });
+              return;
+            }
+          } catch {
+            // cmdId not found — command completed and was already cleaned up by Daytona
+          }
+          // Exit code not retrievable. Infer: non-empty stderr → failure (exit 1).
+          const exitCode = stderrChunks.length > 0 ? 1 : 0;
+          settle({
+            exitCode,
+            stdout: stdoutChunks.join(''),
+            stderr: stderrChunks.join(''),
+            fail: exitCode !== 0,
+            execPath: fullWorkdir,
+          });
+        })
+        .catch(() => {
+          // Stream error on early session kill — expected and intentionally silent.
+        });
 
       const check = setInterval(() => {
         // Abort signal — synchronous check at the top of each tick

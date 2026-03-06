@@ -91,6 +91,12 @@ export const SetupInfoResponseSchema = z.object({
     .describe(
       'Path the user must set as "Setup URL" in their GitHub App settings (append to their domain)',
     ),
+  reconfigureUrlTemplate: z
+    .string()
+    .optional()
+    .describe(
+      'URL template for reconfiguring a GitHub App installation (replace {id} with the installation ID)',
+    ),
 });
 
 export type SetupInfoResponse = z.infer<typeof SetupInfoResponseSchema>;

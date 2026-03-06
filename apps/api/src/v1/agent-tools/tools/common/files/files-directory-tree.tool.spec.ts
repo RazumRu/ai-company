@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { RuntimeThreadProvider } from '../../../../runtime/services/runtime-thread-provider';
 import { FilesBaseToolConfig } from './files-base.tool';
 import {
   FilesDirectoryTreeTool,
@@ -15,7 +16,7 @@ describe('FilesDirectoryTreeTool', () => {
   let mockConfig: FilesBaseToolConfig;
 
   beforeEach(async () => {
-    mockConfig = { runtimeProvider: { provide: vi.fn() } as any };
+    mockConfig = { runtimeProvider: { provide: vi.fn() } as unknown as RuntimeThreadProvider };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [FilesDirectoryTreeTool],
@@ -30,6 +31,28 @@ describe('FilesDirectoryTreeTool', () => {
       maxDepth: 3,
     };
     expect(() => FilesDirectoryTreeToolSchema.parse(valid)).not.toThrow();
+  });
+
+  it('returns an error immediately for a non-existent directory', async () => {
+    const cfg: ToolRunnableConfig<BaseAgentConfigurable> = {
+      configurable: { thread_id: 't' },
+    };
+
+    vi.spyOn(tool as any, 'execCommand').mockResolvedValue({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'No such directory: /nonexistent',
+      execPath: '/runtime-workspace/t',
+    });
+
+    const { output } = await tool.invoke(
+      { directoryPath: '/nonexistent' },
+      mockConfig,
+      cfg,
+    );
+
+    expect(output.tree).toBeUndefined();
+    expect(output.error).toBe('No such directory: /nonexistent');
   });
 
   it('builds a tree string', async () => {

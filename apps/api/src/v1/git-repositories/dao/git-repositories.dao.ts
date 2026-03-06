@@ -9,7 +9,7 @@ export type GithubSyncRepo = {
   provider: string;
   defaultBranch: string;
   createdBy: string;
-  projectId: string;
+  projectId: string | null;
   installationId: number;
   syncedAt: Date;
 };
@@ -27,6 +27,7 @@ export type SearchTerms = Partial<{
   projectId: string;
   hasInstallationId: boolean;
   installationIds: number[];
+  installationId: number;
 }>;
 
 @Injectable()
@@ -105,6 +106,10 @@ export class GitRepositoriesDao extends BaseDao<
         installationId: In(params.installationIds),
       });
     }
+
+    if (params?.installationId !== undefined) {
+      builder.andWhere({ installationId: params.installationId });
+    }
   }
 
   /**
@@ -135,7 +140,7 @@ export class GitRepositoriesDao extends BaseDao<
       `INSERT INTO git_repositories
          (owner, repo, url, provider, "defaultBranch", "createdBy", "projectId", "installationId", "syncedAt")
        VALUES ${valuePlaceholders.join(',')}
-       ON CONFLICT (owner, repo, "createdBy", provider, "projectId") DO UPDATE SET
+       ON CONFLICT (owner, repo, "createdBy", provider) DO UPDATE SET
          url = EXCLUDED.url,
          "defaultBranch" = EXCLUDED."defaultBranch",
          "installationId" = EXCLUDED."installationId",
@@ -147,11 +152,10 @@ export class GitRepositoriesDao extends BaseDao<
 
   async restoreSoftDeleted(
     userId: string,
-    projectId: string,
     ownerRepoPairs: Array<{ owner: string; repo: string }>,
   ): Promise<void> {
     if (!ownerRepoPairs.length) return;
-    const params: unknown[] = [userId, projectId];
+    const params: unknown[] = [userId];
     const tuples = ownerRepoPairs.map((pair) => {
       params.push(pair.owner, pair.repo);
       const base = params.length;
@@ -161,7 +165,6 @@ export class GitRepositoriesDao extends BaseDao<
       `UPDATE git_repositories
        SET "deletedAt" = NULL
        WHERE "createdBy" = $1
-         AND "projectId" = $2
          AND ("owner", "repo") IN (${tuples.join(',')})
          AND "deletedAt" IS NOT NULL`,
       params,

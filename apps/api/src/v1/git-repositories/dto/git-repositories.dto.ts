@@ -35,6 +35,12 @@ export const GetRepositoriesQuerySchema = z.object({
   provider: GitRepositoryProviderSchema.optional().describe(
     'Filter by host provider',
   ),
+  installationId: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Filter by GitHub App installation ID'),
   limit: z.coerce
     .number()
     .int()

@@ -218,6 +218,70 @@ GITHUB_PAT_TOKEN=ghp_...
 
 These keys are read by docker-compose and passed to the LiteLLM container at startup. All cloud models are routed through [OpenRouter](https://openrouter.ai/), which provides access to OpenAI, Anthropic, Google, MiniMax, Z.ai, and many other providers with a single API key. In the future, API keys will be configurable through the web UI.
 
+## GitHub App Integration (Optional)
+
+Connect a [GitHub App](https://docs.github.com/en/apps/creating-github-apps) to enable organization-level repository access. This replaces personal access tokens (PATs) with fine-grained, installation-based authentication.
+
+### Creating a GitHub App
+
+1. Go to **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
+2. Fill in:
+   - **GitHub App name**: e.g., `Geniro Dev` (use a unique name per environment)
+   - **Homepage URL**: Your Geniro instance URL (e.g., `http://localhost:5174`)
+3. Under **Identifying and authorizing users**:
+   - **Callback URL**: `http://localhost:5174/github-app/callback` (your frontend URL + `/github-app/callback`)
+   - Check **"Request user authorization (OAuth) during installation"** — this combines app installation and user authorization into a single step
+4. Under **Post installation**:
+   - Check **"Redirect on update"** — notifies Geniro when users change repository access
+5. Under **Repository permissions**, grant:
+   - **Contents**: Read & write (for cloning, pushing)
+   - **Metadata**: Read-only (required)
+   - **Pull requests**: Read & write (if using PR tools)
+6. Click **Create GitHub App**
+7. On the app settings page:
+   - Note the **App ID** (numeric)
+   - Note the **Client ID**
+   - Generate a **Client secret** and save it
+   - Generate a **Private key** (.pem file) and save it
+
+### Configuration
+
+Add these environment variables to your `.env` file:
+
+```env
+GITHUB_APP_ID=123456
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----"
+GITHUB_APP_CLIENT_ID=Iv1.abc123def456
+GITHUB_APP_CLIENT_SECRET=your-client-secret
+```
+
+> **Note:** The private key must have literal `\n` for newlines (not actual line breaks). You can convert with:
+> ```bash
+> awk 'NF {sub(/\r/, ""); printf "%s\\n", $0}' your-key.pem
+> ```
+
+| Variable | Description |
+|---|---|
+| `GITHUB_APP_ID` | Numeric App ID from the app settings page |
+| `GITHUB_APP_PRIVATE_KEY` | RSA private key (PEM format with `\n` newlines) |
+| `GITHUB_APP_CLIENT_ID` | OAuth Client ID (starts with `Iv1.`) |
+| `GITHUB_APP_CLIENT_SECRET` | OAuth Client Secret |
+
+When all four variables are set, the API returns `githubAppEnabled: true` from `GET /api/system/settings`, and the **Settings → Integrations** page shows the GitHub App connection UI.
+
+### Connecting the App
+
+1. Navigate to **Settings → Integrations** in the Geniro web UI
+2. Click **"Install GitHub App"** — this redirects to GitHub where you select organizations and repositories
+3. After installation, you're redirected back to Geniro and repositories sync automatically
+4. Click **"Reload"** at any time to re-sync repositories from GitHub
+
+### Multi-Environment Setup
+
+Each environment (local dev, staging, production) should have its own GitHub App. This is because GitHub's installation redirect always goes to the first configured callback URL — there is no reliable way to share a single app across environments.
+
+Create separate apps (e.g., `Geniro Dev`, `Geniro Staging`, `Geniro Prod`) with the appropriate callback URLs, and configure each environment's `.env` with its own credentials.
+
 ## LLM Configuration
 
 All LLM calls go through a [LiteLLM](https://github.com/BerriAI/litellm) proxy that runs as part of the docker-compose stack (port 4000). LiteLLM routes requests to the right provider based on the model name configured in `litellm.yaml`. You can also connect any OpenAI-compatible provider (Azure, Anthropic, Groq, etc.) — see the [LiteLLM docs](https://docs.litellm.ai/) for the full list.

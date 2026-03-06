@@ -86,6 +86,7 @@ describe('GitHubAppProviderService', () => {
           'https://github.com/apps/my-github-app/installations/new',
         configured: true,
         callbackPath: '/github-app/callback',
+        reconfigureUrlTemplate: 'https://github.com/settings/installations/{id}',
       });
       expect(mockGitHubAppService.getAppSlug).toHaveBeenCalled();
     });
@@ -203,7 +204,7 @@ describe('GitHubAppProviderService', () => {
   });
 
   describe('listInstallations', () => {
-    it('should return user installations with metadata extracted', async () => {
+    it('should return user installations from DB without making GitHub API calls', async () => {
       const now = new Date();
       mockConnectionDao.getAll.mockResolvedValue([
         {
@@ -222,16 +223,18 @@ describe('GitHubAppProviderService', () => {
       expect(result.installations[0]!.accountLogin).toBe('my-org');
       expect(result.installations[0]!.installationId).toBe(12345);
       expect(result.installations[0]!.accountType).toBe('Organization');
-      expect(mockGitHubAppService.getInstallationToken).toHaveBeenCalledWith(12345);
+      // Should NOT make any GitHub API calls for validation
+      expect(mockGitHubAppService.getInstallationToken).not.toHaveBeenCalled();
+      expect(mockGitHubAppService.invalidateCachedToken).not.toHaveBeenCalled();
     });
 
-    it('should exclude and deactivate installations with invalid tokens', async () => {
+    it('should return all active connections without filtering by token validity', async () => {
       const now = new Date();
       mockConnectionDao.getAll.mockResolvedValue([
         {
           id: 'record-1',
           provider: GitProvider.GitHub,
-          accountLogin: 'alive-org',
+          accountLogin: 'org-a',
           metadata: { installationId: 111, accountType: 'Organization' },
           isActive: true,
           createdAt: now,
@@ -239,30 +242,21 @@ describe('GitHubAppProviderService', () => {
         {
           id: 'record-2',
           provider: GitProvider.GitHub,
-          accountLogin: 'dead-org',
+          accountLogin: 'org-b',
           metadata: { installationId: 222, accountType: 'Organization' },
           isActive: true,
           createdAt: now,
         } as unknown as GitProviderConnectionEntity,
       ]);
 
-      mockGitHubAppService.getInstallationToken
-        .mockResolvedValueOnce('valid-token')
-        .mockRejectedValueOnce(new Error('Not Found'));
-
       const result = await service.listInstallations('user-123');
 
-      expect(result.installations).toHaveLength(1);
-      expect(result.installations[0]!.accountLogin).toBe('alive-org');
-      expect(mockConnectionDao.updateById).toHaveBeenCalledWith('record-2', {
-        isActive: false,
-      });
-      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-        INSTALLATION_UNLINKED_EVENT,
-        expect.objectContaining({
-          githubInstallationIds: [222],
-        }),
-      );
+      expect(result.installations).toHaveLength(2);
+      expect(result.installations[0]!.accountLogin).toBe('org-a');
+      expect(result.installations[1]!.accountLogin).toBe('org-b');
+      // No deactivation should happen during list
+      expect(mockConnectionDao.updateById).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 

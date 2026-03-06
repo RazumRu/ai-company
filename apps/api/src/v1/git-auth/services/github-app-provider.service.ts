@@ -47,6 +47,7 @@ export class GitHubAppProviderService {
       newInstallationUrl,
       configured,
       callbackPath: '/github-app/callback',
+      reconfigureUrlTemplate: 'https://github.com/settings/installations/{id}',
     };
   }
 
@@ -144,25 +145,8 @@ export class GitHubAppProviderService {
       order: { createdAt: 'DESC' },
     });
 
-    const alive: GitProviderConnectionEntity[] = [];
-
-    for (const conn of connections) {
-      const installationId = conn.metadata['installationId'] as number;
-      // Clear cached token so we always hit GitHub to verify the installation is still valid
-      this.gitHubAppService.invalidateCachedToken(installationId);
-      try {
-        await this.gitHubAppService.getInstallationToken(installationId);
-        alive.push(conn);
-      } catch {
-        this.logger.warn(
-          `Installation ${installationId} (${conn.accountLogin}) is no longer valid, deactivating`,
-        );
-        await this.deactivateByInstallationId(userId, installationId);
-      }
-    }
-
     return {
-      installations: alive.map((conn) => ({
+      installations: connections.map((conn) => ({
         id: conn.id,
         installationId: (conn.metadata['installationId'] as number) ?? 0,
         accountLogin: conn.accountLogin,

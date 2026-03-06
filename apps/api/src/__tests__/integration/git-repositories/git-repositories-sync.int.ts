@@ -16,8 +16,14 @@ import { createTestModule, TEST_USER_ID } from '../setup';
 
 const TEST_PROJECT_ID = '99999999-9999-9999-9999-999999999901';
 
-// ctx that carries both sub and projectId
+// ctx without project ID (user-level sync)
 const ctx = new AppContextStorage(
+  { sub: TEST_USER_ID },
+  { headers: {} } as unknown as FastifyRequest,
+);
+
+// ctx with project ID (for operations that need it)
+const ctxWithProject = new AppContextStorage(
   { sub: TEST_USER_ID },
   { headers: { 'x-project-id': TEST_PROJECT_ID } } as unknown as FastifyRequest,
 );
@@ -63,11 +69,8 @@ describe('GitRepositoriesService sync (integration)', () => {
     projectsDao = app.get(ProjectsDao);
 
     // Create a test project with a deterministic ID so ctx.checkProjectId() resolves correctly.
-    // projectsDao.create() auto-generates a UUID — we insert directly via the DAO raw query.
-    // Instead, use the DAO's create and track the created project for cleanup.
     const existingProject = await projectsDao.getOne({ id: TEST_PROJECT_ID });
     if (!existingProject) {
-      // Insert with an explicit ID using the TypeORM DataSource directly
       const dataSource = app.get(DataSource);
       await dataSource.query(
         `INSERT INTO projects (id, name, "createdBy", settings, "createdAt", "updatedAt")
@@ -137,8 +140,8 @@ describe('GitRepositoriesService sync (integration)', () => {
     }
   };
 
-  describe('happy path: sync upserts repos into DB', () => {
-    it('syncs repos from one installation and verifies DB records', async () => {
+  describe('happy path: sync upserts repos into DB with null projectId', () => {
+    it('syncs repos from one installation and verifies DB records have null projectId', async () => {
       const installation = await createInstallation(88001, 'sync-org');
 
       vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([installation]);
@@ -155,12 +158,11 @@ describe('GitRepositoriesService sync (integration)', () => {
       expect(result.removed).toBe(0);
       expect(result.total).toBeGreaterThanOrEqual(2);
 
-      // Verify DB records exist with correct shape
+      // Verify DB records exist with null projectId
       const savedRepos = await gitRepositoriesDao.getAll({
         createdBy: TEST_USER_ID,
-        projectId: TEST_PROJECT_ID,
         hasInstallationId: true,
-      } );
+      });
 
       const apiService = savedRepos.find((r) => r.repo === 'api-service');
       const webApp = savedRepos.find((r) => r.repo === 'web-app');
@@ -170,10 +172,11 @@ describe('GitRepositoriesService sync (integration)', () => {
       expect(apiService!.provider).toBe(GitRepositoryProvider.GITHUB);
       expect(apiService!.installationId).toBe(installation.metadata['installationId']);
       expect(apiService!.createdBy).toBe(TEST_USER_ID);
-      expect(apiService!.projectId).toBe(TEST_PROJECT_ID);
+      expect(apiService!.projectId).toBeNull();
 
       expect(webApp).toBeDefined();
       expect(webApp!.owner).toBe('sync-org');
+      expect(webApp!.projectId).toBeNull();
 
       for (const r of savedRepos) {
         if (r.owner === 'sync-org') {
@@ -183,8 +186,8 @@ describe('GitRepositoriesService sync (integration)', () => {
     });
   });
 
-  describe('revoked repo soft-deleted when not in GitHub response', () => {
-    it('soft-deletes an installation-linked repo that GitHub no longer returns', async () => {
+  describe('revoked repo deleted when not in GitHub response', () => {
+    it('deletes an installation-linked repo that GitHub no longer returns', async () => {
       const installation = await createInstallation(88002, 'revoke-org');
 
       // Manually insert a repo that "was" previously synced via GitHub App
@@ -195,7 +198,7 @@ describe('GitRepositoriesService sync (integration)', () => {
         provider: GitRepositoryProvider.GITHUB,
         defaultBranch: 'main',
         createdBy: TEST_USER_ID,
-        projectId: TEST_PROJECT_ID,
+        projectId: null,
         installationId: 88002,
         syncedAt: new Date(),
       });
@@ -210,21 +213,21 @@ describe('GitRepositoriesService sync (integration)', () => {
       expect(result.removed).toBe(1);
 
       // Row should be soft-deleted (not visible in default queries)
-      const afterSync = await gitRepositoriesDao.getOne({ id: existingRepo.id } );
+      const afterSync = await gitRepositoriesDao.getOne({ id: existingRepo.id });
       expect(afterSync).toBeNull();
 
       // Confirm deletedAt is set
       const withDeleted = await gitRepositoriesDao.getOne({
         id: existingRepo.id,
         withDeleted: true,
-      } );
+      });
       expect(withDeleted).not.toBeNull();
       expect(withDeleted!.deletedAt).not.toBeNull();
     });
   });
 
   describe('manually added repo survives sync unchanged', () => {
-    it('does not delete a repo with installationId = null during sync', async () => {
+    it('does not delete a repo with installationId = null during sync (PAT repo)', async () => {
       const installation = await createInstallation(88003, 'pat-test-org');
 
       // Insert a manually-added repo (no installationId)
@@ -248,10 +251,80 @@ describe('GitRepositoriesService sync (integration)', () => {
       await gitRepositoriesService.syncRepositories(ctx);
 
       // PAT repo must still exist after sync
-      const afterSync = await gitRepositoriesDao.getOne({ id: patRepo.id } );
+      const afterSync = await gitRepositoriesDao.getOne({ id: patRepo.id });
       expect(afterSync).not.toBeNull();
       expect(afterSync!.id).toBe(patRepo.id);
       expect(afterSync!.installationId).toBeNull();
+    });
+  });
+
+  describe('disconnect and reconnect cycle', () => {
+    it('disconnect then reconnect then sync works without stale state', async () => {
+      const installation = await createInstallation(88010, 'reconnect-org');
+
+      // First sync — creates repos
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([installation]);
+      vi.spyOn(global, 'fetch').mockResolvedValue(
+        makeGithubResponse([
+          { owner: 'reconnect-org', name: 'project-a', html_url: 'https://github.com/reconnect-org/project-a', default_branch: 'main' },
+        ]),
+      );
+
+      const firstSync = await gitRepositoriesService.syncRepositories(ctx);
+      expect(firstSync.synced).toBe(1);
+
+      // Track created repos for cleanup
+      const reposAfterFirst = await gitRepositoriesDao.getAll({
+        createdBy: TEST_USER_ID,
+        hasInstallationId: true,
+      });
+      for (const r of reposAfterFirst) {
+        if (r.owner === 'reconnect-org') trackRepo(r.id);
+      }
+
+      // Simulate disconnect: deactivate the installation and remove repos
+      vi.restoreAllMocks();
+      vi.spyOn(gitHubAppProviderService, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_mock_token');
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([]);
+      vi.spyOn(global, 'fetch').mockResolvedValue(makeGithubResponse([]));
+
+      const disconnectSync = await gitRepositoriesService.syncRepositories(ctx);
+      expect(disconnectSync.synced).toBe(0);
+
+      // Reconnect: remove the old installation record (simulates uninstall/reinstall),
+      // then create a fresh one with a new installationId.
+      vi.restoreAllMocks();
+      vi.spyOn(gitHubAppProviderService, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_mock_token');
+
+      await gitProviderConnectionDao.hardDeleteById(installation.id);
+      createdInstallationIds.splice(createdInstallationIds.indexOf(installation.id), 1);
+
+      const reconnectedInstallation = await createInstallation(88011, 'reconnect-org');
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([reconnectedInstallation]);
+      vi.spyOn(global, 'fetch').mockResolvedValue(
+        makeGithubResponse([
+          { owner: 'reconnect-org', name: 'project-a', html_url: 'https://github.com/reconnect-org/project-a', default_branch: 'main' },
+          { owner: 'reconnect-org', name: 'project-b', html_url: 'https://github.com/reconnect-org/project-b', default_branch: 'develop' },
+        ]),
+      );
+
+      const reconnectSync = await gitRepositoriesService.syncRepositories(ctx);
+      expect(reconnectSync.synced).toBe(2);
+
+      // Verify repos exist with correct data
+      const reposAfterReconnect = await gitRepositoriesDao.getAll({
+        createdBy: TEST_USER_ID,
+        hasInstallationId: true,
+      });
+      const reconnectRepos = reposAfterReconnect.filter((r) => r.owner === 'reconnect-org');
+      expect(reconnectRepos.length).toBeGreaterThanOrEqual(2);
+
+      for (const r of reconnectRepos) {
+        trackRepo(r.id);
+        expect(r.projectId).toBeNull();
+      }
     });
   });
 

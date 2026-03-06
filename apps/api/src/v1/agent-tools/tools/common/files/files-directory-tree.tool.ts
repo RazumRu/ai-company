@@ -190,7 +190,8 @@ export class FilesDirectoryTreeTool extends FilesBaseTool<FilesDirectoryTreeTool
     cmdParts.push('--color', 'never', '.');
 
     const baseCmd = cmdParts.join(' ');
-    const cmd = `cd ${shQuote(args.directoryPath)} && ${baseCmd}`;
+    const dirPath = shQuote(args.directoryPath);
+    const cmd = `[ -d ${dirPath} ] || { printf 'No such directory: %s\\n' ${dirPath} >&2; exit 1; }; cd ${dirPath} && ${baseCmd}`;
 
     const res = await this.execCommand({ cmd }, config, cfg);
     if (res.exitCode !== 0) {

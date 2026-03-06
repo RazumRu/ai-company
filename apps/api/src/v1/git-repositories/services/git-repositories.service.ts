@@ -128,17 +128,27 @@ export class GitRepositoriesService {
     query: GetRepositoriesQueryDto,
   ): Promise<GitRepositoryDto[]> {
     const userId = ctx.checkSub();
+    const projectId = ctx.projectId;
 
-    const repositories = await this.gitRepositoriesDao.getAll({
+    const searchParams: Parameters<typeof this.gitRepositoriesDao.getAll>[0] = {
       createdBy: userId,
       owner: query.owner,
       repo: query.repo,
       provider: query.provider,
-      projectId: ctx.checkProjectId(),
       limit: query.limit,
       offset: query.offset,
       order: { createdAt: 'DESC' },
-    });
+    };
+
+    if (projectId) {
+      searchParams.projectId = projectId;
+    }
+
+    if (query.installationId !== undefined) {
+      searchParams.installationId = query.installationId;
+    }
+
+    const repositories = await this.gitRepositoriesDao.getAll(searchParams);
 
     return repositories.map((repo) => this.prepareRepositoryResponse(repo));
   }
@@ -397,7 +407,6 @@ export class GitRepositoriesService {
 
   async syncRepositories(ctx: AppContextStorage): Promise<SyncRepositoriesResponse> {
     const userId = ctx.checkSub();
-    const projectId = ctx.checkProjectId();
 
     if (!this.gitHubAppProviderService.isConfigured()) {
       throw new BadRequestException('GITHUB_APP_NOT_CONFIGURED');
@@ -409,13 +418,13 @@ export class GitRepositoriesService {
 
     this.syncInProgress.add(userId);
     try {
-      return await this.performSync(userId, projectId);
+      return await this.performSync(userId);
     } finally {
       this.syncInProgress.delete(userId);
     }
   }
 
-  private async performSync(userId: string, projectId: string): Promise<SyncRepositoriesResponse> {
+  private async performSync(userId: string): Promise<SyncRepositoriesResponse> {
     const installations = await this.gitHubAppProviderService.getActiveInstallations(userId);
 
     if (installations.length === 0) {
@@ -505,7 +514,7 @@ export class GitRepositoriesService {
         provider: GitRepositoryProvider.GITHUB,
         defaultBranch: r.defaultBranch,
         createdBy: userId,
-        projectId,
+        projectId: null,
         installationId: r.installationId,
         syncedAt,
       }));
@@ -514,14 +523,12 @@ export class GitRepositoriesService {
 
       await this.gitRepositoriesDao.restoreSoftDeleted(
         userId,
-        projectId,
         allGithubRepos.map((r) => ({ owner: r.owner, repo: r.repo })),
       );
     }
 
     const existingRepos = await this.gitRepositoriesDao.getAll({
       createdBy: userId,
-      projectId,
       hasInstallationId: true,
     });
 
@@ -533,7 +540,7 @@ export class GitRepositoriesService {
       await this.gitRepositoriesDao.deleteById(repo.id);
     }
 
-    const total = await this.gitRepositoriesDao.count({ createdBy: userId, projectId });
+    const total = await this.gitRepositoriesDao.count({ createdBy: userId });
 
     return {
       synced: allGithubRepos.length,
@@ -611,6 +618,7 @@ export class GitRepositoriesService {
       defaultBranch: entity.defaultBranch,
       createdBy: entity.createdBy,
       projectId: entity.projectId,
+      installationId: entity.installationId,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
     };

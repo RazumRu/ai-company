@@ -232,7 +232,7 @@ describe('GitRepositoriesService', () => {
   });
 
   describe('getRepositories', () => {
-    it('should return repositories for authenticated user', async () => {
+    it('should return repositories for authenticated user with projectId from header', async () => {
       const mockRepositories = [
         createMockRepositoryEntity(),
         createMockRepositoryEntity({
@@ -262,6 +262,50 @@ describe('GitRepositoriesService', () => {
         order: { createdAt: 'DESC' },
       });
       expect(result).toHaveLength(2);
+    });
+
+    it('should omit projectId filter when no x-project-id header is present', async () => {
+      const ctxNoProject = new AppContextStorage(
+        { sub: mockUserId },
+        { headers: {} } as unknown as import('fastify').FastifyRequest,
+      );
+
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+
+      const query: GetRepositoriesQueryDto = {
+        limit: 50,
+        offset: 0,
+      };
+
+      await service.getRepositories(ctxNoProject, query);
+
+      expect(dao.getAll).toHaveBeenCalledWith({
+        createdBy: mockUserId,
+        owner: undefined,
+        repo: undefined,
+        provider: undefined,
+        limit: 50,
+        offset: 0,
+        order: { createdAt: 'DESC' },
+      });
+    });
+
+    it('should pass installationId filter to DAO when provided in query', async () => {
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+
+      const query: GetRepositoriesQueryDto = {
+        limit: 50,
+        offset: 0,
+        installationId: 12345,
+      };
+
+      await service.getRepositories(mockCtx, query);
+
+      expect(dao.getAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          installationId: 12345,
+        }),
+      );
     });
   });
 
@@ -906,13 +950,18 @@ describe('GitRepositoriesService', () => {
       expect(installationIds.filter((id) => id === 11111)).toHaveLength(3);
       expect(installationIds.filter((id) => id === 22222)).toHaveLength(3);
 
+      const reposForInstall1 = upsertArgs.filter((r) => r.installationId === 11111);
+      expect(reposForInstall1.map((r) => r.repo).sort()).toEqual(['repo-1', 'repo-2', 'repo-3']);
+      expect(reposForInstall1[0]!.owner).toBe('org-a');
+
+      const reposForInstall2 = upsertArgs.filter((r) => r.installationId === 22222);
+      expect(reposForInstall2.map((r) => r.repo).sort()).toEqual(['repo-4', 'repo-5', 'repo-6']);
+      expect(reposForInstall2[0]!.owner).toBe('org-b');
+
       for (const entry of upsertArgs) {
-        expect(entry.owner).toBeDefined();
-        expect(entry.repo).toBeDefined();
-        expect(entry.installationId).toBeDefined();
         expect(entry.provider).toBe(GitRepositoryProvider.GITHUB);
         expect(entry.createdBy).toBe(mockUserId);
-        expect(entry.projectId).toBe(mockProjectId);
+        expect(entry.projectId).toBeNull();
       }
 
       expect(result).toEqual({ synced: 6, removed: 0, total: 6 });

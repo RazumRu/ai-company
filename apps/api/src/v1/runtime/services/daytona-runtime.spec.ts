@@ -822,6 +822,53 @@ describe('DaytonaRuntime', () => {
       expect(result.stderr).toContain('Idle timeout');
       expect(result.stderr).not.toContain('Hard timeout');
     });
+
+    it('scenario 9: fast-exit race — stream delivers stderr then getSessionCommand throws (already cleaned up)', async () => {
+      const stderrOutput =
+        'bash: cd: /nonexistent: No such file or directory';
+
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        cmdId: 'cmd-9',
+      });
+
+      // Stream resolves after delivering stderr — simulates fast-exiting command
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          _onStdout?: (chunk: string) => void,
+          onStderr?: (chunk: string) => void,
+        ) => {
+          if (!onStderr) {
+            // Synchronous fetch overload — called from the .then() safety-net path;
+            // throw so the fallback to stream-collected chunks is exercised.
+            return Promise.reject(new Error('cmdId not found'));
+          }
+          // Streaming overload — deliver stderr then resolve
+          onStderr(stderrOutput);
+          return Promise.resolve();
+        },
+      );
+
+      // getSessionCommand throws — cmdId already cleaned up by Daytona
+      mockSandbox.process.getSessionCommand.mockRejectedValue(
+        new Error('cmdId not found'),
+      );
+
+      const execPromise = runtime.exec({
+        cmd: 'cd /nonexistent',
+        sessionId: 'sess-fast-exit',
+      });
+
+      // Allow microtasks to flush — the stream .then() path resolves without
+      // needing the polling interval to advance.
+      await vi.advanceTimersByTimeAsync(0);
+      const result = await execPromise;
+
+      expect(result.fail).toBe(true);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe(stderrOutput);
+    });
   });
 });
 
