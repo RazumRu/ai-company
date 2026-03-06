@@ -128,7 +128,6 @@ export class GitRepositoriesService {
     query: GetRepositoriesQueryDto,
   ): Promise<GitRepositoryDto[]> {
     const userId = ctx.checkSub();
-    const projectId = ctx.projectId;
 
     const searchParams: Parameters<typeof this.gitRepositoriesDao.getAll>[0] = {
       createdBy: userId,
@@ -139,10 +138,6 @@ export class GitRepositoriesService {
       offset: query.offset,
       order: { createdAt: 'DESC' },
     };
-
-    if (projectId && query.installationId === undefined) {
-      searchParams.projectId = projectId;
-    }
 
     if (query.installationId !== undefined) {
       searchParams.installationId = query.installationId;

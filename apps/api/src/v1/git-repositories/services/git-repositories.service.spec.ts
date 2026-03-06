@@ -257,7 +257,6 @@ describe('GitRepositoriesService', () => {
         owner: undefined,
         repo: undefined,
         provider: undefined,
-        projectId: mockProjectId,
         limit: 50,
         offset: 0,
         order: { createdAt: 'DESC' },
@@ -265,7 +264,7 @@ describe('GitRepositoriesService', () => {
       expect(result).toHaveLength(2);
     });
 
-    it('should omit projectId filter when no x-project-id header is present', async () => {
+    it('should not filter by projectId even when x-project-id header is present', async () => {
       const ctxNoProject = new AppContextStorage(
         { sub: mockUserId },
         { headers: {} } as unknown as import('fastify').FastifyRequest,
@@ -309,28 +308,6 @@ describe('GitRepositoriesService', () => {
       );
     });
 
-    it('should omit projectId filter when installationId is provided', async () => {
-      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
-
-      const query: GetRepositoriesQueryDto = {
-        limit: 50,
-        offset: 0,
-        installationId: 12345,
-      };
-
-      await service.getRepositories(mockCtx, query);
-
-      expect(dao.getAll).toHaveBeenCalledWith({
-        createdBy: mockUserId,
-        owner: undefined,
-        repo: undefined,
-        provider: undefined,
-        installationId: 12345,
-        limit: 50,
-        offset: 0,
-        order: { createdAt: 'DESC' },
-      });
-    });
   });
 
   describe('getRepositoryById', () => {
