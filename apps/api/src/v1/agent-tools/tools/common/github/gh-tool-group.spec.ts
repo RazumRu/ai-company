@@ -78,7 +78,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
@@ -106,7 +106,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
@@ -132,7 +132,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
@@ -167,12 +167,12 @@ describe('GhToolGroup', () => {
 
       const config1: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_token_1',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_token_1'),
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
       const config2: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_token_2',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_token_2'),
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
@@ -200,7 +200,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.Clone, GhToolType.Commit, GhToolType.Branch],
       };
 
@@ -222,7 +222,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.Clone, GhToolType.Commit],
       };
 
@@ -239,7 +239,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.Commit],
       };
 
@@ -254,7 +254,7 @@ describe('GhToolGroup', () => {
     it('should return empty array when tools array is empty', () => {
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [],
       };
 
@@ -277,7 +277,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.Branch, GhToolType.Clone, GhToolType.Commit],
       };
 
@@ -297,7 +297,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.Push],
       };
 
@@ -323,7 +323,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [
           GhToolType.Clone,
           GhToolType.Commit,
@@ -352,7 +352,7 @@ describe('GhToolGroup', () => {
 
       const config: GhToolGroupConfig = {
         runtimeProvider: { provide: vi.fn() } as any,
-        patToken: 'ghp_test_token',
+        resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
         tools: [GhToolType.CreatePullRequest],
       };
 

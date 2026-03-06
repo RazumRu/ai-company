@@ -36,7 +36,7 @@ describe('GhCreatePullRequestTool', () => {
       runtimeProvider: {
         provide: vi.fn().mockResolvedValue(mockRuntime),
       } as any,
-      patToken: 'ghp_test_token',
+      resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -195,7 +195,7 @@ describe('GhCreatePullRequestTool', () => {
       };
 
       const toolWithCreateClient = tool as unknown as {
-        createClient: (patToken: string) => MockOctokit;
+        createClient: (token: string) => MockOctokit;
       };
       const createClientSpy = vi
         .spyOn(toolWithCreateClient, 'createClient')
@@ -288,7 +288,7 @@ describe('GhCreatePullRequestTool', () => {
       };
 
       const toolWithCreateClient = tool as unknown as {
-        createClient: (patToken: string) => MockOctokit;
+        createClient: (token: string) => MockOctokit;
       };
       vi.spyOn(toolWithCreateClient, 'createClient').mockReturnValue(
         mockClient as any,
@@ -356,7 +356,7 @@ describe('GhCreatePullRequestTool', () => {
       };
 
       const toolWithCreateClient = tool as unknown as {
-        createClient: (patToken: string) => MockOctokit;
+        createClient: (token: string) => MockOctokit;
       };
       vi.spyOn(toolWithCreateClient, 'createClient').mockReturnValue(
         mockClient as any,
@@ -428,7 +428,7 @@ describe('GhCreatePullRequestTool', () => {
       };
 
       const toolWithCreateClient = tool as unknown as {
-        createClient: (patToken: string) => MockOctokit;
+        createClient: (token: string) => MockOctokit;
       };
       vi.spyOn(toolWithCreateClient, 'createClient').mockReturnValue(
         mockClient as any,
@@ -468,7 +468,7 @@ describe('GhCreatePullRequestTool', () => {
       };
 
       const toolWithCreateClient = tool as unknown as {
-        createClient: (patToken: string) => MockOctokit;
+        createClient: (token: string) => MockOctokit;
       };
       vi.spyOn(toolWithCreateClient, 'createClient').mockReturnValue(
         mockClient as any,

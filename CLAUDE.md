@@ -159,7 +159,7 @@ src/v1/feature-name/
 
 ### GitHub App integration (optional)
 
-The GitHub App feature (`github-app` module) provides an alternative to PAT tokens for authenticating with GitHub. It is **optional** — the system works with PAT tokens only when not configured.
+The GitHub App feature (`github-app` module) is the authentication method for GitHub integration. It is **optional** — when not configured, GitHub operations that require authentication will fail.
 
 To enable, set these environment variables:
 - `GITHUB_APP_ID` — the numeric App ID
@@ -167,7 +167,7 @@ To enable, set these environment variables:
 - `GITHUB_APP_CLIENT_ID` — the OAuth Client ID (used for the install/authorize redirect flow)
 - `GITHUB_APP_CLIENT_SECRET` — the OAuth Client Secret (used to exchange authorization codes for tokens)
 
-When all four are set, the `GET /api/system/settings` endpoint returns `githubAppEnabled: true`, and users can link GitHub App installations to their accounts via the OAuth flow. When not set, `githubAppEnabled` is `false` and the system operates with PAT tokens only.
+When all four are set, the `GET /api/system/settings` endpoint returns `githubAppEnabled: true`, and users can link GitHub App installations to their accounts via the OAuth flow. When not set, `githubAppEnabled` is `false` and GitHub operations that require authentication will not be available.
 
 ### Cross-cutting infrastructure
 

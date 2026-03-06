@@ -1,12 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { BadRequestException } from '@packages/common';
 import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-
-import { environment } from '../../../environments';
-import { GitHubAppInstallationDao } from '../dao/github-app-installation.dao';
 import {
   LinkInstallationResponseDto,
   ListInstallationsResponseDto,
@@ -14,40 +10,20 @@ import {
   SetupInfoResponseDto,
   UnlinkInstallationResponseDto,
 } from '../dto/github-app.dto';
-import { GitHubAppService } from '../services/github-app.service';
+import { GitHubAppInstallationService } from '../services/github-app-installation.service';
 
 @ApiTags('github-app')
 @Controller('github-app')
 export class GitHubAppController {
   constructor(
-    private readonly gitHubAppService: GitHubAppService,
-    private readonly gitHubAppInstallationDao: GitHubAppInstallationDao,
+    private readonly gitHubAppInstallationService: GitHubAppInstallationService,
   ) {}
 
   @Get('setup')
   @ApiBearerAuth()
   @OnlyForAuthorized()
   async getSetupInfo(): Promise<SetupInfoResponseDto> {
-    const clientId = environment.githubAppClientId;
-    const configured =
-      Boolean(clientId) && this.gitHubAppService.isConfigured();
-
-    let newInstallationUrl = '';
-    if (configured) {
-      const slug = await this.gitHubAppService.getAppSlug();
-      if (slug) {
-        newInstallationUrl = `https://github.com/apps/${slug}/installations/new`;
-      }
-    }
-
-    return {
-      installUrl: clientId
-        ? `https://github.com/login/oauth/authorize?client_id=${clientId}`
-        : '',
-      newInstallationUrl,
-      configured,
-      callbackPath: '/github-app/callback',
-    };
+    return this.gitHubAppInstallationService.getSetupInfo();
   }
 
   @Post('oauth/link')
@@ -58,55 +34,10 @@ export class GitHubAppController {
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<LinkInstallationResponseDto> {
     const userId = ctx.checkSub();
-
-    const installations =
-      await this.gitHubAppService.exchangeCodeAndGetInstallations(body.code);
-
-    if (installations.length === 0) {
-      throw new BadRequestException('NO_INSTALLATIONS_FOUND');
-    }
-
-    // Link ALL installations the user has access to (personal + org accounts).
-    // Previously only the first was linked, causing org installations to be missed.
-    for (const installation of installations) {
-      try {
-        // Verify we can generate a token for it
-        await this.gitHubAppService.getInstallationToken(installation.id);
-
-        // Upsert the record
-        const existing = await this.gitHubAppInstallationDao.getOne({
-          userId,
-          installationId: installation.id,
-        });
-
-        if (existing) {
-          await this.gitHubAppInstallationDao.updateById(existing.id, {
-            accountLogin: installation.account.login,
-            accountType: installation.account.type,
-            isActive: true,
-          });
-        } else {
-          await this.gitHubAppInstallationDao.create({
-            userId,
-            installationId: installation.id,
-            accountLogin: installation.account.login,
-            accountType: installation.account.type,
-            isActive: true,
-          });
-        }
-      } catch {
-        // Skip installations we can't generate tokens for (e.g. suspended).
-        // Other installations will still be linked.
-      }
-    }
-
-    // Return info about the first installation for backward compatibility
-    const first = installations[0]!;
-    return {
-      linked: true,
-      accountLogin: first.account.login,
-      accountType: first.account.type,
-    };
+    return this.gitHubAppInstallationService.linkViaOAuthCode(
+      userId,
+      body.code,
+    );
   }
 
   @Post('installations/:installationId/link')
@@ -118,45 +49,10 @@ export class GitHubAppController {
   ): Promise<LinkInstallationResponseDto> {
     const userId = ctx.checkSub();
     const installationId = Number(installationIdParam);
-
-    if (!Number.isInteger(installationId) || installationId <= 0) {
-      throw new BadRequestException('INVALID_INSTALLATION_ID');
-    }
-
-    // Verify the installation exists on GitHub
-    const installation =
-      await this.gitHubAppService.getInstallation(installationId);
-
-    // Verify we can generate a token for it
-    await this.gitHubAppService.getInstallationToken(installationId);
-
-    // Upsert the record for this user + installation
-    const existing = await this.gitHubAppInstallationDao.getOne({
+    return this.gitHubAppInstallationService.linkInstallation(
       userId,
       installationId,
-    });
-
-    if (existing) {
-      await this.gitHubAppInstallationDao.updateById(existing.id, {
-        accountLogin: installation.account.login,
-        accountType: installation.account.type,
-        isActive: true,
-      });
-    } else {
-      await this.gitHubAppInstallationDao.create({
-        userId,
-        installationId,
-        accountLogin: installation.account.login,
-        accountType: installation.account.type,
-        isActive: true,
-      });
-    }
-
-    return {
-      linked: true,
-      accountLogin: installation.account.login,
-      accountType: installation.account.type,
-    };
+    );
   }
 
   @Get('installations')
@@ -166,23 +62,7 @@ export class GitHubAppController {
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<ListInstallationsResponseDto> {
     const userId = ctx.checkSub();
-
-    const installations = await this.gitHubAppInstallationDao.getAll({
-      userId,
-      isActive: true,
-      order: { createdAt: 'DESC' },
-    });
-
-    return {
-      installations: installations.map((inst) => ({
-        id: inst.id,
-        installationId: inst.installationId,
-        accountLogin: inst.accountLogin,
-        accountType: inst.accountType,
-        isActive: inst.isActive,
-        createdAt: new Date(inst.createdAt).toISOString(),
-      })),
-    };
+    return this.gitHubAppInstallationService.listInstallations(userId);
   }
 
   @Delete('installations/:installationId')
@@ -194,22 +74,19 @@ export class GitHubAppController {
   ): Promise<UnlinkInstallationResponseDto> {
     const userId = ctx.checkSub();
     const installationId = Number(installationIdParam);
-
-    if (!Number.isInteger(installationId) || installationId <= 0) {
-      throw new BadRequestException('INVALID_INSTALLATION_ID');
-    }
-
-    const existing = await this.gitHubAppInstallationDao.getOne({
+    return this.gitHubAppInstallationService.unlinkInstallation(
       userId,
       installationId,
-    });
+    );
+  }
 
-    if (existing) {
-      await this.gitHubAppInstallationDao.updateById(existing.id, {
-        isActive: false,
-      });
-    }
-
-    return { unlinked: true };
+  @Delete('disconnect')
+  @ApiBearerAuth()
+  @OnlyForAuthorized()
+  async disconnectAll(
+    @CtxStorage() ctx: AppContextStorage,
+  ): Promise<UnlinkInstallationResponseDto> {
+    const userId = ctx.checkSub();
+    return this.gitHubAppInstallationService.disconnectAll(userId);
   }
 }

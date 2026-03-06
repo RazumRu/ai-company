@@ -202,10 +202,9 @@ describe('GhToolTemplate', () => {
       };
 
       mockResource = {
-        patToken: 'test-token',
         information: 'Resource info',
         data: {
-          env: { GITHUB_PAT_TOKEN: 'test-token' },
+          env: {},
           initScript: 'echo init',
         },
       } as any;
@@ -265,13 +264,15 @@ describe('GhToolTemplate', () => {
 
       expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith(
         expect.objectContaining({
-          patToken: 'test-token',
           tools: undefined,
         }),
       );
-      expect(mockRuntimeThreadProvider.addEnvVariables).toHaveBeenCalledWith({
-        GITHUB_PAT_TOKEN: 'test-token',
-      });
+      expect(mockGhToolGroup.buildTools).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          patToken: expect.anything(),
+        }),
+      );
+      expect(mockRuntimeThreadProvider.addEnvVariables).toHaveBeenCalledWith({});
       expect(instance.tools).toEqual(mockTools);
       expect(mockRuntimeThreadProvider.registerJob).toHaveBeenCalledWith(
         mockMetadata.nodeId,

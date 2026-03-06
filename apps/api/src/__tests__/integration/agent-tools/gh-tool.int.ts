@@ -184,7 +184,6 @@ describe('GitHub Tool Integration Tests', () => {
             id: GITHUB_RESOURCE_NODE_ID,
             template: 'github-resource',
             config: {
-              patToken: 'mock-token-for-testing',
               auth: false,
             },
           },

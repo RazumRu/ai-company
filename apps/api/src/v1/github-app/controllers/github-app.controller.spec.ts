@@ -1,212 +1,126 @@
-import { BadRequestException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { GitHubAppInstallationDao } from '../dao/github-app-installation.dao';
-import { GitHubAppInstallationEntity } from '../entity/github-app-installation.entity';
-import { GitHubAppService } from '../services/github-app.service';
+import { GitHubAppInstallationService } from '../services/github-app-installation.service';
 import { GitHubAppController } from './github-app.controller';
-
-vi.mock('../../../environments', () => ({
-  environment: {
-    githubAppId: 'test-app-id',
-    githubAppPrivateKey: 'test-private-key',
-    githubAppClientId: 'Iv1.test-client-id',
-    githubAppClientSecret: 'test-client-secret',
-  },
-}));
 
 describe('GitHubAppController', () => {
   let controller: GitHubAppController;
-  let mockGitHubAppService: {
-    isConfigured: ReturnType<typeof vi.fn>;
-    getAppSlug: ReturnType<typeof vi.fn>;
-    getInstallation: ReturnType<typeof vi.fn>;
-    getInstallationToken: ReturnType<typeof vi.fn>;
-  };
-  let mockInstallationDao: {
-    getOne: ReturnType<typeof vi.fn>;
-    getAll: ReturnType<typeof vi.fn>;
-    create: ReturnType<typeof vi.fn>;
-    updateById: ReturnType<typeof vi.fn>;
+  let mockInstallationService: {
+    getSetupInfo: ReturnType<typeof vi.fn>;
+    linkViaOAuthCode: ReturnType<typeof vi.fn>;
+    linkInstallation: ReturnType<typeof vi.fn>;
+    listInstallations: ReturnType<typeof vi.fn>;
+    unlinkInstallation: ReturnType<typeof vi.fn>;
+    disconnectAll: ReturnType<typeof vi.fn>;
   };
   let mockCtx: { checkSub: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    mockGitHubAppService = {
-      isConfigured: vi.fn().mockReturnValue(true),
-      getAppSlug: vi.fn().mockResolvedValue('my-github-app'),
-      getInstallation: vi.fn().mockResolvedValue({
-        id: 12345,
-        account: { login: 'my-org', type: 'Organization' },
+    mockInstallationService = {
+      getSetupInfo: vi.fn().mockResolvedValue({
+        installUrl: 'https://github.com/login/oauth/authorize?client_id=test',
+        newInstallationUrl: '',
+        configured: true,
+        callbackPath: '/github-app/callback',
       }),
-      getInstallationToken: vi.fn().mockResolvedValue('ghs_test_token'),
-    };
-
-    mockInstallationDao = {
-      getOne: vi.fn().mockResolvedValue(null),
-      getAll: vi.fn().mockResolvedValue([]),
-      create: vi.fn().mockResolvedValue({}),
-      updateById: vi.fn().mockResolvedValue({}),
+      linkViaOAuthCode: vi.fn().mockResolvedValue({
+        linked: true,
+        accountLogin: 'my-org',
+        accountType: 'Organization',
+      }),
+      linkInstallation: vi.fn().mockResolvedValue({
+        linked: true,
+        accountLogin: 'my-org',
+        accountType: 'Organization',
+      }),
+      listInstallations: vi.fn().mockResolvedValue({ installations: [] }),
+      unlinkInstallation: vi.fn().mockResolvedValue({ unlinked: true }),
+      disconnectAll: vi.fn().mockResolvedValue({ unlinked: true }),
     };
 
     mockCtx = {
       checkSub: vi.fn().mockReturnValue('user-123'),
     };
 
-    // Instantiate directly to avoid NestJS guard resolution issues in unit tests
     controller = new GitHubAppController(
-      mockGitHubAppService as unknown as GitHubAppService,
-      mockInstallationDao as unknown as GitHubAppInstallationDao,
+      mockInstallationService as unknown as GitHubAppInstallationService,
     );
   });
 
   describe('getSetupInfo', () => {
-    it('should return OAuth install URL and newInstallationUrl when configured', async () => {
+    it('should delegate to the installation service', async () => {
       const result = await controller.getSetupInfo();
 
-      expect(result).toEqual({
-        installUrl:
-          'https://github.com/login/oauth/authorize?client_id=Iv1.test-client-id',
-        newInstallationUrl:
-          'https://github.com/apps/my-github-app/installations/new',
-        configured: true,
-        callbackPath: '/github-app/callback',
-      });
-      expect(mockGitHubAppService.getAppSlug).toHaveBeenCalled();
-    });
-
-    it('should return configured:false and empty newInstallationUrl when isConfigured returns false', async () => {
-      mockGitHubAppService.isConfigured.mockReturnValue(false);
-      const result = await controller.getSetupInfo();
-
-      expect(result.configured).toBe(false);
-      expect(result.newInstallationUrl).toBe('');
-      expect(mockGitHubAppService.getAppSlug).not.toHaveBeenCalled();
-    });
-
-    it('should return empty newInstallationUrl when getAppSlug returns null', async () => {
-      mockGitHubAppService.getAppSlug.mockResolvedValue(null);
-      const result = await controller.getSetupInfo();
-
+      expect(mockInstallationService.getSetupInfo).toHaveBeenCalled();
       expect(result.configured).toBe(true);
-      expect(result.newInstallationUrl).toBe('');
+    });
+  });
+
+  describe('linkViaOAuthCode', () => {
+    it('should extract userId and delegate to the installation service', async () => {
+      const result = await controller.linkViaOAuthCode(
+        { code: 'auth-code' } as any,
+        mockCtx as any,
+      );
+
+      expect(mockCtx.checkSub).toHaveBeenCalled();
+      expect(mockInstallationService.linkViaOAuthCode).toHaveBeenCalledWith(
+        'user-123',
+        'auth-code',
+      );
+      expect(result.linked).toBe(true);
     });
   });
 
   describe('linkInstallation', () => {
-    it('should verify installation and create a new link record', async () => {
-      const result = await controller.linkInstallation('12345', mockCtx as any);
+    it('should parse installationId and delegate to the installation service', async () => {
+      const result = await controller.linkInstallation(
+        '12345',
+        mockCtx as any,
+      );
 
-      expect(mockGitHubAppService.getInstallation).toHaveBeenCalledWith(12345);
-      expect(mockGitHubAppService.getInstallationToken).toHaveBeenCalledWith(
+      expect(mockInstallationService.linkInstallation).toHaveBeenCalledWith(
+        'user-123',
         12345,
       );
-      expect(mockInstallationDao.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'user-123',
-          installationId: 12345,
-          accountLogin: 'my-org',
-          accountType: 'Organization',
-          isActive: true,
-        }),
-      );
-      expect(result).toEqual({
-        linked: true,
-        accountLogin: 'my-org',
-        accountType: 'Organization',
-      });
-    });
-
-    it('should update existing record if already linked', async () => {
-      mockInstallationDao.getOne.mockResolvedValue({
-        id: 'existing-record',
-        userId: 'user-123',
-        installationId: 12345,
-      } as GitHubAppInstallationEntity);
-
-      const result = await controller.linkInstallation('12345', mockCtx as any);
-
-      expect(mockInstallationDao.updateById).toHaveBeenCalledWith(
-        'existing-record',
-        expect.objectContaining({
-          accountLogin: 'my-org',
-          accountType: 'Organization',
-          isActive: true,
-        }),
-      );
-      expect(mockInstallationDao.create).not.toHaveBeenCalled();
       expect(result.linked).toBe(true);
-    });
-
-    it('should reject invalid installation ID', async () => {
-      await expect(
-        controller.linkInstallation('invalid', mockCtx as any),
-      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('listInstallations', () => {
-    it('should return user installations', async () => {
-      const now = new Date();
-      mockInstallationDao.getAll.mockResolvedValue([
-        {
-          id: 'record-1',
-          installationId: 12345,
-          accountLogin: 'my-org',
-          accountType: 'Organization',
-          isActive: true,
-          createdAt: now,
-        } as GitHubAppInstallationEntity,
-      ]);
-
+    it('should extract userId and delegate to the installation service', async () => {
       const result = await controller.listInstallations(mockCtx as any);
 
-      expect(result.installations).toHaveLength(1);
-      expect(result.installations[0]!.accountLogin).toBe('my-org');
-      expect(mockInstallationDao.getAll).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'user-123',
-          isActive: true,
-        }),
+      expect(mockInstallationService.listInstallations).toHaveBeenCalledWith(
+        'user-123',
       );
+      expect(result.installations).toEqual([]);
     });
   });
 
   describe('unlinkInstallation', () => {
-    it('should set isActive to false for matching record', async () => {
-      mockInstallationDao.getOne.mockResolvedValue({
-        id: 'record-1',
-        userId: 'user-123',
-        installationId: 12345,
-      } as GitHubAppInstallationEntity);
-
+    it('should parse installationId and delegate to the installation service', async () => {
       const result = await controller.unlinkInstallation(
         '12345',
         mockCtx as any,
       );
 
-      expect(mockInstallationDao.updateById).toHaveBeenCalledWith('record-1', {
-        isActive: false,
-      });
-      expect(result).toEqual({ unlinked: true });
-    });
-
-    it('should return unlinked: true even when no record found', async () => {
-      mockInstallationDao.getOne.mockResolvedValue(null);
-
-      const result = await controller.unlinkInstallation(
-        '12345',
-        mockCtx as any,
+      expect(mockInstallationService.unlinkInstallation).toHaveBeenCalledWith(
+        'user-123',
+        12345,
       );
-
-      expect(result).toEqual({ unlinked: true });
-      expect(mockInstallationDao.updateById).not.toHaveBeenCalled();
+      expect(result.unlinked).toBe(true);
     });
+  });
 
-    it('should reject invalid installation ID', async () => {
-      await expect(
-        controller.unlinkInstallation('abc', mockCtx as any),
-      ).rejects.toThrow(BadRequestException);
+  describe('disconnectAll', () => {
+    it('should extract userId and delegate to the installation service', async () => {
+      const result = await controller.disconnectAll(mockCtx as any);
+
+      expect(mockInstallationService.disconnectAll).toHaveBeenCalledWith(
+        'user-123',
+      );
+      expect(result.unlinked).toBe(true);
     });
   });
 });

@@ -1,17 +1,19 @@
 import { INestApplication } from '@nestjs/common';
 import { BadRequestException } from '@packages/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { GitHubAppInstallationDao } from '../../../v1/github-app/dao/github-app-installation.dao';
 import { GitHubAppInstallationEntity } from '../../../v1/github-app/entity/github-app-installation.entity';
+import { GitHubAppInstallationService } from '../../../v1/github-app/services/github-app-installation.service';
 import { GitHubAppService } from '../../../v1/github-app/services/github-app.service';
 import { GitHubTokenResolverService } from '../../../v1/github-app/services/github-token-resolver.service';
-import { GitHubAuthMethod } from '../../../v1/graph-resources/graph-resources.types';
+
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 describe('GitHub App Integration Tests', () => {
   let app: INestApplication;
   let gitHubAppService: GitHubAppService;
+  let gitHubAppInstallationService: GitHubAppInstallationService;
   let gitHubTokenResolverService: GitHubTokenResolverService;
   let gitHubAppInstallationDao: GitHubAppInstallationDao;
   const createdInstallationIds: string[] = [];
@@ -19,6 +21,9 @@ describe('GitHub App Integration Tests', () => {
   beforeAll(async () => {
     app = await createTestModule();
     gitHubAppService = app.get<GitHubAppService>(GitHubAppService);
+    gitHubAppInstallationService = app.get<GitHubAppInstallationService>(
+      GitHubAppInstallationService,
+    );
     gitHubTokenResolverService = app.get<GitHubTokenResolverService>(
       GitHubTokenResolverService,
     );
@@ -216,19 +221,7 @@ describe('GitHub App Integration Tests', () => {
   });
 
   describe('GitHubTokenResolverService', () => {
-    it('returns PAT with source "pat" when no App installation exists', async () => {
-      const result = await gitHubTokenResolverService.resolveTokenForOwner(
-        'nonexistent-owner',
-        TEST_USER_ID,
-        'ghp_testpat123',
-      );
-
-      expect(result).not.toBeNull();
-      expect(result!.token).toBe('ghp_testpat123');
-      expect(result!.source).toBe(GitHubAuthMethod.Pat);
-    });
-
-    it('returns null when no PAT and no matching installation', async () => {
+    it('returns null when no matching installation exists', async () => {
       const result = await gitHubTokenResolverService.resolveTokenForOwner(
         'nonexistent-owner',
         TEST_USER_ID,
@@ -237,17 +230,7 @@ describe('GitHub App Integration Tests', () => {
       expect(result).toBeNull();
     });
 
-    it('returns null when no PAT and undefined is passed', async () => {
-      const result = await gitHubTokenResolverService.resolveTokenForOwner(
-        'no-match-owner',
-        TEST_USER_ID,
-        undefined,
-      );
-
-      expect(result).toBeNull();
-    });
-
-    it('falls back to PAT when an installation exists but App cannot issue a token', async () => {
+    it('returns null when an installation exists but App cannot issue a token', async () => {
       // Create an installation record in the DB
       await createInstallation({
         accountLogin: 'resolver-org',
@@ -256,29 +239,23 @@ describe('GitHub App Integration Tests', () => {
 
       if (gitHubAppService.isConfigured()) {
         // When configured, the resolver will try the App token path first.
-        // With a dummy installation ID it will fail to get an App token,
-        // then fall back to the PAT (if provided).
+        // With a dummy installation ID it will fail to get an App token.
         const result = await gitHubTokenResolverService.resolveTokenForOwner(
           'resolver-org',
           TEST_USER_ID,
-          'ghp_fallback_pat',
         );
 
-        expect(result).not.toBeNull();
-        // Should still get some token back (either PAT fallback or app token)
-        expect(result!.token).toBeDefined();
+        // Result depends on whether a real GitHub App is configured
+        // With dummy installation, token generation likely fails => null
+        expect(result === null || typeof result?.token === 'string').toBe(true);
       } else {
         // When not configured, the resolver skips the App token path entirely
-        // and falls back to PAT
         const result = await gitHubTokenResolverService.resolveTokenForOwner(
           'resolver-org',
           TEST_USER_ID,
-          'ghp_fallback_pat',
         );
 
-        expect(result).not.toBeNull();
-        expect(result!.token).toBe('ghp_fallback_pat');
-        expect(result!.source).toBe(GitHubAuthMethod.Pat);
+        expect(result).toBeNull();
       }
     });
 
@@ -304,6 +281,65 @@ describe('GitHub App Integration Tests', () => {
       expect(() =>
         gitHubAppService.invalidateCachedToken(999999),
       ).not.toThrow();
+    });
+  });
+
+  describe('GitHubAppInstallationService.disconnectAll()', () => {
+    it('marks all active installations as inactive and attempts GitHub deletion', async () => {
+      // Spy on deleteInstallation so we don't hit the real GitHub API
+      const deleteInstallationSpy = vi
+        .spyOn(gitHubAppService, 'deleteInstallation')
+        .mockResolvedValue(undefined);
+
+      const inst1 = await createInstallation({
+        accountLogin: 'disconnect-org-1',
+        installationId: 800001,
+      });
+      const inst2 = await createInstallation({
+        accountLogin: 'disconnect-org-2',
+        installationId: 800002,
+      });
+
+      const result = await gitHubAppInstallationService.disconnectAll(
+        TEST_USER_ID,
+      );
+
+      expect(result).toEqual({ unlinked: true });
+      expect(deleteInstallationSpy).toHaveBeenCalledWith(800001);
+      expect(deleteInstallationSpy).toHaveBeenCalledWith(800002);
+
+      const updated1 = await gitHubAppInstallationDao.getOne({
+        id: inst1.id,
+      });
+      const updated2 = await gitHubAppInstallationDao.getOne({
+        id: inst2.id,
+      });
+      expect(updated1!.isActive).toBe(false);
+      expect(updated2!.isActive).toBe(false);
+
+      deleteInstallationSpy.mockRestore();
+    });
+
+    it('marks installations as inactive even when GitHub deletion fails', async () => {
+      const deleteInstallationSpy = vi
+        .spyOn(gitHubAppService, 'deleteInstallation')
+        .mockRejectedValue(new BadRequestException('GITHUB_APP_INSTALLATION_DELETE_FAILED'));
+
+      const inst = await createInstallation({
+        accountLogin: 'disconnect-fail-org',
+        installationId: 800003,
+      });
+
+      const result = await gitHubAppInstallationService.disconnectAll(
+        TEST_USER_ID,
+      );
+
+      expect(result).toEqual({ unlinked: true });
+
+      const updated = await gitHubAppInstallationDao.getOne({ id: inst.id });
+      expect(updated!.isActive).toBe(false);
+
+      deleteInstallationSpy.mockRestore();
     });
   });
 });

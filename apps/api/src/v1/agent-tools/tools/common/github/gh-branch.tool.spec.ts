@@ -24,7 +24,7 @@ describe('GhBranchTool', () => {
       runtimeProvider: {
         provide: vi.fn().mockResolvedValue(mockRuntime),
       } as any,
-      patToken: 'ghp_test_token',
+      resolveTokenForOwner: vi.fn().mockResolvedValue('ghp_test_token'),
     };
 
     const module: TestingModule = await Test.createTestingModule({

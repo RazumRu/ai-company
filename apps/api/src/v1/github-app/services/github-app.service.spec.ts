@@ -28,6 +28,7 @@ vi.mock('../../../environments', () => ({
 const mockCreateInstallationAccessToken = vi.fn();
 const mockGetInstallation = vi.fn();
 const mockGetAuthenticated = vi.fn();
+const mockDeleteInstallation = vi.fn();
 
 vi.mock('@octokit/rest', () => {
   class MockOctokit {
@@ -35,6 +36,7 @@ vi.mock('@octokit/rest', () => {
       createInstallationAccessToken: mockCreateInstallationAccessToken,
       getInstallation: mockGetInstallation,
       getAuthenticated: mockGetAuthenticated,
+      deleteInstallation: mockDeleteInstallation,
     };
   }
   return { Octokit: MockOctokit };
@@ -196,6 +198,56 @@ describe('GitHubAppService', () => {
         data: { token: 'ghs_new_token' },
       });
 
+      const newToken = await service.getInstallationToken(12345);
+      expect(newToken).toBe('ghs_new_token');
+      expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('deleteInstallation', () => {
+    it('should delete installation and clear token cache on success', async () => {
+      mockCreateInstallationAccessToken.mockResolvedValue({
+        data: { token: 'ghs_cached_token' },
+      });
+      mockDeleteInstallation.mockResolvedValue(undefined);
+
+      // Populate the cache first
+      await service.getInstallationToken(12345);
+      expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(1);
+
+      await service.deleteInstallation(12345);
+
+      expect(mockDeleteInstallation).toHaveBeenCalledWith({
+        installation_id: 12345,
+      });
+
+      // After deletion, the cache should be cleared — a fresh token fetch hits the API again
+      mockCreateInstallationAccessToken.mockResolvedValue({
+        data: { token: 'ghs_new_token' },
+      });
+      const newToken = await service.getInstallationToken(12345);
+      expect(newToken).toBe('ghs_new_token');
+      expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(2);
+    });
+
+    it('should clear token cache even when GitHub API deletion fails', async () => {
+      mockCreateInstallationAccessToken.mockResolvedValue({
+        data: { token: 'ghs_cached_token' },
+      });
+      mockDeleteInstallation.mockRejectedValue(new Error('GitHub API error'));
+
+      // Populate the cache first
+      await service.getInstallationToken(12345);
+      expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(1);
+
+      await expect(service.deleteInstallation(12345)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      // Despite the failure, the cache entry should have been cleared
+      mockCreateInstallationAccessToken.mockResolvedValue({
+        data: { token: 'ghs_new_token' },
+      });
       const newToken = await service.getInstallationToken(12345);
       expect(newToken).toBe('ghs_new_token');
       expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(2);

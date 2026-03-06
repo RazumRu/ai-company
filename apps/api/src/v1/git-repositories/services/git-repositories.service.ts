@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import {
   BadRequestException,
   DefaultLogger,
@@ -7,8 +7,7 @@ import {
 } from '@packages/common';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { GitHubAppInstallationDao } from '../../github-app/dao/github-app-installation.dao';
-import { GitHubAppService } from '../../github-app/services/github-app.service';
+import { GitHubAppInstallationService } from '../../github-app/services/github-app-installation.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
@@ -42,8 +41,8 @@ export class GitRepositoriesService {
     private readonly qdrantService: QdrantService,
     private readonly logger: DefaultLogger,
     private readonly projectsDao: ProjectsDao,
-    private readonly gitHubAppService: GitHubAppService,
-    private readonly gitHubAppInstallationDao: GitHubAppInstallationDao,
+    @Inject(forwardRef(() => GitHubAppInstallationService))
+    private readonly gitHubAppInstallationService: GitHubAppInstallationService,
   ) {}
 
   async createRepository(
@@ -386,7 +385,7 @@ export class GitRepositoriesService {
     const userId = ctx.checkSub();
     const projectId = ctx.checkProjectId();
 
-    if (!this.gitHubAppService.isConfigured()) {
+    if (!this.gitHubAppInstallationService.isConfigured()) {
       throw new BadRequestException('GITHUB_APP_NOT_CONFIGURED');
     }
 
@@ -403,7 +402,7 @@ export class GitRepositoriesService {
   }
 
   private async performSync(userId: string, projectId: string): Promise<SyncRepositoriesResponse> {
-    const installations = await this.gitHubAppInstallationDao.getAll({ userId, isActive: true });
+    const installations = await this.gitHubAppInstallationService.getActiveInstallations(userId);
 
     if (installations.length === 0) {
       return { synced: 0, removed: 0, total: 0 };
@@ -421,7 +420,7 @@ export class GitRepositoriesService {
     for (const installation of installations) {
       let token: string;
       try {
-        token = await this.gitHubAppService.getInstallationToken(installation.installationId);
+        token = await this.gitHubAppInstallationService.getInstallationToken(installation.installationId);
       } catch (err) {
         this.logger.warn(
           `Skipping installation ${installation.installationId}: failed to get token: ${err instanceof Error ? err.message : String(err)}`,
@@ -522,6 +521,30 @@ export class GitRepositoriesService {
       removed: toRemove.length,
       total,
     };
+  }
+
+  /**
+   * Delete all repositories associated with the given GitHub App installation IDs.
+   * Cleans up Qdrant indexes and BullMQ jobs for each repository before deletion.
+   * Used when installations are deactivated (unlink/disconnect).
+   */
+  async deleteRepositoriesByInstallationIds(
+    userId: string,
+    installationIds: number[],
+  ): Promise<number> {
+    if (installationIds.length === 0) return 0;
+
+    const repos = await this.gitRepositoriesDao.getAll({
+      createdBy: userId,
+      installationIds,
+    });
+
+    for (const repo of repos) {
+      await this.cleanupRepositoryResourcesById(repo.id);
+      await this.gitRepositoriesDao.deleteById(repo.id);
+    }
+
+    return repos.length;
   }
 
   /**

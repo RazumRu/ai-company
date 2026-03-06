@@ -19,7 +19,6 @@ export type GhBaseToolSchemaType = z.infer<typeof GhBaseToolSchema>;
 
 export type GhBaseToolConfig = {
   runtimeProvider: RuntimeThreadProvider;
-  patToken?: string;
   resolveTokenForOwner?: (owner: string) => Promise<string | null>;
 };
 
@@ -41,9 +40,8 @@ export abstract class GhBaseTool<
       const token = await config.resolveTokenForOwner(owner);
       if (token) return token;
     }
-    if (config.patToken) return config.patToken;
     throw new Error(
-      'No GitHub token available. Configure a PAT or install the GitHub App.',
+      'No GitHub token available. Install the GitHub App to authenticate.',
     );
   }
 

@@ -3,7 +3,6 @@ import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
 import {
-  GitHubAuthMethod,
   ResourceKind,
 } from '../../../graph-resources/graph-resources.types';
 import {
@@ -16,15 +15,6 @@ import { ResourceNodeBaseTemplate } from '../base-node.template';
 
 export const GithubResourceTemplateSchema = z
   .object({
-    authMethod: z
-      .nativeEnum(GitHubAuthMethod)
-      .default(GitHubAuthMethod.Pat)
-      .describe('Authentication method: PAT token or GitHub App installation'),
-    patToken: z
-      .string()
-      .min(1, 'GitHub PAT token cannot be empty')
-      .optional()
-      .describe('GitHub PAT token (optional when using GitHub App)'),
     name: z.string().optional().describe('Git user name to configure'),
     email: z.email().optional().describe('Email'),
     auth: z
@@ -48,7 +38,7 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
   readonly id = 'github-resource';
   readonly name = 'GitHub';
   readonly description =
-    'GitHub resource providing environment for shell execution';
+    'GitHub resource providing authenticated shell environment. Requires GitHub App to be installed on the target organization and linked in Settings > Integrations.';
   readonly schema = GithubResourceTemplateSchema;
 
   readonly inputs = [
@@ -81,7 +71,6 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
         return {
           information: '',
           kind: ResourceKind.Shell,
-          patToken: params.config.patToken,
           data: {},
         } satisfies IGithubResourceOutput;
       },

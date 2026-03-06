@@ -204,6 +204,30 @@ export class GitHubAppService {
     }
   }
 
+  /**
+   * Delete a GitHub App installation from GitHub's side.
+   * This revokes all access the App had to the org/user repos.
+   */
+  async deleteInstallation(installationId: number): Promise<void> {
+    this.assertConfigured();
+
+    const appJwt = this.generateJwt();
+    const octokit = new Octokit({ auth: appJwt });
+
+    try {
+      await octokit.apps.deleteInstallation({
+        installation_id: installationId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete GitHub App installation ${installationId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new BadRequestException('GITHUB_APP_INSTALLATION_DELETE_FAILED');
+    } finally {
+      this.tokenCache.delete(installationId);
+    }
+  }
+
   /** Invalidate a cached token (e.g. when an installation is deleted). */
   invalidateCachedToken(installationId: number): void {
     this.tokenCache.delete(installationId);

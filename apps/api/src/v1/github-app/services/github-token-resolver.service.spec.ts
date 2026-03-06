@@ -57,7 +57,7 @@ describe('GitHubTokenResolverService', () => {
   });
 
   describe('resolveTokenForOwner', () => {
-    it('should prefer GitHub App token when installation exists', async () => {
+    it('should return GitHub App token when installation exists', async () => {
       mockInstallationDao.getOne.mockResolvedValue({
         installationId: 12345,
         isActive: true,
@@ -66,7 +66,6 @@ describe('GitHubTokenResolverService', () => {
       const result = await service.resolveTokenForOwner(
         'my-org',
         'user-1',
-        'ghp_pat_token',
       );
 
       expect(result).toEqual({
@@ -80,22 +79,18 @@ describe('GitHubTokenResolverService', () => {
       });
     });
 
-    it('should fall back to PAT when no installation found', async () => {
+    it('should return null when no installation found', async () => {
       mockInstallationDao.getOne.mockResolvedValue(null);
 
       const result = await service.resolveTokenForOwner(
         'my-org',
         'user-1',
-        'ghp_pat_token',
       );
 
-      expect(result).toEqual({
-        token: 'ghp_pat_token',
-        source: GitHubAuthMethod.Pat,
-      });
+      expect(result).toBeNull();
     });
 
-    it('should fall back to PAT when App token generation fails', async () => {
+    it('should return null when App token generation fails and no fallback', async () => {
       mockInstallationDao.getOne.mockResolvedValue({
         installationId: 12345,
         isActive: true,
@@ -107,13 +102,9 @@ describe('GitHubTokenResolverService', () => {
       const result = await service.resolveTokenForOwner(
         'my-org',
         'user-1',
-        'ghp_pat_token',
       );
 
-      expect(result).toEqual({
-        token: 'ghp_pat_token',
-        source: GitHubAuthMethod.Pat,
-      });
+      expect(result).toBeNull();
     });
 
     it('should return null when nothing is available', async () => {
@@ -122,25 +113,20 @@ describe('GitHubTokenResolverService', () => {
       const result = await service.resolveTokenForOwner(
         'my-org',
         'user-1',
-        undefined,
       );
 
       expect(result).toBeNull();
     });
 
-    it('should skip GitHub App lookup when not configured', async () => {
+    it('should return null when GitHub App is not configured', async () => {
       mockGitHubAppService.isConfigured.mockReturnValue(false);
 
       const result = await service.resolveTokenForOwner(
         'my-org',
         'user-1',
-        'ghp_pat_token',
       );
 
-      expect(result).toEqual({
-        token: 'ghp_pat_token',
-        source: GitHubAuthMethod.Pat,
-      });
+      expect(result).toBeNull();
       expect(mockInstallationDao.getOne).not.toHaveBeenCalled();
     });
   });

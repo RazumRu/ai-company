@@ -212,7 +212,6 @@ describe('Graph Resources Integration Tests', () => {
       id: GITHUB_RESOURCE_NODE_ID,
       template: 'github-resource',
       config: {
-        patToken: 'mock-token-for-testing',
         auth: false,
       },
     });
@@ -295,7 +294,7 @@ describe('Graph Resources Integration Tests', () => {
           TRIGGER_NODE_ID,
           {
             messages: [
-              'Run this command: printf "TOKEN=%s\\n" "$GITHUB_PAT_TOKEN"; gh config get git_protocol; gh --version',
+              'Run this command: gh config get git_protocol; gh --version',
             ],
             async: true,
             threadSubId: uniqueThreadSubId('gh-resource'),
@@ -324,9 +323,6 @@ describe('Graph Resources Integration Tests', () => {
           shellExecution.result?.exitCode,
           shellExecution.result?.stderr ?? 'missing shell stderr',
         ).toBe(0);
-        expect(shellExecution.result?.stdout).toContain(
-          'TOKEN=mock-token-for-testing',
-        );
         expect(shellExecution.result?.stdout.toLowerCase() ?? '').toContain(
           'https',
         );

@@ -1,5 +1,4 @@
 export enum GitHubAuthMethod {
-  Pat = 'pat',
   GithubApp = 'github_app',
 }
 

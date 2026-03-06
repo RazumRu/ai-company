@@ -26,6 +26,7 @@ export type SearchTerms = Partial<{
   createdBy: string;
   projectId: string;
   hasInstallationId: boolean;
+  installationIds: number[];
 }>;
 
 @Injectable()
@@ -97,6 +98,12 @@ export class GitRepositoriesDao extends BaseDao<
       } else {
         builder.andWhere(`${this.alias}.installationId IS NULL`);
       }
+    }
+
+    if (params?.installationIds && params.installationIds.length > 0) {
+      builder.andWhere({
+        installationId: In(params.installationIds),
+      });
     }
   }
 

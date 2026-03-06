@@ -144,7 +144,6 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
 
         const initScript = ghResource.data.initScript;
         const initScriptTimeout = ghResource.data.initScriptTimeout;
-        const patToken = ghResource.patToken;
         const resourceEnv = ghResource.data.env ?? {};
         runtimeNode.instance.addEnvVariables(resourceEnv);
         const currentRuntimeParams = runtimeNode.instance.getParams();
@@ -200,7 +199,6 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
                 await this.gitHubTokenResolverService.resolveTokenForOwner(
                   owner,
                   userId,
-                  patToken,
                 );
               return resolved?.token ?? null;
             }
@@ -209,7 +207,6 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
         const { tools: builtTools, instructions } = this.ghToolGroup.buildTools(
           {
             runtimeProvider: runtimeNode.instance,
-            patToken,
             tools,
             additionalLabels,
             resolveTokenForOwner,

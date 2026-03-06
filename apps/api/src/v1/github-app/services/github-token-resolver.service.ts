@@ -19,13 +19,12 @@ export class GitHubTokenResolverService {
   ) {}
 
   /**
-   * Resolves a GitHub token for a specific owner (org/user).
-   * Prefers GitHub App installation tokens over PATs.
+   * Resolves a GitHub token for a specific owner (org/user)
+   * using GitHub App installation tokens.
    */
   async resolveTokenForOwner(
     owner: string,
     userId: string,
-    patToken?: string,
   ): Promise<ResolvedToken | null> {
     if (this.gitHubAppService.isConfigured()) {
       // 1. Try exact match by owner (org/user that owns the repo)
@@ -76,10 +75,6 @@ export class GitHubTokenResolverService {
           }
         }
       }
-    }
-
-    if (patToken) {
-      return { token: patToken, source: GitHubAuthMethod.Pat };
     }
 
     return null;
