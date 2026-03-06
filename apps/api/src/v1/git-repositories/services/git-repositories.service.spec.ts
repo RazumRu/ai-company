@@ -265,29 +265,14 @@ describe('GitRepositoriesService', () => {
     });
 
     it('should not filter by projectId even when x-project-id header is present', async () => {
-      const ctxNoProject = new AppContextStorage(
-        { sub: mockUserId },
-        { headers: {} } as unknown as import('fastify').FastifyRequest,
-      );
-
+      // mockCtx already carries the x-project-id header
       vi.spyOn(dao, 'getAll').mockResolvedValue([]);
 
-      const query: GetRepositoriesQueryDto = {
-        limit: 50,
-        offset: 0,
-      };
+      await service.getRepositories(mockCtx, { limit: 50, offset: 0 });
 
-      await service.getRepositories(ctxNoProject, query);
-
-      expect(dao.getAll).toHaveBeenCalledWith({
-        createdBy: mockUserId,
-        owner: undefined,
-        repo: undefined,
-        provider: undefined,
-        limit: 50,
-        offset: 0,
-        order: { createdAt: 'DESC' },
-      });
+      expect(dao.getAll).toHaveBeenCalledWith(
+        expect.not.objectContaining({ projectId: expect.anything() }),
+      );
     });
 
     it('should pass installationId filter to DAO when provided in query', async () => {
