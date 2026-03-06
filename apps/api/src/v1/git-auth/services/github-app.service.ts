@@ -28,7 +28,8 @@ export class GitHubAppService {
     return (
       Boolean(environment.githubAppId) &&
       Boolean(environment.githubAppPrivateKey) &&
-      Boolean(environment.githubAppClientId)
+      Boolean(environment.githubAppClientId) &&
+      Boolean(environment.githubAppClientSecret)
     );
   }
 

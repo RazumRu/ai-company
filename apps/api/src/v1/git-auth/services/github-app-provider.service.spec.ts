@@ -385,12 +385,6 @@ describe('GitHubAppProviderService', () => {
       expect(mockEventEmitter.emit).not.toHaveBeenCalled();
     });
 
-    it('should reject invalid installation ID', async () => {
-      await expect(
-        service.unlinkInstallation('user-123', -1),
-      ).rejects.toThrow(BadRequestException);
-    });
-
     it('should not unlink an installation belonging to a different user', async () => {
       // The DAO is called with user-A's userId, so it returns empty (no connections for user-A)
       mockConnectionDao.getAll.mockResolvedValue([]);
@@ -498,19 +492,12 @@ describe('GitHubAppProviderService', () => {
       expect(result).toEqual({ unlinked: true });
     });
 
-    it('should emit event with empty arrays when no active connections exist', async () => {
+    it('should not emit event when no active connections exist', async () => {
       mockConnectionDao.getAll.mockResolvedValue([]);
 
       const result = await service.disconnectAll('user-123');
 
-      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-        INSTALLATION_UNLINKED_EVENT,
-        expect.objectContaining({
-          connectionIds: [],
-          accountLogins: [],
-          githubInstallationIds: [],
-        }),
-      );
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
       expect(result).toEqual({ unlinked: true });
     });
   });

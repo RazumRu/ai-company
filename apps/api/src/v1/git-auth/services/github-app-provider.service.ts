@@ -191,10 +191,6 @@ export class GitHubAppProviderService {
     userId: string,
     installationId: number,
   ): Promise<UnlinkInstallationResponse> {
-    if (!Number.isInteger(installationId) || installationId <= 0) {
-      throw new BadRequestException('INVALID_INSTALLATION_ID');
-    }
-
     // Find the connection by matching the installationId stored in metadata.
     // We query all GitHub connections for this user and filter by metadata.
     const connections = await this.gitProviderConnectionDao.getAll({
@@ -296,13 +292,15 @@ export class GitHubAppProviderService {
       githubInstallationIds.push(installationId);
     }
 
-    this.eventEmitter.emit(INSTALLATION_UNLINKED_EVENT, {
-      userId,
-      provider: GitProvider.GitHub,
-      connectionIds,
-      accountLogins,
-      githubInstallationIds,
-    } satisfies InstallationUnlinkedEvent);
+    if (connectionIds.length > 0) {
+      this.eventEmitter.emit(INSTALLATION_UNLINKED_EVENT, {
+        userId,
+        provider: GitProvider.GitHub,
+        connectionIds,
+        accountLogins,
+        githubInstallationIds,
+      } satisfies InstallationUnlinkedEvent);
+    }
 
     return { unlinked: true };
   }
