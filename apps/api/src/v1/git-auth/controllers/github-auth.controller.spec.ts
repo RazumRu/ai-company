@@ -61,6 +61,21 @@ describe('GitHubAuthController', () => {
       expect(mockProviderService.linkViaOAuthCode).toHaveBeenCalledWith(
         'user-123',
         'auth-code',
+        undefined,
+      );
+      expect(result.linked).toBe(true);
+    });
+
+    it('should pass installationId when provided', async () => {
+      const result = await controller.linkViaOAuthCode(
+        { code: 'auth-code', installationId: 12345 } as any,
+        mockCtx as any,
+      );
+
+      expect(mockProviderService.linkViaOAuthCode).toHaveBeenCalledWith(
+        'user-123',
+        'auth-code',
+        12345,
       );
       expect(result.linked).toBe(true);
     });

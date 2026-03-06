@@ -438,7 +438,11 @@ export class GitRepositoriesService {
         token = await this.gitHubAppService.getInstallationToken(ghInstallationId);
       } catch (err) {
         this.logger.warn(
-          `Skipping installation ${ghInstallationId}: failed to get token: ${err instanceof Error ? err.message : String(err)}`,
+          `Installation ${ghInstallationId} token fetch failed, auto-deactivating: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        await this.gitHubAppProviderService.deactivateByInstallationId(
+          userId,
+          ghInstallationId,
         );
         continue;
       }

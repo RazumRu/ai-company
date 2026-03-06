@@ -62,6 +62,14 @@ export class UnlinkInstallationResponseDto extends createZodDto(
 
 export const OAuthLinkRequestSchema = z.object({
   code: z.string().min(1).describe('GitHub OAuth authorization code'),
+  installationId: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'Optional GitHub App installation ID hint — used when the user was redirected from a GitHub App install flow',
+    ),
 });
 
 export class OAuthLinkRequestDto extends createZodDto(OAuthLinkRequestSchema) {}

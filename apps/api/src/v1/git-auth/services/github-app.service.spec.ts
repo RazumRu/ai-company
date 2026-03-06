@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, DefaultLogger } from '@packages/common';
+import {
+  BadRequestException,
+  DefaultLogger,
+  ForbiddenException,
+} from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GitHubAppService } from './github-app.service';
@@ -297,6 +301,96 @@ describe('GitHubAppService', () => {
       await expect(
         service.exchangeCodeAndGetInstallations('bad-code'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should use installationId hint when all other methods return empty', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockListForAuthenticatedUser.mockResolvedValue({
+        data: [{ login: 'my-org' }],
+      });
+      mockGetAuthenticatedUser.mockResolvedValue({
+        data: { login: 'my-user' },
+      });
+      mockListInstallations.mockResolvedValue({ data: [] });
+      mockGetInstallation.mockResolvedValue({
+        data: {
+          id: 55555,
+          account: { login: 'my-org', type: 'Organization' },
+        },
+      });
+
+      const result = await service.exchangeCodeAndGetInstallations(
+        'test-code',
+        55555,
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        id: 55555,
+        account: { login: 'my-org', type: 'Organization' },
+      });
+    });
+
+    it('should throw ForbiddenException when hinted installation does not match user access', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockListForAuthenticatedUser.mockResolvedValue({ data: [] });
+      mockGetAuthenticatedUser.mockResolvedValue({
+        data: { login: 'my-user' },
+      });
+      mockListInstallations.mockResolvedValue({ data: [] });
+      mockGetInstallation.mockResolvedValue({
+        data: {
+          id: 99999,
+          account: { login: 'foreign-org', type: 'Organization' },
+        },
+      });
+
+      await expect(
+        service.exchangeCodeAndGetInstallations('test-code', 99999),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should not use installationId hint when user-scoped list returns results', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: {
+          installations: [
+            {
+              id: 100,
+              account: { login: 'org-one', type: 'Organization' },
+            },
+          ],
+        },
+      });
+
+      const result = await service.exchangeCodeAndGetInstallations(
+        'test-code',
+        99999,
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe(100);
+      expect(mockGetInstallation).not.toHaveBeenCalled();
+    });
+
+    it('should return empty array when hint is not provided and all methods return empty', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockListForAuthenticatedUser.mockResolvedValue({ data: [] });
+      mockGetAuthenticatedUser.mockResolvedValue({
+        data: { login: 'my-user' },
+      });
+      mockListInstallations.mockResolvedValue({ data: [] });
+
+      const result =
+        await service.exchangeCodeAndGetInstallations('test-code');
+
+      expect(result).toEqual([]);
+      expect(mockGetInstallation).not.toHaveBeenCalled();
     });
   });
 

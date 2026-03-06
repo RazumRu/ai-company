@@ -34,7 +34,11 @@ export class GitHubAuthController {
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<LinkInstallationResponseDto> {
     const userId = ctx.checkSub();
-    return this.gitHubAppProviderService.linkViaOAuthCode(userId, body.code);
+    return this.gitHubAppProviderService.linkViaOAuthCode(
+      userId,
+      body.code,
+      body.installationId,
+    );
   }
 
   @Get('installations')

@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Octokit } from '@octokit/rest';
-import { BadRequestException, DefaultLogger } from '@packages/common';
+import {
+  BadRequestException,
+  DefaultLogger,
+  ForbiddenException,
+} from '@packages/common';
 import jwt from 'jsonwebtoken';
 
 import { environment } from '../../../environments';
@@ -119,9 +123,14 @@ export class GitHubAppService {
   /**
    * Exchange an OAuth authorization code for a user access token,
    * then return the user's installations of this GitHub App.
+   *
+   * When `installationIdHint` is provided and all other discovery methods return empty,
+   * fetches that specific installation via the app JWT and verifies the user has access
+   * (user login or org membership must match the installation's account login).
    */
   async exchangeCodeAndGetInstallations(
     code: string,
+    installationIdHint?: number,
   ): Promise<{ id: number; account: { login: string; type: string } }[]> {
     const clientId = environment.githubAppClientId;
     const clientSecret = environment.githubAppClientSecret;
@@ -160,6 +169,8 @@ export class GitHubAppService {
       throw new BadRequestException('GITHUB_OAUTH_TOKEN_EXCHANGE_FAILED');
     }
 
+    this.logger.log('OAuth token exchange succeeded');
+
     // Get user's installations for this app
     const userOctokit = new Octokit({ auth: tokenData.access_token });
 
@@ -173,6 +184,9 @@ export class GitHubAppService {
         await userOctokit.apps.listInstallationsForAuthenticatedUser();
       userInstallations = response.data.installations.map((inst) =>
         this.mapInstallation(inst),
+      );
+      this.logger.log(
+        `Found ${userInstallations.length} user-scoped installations: ${userInstallations.map((i) => i.account.login).join(', ') || '(none)'}`,
       );
     } catch (error) {
       this.logger.error(
@@ -190,25 +204,22 @@ export class GitHubAppService {
     // This handles the case where the user installed the app via a new tab
     // without completing the OAuth user-authorization flow.
     this.logger.warn(
-      'User-scoped installation list was empty, falling back to app-level listInstallations',
+      'User-scoped installation list empty, falling back to app-level list',
     );
 
+    // Resolve user identity and org memberships (needed for both fallback strategies)
+    const allowedLogins = await this.resolveAllowedLogins(userOctokit);
+
     try {
-      const [userOrgsResponse, authenticatedUserResponse] = await Promise.all([
-        userOctokit.orgs.listForAuthenticatedUser(),
-        userOctokit.users.getAuthenticated(),
-      ]);
-
-      const allowedLogins = new Set(
-        userOrgsResponse.data.map((org) => org.login.toLowerCase()),
-      );
-      allowedLogins.add(authenticatedUserResponse.data.login.toLowerCase());
-
       const appJwt = this.generateJwt();
       const appOctokit = new Octokit({ auth: appJwt });
       const response = await appOctokit.apps.listInstallations();
 
-      return response.data
+      this.logger.log(
+        `Total app installations: ${response.data.length}, accounts: ${response.data.map((i) => (i.account && 'login' in i.account ? String(i.account.login) : '(unknown)')).join(', ') || '(none)'}`,
+      );
+
+      const filtered = response.data
         .filter((inst) => {
           const login = inst.account && 'login' in inst.account
             ? String(inst.account.login)
@@ -216,12 +227,26 @@ export class GitHubAppService {
           return login !== '' && allowedLogins.has(login.toLowerCase());
         })
         .map((inst) => this.mapInstallation(inst));
+
+      this.logger.log(
+        `Filtered to ${filtered.length} installations matching user orgs`,
+      );
+
+      if (filtered.length > 0) {
+        return filtered;
+      }
     } catch (error) {
       this.logger.error(
         `App-level listInstallations fallback failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return [];
     }
+
+    // Final fallback: if an installationId hint was provided, verify it directly
+    if (installationIdHint !== undefined) {
+      return this.verifyHintedInstallation(installationIdHint, allowedLogins);
+    }
+
+    return [];
   }
 
   async getAppSlug(): Promise<string | null> {
@@ -266,6 +291,77 @@ export class GitHubAppService {
   /** Invalidate a cached token (e.g. when an installation is deleted). */
   invalidateCachedToken(installationId: number): void {
     this.tokenCache.delete(installationId);
+  }
+
+  /**
+   * Resolve the set of GitHub logins (lowercase) that the authenticated user
+   * is allowed to access — their own login plus all org memberships.
+   */
+  private async resolveAllowedLogins(
+    userOctokit: Octokit,
+  ): Promise<Set<string>> {
+    const [userOrgsResponse, authenticatedUserResponse] = await Promise.all([
+      userOctokit.orgs.listForAuthenticatedUser(),
+      userOctokit.users.getAuthenticated(),
+    ]);
+
+    const userLogin = authenticatedUserResponse.data.login;
+    const userOrgs = userOrgsResponse.data.map((org) => org.login);
+    this.logger.log(`Authenticated user: ${userLogin}`);
+    this.logger.log(`User orgs: ${userOrgs.join(', ') || '(none)'}`);
+
+    const allowedLogins = new Set(
+      userOrgs.map((login) => login.toLowerCase()),
+    );
+    allowedLogins.add(userLogin.toLowerCase());
+    this.logger.log(`Allowed logins: ${[...allowedLogins].join(', ')}`);
+
+    return allowedLogins;
+  }
+
+  /**
+   * Verify a specific installation ID hint by fetching it via app JWT and
+   * checking the account login against the user's allowed logins.
+   */
+  private async verifyHintedInstallation(
+    installationId: number,
+    allowedLogins: Set<string>,
+  ): Promise<{ id: number; account: { login: string; type: string } }[]> {
+    this.logger.log(
+      `Using provided installationId hint: ${installationId}`,
+    );
+
+    try {
+      const installation = await this.getInstallation(installationId);
+      const installationLogin = installation.account.login.toLowerCase();
+
+      this.logger.log(
+        `Hinted installation ${installationId} belongs to account: ${installation.account.login}`,
+      );
+
+      if (!allowedLogins.has(installationLogin)) {
+        this.logger.warn(
+          `User does not have access to installation ${installationId} (account: ${installation.account.login}). Allowed logins: ${[...allowedLogins].join(', ')}`,
+        );
+        throw new ForbiddenException(
+          'INSTALLATION_ACCESS_DENIED',
+        );
+      }
+
+      this.logger.log(
+        `Verified user access to hinted installation ${installationId} (account: ${installation.account.login})`,
+      );
+
+      return [installation];
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error(
+        `Failed to verify hinted installation ${installationId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
+    }
   }
 
   private mapInstallation(inst: {

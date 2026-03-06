@@ -53,11 +53,26 @@ export class GitHubAppProviderService {
   async linkViaOAuthCode(
     userId: string,
     code: string,
+    installationId?: number,
   ): Promise<LinkInstallationResponse> {
+    this.logger.log(
+      `Exchanging OAuth code for installations (code length: ${code.length}${installationId !== undefined ? `, installationId hint: ${installationId}` : ''})`,
+    );
+
     const installations =
-      await this.gitHubAppService.exchangeCodeAndGetInstallations(code);
+      await this.gitHubAppService.exchangeCodeAndGetInstallations(
+        code,
+        installationId,
+      );
+
+    this.logger.log(
+      `Received ${installations.length} installations from OAuth code exchange`,
+    );
 
     if (installations.length === 0) {
+      this.logger.warn(
+        `No installations found for user ${userId} after OAuth code exchange`,
+      );
       throw new BadRequestException('NO_INSTALLATIONS_FOUND');
     }
 
@@ -65,6 +80,9 @@ export class GitHubAppProviderService {
       null;
 
     for (const installation of installations) {
+      this.logger.log(
+        `Processing installation ${installation.id} (account: ${installation.account.login})`,
+      );
       try {
         await this.gitHubAppService.getInstallationToken(installation.id);
 
@@ -126,8 +144,25 @@ export class GitHubAppProviderService {
       order: { createdAt: 'DESC' },
     });
 
+    const alive: GitProviderConnectionEntity[] = [];
+
+    for (const conn of connections) {
+      const installationId = conn.metadata['installationId'] as number;
+      // Clear cached token so we always hit GitHub to verify the installation is still valid
+      this.gitHubAppService.invalidateCachedToken(installationId);
+      try {
+        await this.gitHubAppService.getInstallationToken(installationId);
+        alive.push(conn);
+      } catch {
+        this.logger.warn(
+          `Installation ${installationId} (${conn.accountLogin}) is no longer valid, deactivating`,
+        );
+        await this.deactivateByInstallationId(userId, installationId);
+      }
+    }
+
     return {
-      installations: connections.map((conn) => ({
+      installations: alive.map((conn) => ({
         id: conn.id,
         installationId: (conn.metadata['installationId'] as number) ?? 0,
         accountLogin: conn.accountLogin,
@@ -196,6 +231,41 @@ export class GitHubAppProviderService {
     }
 
     return { unlinked: true };
+  }
+
+  /**
+   * Deactivate a connection by GitHub installation ID without calling GitHub's
+   * delete API (the installation is already gone on GitHub's side).
+   * Emits INSTALLATION_UNLINKED_EVENT so downstream listeners clean up repos.
+   */
+  async deactivateByInstallationId(
+    userId: string,
+    installationId: number,
+  ): Promise<void> {
+    const connections = await this.gitProviderConnectionDao.getAll({
+      userId,
+      provider: GitProvider.GitHub,
+    });
+
+    const existing = connections.find(
+      (c) => c.metadata['installationId'] === installationId,
+    );
+
+    if (!existing) {
+      return;
+    }
+
+    await this.gitProviderConnectionDao.updateById(existing.id, {
+      isActive: false,
+    });
+
+    this.eventEmitter.emit(INSTALLATION_UNLINKED_EVENT, {
+      userId,
+      provider: GitProvider.GitHub,
+      connectionIds: [existing.id],
+      accountLogins: [existing.accountLogin],
+      githubInstallationIds: [installationId],
+    } satisfies InstallationUnlinkedEvent);
   }
 
   async disconnectAll(userId: string): Promise<UnlinkInstallationResponse> {

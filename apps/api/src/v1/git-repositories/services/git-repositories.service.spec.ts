@@ -138,6 +138,7 @@ describe('GitRepositoriesService', () => {
           useValue: {
             isConfigured: vi.fn().mockReturnValue(true),
             getActiveInstallations: vi.fn(),
+            deactivateByInstallationId: vi.fn().mockResolvedValue(undefined),
           },
         },
         {
@@ -778,6 +779,66 @@ describe('GitRepositoriesService', () => {
 
       expect(removeJobOrder).toBeLessThan(deleteByIdOrder);
       expect(deleteCollectionOrder).toBeLessThan(deleteByIdOrder);
+    });
+
+    it('auto-deactivates installation when getInstallationToken fails during sync', async () => {
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([mockInstallation as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockRejectedValue(
+        new Error('Bad credentials'),
+      );
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(dao, 'count').mockResolvedValue(0);
+
+      const result = await service.syncRepositories(mockCtx);
+
+      expect(gitHubAppProviderService.deactivateByInstallationId).toHaveBeenCalledWith(
+        mockUserId,
+        12345,
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('auto-deactivating'),
+      );
+      expect(result).toEqual({ synced: 0, removed: 0, total: 0 });
+    });
+
+    it('continues syncing remaining installations after one is auto-deactivated', async () => {
+      const deadInstallation = {
+        ...mockInstallation,
+        id: 'install-dead',
+        metadata: { installationId: 99999, accountType: 'Organization' },
+      };
+      const healthyInstallation = {
+        ...mockInstallation,
+        id: 'install-healthy',
+        metadata: { installationId: 12345, accountType: 'User' },
+      };
+
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([
+        deadInstallation as any,
+        healthyInstallation as any,
+      ]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken')
+        .mockRejectedValueOnce(new Error('Bad credentials'))
+        .mockResolvedValueOnce('ghs_token123');
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ total_count: 1, repositories: [mockGithubRepo] }),
+        headers: { get: () => null },
+      } as unknown as Response);
+      vi.spyOn(dao, 'upsertGithubSyncRepos').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'restoreSoftDeleted').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(dao, 'count').mockResolvedValue(1);
+
+      const result = await service.syncRepositories(mockCtx);
+
+      expect(gitHubAppProviderService.deactivateByInstallationId).toHaveBeenCalledWith(
+        mockUserId,
+        99999,
+      );
+      expect(dao.upsertGithubSyncRepos).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ synced: 1, removed: 0, total: 1 });
     });
 
     it('does not trigger indexing after successful sync', async () => {
